@@ -4,8 +4,8 @@
   "private": true,
   "description": "Multi-tenant SaaS practice operating system for Indian Mutual Fund Distributors",
   "scripts": {
-    "dev": "next dev --turbopack",
-    "dev:webpack": "next dev",
+    "dev": "next dev",
+    "dev:turbo": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",

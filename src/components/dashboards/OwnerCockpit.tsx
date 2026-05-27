@@ -26,18 +26,31 @@ export async function OwnerCockpit({ session }: { session: SessionUser }) {
   const data = await withTenant(
     session.tenantId,
     async (tx) => {
+      // All 8 queries below are independent of each other. Fire them in
+      // parallel — the transaction's single connection multiplexes them
+      // server-side, and total wall-clock drops from ~sum-of-queries
+      // (was making /dashboard a 12-second affair) to ~max-of-queries.
+      const [
+        headline,
+        business,
+        sipStopped,
+        queues,
+        team,
+        leadFunnel,
+        rmWise,
+        dailySales,
+      ] = await Promise.all([
       // ---------- 1. Headline counts ----------
-      const headline = await tx.execute(sql`
+      tx.execute(sql`
         SELECT
           (SELECT COUNT(*)::int FROM investors WHERE status = 'active') AS total_clients,
           (SELECT COUNT(*)::int FROM leads WHERE stage NOT IN ('converted', 'lost', 'cold', 'not_interested')) AS total_leads,
           (SELECT COALESCE(SUM(active_sip_amount::numeric), 0)::numeric FROM investors WHERE status = 'active') AS sip_book,
           (SELECT COALESCE(SUM(aum::numeric), 0)::numeric FROM investors WHERE status = 'active') AS total_aum
-      `);
-      const h = headline.rows[0] as any;
+      `),
 
       // ---------- 2. Monthly business breakdown ----------
-      const business = await tx.execute(sql`
+      tx.execute(sql`
         SELECT
           COUNT(*) FILTER (WHERE type = 'sip' AND status = 'successful'
               AND order_date >= ${startOfMonthISO}::date)::int AS sip_added_count,
@@ -52,20 +65,16 @@ export async function OwnerCockpit({ session }: { session: SessionUser }) {
           COUNT(*) FILTER (WHERE type = 'sip' AND status = 'rejected'
               AND created_at >= ${startOfMonthISO})::int AS sip_rejected_count
         FROM transactions
-      `);
-      const b = business.rows[0] as any;
+      `),
 
-      const sipStopped = await tx.execute(sql`
+      tx.execute(sql`
         SELECT COUNT(*)::int AS c FROM sips
         WHERE status IN ('stopped', 'paused', 'cancelled')
           AND updated_at >= ${startOfMonthISO}
-      `);
-
-      const netBusiness =
-        Number(b.sip_added_amt) + Number(b.lumpsum_amt) - Number(b.redemption_amt);
+      `),
 
       // ---------- 3. Attention queues ----------
-      const queues = await tx.execute(sql`
+      tx.execute(sql`
         SELECT
           (SELECT COUNT(*)::int FROM investors
               WHERE status = 'active' AND next_review_at IS NOT NULL
@@ -80,11 +89,10 @@ export async function OwnerCockpit({ session }: { session: SessionUser }) {
           (SELECT COUNT(*)::int FROM investors
               WHERE status = 'active'
                 AND (last_transaction_at IS NULL OR last_transaction_at < ${dormantCutoff})) AS dormant_clients
-      `);
-      const q = queues.rows[0] as any;
+      `),
 
       // ---------- 4. Team & health ----------
-      const team = await tx.execute(sql`
+      tx.execute(sql`
         SELECT
           (SELECT COUNT(*)::int FROM tasks WHERE status = 'open') AS team_tasks,
           (SELECT COUNT(*)::int FROM campaigns WHERE status IN ('sending', 'scheduled')) AS campaigns_running,
@@ -98,24 +106,18 @@ export async function OwnerCockpit({ session }: { session: SessionUser }) {
                 AND bank_account_masked IS NOT NULL AND bank_account_masked <> '')
               / NULLIF(COUNT(*), 0)
             )::numeric FROM investors WHERE status = 'active') AS data_quality_score
-      `);
-      const t = team.rows[0] as any;
+      `),
 
       // ---------- 5. Lead conversion + RM-wise ----------
-      const leadFunnel = await tx.execute(sql`
+      tx.execute(sql`
         SELECT
           COUNT(*)::int AS total_leads_mtd,
           COUNT(*) FILTER (WHERE stage = 'converted')::int AS converted_mtd
         FROM leads
         WHERE created_at >= ${startOfMonthISO}
-      `);
-      const lf = leadFunnel.rows[0] as any;
-      const conversionPct =
-        Number(lf.total_leads_mtd) > 0
-          ? (Number(lf.converted_mtd) / Number(lf.total_leads_mtd)) * 100
-          : 0;
+      `),
 
-      const rmWise = await tx.execute(sql`
+      tx.execute(sql`
         SELECT u.id, u.name AS rm_name,
           COUNT(DISTINCT i.id)::int AS clients,
           COALESCE(SUM(i.aum::numeric), 0)::numeric AS aum,
@@ -126,10 +128,10 @@ export async function OwnerCockpit({ session }: { session: SessionUser }) {
         GROUP BY u.id, u.name
         ORDER BY aum DESC NULLS LAST
         LIMIT 8
-      `);
+      `),
 
       // 30-day daily net-sales series for the chart
-      const dailySales = await tx.execute(sql`
+      tx.execute(sql`
         WITH dates AS (
           SELECT generate_series(current_date - interval '29 days', current_date, interval '1 day')::date AS d
         )
@@ -140,7 +142,21 @@ export async function OwnerCockpit({ session }: { session: SessionUser }) {
         FROM dates LEFT JOIN transactions t
           ON t.order_date = dates.d AND t.status = 'successful'
         GROUP BY d ORDER BY d
-      `);
+      `),
+      ]);
+
+      // Unpack the parallel results back into the shape the JSX expects.
+      const h = headline.rows[0] as any;
+      const b = business.rows[0] as any;
+      const q = queues.rows[0] as any;
+      const t = team.rows[0] as any;
+      const lf = leadFunnel.rows[0] as any;
+      const netBusiness =
+        Number(b.sip_added_amt) + Number(b.lumpsum_amt) - Number(b.redemption_amt);
+      const conversionPct =
+        Number(lf.total_leads_mtd) > 0
+          ? (Number(lf.converted_mtd) / Number(lf.total_leads_mtd)) * 100
+          : 0;
 
       return {
         // headline
