@@ -31,14 +31,18 @@ export type SubjectType = "lead" | "service_request" | "complaint" | "sip_reject
 
 export async function ensureCatalogSeeded(tx: Tx, tenantId: string): Promise<void> {
   for (const entry of BLUEPRINT_CATALOG) {
+    // Look up by (tenant, module) regardless of is_active. If a tenant
+    // admin toggled this blueprint to Inactive via the designer, the
+    // row is still there — re-seeding would hit the unique index on
+    // (tenant_id, module_name, blueprint_name, version_number). We
+    // respect the admin's choice and leave the inactive row alone.
     const [existing] = await tx
       .select()
       .from(blueprintDefinitions)
       .where(
         and(
           eq(blueprintDefinitions.tenantId, tenantId),
-          eq(blueprintDefinitions.moduleName, entry.moduleName),
-          eq(blueprintDefinitions.isActive, true)
+          eq(blueprintDefinitions.moduleName, entry.moduleName)
         )
       )
       .limit(1);

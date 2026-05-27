@@ -66,17 +66,21 @@ export async function ensureActiveBlueprint(tx: Tx, tenantId: string) {
     ACTIVE_BP_CACHE.delete(tenantId);
   }
 
+  // Look up by (tenant, module) without filtering by is_active first.
+  // If a tenant admin deactivated the blueprint via the designer, an
+  // inactive row is still on disk and we'd otherwise hit the unique
+  // index on (tenant, module, name, version) when re-seeding. We prefer
+  // the active one if both exist, else return any.
   const existing = await tx
     .select()
     .from(blueprintDefinitions)
     .where(
       and(
         eq(blueprintDefinitions.tenantId, tenantId),
-        eq(blueprintDefinitions.moduleName, MODULE),
-        eq(blueprintDefinitions.isActive, true)
+        eq(blueprintDefinitions.moduleName, MODULE)
       )
     )
-    .limit(1);
+    .orderBy(desc(blueprintDefinitions.isActive));
   if (existing.length) {
     ACTIVE_BP_CACHE.set(tenantId, { id: existing[0].id, cachedAt: Date.now() });
     return existing[0];
