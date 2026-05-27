@@ -45,6 +45,7 @@ const SLA_HOURS_BY_TYPE: Record<string, number> = {
 
 const CreateBody = z.object({
   investorId: z.string().uuid().optional(),
+  assignedToUserId: z.string().uuid().optional(),
   type: z.enum([
     // Spec-canonical (13)
     "nominee_update",
@@ -114,6 +115,7 @@ export async function POST(req: NextRequest) {
         tenantId: session.tenantId,
         ticketNo,
         investorId: body.investorId ?? null,
+        assignedToUserId: body.assignedToUserId ?? session.userId,
         type: body.type,
         channel: body.channel,
         subject: body.subject,

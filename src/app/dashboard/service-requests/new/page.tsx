@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
+import { RmSelector } from "@/components/common/RmSelector";
 
 const TYPES = [
   { key: "nominee_update", label: "Nominee update" },
@@ -33,6 +34,7 @@ export default function NewServiceRequestPage() {
     priority: "normal",
     channel: "phone",
     sebiCategory: "",
+    assignedToUserId: "",
   });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -60,6 +62,7 @@ export default function NewServiceRequestPage() {
           priority: form.priority,
           channel: form.channel,
           sebiCategory: form.type === "complaint" ? form.sebiCategory || undefined : undefined,
+          assignedToUserId: form.assignedToUserId || undefined,
         }),
       });
       const j = await res.json();
@@ -115,16 +118,31 @@ export default function NewServiceRequestPage() {
           <div className="text-xs font-medium mb-1">Description</div>
           <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={4} className="w-full border rounded-md px-3 py-2 text-sm bg-background" />
         </label>
-        <label className="block">
-          <div className="text-xs font-medium mb-1">Channel</div>
-          <select value={form.channel} onChange={(e) => setForm({ ...form, channel: e.target.value })} className="w-full border rounded-md px-3 py-2 text-sm bg-background">
-            <option value="phone">Phone</option>
-            <option value="whatsapp">WhatsApp</option>
-            <option value="email">Email</option>
-            <option value="in_person">In person</option>
-            <option value="form">Web form</option>
-          </select>
-        </label>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="block">
+            <div className="text-xs font-medium mb-1">Channel</div>
+            <select value={form.channel} onChange={(e) => setForm({ ...form, channel: e.target.value })} className="w-full border rounded-md px-3 py-2 text-sm bg-background">
+              <option value="phone">Phone</option>
+              <option value="whatsapp">WhatsApp</option>
+              <option value="email">Email</option>
+              <option value="in_person">In person</option>
+              <option value="form">Web form</option>
+            </select>
+          </label>
+          <label className="block">
+            <div className="text-xs font-medium mb-1">
+              Assign to
+              <span className="ml-1 text-[10px] text-muted-foreground font-normal">
+                · defaults to you
+              </span>
+            </div>
+            <RmSelector
+              value={form.assignedToUserId || null}
+              onChange={(id) => setForm({ ...form, assignedToUserId: id ?? "" })}
+              placeholder="— Assign to myself —"
+            />
+          </label>
+        </div>
         {form.type === "complaint" && (
           <label className="block">
             <div className="text-xs font-medium mb-1">SEBI category</div>

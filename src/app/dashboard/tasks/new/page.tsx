@@ -28,6 +28,7 @@ import {
   Calendar,
 } from "lucide-react";
 import { InvestorLookup } from "@/components/common/InvestorLookup";
+import { RmSelector } from "@/components/common/RmSelector";
 
 const DEPARTMENTS: [string, string][] = [
   ["sales", "Sales"],
@@ -50,6 +51,7 @@ export default function NewTaskPage() {
     priority: "normal",
     dueDate: defaultDueDate(3),
     department: "",
+    assigneeId: "",
     remarks: "",
     relatedInvestorId: "",
     relatedInvestorName: "",
@@ -82,6 +84,7 @@ export default function NewTaskPage() {
         priority: form.priority,
         dueAt: form.dueDate ? new Date(form.dueDate).toISOString() : undefined,
         department: form.department || undefined,
+        assigneeId: form.assigneeId || undefined,
         remarks: form.remarks || undefined,
       };
       if (form.relatedInvestorId) payload.relatedInvestorId = form.relatedInvestorId;
@@ -305,6 +308,19 @@ export default function NewTaskPage() {
               value={form.dueDate}
               onChange={(e) => set("dueDate", e.target.value)}
               className="input-base"
+            />
+          </label>
+          <label className="block col-span-2">
+            <div className="text-xs font-medium mb-1">
+              Assign to
+              <span className="ml-1 text-[10px] text-muted-foreground font-normal">
+                · defaults to you
+              </span>
+            </div>
+            <RmSelector
+              value={form.assigneeId || null}
+              onChange={(id) => set("assigneeId", id ?? "")}
+              placeholder="— Assign to myself —"
             />
           </label>
         </div>

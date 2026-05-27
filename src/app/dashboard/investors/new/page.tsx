@@ -4,6 +4,7 @@ import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { ChevronLeft, HeartHandshake } from "lucide-react";
+import { RmSelector } from "@/components/common/RmSelector";
 
 function NewInvestorPageInner() {
   const router = useRouter();
@@ -23,6 +24,7 @@ function NewInvestorPageInner() {
     state: "",
     pincode: "",
     notes: "",
+    rmId: "" as string | null | "",
   });
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -46,6 +48,7 @@ function NewInvestorPageInner() {
           investorCategory: form.investorCategory,
           address: { city: form.city, state: form.state, pincode: form.pincode, country: "India" },
           notes: form.notes || undefined,
+          rmId: form.rmId || undefined,
         }),
       });
       if (!res.ok) {
@@ -131,6 +134,21 @@ function NewInvestorPageInner() {
             <Field label="State" value={form.state} onChange={(v) => set("state", v)} />
             <Field label="Pincode" value={form.pincode} onChange={(v) => set("pincode", v)} />
           </div>
+        </div>
+
+        <div className="border-t pt-4">
+          <label className="text-xs font-medium block mb-1">
+            Assigned RM
+            <span className="ml-1 text-[10px] text-muted-foreground font-normal">
+              · optional — defaults to the firm owner
+            </span>
+          </label>
+          <RmSelector
+            value={form.rmId || null}
+            onChange={(id) => setForm((s) => ({ ...s, rmId: id ?? "" }))}
+            role="rm"
+            placeholder="— Use firm default (owner) —"
+          />
         </div>
 
         <div>

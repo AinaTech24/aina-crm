@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Calendar, Loader2, Save, Users, Sparkles } from "lucide-react";
+import { RmSelector } from "@/components/common/RmSelector";
 
 const TYPES = [
   ["portfolio_review", "Portfolio Review"],
@@ -55,6 +56,7 @@ export function ScheduleMeetingForm({
     meetingMode: "online",
     locationOrLink: "",
     discussionPoints: "",
+    rmId: "" as string,
   });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -74,6 +76,7 @@ export function ScheduleMeetingForm({
         meetingMode: form.meetingMode,
         locationOrLink: form.locationOrLink || undefined,
         discussionPoints: form.discussionPoints || undefined,
+        rmId: form.rmId || undefined,
       };
       if (subjectKind === "client") body.investorId = form.investorId;
       else body.leadId = form.leadId;
@@ -229,6 +232,18 @@ export function ScheduleMeetingForm({
               : "Address"
           }
           className="input-base"
+        />
+      </Field>
+
+      <Field label="Assigned RM">
+        <RmSelector
+          value={form.rmId || null}
+          onChange={(id) => set("rmId", id ?? "")}
+          placeholder={
+            subjectKind === "client"
+              ? "— Use the client's RM —"
+              : "— Use the lead's owner —"
+          }
         />
       </Field>
 

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ChevronLeft, Sparkles, Loader2 } from "lucide-react";
 import { InvestorLookup } from "@/components/common/InvestorLookup";
+import { RmSelector } from "@/components/common/RmSelector";
 
 /** Sources that require / suggest linking an existing client as the referrer. */
 const REFERRAL_SOURCES = new Set(["referral", "existing_client"]);
@@ -21,6 +22,7 @@ export default function NewLeadPage() {
     notes: "",
     referredByInvestorId: "" as string | null | "",
     referredByName: "" as string | null | "",
+    ownerId: "" as string | null | "",
   });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -35,6 +37,11 @@ export default function NewLeadPage() {
       if (!form.referredByInvestorId) {
         delete payload.referredByInvestorId;
         delete payload.referredByName;
+      }
+      // Same for the RM picker — empty string would fail the uuid check.
+      // When ownerId is unset the API auto-assigns via round-robin.
+      if (!form.ownerId) {
+        delete payload.ownerId;
       }
       const res = await fetch("/api/leads", {
         method: "POST",
@@ -153,6 +160,21 @@ export default function NewLeadPage() {
             </p>
           </div>
         )}
+
+        <div>
+          <div className="text-xs font-medium mb-1">
+            Assign RM
+            <span className="ml-1 text-[10px] text-muted-foreground font-normal">
+              · leave blank for auto round-robin
+            </span>
+          </div>
+          <RmSelector
+            value={form.ownerId || null}
+            onChange={(id) => setForm((s) => ({ ...s, ownerId: id ?? "" }))}
+            role="rm"
+            placeholder="— Auto-assign via round-robin —"
+          />
+        </div>
 
         <Row
           label="Intended investment (₹)"

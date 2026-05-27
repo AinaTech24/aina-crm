@@ -12,6 +12,7 @@ import {
   Loader2,
   ArrowRight,
 } from "lucide-react";
+import { RmSelector } from "@/components/common/RmSelector";
 
 type Props = {
   leadId: string;
@@ -428,6 +429,7 @@ function TaskDialog({
     const d = new Date(Date.now() + (isMeeting ? 2 : 1) * 24 * 60 * 60 * 1000);
     return d.toISOString().slice(0, 16);
   });
+  const [assigneeId, setAssigneeId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -446,6 +448,7 @@ function TaskDialog({
           description,
           priority,
           dueAt: new Date(dueAt).toISOString(),
+          assigneeId: assigneeId || undefined,
         }),
       });
       const j = await res.json();
@@ -521,6 +524,19 @@ function TaskDialog({
           />
         </label>
         <label className="block">
+          <div className="text-xs font-medium mb-1">
+            Assign to
+            <span className="ml-1 text-[10px] text-muted-foreground font-normal">
+              · defaults to you
+            </span>
+          </div>
+          <RmSelector
+            value={assigneeId}
+            onChange={setAssigneeId}
+            placeholder="— Assign to myself —"
+          />
+        </label>
+        <label className="block">
           <div className="text-xs font-medium mb-1">Notes</div>
           <textarea
             value={description}
@@ -580,6 +596,7 @@ function ScheduleMeetingDialog({
   const [durationMinutes, setDurationMinutes] = useState("30");
   const [locationOrLink, setLocationOrLink] = useState("");
   const [discussionPoints, setDiscussionPoints] = useState("");
+  const [rmId, setRmId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -598,6 +615,7 @@ function ScheduleMeetingDialog({
           meetingMode,
           locationOrLink: locationOrLink || undefined,
           discussionPoints: discussionPoints || undefined,
+          rmId: rmId || undefined,
         }),
       });
       const j = await res.json();
@@ -682,6 +700,19 @@ function ScheduleMeetingDialog({
                 : "Address"
             }
             className="w-full border rounded-md px-3 py-2 text-sm bg-background"
+          />
+        </label>
+        <label className="block">
+          <div className="text-xs font-medium mb-1">
+            Assign RM
+            <span className="ml-1 text-[10px] text-muted-foreground font-normal">
+              · defaults to the lead's owner
+            </span>
+          </div>
+          <RmSelector
+            value={rmId}
+            onChange={setRmId}
+            placeholder="— Use lead's RM —"
           />
         </label>
         <label className="block">
