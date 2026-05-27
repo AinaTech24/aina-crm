@@ -31,33 +31,59 @@ import { transitionTo } from "@/lib/blueprints/engine";
 import type { Tx } from "@/db/client";
 
 export type BlueprintEvent =
+  | "call.logged"
+  | "call.completed"
   | "meeting.scheduled.lead"
   | "meeting.scheduled.client"
   | "meeting.completed"
+  | "lead.won"
+  | "lead.not_qualified"
+  | "client.converted"
+  | "docs.requested"
+  | "docs.received"
+  | "kyc.validated"
+  | "ucc.activated"
+  | "mandate.activated"
+  | "mandate.rejected"
+  | "transaction.successful"
+  | "transaction.failed"
+  // Legacy events from the previous 15-stage blueprint — kept for
+  // back-compat but remapped to the closest new SOP stage.
   | "risk_profile.sent"
   | "risk_profile.submitted"
   | "proposal.created"
   | "proposal.sent"
   | "proposal.accepted"
-  | "docs.requested"
-  | "docs.received"
-  | "call.completed.positive"
-  | "client.converted";
+  | "call.completed.positive";
 
-/** Mapping table — event → target stage key. */
+/** Mapping table — event → target stage key (new 30-stage SOP). */
 const EVENT_TO_STAGE: Record<BlueprintEvent, string | null> = {
-  "meeting.scheduled.lead": "appointment_scheduled",
-  "meeting.scheduled.client": null, // post-conversion review meetings don't move the funnel
+  // ── Lead phase ──
+  "call.logged": "call_done",                  // a call activity was logged
+  "call.completed": "call_done",
+  "meeting.scheduled.lead": "meeting_scheduled",
+  "meeting.scheduled.client": null,
   "meeting.completed": "meeting_done",
-  "risk_profile.sent": "risk_profile_sent",
-  "risk_profile.submitted": "risk_profiled",
-  "proposal.created": "proposal_drafted",
-  "proposal.sent": "proposal_sent",
-  "proposal.accepted": "proposal_approved",
-  "docs.requested": "docs_requested",
-  "docs.received": "docs_received",
-  "call.completed.positive": "post_meeting_qualified",
-  "client.converted": "ops_in_progress",
+  "lead.won": "won_lead",
+  "lead.not_qualified": "not_qualified",
+  // ── Boundary ──
+  "client.converted": "request_documents",
+  // ── Client phase ──
+  "docs.requested": "documents_pending",
+  "docs.received": "documents_received",
+  "kyc.validated": "kyc_validated",
+  "ucc.activated": "ucc_activated",
+  "mandate.activated": "mandate_activated",
+  "mandate.rejected": "mandate_reject",
+  "transaction.successful": "transaction_successful",
+  "transaction.failed": "transaction_failed",
+  // ── Legacy back-compat (mapped to closest new SOP stage) ──
+  "risk_profile.sent": "won_lead",
+  "risk_profile.submitted": "won_lead",
+  "proposal.created": "won_lead",
+  "proposal.sent": "won_lead",
+  "proposal.accepted": "won_lead",
+  "call.completed.positive": "call_done",
 };
 
 /**

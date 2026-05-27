@@ -13,6 +13,7 @@ import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { leads } from "@/db/schema";
+import { autoAdvance } from "@/lib/blueprints/auto-advance";
 
 export const dynamic = "force-dynamic";
 
@@ -51,6 +52,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           updatedAt: ts,
         } as any)
         .where(eq(leads.id, id));
+
+      // ─── Smart blueprint advance — activity logged ────────────────
+      // The activity type determines which stage the lead jumps to:
+      //   - call    → call_done   (stage 2 of the SOP)
+      //   - meeting → meeting_done (stage 8) — RM logged a past meeting
+      // Other types (email, whatsapp, note) just refresh the lastContactAt
+      // without moving the funnel.
+      if (parse.data.activityType === "call") {
+        await autoAdvance(tx, session.tenantId, id, "call.logged", {
+          remarks: `Auto: call logged on ${ts.toLocaleDateString("en-IN")} — "${parse.data.note.slice(0, 60)}".`,
+        });
+      } else if (parse.data.activityType === "meeting") {
+        await autoAdvance(tx, session.tenantId, id, "meeting.completed", {
+          remarks: `Auto: past meeting logged — "${parse.data.note.slice(0, 60)}".`,
+        });
+      }
 
       return { ok: true };
     });
