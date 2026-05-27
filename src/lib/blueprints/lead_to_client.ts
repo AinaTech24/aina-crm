@@ -1,14 +1,51 @@
 /**
- * The canonical lead-to-client blueprint — 15 stages per the spec.
+ * Lead → Client SOP — full branching workflow.
  *
- * Each stage declares:
- *   - the role that owns it (drives "Pending — RM" badges)
- *   - required-field list (drives "Capture these before moving on" checklist)
- *   - SLA in days (drives the "Due in / Overdue by" badge + escalation worker)
- *   - allowed actions (button visibility on the lead detail page)
- *   - automation-recipe keys that fire on enter/exit
+ * Redesigned from the previous linear 15-stage journey to a real
+ * state-graph that mirrors how an MFD firm actually operates:
  *
- * Tenants get this seeded once when their first lead is created.
+ *   LEAD MODULE (stages 1-10) — owns the discovery + qualification phase
+ *     1. New Lead Created                 (root)
+ *     2. Call Done                        (first contact made)
+ *     3. Call Back Later                  (snooze, RM will retry)
+ *     4. Call Not Connected               (no answer; circle back)
+ *     5. Contact in Future                (long-term nurture)
+ *     6. Meeting Scheduled                (appointment confirmed)
+ *     7. Meeting Pending                  (awaiting client confirm)
+ *     8. Meeting Done                     (meeting held + outcome captured)
+ *     9. Won Lead                         (qualified; ready to convert)
+ *    10. Not Qualified                    (dead-end, lost)
+ *
+ *   CLIENT MODULE (stages 11-30) — owns the onboarding + activation
+ *    11. Request Documents               (doc-collection link sent)
+ *    12. Documents Pending               (waiting on client)
+ *    13. Documents Received              (uploads complete)
+ *    14. KYC Validated                   (KRA returns OK)
+ *    15. KYC Registered                  (initial KYC capture)
+ *    16. KYC Pending                     (KRA verifying)
+ *    17. Modify KYC                      (data tweak needed)
+ *    18. Physical KYC                    (offline verification path)
+ *    19. Online KYC                      (e-KYC via Aadhaar)
+ *    20. UCC Create                      (BSE/NSE code creation in progress)
+ *    21. UCC Activated                   (exchange code live)
+ *    22. Mandate Create                  (SIP mandate registration in progress)
+ *    23. Mandate Activated               (NACH mandate live)
+ *    24. Mandate Rejected                (re-do — bank failure)
+ *    25. Make Transaction                (first investment kick-off)
+ *    26. Transaction Successful          (units allotted)
+ *    27. Transaction Failed              (re-do — payment issue)
+ *    28. Family Mapping                  (linked to family / household)
+ *    29. Update Information              (client master enriched)
+ *    30. Active Client (in Review Sheet) (terminal — in review cycle)
+ *
+ * Branching rules:
+ *   - From the root (`new`), 4 branches: Call Done / Call Back Later /
+ *     Call Not Connected / Contact in Future
+ *   - From Meeting Done: Won Lead OR Not Qualified
+ *   - From KYC branches: 3 paths (Validated / Registered / Pending)
+ *   - From Mandate: Activated OR Rejected (retry to Create)
+ *   - From Transaction: Successful OR Failed (retry to Make Transaction)
+ *   - "Won Lead" is the lead → client cut-over point (boundary).
  */
 
 export interface SeedStage {
@@ -22,158 +59,338 @@ export interface SeedStage {
   allowedActions: string[];
   automationsOnEnter?: string[];
   automationsOnExit?: string[];
+  /** Visual marker for the stepper: `terminal_success` / `terminal_failure` /
+   *  `loop` (call-back loops) / default linear. */
+  flavour?: "default" | "loop" | "terminal_success" | "terminal_failure";
 }
 
-export const LEAD_TO_CLIENT_BLUEPRINT_NAME = "Lead → Client journey";
+export const LEAD_TO_CLIENT_BLUEPRINT_NAME = "Lead → Client SOP";
+
+/** Boundary: stages 1-10 = lead module, 11-30 = client module. */
+export const LEAD_PHASE_LAST_ORDER = 10;
 
 export const LEAD_TO_CLIENT_STAGES: SeedStage[] = [
+  // ────────────────────────────────────────────── LEAD PHASE ──
   {
     key: "new",
     name: "New Lead Created",
+    description: "Lead just landed in the system. RM should make first contact.",
     order: 1,
     ownerRole: "sales",
     requiredFields: ["name", "phone", "source", "ownerId"],
     slaDays: 1,
-    allowedActions: ["send_welcome", "schedule_call"],
+    allowedActions: ["call_done", "call_back_later", "call_not_connected", "contact_in_future"],
     automationsOnEnter: ["lead_welcome"],
   },
   {
-    key: "first_call_pending",
-    name: "First Call Pending",
-    description: "RM must call the lead and record outcome.",
+    key: "call_done",
+    name: "Call Done",
+    description: "First call completed. RM has spoken to the lead.",
     order: 2,
     ownerRole: "sales",
     requiredFields: ["lastContactAt"],
-    slaDays: 1,
-    allowedActions: ["log_call_outcome"],
+    slaDays: 2,
+    allowedActions: ["schedule_meeting", "meeting_already_done", "mark_not_qualified"],
   },
   {
-    key: "appointment_scheduled",
-    name: "Appointment Scheduled",
+    key: "call_back_later",
+    name: "Call Back Later",
+    description: "Lead asked to call back at a specific time. Tomorrow's call queue.",
     order: 3,
     ownerRole: "sales",
     requiredFields: [],
-    slaDays: 3,
-    allowedActions: ["confirm_meeting", "reschedule_meeting", "cancel_meeting"],
+    slaDays: 2,
+    allowedActions: ["call_done", "call_not_connected", "contact_in_future"],
+    flavour: "loop",
   },
   {
-    key: "meeting_done",
-    name: "Meeting Completed",
+    key: "call_not_connected",
+    name: "Call Not Connected",
+    description: "No answer / number busy. RM will retry tomorrow.",
     order: 4,
     ownerRole: "sales",
     requiredFields: [],
     slaDays: 1,
-    allowedActions: ["capture_meeting_outcome", "qualify_lead"],
+    allowedActions: ["call_done", "call_back_later", "contact_in_future"],
+    flavour: "loop",
   },
   {
-    key: "post_meeting_qualified",
-    name: "Post-Meeting Qualification",
-    description: "Captured whether the lead is ready to proceed.",
+    key: "contact_in_future",
+    name: "Contact in Future",
+    description: "Long-term nurture. Auto-resurface in 30/60/90 days.",
     order: 5,
     ownerRole: "sales",
     requiredFields: [],
-    slaDays: 2,
-    allowedActions: ["send_risk_profile", "mark_nurture", "mark_lost"],
+    slaDays: 30,
+    allowedActions: ["call_done", "mark_not_qualified"],
+    flavour: "loop",
   },
   {
-    key: "risk_profile_sent",
-    name: "Risk Profile Sent",
+    key: "meeting_scheduled",
+    name: "Meeting Scheduled",
+    description: "Appointment booked. Reminder fires the day before.",
     order: 6,
     ownerRole: "sales",
     requiredFields: [],
-    slaDays: 5,
-    allowedActions: ["resend_risk_profile", "manual_capture_risk_profile"],
+    slaDays: 3,
+    allowedActions: ["meeting_done", "reschedule_meeting", "meeting_pending"],
   },
   {
-    key: "risk_profiled",
-    name: "Risk Profile Completed",
+    key: "meeting_pending",
+    name: "Meeting Pending",
+    description: "Meeting booked but client hasn't confirmed.",
     order: 7,
     ownerRole: "sales",
-    requiredFields: ["riskProfile"],
+    requiredFields: [],
     slaDays: 1,
-    allowedActions: ["create_proposal"],
+    allowedActions: ["meeting_done", "reschedule_meeting", "cancel_meeting"],
+    flavour: "loop",
   },
   {
-    key: "proposal_drafted",
-    name: "Proposal Drafted",
+    key: "meeting_done",
+    name: "Meeting Done",
+    description: "Meeting held. Capture outcome and decide next step.",
     order: 8,
     ownerRole: "sales",
     requiredFields: [],
-    slaDays: 2,
-    allowedActions: ["send_proposal", "edit_proposal", "suitability_check"],
+    slaDays: 1,
+    allowedActions: ["mark_won_lead", "mark_not_qualified"],
   },
   {
-    key: "proposal_sent",
-    name: "Proposal Sent",
+    key: "won_lead",
+    name: "Won Lead",
+    description: "Qualified lead. Ready to convert into a client.",
     order: 9,
     ownerRole: "sales",
     requiredFields: [],
-    slaDays: 7,
-    allowedActions: ["resend_proposal", "capture_approval", "revise_proposal"],
+    slaDays: 2,
+    allowedActions: ["convert_to_client", "request_documents"],
+    automationsOnEnter: ["won_lead_celebration"],
   },
   {
-    key: "proposal_approved",
-    name: "Proposal Approved",
+    key: "not_qualified",
+    name: "Not Qualified",
+    description: "Lead is not a fit. Closed-lost.",
     order: 10,
     ownerRole: "sales",
     requiredFields: [],
+    allowedActions: ["reopen_lead"],
+    flavour: "terminal_failure",
+  },
+
+  // ──────────────────────────────────────────── CLIENT PHASE ──
+  {
+    key: "request_documents",
+    name: "Request Documents",
+    description: "KYC + onboarding docs requested from the client.",
+    order: 11,
+    ownerRole: "back_office",
+    requiredFields: [],
     slaDays: 1,
-    allowedActions: ["send_doc_checklist"],
-    automationsOnEnter: ["proposal_approved_request_docs"],
+    allowedActions: ["docs_received", "docs_pending"],
+    automationsOnEnter: ["send_doc_checklist"],
   },
   {
-    key: "docs_requested",
-    name: "Documents Requested",
-    order: 11,
-    ownerRole: "sales",
+    key: "documents_pending",
+    name: "Documents Pending",
+    description: "Reminders going out. Waiting on client uploads.",
+    order: 12,
+    ownerRole: "back_office",
     requiredFields: [],
     slaDays: 7,
-    allowedActions: ["resend_doc_checklist", "manual_upload_docs"],
+    allowedActions: ["docs_received", "resend_doc_checklist"],
+    flavour: "loop",
   },
   {
-    key: "docs_received",
+    key: "documents_received",
     name: "Documents Received",
-    order: 12,
-    ownerRole: "sales",
-    requiredFields: [],
-    slaDays: 1,
-    allowedActions: ["convert_to_client"],
-    automationsOnEnter: ["docs_received_convert"],
-  },
-  {
-    key: "ops_in_progress",
-    name: "Operations In Progress",
-    description: "Back-office is running KYC, UCC, mandate, first transaction.",
+    description: "All KYC docs in. Run KYC workflow next.",
     order: 13,
     ownerRole: "back_office",
     requiredFields: [],
-    slaDays: 5,
-    allowedActions: ["view_ops_tasks", "escalate_to_owner"],
+    slaDays: 1,
+    allowedActions: ["kyc_validated", "kyc_registered", "kyc_pending"],
   },
   {
-    key: "portal_welcome_sent",
-    name: "Portal Welcome Sent",
+    key: "kyc_validated",
+    name: "KYC Validated",
+    description: "KRA returned validated. Move to UCC creation.",
     order: 14,
+    ownerRole: "compliance",
+    requiredFields: [],
+    slaDays: 1,
+    allowedActions: ["ucc_create"],
+  },
+  {
+    key: "kyc_registered",
+    name: "KYC Registered",
+    description: "Fresh KYC registered with KRA. Awaiting validation.",
+    order: 15,
+    ownerRole: "compliance",
+    requiredFields: [],
+    slaDays: 3,
+    allowedActions: ["kyc_validated", "modify_kyc"],
+  },
+  {
+    key: "kyc_pending",
+    name: "KYC Pending",
+    description: "Client picks Physical or Online KYC route.",
+    order: 16,
+    ownerRole: "compliance",
+    requiredFields: [],
+    slaDays: 2,
+    allowedActions: ["physical_kyc", "online_kyc"],
+  },
+  {
+    key: "modify_kyc",
+    name: "Modify KYC",
+    description: "Data correction in flight (address / bank / nominee).",
+    order: 17,
+    ownerRole: "compliance",
+    requiredFields: [],
+    slaDays: 3,
+    allowedActions: ["kyc_validated"],
+    flavour: "loop",
+  },
+  {
+    key: "physical_kyc",
+    name: "Physical KYC",
+    description: "Offline IPV being scheduled / done.",
+    order: 18,
+    ownerRole: "compliance",
+    requiredFields: [],
+    slaDays: 5,
+    allowedActions: ["kyc_validated"],
+  },
+  {
+    key: "online_kyc",
+    name: "Online KYC",
+    description: "e-KYC via Aadhaar OTP / Digilocker.",
+    order: 19,
+    ownerRole: "compliance",
+    requiredFields: [],
+    slaDays: 1,
+    allowedActions: ["kyc_validated"],
+  },
+  {
+    key: "ucc_create",
+    name: "UCC Create",
+    description: "BSE/NSE Unique Client Code creation in progress.",
+    order: 20,
+    ownerRole: "back_office",
+    requiredFields: [],
+    slaDays: 2,
+    allowedActions: ["ucc_activated"],
+  },
+  {
+    key: "ucc_activated",
+    name: "UCC Activated",
+    description: "Exchange UCC live. Set up SIP mandate next.",
+    order: 21,
+    ownerRole: "back_office",
+    requiredFields: [],
+    slaDays: 1,
+    allowedActions: ["mandate_create"],
+  },
+  {
+    key: "mandate_create",
+    name: "Mandate Create",
+    description: "NACH / e-mandate registration submitted.",
+    order: 22,
+    ownerRole: "back_office",
+    requiredFields: [],
+    slaDays: 3,
+    allowedActions: ["mandate_activated", "mandate_reject"],
+  },
+  {
+    key: "mandate_activated",
+    name: "Mandate Activated",
+    description: "Bank confirmed. SIP can debit on the scheduled date.",
+    order: 23,
+    ownerRole: "back_office",
+    requiredFields: [],
+    slaDays: 1,
+    allowedActions: ["make_transaction"],
+  },
+  {
+    key: "mandate_reject",
+    name: "Mandate Rejected",
+    description: "Bank rejected. Fix data and retry registration.",
+    order: 24,
+    ownerRole: "back_office",
+    requiredFields: [],
+    slaDays: 2,
+    allowedActions: ["mandate_create"],
+    flavour: "terminal_failure",
+  },
+  {
+    key: "make_transaction",
+    name: "Make Transaction",
+    description: "First investment being placed on BSE Star / NSE NMF.",
+    order: 25,
     ownerRole: "operations",
     requiredFields: [],
     slaDays: 1,
-    allowedActions: ["schedule_first_review"],
-    automationsOnEnter: ["ops_complete_portal_welcome"],
+    allowedActions: ["transaction_successful", "transaction_failed"],
   },
   {
-    key: "active_client",
+    key: "transaction_successful",
+    name: "Transaction Successful",
+    description: "Units allotted. Client is officially active.",
+    order: 26,
+    ownerRole: "operations",
+    requiredFields: [],
+    slaDays: 1,
+    allowedActions: ["family_mapping"],
+  },
+  {
+    key: "transaction_failed",
+    name: "Transaction Failed",
+    description: "Payment / order failure. Re-attempt.",
+    order: 27,
+    ownerRole: "operations",
+    requiredFields: [],
+    slaDays: 1,
+    allowedActions: ["make_transaction"],
+    flavour: "terminal_failure",
+  },
+  {
+    key: "family_mapping",
+    name: "Family Mapping",
+    description: "Link to spouse / parents / children for household view.",
+    order: 28,
+    ownerRole: "sales",
+    requiredFields: [],
+    slaDays: 7,
+    allowedActions: ["update_information"],
+  },
+  {
+    key: "update_information",
+    name: "Update Information",
+    description: "Master record enriched: goals, occupation, income, nominee.",
+    order: 29,
+    ownerRole: "sales",
+    requiredFields: [],
+    slaDays: 3,
+    allowedActions: ["add_in_review_sheet"],
+  },
+  {
+    key: "add_in_review_sheet",
     name: "Active Client",
-    description: "Onboarding complete. Client is in the review cycle.",
-    order: 15,
+    description: "Onboarding complete. Added to the quarterly review sheet.",
+    order: 30,
     ownerRole: "sales",
     requiredFields: [],
     allowedActions: [],
+    automationsOnEnter: ["client_review_cadence_init"],
+    flavour: "terminal_success",
   },
 ];
 
 /**
- * Default forward transitions between adjacent stages. Custom branches
- * (e.g. meeting_done → nurture / lost) are layered on top of this.
+ * Branching transition graph. Each row: from → to.
+ * Backwards transitions (reopen, retry) included explicitly so the
+ * engine accepts them without systemBypass.
  */
 export const LEAD_TO_CLIENT_TRANSITIONS: Array<{
   from: string;
@@ -181,23 +398,76 @@ export const LEAD_TO_CLIENT_TRANSITIONS: Array<{
   name: string;
   allowedRoles?: string[];
 }> = [
-  // Forward path
-  { from: "new", to: "first_call_pending", name: "Lead onboarded — call queue" },
-  { from: "first_call_pending", to: "appointment_scheduled", name: "Appointment booked", allowedRoles: ["rm", "sales"] },
-  { from: "first_call_pending", to: "post_meeting_qualified", name: "Skip — already qualified" },
-  { from: "appointment_scheduled", to: "meeting_done", name: "Meeting completed", allowedRoles: ["rm", "sales"] },
-  { from: "meeting_done", to: "post_meeting_qualified", name: "Capture outcome", allowedRoles: ["rm", "sales"] },
-  { from: "post_meeting_qualified", to: "risk_profile_sent", name: "Send risk profile", allowedRoles: ["rm", "sales"] },
-  { from: "risk_profile_sent", to: "risk_profiled", name: "Risk profile submitted" },
-  { from: "risk_profiled", to: "proposal_drafted", name: "Draft proposal", allowedRoles: ["rm", "sales"] },
-  { from: "proposal_drafted", to: "proposal_sent", name: "Send proposal", allowedRoles: ["rm", "sales"] },
-  { from: "proposal_sent", to: "proposal_approved", name: "Approval captured" },
-  { from: "proposal_approved", to: "docs_requested", name: "Send doc checklist", allowedRoles: ["rm", "sales"] },
-  { from: "docs_requested", to: "docs_received", name: "Documents uploaded" },
-  { from: "docs_received", to: "ops_in_progress", name: "Convert + assign ops" },
-  { from: "ops_in_progress", to: "portal_welcome_sent", name: "Ops complete" },
-  { from: "portal_welcome_sent", to: "active_client", name: "Onboarding complete" },
+  // ─── New Lead → 4 branches ─────────────────────────────────────
+  { from: "new", to: "call_done", name: "Call Done" },
+  { from: "new", to: "call_back_later", name: "Call Back Later" },
+  { from: "new", to: "call_not_connected", name: "Call Not Connected" },
+  { from: "new", to: "contact_in_future", name: "Contact in Future" },
 
-  // Branches off the qualification stage
-  { from: "post_meeting_qualified", to: "first_call_pending", name: "Needs more discussion (re-nurture)" },
+  // ─── Call Done → Meeting decision ──────────────────────────────
+  { from: "call_done", to: "meeting_scheduled", name: "Schedule Meeting" },
+  { from: "call_done", to: "meeting_pending", name: "Meeting Tentative" },
+  { from: "call_done", to: "not_qualified", name: "Not Qualified" },
+
+  // ─── Call Back Later / Not Connected loops ─────────────────────
+  { from: "call_back_later", to: "call_done", name: "Reached on Retry" },
+  { from: "call_back_later", to: "call_not_connected", name: "Still No Answer" },
+  { from: "call_back_later", to: "contact_in_future", name: "Defer Long-term" },
+  { from: "call_not_connected", to: "call_done", name: "Eventually Reached" },
+  { from: "call_not_connected", to: "call_back_later", name: "Retry Tomorrow" },
+  { from: "call_not_connected", to: "contact_in_future", name: "Long-term Nurture" },
+  { from: "contact_in_future", to: "call_done", name: "Resurfaced / Reached" },
+  { from: "contact_in_future", to: "not_qualified", name: "Confirmed Not Interested" },
+
+  // ─── Meeting flow ──────────────────────────────────────────────
+  { from: "meeting_scheduled", to: "meeting_done", name: "Meeting Completed" },
+  { from: "meeting_scheduled", to: "meeting_pending", name: "Awaiting Confirmation" },
+  { from: "meeting_pending", to: "meeting_done", name: "Meeting Completed" },
+  { from: "meeting_pending", to: "meeting_scheduled", name: "Confirmed / Rescheduled" },
+  { from: "meeting_done", to: "won_lead", name: "Qualified — Win" },
+  { from: "meeting_done", to: "not_qualified", name: "Not a Fit" },
+
+  // ─── Not Qualified reopen (rare) ───────────────────────────────
+  { from: "not_qualified", to: "call_done", name: "Reopen Lead" },
+
+  // ─── Won Lead → Onboarding kickoff ─────────────────────────────
+  { from: "won_lead", to: "request_documents", name: "Request Documents" },
+
+  // ─── Document collection ───────────────────────────────────────
+  { from: "request_documents", to: "documents_pending", name: "Waiting on Client" },
+  { from: "request_documents", to: "documents_received", name: "Docs Received" },
+  { from: "documents_pending", to: "documents_received", name: "Docs Received" },
+
+  // ─── KYC paths (3-way branch) ──────────────────────────────────
+  { from: "documents_received", to: "kyc_validated", name: "Existing KYC Validated" },
+  { from: "documents_received", to: "kyc_registered", name: "Fresh KYC Registered" },
+  { from: "documents_received", to: "kyc_pending", name: "KYC Verification Pending" },
+  { from: "kyc_registered", to: "kyc_validated", name: "Validation Complete" },
+  { from: "kyc_registered", to: "modify_kyc", name: "Needs Modification" },
+  { from: "kyc_pending", to: "physical_kyc", name: "Physical Route" },
+  { from: "kyc_pending", to: "online_kyc", name: "Online Route" },
+  { from: "modify_kyc", to: "kyc_validated", name: "Modification Done" },
+  { from: "physical_kyc", to: "kyc_validated", name: "IPV Complete" },
+  { from: "online_kyc", to: "kyc_validated", name: "e-KYC Complete" },
+
+  // ─── UCC ───────────────────────────────────────────────────────
+  { from: "kyc_validated", to: "ucc_create", name: "Create UCC" },
+  { from: "ucc_create", to: "ucc_activated", name: "UCC Active" },
+
+  // ─── Mandate ───────────────────────────────────────────────────
+  { from: "ucc_activated", to: "mandate_create", name: "Register Mandate" },
+  { from: "mandate_create", to: "mandate_activated", name: "Mandate Active" },
+  { from: "mandate_create", to: "mandate_reject", name: "Bank Rejected" },
+  { from: "mandate_reject", to: "mandate_create", name: "Retry Mandate" },
+
+  // ─── Transaction ───────────────────────────────────────────────
+  { from: "mandate_activated", to: "make_transaction", name: "Place First Order" },
+  { from: "make_transaction", to: "transaction_successful", name: "Order Successful" },
+  { from: "make_transaction", to: "transaction_failed", name: "Order Failed" },
+  { from: "transaction_failed", to: "make_transaction", name: "Retry Order" },
+
+  // ─── Post-investment ───────────────────────────────────────────
+  { from: "transaction_successful", to: "family_mapping", name: "Map Family" },
+  { from: "family_mapping", to: "update_information", name: "Enrich Master" },
+  { from: "update_information", to: "add_in_review_sheet", name: "Add to Review" },
 ];

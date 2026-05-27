@@ -31,19 +31,22 @@ type Props = {
  * Post-conversion stages (13-15) live in the Clients module and aren't
  * selectable here.
  */
+/**
+ * Lead-phase stages — 10 stages from "New Lead Created" through "Not
+ * Qualified", with branches for call-back loops. See LEAD_TO_CLIENT_STAGES.
+ * Post-conversion stages (11-30) live in the Clients module.
+ */
 const STAGES = [
   { key: "new", label: "New Lead Created" },
-  { key: "first_call_pending", label: "First Call Pending" },
-  { key: "appointment_scheduled", label: "Appointment Scheduled" },
-  { key: "meeting_done", label: "Meeting Completed" },
-  { key: "post_meeting_qualified", label: "Post-Meeting Qualification" },
-  { key: "risk_profile_sent", label: "Risk Profile Sent" },
-  { key: "risk_profiled", label: "Risk Profile Completed" },
-  { key: "proposal_drafted", label: "Proposal Drafted" },
-  { key: "proposal_sent", label: "Proposal Sent" },
-  { key: "proposal_approved", label: "Proposal Approved" },
-  { key: "docs_requested", label: "Documents Requested" },
-  { key: "docs_received", label: "Documents Received" },
+  { key: "call_done", label: "Call Done" },
+  { key: "call_back_later", label: "Call Back Later" },
+  { key: "call_not_connected", label: "Call Not Connected" },
+  { key: "contact_in_future", label: "Contact in Future" },
+  { key: "meeting_scheduled", label: "Meeting Scheduled" },
+  { key: "meeting_pending", label: "Meeting Pending" },
+  { key: "meeting_done", label: "Meeting Done" },
+  { key: "won_lead", label: "Won Lead" },
+  { key: "not_qualified", label: "Not Qualified" },
 ];
 
 const ACTIVITY_TYPES = [

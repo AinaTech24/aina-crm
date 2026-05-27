@@ -26,19 +26,22 @@ import { EmptyState } from "@/components/common/EmptyState";
  * Aliases fold legacy stage values from before the unification onto the
  * canonical blueprint key.
  */
+/**
+ * Kanban columns — 10 lead-phase blueprint stages. Aliases fold legacy
+ * stage values onto the canonical key so historic leads land in the
+ * right column.
+ */
 const STAGES = [
   { key: "new", label: "New", tone: "blue", aliases: [] as string[] },
-  { key: "first_call_pending", label: "First Call Pending", tone: "cyan", aliases: ["contacted"] },
-  { key: "appointment_scheduled", label: "Appointment Scheduled", tone: "amber", aliases: ["meeting_scheduled", "qualified"] },
-  { key: "meeting_done", label: "Meeting Completed", tone: "amber", aliases: [] },
-  { key: "post_meeting_qualified", label: "Post-Meeting Qualification", tone: "indigo", aliases: ["follow_up"] },
-  { key: "risk_profile_sent", label: "Risk Profile Sent", tone: "indigo", aliases: [] },
-  { key: "risk_profiled", label: "Risk Profile Completed", tone: "violet", aliases: [] },
-  { key: "proposal_drafted", label: "Proposal Drafted", tone: "violet", aliases: [] },
-  { key: "proposal_sent", label: "Proposal Sent", tone: "violet", aliases: ["proposal_shared"] },
-  { key: "proposal_approved", label: "Proposal Approved", tone: "emerald", aliases: [] },
-  { key: "docs_requested", label: "Documents Requested", tone: "emerald", aliases: [] },
-  { key: "docs_received", label: "Documents Received", tone: "emerald", aliases: [] },
+  { key: "call_done", label: "Call Done", tone: "cyan", aliases: ["contacted", "first_call_pending"] },
+  { key: "call_back_later", label: "Call Back Later", tone: "cyan", aliases: [] },
+  { key: "call_not_connected", label: "Call Not Connected", tone: "slate", aliases: [] },
+  { key: "contact_in_future", label: "Contact in Future", tone: "slate", aliases: ["follow_up"] },
+  { key: "meeting_scheduled", label: "Meeting Scheduled", tone: "amber", aliases: ["appointment_scheduled", "qualified"] },
+  { key: "meeting_pending", label: "Meeting Pending", tone: "amber", aliases: [] },
+  { key: "meeting_done", label: "Meeting Done", tone: "indigo", aliases: ["meeting_done"] },
+  { key: "won_lead", label: "Won Lead", tone: "emerald", aliases: ["converted", "post_meeting_qualified"] },
+  { key: "not_qualified", label: "Not Qualified", tone: "rose", aliases: ["lost", "not_interested", "cold"] },
 ] as const;
 
 export const dynamic = "force-dynamic";
@@ -188,11 +191,11 @@ export default async function LeadsPage({
               {
                 id: "open",
                 name: "All open",
-                params: "stage=new,first_call_pending,appointment_scheduled,meeting_done,post_meeting_qualified,risk_profile_sent,risk_profiled,proposal_drafted,proposal_sent,proposal_approved,docs_requested,docs_received",
+                params: "stage=new,call_done,call_back_later,call_not_connected,contact_in_future,meeting_scheduled,meeting_pending,meeting_done,won_lead",
               },
               { id: "referrals", name: "Referrals only", params: "source=referral,existing_client" },
-              { id: "won", name: "Won (converted)", params: "stage=converted" },
-              { id: "lost", name: "Lost / not-interested", params: "stage=lost,not_interested" },
+              { id: "won", name: "Won leads", params: "stage=won_lead,converted" },
+              { id: "lost", name: "Not qualified / lost", params: "stage=not_qualified,lost,not_interested" },
             ]}
           />
         }

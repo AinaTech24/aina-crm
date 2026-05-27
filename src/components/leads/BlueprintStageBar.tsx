@@ -190,9 +190,9 @@ export function BlueprintStageBar({
    *      not converted) → render a placeholder banner instead of an empty bar.
    */
   const isConvertReady =
-    phase === "lead" && current.key === "docs_received" && !convertedInvestorId;
+    phase === "lead" && current.key === "won_lead" && !convertedInvestorId;
   const leadStillInProgress =
-    phase === "client" && (current.order <= 12 || !convertedInvestorId);
+    phase === "client" && (current.order <= 10 || !convertedInvestorId);
 
   const slaTone =
     current.slaRemainingDays == null

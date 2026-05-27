@@ -88,7 +88,7 @@ export async function ensureActiveBlueprint(tx: Tx, tenantId: string) {
       tenantId,
       moduleName: MODULE,
       blueprintName: LEAD_TO_CLIENT_BLUEPRINT_NAME,
-      description: "Default lead-to-client journey — 15 stages from new lead through active client.",
+      description: "Full Lead → Client SOP — 30 stages with branching paths (call-back loops, KYC routes, mandate/transaction retries).",
       versionNumber: 1,
       isActive: true,
     })
@@ -385,8 +385,10 @@ export async function getStage(tx: Tx, tenantId: string, leadId: string): Promis
       name: s.stageName,
       order: s.stageOrder,
       status: i < currentIdx ? "done" : i === currentIdx ? "current" : "upcoming",
-      // Cut-over at stage 12 (docs_received) — see lead_to_client.ts.
-      phase: s.stageOrder <= 12 ? "lead" : "client",
+      // Cut-over at stage 10 (Not Qualified is the last lead-phase
+      // stage in the new SOP graph; Won Lead at stage 9 is the success
+      // boundary that converts to Client). See LEAD_PHASE_LAST_ORDER.
+      phase: s.stageOrder <= 10 ? "lead" : "client",
     })),
     history: history.map((h) => {
       const stage = stages.find((s) => s.stageKey === h.stageKey);

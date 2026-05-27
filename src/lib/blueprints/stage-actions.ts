@@ -1,39 +1,25 @@
 /**
- * Stage-action catalog — what the user actually sees and clicks at each
- * stage of the Lead → Client journey.
+ * Stage-action catalog — full SOP version.
  *
- * Replaces the generic "Next action" chip strip with a guided flow:
+ * One entry per stage in LEAD_TO_CLIENT_STAGES. Each entry is the list of
+ * primary buttons rendered on the blueprint bar for that stage.
  *
- *   - Each stage exposes 1-3 primary buttons (Call Done / Schedule
- *     Meeting / Send Proposal / …).
- *   - Each button declares:
- *       a) `prereqKey`     — the prerequisite that must be satisfied
- *                            before the blueprint can advance.
- *       b) `targetStage`   — where to advance once the prereq is met.
- *       c) `behaviour`     — what clicking the button does on the UI side
- *                            (open a dialog, navigate to a form, or
- *                            just advance the stage).
+ * Click flow:
+ *   1. UI calls /blueprint/can-advance?to=<targetStage> first
+ *   2. Satisfied → fire `behaviour`
+ *   3. Not satisfied → show inline checklist with direct CTAs
  *
- *   - When the user clicks a button:
- *       1. UI hits /api/leads/[id]/blueprint/can-advance?to=<target> to
- *          check the prerequisite.
- *       2. If satisfied  → call /advance, refresh.
- *       3. If unsatisfied → show inline checklist with a direct CTA to
- *          complete the missing artefact (open dialog / navigate).
- *
- * That checklist is intentionally the *same* prerequisite list that
- * stops a manual "Advance" — one source of truth for "is this stage
- * ready to be closed?".
+ * Tones map to button colours:
+ *   primary   = filled brand (the recommended action)
+ *   secondary = outline grey (alternates)
+ *   success   = filled emerald (positive terminal)
+ *   danger    = outlined rose (negative branches: lost, reject)
  */
 
 export type StageActionBehaviour =
-  /** Opens an in-place modal dialog (e.g. log call, log past meeting). */
   | { kind: "open_dialog"; dialog: DialogKind }
-  /** Navigates to a form page with leadId pre-filled. */
   | { kind: "navigate"; hrefPattern: string }
-  /** Just advances the stage (no form, no dialog). */
   | { kind: "advance_only" }
-  /** Calls an API directly — used for short-circuit "Not Connected" / "Cancel". */
   | { kind: "call_api"; endpoint: string; body?: Record<string, unknown>; afterStage?: string };
 
 export type DialogKind =
@@ -47,271 +33,544 @@ export type DialogKind =
 
 export type StageAction = {
   key: string;
-  /** Button label shown to the user. */
   label: string;
-  /** Visual tone: primary (filled), secondary (outline), danger (red). */
   tone: "primary" | "secondary" | "danger" | "success";
-  /** Stage to land on after the action is successful. */
   targetStage: string;
-  /**
-   * Name of a prerequisite rule (see src/lib/blueprints/prerequisites.ts
-   * PREREQ_RULES_BY_TARGET) — when the action fires, the UI runs this
-   * check against the target stage. If unsatisfied, the user is shown
-   * the checklist instead of an immediate advance.
-   *
-   * Set to `null` for short-circuit moves (e.g. "Mark Not Connected"
-   * just records a note and stays in place).
-   */
   hint?: string;
   behaviour: StageActionBehaviour;
 };
 
-/**
- * The catalog — keyed by current stage. Each value is the array of
- * actions to render. Order matters: first action gets the primary tone.
- */
 export const STAGE_ACTIONS: Record<string, StageAction[]> = {
-  // ── Stage 1: New Lead Created ───────────────────────────────────
+  // ──────────────────────────────────────────────── LEAD PHASE ──
+
+  // 1. New Lead Created — 4-way fork on the very first action.
   new: [
     {
       key: "call_done",
       label: "Call Done",
       tone: "primary",
-      targetStage: "first_call_pending",
-      hint: "Log what was discussed on the first call",
+      targetStage: "call_done",
+      hint: "Log the call outcome — RM had a meaningful first conversation.",
       behaviour: { kind: "open_dialog", dialog: "log_call" },
+    },
+    {
+      key: "call_back_later",
+      label: "Call Back Later",
+      tone: "secondary",
+      targetStage: "call_back_later",
+      hint: "Lead asked to reach out at a specific time — added to tomorrow's queue.",
+      behaviour: { kind: "advance_only" },
     },
     {
       key: "call_not_connected",
       label: "Call Not Connected",
       tone: "secondary",
-      targetStage: "new",
-      hint: "Stays at New; we'll surface this lead in tomorrow's call queue",
-      behaviour: {
-        kind: "call_api",
-        endpoint: "/api/leads/{id}/call-outcome",
-        body: { outcome: "not_connected", attempted: true },
-      },
+      targetStage: "call_not_connected",
+      hint: "No answer / busy — auto-resurface tomorrow.",
+      behaviour: { kind: "advance_only" },
     },
     {
-      key: "call_pending",
-      label: "Call Pending",
+      key: "contact_in_future",
+      label: "Contact in Future",
       tone: "secondary",
-      targetStage: "new",
-      hint: "Snooze — RM will be reminded tomorrow",
+      targetStage: "contact_in_future",
+      hint: "Long-term nurture — resurface in 30 / 60 / 90 days.",
       behaviour: { kind: "advance_only" },
     },
   ],
 
-  // ── Stage 2: First Call Done (system label: first_call_pending) ─
-  first_call_pending: [
+  // 2. Call Done — schedule, log existing, or kill.
+  call_done: [
     {
       key: "schedule_meeting",
       label: "Schedule Meeting",
       tone: "primary",
-      targetStage: "appointment_scheduled",
-      hint: "Opens the scheduling form pre-filled with this lead",
+      targetStage: "meeting_scheduled",
+      hint: "Opens the meeting form pre-filled with this lead.",
       behaviour: { kind: "navigate", hrefPattern: "/dashboard/review-meetings/new?leadId={id}" },
     },
     {
-      key: "meeting_done",
-      label: "Meeting Already Done",
+      key: "meeting_pending",
+      label: "Meeting Tentative",
       tone: "secondary",
-      targetStage: "meeting_done",
-      hint: "Log a meeting that already happened",
-      behaviour: { kind: "open_dialog", dialog: "log_past_meeting" },
+      targetStage: "meeting_pending",
+      hint: "Booked but client hasn't confirmed yet.",
+      behaviour: { kind: "advance_only" },
     },
     {
-      key: "mark_lost",
-      label: "Lead Not Interested",
+      key: "not_qualified",
+      label: "Not Qualified",
       tone: "danger",
-      targetStage: "new", // stays; the lost-marker happens via a different flow
-      hint: "Mark this lead as lost",
+      targetStage: "not_qualified",
+      hint: "Lead isn't a fit — close as lost.",
       behaviour: { kind: "open_dialog", dialog: "mark_lost" },
     },
   ],
 
-  // ── Stage 3: Appointment Scheduled ──────────────────────────────
-  appointment_scheduled: [
+  // 3. Call Back Later — loop options
+  call_back_later: [
+    {
+      key: "reached",
+      label: "Reached Successfully",
+      tone: "primary",
+      targetStage: "call_done",
+      hint: "Got hold of the lead — log the call.",
+      behaviour: { kind: "open_dialog", dialog: "log_call" },
+    },
+    {
+      key: "still_no_answer",
+      label: "Still No Answer",
+      tone: "secondary",
+      targetStage: "call_not_connected",
+      hint: "Move to Not Connected; try again tomorrow.",
+      behaviour: { kind: "advance_only" },
+    },
+    {
+      key: "defer",
+      label: "Defer Long-term",
+      tone: "secondary",
+      targetStage: "contact_in_future",
+      hint: "Park for 30+ days.",
+      behaviour: { kind: "advance_only" },
+    },
+  ],
+
+  // 4. Call Not Connected — same loop, different defaults
+  call_not_connected: [
+    {
+      key: "reached",
+      label: "Eventually Reached",
+      tone: "primary",
+      targetStage: "call_done",
+      hint: "Finally got through — log the conversation.",
+      behaviour: { kind: "open_dialog", dialog: "log_call" },
+    },
+    {
+      key: "schedule_callback",
+      label: "Retry Tomorrow",
+      tone: "secondary",
+      targetStage: "call_back_later",
+      hint: "Lead asked to be called at a better time.",
+      behaviour: { kind: "advance_only" },
+    },
+    {
+      key: "long_term",
+      label: "Long-term Nurture",
+      tone: "secondary",
+      targetStage: "contact_in_future",
+      hint: "Move to drip campaign.",
+      behaviour: { kind: "advance_only" },
+    },
+  ],
+
+  // 5. Contact in Future — long-term loop
+  contact_in_future: [
+    {
+      key: "resurfaced",
+      label: "Reached / Resurfaced",
+      tone: "primary",
+      targetStage: "call_done",
+      hint: "Lead replied or RM got back in touch.",
+      behaviour: { kind: "open_dialog", dialog: "log_call" },
+    },
+    {
+      key: "confirmed_lost",
+      label: "Confirmed Not Interested",
+      tone: "danger",
+      targetStage: "not_qualified",
+      hint: "Permanently close — explicit rejection.",
+      behaviour: { kind: "open_dialog", dialog: "mark_lost" },
+    },
+  ],
+
+  // 6. Meeting Scheduled
+  meeting_scheduled: [
     {
       key: "meeting_done",
       label: "Meeting Done",
       tone: "primary",
       targetStage: "meeting_done",
-      hint: "Mark the scheduled meeting as completed and capture outcome",
+      hint: "Mark the meeting as completed and capture outcome.",
       behaviour: { kind: "open_dialog", dialog: "log_past_meeting" },
     },
     {
       key: "reschedule",
-      label: "Reschedule Meeting",
+      label: "Reschedule",
       tone: "secondary",
-      targetStage: "appointment_scheduled",
-      hint: "Move the existing meeting to a new date / time",
+      targetStage: "meeting_scheduled",
+      hint: "Move to a different date/time.",
       behaviour: { kind: "navigate", hrefPattern: "/dashboard/review-meetings?leadId={id}" },
     },
     {
-      key: "cancel",
-      label: "Cancel Meeting",
-      tone: "danger",
-      targetStage: "first_call_pending",
-      hint: "Cancel the meeting and return to call-queue",
+      key: "pending",
+      label: "Awaiting Confirmation",
+      tone: "secondary",
+      targetStage: "meeting_pending",
+      hint: "Client hasn't confirmed; nudge them.",
       behaviour: { kind: "advance_only" },
     },
   ],
 
-  // ── Stage 4: Meeting Completed ──────────────────────────────────
-  meeting_done: [
+  // 7. Meeting Pending
+  meeting_pending: [
     {
-      key: "qualify",
-      label: "Qualify — Move to Proposal Track",
+      key: "meeting_done",
+      label: "Meeting Done",
       tone: "primary",
-      targetStage: "post_meeting_qualified",
-      hint: "Captures meeting outcome and qualifies the lead",
-      behaviour: { kind: "open_dialog", dialog: "log_call" }, // re-use to capture outcome notes
+      targetStage: "meeting_done",
+      hint: "Meeting happened — capture outcome.",
+      behaviour: { kind: "open_dialog", dialog: "log_past_meeting" },
     },
     {
-      key: "mark_lost",
+      key: "confirmed",
+      label: "Confirmed / Rescheduled",
+      tone: "secondary",
+      targetStage: "meeting_scheduled",
+      hint: "Back to a confirmed slot.",
+      behaviour: { kind: "navigate", hrefPattern: "/dashboard/review-meetings?leadId={id}" },
+    },
+  ],
+
+  // 8. Meeting Done — qualify or kill
+  meeting_done: [
+    {
+      key: "won_lead",
+      label: "Qualified — Won Lead",
+      tone: "success",
+      targetStage: "won_lead",
+      hint: "Ready to convert into a client.",
+      behaviour: { kind: "advance_only" },
+    },
+    {
+      key: "not_qualified",
       label: "Not a Fit",
       tone: "danger",
-      targetStage: "new",
-      hint: "Mark lead as lost / not a fit",
+      targetStage: "not_qualified",
+      hint: "Close lead as not qualified.",
       behaviour: { kind: "open_dialog", dialog: "mark_lost" },
     },
   ],
 
-  // ── Stage 5: Post-Meeting Qualified ─────────────────────────────
-  post_meeting_qualified: [
+  // 9. Won Lead — boundary stage; conversion happens here
+  won_lead: [
     {
-      key: "send_risk_profile",
-      label: "Send Risk Profile Link",
-      tone: "primary",
-      targetStage: "risk_profile_sent",
-      hint: "Mints a one-time WhatsApp/email link for the client",
-      behaviour: { kind: "open_dialog", dialog: "send_risk_profile" },
-    },
-    {
-      key: "capture_manually",
-      label: "Capture Risk Profile Manually",
-      tone: "secondary",
-      targetStage: "risk_profiled",
-      hint: "RM fills the questionnaire on the client's behalf",
-      behaviour: { kind: "open_dialog", dialog: "capture_risk_profile_manually" },
-    },
-  ],
-
-  // ── Stage 6: Risk Profile Sent ──────────────────────────────────
-  risk_profile_sent: [
-    {
-      key: "resend",
-      label: "Resend Link",
-      tone: "secondary",
-      targetStage: "risk_profile_sent",
-      hint: "Send another reminder (also via WhatsApp / email)",
-      behaviour: { kind: "open_dialog", dialog: "send_risk_profile" },
-    },
-    {
-      key: "capture_manually",
-      label: "Capture Manually",
-      tone: "primary",
-      targetStage: "risk_profiled",
-      hint: "Client too busy? Capture their answers yourself.",
-      behaviour: { kind: "open_dialog", dialog: "capture_risk_profile_manually" },
-    },
-  ],
-
-  // ── Stage 7: Risk Profile Completed ─────────────────────────────
-  risk_profiled: [
-    {
-      key: "create_proposal",
-      label: "Create Proposal",
-      tone: "primary",
-      targetStage: "proposal_drafted",
-      hint: "Open the proposal builder with risk + goals pre-filled",
-      behaviour: { kind: "navigate", hrefPattern: "/dashboard/proposals/new?leadId={id}" },
-    },
-  ],
-
-  // ── Stage 8: Proposal Drafted ───────────────────────────────────
-  proposal_drafted: [
-    {
-      key: "send_proposal",
-      label: "Send Proposal",
-      tone: "primary",
-      targetStage: "proposal_sent",
-      hint: "Choose Email or WhatsApp; we'll log the send",
-      behaviour: { kind: "navigate", hrefPattern: "/dashboard/proposals?leadId={id}" },
-    },
-    {
-      key: "edit",
-      label: "Edit Proposal",
-      tone: "secondary",
-      targetStage: "proposal_drafted",
-      hint: "Tweak the draft before sending",
-      behaviour: { kind: "navigate", hrefPattern: "/dashboard/proposals?leadId={id}" },
-    },
-  ],
-
-  // ── Stage 9: Proposal Sent ──────────────────────────────────────
-  proposal_sent: [
-    {
-      key: "capture_approval",
-      label: "Client Approved",
+      key: "convert",
+      label: "Convert to Client",
       tone: "success",
-      targetStage: "proposal_approved",
-      hint: "Capture verbal / digital approval (with SEBI evidence)",
-      behaviour: { kind: "open_dialog", dialog: "capture_approval" },
-    },
-    {
-      key: "resend",
-      label: "Resend Proposal",
-      tone: "secondary",
-      targetStage: "proposal_sent",
-      hint: "Nudge — client hasn't viewed yet?",
-      behaviour: { kind: "navigate", hrefPattern: "/dashboard/proposals?leadId={id}" },
-    },
-    {
-      key: "revise",
-      label: "Revise Proposal",
-      tone: "secondary",
-      targetStage: "proposal_drafted",
-      hint: "Client wants changes — go back to draft",
-      behaviour: { kind: "navigate", hrefPattern: "/dashboard/proposals?leadId={id}" },
+      targetStage: "request_documents",
+      hint: "Creates an investor record and begins onboarding.",
+      // Conversion is handled by the dedicated convert dialog on the
+      // page header. Clicking here scrolls there.
+      behaviour: { kind: "open_dialog", dialog: "log_call" /* unused */ },
     },
   ],
 
-  // ── Stage 10: Proposal Approved ─────────────────────────────────
-  proposal_approved: [
+  // 10. Not Qualified — terminal
+  not_qualified: [
     {
-      key: "send_doc_checklist",
-      label: "Send Document Checklist",
-      tone: "primary",
-      targetStage: "docs_requested",
-      hint: "One-time link the client uses to upload KYC docs",
-      behaviour: { kind: "open_dialog", dialog: "send_doc_checklist" },
+      key: "reopen",
+      label: "Reopen Lead",
+      tone: "secondary",
+      targetStage: "call_done",
+      hint: "Reconsider this lead — restart the conversation.",
+      behaviour: { kind: "open_dialog", dialog: "log_call" },
     },
   ],
 
-  // ── Stage 11: Documents Requested ───────────────────────────────
-  docs_requested: [
+  // ────────────────────────────────────────────── CLIENT PHASE ──
+
+  // 11. Request Documents
+  request_documents: [
     {
-      key: "resend_checklist",
-      label: "Resend Checklist",
-      tone: "secondary",
-      targetStage: "docs_requested",
-      hint: "Client missed the link? Resend.",
+      key: "send_checklist",
+      label: "Send Doc Checklist",
+      tone: "primary",
+      targetStage: "documents_pending",
+      hint: "One-time WhatsApp / email link the client uses to upload.",
       behaviour: { kind: "open_dialog", dialog: "send_doc_checklist" },
     },
     {
-      key: "manual_upload",
-      label: "Documents Received",
-      tone: "primary",
-      targetStage: "docs_received",
-      hint: "Client gave docs in-person? Confirm receipt.",
+      key: "docs_received",
+      label: "Documents Already Received",
+      tone: "secondary",
+      targetStage: "documents_received",
+      hint: "Skip the link — docs were given in person.",
       behaviour: { kind: "advance_only" },
     },
   ],
 
-  // ── Stage 12: Documents Received ────────────────────────────────
-  // No actions — the Convert-to-Client CTA on the boundary card handles it.
-  docs_received: [],
+  // 12. Documents Pending
+  documents_pending: [
+    {
+      key: "docs_received",
+      label: "Documents Received",
+      tone: "primary",
+      targetStage: "documents_received",
+      hint: "Confirm receipt — kicks off KYC.",
+      behaviour: { kind: "advance_only" },
+    },
+    {
+      key: "resend",
+      label: "Resend Link",
+      tone: "secondary",
+      targetStage: "documents_pending",
+      hint: "Client missed the original link — nudge them.",
+      behaviour: { kind: "open_dialog", dialog: "send_doc_checklist" },
+    },
+  ],
+
+  // 13. Documents Received — 3-way KYC fork
+  documents_received: [
+    {
+      key: "kyc_validated",
+      label: "Existing KYC Validated",
+      tone: "primary",
+      targetStage: "kyc_validated",
+      hint: "KRA already has this PAN — straight to UCC.",
+      behaviour: { kind: "advance_only" },
+    },
+    {
+      key: "kyc_registered",
+      label: "Register Fresh KYC",
+      tone: "secondary",
+      targetStage: "kyc_registered",
+      hint: "Submit a new KYC application to the KRA.",
+      behaviour: { kind: "advance_only" },
+    },
+    {
+      key: "kyc_pending",
+      label: "KYC Verification Pending",
+      tone: "secondary",
+      targetStage: "kyc_pending",
+      hint: "Need IPV / e-KYC verification.",
+      behaviour: { kind: "advance_only" },
+    },
+  ],
+
+  // 14. KYC Validated
+  kyc_validated: [
+    {
+      key: "ucc_create",
+      label: "Create UCC",
+      tone: "primary",
+      targetStage: "ucc_create",
+      hint: "Generate BSE/NSE Unique Client Code.",
+      behaviour: { kind: "advance_only" },
+    },
+  ],
+
+  // 15. KYC Registered
+  kyc_registered: [
+    {
+      key: "validated",
+      label: "KYC Validated",
+      tone: "primary",
+      targetStage: "kyc_validated",
+      hint: "KRA has cleared it — move on.",
+      behaviour: { kind: "advance_only" },
+    },
+    {
+      key: "modify",
+      label: "Needs Modification",
+      tone: "secondary",
+      targetStage: "modify_kyc",
+      hint: "Address / bank / nominee correction required.",
+      behaviour: { kind: "advance_only" },
+    },
+  ],
+
+  // 16. KYC Pending — physical vs online
+  kyc_pending: [
+    {
+      key: "physical",
+      label: "Physical KYC (IPV)",
+      tone: "secondary",
+      targetStage: "physical_kyc",
+      hint: "Schedule offline in-person verification.",
+      behaviour: { kind: "advance_only" },
+    },
+    {
+      key: "online",
+      label: "Online KYC (Aadhaar/e-KYC)",
+      tone: "primary",
+      targetStage: "online_kyc",
+      hint: "Faster route via Digilocker / Aadhaar OTP.",
+      behaviour: { kind: "advance_only" },
+    },
+  ],
+
+  // 17. Modify KYC
+  modify_kyc: [
+    {
+      key: "validated",
+      label: "Modification Complete",
+      tone: "primary",
+      targetStage: "kyc_validated",
+      hint: "KRA accepted the corrected record.",
+      behaviour: { kind: "advance_only" },
+    },
+  ],
+
+  // 18. Physical KYC
+  physical_kyc: [
+    {
+      key: "validated",
+      label: "IPV Done — KYC Validated",
+      tone: "primary",
+      targetStage: "kyc_validated",
+      hint: "In-person verification recorded.",
+      behaviour: { kind: "advance_only" },
+    },
+  ],
+
+  // 19. Online KYC
+  online_kyc: [
+    {
+      key: "validated",
+      label: "e-KYC Done — KYC Validated",
+      tone: "primary",
+      targetStage: "kyc_validated",
+      hint: "Aadhaar / Digilocker flow completed.",
+      behaviour: { kind: "advance_only" },
+    },
+  ],
+
+  // 20. UCC Create
+  ucc_create: [
+    {
+      key: "activated",
+      label: "UCC Activated",
+      tone: "primary",
+      targetStage: "ucc_activated",
+      hint: "Exchange returned an active code.",
+      behaviour: { kind: "advance_only" },
+    },
+  ],
+
+  // 21. UCC Activated
+  ucc_activated: [
+    {
+      key: "mandate",
+      label: "Register Mandate",
+      tone: "primary",
+      targetStage: "mandate_create",
+      hint: "Submit NACH / e-mandate to the bank.",
+      behaviour: { kind: "advance_only" },
+    },
+  ],
+
+  // 22. Mandate Create
+  mandate_create: [
+    {
+      key: "activated",
+      label: "Mandate Activated",
+      tone: "success",
+      targetStage: "mandate_activated",
+      hint: "Bank confirmed — first SIP can debit.",
+      behaviour: { kind: "advance_only" },
+    },
+    {
+      key: "rejected",
+      label: "Bank Rejected",
+      tone: "danger",
+      targetStage: "mandate_reject",
+      hint: "Mandate failed — fix data and retry.",
+      behaviour: { kind: "advance_only" },
+    },
+  ],
+
+  // 23. Mandate Activated
+  mandate_activated: [
+    {
+      key: "place_order",
+      label: "Make First Investment",
+      tone: "primary",
+      targetStage: "make_transaction",
+      hint: "Submit purchase order to BSE Star / NSE NMF.",
+      behaviour: { kind: "navigate", hrefPattern: "/dashboard/transactions?investorId={id}" },
+    },
+  ],
+
+  // 24. Mandate Rejected — retry loop
+  mandate_reject: [
+    {
+      key: "retry",
+      label: "Retry Mandate",
+      tone: "primary",
+      targetStage: "mandate_create",
+      hint: "Correct data and resubmit registration.",
+      behaviour: { kind: "advance_only" },
+    },
+  ],
+
+  // 25. Make Transaction
+  make_transaction: [
+    {
+      key: "successful",
+      label: "Order Successful",
+      tone: "success",
+      targetStage: "transaction_successful",
+      hint: "Units allotted by the AMC.",
+      behaviour: { kind: "advance_only" },
+    },
+    {
+      key: "failed",
+      label: "Order Failed",
+      tone: "danger",
+      targetStage: "transaction_failed",
+      hint: "Payment / order issue — retry.",
+      behaviour: { kind: "advance_only" },
+    },
+  ],
+
+  // 26. Transaction Successful
+  transaction_successful: [
+    {
+      key: "family",
+      label: "Map Family",
+      tone: "primary",
+      targetStage: "family_mapping",
+      hint: "Link spouse / parents / children for household view.",
+      behaviour: { kind: "navigate", hrefPattern: "/dashboard/families/new?investorId={id}" },
+    },
+  ],
+
+  // 27. Transaction Failed — retry
+  transaction_failed: [
+    {
+      key: "retry",
+      label: "Retry Transaction",
+      tone: "primary",
+      targetStage: "make_transaction",
+      hint: "Resolve the issue and resubmit the order.",
+      behaviour: { kind: "navigate", hrefPattern: "/dashboard/transactions?investorId={id}" },
+    },
+  ],
+
+  // 28. Family Mapping
+  family_mapping: [
+    {
+      key: "next",
+      label: "Update Client Information",
+      tone: "primary",
+      targetStage: "update_information",
+      hint: "Enrich master record: goals, income, occupation, nominee.",
+      behaviour: { kind: "navigate", hrefPattern: "/dashboard/investors/{id}" },
+    },
+  ],
+
+  // 29. Update Information
+  update_information: [
+    {
+      key: "active",
+      label: "Mark as Active Client",
+      tone: "success",
+      targetStage: "add_in_review_sheet",
+      hint: "Onboarding complete — added to the quarterly review sheet.",
+      behaviour: { kind: "advance_only" },
+    },
+  ],
+
+  // 30. Active Client — terminal, no buttons
+  add_in_review_sheet: [],
 };
