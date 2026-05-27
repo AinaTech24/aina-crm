@@ -5,7 +5,7 @@ import { ChevronLeft, Workflow } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { blueprintDefinitions, blueprintStages, blueprintTransitions } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
-import { BlueprintStageEditor } from "@/components/blueprints/BlueprintStageEditor";
+import { BlueprintDesigner } from "@/components/blueprints/BlueprintDesigner";
 
 export const dynamic = "force-dynamic";
 
@@ -46,25 +46,33 @@ export default async function BlueprintEditPage({ params }: { params: Promise<{ 
         </p>
       </div>
 
-      <BlueprintStageEditor
+      <BlueprintDesigner
         blueprintId={data.def.id}
-        stages={data.stages.map((s) => ({
-          id: s.id,
-          stageKey: s.stageKey,
-          stageName: s.stageName,
-          description: s.description ?? "",
-          stageOrder: s.stageOrder,
-          ownerRole: s.ownerRole ?? "",
-          slaDays: s.slaDays ?? null,
-          requiredFields: (s.requiredFields as string[]) ?? [],
-          allowedActions: (s.allowedActions as string[]) ?? [],
-          automationsOnEnter: (s.automationsOnEnter as string[]) ?? [],
-        }))}
-        transitions={data.transitions.map((t) => ({
-          fromStageKey: t.fromStageKey,
-          toStageKey: t.toStageKey,
-          transitionName: t.transitionName,
-        }))}
+        moduleName={data.def.moduleName}
+        initial={{
+          blueprintName: data.def.blueprintName,
+          description: data.def.description ?? "",
+          isActive: data.def.isActive,
+          stages: data.stages.map((s) => ({
+            id: s.id,
+            stageKey: s.stageKey,
+            stageName: s.stageName,
+            description: s.description ?? "",
+            stageOrder: s.stageOrder,
+            ownerRole: s.ownerRole ?? "",
+            slaDays: s.slaDays ?? null,
+            requiredFields: (s.requiredFields as string[]) ?? [],
+            allowedActions: (s.allowedActions as string[]) ?? [],
+            automationsOnEnter: (s.automationsOnEnter as string[]) ?? [],
+          })),
+          transitions: data.transitions.map((t) => ({
+            id: t.id,
+            fromStageKey: t.fromStageKey,
+            toStageKey: t.toStageKey,
+            transitionName: t.transitionName,
+            allowedRoles: (t.allowedRoles as string[]) ?? [],
+          })),
+        }}
       />
     </div>
   );
