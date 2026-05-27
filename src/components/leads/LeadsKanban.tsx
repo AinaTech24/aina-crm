@@ -157,6 +157,10 @@ export function LeadsKanban({
         body: JSON.stringify({
           toStageKey: dest,
           remarks: `Manual stage change via Kanban drag-and-drop.`,
+          // Kanban drag = explicit admin override. Skip SOP graph so
+          // sideways branch moves (e.g. call_back_later ↔ contact_in_future)
+          // and out-of-order corrections work without prereq checks.
+          force: true,
         }),
       });
       if (!res.ok) {

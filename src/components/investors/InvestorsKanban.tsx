@@ -147,10 +147,17 @@ export function InvestorsKanban({
         body: JSON.stringify({
           toStageKey: targetStage,
           remarks: "Manual stage change via Clients Kanban drag-and-drop.",
+          // Kanban drag is an explicit admin-override — skip the SOP graph
+          // and the multi-hop walk. Without this, dragging a card that's
+          // still at a lead-phase stage (e.g. won_lead, where conversion
+          // leaves it) to a client-phase column would fail.
+          force: true,
         }),
       });
       if (!res.ok) {
-        // Revert
+        // Revert + surface the API error so the user knows why.
+        const j = await res.json().catch(() => ({}));
+        console.warn("[InvestorsKanban] advance failed:", j.error ?? res.status);
         setRows((prev) =>
           prev.map((r) =>
             r.investor.id === invId ? { ...r, stageKey: previousStage } : r

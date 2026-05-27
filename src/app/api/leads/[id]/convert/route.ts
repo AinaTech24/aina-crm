@@ -21,6 +21,7 @@ import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
+import { autoAdvance } from "@/lib/blueprints/auto-advance";
 import {
   leads,
   investors,
@@ -216,6 +217,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         entityId: leadId,
         after: { investorId, leadName: lead.name },
         ...clientMeta,
+      });
+
+      // Push the shared blueprint instance into the client phase so the
+      // freshly-converted client appears in the right column of the
+      // Clients Kanban (Request Documents) — instead of being stuck at
+      // won_lead, which is a lead-phase stage with no representation in
+      // the client kanban (cards would fall back to the Active Client
+      // column and refuse to advance forward).
+      await autoAdvance(tx, session.tenantId, leadId, "client.converted", {
+        remarks: "Lead converted to client — entering onboarding phase.",
       });
 
       return { investorId, alreadyConverted: false };
