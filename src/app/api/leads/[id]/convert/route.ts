@@ -119,12 +119,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       `);
       const latestRisk = (carriedRpr.rows as any[])[0];
       if (latestRisk) {
+        // signed_at comes back as a string from raw tx.execute (Postgres
+        // formatted timestamp). Drizzle's update on a timestamp column
+        // calls value.toISOString() — so we MUST hand it a real Date.
+        const signedAt = latestRisk.signed_at ? new Date(latestRisk.signed_at) : null;
         await tx
           .update(investors)
           .set({
             riskProfile: latestRisk.final_category as any,
             riskProfileScore: Number(latestRisk.total_score),
-            riskProfileSignedAt: latestRisk.signed_at,
+            riskProfileSignedAt: signedAt,
             updatedAt: new Date(),
           } as any)
           .where(eq(investors.id, investorId));
@@ -178,7 +182,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
            AND used_at IS NULL
       `);
 
-      // Outbox events — let subscribed workflows kick in
+      // Outbox events — let subscribed workflows kick in.
+      // `inserted[0]` contains Date objects from Drizzle's returning(); we
+      // round-trip through JSON.stringify so the JSONB column gets plain
+      // ISO-string dates instead of native Date instances (which trip
+      // Drizzle's value formatter inside jsonb: "value.toISOString is not
+      // a function" on the next downstream consumer).
+      const investorSnapshot = JSON.parse(JSON.stringify(inserted[0] ?? {}));
       await tx.insert(eventsOutbox).values([
         {
           tenantId: session.tenantId,
@@ -193,7 +203,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           kind: "investor.created",
           entityType: "investor",
           entityId: investorId,
-          after: inserted[0] as any,
+          after: investorSnapshot as any,
           meta: { userId: session.userId, source: "lead_conversion", leadId } as any,
         },
       ] as any);

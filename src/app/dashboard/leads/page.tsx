@@ -18,19 +18,27 @@ import { CustomViews } from "@/components/common/CustomViews";
 import { EmptyState } from "@/components/common/EmptyState";
 
 /**
- * Pipeline columns — the spec's 8 stages flattened to the visible kanban.
- * Legacy values are folded into their spec equivalent for display.
- * `tone` drives the column-header accent strip.
+ * Pipeline columns — exact mirror of the 12 lead-phase blueprint stages
+ * (stages 1-12 of LEAD_TO_CLIENT_STAGES, before the Convert-to-Client
+ * boundary). The platform now speaks a single vocabulary: stage ===
+ * blueprint stage. Drag-drop here calls the blueprint advance engine.
+ *
+ * Aliases fold legacy stage values from before the unification onto the
+ * canonical blueprint key.
  */
 const STAGES = [
   { key: "new", label: "New", tone: "blue", aliases: [] as string[] },
-  { key: "contacted", label: "Contacted", tone: "cyan", aliases: [] },
-  { key: "meeting_scheduled", label: "Meeting Scheduled", tone: "amber", aliases: ["qualified"] },
-  { key: "proposal_shared", label: "Proposal Shared", tone: "violet", aliases: ["proposal_sent"] },
-  { key: "follow_up", label: "Follow-Up", tone: "indigo", aliases: [] },
-  { key: "converted", label: "Converted", tone: "emerald", aliases: [] },
-  { key: "lost", label: "Lost", tone: "rose", aliases: [] },
-  { key: "not_interested", label: "Not Interested", tone: "slate", aliases: ["cold"] },
+  { key: "first_call_pending", label: "First Call Pending", tone: "cyan", aliases: ["contacted"] },
+  { key: "appointment_scheduled", label: "Appointment Scheduled", tone: "amber", aliases: ["meeting_scheduled", "qualified"] },
+  { key: "meeting_done", label: "Meeting Completed", tone: "amber", aliases: [] },
+  { key: "post_meeting_qualified", label: "Post-Meeting Qualification", tone: "indigo", aliases: ["follow_up"] },
+  { key: "risk_profile_sent", label: "Risk Profile Sent", tone: "indigo", aliases: [] },
+  { key: "risk_profiled", label: "Risk Profile Completed", tone: "violet", aliases: [] },
+  { key: "proposal_drafted", label: "Proposal Drafted", tone: "violet", aliases: [] },
+  { key: "proposal_sent", label: "Proposal Sent", tone: "violet", aliases: ["proposal_shared"] },
+  { key: "proposal_approved", label: "Proposal Approved", tone: "emerald", aliases: [] },
+  { key: "docs_requested", label: "Documents Requested", tone: "emerald", aliases: [] },
+  { key: "docs_received", label: "Documents Received", tone: "emerald", aliases: [] },
 ] as const;
 
 export const dynamic = "force-dynamic";
@@ -180,7 +188,7 @@ export default async function LeadsPage({
               {
                 id: "open",
                 name: "All open",
-                params: "stage=new,contacted,meeting_scheduled,proposal_shared,follow_up",
+                params: "stage=new,first_call_pending,appointment_scheduled,meeting_done,post_meeting_qualified,risk_profile_sent,risk_profiled,proposal_drafted,proposal_sent,proposal_approved,docs_requested,docs_received",
               },
               { id: "referrals", name: "Referrals only", params: "source=referral,existing_client" },
               { id: "won", name: "Won (converted)", params: "stage=converted" },

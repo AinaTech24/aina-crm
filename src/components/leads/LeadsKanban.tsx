@@ -148,10 +148,16 @@ export function LeadsKanban({
     );
     setSavingIds((s) => new Set(s).add(leadId));
     try {
-      const res = await fetch(`/api/leads/${leadId}`, {
-        method: "PATCH",
+      // Stage === blueprint. Advancing the blueprint mirrors the new
+      // value back onto leads.stage server-side (engine.ts transitionTo),
+      // so we don't need a separate PATCH.
+      const res = await fetch(`/api/leads/${leadId}/blueprint/advance`, {
+        method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ stage: dest }),
+        body: JSON.stringify({
+          toStageKey: dest,
+          remarks: `Manual stage change via Kanban drag-and-drop.`,
+        }),
       });
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));

@@ -22,7 +22,7 @@
  *     Worker — sets is_delayed=true on instances whose stage SLA has elapsed.
  */
 
-import { and, asc, desc, eq, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import {
   blueprintDefinitions,
@@ -274,6 +274,14 @@ export async function transitionTo(
       updatedAt: now,
     })
     .where(eq(leadBlueprintInstances.id, inst.id));
+
+  // Mirror the new stage back onto leads.stage so the Kanban + filters +
+  // any other consumer that still reads the legacy column stays in sync.
+  // The Lead → Client journey blueprint and the legacy stage enum are now
+  // the same vocabulary.
+  await tx.execute(
+    sql`UPDATE leads SET stage = ${toStageKey}, stage_changed_at = ${now}, updated_at = ${now} WHERE id = ${leadId}::uuid` as any
+  );
 
   // Emit lifecycle events for any wired automations.
   const onExit = (fromStage?.automationsOnExit as string[]) ?? [];

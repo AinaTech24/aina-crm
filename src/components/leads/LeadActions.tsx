@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   CheckCircle2,
@@ -22,14 +22,28 @@ type Props = {
   alreadyConvertedInvestorId?: string | null;
 };
 
+/**
+ * Lead-phase blueprint stages — exact mirror of LEAD_TO_CLIENT_STAGES 1-12
+ * (up to Documents Received, before the convert-to-client boundary).
+ * Used by both the header Stage: ▼ dropdown and the Kanban columns so the
+ * platform speaks one language: stage === blueprint.
+ *
+ * Post-conversion stages (13-15) live in the Clients module and aren't
+ * selectable here.
+ */
 const STAGES = [
-  { key: "new", label: "New" },
-  { key: "contacted", label: "Contacted" },
-  { key: "qualified", label: "Qualified" },
-  { key: "proposal_sent", label: "Proposal sent" },
-  { key: "converted", label: "Converted" },
-  { key: "lost", label: "Lost" },
-  { key: "cold", label: "Cold" },
+  { key: "new", label: "New Lead Created" },
+  { key: "first_call_pending", label: "First Call Pending" },
+  { key: "appointment_scheduled", label: "Appointment Scheduled" },
+  { key: "meeting_done", label: "Meeting Completed" },
+  { key: "post_meeting_qualified", label: "Post-Meeting Qualification" },
+  { key: "risk_profile_sent", label: "Risk Profile Sent" },
+  { key: "risk_profiled", label: "Risk Profile Completed" },
+  { key: "proposal_drafted", label: "Proposal Drafted" },
+  { key: "proposal_sent", label: "Proposal Sent" },
+  { key: "proposal_approved", label: "Proposal Approved" },
+  { key: "docs_requested", label: "Documents Requested" },
+  { key: "docs_received", label: "Documents Received" },
 ];
 
 const ACTIVITY_TYPES = [
@@ -49,12 +63,16 @@ export function LeadActions(props: Props) {
     <>
       <div className="flex flex-wrap gap-2">
         <StageDropdown
-          currentStage={props.currentStage}
+          leadId={props.leadId}
+          fallbackStage={props.currentStage}
           onChange={async (s) => {
-            await fetch(`/api/leads/${props.leadId}/stage`, {
+            // Single source of truth — advance the blueprint. The
+            // legacy /api/leads/[id]/stage still exists for back-compat
+            // but the user-facing stage = the blueprint stage now.
+            await fetch(`/api/leads/${props.leadId}/blueprint/advance`, {
               method: "POST",
               headers: { "content-type": "application/json" },
-              body: JSON.stringify({ stage: s }),
+              body: JSON.stringify({ toStageKey: s, remarks: "Manual stage change from header dropdown." }),
             });
             router.refresh();
           }}
@@ -144,14 +162,41 @@ export function LeadActions(props: Props) {
 
 /* -------------------- Stage dropdown -------------------- */
 
+/**
+ * Stage dropdown — driven by the blueprint, not by the legacy
+ * `leads.stage` column. Self-fetches the current blueprint stage on mount
+ * so the label is always accurate regardless of the legacy column.
+ *
+ * Falls back to the prop-supplied stage during the brief loading window
+ * so the button label never flickers to blank.
+ */
 function StageDropdown({
-  currentStage,
+  leadId,
+  fallbackStage,
   onChange,
 }: {
-  currentStage: string;
-  onChange: (s: string) => void;
+  leadId: string;
+  fallbackStage: string;
+  onChange: (s: string) => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
+  const [currentStage, setCurrentStage] = useState<string>(fallbackStage);
+
+  // Pull the live blueprint stage so the dropdown reflects the actual
+  // journey position (smart auto-advance + manual moves both land here).
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/leads/${leadId}/blueprint`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!cancelled && d?.current?.key) setCurrentStage(d.current.key);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [leadId]);
+
   const label = STAGES.find((s) => s.key === currentStage)?.label ?? currentStage;
   return (
     <div className="relative">
@@ -163,18 +208,23 @@ function StageDropdown({
         <ChevronDown className="size-3.5" />
       </button>
       {open && (
-        <div className="absolute z-10 mt-1 right-0 border bg-card rounded-md shadow-md min-w-[200px]" onMouseLeave={() => setOpen(false)}>
-          {STAGES.map((s) => (
+        <div
+          className="absolute z-10 mt-1 right-0 border bg-card rounded-md shadow-lg min-w-[240px] max-h-[60vh] overflow-y-auto"
+          onMouseLeave={() => setOpen(false)}
+        >
+          {STAGES.map((s, i) => (
             <button
               key={s.key}
-              onClick={() => {
-                onChange(s.key);
+              onClick={async () => {
                 setOpen(false);
+                setCurrentStage(s.key);
+                await onChange(s.key);
               }}
-              className={`w-full text-left px-3 py-2 text-sm hover:bg-accent ${
+              className={`w-full text-left px-3 py-2 text-sm hover:bg-accent flex items-center gap-2 ${
                 s.key === currentStage ? "bg-accent font-medium" : ""
               }`}
             >
+              <span className="text-[10px] tabular-nums text-muted-foreground w-5">{i + 1}.</span>
               {s.label}
             </button>
           ))}
