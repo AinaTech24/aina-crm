@@ -27,6 +27,7 @@ import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
+import { autoAdvance, resolveLeadIdForInvestor } from "@/lib/blueprints/auto-advance";
 import { proposals, tenants, communications } from "@/db/schema";
 import { formatINR } from "@/lib/utils";
 
@@ -324,6 +325,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         },
         ...clientMeta,
       });
+
+      // ─── Smart blueprint advance — proposal sent ──────────────────
+      const advanceLeadId =
+        p.leadId ??
+        (p.investorId ? await resolveLeadIdForInvestor(tx, p.investorId) : null);
+      if (advanceLeadId) {
+        await autoAdvance(tx, session.tenantId, advanceLeadId, "proposal.sent", {
+          remarks: `Auto: proposal ${p.proposalNumber} sent via ${channel}.`,
+        });
+      }
 
       return NextResponse.json({
         ok: true,

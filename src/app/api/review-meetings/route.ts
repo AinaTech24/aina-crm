@@ -17,6 +17,7 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
+import { autoAdvance, resolveLeadIdForInvestor } from "@/lib/blueprints/auto-advance";
 import {
   reviewMeetings,
   investors,
@@ -176,6 +177,16 @@ export async function POST(req: NextRequest) {
         } as any,
         ...clientMeta,
       });
+
+      // ─── Smart blueprint advance ───────────────────────────────────
+      // If this meeting was scheduled against a lead, push the lead's
+      // blueprint to `appointment_scheduled` so the user doesn't have to
+      // hop to the lead detail page and click Advance.
+      if (body.leadId) {
+        await autoAdvance(tx, session.tenantId, body.leadId, "meeting.scheduled.lead", {
+          remarks: `Auto: ${labelForType(body.meetingType)} scheduled for ${meetingDate.toLocaleDateString("en-IN")}.`,
+        });
+      }
 
       return { id, rmId, reminderTaskId };
     });

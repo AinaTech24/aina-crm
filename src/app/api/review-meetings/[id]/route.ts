@@ -19,6 +19,7 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
+import { autoAdvance, resolveLeadIdForInvestor } from "@/lib/blueprints/auto-advance";
 import { reviewMeetings, investors, tasks, REVIEW_MEETING_STATUSES } from "@/db/schema";
 
 export const dynamic = "force-dynamic";
@@ -63,6 +64,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       const patch: any = { ...body, updatedAt: new Date() };
       if (body.meetingDate) patch.meetingDate = new Date(body.meetingDate);
       // Stamp actualEndAt when transitioning to completed
+      // Reference the auto-advance helper (imported below at module scope).
       const becomingCompleted = body.status === "completed" && before.status !== "completed";
       if (becomingCompleted) {
         patch.actualEndAt = new Date();
@@ -92,6 +94,25 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
               updatedAt: new Date(),
             } as any)
             .where(eq(investors.id, before.investorId));
+        }
+
+        // ─── Smart blueprint advance — meeting completed ──────────────
+        // For lead-side meetings, push the blueprint to `meeting_done` so
+        // the user sees their journey progress without a manual click.
+        if (before.leadId) {
+          await autoAdvance(tx, session.tenantId, before.leadId, "meeting.completed", {
+            remarks: `Auto: meeting marked completed on ${new Date().toLocaleDateString("en-IN")}.`,
+          });
+        } else if (before.investorId) {
+          // Client-side meeting completion → if the client was converted
+          // from a lead, advance the source lead's blueprint too (covers
+          // post-conversion review meetings).
+          const leadId = await resolveLeadIdForInvestor(tx, before.investorId);
+          if (leadId) {
+            await autoAdvance(tx, session.tenantId, leadId, "meeting.completed", {
+              remarks: "Auto: client review meeting completed.",
+            });
+          }
         }
 
         // ─── Automation: fan out action items into tasks ──────────────
