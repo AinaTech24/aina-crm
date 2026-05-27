@@ -26,6 +26,7 @@ import {
   ShieldCheck,
   RefreshCw,
 } from "lucide-react";
+import { GuidedStageActions } from "@/components/leads/GuidedStageActions";
 
 type Stage = {
   key: string;
@@ -343,37 +344,55 @@ export function BlueprintStageBar({
           </span>
         </div>
       ) : (
-      <div className="rounded-lg border border-brand-cyan/30 bg-brand-cyan-light/20 p-3">
-        <div className="flex items-center gap-2 mb-2">
+      <div className="rounded-lg border border-brand-cyan/30 bg-brand-cyan-light/20 p-3 space-y-3">
+        <div className="flex items-center gap-2">
           <ChevronRight className="size-3.5 text-brand-cyan" />
           <span className="text-xs font-semibold uppercase tracking-wider text-brand-cyan-deep">
-            Next action
+            What's next?
           </span>
         </div>
         {current.description && (
-          <p className="text-xs text-muted-foreground mb-2">{current.description}</p>
+          <p className="text-xs text-muted-foreground">{current.description}</p>
         )}
-        {current.allowedActions.length > 0 ? (
-          <div className="flex flex-wrap gap-1.5">
-            {current.allowedActions.map((a) => (
-              <span key={a} className="chip bg-white text-xs border border-border">
-                {ACTION_LABELS[a] ?? a}
-              </span>
-            ))}
-          </div>
-        ) : (
-          <p className="text-xs text-muted-foreground italic">
-            This is the final stage — no further actions needed.
-          </p>
-        )}
-        <ForwardPicker
-          allStages={allStages}
-          currentKey={current.key}
-          busy={advancing}
-          onAdvance={advance}
+
+        {/* Guided stage actions — replaces the old chip strip + advance
+            picker with stage-specific buttons that check prerequisites
+            (e.g. "Call Done" verifies a call log exists before advancing). */}
+        <GuidedStageActions
+          leadId={leadId}
+          currentStage={current.key}
+          onOpenDialog={(kind) => {
+            // Bubble up to the page so the existing LeadActions dialogs
+            // (LogActivity, LogPastMeeting, etc.) can open.
+            window.dispatchEvent(
+              new CustomEvent("blueprint:open-dialog", {
+                detail: { kind, leadId },
+              })
+            );
+          }}
+          onAfterAdvance={() => {
+            void load();
+            router.refresh();
+          }}
         />
+
+        {/* Fallback: manual advance to any stage (admin override). */}
+        <details className="text-xs">
+          <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+            Or pick a stage manually
+          </summary>
+          <div className="mt-2">
+            <ForwardPicker
+              allStages={allStages}
+              currentKey={current.key}
+              busy={advancing}
+              onAdvance={advance}
+            />
+          </div>
+        </details>
+
         {error && (
-          <div className="mt-2 text-xs text-rose-700 bg-rose-50/50 rounded p-1.5 flex items-start gap-1.5">
+          <div className="text-xs text-rose-700 bg-rose-50/50 rounded p-1.5 flex items-start gap-1.5">
             <AlertTriangle className="size-3 mt-0.5" /> {error}
           </div>
         )}

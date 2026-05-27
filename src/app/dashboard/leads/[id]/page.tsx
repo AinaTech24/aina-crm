@@ -156,17 +156,21 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
         convertedInvestorId={l.convertedInvestorId ?? null}
       />
 
-      {/* Onboarding actions */}
-      <OnboardingActions
-        leadId={l.id}
-        leadStage={l.stage}
-        leadPhone={l.phone}
-        leadEmail={l.email}
-        leadName={l.name}
-        hasRiskProfile={!!data.latestRisk}
-        pendingProposalId={data.latestProposal?.id ?? null}
-        alreadyConvertedInvestorId={l.convertedInvestorId ?? null}
-      />
+      {/* Onboarding actions — pinned scroll target for the blueprint's
+          "Send risk profile / Send doc checklist / Capture approval"
+          buttons (they dispatch a custom event that scrolls here). */}
+      <div data-onboarding-actions>
+        <OnboardingActions
+          leadId={l.id}
+          leadStage={l.stage}
+          leadPhone={l.phone}
+          leadEmail={l.email}
+          leadName={l.name}
+          hasRiskProfile={!!data.latestRisk}
+          pendingProposalId={data.latestProposal?.id ?? null}
+          alreadyConvertedInvestorId={l.convertedInvestorId ?? null}
+        />
+      </div>
 
       {/* Converted banner */}
       {l.stage === "converted" && l.convertedInvestorId && (

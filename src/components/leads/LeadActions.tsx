@@ -59,6 +59,38 @@ export function LeadActions(props: Props) {
   const router = useRouter();
   const [dialog, setDialog] = useState<"stage" | "convert" | "task" | "meeting" | "activity" | null>(null);
 
+  // Listen for "open this dialog please" events emitted by the
+  // GuidedStageActions component on the blueprint bar. Lets the
+  // stage-action buttons ("Call Done", "Meeting Done", …) drive the
+  // same dialogs the header buttons use, without prop-drilling.
+  useEffect(() => {
+    function onOpen(e: Event) {
+      const detail = (e as CustomEvent).detail as { kind: string; leadId: string };
+      if (detail.leadId !== props.leadId) return;
+      switch (detail.kind) {
+        case "log_call":
+        case "log_past_meeting":
+          setDialog("activity");
+          break;
+        case "send_risk_profile":
+        case "capture_risk_profile_manually":
+        case "send_doc_checklist":
+        case "capture_approval":
+          // These open the OnboardingActions panel below — scroll there
+          // and highlight. The existing panel handles the actual UI.
+          document
+            .querySelector("[data-onboarding-actions]")
+            ?.scrollIntoView({ behavior: "smooth", block: "start" });
+          break;
+        case "mark_lost":
+          setDialog("stage"); // stage dropdown lets user pick Lost
+          break;
+      }
+    }
+    window.addEventListener("blueprint:open-dialog", onOpen);
+    return () => window.removeEventListener("blueprint:open-dialog", onOpen);
+  }, [props.leadId]);
+
   return (
     <>
       <div className="flex flex-wrap gap-2">
