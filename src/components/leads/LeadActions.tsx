@@ -156,6 +156,10 @@ export function LeadActions(props: Props) {
           onDone={() => {
             setDialog(null);
             router.refresh();
+            // Tell the BlueprintStageBar (client component) to re-fetch
+            // its /blueprint endpoint — router.refresh() alone doesn't
+            // re-run its useEffect.
+            window.dispatchEvent(new CustomEvent("blueprint:refresh"));
           }}
         />
       )}
@@ -168,6 +172,10 @@ export function LeadActions(props: Props) {
           onDone={() => {
             setDialog(null);
             router.refresh();
+            // Tell the BlueprintStageBar (client component) to re-fetch
+            // its /blueprint endpoint — router.refresh() alone doesn't
+            // re-run its useEffect.
+            window.dispatchEvent(new CustomEvent("blueprint:refresh"));
           }}
         />
       )}
@@ -180,6 +188,10 @@ export function LeadActions(props: Props) {
           onDone={() => {
             setDialog(null);
             router.refresh();
+            // Tell the BlueprintStageBar (client component) to re-fetch
+            // its /blueprint endpoint — router.refresh() alone doesn't
+            // re-run its useEffect.
+            window.dispatchEvent(new CustomEvent("blueprint:refresh"));
           }}
         />
       )}

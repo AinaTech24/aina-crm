@@ -136,6 +136,7 @@ export function GuidedStageActions({
             await advance(action.behaviour.afterStage);
           }
           router.refresh();
+          window.dispatchEvent(new CustomEvent("blueprint:refresh"));
           onAfterAdvance?.();
           setOutcome({ kind: "advanced" });
           break;
@@ -146,6 +147,7 @@ export function GuidedStageActions({
             await advance(action.targetStage, `Action: ${action.label}`);
           }
           router.refresh();
+          window.dispatchEvent(new CustomEvent("blueprint:refresh"));
           onAfterAdvance?.();
           setOutcome({ kind: "advanced" });
           break;

@@ -132,6 +132,19 @@ export function BlueprintStageBar({
     void load();
   }, [leadId]);
 
+  // Listen for "blueprint:refresh" events fired by sibling components
+  // (LeadActions, GuidedStageActions, OnboardingActions) after they save
+  // something that may have auto-advanced the stage. Without this, the
+  // bar would show stale data until a hard page reload.
+  useEffect(() => {
+    function onRefresh() {
+      void load();
+    }
+    window.addEventListener("blueprint:refresh", onRefresh);
+    return () => window.removeEventListener("blueprint:refresh", onRefresh);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leadId]);
+
   async function advance(toStageKey: string, remarks?: string) {
     setAdvancing(true);
     setError(null);
