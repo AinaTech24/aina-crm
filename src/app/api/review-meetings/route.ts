@@ -20,6 +20,7 @@ import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import {
   reviewMeetings,
   investors,
+  leads,
   tasks,
   eventsOutbox,
   REVIEW_MEETING_TYPES,
@@ -29,19 +30,26 @@ import {
 
 export const dynamic = "force-dynamic";
 
-const Body = z.object({
-  investorId: z.string().uuid(),
-  familyId: z.string().uuid().optional(),
+const Body = z
+  .object({
+    // Exactly one of these must be set — refined below.
+    investorId: z.string().uuid().optional(),
+    leadId: z.string().uuid().optional(),
+    familyId: z.string().uuid().optional(),
   rmId: z.string().uuid().optional(),
   category: z.enum(MEETING_CATEGORIES).default("review"),
   parentMeetingId: z.string().uuid().optional(),
   meetingType: z.enum(REVIEW_MEETING_TYPES),
   meetingDate: z.string(), // ISO datetime
   durationMinutes: z.number().int().positive().default(30),
-  meetingMode: z.enum(REVIEW_MEETING_MODES),
-  locationOrLink: z.string().optional(),
-  discussionPoints: z.string().optional(),
-});
+    meetingMode: z.enum(REVIEW_MEETING_MODES),
+    locationOrLink: z.string().optional(),
+    discussionPoints: z.string().optional(),
+  })
+  .refine((b) => Boolean(b.investorId) !== Boolean(b.leadId), {
+    message: "Provide exactly one of investorId or leadId",
+    path: ["investorId"],
+  });
 
 export async function GET() {
   try {
@@ -76,11 +84,29 @@ export async function POST(req: NextRequest) {
     const clientMeta = clientMetaFromHeaders(req.headers);
 
     const result = await withTenant(session.tenantId, async (tx) => {
-      const inv = (await tx.select().from(investors).where(eq(investors.id, body.investorId)).limit(1))[0];
-      if (!inv) throw Object.assign(new Error("investor not found"), { status: 404 });
+      // Resolve the subject — investor OR lead. The XOR was enforced by zod.
+      let subjectName = "";
+      let subjectRmId: string | null = null;
+      let subjectType: "investor" | "lead" = "investor";
+      let subjectId = "";
+      if (body.investorId) {
+        const inv = (await tx.select().from(investors).where(eq(investors.id, body.investorId)).limit(1))[0];
+        if (!inv) throw Object.assign(new Error("investor not found"), { status: 404 });
+        subjectName = inv.name;
+        subjectRmId = inv.rmId ?? null;
+        subjectType = "investor";
+        subjectId = body.investorId;
+      } else {
+        const ld = (await tx.select().from(leads).where(eq(leads.id, body.leadId!)).limit(1))[0];
+        if (!ld) throw Object.assign(new Error("lead not found"), { status: 404 });
+        subjectName = ld.name;
+        subjectRmId = (ld as any).ownerId ?? null;
+        subjectType = "lead";
+        subjectId = body.leadId!;
+      }
 
       const id = uuid();
-      const rmId = body.rmId ?? inv.rmId ?? session.userId;
+      const rmId = body.rmId ?? subjectRmId ?? session.userId;
       const meetingDate = new Date(body.meetingDate);
 
       // ─── Automation 1 — reminder task (1 day before) ───────────────
@@ -91,10 +117,10 @@ export async function POST(req: NextRequest) {
         tenantId: session.tenantId,
         branchId: session.branchId ?? null,
         assigneeId: rmId,
-        subjectType: "investor",
-        subjectId: body.investorId,
+        subjectType,
+        subjectId,
         type: "review_meeting_reminder",
-        title: `Reminder: ${labelForType(body.meetingType)} with ${inv.name} tomorrow`,
+        title: `Reminder: ${labelForType(body.meetingType)} with ${subjectName} tomorrow`,
         description: `Mode: ${labelForMode(body.meetingMode)}${body.locationOrLink ? " · " + body.locationOrLink : ""}.${body.discussionPoints ? " Agenda: " + body.discussionPoints : ""}`,
         priority: "normal",
         status: "open",
@@ -104,7 +130,8 @@ export async function POST(req: NextRequest) {
       await tx.insert(reviewMeetings).values({
         id,
         tenantId: session.tenantId,
-        investorId: body.investorId,
+        investorId: body.investorId ?? null,
+        leadId: body.leadId ?? null,
         familyId: body.familyId ?? null,
         rmId,
         category: body.category,
@@ -126,7 +153,8 @@ export async function POST(req: NextRequest) {
         entityType: "review_meeting",
         entityId: id,
         after: {
-          investorId: body.investorId,
+          investorId: body.investorId ?? null,
+          leadId: body.leadId ?? null,
           meetingType: body.meetingType,
           meetingDate: meetingDate.toISOString(),
           mode: body.meetingMode,
@@ -141,7 +169,8 @@ export async function POST(req: NextRequest) {
         entityType: "review_meeting",
         entityId: id,
         after: {
-          investorId: body.investorId,
+          investorId: body.investorId ?? null,
+          leadId: body.leadId ?? null,
           meetingType: body.meetingType,
           mode: body.meetingMode,
         } as any,

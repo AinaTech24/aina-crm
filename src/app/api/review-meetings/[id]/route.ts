@@ -79,15 +79,20 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           // the existing tier-recomputer worker can refine this nightly).
           new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
-        await tx
-          .update(investors)
-          .set({
-            lastReviewAt: new Date(reviewedAt),
-            nextReviewAt: new Date(nextReviewDate),
-            lastContactAt: new Date(),
-            updatedAt: new Date(),
-          } as any)
-          .where(eq(investors.id, before.investorId));
+        // Only update the investor's review cadence if this meeting was
+        // actually with an investor. Lead-side meetings don't have a
+        // review cycle (leads have a different lifecycle).
+        if (before.investorId) {
+          await tx
+            .update(investors)
+            .set({
+              lastReviewAt: new Date(reviewedAt),
+              nextReviewAt: new Date(nextReviewDate),
+              lastContactAt: new Date(),
+              updatedAt: new Date(),
+            } as any)
+            .where(eq(investors.id, before.investorId));
+        }
 
         // ─── Automation: fan out action items into tasks ──────────────
         const items = (body.actionItems ?? (before.actionItems as any[] | null) ?? []) as Array<{

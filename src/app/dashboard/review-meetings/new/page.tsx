@@ -10,19 +10,30 @@ export const dynamic = "force-dynamic";
 export default async function NewReviewMeetingPage({
   searchParams,
 }: {
-  searchParams: Promise<{ investorId?: string }>;
+  searchParams: Promise<{ investorId?: string; leadId?: string }>;
 }) {
   const sp = await searchParams;
   const session = await requireSession();
 
-  const investors = await withTenant(session.tenantId, async (tx) => {
-    const r = await tx.execute(sql`
-      SELECT id, name, pan, segment_tag, last_review_at, next_review_at
-      FROM investors WHERE status = 'active'
-      ORDER BY (next_review_at IS NULL) DESC, next_review_at ASC NULLS FIRST, name
-      LIMIT 300
-    `);
-    return r.rows as any[];
+  // Load both subject lists in parallel — the form decides which to show
+  // based on the Lead | Client toggle.
+  const { investors, leads } = await withTenant(session.tenantId, async (tx) => {
+    const [invRes, leadRes] = await Promise.all([
+      tx.execute(sql`
+        SELECT id, name, pan, segment_tag, last_review_at, next_review_at
+        FROM investors WHERE status = 'active'
+        ORDER BY (next_review_at IS NULL) DESC, next_review_at ASC NULLS FIRST, name
+        LIMIT 300
+      `),
+      tx.execute(sql`
+        SELECT id, name, phone, stage
+        FROM leads
+        WHERE stage NOT IN ('converted', 'lost', 'cold', 'not_interested')
+        ORDER BY updated_at DESC
+        LIMIT 300
+      `),
+    ]);
+    return { investors: invRes.rows as any[], leads: leadRes.rows as any[] };
   });
 
   return (
@@ -46,7 +57,12 @@ export default async function NewReviewMeetingPage({
         </div>
       </div>
 
-      <ScheduleMeetingForm investors={investors} preselectedInvestorId={sp.investorId} />
+      <ScheduleMeetingForm
+        investors={investors}
+        leads={leads}
+        preselectedInvestorId={sp.investorId}
+        preselectedLeadId={sp.leadId}
+      />
     </div>
   );
 }

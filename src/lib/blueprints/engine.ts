@@ -314,7 +314,19 @@ export interface StageView {
     slaRemainingDays: number | null;
     isDelayed: boolean;
   };
-  allStages: Array<{ key: string; name: string; order: number; status: "done" | "current" | "upcoming" }>;
+  allStages: Array<{
+    key: string;
+    name: string;
+    order: number;
+    status: "done" | "current" | "upcoming";
+    /**
+     * Which side of the journey owns this stage. Lead-side stages (≤ docs_received,
+     * order ≤ 12) show in the Leads module; once the lead is converted, client-side
+     * stages (order ≥ 13: ops_in_progress, portal_welcome_sent, active_client)
+     * show in the Clients module instead.
+     */
+    phase: "lead" | "client";
+  }>;
   history: Array<{
     stageKey: string;
     stageName: string;
@@ -365,6 +377,8 @@ export async function getStage(tx: Tx, tenantId: string, leadId: string): Promis
       name: s.stageName,
       order: s.stageOrder,
       status: i < currentIdx ? "done" : i === currentIdx ? "current" : "upcoming",
+      // Cut-over at stage 12 (docs_received) — see lead_to_client.ts.
+      phase: s.stageOrder <= 12 ? "lead" : "client",
     })),
     history: history.map((h) => {
       const stage = stages.find((s) => s.stageKey === h.stageKey);

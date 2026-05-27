@@ -83,7 +83,13 @@ export const reviewMeetings = pgTable(
   {
     id,
     tenantId,
-    investorId: uuid("investor_id").notNull(),
+    /**
+     * Subject of the meeting — exactly one of investorId / leadId is set.
+     * MFDs frequently meet leads pre-conversion (discovery, proposal review),
+     * so we accept either. A DB CHECK constraint enforces XOR.
+     */
+    investorId: uuid("investor_id"),
+    leadId: uuid("lead_id"),
     /** Family-level review (when set, investorId points at the primary). */
     familyId: uuid("family_id"),
     rmId: uuid("rm_id"),

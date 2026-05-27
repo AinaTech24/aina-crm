@@ -19,6 +19,7 @@ import {
 import { requireSession } from "@/lib/auth/session";
 import { formatINR, formatDate, formatRelative } from "@/lib/utils";
 import { InvestorEditPanel } from "@/components/investors/InvestorEditPanel";
+import { InvestorBlueprintStageBar } from "@/components/investors/InvestorBlueprintStageBar";
 
 export const dynamic = "force-dynamic";
 
@@ -191,6 +192,11 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
         <InfoCard label="CKYC expiry" value={inv.ckycExpiryAt ? formatDate(inv.ckycExpiryAt) : "—"} sub={inv.ckycNumber ?? undefined} />
         <InfoCard label="Last review" value={inv.lastReviewAt ? formatRelative(inv.lastReviewAt) : "Never"} sub={inv.nextReviewAt ? `Next: ${formatDate(inv.nextReviewAt)}` : undefined} tone={!inv.lastReviewAt ? "warn" : undefined} />
       </div>
+
+      {/* Client-phase onboarding bar — stages 13-15: Operations → Portal
+          Welcome → Active Client. Auto-hides for investors that weren't
+          created from a lead (no source blueprint). */}
+      <InvestorBlueprintStageBar investorId={inv.id} />
 
       {/* Inline-editable form — falls through to read-only Master record below */}
       <InvestorEditPanel investor={JSON.parse(JSON.stringify(inv))} />

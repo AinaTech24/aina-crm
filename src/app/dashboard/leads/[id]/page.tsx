@@ -134,7 +134,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
         </div>
 
         {/* Actions */}
-        <div className="mt-5 pt-4 border-t">
+        <div className="mt-5 pt-4 border-t" data-lead-actions>
           <LeadActions
             leadId={l.id}
             leadName={l.name}
@@ -146,8 +146,15 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
         </div>
       </div>
 
-      {/* Blueprint stage bar — full lead-to-client journey */}
-      <BlueprintStageBar leadId={l.id} />
+      {/* Blueprint stage bar — lead-phase only (stages 1–12, up to Documents
+          Received). When the lead reaches docs_received the bar swaps in a
+          big "Convert to Client" CTA. The remaining stages (Operations →
+          Portal Welcome → Active Client) render on the investor page. */}
+      <BlueprintStageBar
+        leadId={l.id}
+        phase="lead"
+        convertedInvestorId={l.convertedInvestorId ?? null}
+      />
 
       {/* Onboarding actions */}
       <OnboardingActions

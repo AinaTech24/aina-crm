@@ -27,7 +27,13 @@ import {
   RefreshCw,
 } from "lucide-react";
 
-type Stage = { key: string; name: string; order: number; status: "done" | "current" | "upcoming" };
+type Stage = {
+  key: string;
+  name: string;
+  order: number;
+  status: "done" | "current" | "upcoming";
+  phase?: "lead" | "client";
+};
 type Current = {
   key: string;
   name: string;
@@ -80,7 +86,28 @@ const ACTION_LABELS: Record<string, string> = {
   schedule_first_review: "Schedule First Review",
 };
 
-export function BlueprintStageBar({ leadId }: { leadId: string }) {
+/**
+ * `phase` controls which stages render:
+ *   - "lead"  (default for lead detail page) — stages 1-12 (new → docs_received).
+ *   - "client" — stages 13-15 (ops_in_progress → active_client).
+ *   - undefined — show the entire 15-stage journey.
+ *
+ * `convertedInvestorId` (lead phase only) — when present and the current stage
+ * is `docs_received`, the stepper swaps the generic advance picker for a big
+ * "Convert to Client →" CTA that links to the existing conversion flow.
+ */
+export function BlueprintStageBar({
+  leadId,
+  phase,
+  convertedInvestorId,
+  onConvertClick,
+}: {
+  leadId: string;
+  phase?: "lead" | "client";
+  convertedInvestorId?: string | null;
+  /** Override the default conversion CTA behaviour. */
+  onConvertClick?: () => void;
+}) {
   const router = useRouter();
   const [data, setData] = useState<{ current: Current; allStages: Stage[]; history: HistoryRow[] } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -148,7 +175,23 @@ export function BlueprintStageBar({ leadId }: { leadId: string }) {
     );
   }
   if (!data) return null;
-  const { current, allStages, history } = data;
+  const { current, history } = data;
+  // Filter the stepper to the requested phase. When unspecified, show everything.
+  const allStages: Stage[] = phase
+    ? data.allStages.filter((s) => (s.phase ?? "lead") === phase)
+    : data.allStages;
+
+  /**
+   * Two boundary conditions:
+   *   1. Lead module + stage `docs_received` and NOT yet converted → big
+   *      "Convert to Client" CTA replaces the normal advance picker.
+   *   2. Client module + current stage is still lead-phase (lead in progress,
+   *      not converted) → render a placeholder banner instead of an empty bar.
+   */
+  const isConvertReady =
+    phase === "lead" && current.key === "docs_received" && !convertedInvestorId;
+  const leadStillInProgress =
+    phase === "client" && (current.order <= 12 || !convertedInvestorId);
 
   const slaTone =
     current.slaRemainingDays == null
@@ -165,9 +208,13 @@ export function BlueprintStageBar({ leadId }: { leadId: string }) {
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2">
           <ShieldCheck className="size-4 text-brand-cyan" />
-          <h3 className="font-semibold text-sm">Lead Journey</h3>
+          <h3 className="font-semibold text-sm">
+            {phase === "client" ? "Client Onboarding" : "Lead Journey"}
+          </h3>
           <span className="text-xs text-muted-foreground">
-            Stage {current.order} of {allStages.length} · {current.name}
+            {leadStillInProgress
+              ? "Onboarding will start once the lead is converted"
+              : `Stage ${current.order} of ${allStages.length} · ${current.name}`}
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -246,7 +293,56 @@ export function BlueprintStageBar({ leadId }: { leadId: string }) {
         </ol>
       </div>
 
-      {/* Next action card */}
+      {/* Boundary banners — short-circuit the normal "Next action" picker
+          when the lead is ready to convert, or when the client stage bar
+          is waiting on the lead-side to complete. */}
+      {isConvertReady ? (
+        <div className="rounded-xl border-2 border-emerald-300 bg-gradient-to-r from-emerald-50 to-emerald-50/60 p-4">
+          <div className="flex items-start gap-3">
+            <div className="size-10 rounded-xl bg-emerald-500 text-white grid place-items-center flex-shrink-0 shadow-md">
+              <CheckCircle2 className="size-5" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-bold text-emerald-900">
+                All onboarding documents received
+              </div>
+              <p className="text-xs text-emerald-800/90 mt-1 leading-relaxed">
+                Convert this lead to a client. The remaining stages
+                (Operations · Portal Welcome · Active Client) will continue in
+                the Clients module, with the risk profile, proposals and
+                documents you&apos;ve already captured carried over.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                if (onConvertClick) {
+                  onConvertClick();
+                } else {
+                  // Default — scroll to the LeadActions panel (which has the
+                  // existing Convert button + dialog) at the top of the page.
+                  document
+                    .querySelector("[data-lead-actions]")
+                    ?.scrollIntoView({ behavior: "smooth", block: "center" });
+                }
+              }}
+              className="btn-primary text-sm whitespace-nowrap"
+            >
+              Convert to Client →
+            </button>
+          </div>
+        </div>
+      ) : leadStillInProgress ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-3.5 flex items-center gap-3">
+          <Clock className="size-4 text-amber-700 flex-shrink-0" />
+          <span className="text-xs text-amber-900 leading-relaxed">
+            <strong>Onboarding pending.</strong> The lead is still at &ldquo;
+            {current.name}&rdquo; in the Leads module. Once they&apos;re converted to
+            a client, the Operations → Portal → Active Client steps continue
+            here.
+          </span>
+        </div>
+      ) : (
       <div className="rounded-lg border border-brand-cyan/30 bg-brand-cyan-light/20 p-3">
         <div className="flex items-center gap-2 mb-2">
           <ChevronRight className="size-3.5 text-brand-cyan" />
@@ -282,6 +378,7 @@ export function BlueprintStageBar({ leadId }: { leadId: string }) {
           </div>
         )}
       </div>
+      )}
 
       {/* History panel */}
       {showHistory && (
