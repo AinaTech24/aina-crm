@@ -60,7 +60,9 @@ const ACTIVITY_TYPES = [
 
 export function LeadActions(props: Props) {
   const router = useRouter();
-  const [dialog, setDialog] = useState<"stage" | "convert" | "task" | "meeting" | "activity" | null>(null);
+  const [dialog, setDialog] = useState<
+    "stage" | "convert" | "task" | "meeting" | "schedule_meeting" | "activity" | null
+  >(null);
 
   // Listen for "open this dialog please" events emitted by the
   // GuidedStageActions component on the blueprint bar. Lets the
@@ -74,6 +76,11 @@ export function LeadActions(props: Props) {
         case "log_call":
         case "log_past_meeting":
           setDialog("activity");
+          break;
+        case "schedule_meeting":
+          // Open the in-place meeting modal — creates a real review_meeting
+          // row, not just a task. Same record the Meetings module reads from.
+          setDialog("schedule_meeting");
           break;
         case "send_risk_profile":
         case "capture_risk_profile_manually":
@@ -126,7 +133,7 @@ export function LeadActions(props: Props) {
           <ListPlus className="size-4" /> Add task
         </button>
         <button
-          onClick={() => setDialog("meeting")}
+          onClick={() => setDialog("schedule_meeting")}
           className="rounded-md border px-3 py-1.5 text-sm flex items-center gap-1.5 hover:bg-accent"
         >
           <CalendarPlus className="size-4" /> Schedule meeting
@@ -191,6 +198,21 @@ export function LeadActions(props: Props) {
             // Tell the BlueprintStageBar (client component) to re-fetch
             // its /blueprint endpoint — router.refresh() alone doesn't
             // re-run its useEffect.
+            window.dispatchEvent(new CustomEvent("blueprint:refresh"));
+          }}
+        />
+      )}
+      {dialog === "schedule_meeting" && (
+        <ScheduleMeetingDialog
+          leadId={props.leadId}
+          leadName={props.leadName}
+          onClose={() => setDialog(null)}
+          onDone={() => {
+            setDialog(null);
+            router.refresh();
+            // Smart auto-advance: the /api/review-meetings POST emits a
+            // meeting.scheduled.lead event → blueprint moves to
+            // meeting_scheduled. Re-fetch the stage bar.
             window.dispatchEvent(new CustomEvent("blueprint:refresh"));
           }}
         />
@@ -519,6 +541,171 @@ function TaskDialog({
           >
             {busy && <Loader2 className="size-3.5 animate-spin" />}
             {isMeeting ? "Schedule" : "Create task"}
+          </button>
+        }
+      />
+    </Modal>
+  );
+}
+
+/* -------------------- Schedule meeting dialog -------------------- */
+
+/**
+ * Creates a real review_meetings record (not a task), so the meeting
+ * shows up in the Meetings module and the calendar. Hits POST
+ * /api/review-meetings which emits a meeting.scheduled.lead event,
+ * auto-advancing the blueprint to meeting_scheduled.
+ */
+function ScheduleMeetingDialog({
+  leadId,
+  leadName,
+  onClose,
+  onDone,
+}: {
+  leadId: string;
+  leadName: string;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [meetingType, setMeetingType] = useState("new_investment_discussion");
+  const [meetingMode, setMeetingMode] = useState("online");
+  const [meetingDate, setMeetingDate] = useState(() => {
+    // Default to tomorrow 11 am
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    d.setHours(11, 0, 0, 0);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  });
+  const [durationMinutes, setDurationMinutes] = useState("30");
+  const [locationOrLink, setLocationOrLink] = useState("");
+  const [discussionPoints, setDiscussionPoints] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function submit() {
+    setBusy(true);
+    setErr(null);
+    try {
+      const res = await fetch("/api/review-meetings", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          leadId,
+          meetingType,
+          meetingDate: new Date(meetingDate).toISOString(),
+          durationMinutes: parseInt(durationMinutes, 10) || 30,
+          meetingMode,
+          locationOrLink: locationOrLink || undefined,
+          discussionPoints: discussionPoints || undefined,
+        }),
+      });
+      const j = await res.json();
+      if (!res.ok) {
+        setErr(j.error ?? `Save failed (${res.status})`);
+        return;
+      }
+      onDone();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal title={`Schedule meeting · ${leadName}`} onClose={onClose}>
+      <div className="space-y-3">
+        <p className="text-xs text-muted-foreground -mt-1">
+          Creates a meeting record in the Meetings module and moves the
+          blueprint to <span className="font-medium">Meeting Scheduled</span>.
+          A reminder task auto-fires the day before.
+        </p>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="block">
+            <div className="text-xs font-medium mb-1">Meeting type</div>
+            <select
+              value={meetingType}
+              onChange={(e) => setMeetingType(e.target.value)}
+              className="w-full border rounded-md px-3 py-2 text-sm bg-background"
+            >
+              <option value="new_investment_discussion">New Investment Discussion</option>
+              <option value="portfolio_review">Portfolio Review</option>
+              <option value="goal_review">Goal Review</option>
+              <option value="service_discussion">Service Discussion</option>
+              <option value="family_review">Family Review</option>
+              <option value="complaint_discussion">Complaint Discussion</option>
+            </select>
+          </label>
+          <label className="block">
+            <div className="text-xs font-medium mb-1">Mode</div>
+            <select
+              value={meetingMode}
+              onChange={(e) => setMeetingMode(e.target.value)}
+              className="w-full border rounded-md px-3 py-2 text-sm bg-background"
+            >
+              <option value="online">Online</option>
+              <option value="office">Office</option>
+              <option value="client_place">Client Place</option>
+              <option value="phone">Phone</option>
+            </select>
+          </label>
+          <label className="block">
+            <div className="text-xs font-medium mb-1">When<span className="text-rose-600">*</span></div>
+            <input
+              type="datetime-local"
+              value={meetingDate}
+              onChange={(e) => setMeetingDate(e.target.value)}
+              className="w-full border rounded-md px-3 py-2 text-sm bg-background"
+            />
+          </label>
+          <label className="block">
+            <div className="text-xs font-medium mb-1">Duration (min)</div>
+            <input
+              type="number"
+              min={5}
+              max={480}
+              value={durationMinutes}
+              onChange={(e) => setDurationMinutes(e.target.value)}
+              className="w-full border rounded-md px-3 py-2 text-sm bg-background tabular-nums"
+            />
+          </label>
+        </div>
+        <label className="block">
+          <div className="text-xs font-medium mb-1">Location / link</div>
+          <input
+            value={locationOrLink}
+            onChange={(e) => setLocationOrLink(e.target.value)}
+            placeholder={
+              meetingMode === "online"
+                ? "Zoom / Meet / Teams URL"
+                : meetingMode === "phone"
+                ? "Phone number to call"
+                : "Address"
+            }
+            className="w-full border rounded-md px-3 py-2 text-sm bg-background"
+          />
+        </label>
+        <label className="block">
+          <div className="text-xs font-medium mb-1">Agenda / discussion points</div>
+          <textarea
+            value={discussionPoints}
+            onChange={(e) => setDiscussionPoints(e.target.value)}
+            rows={3}
+            placeholder="Risk appetite, goals, family context, proposal discussion…"
+            className="w-full border rounded-md px-3 py-2 text-sm bg-background"
+          />
+        </label>
+        {err && <div className="text-sm text-rose-600">{err}</div>}
+      </div>
+      <ModalFooter
+        onClose={onClose}
+        submit={
+          <button
+            onClick={submit}
+            disabled={busy || !meetingDate}
+            className="rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm font-medium disabled:opacity-50 flex items-center gap-1.5"
+          >
+            {busy && <Loader2 className="size-3.5 animate-spin" />}
+            <CalendarPlus className="size-4" /> Schedule meeting
           </button>
         }
       />

@@ -25,6 +25,7 @@ export type StageActionBehaviour =
 export type DialogKind =
   | "log_call"
   | "log_past_meeting"
+  | "schedule_meeting"
   | "send_risk_profile"
   | "capture_risk_profile_manually"
   | "send_doc_checklist"
@@ -87,7 +88,7 @@ export const STAGE_ACTIONS: Record<string, StageAction[]> = {
       tone: "primary",
       targetStage: "meeting_scheduled",
       hint: "Opens the meeting form pre-filled with this lead.",
-      behaviour: { kind: "navigate", hrefPattern: "/dashboard/review-meetings/new?leadId={id}" },
+      behaviour: { kind: "open_dialog", dialog: "schedule_meeting" },
     },
     {
       key: "meeting_pending",
@@ -199,7 +200,7 @@ export const STAGE_ACTIONS: Record<string, StageAction[]> = {
       tone: "secondary",
       targetStage: "meeting_scheduled",
       hint: "Move to a different date/time.",
-      behaviour: { kind: "navigate", hrefPattern: "/dashboard/review-meetings?leadId={id}" },
+      behaviour: { kind: "open_dialog", dialog: "schedule_meeting" },
     },
     {
       key: "pending",
@@ -227,7 +228,7 @@ export const STAGE_ACTIONS: Record<string, StageAction[]> = {
       tone: "secondary",
       targetStage: "meeting_scheduled",
       hint: "Back to a confirmed slot.",
-      behaviour: { kind: "navigate", hrefPattern: "/dashboard/review-meetings?leadId={id}" },
+      behaviour: { kind: "open_dialog", dialog: "schedule_meeting" },
     },
   ],
 
