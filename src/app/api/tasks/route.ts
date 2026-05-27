@@ -4,6 +4,7 @@ import { desc } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { require as requireCap } from "@/lib/auth/rbac";
 import { tasks } from "@/db/schema";
 
 export const dynamic = "force-dynamic";
@@ -53,6 +54,7 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
+    requireCap(session.roles, "task.edit.all");
     const parse = Body.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) return NextResponse.json({ error: "invalid body" }, { status: 400 });
     const body = parse.data;

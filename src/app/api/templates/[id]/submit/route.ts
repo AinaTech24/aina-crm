@@ -14,6 +14,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { require as requireCap } from "@/lib/auth/rbac";
 import { templates, templateVersions, templateApprovals, tenants } from "@/db/schema";
 import { runComplianceChecks } from "@/lib/comms/compliance";
 
@@ -23,6 +24,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   const { id } = await params;
   try {
     const session = await requireSession();
+    requireCap(session.roles, "template.edit");
 
     const result = await withTenant(session.tenantId, async (tx) => {
       const tpl = (await tx.select().from(templates).where(eq(templates.id, id)).limit(1))[0];

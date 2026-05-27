@@ -10,6 +10,7 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { leads, eventsOutbox } from "@/db/schema";
@@ -30,6 +31,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
   try {
     const session = await requireSession();
+    requireCap(session.roles, "lead.edit.all");
     if (!session.roles.some((r) => ["owner", "marketing", "rm", "branch_head"].includes(r))) {
       return NextResponse.json({ error: "forbidden" }, { status: 403 });
     }

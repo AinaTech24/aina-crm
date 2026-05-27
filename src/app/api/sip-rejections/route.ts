@@ -14,6 +14,7 @@ import { desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { sipRejections, investors, tasks, notifications, eventsOutbox, SIP_RECOVERY_STATUSES } from "@/db/schema";
@@ -58,6 +59,7 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
+    requireCap(session.roles, "transactions.execute");
     await assertActiveLicense(session.tenantId, session.roles);
     const parse = Body.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) {

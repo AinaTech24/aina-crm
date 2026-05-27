@@ -10,6 +10,7 @@ import { desc } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import {
@@ -62,6 +63,7 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
+    requireCap(session.roles, "content_calendar.manage");
     await assertActiveLicense(session.tenantId, session.roles);
     const parse = CreateBody.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) {

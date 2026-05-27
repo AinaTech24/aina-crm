@@ -13,6 +13,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuid } from "uuid";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { require as requireCap } from "@/lib/auth/rbac";
 import { workflows, workflowVersions } from "@/db/schema";
 import { ALL_RECIPES } from "@/lib/recipes";
 
@@ -22,6 +23,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { id: recipeKey } = await params;
   try {
     const session = await requireSession();
+    requireCap(session.roles, "workflow.edit");
     const recipe = ALL_RECIPES.find((r) => r.key === recipeKey);
     if (!recipe) return NextResponse.json({ error: "recipe not found" }, { status: 404 });
 

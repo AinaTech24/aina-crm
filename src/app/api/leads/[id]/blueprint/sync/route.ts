@@ -22,6 +22,7 @@ import {
   complianceDocuments,
 } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
+import { require as requireCap } from "@/lib/auth/rbac";
 import { transitionTo } from "@/lib/blueprints/engine";
 
 export const dynamic = "force-dynamic";
@@ -29,6 +30,7 @@ export const dynamic = "force-dynamic";
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await requireSession();
+    requireCap(session.roles, "lead.edit.all");
     const { id } = await params;
 
     const result = await withTenant(session.tenantId, async (tx) => {

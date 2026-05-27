@@ -20,6 +20,7 @@ import { z } from "zod";
 import { sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { require as requireCap } from "@/lib/auth/rbac";
 import { transitionTo } from "@/lib/blueprints/engine";
 
 export const dynamic = "force-dynamic";
@@ -40,6 +41,7 @@ const Body = z.object({
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await requireSession();
+    requireCap(session.roles, "lead.edit.all");
     const { id } = await params;
     const parsed = Body.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {

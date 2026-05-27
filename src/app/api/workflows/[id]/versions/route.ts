@@ -14,6 +14,7 @@ import { and, desc, eq, max } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { require as requireCap } from "@/lib/auth/rbac";
 import { workflows, workflowVersions } from "@/db/schema";
 import { validateGraph } from "@/lib/workflow/schema";
 
@@ -25,6 +26,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
   try {
     const session = await requireSession();
+    requireCap(session.roles, "workflow.edit");
     const parse = SaveBody.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) return NextResponse.json({ error: "invalid body" }, { status: 400 });
 

@@ -11,6 +11,7 @@ import { desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { require as requireCap } from "@/lib/auth/rbac";
 import {
   investors,
   folios,
@@ -98,6 +99,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const { id } = await params;
   try {
     const session = await requireSession();
+    requireCap(session.roles, "investor.edit.all");
     const parse = Patch.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) return NextResponse.json({ error: "invalid body" }, { status: 400 });
 
@@ -135,6 +137,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   const { id } = await params;
   try {
     const session = await requireSession();
+    requireCap(session.roles, "investor.edit.all");
     await withTenant(session.tenantId, async (tx) => {
       await tx
         .update(investors)

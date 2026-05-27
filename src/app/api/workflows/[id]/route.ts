@@ -11,6 +11,7 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { require as requireCap } from "@/lib/auth/rbac";
 import { workflows, workflowVersions } from "@/db/schema";
 
 export const dynamic = "force-dynamic";
@@ -46,6 +47,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const { id } = await params;
   try {
     const session = await requireSession();
+    requireCap(session.roles, "workflow.edit");
     const parse = Patch.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) return NextResponse.json({ error: "invalid body" }, { status: 400 });
 
@@ -68,6 +70,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   const { id } = await params;
   try {
     const session = await requireSession();
+    requireCap(session.roles, "workflow.edit");
     await withTenant(session.tenantId, async (tx) => {
       await tx.update(workflows).set({ enabled: false, pausedReason: "deleted", pausedAt: new Date() } as any).where(eq(workflows.id, id));
     });

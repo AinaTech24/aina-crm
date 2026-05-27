@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { tenants } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
+import { require as requireCap } from "@/lib/auth/rbac";
 import { renderEmailHtml } from "@/lib/email-designer/render";
 import type { EmailDesignerBody } from "@/lib/email-designer/types";
 import { MERGE_FIELDS } from "@/lib/email-designer/merge-fields";
@@ -27,6 +28,7 @@ function buildPreviewVariables(): Record<string, unknown> {
 
 export async function POST(req: NextRequest) {
   const session = await requireSession();
+  requireCap(session.roles, "template.edit");
   const { body } = await req.json().catch(() => ({ body: null }));
   if (!body) return NextResponse.json({ error: "missing body" }, { status: 400 });
 

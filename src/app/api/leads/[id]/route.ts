@@ -11,6 +11,7 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { leads, eventsOutbox } from "@/db/schema";
@@ -54,6 +55,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const { id } = await params;
   try {
     const session = await requireSession();
+    requireCap(session.roles, "lead.edit.all");
     if (!canEdit(session.roles)) return NextResponse.json({ error: "forbidden" }, { status: 403 });
     await assertActiveLicense(session.tenantId, session.roles);
 
@@ -92,6 +94,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const { id } = await params;
   try {
     const session = await requireSession();
+    requireCap(session.roles, "lead.edit.all");
     if (!canEdit(session.roles)) return NextResponse.json({ error: "forbidden" }, { status: 403 });
     await assertActiveLicense(session.tenantId, session.roles);
 
