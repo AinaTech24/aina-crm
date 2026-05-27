@@ -20,6 +20,21 @@ import { requireSession } from "@/lib/auth/session";
 import { formatINR, formatDate, formatRelative } from "@/lib/utils";
 import { InvestorEditPanel } from "@/components/investors/InvestorEditPanel";
 import { InvestorBlueprintStageBar } from "@/components/investors/InvestorBlueprintStageBar";
+import {
+  RelatedListsContainer,
+  RelatedListsManager,
+  RelatedListSection,
+  type RelatedListDef,
+} from "@/components/common/RelatedLists";
+
+const INVESTOR_DETAIL_SECTIONS: RelatedListDef[] = [
+  { key: "header", label: "Client header & contact", required: true },
+  { key: "summary", label: "Risk / nominee / KYC / review summary" },
+  { key: "blueprint", label: "Onboarding blueprint" },
+  { key: "edit_panel", label: "Inline-editable details" },
+  { key: "master", label: "Master record (full read-only view)" },
+  { key: "related", label: "Folios · SIPs · Goals · Tasks · SRs · Consent" },
+];
 
 export const dynamic = "force-dynamic";
 
@@ -93,7 +108,7 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
   const inv = data.investor;
 
   return (
-    <div className="space-y-6 max-w-7xl">
+    <div className="max-w-7xl space-y-4">
       <div className="flex items-center justify-between">
         <Link
           href="/dashboard/investors"
@@ -101,15 +116,23 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
         >
           <ChevronLeft className="size-4" /> Back to investors
         </Link>
-        <Link
-          href={`/dashboard/investors/${inv.id}/review-report`}
-          className="text-xs rounded-md border px-2.5 py-1 hover:bg-accent"
-        >
-          📄 Quarterly Review Report
-        </Link>
+        <div className="flex items-center gap-2">
+          <RelatedListsManager
+            moduleKey="investors-detail"
+            sections={INVESTOR_DETAIL_SECTIONS}
+          />
+          <Link
+            href={`/dashboard/investors/${inv.id}/review-report`}
+            className="text-xs rounded-md border px-2.5 py-1 hover:bg-accent"
+          >
+            📄 Quarterly Review Report
+          </Link>
+        </div>
       </div>
 
+      <RelatedListsContainer>
       {/* Header */}
+      <RelatedListSection moduleKey="investors-detail" sectionKey="header">
       <div className="border rounded-lg bg-card p-6">
         <div className="flex items-start gap-4">
           <div className="size-16 rounded-full bg-primary/10 grid place-items-center text-xl font-bold flex-shrink-0">
@@ -184,27 +207,35 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
           </div>
         </div>
       </div>
+      </RelatedListSection>
 
       {/* Risk + meta — at-a-glance status */}
-      <div className="grid grid-cols-4 gap-4">
-        <InfoCard label="Risk profile" value={inv.riskProfile ?? "Not assessed"} sub={inv.riskProfileSignedAt ? `Signed ${formatDate(inv.riskProfileSignedAt)}` : "Pending"} tone={!inv.riskProfile ? "warn" : undefined} />
-        <InfoCard label="Nominee" value={inv.nomineeName ?? "Not set"} sub={inv.nomineeRelation ?? undefined} tone={!inv.nomineeName ? "warn" : undefined} />
-        <InfoCard label="CKYC expiry" value={inv.ckycExpiryAt ? formatDate(inv.ckycExpiryAt) : "—"} sub={inv.ckycNumber ?? undefined} />
-        <InfoCard label="Last review" value={inv.lastReviewAt ? formatRelative(inv.lastReviewAt) : "Never"} sub={inv.nextReviewAt ? `Next: ${formatDate(inv.nextReviewAt)}` : undefined} tone={!inv.lastReviewAt ? "warn" : undefined} />
-      </div>
+      <RelatedListSection moduleKey="investors-detail" sectionKey="summary">
+        <div className="grid grid-cols-4 gap-4">
+          <InfoCard label="Risk profile" value={inv.riskProfile ?? "Not assessed"} sub={inv.riskProfileSignedAt ? `Signed ${formatDate(inv.riskProfileSignedAt)}` : "Pending"} tone={!inv.riskProfile ? "warn" : undefined} />
+          <InfoCard label="Nominee" value={inv.nomineeName ?? "Not set"} sub={inv.nomineeRelation ?? undefined} tone={!inv.nomineeName ? "warn" : undefined} />
+          <InfoCard label="CKYC expiry" value={inv.ckycExpiryAt ? formatDate(inv.ckycExpiryAt) : "—"} sub={inv.ckycNumber ?? undefined} />
+          <InfoCard label="Last review" value={inv.lastReviewAt ? formatRelative(inv.lastReviewAt) : "Never"} sub={inv.nextReviewAt ? `Next: ${formatDate(inv.nextReviewAt)}` : undefined} tone={!inv.lastReviewAt ? "warn" : undefined} />
+        </div>
+      </RelatedListSection>
 
       {/* Client-phase onboarding bar — stages 13-15: Operations → Portal
           Welcome → Active Client. Auto-hides for investors that weren't
           created from a lead (no source blueprint). */}
-      <InvestorBlueprintStageBar investorId={inv.id} />
+      <RelatedListSection moduleKey="investors-detail" sectionKey="blueprint">
+        <InvestorBlueprintStageBar investorId={inv.id} />
+      </RelatedListSection>
 
       {/* Inline-editable form — falls through to read-only Master record below */}
-      <InvestorEditPanel investor={JSON.parse(JSON.stringify(inv))} />
+      <RelatedListSection moduleKey="investors-detail" sectionKey="edit_panel">
+        <InvestorEditPanel investor={JSON.parse(JSON.stringify(inv))} />
+      </RelatedListSection>
 
       {/* ----------------------------- Master record -----------------------------
         Every field the spec calls out under § 6 Module 4 Client Master, grouped
         logically so RM/back-office can scan it in one read.
       */}
+      <RelatedListSection moduleKey="investors-detail" sectionKey="master">
       <div className="border rounded-lg bg-card p-5">
         <div className="flex items-center justify-between mb-3">
           <h2 className="font-semibold flex items-center gap-2">
@@ -301,7 +332,9 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
           </div>
         )}
       </div>
+      </RelatedListSection>
 
+      <RelatedListSection moduleKey="investors-detail" sectionKey="related">
       <div className="grid grid-cols-3 gap-6">
         {/* Folios + SIPs */}
         <div className="col-span-2 space-y-6">
@@ -470,6 +503,8 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
           </Section>
         </aside>
       </div>
+      </RelatedListSection>
+      </RelatedListsContainer>
     </div>
   );
 }

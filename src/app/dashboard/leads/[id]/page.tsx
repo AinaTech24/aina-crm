@@ -19,6 +19,25 @@ import { LeadActions } from "@/components/leads/LeadActions";
 import { LeadEditPanel } from "@/components/leads/LeadEditPanel";
 import { OnboardingActions } from "@/components/leads/OnboardingActions";
 import { BlueprintStageBar } from "@/components/leads/BlueprintStageBar";
+import {
+  RelatedListsContainer,
+  RelatedListsManager,
+  RelatedListSection,
+  type RelatedListDef,
+} from "@/components/common/RelatedLists";
+
+/**
+ * Related-list sections on the Lead detail page. Order = default page
+ * order; users can hide / reorder via the "Customize page" button.
+ */
+const LEAD_DETAIL_SECTIONS: RelatedListDef[] = [
+  { key: "header", label: "Lead header & actions", required: true },
+  { key: "blueprint", label: "Blueprint stage tracker" },
+  { key: "onboarding", label: "Onboarding actions (risk profile / docs / approval)" },
+  { key: "converted_banner", label: "Converted-to-client banner" },
+  { key: "edit_panel", label: "Editable details" },
+  { key: "activity", label: "Activity timeline" },
+];
 
 const STAGE_COLORS: Record<string, string> = {
   new: "bg-blue-50 text-blue-700",
@@ -84,14 +103,19 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
   const l = data.lead;
 
   return (
-    <div className="space-y-6 max-w-5xl">
-      <Link
-        href="/dashboard/leads"
-        className="text-sm text-muted-foreground hover:underline flex items-center gap-1"
-      >
-        <ChevronLeft className="size-4" /> Back to leads
-      </Link>
+    <div className="max-w-5xl space-y-4">
+      <div className="flex items-center justify-between">
+        <Link
+          href="/dashboard/leads"
+          className="text-sm text-muted-foreground hover:underline flex items-center gap-1"
+        >
+          <ChevronLeft className="size-4" /> Back to leads
+        </Link>
+        <RelatedListsManager moduleKey="leads-detail" sections={LEAD_DETAIL_SECTIONS} />
+      </div>
 
+      <RelatedListsContainer>
+      <RelatedListSection moduleKey="leads-detail" sectionKey="header">
       <div className="border rounded-lg bg-card p-6">
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -145,56 +169,68 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
           />
         </div>
       </div>
+      </RelatedListSection>
 
       {/* Blueprint stage bar — lead-phase only (stages 1–12, up to Documents
           Received). When the lead reaches docs_received the bar swaps in a
           big "Convert to Client" CTA. The remaining stages (Operations →
           Portal Welcome → Active Client) render on the investor page. */}
-      <BlueprintStageBar
-        leadId={l.id}
-        phase="lead"
-        convertedInvestorId={l.convertedInvestorId ?? null}
-      />
+      <RelatedListSection moduleKey="leads-detail" sectionKey="blueprint">
+        <BlueprintStageBar
+          leadId={l.id}
+          phase="lead"
+          convertedInvestorId={l.convertedInvestorId ?? null}
+        />
+      </RelatedListSection>
 
       {/* Onboarding actions — pinned scroll target for the blueprint's
           "Send risk profile / Send doc checklist / Capture approval"
           buttons (they dispatch a custom event that scrolls here). */}
-      <div data-onboarding-actions>
-        <OnboardingActions
-          leadId={l.id}
-          leadStage={l.stage}
-          leadPhone={l.phone}
-          leadEmail={l.email}
-          leadName={l.name}
-          hasRiskProfile={!!data.latestRisk}
-          pendingProposalId={data.latestProposal?.id ?? null}
-          alreadyConvertedInvestorId={l.convertedInvestorId ?? null}
-        />
-      </div>
+      <RelatedListSection moduleKey="leads-detail" sectionKey="onboarding">
+        <div data-onboarding-actions>
+          <OnboardingActions
+            leadId={l.id}
+            leadStage={l.stage}
+            leadPhone={l.phone}
+            leadEmail={l.email}
+            leadName={l.name}
+            hasRiskProfile={!!data.latestRisk}
+            pendingProposalId={data.latestProposal?.id ?? null}
+            alreadyConvertedInvestorId={l.convertedInvestorId ?? null}
+          />
+        </div>
+      </RelatedListSection>
 
       {/* Converted banner */}
       {l.stage === "converted" && l.convertedInvestorId && (
-        <div className="rounded-md border border-emerald-300 bg-emerald-50 text-emerald-900 px-4 py-3 text-sm flex items-center gap-2">
-          <CheckCircle2 className="size-4" />
-          <span>
-            Converted to client {l.convertedAt && <>on {formatDate(l.convertedAt)}</>}.{" "}
-            <Link href={`/dashboard/investors/${l.convertedInvestorId}`} className="font-medium underline">
-              Open client →
-            </Link>
-          </span>
-        </div>
+        <RelatedListSection moduleKey="leads-detail" sectionKey="converted_banner">
+          <div className="rounded-md border border-emerald-300 bg-emerald-50 text-emerald-900 px-4 py-3 text-sm flex items-center gap-2">
+            <CheckCircle2 className="size-4" />
+            <span>
+              Converted to client {l.convertedAt && <>on {formatDate(l.convertedAt)}</>}.{" "}
+              <Link href={`/dashboard/investors/${l.convertedInvestorId}`} className="font-medium underline">
+                Open client →
+              </Link>
+            </span>
+          </div>
+        </RelatedListSection>
       )}
 
       {/* Editable record — every spec field, inline edit */}
-      <LeadEditPanel lead={JSON.parse(JSON.stringify(l))} />
+      <RelatedListSection moduleKey="leads-detail" sectionKey="edit_panel">
+        <LeadEditPanel lead={JSON.parse(JSON.stringify(l))} />
+      </RelatedListSection>
 
       {/* Activity timeline */}
-      <div className="border rounded-lg bg-card">
-        <div className="border-b px-4 py-2.5 font-medium flex items-center gap-2">
-          <ClipboardList className="size-4" /> Activity timeline
+      <RelatedListSection moduleKey="leads-detail" sectionKey="activity">
+        <div className="border rounded-lg bg-card">
+          <div className="border-b px-4 py-2.5 font-medium flex items-center gap-2">
+            <ClipboardList className="size-4" /> Activity timeline
+          </div>
+          <ActivityTimeline tasks={data.relatedTasks} comms={data.relatedComms} notes={l.followUpNotes ?? ""} />
         </div>
-        <ActivityTimeline tasks={data.relatedTasks} comms={data.relatedComms} notes={l.followUpNotes ?? ""} />
-      </div>
+      </RelatedListSection>
+      </RelatedListsContainer>
 
     </div>
   );
