@@ -9,7 +9,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuid } from "uuid";
 import { eq, desc } from "drizzle-orm";
-import { withSystem } from "@/db/client";
+import { withSystem, withTenant } from "@/db/client";
 import {
   riskProfileResponses,
   riskProfileTemplates,
@@ -28,11 +28,17 @@ import {
   type RiskTemplate,
 } from "@/lib/risk-profile/template";
 import { transitionTo } from "@/lib/blueprints/engine";
+import { enforce } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
+    // 20 submissions per IP per hour. Real client clicks "Submit" once;
+    // a bot trying every (tokenId, answers) combo gets blocked fast.
+    const limited = enforce(req, "public.risk-profile", { limit: 20, windowSec: 60 * 60 });
+    if (limited) return limited;
+
     const body = await req.json().catch(() => ({}));
     const tokenId: string | undefined = body.tokenId;
     const answers: Record<string, string> = body.answers ?? {};
@@ -46,15 +52,24 @@ export async function POST(req: NextRequest) {
     const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "";
     const ua = req.headers.get("user-agent") ?? "";
 
-    const result = await withSystem(async (tx) => {
-      const { shareTokens } = await import("@/db/schema");
-      const [tk] = await tx.select().from(shareTokens).where(eq(shareTokens.id, tokenId));
-      if (!tk) throw new Error("Invalid token");
-      if (tk.revokedAt) throw new Error("This link was revoked");
-      if (tk.usedAt) throw new Error("This link has already been used");
-      if (new Date(tk.expiresAt as any) < new Date()) throw new Error("This link has expired");
-      if (tk.kind !== "risk_profile") throw new Error("Not a risk-profile token");
+    // Step 1: token lookup needs cross-tenant context (no session yet).
+    // This block is intentionally tiny — only the share_tokens read.
+    const { shareTokens } = await import("@/db/schema");
+    const tk = await withSystem(async (tx) => {
+      const [t] = await tx.select().from(shareTokens).where(eq(shareTokens.id, tokenId));
+      if (!t) throw new Error("Invalid token");
+      if (t.revokedAt) throw new Error("This link was revoked");
+      if (t.usedAt) throw new Error("This link has already been used");
+      if (new Date(t.expiresAt as any) < new Date()) throw new Error("This link has expired");
+      if (t.kind !== "risk_profile") throw new Error("Not a risk-profile token");
+      return t;
+    });
 
+    // Step 2: everything else runs inside the token's tenant scope so RLS
+    // guards every read/write. If a future bug ever leaks a tokenId across
+    // tenants, the worst case is "the token resolves" — actual mutation
+    // is hard-bounded to the tenant the token belongs to.
+    const result = await withTenant(tk.tenantId!, async (tx) => {
       // Load active template (fall back to default)
       const [activeTpl] = await tx
         .select()

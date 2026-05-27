@@ -9,15 +9,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuid } from "uuid";
 import { eq } from "drizzle-orm";
-import { withSystem } from "@/db/client";
+import { withSystem, withTenant } from "@/db/client";
 import { shareTokens, proposals, proposalApprovals, eventsOutbox, leads } from "@/db/schema";
 import { markShareTokenUsed } from "@/lib/share-tokens";
 import { transitionTo } from "@/lib/blueprints/engine";
+import { enforce } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
+    // 10 acceptances per IP per hour. A real client clicks "Accept" once.
+    const limited = enforce(req, "public.proposal-accept", { limit: 10, windowSec: 60 * 60 });
+    if (limited) return limited;
+
     const body = await req.json().catch(() => ({}));
     const tokenId = String(body.tokenId ?? "");
     const signatureName = String(body.signatureName ?? "").trim();
@@ -29,14 +34,21 @@ export async function POST(req: NextRequest) {
     const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "";
     const ua = req.headers.get("user-agent") ?? "";
 
-    const out = await withSystem(async (tx) => {
-      const [tk] = await tx.select().from(shareTokens).where(eq(shareTokens.id, tokenId));
-      if (!tk) throw new Error("Invalid token");
-      if (tk.revokedAt) throw new Error("This link was revoked");
-      if (tk.usedAt) throw new Error("This link has already been used");
-      if (new Date(tk.expiresAt as any) < new Date()) throw new Error("This link has expired");
-      if (tk.kind !== "proposal_approval") throw new Error("Not a proposal-approval token");
+    // Step 1: token lookup (cross-tenant — no session yet).
+    const tk = await withSystem(async (tx) => {
+      const [t] = await tx.select().from(shareTokens).where(eq(shareTokens.id, tokenId));
+      if (!t) throw new Error("Invalid token");
+      if (t.revokedAt) throw new Error("This link was revoked");
+      if (t.usedAt) throw new Error("This link has already been used");
+      if (new Date(t.expiresAt as any) < new Date()) throw new Error("This link has expired");
+      if (t.kind !== "proposal_approval") throw new Error("Not a proposal-approval token");
+      return t;
+    });
 
+    // Step 2: writes happen inside the token's tenant scope so RLS blocks
+    // any cross-tenant write even if a future bug leaks tokenId across
+    // tenants.
+    const out = await withTenant(tk.tenantId!, async (tx) => {
       const [proposal] = await tx.select().from(proposals).where(eq(proposals.id, tk.subjectId));
       if (!proposal) throw new Error("Proposal not found");
 

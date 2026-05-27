@@ -61,7 +61,9 @@ export async function middleware(req: NextRequest) {
 
   // Dev escape hatch — set NO_AUTH=1 to bypass and inject the demo session.
   // Useful for previewing the UI before a real auth wiring lands.
-  if (process.env.NO_AUTH === "1") {
+  // HARD-DISABLED in production builds: an accidentally-set env var would
+  // hand any unauthenticated visitor an owner+rm+compliance session.
+  if (process.env.NO_AUTH === "1" && process.env.NODE_ENV !== "production") {
     const res = NextResponse.next();
     res.headers.set(
       "x-mfd-session",

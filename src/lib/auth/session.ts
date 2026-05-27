@@ -110,9 +110,17 @@ export class AuthError extends Error {
 
 /**
  * Demo helper: returns a fake session for development when NO_AUTH=1.
- * NEVER use this in production — it bypasses tenant isolation.
+ * NEVER use this in production — it bypasses tenant isolation. The guard
+ * below makes the function throw rather than return a fake session if it's
+ * ever invoked from a production build, so an accidentally-set NO_AUTH env
+ * var can't hand any visitor an owner+rm+compliance session.
  */
 export function devSession(): SessionUser {
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      "devSession() called in production — this would bypass tenant isolation"
+    );
+  }
   return {
     userId: "00000000-0000-0000-0000-000000000001",
     tenantId: "00000000-0000-0000-0000-000000000001",

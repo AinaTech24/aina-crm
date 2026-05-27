@@ -13,10 +13,17 @@ import { sql } from "drizzle-orm";
 import { withSystem } from "@/db/client";
 import { signSession, SESSION_COOKIE, SESSION_TTL_SECONDS } from "@/lib/auth/session";
 import { MASTER_SEEDS } from "@/lib/masters/seeds";
+import { enforce } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
+  // 5 tenant creations per IP per hour. Stops drive-by spam of fake tenants
+  // (which is also a customer-acquisition-cost waste if you have welcome
+  // emails / WhatsApp sends configured).
+  const limited = enforce(req, "auth.signup", { limit: 5, windowSec: 60 * 60 });
+  if (limited) return limited;
+
   const body = await req.json().catch(() => ({}));
   const firmName = String(body.firmName ?? "").trim();
   const arn = String(body.arn ?? "").trim();

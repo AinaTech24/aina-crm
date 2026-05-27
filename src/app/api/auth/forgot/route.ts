@@ -16,12 +16,18 @@ import { v4 as uuid } from "uuid";
 import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { withSystem } from "@/db/client";
+import { enforce } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
 const Body = z.object({ email: z.string().email() });
 
 export async function POST(req: NextRequest) {
+  // 5 reset requests per IP per hour. Stops email-enumeration probes and
+  // protects user mailboxes from being flooded with reset emails.
+  const limited = enforce(req, "auth.forgot", { limit: 5, windowSec: 60 * 60 });
+  if (limited) return limited;
+
   const parse = Body.safeParse(await req.json().catch(() => ({})));
   if (!parse.success) return NextResponse.json({ ok: true }); // shape-stable
   const email = parse.data.email.toLowerCase();

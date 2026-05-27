@@ -10,11 +10,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuid } from "uuid";
 import { eq } from "drizzle-orm";
-import { withSystem } from "@/db/client";
+import { withSystem, withTenant } from "@/db/client";
 import { shareTokens, complianceDocuments, leads, eventsOutbox } from "@/db/schema";
 import { markShareTokenUsed } from "@/lib/share-tokens";
 import { putObject, vaultKey } from "@/lib/storage/s3";
 import { transitionTo } from "@/lib/blueprints/engine";
+import { enforce } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +25,12 @@ const ALLOWED_MIMES = new Set(["application/pdf", "image/jpeg", "image/png"]);
 
 export async function POST(req: NextRequest) {
   try {
+    // 10 uploads per IP per hour. Each request can carry multiple files,
+    // so this is the *number of submissions*, not files. Stops S3-upload
+    // spam against the public link.
+    const limited = enforce(req, "public.docs", { limit: 10, windowSec: 60 * 60 });
+    if (limited) return limited;
+
     const formData = await req.formData();
     const tokenId = String(formData.get("tokenId") ?? "");
     const signatureName = String(formData.get("signatureName") ?? "").trim();
@@ -35,14 +42,21 @@ export async function POST(req: NextRequest) {
     const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "";
     const ua = req.headers.get("user-agent") ?? "";
 
-    const out = await withSystem(async (tx) => {
-      const [tk] = await tx.select().from(shareTokens).where(eq(shareTokens.id, tokenId));
-      if (!tk) throw new Error("Invalid token");
-      if (tk.revokedAt) throw new Error("This link was revoked");
-      if (tk.usedAt) throw new Error("This link has already been used");
-      if (new Date(tk.expiresAt as any) < new Date()) throw new Error("This link has expired");
-      if (tk.kind !== "document_collection") throw new Error("Not a document-collection token");
+    // Step 1: token lookup (cross-tenant — no session yet).
+    const tk = await withSystem(async (tx) => {
+      const [t] = await tx.select().from(shareTokens).where(eq(shareTokens.id, tokenId));
+      if (!t) throw new Error("Invalid token");
+      if (t.revokedAt) throw new Error("This link was revoked");
+      if (t.usedAt) throw new Error("This link has already been used");
+      if (new Date(t.expiresAt as any) < new Date()) throw new Error("This link has expired");
+      if (t.kind !== "document_collection") throw new Error("Not a document-collection token");
+      return t;
+    });
 
+    // Step 2: actual writes happen inside the token's tenant scope so RLS
+    // protects every UPDATE/INSERT against cross-tenant write even if the
+    // token-id flow ever leaks.
+    const out = await withTenant(tk.tenantId!, async (tx) => {
       // Walk all file_* entries
       const uploaded: Array<{ docId: string; key: string; label: string; size: number; mime: string }> = [];
       for (const [name, value] of formData.entries()) {

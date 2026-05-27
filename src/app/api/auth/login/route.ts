@@ -12,6 +12,7 @@ import { sql } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { withSystem } from "@/db/client";
 import { signSession, SESSION_COOKIE, SESSION_TTL_SECONDS } from "@/lib/auth/session";
+import { enforce } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +24,12 @@ export async function POST(req: NextRequest) {
   if (!email || !password) {
     return NextResponse.json({ error: "email + password required" }, { status: 400 });
   }
+
+  // Rate-limit by IP+email — 10 failed attempts in 15 min triggers 429.
+  // Tight enough to stop credential stuffing, loose enough that a real
+  // user with a sticky-keys typo doesn't get locked out.
+  const limited = enforce(req, "auth.login", { limit: 10, windowSec: 15 * 60 }, email);
+  if (limited) return limited;
 
   // System-context lookup because we don't know the tenant yet — the email is the lookup key.
   const userRow = await withSystem(async (tx) => {

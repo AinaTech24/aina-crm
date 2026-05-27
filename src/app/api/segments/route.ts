@@ -16,7 +16,8 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { segments, segmentMemberships } from "@/db/schema";
 import { FilterASTSchema } from "@/lib/filter/ast";
-import { compileToSelect } from "@/lib/filter/compiler";
+import { compileToSelect, bindCompiled } from "@/lib/filter/compiler";
+import { require as requireCap } from "@/lib/auth/rbac";
 
 export const dynamic = "force-dynamic";
 
@@ -44,6 +45,7 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
+    requireCap(session.roles, "segments.manage");
     const parse = CreateBody.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) {
       return NextResponse.json({ error: "invalid body", issues: parse.error.issues }, { status: 400 });
@@ -72,18 +74,24 @@ export async function POST(req: NextRequest) {
 
       // Static: materialize once immediately. Dynamic: leave to worker.
       if (body.kind === "static") {
-        const { sql: querySql } = compileToSelect(body.ast, body.subjectType, {});
-        const matches = await tx.execute(sql.raw(querySql) as any);
-        for (const row of matches.rows as Array<{ id: string }>) {
-          await tx.insert(segmentMemberships).values({
-            segmentId: segId,
-            tenantId: session.tenantId,
-            subjectId: row.id,
-          } as any);
+        const { sql: querySql, params } = compileToSelect(body.ast, body.subjectType, {});
+        const matches = await tx.execute(bindCompiled(querySql, params) as any);
+        const rows = matches.rows as Array<{ id: string }>;
+        if (rows.length > 0) {
+          // Batch insert — was one-row-at-a-time (N+1) before, which was
+          // brutal at 100K matches. Multi-row insert lands in a single
+          // round-trip.
+          await tx.insert(segmentMemberships).values(
+            rows.map((r) => ({
+              segmentId: segId,
+              tenantId: session.tenantId,
+              subjectId: r.id,
+            })) as any
+          );
         }
         await tx
           .update(segments)
-          .set({ memberCount: matches.rows.length, lastMaterializedAt: new Date() } as any)
+          .set({ memberCount: rows.length, lastMaterializedAt: new Date() } as any)
           .where(eq(segments.id, segId));
       }
     });

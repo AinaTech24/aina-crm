@@ -10,7 +10,7 @@
 import { and, eq, sql } from "drizzle-orm";
 import { withTenant, withSystem } from "@/db/client";
 import { eventsOutbox, segmentMemberships, segments } from "@/db/schema";
-import { compileToSelect } from "@/lib/filter/compiler";
+import { compileToSelect, bindCompiled } from "@/lib/filter/compiler";
 
 export async function materializeSegment(tenantId: string, segmentId: string): Promise<{
   added: number;
@@ -37,9 +37,12 @@ export async function materializeSegment(tenantId: string, segmentId: string): P
       limit: 100_000,
     });
 
-    // RLS scopes by tenant_id via the session — but for safety add a clause
-    const tenantClause = sql.raw(` AND ${aliasOf(seg.subjectType)}.tenant_id = '${tenantId}'`);
-    const rawSql = sql`${sql.raw(querySql)} ${tenantClause}`;
+    // RLS scopes by tenant_id via the session — but for safety add an
+    // explicit tenant clause. Bound through sql template (not interpolated)
+    // so it's a real parameter, never string concatenation.
+    const alias = aliasOf(seg.subjectType);
+    const compiled = bindCompiled(querySql, params);
+    const rawSql = sql`${compiled} AND ${sql.raw(alias)}.tenant_id = ${tenantId}`;
     const result = await tx.execute(rawSql as any);
     const newIds = new Set((result.rows as any[]).map((r) => r.id));
 
@@ -59,28 +62,29 @@ export async function materializeSegment(tenantId: string, segmentId: string): P
       if (!newIds.has(id)) removed.push(id);
     }
 
-    // Apply changes
+    // Apply changes — batched, not row-by-row.
     if (added.length) {
-      const values = added.map((id) => ({
-        segmentId,
-        tenantId,
-        subjectId: id,
-      }));
-      // Upsert
-      for (const v of values) {
-        await tx.execute(
-          sql`INSERT INTO segment_memberships (segment_id, tenant_id, subject_id, added_at, removed_at)
-              VALUES (${v.segmentId}, ${v.tenantId}, ${v.subjectId}, now(), NULL)
-              ON CONFLICT (segment_id, subject_id) DO UPDATE
-              SET added_at = EXCLUDED.added_at, removed_at = NULL`
-        );
-      }
+      // Build a multi-row VALUES expression with all UUIDs bound as params.
+      // PG's ON CONFLICT lets us upsert in one round-trip instead of N.
+      const valuesSql = sql.join(
+        added.map((id) => sql`(${segmentId}::uuid, ${tenantId}::uuid, ${id}::uuid, now(), NULL)`),
+        sql`, `
+      );
+      await tx.execute(
+        sql`INSERT INTO segment_memberships (segment_id, tenant_id, subject_id, added_at, removed_at)
+            VALUES ${valuesSql}
+            ON CONFLICT (segment_id, subject_id) DO UPDATE
+            SET added_at = EXCLUDED.added_at, removed_at = NULL`
+      );
     }
     if (removed.length) {
+      // Bind each removed id as a real parameter — previous code did
+      // map(id => `'${id}'`).join(",") which is plain string interpolation.
+      const idList = sql.join(removed.map((id) => sql`${id}::uuid`), sql`, `);
       await tx.execute(
         sql`UPDATE segment_memberships SET removed_at = now()
-            WHERE segment_id = ${segmentId}
-              AND subject_id IN (${sql.raw(removed.map((id) => `'${id}'`).join(","))})`
+            WHERE segment_id = ${segmentId}::uuid
+              AND subject_id IN (${idList})`
       );
     }
 

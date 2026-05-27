@@ -106,6 +106,9 @@ export type Capability =
   | "template.approve"
   | "campaign.send"
   | "content_calendar.manage"
+  // Segments (audience lists for campaigns + workflow triggers)
+  | "segments.view"
+  | "segments.manage"
   // Proposals (Mutual Fund / Insurance / PMS / AIF)
   | "proposal.view"
   | "proposal.write"
@@ -189,6 +192,11 @@ const MATRIX: Record<Capability, Role[]> = {
   "template.approve": ["compliance"],
   "campaign.send": ["marketing"],
   "content_calendar.manage": ["marketing"],
+
+  // Segments (audience lists). Marketing builds them for campaigns;
+  // back-office reads to seed workflow triggers.
+  "segments.view": ["marketing", "back_office", "ops", "compliance", "branch_head"],
+  "segments.manage": ["marketing", "back_office", "ops"],
 
   // Proposals — RM/back_office prepare, compliance reviews, owner sends.
   "proposal.view": ["rm", "branch_head", "back_office", "ops", "compliance", "marketing"],

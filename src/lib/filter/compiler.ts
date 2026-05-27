@@ -255,3 +255,37 @@ function renumberPlaceholders(sql: string, base: number): string {
   // $N becomes $(N+base)
   return sql.replace(/\$(\d+)/g, (_, n) => `$${Number(n) + base}`);
 }
+
+/**
+ * Bind a compiled `{ sql, params }` result into a Drizzle `sql` template that
+ * properly parameterises every value.
+ *
+ * The compiler returns text with `$1, $2, …` placeholders + a `params` array.
+ * Callers used to feed that directly into `sql.raw(text)` and drop the params,
+ * which either crashed at runtime or — through the `intervalSql()` escape — let
+ * a tenant-writable AST inject SQL via saved segments. This helper re-binds
+ * every placeholder through Drizzle's tagged template so each value rides as a
+ * proper bind parameter (no string interpolation, no escape gymnastics).
+ *
+ * Usage:
+ *   const { sql: text, params } = compileToSelect(ast, "investor", { limit: 50 });
+ *   const result = await tx.execute(bindCompiled(text, params));
+ */
+import { sql as dsql } from "drizzle-orm";
+export function bindCompiled(text: string, params: unknown[]): ReturnType<typeof dsql> {
+  const tokens: any[] = [];
+  let lastEnd = 0;
+  const re = /\$(\d+)/g;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(text)) !== null) {
+    if (match.index > lastEnd) tokens.push(dsql.raw(text.slice(lastEnd, match.index)));
+    const idx = parseInt(match[1], 10) - 1;
+    if (idx < 0 || idx >= params.length) {
+      throw new Error(`bindCompiled: $${idx + 1} out of range (params length ${params.length})`);
+    }
+    tokens.push(params[idx]);
+    lastEnd = match.index + match[0].length;
+  }
+  if (lastEnd < text.length) tokens.push(dsql.raw(text.slice(lastEnd)));
+  return dsql.join(tokens, dsql``);
+}

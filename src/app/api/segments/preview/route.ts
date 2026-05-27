@@ -12,7 +12,7 @@ import { sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { FilterASTSchema } from "@/lib/filter/ast";
-import { compileToSelect } from "@/lib/filter/compiler";
+import { compileToSelect, bindCompiled } from "@/lib/filter/compiler";
 
 export const dynamic = "force-dynamic";
 
@@ -28,15 +28,20 @@ export async function POST(req: NextRequest) {
     const subject: string = body.subject ?? "investor";
 
     const result = await withTenant(session.tenantId, async (tx) => {
-      const { sql: previewSql, params } = compileToSelect(astParse.data, subject, {
+      const { sql: previewSql, params: previewParams } = compileToSelect(astParse.data, subject, {
         limit: 10,
         columns: ["id", "name"], // safe default for the listed subjects
       });
-      const { sql: countSql } = compileToSelect(astParse.data, subject, { count: true });
+      const { sql: countSql, params: countParams } = compileToSelect(astParse.data, subject, {
+        count: true,
+      });
 
+      // bindCompiled re-binds $1, $2, … through Drizzle's tagged template so
+      // every value is sent as a real bind parameter. The previous code did
+      // sql.raw(text) and dropped the params, which was unsafe.
       const [countResult, sampleResult] = await Promise.all([
-        tx.execute(sql.raw(countSql) as any),
-        tx.execute(sql.raw(previewSql) as any),
+        tx.execute(bindCompiled(countSql, countParams) as any),
+        tx.execute(bindCompiled(previewSql, previewParams) as any),
       ]);
 
       return {

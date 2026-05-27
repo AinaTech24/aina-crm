@@ -11,6 +11,7 @@ import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { withSystem } from "@/db/client";
 import { signSession, SESSION_COOKIE, SESSION_TTL_SECONDS } from "@/lib/auth/session";
+import { enforce } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +21,13 @@ const Body = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  // 20 reset attempts per IP per 15 min — wide enough for a legit user
+  // who fat-fingers their new password a few times, narrow enough to stop
+  // a token brute force (the hash is sha-256 so brute force is infeasible
+  // anyway, but defence in depth).
+  const limited = enforce(req, "auth.reset", { limit: 20, windowSec: 15 * 60 });
+  if (limited) return limited;
+
   const parse = Body.safeParse(await req.json().catch(() => ({})));
   if (!parse.success) return NextResponse.json({ error: "invalid body" }, { status: 400 });
   const tokenHash = crypto.createHash("sha256").update(parse.data.token).digest("hex");
