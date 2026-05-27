@@ -9,6 +9,9 @@ import { RecomputeTiersButton } from "@/components/investors/RecomputeTiersButto
 import { RowActions } from "@/components/common/RowActions";
 import { FilterBar } from "@/components/common/FilterBar";
 import { CustomViews } from "@/components/common/CustomViews";
+import { HelpHint } from "@/components/help/HelpHint";
+import { EmptyState } from "@/components/common/EmptyState";
+import { Users } from "lucide-react";
 
 const segmentColors: Record<string, string> = {
   HNI: "bg-violet-50 text-violet-700",
@@ -161,24 +164,48 @@ export default async function InvestorsPage({
 
       <div className="card-surface overflow-hidden">
         {rows.length === 0 ? (
-          <div className="p-12 text-center text-sm text-muted-foreground">
-            No investors match these filters.{" "}
-            <Link href="/dashboard/investors/new" className="text-brand-cyan-deep hover:underline">
-              Add one manually
-            </Link>
-            .
-          </div>
+          // Brand-new tenant with zero investors AND no active filter → big friendly EmptyState.
+          // Otherwise just a short "no matches" line so the filter UI stays in context.
+          total === 0 && !q && !segment.length && !tier.length && !status.length && !kyc.length ? (
+            <div className="p-6">
+              <EmptyState
+                icon={Users}
+                title="No clients yet — let's add the first one"
+                description="A client is anyone whose money you manage. Add them one at a time, or save hours by importing your existing book from Excel."
+                tip="Already have a list in Excel? Use Import — the wizard maps columns automatically and warns you about KYC gaps."
+                primary={{ href: "/dashboard/investors/new", label: "+ Add first client" }}
+                secondary={{ href: "/dashboard/investors/import", label: "Import from Excel" }}
+                learnMoreAnchor="kyc"
+              />
+            </div>
+          ) : (
+            <div className="p-12 text-center text-sm text-muted-foreground">
+              No investors match these filters.{" "}
+              <Link href="/dashboard/investors/new" className="text-brand-cyan-deep hover:underline">
+                Add one manually
+              </Link>
+              .
+            </div>
+          )
         ) : (
           <table className="w-full text-sm">
             <thead className="text-xs text-muted-foreground border-b">
               <tr>
                 <th className="text-left px-4 py-2 font-medium">Name</th>
-                <th className="text-left py-2 font-medium">PAN</th>
+                <th className="text-left py-2 font-medium">
+                  <span className="inline-flex items-center">PAN<HelpHint term="PAN" /></span>
+                </th>
                 <th className="text-left py-2 font-medium">Tier</th>
                 <th className="text-left py-2 font-medium">Segment</th>
-                <th className="text-right py-2 font-medium">AUM</th>
-                <th className="text-right py-2 font-medium">SIP</th>
-                <th className="text-left py-2 font-medium pl-4">KYC</th>
+                <th className="text-right py-2 font-medium">
+                  <span className="inline-flex items-center">AUM<HelpHint term="AUM" /></span>
+                </th>
+                <th className="text-right py-2 font-medium">
+                  <span className="inline-flex items-center">SIP<HelpHint term="SIP" /></span>
+                </th>
+                <th className="text-left py-2 font-medium pl-4">
+                  <span className="inline-flex items-center">KYC<HelpHint term="KYC" /></span>
+                </th>
                 <th className="text-left py-2 font-medium">Status</th>
                 <th className="px-4 py-2"></th>
               </tr>

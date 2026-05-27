@@ -17,6 +17,7 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Save, Loader2, Upload, CreditCard } from "lucide-react";
+import { HelpHint } from "@/components/help/HelpHint";
 
 type OwnerLite = { id: string; name: string; email: string } | null;
 
@@ -146,8 +147,8 @@ export function OrganisationProfileForm({
         <Row label="Organisation name (display)" value={form.displayName} onChange={(v) => set("displayName", v)} required />
         <Row label="Legal name" value={form.legalName} onChange={(v) => set("legalName", v)} required />
         <Row label="Owner name" value={owner?.name ?? "—"} disabled note={owner ? owner.email : ""} />
-        <Row label="ARN" value={tenant.arn ?? "—"} disabled note="Managed by AINA" />
-        <Row label="Principal EUIN" value={tenant.principalEuin ?? "—"} disabled note="Managed by AINA" />
+        <Row label="ARN" helpTerm="ARN" value={tenant.arn ?? "—"} disabled note="Managed by AINA" />
+        <Row label="Principal EUIN" helpTerm="EUIN" value={tenant.principalEuin ?? "—"} disabled note="Managed by AINA" />
         <Row label="GSTIN" value={tenant.gstNumber ?? "—"} disabled />
         <Row
           label="Created"
@@ -340,6 +341,7 @@ function Row({
   disabled,
   note,
   tone,
+  helpTerm,
 }: {
   label: string;
   value: string;
@@ -350,9 +352,10 @@ function Row({
   disabled?: boolean;
   note?: string;
   tone?: "emerald" | "rose";
+  helpTerm?: string;
 }) {
   return (
-    <Field label={label} note={note}>
+    <Field label={label} note={note} helpTerm={helpTerm}>
       <input
         type={type}
         value={value}
@@ -368,11 +371,24 @@ function Row({
   );
 }
 
-function Field({ label, children, note }: { label: string; children: React.ReactNode; note?: string }) {
+function Field({
+  label,
+  children,
+  note,
+  helpTerm,
+}: {
+  label: string;
+  children: React.ReactNode;
+  note?: string;
+  helpTerm?: string;
+}) {
   return (
     <label className="block">
       <div className="text-xs font-medium mb-1 flex items-center justify-between">
-        <span>{label}</span>
+        <span className="inline-flex items-center">
+          {label}
+          {helpTerm && <HelpHint term={helpTerm} />}
+        </span>
         {note && <span className="text-[10px] text-muted-foreground font-normal">{note}</span>}
       </div>
       {children}

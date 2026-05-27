@@ -33,6 +33,8 @@ import {
   Bot,
   CreditCard,
   AlertTriangle,
+  HelpCircle,
+  BookOpen,
 } from "lucide-react";
 import { eq } from "drizzle-orm";
 import { db } from "@/db/client";
@@ -43,6 +45,7 @@ import { loadTenantLicense, isPathAllowedWhenRestricted } from "@/lib/auth/licen
 import { GlobalSearch } from "@/components/layout/GlobalSearch";
 import { NotificationBell } from "@/components/layout/NotificationBell";
 import { SidebarNavLink } from "@/components/layout/SidebarNavLink";
+import { QuickCreateFab } from "@/components/layout/QuickCreateFab";
 
 export const dynamic = "force-dynamic";
 
@@ -145,6 +148,12 @@ const NAV: NavSection[] = [
     items: [
       { href: "/dashboard/billing", label: "Billing", icon: CreditCard, roles: ["owner"] },
       { href: "/dashboard/settings", label: "Settings", icon: Settings, roles: ["owner"] },
+    ],
+  },
+  {
+    title: "Help",
+    items: [
+      { href: "/dashboard/help", label: "Help & glossary", icon: BookOpen },
     ],
   },
 ];
@@ -301,6 +310,14 @@ export default async function DashboardLayout({ children }: { children: React.Re
                 })}
               </span>
             )}
+            <Link
+              href="/dashboard/help"
+              className="size-9 rounded-full bg-secondary/70 hover:bg-secondary text-muted-foreground hover:text-foreground grid place-items-center transition-colors"
+              aria-label="Help and glossary"
+              title="Help & glossary — explanations for ARN, KYC, NAV and more"
+            >
+              <HelpCircle className="size-4" />
+            </Link>
             <NotificationBell />
             <div className="size-9 rounded-full brand-gradient text-white grid place-items-center text-xs font-bold shadow-md ring-2 ring-white">
               {initials}
@@ -318,6 +335,10 @@ export default async function DashboardLayout({ children }: { children: React.Re
           )}
         </div>
       </main>
+      {/* Floating quick-create button — bottom-right. Lets users add a lead,
+          client, task, meeting, proposal or service request from anywhere
+          without hunting through the sidebar. */}
+      {!license.isRestricted && <QuickCreateFab />}
     </div>
   );
 }

@@ -5,6 +5,7 @@ import { withTenant } from "@/db/client";
 import { formatINR } from "@/lib/utils";
 import type { SessionUser } from "@/lib/auth/session";
 import { NetSalesChart } from "./NetSalesChart";
+import { GettingStartedChecklist } from "./GettingStartedChecklist";
 
 /**
  * MFD Owner Cockpit — spec § 6, Module 2.
@@ -216,6 +217,9 @@ export async function OwnerCockpit({ session }: { session: SessionUser }) {
           </div>
         </div>
       </div>
+
+      {/* Getting-started checklist — auto-hides when all steps complete */}
+      <GettingStartedChecklist tenantId={session.tenantId} />
 
       {/* ---------- 1. Headline KPIs — hero tiles ---------- */}
       <div className="grid grid-cols-4 gap-3">

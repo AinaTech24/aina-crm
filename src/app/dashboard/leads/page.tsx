@@ -15,6 +15,7 @@ import { requireSession } from "@/lib/auth/session";
 import { LeadsKanban } from "@/components/leads/LeadsKanban";
 import { FilterBar } from "@/components/common/FilterBar";
 import { CustomViews } from "@/components/common/CustomViews";
+import { EmptyState } from "@/components/common/EmptyState";
 
 /**
  * Pipeline columns — the spec's 8 stages flattened to the visible kanban.
@@ -189,7 +190,19 @@ export default async function LeadsPage({
         }
       />
 
-      {/* Kanban — drag-and-drop enabled */}
+      {/* Kanban — drag-and-drop enabled. Show a friendly empty-state when
+          there are no leads yet AND no filters are active, so a brand-new
+          tenant sees a clear "Add your first lead" path. */}
+      {data.rows.length === 0 && !q && stageFilter.length === 0 && sourceFilter.length === 0 ? (
+        <EmptyState
+          icon={Sparkles}
+          title="No leads yet — let's add the first one"
+          description="A lead is anyone who's shown interest in your services but hasn't invested yet. The CRM tracks them through 8 stages from First Contact to Converted."
+          tip="Click + at the top right to add manually, or import an Excel file of leads in seconds."
+          primary={{ href: "/dashboard/leads/new", label: "+ Add first lead" }}
+          secondary={{ href: "/dashboard/leads/import", label: "Import from Excel" }}
+        />
+      ) : (
       <div className="card-surface p-3">
         <div className="flex items-center justify-between mb-3 px-1">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -217,6 +230,7 @@ export default async function LeadsPage({
           }))}
         />
       </div>
+      )}
     </div>
   );
 }
