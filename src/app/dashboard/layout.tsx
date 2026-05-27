@@ -79,8 +79,9 @@ const NAV: NavSection[] = [
         roles: ["owner", "rm", "branch_head", "back_office", "ops", "compliance"] },
       { href: "/dashboard/families", label: "Family Mapping", icon: HeartHandshake, module: "family_mapping",
         roles: ["owner", "rm", "branch_head", "back_office", "ops", "compliance"] },
-      { href: "/dashboard/onboarding", label: "Client Onboarding", icon: ClipboardCheck, module: "onboarding",
-        roles: ["owner", "back_office", "ops", "compliance"] },
+      // Client Onboarding module retired — its 11-stage pipeline is now
+      // covered by the unified 30-stage blueprint engine that owns both
+      // Leads (1-10) and Clients (11-30). Page redirects to /dashboard/leads.
       { href: "/dashboard/risk-profiles", label: "Risk Profile", icon: ShieldCheck, module: "risk_profile",
         roles: ["owner", "compliance", "back_office", "ops", "rm"] },
       { href: "/dashboard/goals", label: "Goal Planning", icon: Target, module: "goal_planning",

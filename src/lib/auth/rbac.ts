@@ -298,7 +298,11 @@ export function defaultHomeFor(roles: string[]): string {
   if (roles.includes("owner")) return "/dashboard";
   if (roles.includes("compliance")) return "/dashboard/compliance";
   if (roles.includes("marketing")) return "/dashboard/campaigns";
-  if (roles.includes("back_office") || roles.includes("ops")) return "/dashboard/onboarding";
+  // back_office / ops used to land on /dashboard/onboarding before the
+  // module was retired (its 11-stage pipeline merged into the unified
+  // blueprint engine that lives in Leads + Clients). Send them to Tasks
+  // — that's the work-queue view they actually use day to day.
+  if (roles.includes("back_office") || roles.includes("ops")) return "/dashboard/tasks";
   if (roles.includes("rm") || roles.includes("branch_head")) return "/dashboard";
   if (roles.includes("team_member")) return "/dashboard/tasks";
   return "/dashboard/tasks";
