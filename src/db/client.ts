@@ -7,20 +7,58 @@ if (!connectionString) {
   throw new Error("DATABASE_URL is not set");
 }
 
-export const pool = new Pool({
-  connectionString,
-  // 40 is a sane default — Next.js dev forks per-route, each forks a request
-  // worker, and `withTenant` opens a transaction. Raise via PG_POOL_MAX if
-  // you see "remaining connection slots" or "too many clients" errors.
-  max: Number(process.env.PG_POOL_MAX ?? 40),
-  idleTimeoutMillis: 30_000,
-  // Wait up to 5s for a free slot instead of hanging the request forever.
-  connectionTimeoutMillis: 5_000,
-});
+/**
+ * HMR-safe singleton for the pg pool + drizzle client.
+ *
+ * Next.js dev mode reloads modules on every file change. Without this guard
+ * a NEW Pool is created for every reload, the OLD pool keeps its sockets
+ * open, and within a few HMR cycles the Node process is holding hundreds of
+ * dangling connections — pool.connect() then waits for the timeout because
+ * the OLD pool's slots are stuck.
+ *
+ * Stashing the pool on globalThis means HMR re-imports the same instance.
+ * Only the very first module load creates a new pool; subsequent reloads
+ * find it on `globalThis.__mfd_pg_pool` and reuse it.
+ */
+declare global {
+  // eslint-disable-next-line no-var
+  var __mfd_pg_pool: Pool | undefined;
+  // eslint-disable-next-line no-var
+  var __mfd_db: ReturnType<typeof drizzle<typeof schema>> | undefined;
+}
+
+export const pool: Pool =
+  globalThis.__mfd_pg_pool ??
+  new Pool({
+    connectionString,
+    // 20 is plenty for a single-tenant dev box. Production scales horizontally
+    // via more app replicas, not bigger pools. Raise via PG_POOL_MAX if you
+    // legitimately need more (and have the Postgres slots to back it).
+    max: Number(process.env.PG_POOL_MAX ?? 20),
+    idleTimeoutMillis: 30_000,
+    // Wait up to 5s for a free slot instead of hanging the request forever.
+    connectionTimeoutMillis: 5_000,
+    // If a connection sits with an open transaction for > 30s, kill it —
+    // protects against zombie connections from crashed routes.
+    statement_timeout: 30_000,
+  });
+
+if (!globalThis.__mfd_pg_pool) {
+  globalThis.__mfd_pg_pool = pool;
+  // Surface pool errors so a runaway query doesn't silently exhaust the pool.
+  pool.on("error", (err) => {
+    console.error("[pg pool] idle client error:", err.message);
+  });
+}
 
 // Disable Drizzle SQL query logging unless explicitly opted-in — in dev it
 // adds ~30-100ms per query and floods stdout. Set DB_LOG=1 to re-enable.
-export const db = drizzle(pool, { schema, logger: process.env.DB_LOG === "1" });
+export const db: ReturnType<typeof drizzle<typeof schema>> =
+  globalThis.__mfd_db ?? drizzle(pool, { schema, logger: process.env.DB_LOG === "1" });
+
+if (!globalThis.__mfd_db) {
+  globalThis.__mfd_db = db;
+}
 
 export type DbClient = typeof db;
 
