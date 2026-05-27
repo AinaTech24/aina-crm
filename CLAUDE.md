@@ -244,6 +244,48 @@ The worker process drains queued runs in a tight loop (default 500ms).
 
 ---
 
+## Running the server
+
+### Local dev — `npm run dev`
+
+Wrapped by `scripts/dev-server.mjs`. The wrapper does three things that
+plain `next dev` doesn't:
+
+1. **Bounds the Node heap to 2 GB** via `--max-old-space-size=2048`. Without
+   this, the dev server's HMR cache grows unbounded — we've seen the
+   process at 12 GB after a long session, at which point Windows
+   page-thrashes and every HTTP request hangs at "loading". With the
+   bound, V8 OOM-crashes cleanly instead.
+2. **Frees port 3000 before starting** — kills any stale `node.exe`
+   listening on the port so a half-dead previous instance doesn't block
+   the new one.
+3. **Auto-restarts on crash + on `/api/health` timeout**, up to 5
+   restarts inside a 5-minute window. If it crashes more than that,
+   the wrapper gives up loudly — that's a real bug, not memory creep.
+
+If you need the old behaviour (no wrapper) for debugging, use
+`npm run dev:raw`.
+
+### Production / demos / end-user delivery — `npm run start:prod`
+
+This runs `next build && next start`. **None of the dev-server
+instability applies here** — there's no HMR cache, no module
+re-imports on save, no growing memory. This is what you run when
+showing the CRM to a client. The build artefact in `.next/` is portable
+and can be served from any Node host.
+
+For staging or longer-lived environments, run `next start` behind a
+process supervisor (pm2 / systemd / Docker `restart: unless-stopped`)
+so the OS handles crash recovery for you.
+
+### Health check
+
+`GET /api/health` returns 200 + a small JSON if the process and the DB
+are both responsive, or 503 if the DB is unreachable. Used by
+`scripts/dev-server.mjs` and by any external uptime probe.
+
+---
+
 ## What's deferred / not yet wired
 
 - **Authentication** — NextAuth dependencies are in `package.json` but session integration is incomplete. The middleware that injects `tenant_id` into `withTenant` calls needs to read from the session.

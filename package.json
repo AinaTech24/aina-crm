@@ -4,10 +4,12 @@
   "private": true,
   "description": "Multi-tenant SaaS practice operating system for Indian Mutual Fund Distributors",
   "scripts": {
-    "dev": "next dev",
+    "dev": "node scripts/dev-server.mjs",
+    "dev:raw": "next dev",
     "dev:turbo": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
+    "start:prod": "npm run build && next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
