@@ -13,6 +13,19 @@ import { HelpHint } from "@/components/help/HelpHint";
 import { EmptyState } from "@/components/common/EmptyState";
 import { Users } from "lucide-react";
 import { InvestorsKanban, type InvestorRow } from "@/components/investors/InvestorsKanban";
+import { ColumnManager } from "@/components/common/ColumnManager";
+
+const INVESTORS_COLUMNS = [
+  { key: "name", label: "Name", required: true },
+  { key: "pan", label: "PAN" },
+  { key: "tier", label: "Tier" },
+  { key: "segment", label: "Segment" },
+  { key: "aum", label: "AUM" },
+  { key: "sip", label: "Monthly SIP" },
+  { key: "kyc", label: "KYC" },
+  { key: "status", label: "Status" },
+  { key: "actions", label: "Actions", required: true },
+];
 
 const segmentColors: Record<string, string> = {
   HNI: "bg-violet-50 text-violet-700",
@@ -159,6 +172,9 @@ export default async function InvestorsPage({
               <LayoutGrid className="size-3.5" /> Kanban
             </Link>
           </div>
+          {view === "table" && (
+            <ColumnManager moduleKey="investors" columns={INVESTORS_COLUMNS} />
+          )}
           <RecomputeTiersButton />
           <Link
             href="/dashboard/investors/import"
@@ -285,38 +301,38 @@ export default async function InvestorsPage({
             </div>
           )
         ) : (
-          <table className="w-full text-sm">
+          <table className="w-full text-sm" data-table="investors">
             <thead className="text-xs text-muted-foreground border-b">
               <tr>
-                <th className="text-left px-4 py-2 font-medium">Name</th>
-                <th className="text-left py-2 font-medium">
+                <th data-col="name" className="text-left px-4 py-2 font-medium">Name</th>
+                <th data-col="pan" className="text-left py-2 font-medium">
                   <span className="inline-flex items-center">PAN<HelpHint term="PAN" /></span>
                 </th>
-                <th className="text-left py-2 font-medium">Tier</th>
-                <th className="text-left py-2 font-medium">Segment</th>
-                <th className="text-right py-2 font-medium">
+                <th data-col="tier" className="text-left py-2 font-medium">Tier</th>
+                <th data-col="segment" className="text-left py-2 font-medium">Segment</th>
+                <th data-col="aum" className="text-right py-2 font-medium">
                   <span className="inline-flex items-center">AUM<HelpHint term="AUM" /></span>
                 </th>
-                <th className="text-right py-2 font-medium">
+                <th data-col="sip" className="text-right py-2 font-medium">
                   <span className="inline-flex items-center">SIP<HelpHint term="SIP" /></span>
                 </th>
-                <th className="text-left py-2 font-medium pl-4">
+                <th data-col="kyc" className="text-left py-2 font-medium pl-4">
                   <span className="inline-flex items-center">KYC<HelpHint term="KYC" /></span>
                 </th>
-                <th className="text-left py-2 font-medium">Status</th>
-                <th className="px-4 py-2"></th>
+                <th data-col="status" className="text-left py-2 font-medium">Status</th>
+                <th data-col="actions" className="px-4 py-2"></th>
               </tr>
             </thead>
             <tbody>
               {rows.map((i) => (
                 <tr key={i.id} className="border-b last:border-0 hover:bg-accent/40">
-                  <td className="px-4 py-3 font-medium">
+                  <td data-col="name" className="px-4 py-3 font-medium">
                     <Link href={`/dashboard/investors/${i.id}`} className="hover:underline">
                       {i.name}
                     </Link>
                   </td>
-                  <td className="py-3 text-xs font-mono text-muted-foreground">{i.pan}</td>
-                  <td className="py-3">
+                  <td data-col="pan" className="py-3 text-xs font-mono text-muted-foreground">{i.pan}</td>
+                  <td data-col="tier" className="py-3">
                     {i.serviceTier ? (
                       <span
                         className={`text-xs font-bold px-2 py-0.5 rounded-full ${tierColors[i.serviceTier] ?? ""}`}
@@ -328,18 +344,18 @@ export default async function InvestorsPage({
                       <span className="text-xs text-muted-foreground">—</span>
                     )}
                   </td>
-                  <td className="py-3">
+                  <td data-col="segment" className="py-3">
                     {i.segmentTag && (
                       <span className={`text-xs px-2 py-0.5 rounded-full ${segmentColors[i.segmentTag] ?? ""}`}>
                         {i.segmentTag}
                       </span>
                     )}
                   </td>
-                  <td className="py-3 text-right tabular-nums">{formatINR(Number(i.aum ?? 0))}</td>
-                  <td className="py-3 text-right tabular-nums text-muted-foreground">
+                  <td data-col="aum" className="py-3 text-right tabular-nums">{formatINR(Number(i.aum ?? 0))}</td>
+                  <td data-col="sip" className="py-3 text-right tabular-nums text-muted-foreground">
                     {Number(i.activeSipAmount ?? 0) > 0 ? `${formatINR(Number(i.activeSipAmount))}/mo` : "—"}
                   </td>
-                  <td className="py-3 pl-4">
+                  <td data-col="kyc" className="py-3 pl-4">
                     <span
                       className={`text-xs px-2 py-0.5 rounded-full ${
                         i.kycStatus === "verified"
@@ -352,8 +368,8 @@ export default async function InvestorsPage({
                       {i.kycStatus}
                     </span>
                   </td>
-                  <td className="py-3 text-xs">{i.status}</td>
-                  <td className="px-4 py-3 text-right">
+                  <td data-col="status" className="py-3 text-xs">{i.status}</td>
+                  <td data-col="actions" className="px-4 py-3 text-right">
                     <RowActions
                       editHref={`/dashboard/investors/${i.id}`}
                       deleteUrl={`/api/investors/${i.id}`}

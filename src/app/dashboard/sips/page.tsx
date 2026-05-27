@@ -7,6 +7,22 @@ import { requireSession } from "@/lib/auth/session";
 import { formatINR, formatDate } from "@/lib/utils";
 import { FilterBar } from "@/components/common/FilterBar";
 import { CustomViews } from "@/components/common/CustomViews";
+import { ColumnManager } from "@/components/common/ColumnManager";
+
+const SIPS_COLUMNS = [
+  { key: "investor", label: "Investor", required: true },
+  { key: "folio", label: "Folio", defaultHidden: true },
+  { key: "scheme", label: "AMC / Scheme" },
+  { key: "amount", label: "Amount" },
+  { key: "frequency", label: "Frequency" },
+  { key: "start", label: "Start date", defaultHidden: true },
+  { key: "end", label: "End date", defaultHidden: true },
+  { key: "next_due", label: "Next due" },
+  { key: "mandate", label: "Mandate", defaultHidden: true },
+  { key: "status", label: "Status" },
+  { key: "rm", label: "RM" },
+  { key: "remarks", label: "Remarks", defaultHidden: true },
+];
 
 /** Spec § Module 10 — visual palette */
 const STATUS_TONE: Record<string, string> = {
@@ -156,15 +172,18 @@ export default async function SipsPage({
           },
         ]}
         rightSlot={
-          <CustomViews
-            viewsKey="views:sips"
-            presets={[
-              { id: "active", name: "Active SIPs", params: "status=active" },
-              { id: "stopped", name: "Stopped / Rejected", params: "status=stopped,rejected" },
-              { id: "monthly", name: "Monthly SIPs", params: "frequency=monthly&status=active" },
-              { id: "paused", name: "Paused", params: "status=paused" },
-            ]}
-          />
+          <div className="flex items-center gap-2">
+            <ColumnManager moduleKey="sips" columns={SIPS_COLUMNS} />
+            <CustomViews
+              viewsKey="views:sips"
+              presets={[
+                { id: "active", name: "Active SIPs", params: "status=active" },
+                { id: "stopped", name: "Stopped / Rejected", params: "status=stopped,rejected" },
+                { id: "monthly", name: "Monthly SIPs", params: "frequency=monthly&status=active" },
+                { id: "paused", name: "Paused", params: "status=paused" },
+              ]}
+            />
+          </div>
         }
       />
 
@@ -179,27 +198,27 @@ export default async function SipsPage({
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm" data-table="sips">
               <thead className="text-xs text-muted-foreground border-b">
                 <tr>
-                  <th className="text-left px-4 py-2 font-medium">Investor</th>
-                  <th className="text-left py-2 font-medium">Folio</th>
-                  <th className="text-left py-2 font-medium">AMC / Scheme</th>
-                  <th className="text-right py-2 font-medium">Amount</th>
-                  <th className="text-left py-2 font-medium">Frequency</th>
-                  <th className="text-left py-2 font-medium">Start</th>
-                  <th className="text-left py-2 font-medium">End</th>
-                  <th className="text-left py-2 font-medium">Next due</th>
-                  <th className="text-left py-2 font-medium">Mandate</th>
-                  <th className="text-left py-2 font-medium">Status</th>
-                  <th className="text-left py-2 font-medium">RM</th>
-                  <th className="text-left py-2 font-medium pr-4">Remarks</th>
+                  <th data-col="investor" className="text-left px-4 py-2 font-medium">Investor</th>
+                  <th data-col="folio" className="text-left py-2 font-medium">Folio</th>
+                  <th data-col="scheme" className="text-left py-2 font-medium">AMC / Scheme</th>
+                  <th data-col="amount" className="text-right py-2 font-medium">Amount</th>
+                  <th data-col="frequency" className="text-left py-2 font-medium">Frequency</th>
+                  <th data-col="start" className="text-left py-2 font-medium">Start</th>
+                  <th data-col="end" className="text-left py-2 font-medium">End</th>
+                  <th data-col="next_due" className="text-left py-2 font-medium">Next due</th>
+                  <th data-col="mandate" className="text-left py-2 font-medium">Mandate</th>
+                  <th data-col="status" className="text-left py-2 font-medium">Status</th>
+                  <th data-col="rm" className="text-left py-2 font-medium">RM</th>
+                  <th data-col="remarks" className="text-left py-2 font-medium pr-4">Remarks</th>
                 </tr>
               </thead>
               <tbody>
                 {data.rows.map(({ s: sip, investorName, mandateRef, mandateStatus, rmName }) => (
                   <tr key={sip.id} className="border-b last:border-0 hover:bg-secondary/40">
-                    <td className="px-4 py-3 whitespace-nowrap">
+                    <td data-col="investor" className="px-4 py-3 whitespace-nowrap">
                       {investorName ? (
                         <Link href={`/dashboard/investors/${sip.investorId}`} className="hover:underline">
                           {investorName}
@@ -208,28 +227,28 @@ export default async function SipsPage({
                         "—"
                       )}
                     </td>
-                    <td className="py-3 text-xs font-mono text-muted-foreground whitespace-nowrap">
+                    <td data-col="folio" className="py-3 text-xs font-mono text-muted-foreground whitespace-nowrap">
                       {sip.folioNumber ?? "—"}
                     </td>
-                    <td className="py-3 max-w-[220px]">
+                    <td data-col="scheme" className="py-3 max-w-[220px]">
                       <div className="text-sm truncate">{sip.schemeName ?? sip.schemeCode ?? "—"}</div>
                       <div className="text-xs text-muted-foreground truncate">{sip.amcName ?? sip.amcCode ?? "—"}</div>
                     </td>
-                    <td className="py-3 text-right tabular-nums">{formatINR(Number(sip.amount))}</td>
-                    <td className="py-3 text-xs">
+                    <td data-col="amount" className="py-3 text-right tabular-nums">{formatINR(Number(sip.amount))}</td>
+                    <td data-col="frequency" className="py-3 text-xs">
                       {FREQ_LABEL[sip.frequency] ?? sip.frequency}
                       {sip.sipDate && <span className="text-muted-foreground"> · day {sip.sipDate}</span>}
                     </td>
-                    <td className="py-3 text-xs text-muted-foreground tabular-nums">
+                    <td data-col="start" className="py-3 text-xs text-muted-foreground tabular-nums">
                       {sip.startDate ? formatDate(sip.startDate) : "—"}
                     </td>
-                    <td className="py-3 text-xs text-muted-foreground tabular-nums">
+                    <td data-col="end" className="py-3 text-xs text-muted-foreground tabular-nums">
                       {sip.endDate ? formatDate(sip.endDate) : "—"}
                     </td>
-                    <td className="py-3 text-xs tabular-nums">
+                    <td data-col="next_due" className="py-3 text-xs tabular-nums">
                       {sip.nextInstallmentAt ? formatDate(sip.nextInstallmentAt) : "—"}
                     </td>
-                    <td className="py-3 text-xs">
+                    <td data-col="mandate" className="py-3 text-xs">
                       {mandateRef ? (
                         <div>
                           <div className="font-mono text-muted-foreground truncate max-w-[100px]">{mandateRef}</div>
@@ -245,13 +264,13 @@ export default async function SipsPage({
                         <span className="text-muted-foreground">—</span>
                       )}
                     </td>
-                    <td className="py-3">
+                    <td data-col="status" className="py-3">
                       <span className={`chip ${STATUS_TONE[sip.status] ?? ""}`}>
                         {STATUS_LABEL[sip.status] ?? sip.status}
                       </span>
                     </td>
-                    <td className="py-3 text-xs">{rmName ?? "—"}</td>
-                    <td className="py-3 pr-4 text-xs text-muted-foreground max-w-[160px] truncate">
+                    <td data-col="rm" className="py-3 text-xs">{rmName ?? "—"}</td>
+                    <td data-col="remarks" className="py-3 pr-4 text-xs text-muted-foreground max-w-[160px] truncate">
                       {sip.remarks ?? "—"}
                     </td>
                   </tr>

@@ -15,6 +15,21 @@ import { formatDate, formatINR } from "@/lib/utils";
 import { RowActions } from "@/components/common/RowActions";
 import { FilterBar } from "@/components/common/FilterBar";
 import { CustomViews } from "@/components/common/CustomViews";
+import { ColumnManager } from "@/components/common/ColumnManager";
+
+const PROPOSALS_COLUMNS = [
+  { key: "number", label: "Proposal number", required: true },
+  { key: "title", label: "Title" },
+  { key: "recipient", label: "Recipient", required: true },
+  { key: "type", label: "Type" },
+  { key: "invest", label: "Investment ₹" },
+  { key: "corpus", label: "Expected corpus" },
+  { key: "status", label: "Status" },
+  { key: "valid_till", label: "Valid till" },
+  { key: "prepared_by", label: "Prepared by", defaultHidden: true },
+  { key: "created", label: "Created" },
+  { key: "actions", label: "Actions", required: true },
+];
 
 const STATUS_TONE: Record<string, string> = {
   draft: "bg-gray-50 text-gray-700",
@@ -204,15 +219,18 @@ export default async function ProposalsPage({
           },
         ]}
         rightSlot={
-          <CustomViews
-            viewsKey="views:proposals"
-            presets={[
-              { id: "awaiting", name: "Awaiting client", params: "status=sent,viewed" },
-              { id: "accepted", name: "Accepted", params: "status=accepted" },
-              { id: "drafts", name: "My drafts", params: "status=draft,ready" },
-              { id: "mf", name: "Mutual Fund only", params: "type=mutual_fund" },
-            ]}
-          />
+          <div className="flex items-center gap-2">
+            <ColumnManager moduleKey="proposals" columns={PROPOSALS_COLUMNS} />
+            <CustomViews
+              viewsKey="views:proposals"
+              presets={[
+                { id: "awaiting", name: "Awaiting client", params: "status=sent,viewed" },
+                { id: "accepted", name: "Accepted", params: "status=accepted" },
+                { id: "drafts", name: "My drafts", params: "status=draft,ready" },
+                { id: "mf", name: "Mutual Fund only", params: "type=mutual_fund" },
+              ]}
+            />
+          </div>
         }
       />
 
@@ -228,26 +246,26 @@ export default async function ProposalsPage({
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm" data-table="proposals">
               <thead className="text-xs text-muted-foreground border-b">
                 <tr>
-                  <th className="text-left px-4 py-2 font-medium">Number</th>
-                  <th className="text-left py-2 font-medium">Title</th>
-                  <th className="text-left py-2 font-medium">Recipient</th>
-                  <th className="text-left py-2 font-medium">Type</th>
-                  <th className="text-right py-2 font-medium">Invest ₹</th>
-                  <th className="text-right py-2 font-medium">Corpus ₹</th>
-                  <th className="text-left py-2 font-medium">Status</th>
-                  <th className="text-left py-2 font-medium">Valid till</th>
-                  <th className="text-left py-2 font-medium">Prepared by</th>
-                  <th className="text-left py-2 font-medium">Created</th>
-                  <th className="px-4 py-2"></th>
+                  <th data-col="number" className="text-left px-4 py-2 font-medium">Number</th>
+                  <th data-col="title" className="text-left py-2 font-medium">Title</th>
+                  <th data-col="recipient" className="text-left py-2 font-medium">Recipient</th>
+                  <th data-col="type" className="text-left py-2 font-medium">Type</th>
+                  <th data-col="invest" className="text-right py-2 font-medium">Invest ₹</th>
+                  <th data-col="corpus" className="text-right py-2 font-medium">Corpus ₹</th>
+                  <th data-col="status" className="text-left py-2 font-medium">Status</th>
+                  <th data-col="valid_till" className="text-left py-2 font-medium">Valid till</th>
+                  <th data-col="prepared_by" className="text-left py-2 font-medium">Prepared by</th>
+                  <th data-col="created" className="text-left py-2 font-medium">Created</th>
+                  <th data-col="actions" className="px-4 py-2"></th>
                 </tr>
               </thead>
               <tbody>
                 {data.rows.map((p) => (
                   <tr key={p.id} className="border-b last:border-0 hover:bg-secondary/40">
-                    <td className="px-4 py-3 font-mono text-xs whitespace-nowrap">
+                    <td data-col="number" className="px-4 py-3 font-mono text-xs whitespace-nowrap">
                       <Link
                         href={`/dashboard/proposals/${p.id}`}
                         className="text-brand-cyan-deep hover:underline font-semibold"
@@ -255,7 +273,7 @@ export default async function ProposalsPage({
                         {p.proposal_number}
                       </Link>
                     </td>
-                    <td className="py-3 text-xs">
+                    <td data-col="title" className="py-3 text-xs">
                       <div className="font-medium text-foreground">{p.title}</div>
                       {p.risk_rating && (
                         <div className="text-[10px] text-muted-foreground capitalize">
@@ -263,36 +281,36 @@ export default async function ProposalsPage({
                         </div>
                       )}
                     </td>
-                    <td className="py-3 text-xs whitespace-nowrap">
+                    <td data-col="recipient" className="py-3 text-xs whitespace-nowrap">
                       <div className="font-medium">{p.recipient_name}</div>
                       <div className="text-[10px] text-muted-foreground capitalize">
                         {p.recipient_type}
                       </div>
                     </td>
-                    <td className="py-3">
+                    <td data-col="type" className="py-3">
                       <span className={`chip ${TYPE_TONE[p.type] ?? ""} text-[10px]`}>
                         {TYPE_LABEL[p.type] ?? p.type}
                       </span>
                     </td>
-                    <td className="py-3 text-right tabular-nums text-xs">
+                    <td data-col="invest" className="py-3 text-right tabular-nums text-xs">
                       {p.total_investment ? formatINR(Number(p.total_investment)) : "—"}
                     </td>
-                    <td className="py-3 text-right tabular-nums text-xs text-emerald-700 font-medium">
+                    <td data-col="corpus" className="py-3 text-right tabular-nums text-xs text-emerald-700 font-medium">
                       {p.expected_corpus ? formatINR(Number(p.expected_corpus)) : "—"}
                     </td>
-                    <td className="py-3">
+                    <td data-col="status" className="py-3">
                       <span className={`chip capitalize ${STATUS_TONE[p.status] ?? ""}`}>
                         {p.status.replace(/_/g, " ")}
                       </span>
                     </td>
-                    <td className="py-3 text-xs text-muted-foreground tabular-nums whitespace-nowrap">
+                    <td data-col="valid_till" className="py-3 text-xs text-muted-foreground tabular-nums whitespace-nowrap">
                       {p.valid_until ? formatDate(p.valid_until) : "—"}
                     </td>
-                    <td className="py-3 text-xs whitespace-nowrap">{p.prepared_by ?? "—"}</td>
-                    <td className="py-3 text-xs text-muted-foreground tabular-nums whitespace-nowrap">
+                    <td data-col="prepared_by" className="py-3 text-xs whitespace-nowrap">{p.prepared_by ?? "—"}</td>
+                    <td data-col="created" className="py-3 text-xs text-muted-foreground tabular-nums whitespace-nowrap">
                       {formatDate(p.created_at)}
                     </td>
-                    <td className="px-4 py-3 text-right">
+                    <td data-col="actions" className="px-4 py-3 text-right">
                       <RowActions
                         editHref={`/dashboard/proposals/${p.id}`}
                         deleteUrl={`/api/proposals/${p.id}`}

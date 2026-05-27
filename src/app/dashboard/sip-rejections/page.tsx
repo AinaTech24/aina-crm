@@ -8,6 +8,20 @@ import { RecoveryStatusUpdater } from "@/components/sip-rejections/RecoveryStatu
 import { RemarkEditor } from "@/components/sip-rejections/RemarkEditor";
 import { FilterBar } from "@/components/common/FilterBar";
 import { CustomViews } from "@/components/common/CustomViews";
+import { ColumnManager } from "@/components/common/ColumnManager";
+
+const SIP_REJ_COLUMNS = [
+  { key: "rejected_on", label: "Rejected on", required: true },
+  { key: "investor", label: "Investor", required: true },
+  { key: "sip", label: "SIP details" },
+  { key: "amount", label: "Amount" },
+  { key: "reason", label: "Reason" },
+  { key: "rm", label: "RM", defaultHidden: true },
+  { key: "follow_up", label: "Follow-up" },
+  { key: "recovery_date", label: "Recovery date", defaultHidden: true },
+  { key: "recovery_status", label: "Recovery status" },
+  { key: "remarks", label: "Remarks" },
+];
 
 export const dynamic = "force-dynamic";
 
@@ -178,15 +192,18 @@ export default async function SipRejectionsPage({
           },
         ]}
         rightSlot={
-          <CustomViews
-            viewsKey="views:sip-rejections"
-            presets={[
-              { id: "open", name: "Open (recovery pending)", params: "recovery=pending,client_contacted,bank_issue,mandate_issue" },
-              { id: "breached", name: "SLA breached (>2d)", params: "overdue=1" },
-              { id: "recovered", name: "Recovered", params: "recovery=recovered" },
-              { id: "this-month", name: "Rejected this month", params: "mtd=1" },
-            ]}
-          />
+          <div className="flex items-center gap-2">
+            <ColumnManager moduleKey="sip-rejections" columns={SIP_REJ_COLUMNS} />
+            <CustomViews
+              viewsKey="views:sip-rejections"
+              presets={[
+                { id: "open", name: "Open (recovery pending)", params: "recovery=pending,client_contacted,bank_issue,mandate_issue" },
+                { id: "breached", name: "SLA breached (>2d)", params: "overdue=1" },
+                { id: "recovered", name: "Recovered", params: "recovery=recovered" },
+                { id: "this-month", name: "Rejected this month", params: "mtd=1" },
+              ]}
+            />
+          </div>
         }
       />
 
@@ -201,19 +218,19 @@ export default async function SipRejectionsPage({
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm" data-table="sip-rejections">
               <thead className="text-xs text-muted-foreground border-b">
                 <tr>
-                  <th className="text-left px-4 py-2 font-medium">Rejected on</th>
-                  <th className="text-left py-2 font-medium">Investor</th>
-                  <th className="text-left py-2 font-medium">SIP details</th>
-                  <th className="text-right py-2 font-medium">Amount</th>
-                  <th className="text-left py-2 font-medium">Reason</th>
-                  <th className="text-left py-2 font-medium">RM</th>
-                  <th className="text-left py-2 font-medium">Follow-up</th>
-                  <th className="text-left py-2 font-medium">Recovery</th>
-                  <th className="text-left py-2 font-medium">Recovery Status</th>
-                  <th className="text-left py-2 font-medium pr-4">Remarks</th>
+                  <th data-col="rejected_on" className="text-left px-4 py-2 font-medium">Rejected on</th>
+                  <th data-col="investor" className="text-left py-2 font-medium">Investor</th>
+                  <th data-col="sip" className="text-left py-2 font-medium">SIP details</th>
+                  <th data-col="amount" className="text-right py-2 font-medium">Amount</th>
+                  <th data-col="reason" className="text-left py-2 font-medium">Reason</th>
+                  <th data-col="rm" className="text-left py-2 font-medium">RM</th>
+                  <th data-col="follow_up" className="text-left py-2 font-medium">Follow-up</th>
+                  <th data-col="recovery_date" className="text-left py-2 font-medium">Recovery</th>
+                  <th data-col="recovery_status" className="text-left py-2 font-medium">Recovery Status</th>
+                  <th data-col="remarks" className="text-left py-2 font-medium pr-4">Remarks</th>
                 </tr>
               </thead>
               <tbody>
@@ -224,37 +241,37 @@ export default async function SipRejectionsPage({
                       r.escalation_overdue ? "bg-rose-50/30" : ""
                     }`}
                   >
-                    <td className="px-4 py-3 text-xs whitespace-nowrap">
+                    <td data-col="rejected_on" className="px-4 py-3 text-xs whitespace-nowrap">
                       <div className="font-medium tabular-nums">{formatDate(r.rejection_date)}</div>
                       <div className="text-muted-foreground">{formatRelative(r.created_at)}</div>
                     </td>
-                    <td className="py-3 whitespace-nowrap">
+                    <td data-col="investor" className="py-3 whitespace-nowrap">
                       <Link href={`/dashboard/investors/${r.investor_id}`} className="hover:underline font-medium">
                         {r.investor_name ?? "—"}
                       </Link>
                       <div className="text-xs text-muted-foreground font-mono">{r.investor_pan}</div>
                     </td>
-                    <td className="py-3 max-w-[200px]">
+                    <td data-col="sip" className="py-3 max-w-[200px]">
                       <div className="text-sm truncate">{r.scheme_name ?? "—"}</div>
                       <div className="text-xs text-muted-foreground truncate">
                         {r.amc_name ?? "—"}
                         {r.folio_number ? <> · <span className="font-mono">{r.folio_number}</span></> : null}
                       </div>
                     </td>
-                    <td className="py-3 text-right tabular-nums font-medium text-rose-600">
+                    <td data-col="amount" className="py-3 text-right tabular-nums font-medium text-rose-600">
                       {formatINR(Number(r.rejection_amount))}
                     </td>
-                    <td className="py-3 text-xs max-w-[180px]">
+                    <td data-col="reason" className="py-3 text-xs max-w-[180px]">
                       <div className="font-mono text-xs">{r.rejection_reason ?? "—"}</div>
                     </td>
-                    <td className="py-3 text-xs whitespace-nowrap">{r.rm_name ?? "—"}</td>
-                    <td className="py-3 text-xs whitespace-nowrap">
+                    <td data-col="rm" className="py-3 text-xs whitespace-nowrap">{r.rm_name ?? "—"}</td>
+                    <td data-col="follow_up" className="py-3 text-xs whitespace-nowrap">
                       {r.follow_up_date ? formatDate(r.follow_up_date) : "—"}
                       {r.escalation_overdue && (
                         <div className="text-[10px] text-rose-600 font-semibold">SLA breached</div>
                       )}
                     </td>
-                    <td className="py-3 text-xs whitespace-nowrap">
+                    <td data-col="recovery_date" className="py-3 text-xs whitespace-nowrap">
                       {r.recovery_date ? (
                         <span className="text-emerald-600 font-medium">
                           {formatDate(r.recovery_date)}
@@ -263,10 +280,10 @@ export default async function SipRejectionsPage({
                         "—"
                       )}
                     </td>
-                    <td className="py-3 whitespace-nowrap">
+                    <td data-col="recovery_status" className="py-3 whitespace-nowrap">
                       <RecoveryStatusUpdater rejectionId={r.id} currentStatus={r.recovery_status} />
                     </td>
-                    <td className="py-3 pr-4">
+                    <td data-col="remarks" className="py-3 pr-4">
                       <RemarkEditor rejectionId={r.id} initial={r.remarks ?? null} />
                     </td>
                   </tr>

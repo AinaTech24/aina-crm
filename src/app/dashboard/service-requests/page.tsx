@@ -8,6 +8,23 @@ import { formatDate } from "@/lib/utils";
 import { RowActions } from "@/components/common/RowActions";
 import { FilterBar } from "@/components/common/FilterBar";
 import { CustomViews } from "@/components/common/CustomViews";
+import { ColumnManager } from "@/components/common/ColumnManager";
+
+const SR_COLUMNS = [
+  { key: "ticket", label: "Ticket", required: true },
+  { key: "client", label: "Client", required: true },
+  { key: "type", label: "Service Type" },
+  { key: "raised", label: "Raised on" },
+  { key: "assignee", label: "Assigned to" },
+  { key: "priority", label: "Priority" },
+  { key: "status", label: "Status" },
+  { key: "expected", label: "Expected resolution" },
+  { key: "closed", label: "Closed on", defaultHidden: true },
+  { key: "tat", label: "TAT (days)" },
+  { key: "remarks", label: "Remarks", defaultHidden: true },
+  { key: "attachments", label: "Attachments", defaultHidden: true },
+  { key: "actions", label: "Actions", required: true },
+];
 
 const TYPE_LABEL: Record<string, string> = {
   nominee_update: "Nominee Update",
@@ -189,14 +206,17 @@ export default async function ServiceRequestsPage({
           },
         ]}
         rightSlot={
-          <CustomViews
-            viewsKey="views:service-requests"
-            presets={[
-              { id: "open", name: "Open + In-progress", params: "status=open,in_progress" },
-              { id: "breached", name: "Breached", params: "breached=1" },
-              { id: "urgent", name: "Urgent priority", params: "priority=urgent,high" },
-            ]}
-          />
+          <div className="flex items-center gap-2">
+            <ColumnManager moduleKey="service-requests" columns={SR_COLUMNS} />
+            <CustomViews
+              viewsKey="views:service-requests"
+              presets={[
+                { id: "open", name: "Open + In-progress", params: "status=open,in_progress" },
+                { id: "breached", name: "Breached", params: "breached=1" },
+                { id: "urgent", name: "Urgent priority", params: "priority=urgent,high" },
+              ]}
+            />
+          </div>
         }
       />
 
@@ -212,22 +232,22 @@ export default async function ServiceRequestsPage({
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm" data-table="service-requests">
               <thead className="text-xs text-muted-foreground border-b">
                 <tr>
-                  <th className="text-left px-4 py-2 font-medium">Ticket</th>
-                  <th className="text-left py-2 font-medium">Client</th>
-                  <th className="text-left py-2 font-medium">Service Type</th>
-                  <th className="text-left py-2 font-medium">Raised</th>
-                  <th className="text-left py-2 font-medium">Assigned to</th>
-                  <th className="text-left py-2 font-medium">Priority</th>
-                  <th className="text-left py-2 font-medium">Status</th>
-                  <th className="text-left py-2 font-medium">Expected</th>
-                  <th className="text-left py-2 font-medium">Closed</th>
-                  <th className="text-right py-2 font-medium">TAT (d)</th>
-                  <th className="text-left py-2 font-medium">Remarks</th>
-                  <th className="text-right py-2 font-medium pr-4">Att.</th>
-                  <th className="px-4 py-2"></th>
+                  <th data-col="ticket" className="text-left px-4 py-2 font-medium">Ticket</th>
+                  <th data-col="client" className="text-left py-2 font-medium">Client</th>
+                  <th data-col="type" className="text-left py-2 font-medium">Service Type</th>
+                  <th data-col="raised" className="text-left py-2 font-medium">Raised</th>
+                  <th data-col="assignee" className="text-left py-2 font-medium">Assigned to</th>
+                  <th data-col="priority" className="text-left py-2 font-medium">Priority</th>
+                  <th data-col="status" className="text-left py-2 font-medium">Status</th>
+                  <th data-col="expected" className="text-left py-2 font-medium">Expected</th>
+                  <th data-col="closed" className="text-left py-2 font-medium">Closed</th>
+                  <th data-col="tat" className="text-right py-2 font-medium">TAT (d)</th>
+                  <th data-col="remarks" className="text-left py-2 font-medium">Remarks</th>
+                  <th data-col="attachments" className="text-right py-2 font-medium pr-4">Att.</th>
+                  <th data-col="actions" className="px-4 py-2"></th>
                 </tr>
               </thead>
               <tbody>
@@ -238,8 +258,8 @@ export default async function ServiceRequestsPage({
                       sr.breached ? "bg-rose-50/30" : ""
                     }`}
                   >
-                    <td className="px-4 py-3 font-mono text-xs whitespace-nowrap">{sr.ticket_no}</td>
-                    <td className="py-3 whitespace-nowrap">
+                    <td data-col="ticket" className="px-4 py-3 font-mono text-xs whitespace-nowrap">{sr.ticket_no}</td>
+                    <td data-col="client" className="py-3 whitespace-nowrap">
                       {sr.investor_id ? (
                         <Link href={`/dashboard/investors/${sr.investor_id}`} className="hover:underline">
                           {sr.investor_name}
@@ -248,7 +268,7 @@ export default async function ServiceRequestsPage({
                         sr.investor_name ?? "—"
                       )}
                     </td>
-                    <td className="py-3 text-xs">
+                    <td data-col="type" className="py-3 text-xs">
                       <div className="font-medium">{TYPE_LABEL[sr.type] ?? sr.type}</div>
                       {sr.subject && (
                         <div className="text-[11px] text-muted-foreground max-w-[180px] truncate">
@@ -256,14 +276,14 @@ export default async function ServiceRequestsPage({
                         </div>
                       )}
                     </td>
-                    <td className="py-3 text-xs text-muted-foreground tabular-nums whitespace-nowrap">
+                    <td data-col="raised" className="py-3 text-xs text-muted-foreground tabular-nums whitespace-nowrap">
                       {formatDate(sr.created_at)}
                     </td>
-                    <td className="py-3 text-xs whitespace-nowrap">{sr.assignee_name ?? "—"}</td>
-                    <td className={`py-3 text-xs capitalize ${PRIORITY_TONE[sr.priority]}`}>
+                    <td data-col="assignee" className="py-3 text-xs whitespace-nowrap">{sr.assignee_name ?? "—"}</td>
+                    <td data-col="priority" className={`py-3 text-xs capitalize ${PRIORITY_TONE[sr.priority]}`}>
                       {sr.priority}
                     </td>
-                    <td className="py-3">
+                    <td data-col="status" className="py-3">
                       <span className={`chip ${STATUS_TONE[sr.status] ?? ""}`}>
                         {sr.status.replace(/_/g, " ")}
                       </span>
@@ -273,10 +293,10 @@ export default async function ServiceRequestsPage({
                         </div>
                       )}
                     </td>
-                    <td className="py-3 text-xs text-muted-foreground tabular-nums whitespace-nowrap">
+                    <td data-col="expected" className="py-3 text-xs text-muted-foreground tabular-nums whitespace-nowrap">
                       {sr.sla_resolution_at ? formatDate(sr.sla_resolution_at) : "—"}
                     </td>
-                    <td className="py-3 text-xs whitespace-nowrap">
+                    <td data-col="closed" className="py-3 text-xs whitespace-nowrap">
                       {sr.resolved_at ? (
                         <span className="text-emerald-600 font-medium tabular-nums">
                           {formatDate(sr.resolved_at)}
@@ -285,7 +305,7 @@ export default async function ServiceRequestsPage({
                         "—"
                       )}
                     </td>
-                    <td className="py-3 text-right tabular-nums">
+                    <td data-col="tat" className="py-3 text-right tabular-nums">
                       {sr.breached ? (
                         <span className="text-rose-600 font-bold">{sr.tat_days}</span>
                       ) : sr.resolved_at ? (
@@ -294,13 +314,13 @@ export default async function ServiceRequestsPage({
                         <span className="text-muted-foreground">{sr.tat_days}</span>
                       )}
                     </td>
-                    <td className="py-3 text-xs text-muted-foreground max-w-[160px] truncate">
+                    <td data-col="remarks" className="py-3 text-xs text-muted-foreground max-w-[160px] truncate">
                       {sr.remarks ?? "—"}
                     </td>
-                    <td className="py-3 text-right tabular-nums text-muted-foreground">
+                    <td data-col="attachments" className="py-3 text-right tabular-nums text-muted-foreground">
                       {sr.attach_count > 0 ? sr.attach_count : "—"}
                     </td>
-                    <td className="px-4 py-3 text-right">
+                    <td data-col="actions" className="px-4 py-3 text-right">
                       <RowActions
                         deleteUrl={`/api/service-requests/${sr.id}`}
                         itemLabel="ticket"

@@ -6,6 +6,17 @@ import { requireSession } from "@/lib/auth/session";
 import { formatDate, formatRelative } from "@/lib/utils";
 import { FilterBar } from "@/components/common/FilterBar";
 import { CustomViews } from "@/components/common/CustomViews";
+import { ColumnManager } from "@/components/common/ColumnManager";
+
+const MEETINGS_COLUMNS = [
+  { key: "date", label: "Date", required: true },
+  { key: "client", label: "Client", required: true },
+  { key: "category", label: "Category" },
+  { key: "agenda", label: "Agenda" },
+  { key: "mode", label: "Mode" },
+  { key: "rm", label: "RM" },
+  { key: "status", label: "Status" },
+];
 
 export const dynamic = "force-dynamic";
 
@@ -229,15 +240,18 @@ export default async function ReviewMeetingsPage({
           },
         ]}
         rightSlot={
-          <CustomViews
-            viewsKey="views:review-meetings"
-            presets={[
-              { id: "upcoming", name: "Upcoming", params: "status=scheduled,confirmed" },
-              { id: "reviews", name: "Review meetings", params: "category=review" },
-              { id: "new", name: "New / Follow-ups", params: "category=new,follow_up" },
-              { id: "completed", name: "Completed", params: "status=completed" },
-            ]}
-          />
+          <div className="flex items-center gap-2">
+            <ColumnManager moduleKey="meetings-upcoming" columns={MEETINGS_COLUMNS} />
+            <CustomViews
+              viewsKey="views:review-meetings"
+              presets={[
+                { id: "upcoming", name: "Upcoming", params: "status=scheduled,confirmed" },
+                { id: "reviews", name: "Review meetings", params: "category=review" },
+                { id: "new", name: "New / Follow-ups", params: "category=new,follow_up" },
+                { id: "completed", name: "Completed", params: "status=completed" },
+              ]}
+            />
+          </div>
         }
       />
 
@@ -254,22 +268,22 @@ export default async function ReviewMeetingsPage({
             <div className="mt-2">No meetings scheduled.</div>
           </div>
         ) : (
-          <table className="w-full text-sm">
+          <table className="w-full text-sm" data-table="meetings-upcoming">
             <thead className="text-xs text-muted-foreground border-b">
               <tr>
-                <th className="text-left px-4 py-2 font-medium">Date</th>
-                <th className="text-left py-2 font-medium">Client</th>
-                <th className="text-left py-2 font-medium">Category</th>
-                <th className="text-left py-2 font-medium">Agenda</th>
-                <th className="text-left py-2 font-medium">Mode</th>
-                <th className="text-left py-2 font-medium">RM</th>
-                <th className="text-left py-2 font-medium pr-4">Status</th>
+                <th data-col="date" className="text-left px-4 py-2 font-medium">Date</th>
+                <th data-col="client" className="text-left py-2 font-medium">Client</th>
+                <th data-col="category" className="text-left py-2 font-medium">Category</th>
+                <th data-col="agenda" className="text-left py-2 font-medium">Agenda</th>
+                <th data-col="mode" className="text-left py-2 font-medium">Mode</th>
+                <th data-col="rm" className="text-left py-2 font-medium">RM</th>
+                <th data-col="status" className="text-left py-2 font-medium pr-4">Status</th>
               </tr>
             </thead>
             <tbody>
               {upcoming.map((m) => (
                 <tr key={m.id} className="border-b last:border-0 hover:bg-secondary/40">
-                  <td className="px-4 py-3 whitespace-nowrap">
+                  <td data-col="date" className="px-4 py-3 whitespace-nowrap">
                     <Link href={`/dashboard/review-meetings/${m.id}`} className="font-medium tabular-nums hover:underline">
                       {new Date(m.meeting_date).toLocaleString("en-IN", {
                         day: "numeric",
@@ -282,13 +296,13 @@ export default async function ReviewMeetingsPage({
                       in {Math.ceil((new Date(m.meeting_date).getTime() - Date.now()) / (24 * 60 * 60 * 1000))} day(s)
                     </div>
                   </td>
-                  <td className="py-3">
+                  <td data-col="client" className="py-3">
                     <Link href={`/dashboard/investors/${m.investor_id}`} className="hover:underline">
                       {m.investor_name}
                     </Link>
                     <div className="text-xs text-muted-foreground">{m.segment_tag ?? "—"}</div>
                   </td>
-                  <td className="py-3">
+                  <td data-col="category" className="py-3">
                     <span className={`chip text-[10px] ${CATEGORY_TONE[m.category ?? "review"] ?? ""}`}>
                       {CATEGORY_LABEL[m.category ?? "review"] ?? m.category}
                     </span>
@@ -298,14 +312,14 @@ export default async function ReviewMeetingsPage({
                       </div>
                     )}
                   </td>
-                  <td className="py-3 text-xs">{TYPE_LABEL[m.meeting_type] ?? m.meeting_type}</td>
-                  <td className="py-3">
+                  <td data-col="agenda" className="py-3 text-xs">{TYPE_LABEL[m.meeting_type] ?? m.meeting_type}</td>
+                  <td data-col="mode" className="py-3">
                     <span className={`chip ${MODE_TONE[m.meeting_mode] ?? ""}`}>
                       {MODE_LABEL[m.meeting_mode] ?? m.meeting_mode}
                     </span>
                   </td>
-                  <td className="py-3 text-xs">{m.rm_name ?? "—"}</td>
-                  <td className="py-3 pr-4">
+                  <td data-col="rm" className="py-3 text-xs">{m.rm_name ?? "—"}</td>
+                  <td data-col="status" className="py-3 pr-4">
                     <span className={`chip capitalize ${STATUS_TONE[m.status] ?? ""}`}>
                       {m.status.replace(/_/g, " ")}
                     </span>
