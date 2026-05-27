@@ -1,0 +1,97 @@
+/**
+ * POST /api/employees/invite
+ * Body: { email, name, roles[], branchId? }
+ *
+ * Owner / branch_head invites a new team member. Generates a signed token,
+ * stores its hash, and (TODO) emails the invite link. Returns the link in
+ * the response so the owner can also share it manually.
+ *
+ *   GET /api/employees/invite       — list pending invites for this tenant
+ */
+
+import { NextRequest, NextResponse } from "next/server";
+import { v4 as uuid } from "uuid";
+import crypto from "node:crypto";
+import { desc, eq, isNull, and } from "drizzle-orm";
+import { z } from "zod";
+import { withTenant } from "@/db/client";
+import { requireSession } from "@/lib/auth/session";
+import { userInvites } from "@/db/schema";
+import { require as requireCap } from "@/lib/auth/rbac";
+import { assertActiveLicense } from "@/lib/auth/license";
+import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
+
+export const dynamic = "force-dynamic";
+
+const Body = z.object({
+  email: z.string().email(),
+  name: z.string().min(1).optional(),
+  roles: z.array(z.string()).min(1),
+  branchId: z.string().uuid().optional(),
+});
+
+export async function GET() {
+  try {
+    const session = await requireSession();
+    const rows = await withTenant(session.tenantId, async (tx) => {
+      return tx
+        .select()
+        .from(userInvites)
+        .where(and(eq(userInvites.tenantId, session.tenantId), isNull(userInvites.acceptedAt), isNull(userInvites.revokedAt)))
+        .orderBy(desc(userInvites.createdAt));
+    });
+    return NextResponse.json({ invites: rows });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message ?? "internal" }, { status: err.status ?? 500 });
+  }
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const session = await requireSession();
+    requireCap(session.roles, "settings.users");
+    await assertActiveLicense(session.tenantId, session.roles);
+
+    const parse = Body.safeParse(await req.json().catch(() => ({})));
+    if (!parse.success) {
+      return NextResponse.json({ error: "invalid body", issues: parse.error.issues }, { status: 400 });
+    }
+    const body = parse.data;
+    const token = crypto.randomBytes(32).toString("base64url");
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+
+    const id = uuid();
+    const clientMeta = clientMetaFromHeaders(req.headers);
+    await withTenant(session.tenantId, async (tx) => {
+      await tx.insert(userInvites).values({
+        id,
+        tenantId: session.tenantId,
+        email: body.email.toLowerCase(),
+        name: body.name,
+        rolesToGrant: body.roles,
+        branchId: body.branchId ?? session.branchId,
+        invitedByUserId: session.userId,
+        tokenHash,
+        expiresAt,
+      } as any);
+
+      await recordAudit(tx, {
+        tenantId: session.tenantId,
+        actorUserId: session.userId,
+        action: "employee.invite",
+        entityType: "user_invite",
+        entityId: id,
+        after: { email: body.email, roles: body.roles, branchId: body.branchId ?? session.branchId },
+        ...clientMeta,
+      });
+    });
+
+    // TODO: send the email via the comms pipeline. For now return the link.
+    const inviteUrl = `${process.env.APP_URL ?? "http://localhost:3000"}/accept-invite?token=${token}`;
+
+    return NextResponse.json({ id, inviteUrl, expiresAt }, { status: 201 });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message ?? "internal" }, { status: err.status ?? 500 });
+  }
+}

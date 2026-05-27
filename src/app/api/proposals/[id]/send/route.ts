@@ -1,0 +1,341 @@
+/**
+ * POST /api/proposals/[id]/send
+ *
+ *   body: { channel: 'email' | 'whatsapp' }
+ *
+ * Sends the proposal to the recipient through the chosen channel:
+ *
+ *   - email      → uses Resend directly with an auto-generated HTML body
+ *                  that contains the proposal summary + ARN tagline.
+ *                  Returns { ok: true, externalId }.
+ *   - whatsapp   → returns a wa.me URL with a pre-filled message. The
+ *                  client (RM) opens it in a new tab and the message goes
+ *                  through the RM's own WhatsApp. No template approval
+ *                  required. Returns { ok: true, waUrl }.
+ *
+ * In both cases the proposal status flips to 'sent' (status_at = now) and
+ * a row is written to `communications` for the audit trail.
+ */
+
+import { NextRequest, NextResponse } from "next/server";
+import { v4 as uuid } from "uuid";
+import { eq } from "drizzle-orm";
+import { z } from "zod";
+import { Resend } from "resend";
+import { withTenant } from "@/db/client";
+import { requireSession } from "@/lib/auth/session";
+import { require as requireCap } from "@/lib/auth/rbac";
+import { assertActiveLicense } from "@/lib/auth/license";
+import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
+import { proposals, tenants, communications } from "@/db/schema";
+import { formatINR } from "@/lib/utils";
+
+export const dynamic = "force-dynamic";
+
+const Body = z.object({
+  channel: z.enum(["email", "whatsapp"]),
+});
+
+let resendClient: Resend | null = null;
+function getResend(): Resend | null {
+  if (resendClient) return resendClient;
+  const key = process.env.RESEND_API_KEY;
+  if (!key) return null;
+  resendClient = new Resend(key);
+  return resendClient;
+}
+
+const KIND_TITLE: Record<string, string> = {
+  mf: "Mutual Funds",
+  insurance: "Insurance",
+  pms: "Portfolio Management Services",
+  aif: "Alternative Investment Funds",
+};
+
+function buildHtmlEmail(args: {
+  tenant: any;
+  proposal: any;
+  publicUrl: string;
+}) {
+  const { tenant, proposal, publicUrl } = args;
+  const primary = tenant?.primaryColor || "#0e2557";
+  const products = (proposal.products ?? []) as any[];
+  const groups: Record<string, any[]> = {};
+  for (const p of products) {
+    if (!groups[p.kind]) groups[p.kind] = [];
+    groups[p.kind].push(p);
+  }
+  const productLines = Object.entries(groups)
+    .map(([kind, items]) => {
+      const rows = items
+        .map((it) => {
+          const name = it.schemeName ?? it.policyName ?? it.strategyName ?? it.fundName;
+          return `<li style="margin:6px 0">${name}${it.amcName ? ` — ${it.amcName}` : ""}${
+            it.insurer ? ` — ${it.insurer}` : ""
+          }${it.manager ? ` — ${it.manager}` : ""}</li>`;
+        })
+        .join("");
+      return `<div style="margin:12px 0 8px"><strong style="color:${primary};font-size:13px;letter-spacing:0.04em;text-transform:uppercase">${
+        KIND_TITLE[kind] ?? kind
+      }</strong><ul style="padding-left:18px;margin:6px 0 0;color:#334155">${rows}</ul></div>`;
+    })
+    .join("");
+  const totalInv = proposal.totalInvestment
+    ? `<tr><td style="padding:6px 0;color:#64748b;font-size:12px">Total investment</td><td style="padding:6px 0;text-align:right;font-weight:700;font-size:14px">${formatINR(
+        Number(proposal.totalInvestment)
+      )}</td></tr>`
+    : "";
+  const corpus = proposal.expectedCorpus
+    ? `<tr><td style="padding:6px 0;color:#64748b;font-size:12px">Projected corpus</td><td style="padding:6px 0;text-align:right;font-weight:700;font-size:14px;color:#059669">${formatINR(
+        Number(proposal.expectedCorpus)
+      )}</td></tr>`
+    : "";
+  const validUntil = proposal.validUntil
+    ? `<p style="color:#64748b;font-size:12px;margin:12px 0 0">This proposal is valid till <strong>${new Date(
+        proposal.validUntil
+      ).toLocaleDateString("en-IN", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      })}</strong>.</p>`
+    : "";
+
+  const arnLine = `${tenant?.legalName ?? tenant?.displayName ?? ""} · ARN ${
+    tenant?.arn ?? "—"
+  } · Mutual Fund investments are subject to market risks. Read all scheme-related documents carefully.`;
+
+  return `<!DOCTYPE html>
+<html><body style="margin:0;padding:0;background:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#0f172a">
+  <div style="max-width:620px;margin:0 auto;background:white;padding:0;border-radius:12px;overflow:hidden">
+    <div style="background:${primary};padding:20px 24px;color:white">
+      <div style="font-size:11px;opacity:0.75;letter-spacing:0.12em;text-transform:uppercase;font-weight:700">${
+        tenant?.legalName ?? tenant?.displayName ?? ""
+      }</div>
+      <div style="font-size:11px;opacity:0.6;font-family:ui-monospace,monospace;margin-top:2px">ARN ${
+        tenant?.arn ?? "—"
+      } · ${proposal.proposalNumber}</div>
+    </div>
+    <div style="padding:24px">
+      <p style="margin:0 0 6px;color:#64748b;font-size:13px">Dear ${proposal.recipientName},</p>
+      <h2 style="margin:8px 0 6px;font-size:18px;letter-spacing:-0.01em">${proposal.title}</h2>
+      ${
+        proposal.coverLetter
+          ? `<p style="margin:0 0 12px;color:#334155;font-size:13px;line-height:1.6;white-space:pre-line">${proposal.coverLetter}</p>`
+          : `<p style="margin:0 0 12px;color:#334155;font-size:13px;line-height:1.6">Please find the proposal we discussed, summarised below. Click the button to view the full document.</p>`
+      }
+      <table style="width:100%;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;margin:12px 0">${totalInv}${corpus}</table>
+      ${productLines}
+      <div style="margin:20px 0;text-align:center">
+        <a href="${publicUrl}" style="display:inline-block;background:${primary};color:white;padding:10px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px">View full proposal</a>
+      </div>
+      ${validUntil}
+    </div>
+    <div style="background:#f1f5f9;padding:14px 24px;color:#64748b;font-size:10px;line-height:1.5;border-top:1px solid #e2e8f0">
+      ${arnLine}
+    </div>
+  </div>
+</body></html>`;
+}
+
+function buildWhatsAppText(args: { tenant: any; proposal: any; publicUrl: string }) {
+  const { tenant, proposal, publicUrl } = args;
+  const lines: string[] = [];
+  lines.push(`Hi ${proposal.recipientName},`);
+  lines.push("");
+  lines.push(`Sharing the *${proposal.title}* we discussed (${proposal.proposalNumber}).`);
+  lines.push("");
+  if (proposal.totalInvestment) {
+    lines.push(`💰 Total investment: ₹${Number(proposal.totalInvestment).toLocaleString("en-IN")}`);
+  }
+  if (proposal.expectedCorpus) {
+    lines.push(`📈 Projected corpus: ₹${Number(proposal.expectedCorpus).toLocaleString("en-IN")}`);
+  }
+  if (proposal.riskRating) {
+    lines.push(`📊 Risk: ${proposal.riskRating}`);
+  }
+  const products = (proposal.products ?? []) as any[];
+  if (products.length) {
+    lines.push("");
+    lines.push("*Products:*");
+    for (const p of products.slice(0, 6)) {
+      const name = p.schemeName ?? p.policyName ?? p.strategyName ?? p.fundName;
+      lines.push(`• ${name}`);
+    }
+    if (products.length > 6) lines.push(`…and ${products.length - 6} more.`);
+  }
+  lines.push("");
+  lines.push(`Full proposal: ${publicUrl}`);
+  lines.push("");
+  lines.push(`— ${tenant?.legalName ?? tenant?.displayName ?? ""}`);
+  lines.push(`ARN ${tenant?.arn ?? "—"}`);
+  lines.push(
+    "_Mutual Fund investments are subject to market risks. Read all scheme-related documents carefully._"
+  );
+  return lines.join("\n");
+}
+
+/** Normalize +91XXXXXXXXXX or 9XXXXXXXXX to a wa.me-friendly digits-only string. */
+function normalizePhone(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const digits = raw.replace(/\D+/g, "");
+  if (!digits) return null;
+  // If 10 digits and starts with 6-9, assume India and prepend 91
+  if (digits.length === 10 && /^[6-9]/.test(digits)) return `91${digits}`;
+  return digits;
+}
+
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  try {
+    const session = await requireSession();
+    requireCap(session.roles, "proposal.send");
+    await assertActiveLicense(session.tenantId, session.roles);
+    const parse = Body.safeParse(await req.json().catch(() => ({})));
+    if (!parse.success) {
+      return NextResponse.json({ error: "invalid body" }, { status: 400 });
+    }
+    const { channel } = parse.data;
+    const clientMeta = clientMetaFromHeaders(req.headers);
+    const origin =
+      req.headers.get("origin") ??
+      (req.headers.get("host") ? `${req.headers.get("x-forwarded-proto") ?? "http"}://${req.headers.get("host")}` : "");
+    const publicUrl = `${origin}/dashboard/proposals/${id}/print?autoprint=0`;
+
+    return await withTenant(session.tenantId, async (tx) => {
+      const p = (await tx.select().from(proposals).where(eq(proposals.id, id)).limit(1))[0];
+      if (!p) return NextResponse.json({ error: "not found" }, { status: 404 });
+      if (["accepted", "rejected"].includes(p.status as string)) {
+        return NextResponse.json(
+          { error: `cannot send a ${p.status} proposal` },
+          { status: 409 }
+        );
+      }
+
+      // ── Compliance gate — block send unless RM has written a suitability
+      //    note. This is the spec's mandatory-before-send check. Owner can
+      //    skip via override (suitability_override_reason set + owner role).
+      const hasNote = !!((p as any).suitabilityNote ?? "").toString().trim();
+      const hasOverride = !!((p as any).suitabilityOverrideReason ?? "").toString().trim();
+      if (!hasNote && !hasOverride) {
+        return NextResponse.json(
+          {
+            error:
+              "Suitability note is required before sending. Capture why this proposal aligns with the client's risk profile, or have the owner add an override with reason.",
+            field: "suitabilityNote",
+          },
+          { status: 412 }
+        );
+      }
+      const tenant = (
+        await tx.select().from(tenants).where(eq(tenants.id, session.tenantId)).limit(1)
+      )[0];
+
+      let externalId: string | null = null;
+      let waUrl: string | null = null;
+      let recipientUsed: string | null = null;
+      let bodyText: string | null = null;
+
+      if (channel === "email") {
+        if (!p.recipientEmail) {
+          return NextResponse.json(
+            { error: "recipient has no email on file" },
+            { status: 400 }
+          );
+        }
+        recipientUsed = p.recipientEmail;
+        const html = buildHtmlEmail({ tenant, proposal: p, publicUrl });
+        bodyText = html;
+        const client = getResend();
+        if (client) {
+          const from =
+            process.env.EMAIL_FROM_TRANSACTIONAL ?? "no-reply@example.com";
+          try {
+            const result = await client.emails.send({
+              from,
+              to: [p.recipientEmail],
+              subject: `${p.title} — ${tenant?.displayName ?? "Investment proposal"} (${p.proposalNumber})`,
+              html,
+            } as any);
+            externalId = (result as any)?.data?.id ?? null;
+          } catch (e: any) {
+            return NextResponse.json(
+              { error: `Email send failed: ${e?.message ?? "unknown"}` },
+              { status: 502 }
+            );
+          }
+        } else {
+          // No Resend key configured — fall back to logging only (useful in dev)
+          externalId = `dev_${uuid()}`;
+        }
+      } else {
+        // whatsapp — generate wa.me link, client opens in new tab
+        const phone = normalizePhone(p.recipientPhone);
+        if (!phone) {
+          return NextResponse.json(
+            { error: "recipient has no phone number on file" },
+            { status: 400 }
+          );
+        }
+        recipientUsed = phone;
+        const text = buildWhatsAppText({ tenant, proposal: p, publicUrl });
+        bodyText = text;
+        waUrl = `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
+      }
+
+      // Log to communications + flip proposal status
+      await tx.insert(communications).values({
+        tenantId: session.tenantId,
+        investorId: p.recipientType === "investor" ? p.investorId : null,
+        leadId: p.recipientType === "lead" ? p.leadId : null,
+        userId: session.userId,
+        channel,
+        direction: "outbound",
+        status: "sent",
+        externalId,
+        payload: {
+          kind: "proposal",
+          proposalId: id,
+          proposalNumber: p.proposalNumber,
+          recipient: recipientUsed,
+          body: bodyText?.slice(0, 4000) ?? null,
+        } as any,
+        sentAt: new Date(),
+      } as any);
+
+      await tx
+        .update(proposals)
+        .set({
+          status: "sent",
+          sentAt: p.sentAt ?? new Date(),
+          updatedAt: new Date(),
+        } as any)
+        .where(eq(proposals.id, id));
+
+      await recordAudit(tx, {
+        tenantId: session.tenantId,
+        actorUserId: session.userId,
+        action: "proposal.send",
+        entityType: "proposal",
+        entityId: id,
+        after: {
+          channel,
+          recipient: recipientUsed,
+          externalId,
+        },
+        ...clientMeta,
+      });
+
+      return NextResponse.json({
+        ok: true,
+        channel,
+        externalId,
+        waUrl,
+      });
+    });
+  } catch (err: any) {
+    return NextResponse.json(
+      { error: err.message ?? "internal" },
+      { status: err.status ?? 500 }
+    );
+  }
+}

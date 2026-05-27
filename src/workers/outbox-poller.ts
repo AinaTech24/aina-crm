@@ -1,0 +1,188 @@
+/**
+ * Outbox poller — the heart of event-driven triggers.
+ *
+ * Reads unprocessed rows from `events_outbox` (using FOR UPDATE SKIP LOCKED
+ * for concurrency safety), matches them against active workflow triggers
+ * (kind='record_event' or 'inbound_message' or 'communication_event'),
+ * and enqueues new workflow runs.
+ *
+ * Also handles `wait_for_event` parked runs — finds runs whose
+ * `wait_predicate.eventKind` matches and whose `wait_predicate.criteria`
+ * evaluates true against the event payload, and resumes them.
+ */
+
+import { Worker } from "bullmq";
+import { and, eq, isNull, lte, or, sql } from "drizzle-orm";
+import { withSystem, withTenant } from "@/db/client";
+import { eventsOutbox, workflowRuns, workflowTriggers, workflows } from "@/db/schema";
+import { startRun } from "@/lib/workflow/runner";
+import { compileToPredicate } from "@/lib/filter/predicate";
+import { Q, getConnection } from "./queues";
+
+const BATCH_SIZE = 200;
+
+export async function pollOutboxOnce(): Promise<{ processed: number; errors: number }> {
+  let processed = 0;
+  let errors = 0;
+
+  // System-context read with SKIP LOCKED to claim rows across multiple workers
+  const claimed = await withSystem(async (tx) => {
+    const rows = await tx.execute(sql`
+      WITH cte AS (
+        SELECT id FROM events_outbox
+        WHERE processed_at IS NULL
+        ORDER BY id
+        LIMIT ${BATCH_SIZE}
+        FOR UPDATE SKIP LOCKED
+      )
+      UPDATE events_outbox e
+      SET claimed_at = now()
+      FROM cte
+      WHERE e.id = cte.id
+      RETURNING e.*;
+    `);
+    return rows.rows as any[];
+  });
+
+  for (const event of claimed) {
+    try {
+      await processEvent(event);
+      await withSystem(async (tx) => {
+        await tx.execute(sql`UPDATE events_outbox SET processed_at = now() WHERE id = ${event.id}`);
+      });
+      processed++;
+    } catch (err) {
+      errors++;
+      const msg = (err as Error).message;
+      await withSystem(async (tx) => {
+        await tx.execute(
+          sql`UPDATE events_outbox
+              SET attempts = (COALESCE(attempts, '0')::int + 1)::text,
+                  last_error = ${msg},
+                  claimed_at = NULL
+              WHERE id = ${event.id}`
+        );
+      });
+      console.error(`[outbox] event ${event.id} failed:`, msg);
+    }
+  }
+
+  return { processed, errors };
+}
+
+async function processEvent(event: any) {
+  const tenantId: string = event.tenant_id;
+  // 1) Find subscribed workflow triggers
+  const triggers = await withTenant(tenantId, async (tx) => {
+    return tx
+      .select()
+      .from(workflowTriggers)
+      .where(
+        and(
+          eq(workflowTriggers.enabled, true),
+          // record_event triggers carry their kind filter in config.eventKind
+          // or in config.eventPrefix (for prefix matching)
+          or(
+            eq(workflowTriggers.kind, "record_event"),
+            eq(workflowTriggers.kind, "inbound_message"),
+            eq(workflowTriggers.kind, "communication_event"),
+            eq(workflowTriggers.kind, "segment_entry"),
+            eq(workflowTriggers.kind, "segment_exit")
+          )
+        )
+      );
+  });
+
+  for (const trig of triggers) {
+    const cfg = trig.config as any;
+    const triggerKinds: string[] = cfg.eventKinds ?? (cfg.eventKind ? [cfg.eventKind] : []);
+    if (!triggerKinds.includes(event.kind)) {
+      // try prefix match
+      const prefixes: string[] = cfg.eventPrefixes ?? [];
+      if (!prefixes.some((p) => event.kind.startsWith(p))) continue;
+    }
+
+    // Optional criteria match against event payload
+    if (trig.criteria) {
+      try {
+        const pred = compileToPredicate(trig.criteria as any, cfg.subjectType ?? "investor");
+        if (!pred({ ...event.after, ...event.meta, event })) continue;
+      } catch (err) {
+        console.warn(`[outbox] criteria eval failed for trigger ${trig.id}:`, (err as Error).message);
+        continue;
+      }
+    }
+
+    await startRun({
+      tenantId,
+      workflowId: trig.workflowId,
+      triggeredBy: "event",
+      triggerId: trig.id,
+      subjectType: cfg.subjectType ?? event.entity_type,
+      subjectId: cfg.subjectIdFrom === "event.entity_id" ? event.entity_id : event.entity_id,
+      contextSnapshot: { before: event.before, after: event.after, meta: event.meta, kind: event.kind },
+      event: event,
+    });
+  }
+
+  // 2) Resume parked wait_for_event runs
+  await resumeWaitingRuns(tenantId, event);
+}
+
+async function resumeWaitingRuns(tenantId: string, event: any) {
+  // Find paused runs whose wait_predicate.eventKind matches
+  const runs = await withTenant(tenantId, async (tx) => {
+    return tx.execute(sql`
+      SELECT * FROM workflow_runs
+      WHERE tenant_id = ${tenantId}
+        AND status = 'paused'
+        AND wait_predicate->>'eventKind' = ${event.kind}
+    `);
+  });
+
+  for (const r of runs.rows as any[]) {
+    // Criteria check
+    const criteria = r.wait_predicate?.criteria;
+    if (criteria) {
+      try {
+        const pred = compileToPredicate(criteria, r.subject_type ?? "investor");
+        if (!pred({ ...event.after, ...event.meta, event })) continue;
+      } catch {
+        continue;
+      }
+    }
+    // Re-queue
+    await withTenant(tenantId, async (tx) => {
+      await tx.execute(sql`
+        UPDATE workflow_runs
+        SET status = 'queued',
+            paused_until = NULL,
+            wait_predicate = NULL
+        WHERE id = ${r.id}
+      `);
+    });
+  }
+}
+
+export function startOutboxPollerWorker() {
+  // Single processor that runs on a tight interval
+  const intervalMs = Number(process.env.OUTBOX_POLLER_INTERVAL_MS ?? "200");
+  let running = false;
+  const tick = async () => {
+    if (running) return;
+    running = true;
+    try {
+      const { processed, errors } = await pollOutboxOnce();
+      if (processed > 0 || errors > 0) {
+        console.log(`[outbox] processed=${processed} errors=${errors}`);
+      }
+    } catch (err) {
+      console.error("[outbox] tick error:", (err as Error).message);
+    } finally {
+      running = false;
+    }
+  };
+  const handle = setInterval(tick, intervalMs);
+  console.log(`[outbox] poller started (interval=${intervalMs}ms)`);
+  return () => clearInterval(handle);
+}

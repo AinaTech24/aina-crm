@@ -1,0 +1,165 @@
+/**
+ * Review meetings — collection endpoint.
+ *
+ *   GET  /api/review-meetings   — list with investor + RM joined
+ *   POST /api/review-meetings   — schedule a new meeting
+ *
+ * Automations fired on create:
+ *   1. Insert a reminder task for the RM (1 day before the meeting)
+ *   2. Outbox event so any subscribed workflow can hook in (WA reminder, etc.)
+ */
+
+import { NextRequest, NextResponse } from "next/server";
+import { v4 as uuid } from "uuid";
+import { sql, eq } from "drizzle-orm";
+import { z } from "zod";
+import { withTenant } from "@/db/client";
+import { requireSession } from "@/lib/auth/session";
+import { assertActiveLicense } from "@/lib/auth/license";
+import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
+import {
+  reviewMeetings,
+  investors,
+  tasks,
+  eventsOutbox,
+  REVIEW_MEETING_TYPES,
+  REVIEW_MEETING_MODES,
+  MEETING_CATEGORIES,
+} from "@/db/schema";
+
+export const dynamic = "force-dynamic";
+
+const Body = z.object({
+  investorId: z.string().uuid(),
+  familyId: z.string().uuid().optional(),
+  rmId: z.string().uuid().optional(),
+  category: z.enum(MEETING_CATEGORIES).default("review"),
+  parentMeetingId: z.string().uuid().optional(),
+  meetingType: z.enum(REVIEW_MEETING_TYPES),
+  meetingDate: z.string(), // ISO datetime
+  durationMinutes: z.number().int().positive().default(30),
+  meetingMode: z.enum(REVIEW_MEETING_MODES),
+  locationOrLink: z.string().optional(),
+  discussionPoints: z.string().optional(),
+});
+
+export async function GET() {
+  try {
+    const session = await requireSession();
+    const rows = await withTenant(session.tenantId, async (tx) => {
+      const r = await tx.execute(sql`
+        SELECT m.*, i.name AS investor_name, i.segment_tag, i.pan AS investor_pan,
+               u.name AS rm_name
+        FROM review_meetings m
+        LEFT JOIN investors i ON i.id = m.investor_id
+        LEFT JOIN users u ON u.id = m.rm_id
+        ORDER BY m.meeting_date DESC
+        LIMIT 500
+      `);
+      return r.rows;
+    });
+    return NextResponse.json({ meetings: rows });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message ?? "internal" }, { status: err.status ?? 500 });
+  }
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const session = await requireSession();
+    await assertActiveLicense(session.tenantId, session.roles);
+    const parse = Body.safeParse(await req.json().catch(() => ({})));
+    if (!parse.success) {
+      return NextResponse.json({ error: "invalid body", issues: parse.error.issues }, { status: 400 });
+    }
+    const body = parse.data;
+    const clientMeta = clientMetaFromHeaders(req.headers);
+
+    const result = await withTenant(session.tenantId, async (tx) => {
+      const inv = (await tx.select().from(investors).where(eq(investors.id, body.investorId)).limit(1))[0];
+      if (!inv) throw Object.assign(new Error("investor not found"), { status: 404 });
+
+      const id = uuid();
+      const rmId = body.rmId ?? inv.rmId ?? session.userId;
+      const meetingDate = new Date(body.meetingDate);
+
+      // ─── Automation 1 — reminder task (1 day before) ───────────────
+      const reminderTaskId = uuid();
+      const reminderAt = new Date(meetingDate.getTime() - 24 * 60 * 60 * 1000);
+      await tx.insert(tasks).values({
+        id: reminderTaskId,
+        tenantId: session.tenantId,
+        branchId: session.branchId ?? null,
+        assigneeId: rmId,
+        subjectType: "investor",
+        subjectId: body.investorId,
+        type: "review_meeting_reminder",
+        title: `Reminder: ${labelForType(body.meetingType)} with ${inv.name} tomorrow`,
+        description: `Mode: ${labelForMode(body.meetingMode)}${body.locationOrLink ? " · " + body.locationOrLink : ""}.${body.discussionPoints ? " Agenda: " + body.discussionPoints : ""}`,
+        priority: "normal",
+        status: "open",
+        dueAt: reminderAt,
+      } as any);
+
+      await tx.insert(reviewMeetings).values({
+        id,
+        tenantId: session.tenantId,
+        investorId: body.investorId,
+        familyId: body.familyId ?? null,
+        rmId,
+        category: body.category,
+        parentMeetingId: body.parentMeetingId ?? null,
+        meetingType: body.meetingType,
+        meetingDate,
+        durationMinutes: String(body.durationMinutes),
+        meetingMode: body.meetingMode,
+        locationOrLink: body.locationOrLink ?? null,
+        discussionPoints: body.discussionPoints ?? null,
+        status: "scheduled",
+        reminderTaskId,
+      } as any);
+
+      // Outbox so subscribed workflows can send WA reminder etc.
+      await tx.insert(eventsOutbox).values({
+        tenantId: session.tenantId,
+        kind: "review_meeting.scheduled",
+        entityType: "review_meeting",
+        entityId: id,
+        after: {
+          investorId: body.investorId,
+          meetingType: body.meetingType,
+          meetingDate: meetingDate.toISOString(),
+          mode: body.meetingMode,
+        },
+        meta: { userId: session.userId } as any,
+      } as any);
+
+      await recordAudit(tx, {
+        tenantId: session.tenantId,
+        actorUserId: session.userId,
+        action: "review_meeting.create",
+        entityType: "review_meeting",
+        entityId: id,
+        after: {
+          investorId: body.investorId,
+          meetingType: body.meetingType,
+          mode: body.meetingMode,
+        } as any,
+        ...clientMeta,
+      });
+
+      return { id, rmId, reminderTaskId };
+    });
+
+    return NextResponse.json(result, { status: 201 });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message ?? "internal" }, { status: err.status ?? 500 });
+  }
+}
+
+function labelForType(t: string): string {
+  return t.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+function labelForMode(m: string): string {
+  return m === "client_place" ? "Client place" : m.charAt(0).toUpperCase() + m.slice(1);
+}

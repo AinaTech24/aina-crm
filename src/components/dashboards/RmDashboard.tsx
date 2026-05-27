@@ -1,0 +1,400 @@
+import Link from "next/link";
+import { and, eq, sql, desc, isNotNull, gte, lte } from "drizzle-orm";
+import { Calendar, Users, TrendingUp, AlertCircle, Phone } from "lucide-react";
+import { withTenant } from "@/db/client";
+import { investors, leads, tasks, communications, sips } from "@/db/schema";
+import { formatINR, formatRelative, formatDate } from "@/lib/utils";
+import type { SessionUser } from "@/lib/auth/session";
+
+/**
+ * RM dashboard — shows only what's assigned to this RM. Per spec section 2:
+ *   My leads · My clients · Today's follow-ups · Review meetings due
+ *   SIP rejection follow-ups · Birthday/anniversary clients
+ *   Pending service requests · SIP top-up opportunities
+ *   My monthly business · My pending tasks
+ */
+export async function RmDashboard({
+  session,
+  limited = false,
+}: {
+  session: SessionUser;
+  limited?: boolean;
+}) {
+  const userId = session.userId;
+  const today = new Date();
+  const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+  const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59);
+  const next7 = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+  const data = await withTenant(session.tenantId, async (tx) => {
+    // My clients + AUM
+    const clientStats = await tx.execute(sql`
+      SELECT
+        COUNT(*)::int AS my_clients,
+        COALESCE(SUM(aum::numeric), 0)::numeric AS my_aum,
+        COALESCE(SUM(active_sip_amount::numeric), 0)::numeric AS my_sip_book
+      FROM investors WHERE rm_id = ${userId} AND status = 'active'
+    `);
+    const c = clientStats.rows[0] as any;
+
+    // My leads by stage
+    const leadStats = await tx.execute(sql`
+      SELECT
+        COUNT(*) FILTER (WHERE stage NOT IN ('converted', 'lost', 'cold'))::int AS open_leads,
+        COUNT(*) FILTER (WHERE stage = 'converted' AND converted_at >= ${startOfMonth.toISOString()})::int AS converted_mtd,
+        COUNT(*) FILTER (WHERE next_follow_up_at <= ${endOfDay.toISOString()} AND stage NOT IN ('converted', 'lost'))::int AS follow_ups_today
+      FROM leads WHERE owner_id = ${userId}
+    `);
+    const l = leadStats.rows[0] as any;
+
+    // My monthly business (from transactions)
+    const businessStats = await tx.execute(sql`
+      SELECT
+        COALESCE(SUM(CASE WHEN direction = 'inflow' THEN amount::numeric ELSE 0 END), 0) AS gross,
+        COALESCE(SUM(CASE WHEN direction = 'outflow' THEN amount::numeric ELSE 0 END), 0) AS redemption
+      FROM transactions t
+      WHERE t.status = 'successful'
+        AND t.order_date >= ${startOfMonth.toISOString().slice(0, 10)}::date
+        AND t.investor_id IN (SELECT id FROM investors WHERE rm_id = ${userId})
+    `);
+    const b = businessStats.rows[0] as any;
+
+    // Reviews due this week
+    const reviewsDue = await tx
+      .select()
+      .from(investors)
+      .where(
+        and(
+          eq(investors.rmId, userId),
+          isNotNull(investors.nextReviewAt),
+          sql`next_review_at <= ${next7.toISOString()}`
+        )
+      )
+      .orderBy(investors.nextReviewAt)
+      .limit(10);
+
+    // Today's follow-ups (leads + tasks)
+    const followUps = await tx.execute(sql`
+      SELECT 'lead' AS kind, id, name AS title, next_follow_up_at AS due_at FROM leads
+      WHERE owner_id = ${userId} AND next_follow_up_at IS NOT NULL
+        AND next_follow_up_at <= ${endOfDay.toISOString()}
+        AND stage NOT IN ('converted', 'lost', 'cold')
+      UNION ALL
+      SELECT 'task', id, title, due_at FROM tasks
+      WHERE assignee_id = ${userId} AND status = 'open'
+        AND due_at IS NOT NULL AND due_at <= ${endOfDay.toISOString()}
+      ORDER BY due_at ASC LIMIT 10
+    `);
+
+    // Birthdays this week (DOB month-day matches today + 7)
+    const birthdays = await tx.execute(sql`
+      SELECT id, name, dob, segment_tag FROM investors
+      WHERE rm_id = ${userId} AND dob IS NOT NULL
+        AND to_char(dob, 'MM-DD') BETWEEN to_char(current_date, 'MM-DD')
+                                       AND to_char(current_date + interval '7 days', 'MM-DD')
+      LIMIT 8
+    `);
+
+    // My open tasks
+    const myTasks = await tx
+      .select()
+      .from(tasks)
+      .where(and(eq(tasks.assigneeId, userId), eq(tasks.status, "open")))
+      .orderBy(desc(tasks.priority), tasks.dueAt)
+      .limit(8);
+
+    // SIP top-up opportunities (HNI / Affluent with active SIPs that haven't increased in 12mo)
+    const topUpRes = await tx.execute(sql`
+      SELECT i.id, i.name, i.segment_tag, i.active_sip_amount
+      FROM investors i
+      WHERE i.rm_id = ${userId}
+        AND i.segment_tag IN ('HNI', 'Affluent')
+        AND i.active_sip_amount::numeric > 0
+        AND NOT EXISTS (
+          SELECT 1 FROM sips s
+          WHERE s.investor_id = i.id
+            AND s.created_at >= now() - interval '12 months'
+        )
+      LIMIT 5
+    `);
+
+    // SIP rejection follow-ups — rejected SIPs in last 14 days for my clients
+    const sipRejections = await tx.execute(sql`
+      SELECT t.id, t.scheme_name, t.amount, t.reason_code, t.created_at,
+             i.id AS investor_id, i.name AS investor_name
+      FROM transactions t
+      JOIN investors i ON i.id = t.investor_id
+      WHERE i.rm_id = ${userId}
+        AND t.type = 'sip'
+        AND t.status = 'rejected'
+        AND t.created_at >= now() - interval '14 days'
+      ORDER BY t.created_at DESC
+      LIMIT 8
+    `);
+
+    // Anniversaries (investor onboarded_at month-day matches today + 7)
+    const anniversaries = await tx.execute(sql`
+      SELECT id, name, onboarded_at,
+             EXTRACT(YEAR FROM age(current_date, onboarded_at))::int AS years
+      FROM investors
+      WHERE rm_id = ${userId} AND onboarded_at IS NOT NULL
+        AND to_char(onboarded_at, 'MM-DD') BETWEEN to_char(current_date, 'MM-DD')
+                                                AND to_char(current_date + interval '7 days', 'MM-DD')
+      LIMIT 8
+    `);
+
+    // Pending service requests for assigned clients
+    const myServiceReqs = await tx.execute(sql`
+      SELECT sr.id, sr.ticket_no, sr.subject, sr.type, sr.status, sr.sla_resolution_at,
+             i.name AS investor_name
+      FROM service_requests sr
+      JOIN investors i ON i.id = sr.investor_id
+      WHERE i.rm_id = ${userId}
+        AND sr.status IN ('open', 'in_progress')
+      ORDER BY sr.sla_resolution_at ASC NULLS LAST
+      LIMIT 8
+    `);
+
+    return {
+      myClients: Number(c.my_clients),
+      myAum: Number(c.my_aum),
+      mySipBook: Number(c.my_sip_book),
+      openLeads: Number(l.open_leads),
+      convertedMtd: Number(l.converted_mtd),
+      followUpsToday: Number(l.follow_ups_today),
+      grossMtd: Number(b.gross),
+      netMtd: Number(b.gross) - Number(b.redemption),
+      reviewsDue,
+      followUps: followUps.rows as any[],
+      birthdays: birthdays.rows as any[],
+      myTasks,
+      topUps: topUpRes.rows as any[],
+      sipRejections: sipRejections.rows as any[],
+      anniversaries: anniversaries.rows as any[],
+      myServiceReqs: myServiceReqs.rows as any[],
+    };
+  }, { userId: session.userId, branchId: session.branchId, roles: session.roles });
+
+  return (
+    <div className="space-y-6 max-w-7xl">
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight">My day</h1>
+        <p className="text-muted-foreground text-sm">
+          Hi {session.name.split(" ")[0]} — here's what to focus on today.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-4 gap-4">
+        <Kpi label="My clients" value={String(data.myClients)} sub={formatINR(data.myAum) + " AUM"} />
+        <Kpi label="My SIP book" value={formatINR(data.mySipBook)} sub="per month" />
+        <Kpi label="My net sales MTD" value={formatINR(data.netMtd)} sub={`Gross ${formatINR(data.grossMtd)}`} />
+        <Kpi label="Open leads" value={String(data.openLeads)} sub={`${data.convertedMtd} converted MTD`} />
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <Section title="Follow-ups today" count={data.followUps.length}>
+          {data.followUps.length === 0 ? (
+            <Empty text="No follow-ups due today. ✓" />
+          ) : (
+            <ul className="divide-y">
+              {data.followUps.map((f: any) => (
+                <li key={`${f.kind}-${f.id}`} className="py-2 flex items-center justify-between text-sm">
+                  <div className="flex items-center gap-2">
+                    {f.kind === "lead" ? (
+                      <Phone className="size-3.5 text-blue-600" />
+                    ) : (
+                      <AlertCircle className="size-3.5 text-amber-600" />
+                    )}
+                    <span>{f.title}</span>
+                    <span className="text-xs uppercase text-muted-foreground">{f.kind}</span>
+                  </div>
+                  <span className="text-xs text-muted-foreground">{formatRelative(f.due_at)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Section>
+
+        <Section title="Reviews due this week" count={data.reviewsDue.length}>
+          {data.reviewsDue.length === 0 ? (
+            <Empty text="No reviews due this week. ✓" />
+          ) : (
+            <ul className="divide-y">
+              {data.reviewsDue.map((i) => (
+                <li key={i.id} className="py-2 flex items-center justify-between text-sm">
+                  <Link href={`/dashboard/investors/${i.id}`} className="hover:underline">
+                    {i.name}
+                  </Link>
+                  <span className="text-xs text-muted-foreground">
+                    {i.segmentTag} · {i.nextReviewAt ? formatDate(i.nextReviewAt) : "—"}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Section>
+      </div>
+
+      {!limited && (
+        <>
+          <div className="grid grid-cols-2 gap-4">
+            <Section title="SIP rejection follow-ups (14d)" count={data.sipRejections.length}>
+              {data.sipRejections.length === 0 ? (
+                <Empty text="No recent SIP rejections. ✓" />
+              ) : (
+                <ul className="divide-y">
+                  {data.sipRejections.map((r: any) => (
+                    <li key={r.id} className="py-2 flex items-center justify-between text-sm">
+                      <Link href={`/dashboard/investors/${r.investor_id}`} className="hover:underline">
+                        <div className="font-medium">{r.investor_name}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {r.scheme_name ?? "—"} · {r.reason_code ?? "unknown reason"}
+                        </div>
+                      </Link>
+                      <div className="text-right">
+                        <div className="text-xs text-rose-600 font-medium">{formatINR(Number(r.amount))}</div>
+                        <div className="text-xs text-muted-foreground">{formatRelative(r.created_at)}</div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Section>
+
+            <Section title="Pending service requests" count={data.myServiceReqs.length}>
+              {data.myServiceReqs.length === 0 ? (
+                <Empty text="No open service requests for your clients. ✓" />
+              ) : (
+                <ul className="divide-y">
+                  {data.myServiceReqs.map((sr: any) => {
+                    const slaMs = sr.sla_resolution_at
+                      ? new Date(sr.sla_resolution_at).getTime() - Date.now()
+                      : null;
+                    const breached = slaMs != null && slaMs < 0;
+                    return (
+                      <li key={sr.id} className="py-2 flex items-center justify-between text-sm">
+                        <Link href="/dashboard/service-requests" className="hover:underline">
+                          <div className="font-medium">{sr.subject}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {sr.investor_name} · {sr.type}
+                          </div>
+                        </Link>
+                        <span className={`text-xs ${breached ? "text-rose-600 font-medium" : "text-muted-foreground"}`}>
+                          {breached ? "SLA breached" : sr.status}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </Section>
+          </div>
+
+          <div className="grid grid-cols-3 gap-4">
+            <Section title="Birthdays this week" count={data.birthdays.length}>
+              {data.birthdays.length === 0 ? (
+                <Empty text="No birthdays this week." />
+              ) : (
+                <ul className="divide-y">
+                  {data.birthdays.map((b: any) => (
+                    <li key={b.id} className="py-2 flex items-center justify-between text-sm">
+                      <Link href={`/dashboard/investors/${b.id}`} className="hover:underline">
+                        {b.name}
+                      </Link>
+                      <span className="text-xs text-muted-foreground">{formatDate(b.dob)}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Section>
+
+            <Section title="Anniversaries this week" count={data.anniversaries.length}>
+              {data.anniversaries.length === 0 ? (
+                <Empty text="No anniversaries this week." />
+              ) : (
+                <ul className="divide-y">
+                  {data.anniversaries.map((a: any) => (
+                    <li key={a.id} className="py-2 flex items-center justify-between text-sm">
+                      <Link href={`/dashboard/investors/${a.id}`} className="hover:underline">
+                        {a.name}
+                      </Link>
+                      <span className="text-xs text-muted-foreground">
+                        {a.years > 0 ? `${a.years} yr` : "today"}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Section>
+
+            <Section title="SIP top-up opportunities" count={data.topUps.length}>
+              {data.topUps.length === 0 ? (
+                <Empty text="No top-up opportunities right now." />
+              ) : (
+                <ul className="divide-y">
+                  {data.topUps.map((t: any) => (
+                    <li key={t.id} className="py-2 flex items-center justify-between text-sm">
+                      <Link href={`/dashboard/investors/${t.id}`} className="hover:underline">
+                        {t.name}
+                      </Link>
+                      <span className="text-xs text-muted-foreground">
+                        {t.segment_tag} · {formatINR(Number(t.active_sip_amount))}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Section>
+          </div>
+        </>
+      )}
+
+      <Section title="My open tasks" count={data.myTasks.length}>
+        {data.myTasks.length === 0 ? (
+          <Empty text="No open tasks. ✓" />
+        ) : (
+          <ul className="divide-y">
+            {data.myTasks.map((t) => (
+              <li key={t.id} className="py-2 flex items-center justify-between text-sm">
+                <div className="flex items-center gap-2">
+                  <input type="checkbox" className="size-3.5 rounded" />
+                  <span>{t.title}</span>
+                  <span className="text-xs uppercase text-muted-foreground">{t.priority}</span>
+                </div>
+                <span className="text-xs text-muted-foreground">
+                  {t.dueAt ? formatRelative(t.dueAt) : "no due"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Section>
+    </div>
+  );
+}
+
+function Kpi({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return (
+    <div className="border rounded-lg p-5 bg-card">
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="text-2xl font-bold mt-1">{value}</div>
+      {sub && <div className="text-xs text-muted-foreground mt-1">{sub}</div>}
+    </div>
+  );
+}
+
+function Section({ title, count, children }: { title: string; count?: number; children: React.ReactNode }) {
+  return (
+    <div className="border rounded-lg bg-card p-5">
+      <div className="font-semibold flex items-center justify-between mb-3">
+        <span>{title}</span>
+        {count !== undefined && <span className="text-xs text-muted-foreground">{count}</span>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function Empty({ text }: { text: string }) {
+  return <div className="text-sm text-muted-foreground text-center py-6">{text}</div>;
+}

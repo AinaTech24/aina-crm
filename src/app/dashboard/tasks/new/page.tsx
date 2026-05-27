@@ -1,0 +1,516 @@
+"use client";
+
+/**
+ * New Task form — Module 18 spec.
+ *
+ *   1. Title + description + remarks
+ *   2. Related-entity pickers — Client (InvestorLookup), Lead, Service Request, Meeting
+ *   3. Department, Type, Priority, Due date
+ *   4. Assignee (defaults to creator on backend)
+ *
+ * The four related-entity pickers all populate the same task row; whichever
+ * is set first also seeds the legacy subjectType/subjectId so existing
+ * queries keep working.
+ */
+
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import {
+  ChevronLeft,
+  ListChecks,
+  Save,
+  Loader2,
+  X,
+  Search,
+  Sparkles,
+  LifeBuoy,
+  Calendar,
+} from "lucide-react";
+import { InvestorLookup } from "@/components/common/InvestorLookup";
+
+const DEPARTMENTS: [string, string][] = [
+  ["sales", "Sales"],
+  ["operations", "Operations"],
+  ["back_office", "Back Office"],
+  ["compliance", "Compliance"],
+  ["marketing", "Marketing"],
+  ["advisory", "Advisory"],
+  ["support", "Support"],
+  ["leadership", "Leadership"],
+  ["other", "Other"],
+];
+
+export default function NewTaskPage() {
+  const router = useRouter();
+  const [form, setForm] = useState({
+    title: "",
+    description: "",
+    type: "follow_up",
+    priority: "normal",
+    dueDate: defaultDueDate(3),
+    department: "",
+    remarks: "",
+    relatedInvestorId: "",
+    relatedInvestorName: "",
+    relatedLeadId: "",
+    relatedLeadName: "",
+    relatedServiceRequestId: "",
+    relatedServiceRequestLabel: "",
+    relatedMeetingId: "",
+    relatedMeetingLabel: "",
+  });
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  function set<K extends keyof typeof form>(k: K, v: (typeof form)[K]) {
+    setForm((s) => ({ ...s, [k]: v }));
+  }
+
+  async function save() {
+    if (!form.title.trim()) {
+      setErr("Title is required.");
+      return;
+    }
+    setBusy(true);
+    setErr(null);
+    try {
+      const payload: any = {
+        title: form.title,
+        description: form.description || undefined,
+        type: form.type,
+        priority: form.priority,
+        dueAt: form.dueDate ? new Date(form.dueDate).toISOString() : undefined,
+        department: form.department || undefined,
+        remarks: form.remarks || undefined,
+      };
+      if (form.relatedInvestorId) payload.relatedInvestorId = form.relatedInvestorId;
+      if (form.relatedLeadId) payload.relatedLeadId = form.relatedLeadId;
+      if (form.relatedServiceRequestId)
+        payload.relatedServiceRequestId = form.relatedServiceRequestId;
+      if (form.relatedMeetingId) payload.relatedMeetingId = form.relatedMeetingId;
+
+      const res = await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const j = await res.json();
+      if (!res.ok) {
+        setErr(j.error ?? `Save failed (${res.status})`);
+        return;
+      }
+      router.push(`/dashboard/tasks`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-4 max-w-4xl">
+      <Link
+        href="/dashboard/tasks"
+        className="text-sm text-muted-foreground hover:underline hover:text-foreground flex items-center gap-1"
+      >
+        <ChevronLeft className="size-4" /> Back to tasks
+      </Link>
+
+      <div>
+        <h1 className="page-title">
+          <ListChecks className="size-6 text-brand-cyan" /> New task
+        </h1>
+        <p className="page-subtitle">
+          Link the task to any combination of a client, lead, service request, and meeting.
+        </p>
+      </div>
+
+      {/* Title + description */}
+      <div className="card-surface p-5 space-y-3">
+        <div className="flex items-center gap-2">
+          <div className="h-4 w-1 rounded-full brand-bar" />
+          <h2 className="section-title">1. What</h2>
+        </div>
+        <label className="block">
+          <div className="text-xs font-medium mb-1">
+            Title <span className="text-rose-600">*</span>
+          </div>
+          <input
+            value={form.title}
+            onChange={(e) => set("title", e.target.value)}
+            placeholder="Call client to share quarterly review"
+            className="input-base"
+          />
+        </label>
+        <label className="block">
+          <div className="text-xs font-medium mb-1">Description</div>
+          <textarea
+            value={form.description}
+            onChange={(e) => set("description", e.target.value)}
+            rows={3}
+            placeholder="What needs to happen — context, supporting links, etc."
+            className="input-base"
+          />
+        </label>
+        <label className="block">
+          <div className="text-xs font-medium mb-1">Remarks (live notes — appended over time)</div>
+          <textarea
+            value={form.remarks}
+            onChange={(e) => set("remarks", e.target.value)}
+            rows={2}
+            className="input-base text-xs"
+          />
+        </label>
+      </div>
+
+      {/* Related entities */}
+      <div className="card-surface p-5 space-y-3">
+        <div className="flex items-center gap-2">
+          <div className="h-4 w-1 rounded-full brand-bar" />
+          <h2 className="section-title">2. Related to (any combination)</h2>
+        </div>
+
+        <div>
+          <div className="text-xs font-medium mb-1">Related client</div>
+          <InvestorLookup
+            value={form.relatedInvestorId || null}
+            displayName={form.relatedInvestorName || null}
+            onSelect={(id, name) =>
+              setForm((s) => ({ ...s, relatedInvestorId: id, relatedInvestorName: name }))
+            }
+            onClear={() =>
+              setForm((s) => ({ ...s, relatedInvestorId: "", relatedInvestorName: "" }))
+            }
+            placeholder="Search clients…"
+          />
+        </div>
+
+        <RelatedSearch
+          label="Related lead"
+          icon={Sparkles}
+          placeholder="Search leads by name…"
+          pickedId={form.relatedLeadId}
+          pickedLabel={form.relatedLeadName}
+          searchFn={async (q) => {
+            const r = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+            const j = await r.json();
+            return (j.leads ?? []).map((l: any) => ({
+              id: l.id,
+              label: l.name,
+              sub: `${l.stage ?? "—"} · ${l.source ?? "—"}`,
+            }));
+          }}
+          onPick={(id, label) =>
+            setForm((s) => ({ ...s, relatedLeadId: id, relatedLeadName: label }))
+          }
+          onClear={() => setForm((s) => ({ ...s, relatedLeadId: "", relatedLeadName: "" }))}
+        />
+
+        <RelatedSearch
+          label="Related service request"
+          icon={LifeBuoy}
+          placeholder="Search SR by ticket no. or subject…"
+          pickedId={form.relatedServiceRequestId}
+          pickedLabel={form.relatedServiceRequestLabel}
+          searchFn={async (q) => {
+            const r = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+            const j = await r.json();
+            return (j.serviceRequests ?? []).map((sr: any) => ({
+              id: sr.id,
+              label: sr.ticket_no ?? sr.id,
+              sub: `${sr.subject ?? "—"} · ${sr.status ?? "—"}`,
+            }));
+          }}
+          onPick={(id, label) =>
+            setForm((s) => ({
+              ...s,
+              relatedServiceRequestId: id,
+              relatedServiceRequestLabel: label,
+            }))
+          }
+          onClear={() =>
+            setForm((s) => ({
+              ...s,
+              relatedServiceRequestId: "",
+              relatedServiceRequestLabel: "",
+            }))
+          }
+        />
+
+        <MeetingPicker
+          pickedId={form.relatedMeetingId}
+          pickedLabel={form.relatedMeetingLabel}
+          onPick={(id, label) =>
+            setForm((s) => ({ ...s, relatedMeetingId: id, relatedMeetingLabel: label }))
+          }
+          onClear={() =>
+            setForm((s) => ({ ...s, relatedMeetingId: "", relatedMeetingLabel: "" }))
+          }
+        />
+      </div>
+
+      {/* Type + dept + priority + due */}
+      <div className="card-surface p-5 space-y-3">
+        <div className="flex items-center gap-2">
+          <div className="h-4 w-1 rounded-full brand-bar" />
+          <h2 className="section-title">3. Routing + schedule</h2>
+        </div>
+        <div className="grid grid-cols-4 gap-3">
+          <label className="block">
+            <div className="text-xs font-medium mb-1">Type</div>
+            <select
+              value={form.type}
+              onChange={(e) => set("type", e.target.value)}
+              className="input-base"
+            >
+              <option value="follow_up">Follow-up</option>
+              <option value="review_meeting">Review meeting</option>
+              <option value="collect_document">Collect document</option>
+              <option value="kyc_renewal">KYC renewal</option>
+              <option value="mandate_renewal">Mandate renewal</option>
+              <option value="custom">Custom</option>
+            </select>
+          </label>
+          <label className="block">
+            <div className="text-xs font-medium mb-1">Department</div>
+            <select
+              value={form.department}
+              onChange={(e) => set("department", e.target.value)}
+              className="input-base"
+            >
+              <option value="">—</option>
+              {DEPARTMENTS.map(([k, l]) => (
+                <option key={k} value={k}>
+                  {l}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <div className="text-xs font-medium mb-1">Priority</div>
+            <select
+              value={form.priority}
+              onChange={(e) => set("priority", e.target.value)}
+              className="input-base"
+            >
+              <option value="low">Low</option>
+              <option value="normal">Normal</option>
+              <option value="high">High</option>
+              <option value="urgent">Urgent</option>
+            </select>
+          </label>
+          <label className="block">
+            <div className="text-xs font-medium mb-1">Due date</div>
+            <input
+              type="date"
+              value={form.dueDate}
+              onChange={(e) => set("dueDate", e.target.value)}
+              className="input-base"
+            />
+          </label>
+        </div>
+
+        {err && (
+          <div className="rounded-lg border border-destructive/30 bg-destructive/5 text-destructive text-sm px-3 py-2">
+            {err}
+          </div>
+        )}
+
+        <div className="flex justify-end gap-2 pt-2 border-t border-border">
+          <Link href="/dashboard/tasks" className="btn-secondary">
+            Cancel
+          </Link>
+          <button
+            type="button"
+            onClick={save}
+            disabled={busy || !form.title}
+            className="btn-primary"
+          >
+            {busy ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+            {busy ? "Saving…" : "Create task"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function defaultDueDate(daysOut: number) {
+  const d = new Date();
+  d.setDate(d.getDate() + daysOut);
+  return d.toISOString().slice(0, 10);
+}
+
+/* ─────────────── Generic search-then-pick row ─────────────── */
+
+function RelatedSearch({
+  label,
+  icon: Icon,
+  placeholder,
+  pickedId,
+  pickedLabel,
+  searchFn,
+  onPick,
+  onClear,
+}: {
+  label: string;
+  icon: any;
+  placeholder: string;
+  pickedId: string;
+  pickedLabel: string;
+  searchFn: (q: string) => Promise<Array<{ id: string; label: string; sub?: string }>>;
+  onPick: (id: string, label: string) => void;
+  onClear: () => void;
+}) {
+  const [q, setQ] = useState("");
+  const [results, setResults] = useState<Array<{ id: string; label: string; sub?: string }>>([]);
+
+  useEffect(() => {
+    if (pickedId || q.trim().length < 2) {
+      setResults([]);
+      return;
+    }
+    const t = setTimeout(async () => setResults(await searchFn(q)), 220);
+    return () => clearTimeout(t);
+  }, [q, pickedId, searchFn]);
+
+  if (pickedId) {
+    return (
+      <div>
+        <div className="text-xs font-medium mb-1">{label}</div>
+        <div className="flex items-center gap-2">
+          <div className="flex-1 flex items-center gap-2 rounded-lg border border-brand-cyan/40 bg-brand-cyan-light/40 px-3 py-2">
+            <Icon className="size-3.5 text-brand-cyan-deep flex-shrink-0" />
+            <span className="font-medium text-sm truncate">{pickedLabel}</span>
+          </div>
+          <button type="button" onClick={onClear} className="btn-icon" title="Clear">
+            <X className="size-3.5" />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="text-xs font-medium mb-1">{label}</div>
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none" />
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder={placeholder}
+          className="input-base pl-9"
+        />
+        {results.length > 0 && (
+          <div className="absolute left-0 right-0 mt-1 z-30 card-elevated max-h-56 overflow-y-auto scrollbar-thin">
+            <ul className="py-1">
+              {results.map((r) => (
+                <li key={r.id}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onPick(r.id, r.label);
+                      setQ("");
+                      setResults([]);
+                    }}
+                    className="w-full text-left px-3 py-1.5 hover:bg-brand-cyan-light/40"
+                  >
+                    <div className="font-semibold text-sm truncate">{r.label}</div>
+                    {r.sub && (
+                      <div className="text-[10px] text-muted-foreground truncate">{r.sub}</div>
+                    )}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────── Meeting picker (loads recent meetings) ─────────────── */
+
+function MeetingPicker({
+  pickedId,
+  pickedLabel,
+  onPick,
+  onClear,
+}: {
+  pickedId: string;
+  pickedLabel: string;
+  onPick: (id: string, label: string) => void;
+  onClear: () => void;
+}) {
+  const [meetings, setMeetings] = useState<any[]>([]);
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await fetch("/api/review-meetings");
+        const j = await r.json();
+        setMeetings(j.meetings ?? []);
+      } catch {
+        setMeetings([]);
+      }
+    })();
+  }, []);
+
+  if (pickedId) {
+    return (
+      <div>
+        <div className="text-xs font-medium mb-1">Related meeting</div>
+        <div className="flex items-center gap-2">
+          <div className="flex-1 flex items-center gap-2 rounded-lg border border-brand-cyan/40 bg-brand-cyan-light/40 px-3 py-2">
+            <Calendar className="size-3.5 text-brand-cyan-deep flex-shrink-0" />
+            <span className="font-medium text-sm truncate">{pickedLabel}</span>
+          </div>
+          <button type="button" onClick={onClear} className="btn-icon" title="Clear">
+            <X className="size-3.5" />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <label className="block">
+      <div className="text-xs font-medium mb-1">Related meeting</div>
+      <select
+        onChange={(e) => {
+          const id = e.target.value;
+          if (!id) return;
+          const m = meetings.find((x) => x.id === id);
+          if (!m) return;
+          const date = new Date(m.meeting_date).toLocaleString("en-IN", {
+            day: "numeric",
+            month: "short",
+          });
+          onPick(
+            id,
+            `${date} · ${m.investor_name ?? "—"} · ${String(m.category ?? "review").replace(
+              /_/g,
+              " "
+            )}`
+          );
+        }}
+        defaultValue=""
+        className="input-base"
+      >
+        <option value="">— Pick a recent meeting (optional) —</option>
+        {meetings.slice(0, 50).map((m) => {
+          const date = new Date(m.meeting_date).toLocaleString("en-IN", {
+            day: "numeric",
+            month: "short",
+          });
+          return (
+            <option key={m.id} value={m.id}>
+              {date} — {m.investor_name ?? "—"}
+              {m.category ? ` · ${String(m.category).replace(/_/g, " ")}` : ""}
+            </option>
+          );
+        })}
+      </select>
+    </label>
+  );
+}

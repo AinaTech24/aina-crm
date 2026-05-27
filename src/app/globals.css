@@ -1,0 +1,504 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* ═══════════════════════════════════════════════════════════════════════
+       AINA-inspired palette — deep navy primary, electric cyan accent.
+       Tuned for a modern fintech-SaaS feel: high contrast, restrained, glassy.
+       ═══════════════════════════════════════════════════════════════════════ */
+    --background: 215 35% 98.5%;             /* paper-white with a faint sky tint */
+    --foreground: 222 47% 11%;               /* near-black charcoal */
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+
+    --primary: 221 83% 18%;                  /* deep navy #0e2557 */
+    --primary-foreground: 210 40% 99%;
+
+    --secondary: 215 32% 95.5%;              /* very soft blue-gray for hovers / chips */
+    --secondary-foreground: 222 47% 18%;
+
+    --muted: 215 25% 95%;
+    --muted-foreground: 215 14% 46%;
+
+    --accent: 199 89% 48%;                   /* electric cyan #0ea5e9 */
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 210 40% 99%;
+
+    --border: 214 28% 90%;
+    --input: 214 28% 90%;
+    --ring: 199 89% 48%;                     /* cyan focus ring — bold + on-brand */
+
+    --radius: 0.75rem;                       /* 12px base; xl utilities give 16/20px */
+
+    /* Extended brand tokens (consumed by gradients, badges, hero strips) */
+    --brand-navy: 221 83% 18%;
+    --brand-navy-deep: 222 86% 12%;
+    --brand-navy-light: 221 75% 96%;
+    --brand-cyan: 199 89% 48%;
+    --brand-cyan-deep: 201 96% 38%;
+    --brand-cyan-light: 199 89% 94%;
+    --brand-violet: 256 70% 60%;
+    --brand-mint: 165 70% 45%;
+  }
+
+  .dark {
+    --background: 222 47% 6%;
+    --foreground: 210 40% 98%;
+    --card: 222 47% 9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222 47% 9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 199 89% 48%;
+    --primary-foreground: 222 47% 6%;
+    --secondary: 217 33% 14%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217 33% 14%;
+    --muted-foreground: 215 20% 65%;
+    --accent: 199 89% 48%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 62% 50%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217 33% 18%;
+    --input: 217 33% 18%;
+    --ring: 199 89% 48%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html {
+    font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1, "cv02" 1, "cv11" 1, "ss01" 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    /* Subtle mesh background — barely-there color depth on the page */
+    background-image:
+      radial-gradient(at 0% 0%, hsl(var(--brand-navy-light) / 0.6) 0px, transparent 50%),
+      radial-gradient(at 100% 0%, hsl(var(--brand-cyan-light) / 0.4) 0px, transparent 50%);
+    background-attachment: fixed;
+  }
+
+  /* When printing, drop the mesh + force white so PDFs aren't tinted. */
+  @media print {
+    body {
+      background: white !important;
+      background-image: none !important;
+    }
+    /* Allow page breaks to flow naturally */
+    .card-elevated, .card-surface { box-shadow: none !important; }
+  }
+
+  /* Display headings — tighter tracking, OpenType salt for confident feel.
+     Intentionally NOT setting a color here so a heading inside a dark/branded
+     container can inherit the parent's color (e.g. white on brand-mesh). */
+  h1, h2, h3, h4, h5, h6 {
+    @apply tracking-tight;
+    font-feature-settings: "cv11" 1, "ss01" 1, "ss02" 1;
+  }
+
+  h1 { letter-spacing: -0.025em; }
+  h2 { letter-spacing: -0.02em; }
+
+  /* Smoother focus ring everywhere — keyboard a11y without ugliness */
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring/40 ring-offset-1 ring-offset-background;
+  }
+
+  /* Selection — on-brand cyan tint */
+  ::selection {
+    background: hsl(var(--brand-cyan) / 0.18);
+    color: hsl(var(--foreground));
+  }
+
+  /* Hide default number-input spinners */
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] {
+    -moz-appearance: textfield;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Component utility classes — referenced by hand-built buttons / cards / chips
+   so we don't need shadcn primitives everywhere. Keep names stable; tweak look.
+   ═══════════════════════════════════════════════════════════════════════════ */
+@layer components {
+  /* ─── Buttons ────────────────────────────────────────────────────────── */
+
+  /* Primary — gradient navy with soft glow + active press */
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-1.5
+           rounded-lg px-4 py-2 text-sm font-medium
+           text-white shadow-md
+           transition-all duration-150
+           hover:shadow-glow-navy hover:-translate-y-px
+           active:translate-y-0 active:shadow-md active:scale-[0.98]
+           disabled:opacity-50 disabled:cursor-not-allowed
+           disabled:translate-y-0 disabled:shadow-none
+           focus-visible:ring-2 focus-visible:ring-ring/50;
+    background-image: linear-gradient(
+      135deg,
+      hsl(var(--brand-navy)) 0%,
+      hsl(221 75% 26%) 100%
+    );
+  }
+
+  /* Accent — electric cyan gradient with a vivid glow on hover */
+  .btn-accent {
+    @apply inline-flex items-center justify-center gap-1.5
+           rounded-lg px-4 py-2 text-sm font-semibold
+           text-white shadow-md
+           transition-all duration-150
+           hover:shadow-glow-lg hover:-translate-y-px
+           active:translate-y-0 active:shadow-md active:scale-[0.98]
+           disabled:opacity-50 disabled:cursor-not-allowed;
+    background-image: linear-gradient(
+      135deg,
+      hsl(var(--brand-cyan-deep)) 0%,
+      hsl(var(--brand-cyan)) 100%
+    );
+  }
+
+  /* Secondary — refined ghost-card button */
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-1.5
+           rounded-lg border border-border bg-card text-foreground
+           px-4 py-2 text-sm font-medium shadow-sm
+           hover:bg-secondary hover:border-foreground/15 hover:shadow
+           active:scale-[0.98]
+           transition-all duration-150
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  /* Ghost — text-first, polite */
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-1.5
+           rounded-lg px-3 py-1.5 text-sm font-medium text-muted-foreground
+           hover:bg-secondary hover:text-foreground
+           active:scale-[0.98]
+           transition-all duration-150;
+  }
+
+  /* Danger (destructive) — for delete actions */
+  .btn-danger {
+    @apply inline-flex items-center justify-center gap-1.5
+           rounded-lg px-4 py-2 text-sm font-medium
+           bg-destructive text-destructive-foreground shadow-sm
+           hover:bg-destructive/90 hover:shadow
+           active:scale-[0.98]
+           transition-all duration-150
+           disabled:opacity-50;
+  }
+
+  /* Icon button — square, used for table row actions */
+  .btn-icon {
+    @apply inline-flex items-center justify-center
+           size-8 rounded-md text-muted-foreground
+           hover:bg-secondary hover:text-foreground
+           transition-colors duration-150
+           focus-visible:ring-2 focus-visible:ring-ring/40;
+  }
+
+  /* ─── Surfaces ───────────────────────────────────────────────────────── */
+
+  /* Card — the workhorse. Soft elevation, subtle gradient overlay. */
+  .card-surface {
+    @apply rounded-xl bg-card text-card-foreground shadow-md
+           border border-border/70
+           transition-shadow duration-200;
+  }
+
+  /* Elevated card — for hero/feature panels */
+  .card-elevated {
+    @apply rounded-2xl bg-card shadow-xl border border-border/50
+           backdrop-blur-sm;
+  }
+
+  /* Glass panel — frosted, on-brand mesh */
+  .glass-panel {
+    @apply rounded-2xl border border-white/40 shadow-xl
+           backdrop-blur-xl backdrop-saturate-150;
+    background: linear-gradient(
+      135deg,
+      hsl(0 0% 100% / 0.7) 0%,
+      hsl(0 0% 100% / 0.85) 100%
+    );
+  }
+
+  /* KPI card — used on dashboard stat strips. Interactive lift on hover. */
+  .kpi-card {
+    @apply rounded-xl bg-card border border-border/70 p-4 shadow-sm
+           transition-all duration-200
+           hover:shadow-md hover:-translate-y-0.5 hover:border-brand-cyan/30;
+  }
+
+  /* Highlighted KPI — gradient navy → cyan, white text */
+  .kpi-hero {
+    @apply rounded-xl p-4 text-white shadow-lg
+           transition-all duration-200
+           hover:shadow-xl hover:-translate-y-0.5;
+    background-image: linear-gradient(
+      135deg,
+      hsl(var(--brand-navy-deep)) 0%,
+      hsl(var(--brand-navy)) 60%,
+      hsl(var(--brand-cyan-deep)) 100%
+    );
+  }
+
+  /* ─── Inputs ─────────────────────────────────────────────────────────── */
+
+  .input-base {
+    @apply w-full rounded-lg border border-border bg-card
+           px-3 py-2 text-sm shadow-sm
+           placeholder:text-muted-foreground
+           transition-all duration-150
+           focus:outline-none focus:border-brand-cyan
+           focus:ring-2 focus:ring-brand-cyan/20 focus:shadow
+           disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-secondary;
+  }
+
+  /* Textarea — same shell, more breathing room */
+  textarea.input-base {
+    @apply leading-relaxed py-2.5;
+  }
+
+  /* ─── Chips & badges ─────────────────────────────────────────────────── */
+
+  .chip {
+    @apply inline-flex items-center gap-1 rounded-full
+           px-2.5 py-0.5 text-xs font-semibold;
+    box-shadow: inset 0 0 0 1px currentColor;
+    /* The inset ring uses currentColor at a low alpha via mix-blend; fallback below */
+  }
+  .chip {
+    /* re-declare so the inset ring blends gently */
+    box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.06);
+  }
+
+  /* Leading dot indicator — works inside chip with the right color */
+  .chip-dot::before {
+    content: "";
+    @apply size-1.5 rounded-full bg-current opacity-70 mr-0.5;
+  }
+
+  /* ─── Brand surfaces ─────────────────────────────────────────────────── */
+
+  .brand-gradient {
+    background: linear-gradient(
+      135deg,
+      hsl(var(--brand-navy-deep)) 0%,
+      hsl(var(--brand-navy)) 50%,
+      hsl(var(--brand-cyan)) 100%
+    );
+  }
+
+  /* Soft brand bg — login pane, empty states, restricted screen */
+  .brand-soft {
+    background:
+      radial-gradient(ellipse at top left,
+        hsl(var(--brand-navy-light)) 0%, transparent 50%),
+      radial-gradient(ellipse at bottom right,
+        hsl(var(--brand-cyan-light)) 0%, transparent 55%),
+      hsl(var(--background));
+  }
+
+  /* Brand mesh — for sidebar header, login splash */
+  .brand-mesh {
+    background:
+      radial-gradient(at 0% 0%, hsl(var(--brand-cyan) / 0.18) 0px, transparent 50%),
+      radial-gradient(at 100% 100%, hsl(var(--brand-navy) / 0.95) 0px, transparent 50%),
+      linear-gradient(135deg,
+        hsl(var(--brand-navy-deep)) 0%,
+        hsl(var(--brand-navy)) 100%);
+  }
+
+  /* Vertical brand accent bar — used at top of hero cards */
+  .brand-bar {
+    background-image: linear-gradient(
+      to right,
+      hsl(var(--brand-navy)) 0%,
+      hsl(var(--brand-cyan)) 100%
+    );
+  }
+
+  /* ─── Page chrome ────────────────────────────────────────────────────── */
+
+  /* Page section heading + subtitle */
+  .page-title {
+    @apply text-2xl font-bold tracking-tight flex items-center gap-2;
+  }
+  .page-subtitle {
+    @apply text-sm text-muted-foreground;
+  }
+
+  /* Section title (smaller, used on inner panels) */
+  .section-title {
+    @apply text-sm font-semibold tracking-tight text-foreground/90;
+  }
+  .section-subtitle {
+    @apply text-xs text-muted-foreground;
+  }
+
+  /* Soft divider with a subtle gradient */
+  .divider-soft {
+    @apply h-px w-full;
+    background: linear-gradient(
+      to right,
+      transparent 0%,
+      hsl(var(--border)) 20%,
+      hsl(var(--border)) 80%,
+      transparent 100%
+    );
+  }
+
+  /* ─── Sidebar nav links ──────────────────────────────────────────────── */
+  /* `group` is added as a literal class in the component (Tailwind @apply
+     can't consume the group variant). */
+
+  .nav-link {
+    @apply relative flex items-center gap-2.5 rounded-lg
+           px-2.5 py-2 text-[13px] font-medium
+           text-foreground/75
+           hover:bg-brand-navy-light hover:text-brand-navy
+           transition-all duration-150;
+  }
+  .nav-link-icon {
+    @apply size-4 text-muted-foreground/80 transition-colors;
+  }
+  .nav-link:hover .nav-link-icon {
+    @apply text-brand-cyan;
+  }
+  .nav-link-active {
+    @apply bg-brand-navy text-white shadow-sm;
+  }
+  .nav-link-active:hover {
+    @apply bg-brand-navy text-white;
+  }
+  .nav-link-active .nav-link-icon {
+    @apply text-brand-cyan;
+  }
+  .nav-link-active::before {
+    content: "";
+    @apply absolute -left-3 top-1/2 -translate-y-1/2
+           h-5 w-1 rounded-full bg-brand-cyan;
+  }
+
+  /* ─── Modern table polish ────────────────────────────────────────────── */
+
+  /* Apply on <table>. Adds sticky header, gentle row hover, and softer borders. */
+  .table-modern thead th {
+    @apply text-[11px] font-semibold uppercase tracking-wider
+           text-muted-foreground bg-secondary/40
+           border-b border-border sticky top-0 z-[1];
+  }
+  .table-modern tbody tr {
+    @apply transition-colors duration-100;
+  }
+  .table-modern tbody tr:hover {
+    @apply bg-brand-cyan-light/30;
+  }
+  .table-modern tbody tr + tr {
+    @apply border-t border-border/50;
+  }
+
+  /* ─── Loading skeleton ───────────────────────────────────────────────── */
+  .skeleton {
+    @apply animate-shimmer rounded;
+    background: linear-gradient(
+      90deg,
+      hsl(var(--secondary)) 0%,
+      hsl(var(--muted)) 50%,
+      hsl(var(--secondary)) 100%
+    );
+    background-size: 200% 100%;
+  }
+
+  /* ─── Pulse-dot — for "live" / "scheduled" indicators ─────────────────── */
+  .pulse-dot {
+    @apply relative inline-flex size-2 rounded-full bg-emerald-500;
+  }
+  .pulse-dot::after {
+    content: "";
+    @apply absolute inset-0 rounded-full bg-emerald-500/50;
+    animation: pulse-glow 2.2s ease-in-out infinite;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Utilities — opt-in helpers
+   ═══════════════════════════════════════════════════════════════════════════ */
+@layer utilities {
+  /* Refined scrollbars — barely there, on-brand on hover */
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border)) transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--border));
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(var(--muted-foreground) / 0.5);
+    background-clip: padding-box;
+    border: 2px solid transparent;
+  }
+
+  /* No-scrollbar — invisible but scrollable */
+  .scrollbar-none::-webkit-scrollbar { display: none; }
+  .scrollbar-none { scrollbar-width: none; }
+
+  /* Truncate to N lines */
+  .line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .line-clamp-3 {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  /* Text gradient — for hero copy + brand callouts */
+  .text-gradient {
+    background-image: linear-gradient(
+      135deg,
+      hsl(var(--brand-navy)) 0%,
+      hsl(var(--brand-cyan)) 100%
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+  }
+
+  /* Number / tabular contexts */
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+}

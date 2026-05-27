@@ -1,0 +1,161 @@
+import { z } from "zod";
+
+/**
+ * The FilterAST is the single, shared query language used by:
+ *   - Saved views (investor list filtering, lead list filtering, etc.)
+ *   - Dynamic segments (re-materialized on a schedule)
+ *   - Workflow trigger criteria (`record_event` filters)
+ *   - Workflow branch nodes (criteria evaluated mid-run)
+ *   - AI assistant queries (Claude generates AST, we compile to SQL)
+ *
+ * The AST is intentionally restrictive: it only references fields declared in
+ * `src/lib/filter/catalog.ts`. This is the line of defense against SQL
+ * injection — values are always parameterized, fields are looked up by key.
+ */
+
+export const FilterOperatorSchema = z.enum([
+  // Equality / comparison
+  "eq",
+  "ne",
+  "gt",
+  "gte",
+  "lt",
+  "lte",
+  // String matching
+  "contains",
+  "not_contains",
+  "starts_with",
+  "ends_with",
+  "matches", // regex (compiled safely)
+  // Set membership
+  "in",
+  "not_in",
+  // Range
+  "between",
+  "not_between",
+  // Empties / nulls
+  "is_empty",
+  "is_not_empty",
+  "is_null",
+  "is_not_null",
+  "is_true",
+  "is_false",
+  // Date helpers (relative)
+  "date_within", // "within last N <unit>"
+  "date_before", // "before N <unit> ago" / "before a specific date"
+  "date_after", // "after N <unit> ago" / "after a specific date"
+  "date_today",
+  "date_yesterday",
+  "date_tomorrow",
+  "date_in_next", // "in next N <unit>"
+  "date_in_last", // "in last N <unit>"
+  "date_is_anniversary", // month-day matches today (birthdays, anniversaries)
+]);
+
+export type FilterOperator = z.infer<typeof FilterOperatorSchema>;
+
+/** A reference to a field. */
+export const FieldRefSchema: z.ZodType<FieldRef> = z.lazy(() =>
+  z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("attr"), path: z.string() }),
+    z.object({
+      kind: z.literal("rel"),
+      rel: z.string(),
+      predicate: FilterASTSchema,
+      quantifier: z.enum(["any", "all", "none", "count_gte", "count_lte"]).default("any"),
+      count: z.number().int().optional(),
+    }),
+    z.object({ kind: z.literal("computed"), key: z.string() }),
+  ])
+);
+
+export type FieldRef =
+  | { kind: "attr"; path: string }
+  | {
+      kind: "rel";
+      rel: string;
+      predicate: FilterAST;
+      quantifier?: "any" | "all" | "none" | "count_gte" | "count_lte";
+      count?: number;
+    }
+  | { kind: "computed"; key: string };
+
+/** A leaf comparison. */
+export const PredicateSchema: z.ZodType<Predicate> = z.lazy(() =>
+  z.object({
+    type: z.literal("predicate"),
+    field: FieldRefSchema,
+    op: FilterOperatorSchema,
+    value: z.unknown().optional(),
+    /** For `date_within` etc. */
+    duration: z
+      .object({
+        amount: z.number().int().nonnegative(),
+        unit: z.enum(["day", "week", "month", "year", "hour", "minute"]),
+      })
+      .optional(),
+  })
+);
+
+export type Predicate = {
+  type: "predicate";
+  field: FieldRef;
+  op: FilterOperator;
+  value?: unknown;
+  duration?: { amount: number; unit: "day" | "week" | "month" | "year" | "hour" | "minute" };
+};
+
+/** A nested AND/OR group. */
+export const GroupSchema: z.ZodType<Group> = z.lazy(() =>
+  z.object({
+    type: z.literal("group"),
+    op: z.enum(["AND", "OR"]),
+    not: z.boolean().optional(),
+    children: z.array(FilterASTSchema).max(64),
+  })
+);
+
+export type Group = {
+  type: "group";
+  op: "AND" | "OR";
+  not?: boolean;
+  children: FilterAST[];
+};
+
+export const FilterASTSchema: z.ZodType<FilterAST> = z.lazy(() =>
+  z.discriminatedUnion("type", [GroupSchema as any, PredicateSchema as any])
+);
+
+export type FilterAST = Group | Predicate;
+
+export function isGroup(node: FilterAST): node is Group {
+  return node.type === "group";
+}
+export function isPredicate(node: FilterAST): node is Predicate {
+  return node.type === "predicate";
+}
+
+/** Build helpers — make tests and recipe authoring nicer. */
+export const and = (...children: FilterAST[]): Group => ({
+  type: "group",
+  op: "AND",
+  children,
+});
+export const or = (...children: FilterAST[]): Group => ({
+  type: "group",
+  op: "OR",
+  children,
+});
+export const not = (g: Group): Group => ({ ...g, not: true });
+export const p = (
+  field: string | FieldRef,
+  op: FilterOperator,
+  value?: unknown,
+  duration?: Predicate["duration"]
+): Predicate => ({
+  type: "predicate",
+  field: typeof field === "string" ? { kind: "attr", path: field } : field,
+  op,
+  value,
+  duration,
+});

@@ -1,0 +1,355 @@
+"use client";
+
+/**
+ * Zoho-CRM-style filter bar — generic, drop-in for any list page.
+ *
+ * Renders a horizontal strip with:
+ *   - Search input (full-text, free-form)
+ *   - Multi-select chip filters (status, owner, source, segment …)
+ *   - Single-select dropdowns (when needed)
+ *   - Date-range pickers (created, due, etc.)
+ *   - "Clear" button when any filter is active
+ *
+ * All state is encoded into URL search params so the SSR'd list page can
+ * read them and apply WHERE clauses. URLs are shareable / bookmarkable.
+ *
+ * Designed to pair with <CustomViews> which saves filter combos by name.
+ */
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
+import { Search, X, ChevronDown, Filter as FilterIcon, Loader2 } from "lucide-react";
+
+export type FilterDef =
+  | { type: "search"; key: string; placeholder?: string }
+  | { type: "select"; key: string; label: string; options: { value: string; label: string }[] }
+  | { type: "multi"; key: string; label: string; options: { value: string; label: string }[] }
+  | { type: "date_range"; key: string; label: string };
+
+export function FilterBar({
+  filters,
+  totalCount,
+  rightSlot,
+}: {
+  filters: FilterDef[];
+  /** Show "Showing N of M" — pass the count returned by the SSR'd query. */
+  totalCount?: number;
+  /** Optional slot for "Custom views" or other right-aligned controls. */
+  rightSlot?: React.ReactNode;
+}) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const sp = useSearchParams();
+  const [busy, setBusy] = useState(false);
+
+  // Read current values from the URL
+  const values = useMemo(() => {
+    const out: Record<string, any> = {};
+    for (const f of filters) {
+      if (f.type === "multi") {
+        const v = sp.get(f.key);
+        out[f.key] = v ? v.split(",").filter(Boolean) : [];
+      } else if (f.type === "date_range") {
+        out[`${f.key}_from`] = sp.get(`${f.key}_from`) ?? "";
+        out[`${f.key}_to`] = sp.get(`${f.key}_to`) ?? "";
+      } else {
+        out[f.key] = sp.get(f.key) ?? "";
+      }
+    }
+    return out;
+  }, [sp, filters]);
+
+  function pushParams(next: Record<string, any>) {
+    setBusy(true);
+    const params = new URLSearchParams(sp.toString());
+    for (const [k, v] of Object.entries(next)) {
+      if (v == null || v === "" || (Array.isArray(v) && v.length === 0)) {
+        params.delete(k);
+      } else if (Array.isArray(v)) {
+        params.set(k, v.join(","));
+      } else {
+        params.set(k, String(v));
+      }
+    }
+    router.push(`${pathname}?${params.toString()}`);
+    // Keep "busy" on until route transition completes — Next.js refresh hooks
+    // would expose this cleanly; for now a short timer is fine.
+    setTimeout(() => setBusy(false), 600);
+  }
+
+  const activeCount = filters.reduce((n, f) => {
+    if (f.type === "multi") return n + ((values[f.key] as string[]).length > 0 ? 1 : 0);
+    if (f.type === "date_range")
+      return n + (values[`${f.key}_from`] || values[`${f.key}_to`] ? 1 : 0);
+    return n + (values[f.key] ? 1 : 0);
+  }, 0);
+
+  function clearAll() {
+    pushParams(
+      filters.reduce((acc, f) => {
+        if (f.type === "multi") acc[f.key] = [];
+        else if (f.type === "date_range") {
+          acc[`${f.key}_from`] = "";
+          acc[`${f.key}_to`] = "";
+        } else acc[f.key] = "";
+        return acc;
+      }, {} as Record<string, any>)
+    );
+  }
+
+  const searchFilter = filters.find((f) => f.type === "search") as
+    | { type: "search"; key: string; placeholder?: string }
+    | undefined;
+  const otherFilters = filters.filter((f) => f.type !== "search");
+
+  return (
+    <div className="card-surface p-3 space-y-2">
+      <div className="flex items-center gap-2 flex-wrap">
+        {searchFilter && (
+          <div className="relative flex-1 min-w-[200px] max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none" />
+            <SearchInput
+              initial={values[searchFilter.key] ?? ""}
+              placeholder={searchFilter.placeholder ?? "Search…"}
+              onSubmit={(v) => pushParams({ [searchFilter.key]: v })}
+            />
+          </div>
+        )}
+
+        {otherFilters.map((f) =>
+          f.type === "multi" ? (
+            <MultiSelectChip
+              key={f.key}
+              label={f.label}
+              options={f.options}
+              value={values[f.key] as string[]}
+              onChange={(v) => pushParams({ [f.key]: v })}
+            />
+          ) : f.type === "select" ? (
+            <SingleSelect
+              key={f.key}
+              label={f.label}
+              options={f.options}
+              value={values[f.key] as string}
+              onChange={(v) => pushParams({ [f.key]: v })}
+            />
+          ) : f.type === "date_range" ? (
+            <DateRange
+              key={f.key}
+              label={f.label}
+              from={values[`${f.key}_from`] as string}
+              to={values[`${f.key}_to`] as string}
+              onChange={(from, to) =>
+                pushParams({ [`${f.key}_from`]: from, [`${f.key}_to`]: to })
+              }
+            />
+          ) : null
+        )}
+
+        {activeCount > 0 && (
+          <button
+            onClick={clearAll}
+            className="btn-ghost text-xs text-muted-foreground hover:text-rose-600"
+          >
+            <X className="size-3" /> Clear ({activeCount})
+          </button>
+        )}
+
+        <div className="flex-1" />
+
+        {busy && <Loader2 className="size-3.5 animate-spin text-brand-cyan" />}
+        {totalCount != null && (
+          <span className="text-xs text-muted-foreground tabular-nums">
+            {totalCount.toLocaleString("en-IN")} result{totalCount === 1 ? "" : "s"}
+          </span>
+        )}
+        {rightSlot}
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────── Sub-components ─────────────────── */
+
+function SearchInput({
+  initial,
+  placeholder,
+  onSubmit,
+}: {
+  initial: string;
+  placeholder: string;
+  onSubmit: (v: string) => void;
+}) {
+  const [v, setV] = useState(initial);
+  useEffect(() => setV(initial), [initial]);
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        onSubmit(v);
+      }}
+    >
+      <input
+        value={v}
+        onChange={(e) => setV(e.target.value)}
+        placeholder={placeholder}
+        className="input-base pl-9 text-xs h-8"
+      />
+    </form>
+  );
+}
+
+function MultiSelectChip({
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  label: string;
+  options: { value: string; label: string }[];
+  value: string[];
+  onChange: (v: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    function onClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, [open]);
+
+  const active = value.length > 0;
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((s) => !s)}
+        className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 h-8 text-xs font-medium transition ${
+          active
+            ? "bg-brand-cyan-light/40 border-brand-cyan/40 text-brand-cyan-deep"
+            : "bg-card border-border hover:bg-secondary"
+        }`}
+      >
+        <FilterIcon className="size-3" />
+        <span>{label}</span>
+        {active && (
+          <span className="bg-brand-cyan text-white rounded-full px-1.5 text-[10px] font-bold tabular-nums">
+            {value.length}
+          </span>
+        )}
+        <ChevronDown className="size-3 opacity-60" />
+      </button>
+      {open && (
+        <div className="absolute top-full left-0 mt-1 z-30 card-elevated p-1.5 min-w-[200px] max-h-64 overflow-y-auto scrollbar-thin">
+          {options.length === 0 ? (
+            <div className="text-[11px] text-muted-foreground p-2">No options</div>
+          ) : (
+            <ul className="space-y-0.5">
+              {options.map((o) => {
+                const checked = value.includes(o.value);
+                return (
+                  <li key={o.value}>
+                    <label className="flex items-center gap-2 px-2 py-1.5 text-xs hover:bg-secondary rounded cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => {
+                          const next = checked
+                            ? value.filter((v) => v !== o.value)
+                            : [...value, o.value];
+                          onChange(next);
+                        }}
+                        className="size-3.5 rounded border-border text-brand-cyan focus:ring-brand-cyan"
+                      />
+                      <span className="capitalize">{o.label}</span>
+                    </label>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SingleSelect({
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  label: string;
+  options: { value: string; label: string }[];
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <label className="inline-flex items-center gap-1.5 text-xs">
+      <span className="text-muted-foreground">{label}</span>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={`rounded-lg border px-2 h-8 text-xs font-medium bg-card focus:outline-none focus:ring-2 focus:ring-brand-cyan/30 ${
+          value ? "border-brand-cyan/40 bg-brand-cyan-light/40 text-brand-cyan-deep" : "border-border"
+        }`}
+      >
+        <option value="">—</option>
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function DateRange({
+  label,
+  from,
+  to,
+  onChange,
+}: {
+  label: string;
+  from: string;
+  to: string;
+  onChange: (from: string, to: string) => void;
+}) {
+  const active = !!(from || to);
+  return (
+    <div
+      className={`inline-flex items-center gap-1.5 rounded-lg border px-2 h-8 text-xs ${
+        active ? "border-brand-cyan/40 bg-brand-cyan-light/40" : "border-border bg-card"
+      }`}
+    >
+      <span className="text-muted-foreground">{label}</span>
+      <input
+        type="date"
+        value={from}
+        onChange={(e) => onChange(e.target.value, to)}
+        className="bg-transparent text-xs outline-none"
+      />
+      <span className="text-muted-foreground">→</span>
+      <input
+        type="date"
+        value={to}
+        onChange={(e) => onChange(from, e.target.value)}
+        className="bg-transparent text-xs outline-none"
+      />
+      {active && (
+        <button
+          onClick={() => onChange("", "")}
+          className="text-muted-foreground hover:text-rose-600 ml-1"
+          aria-label="Clear date range"
+        >
+          <X className="size-3" />
+        </button>
+      )}
+    </div>
+  );
+}

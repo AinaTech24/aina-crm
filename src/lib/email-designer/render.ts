@@ -1,0 +1,347 @@
+/**
+ * Email Designer renderer — turns an EmailDesignerBody into deliverable HTML.
+ *
+ *   - Uses table-based layout (MJML-style) with inline styles for email clients
+ *     that still don't honour external <style> blocks (Gmail mobile, Outlook).
+ *   - Substitutes `{{path.to.field}}` merge fields from the supplied variables.
+ *   - Wraps every email in a branded shell driven by the theme.
+ *   - Auto-appends the SEBI-mandatory footer (ARN, address, unsubscribe) when
+ *     enabled.
+ *
+ * Call `renderEmailHtml(body, ctx)` to produce the final HTML.
+ */
+
+import type { EmailDesignerBody, EmailTheme, EmailBlock, EmailFooter } from "./types";
+
+export interface RenderContext {
+  /** Variables for merge-field substitution. Nested paths supported. */
+  variables: Record<string, unknown>;
+  /** Tenant info — used by the auto-footer when no logo/address provided. */
+  tenant?: {
+    legalName?: string | null;
+    displayName?: string | null;
+    arn?: string | null;
+    principalEuin?: string | null;
+    address?: string | null;
+    websiteUrl?: string | null;
+    brandColor?: string | null;
+    logoUrl?: string | null;
+  };
+  /** Optional unsubscribe URL — when set, replaces `{{unsubscribe_url}}`. */
+  unsubscribeUrl?: string;
+}
+
+const FONT_STACKS: Record<string, string> = {
+  sans: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
+  serif: "Georgia, 'Times New Roman', Times, serif",
+  modern: "Inter, 'Helvetica Neue', Arial, sans-serif",
+  rounded: "'SF Pro Rounded', 'Nunito', 'Quicksand', sans-serif",
+};
+
+// ---------------------------------------------------------------------------
+// Entry point
+// ---------------------------------------------------------------------------
+
+export function renderEmailHtml(body: EmailDesignerBody, ctx: RenderContext): string {
+  if (body.mode === "html") {
+    return substituteVariables(body.html ?? "", ctx);
+  }
+
+  const theme = resolveTheme(body.theme, ctx.tenant);
+  const blocks = body.blocks ?? [];
+  const footer = body.footer ?? { includeArn: true, includeAddress: true, includeUnsubscribe: true };
+
+  const inner = blocks.map((b) => renderBlock(b, theme, ctx)).join("");
+  const footerHtml = renderFooter(footer, theme, ctx);
+  const subject = substituteVariables(body.subject ?? "", ctx);
+  const preheader = substituteVariables(body.preheader ?? "", ctx);
+
+  const fontStack = FONT_STACKS[theme.fontFamily] ?? FONT_STACKS.sans;
+
+  return [
+    `<!DOCTYPE html>`,
+    `<html lang="en">`,
+    `<head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>`,
+    `<title>${escape(subject)}</title>`,
+    `<style>body{margin:0;padding:0;background:${theme.pageBackground};font-family:${fontStack};color:${theme.textColor};} a{color:${theme.brandColor};} .email-card{max-width:${theme.containerWidth}px;margin:0 auto;background:${theme.cardBackground};border-radius:${theme.cornerRadius}px;overflow:hidden;}</style>`,
+    `</head>`,
+    `<body style="margin:0;padding:0;background:${theme.pageBackground};font-family:${fontStack};color:${theme.textColor};font-size:${theme.baseFontSize}px;line-height:1.55;">`,
+    preheader
+      ? `<div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;">${escape(preheader)}</div>`
+      : "",
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${theme.pageBackground};">`,
+    `<tr><td align="center" style="padding:24px 12px;">`,
+    `<table role="presentation" class="email-card" width="${theme.containerWidth}" cellpadding="0" cellspacing="0" border="0" style="background:${theme.cardBackground};border-radius:${theme.cornerRadius}px;overflow:hidden;max-width:${theme.containerWidth}px;width:100%;">`,
+    `<tr><td style="padding:32px 28px;">`,
+    inner,
+    `</td></tr>`,
+    footerHtml,
+    `</table>`,
+    `<div style="margin-top:14px;font-size:11px;color:${theme.mutedColor};max-width:${theme.containerWidth}px;">If you have any questions, simply reply to this email.</div>`,
+    `</td></tr></table>`,
+    `</body></html>`,
+  ].join("");
+}
+
+/** Plain-text fallback for accessibility / non-HTML clients. */
+export function renderEmailText(body: EmailDesignerBody, ctx: RenderContext): string {
+  if (body.textFallback && body.textFallback.trim()) {
+    return substituteVariables(body.textFallback, ctx);
+  }
+  if (body.mode === "html") {
+    return stripHtml(substituteVariables(body.html ?? "", ctx));
+  }
+  const parts: string[] = [];
+  if (body.preheader) parts.push(substituteVariables(body.preheader, ctx));
+  for (const b of body.blocks ?? []) {
+    const txt = blockToText(b);
+    if (txt) parts.push(substituteVariables(txt, ctx));
+  }
+  return parts.join("\n\n");
+}
+
+// ---------------------------------------------------------------------------
+// Block renderers
+// ---------------------------------------------------------------------------
+
+function renderBlock(block: EmailBlock, theme: EmailTheme, ctx: RenderContext): string {
+  switch (block.type) {
+    case "logo":
+      return renderLogo(theme, ctx);
+    case "hero":
+      return renderHero(block, theme, ctx);
+    case "heading":
+      return renderHeading(block, theme, ctx);
+    case "text":
+      return renderText(block, theme, ctx);
+    case "button":
+      return renderButton(block, theme, ctx);
+    case "image":
+      return renderImage(block, theme, ctx);
+    case "image_row":
+      return renderImageRow(block, theme, ctx);
+    case "data_table":
+      return renderDataTable(block, theme, ctx);
+    case "divider":
+      return renderDivider(block, theme);
+    case "spacer":
+      return `<div style="height:${block.height}px;line-height:${block.height}px;">&nbsp;</div>`;
+    case "quote":
+      return renderQuote(block, theme, ctx);
+    case "social":
+      return renderSocial(block, theme, ctx);
+    case "html":
+      return substituteVariables(block.html ?? "", ctx);
+    default:
+      return "";
+  }
+}
+
+function renderLogo(theme: EmailTheme, ctx: RenderContext): string {
+  const url = theme.logoUrl || ctx.tenant?.logoUrl || "";
+  if (!url) return "";
+  return `<div style="text-align:${theme.logoAlign};margin-bottom:18px;"><img src="${escape(url)}" alt="${escape(ctx.tenant?.displayName ?? "Logo")}" height="${theme.logoHeight}" style="height:${theme.logoHeight}px;max-height:${theme.logoHeight}px;display:inline-block;"/></div>`;
+}
+
+function renderHero(b: any, theme: EmailTheme, ctx: RenderContext): string {
+  const titleHtml = substituteVariables(b.title ?? "", ctx);
+  const subHtml = substituteVariables(b.subtitle ?? "", ctx);
+  const img = b.imageUrl ? `<img src="${escape(b.imageUrl)}" alt="${escape(b.imageAlt ?? "")}" style="max-width:100%;border-radius:8px;margin-bottom:18px;display:block;"/>` : "";
+  return `<div style="text-align:${b.align};margin-bottom:24px;">${img}<h1 style="font-size:26px;line-height:1.25;color:${theme.accentColor};margin:0 0 8px;font-weight:700;">${titleHtml}</h1>${subHtml ? `<p style="margin:0;color:${theme.mutedColor};font-size:15px;">${subHtml}</p>` : ""}</div>`;
+}
+
+function renderHeading(b: any, theme: EmailTheme, ctx: RenderContext): string {
+  const tag = b.level;
+  const size = b.level === "h1" ? 24 : b.level === "h2" ? 19 : 16;
+  return `<${tag} style="font-size:${size}px;color:${theme.accentColor};margin:18px 0 10px;text-align:${b.align};font-weight:700;line-height:1.3;">${substituteVariables(b.text ?? "", ctx)}</${tag}>`;
+}
+
+function renderText(b: any, theme: EmailTheme, ctx: RenderContext): string {
+  const html = substituteVariables(b.html ?? "", ctx);
+  return `<div style="margin:0 0 14px;text-align:${b.align};font-size:${theme.baseFontSize}px;line-height:1.6;color:${theme.textColor};">${html}</div>`;
+}
+
+function renderButton(b: any, theme: EmailTheme, ctx: RenderContext): string {
+  const label = substituteVariables(b.label ?? "Click", ctx);
+  const url = substituteVariables(b.url ?? "#", ctx);
+  const solid = b.style !== "outline";
+  const bg = solid ? theme.brandColor : "transparent";
+  const color = solid ? "#ffffff" : theme.brandColor;
+  const border = solid ? theme.brandColor : theme.brandColor;
+  const width = b.fullWidth ? "width:100%;" : "";
+  return `<div style="text-align:${b.align};margin:18px 0;">
+<a href="${escape(url)}" style="${width}display:inline-block;background:${bg};color:${color};border:2px solid ${border};border-radius:8px;padding:11px 22px;font-weight:600;text-decoration:none;font-size:14px;">${label}</a>
+</div>`;
+}
+
+function renderImage(b: any, theme: EmailTheme, ctx: RenderContext): string {
+  if (!b.url) return "";
+  const url = substituteVariables(b.url, ctx);
+  const img = `<img src="${escape(url)}" alt="${escape(b.alt ?? "")}" width="${b.width}" style="max-width:100%;height:auto;border-radius:8px;display:block;margin:0 auto;"/>`;
+  const link = b.linkUrl ? `<a href="${escape(substituteVariables(b.linkUrl, ctx))}">${img}</a>` : img;
+  return `<div style="text-align:${b.align};margin:14px 0;">${link}</div>`;
+}
+
+function renderImageRow(b: any, _theme: EmailTheme, ctx: RenderContext): string {
+  const items = b.items ?? [];
+  if (!items.length) return "";
+  const cellWidth = Math.floor(100 / items.length);
+  const cells = items
+    .map((it: any) => {
+      const img = `<img src="${escape(substituteVariables(it.url ?? "", ctx))}" alt="${escape(it.alt ?? "")}" style="max-width:100%;height:auto;border-radius:6px;display:block;"/>`;
+      const wrapped = it.linkUrl ? `<a href="${escape(substituteVariables(it.linkUrl, ctx))}">${img}</a>` : img;
+      return `<td valign="top" style="padding:0 6px;width:${cellWidth}%;">${wrapped}</td>`;
+    })
+    .join("");
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:14px 0;"><tr>${cells}</tr></table>`;
+}
+
+function renderDataTable(b: any, theme: EmailTheme, ctx: RenderContext): string {
+  const caption = substituteVariables(b.caption ?? "", ctx);
+  const rows = (b.rows ?? [])
+    .map(
+      (r: any, i: number) =>
+        `<tr style="background:${i % 2 === 0 ? "#f9fafb" : "#ffffff"};"><td style="padding:10px 14px;color:${theme.mutedColor};font-size:13px;border-bottom:1px solid #f1f5f9;width:40%;">${escape(substituteVariables(r.label ?? "", ctx))}</td><td style="padding:10px 14px;font-weight:600;font-size:14px;border-bottom:1px solid #f1f5f9;">${escape(substituteVariables(r.value ?? "", ctx))}</td></tr>`
+    )
+    .join("");
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:14px 0;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">${caption ? `<caption style="padding:8px 14px;text-align:left;font-weight:600;color:${theme.accentColor};">${caption}</caption>` : ""}${rows}</table>`;
+}
+
+function renderDivider(b: any, _theme: EmailTheme): string {
+  return `<hr style="border:0;border-top:${b.thickness}px solid ${b.color};margin:18px 0;"/>`;
+}
+
+function renderQuote(b: any, theme: EmailTheme, ctx: RenderContext): string {
+  return `<blockquote style="margin:18px 0;padding:14px 18px;border-left:3px solid ${theme.brandColor};background:#f9fafb;color:${theme.textColor};font-style:italic;border-radius:0 6px 6px 0;">"${escape(substituteVariables(b.text ?? "", ctx))}"${b.author ? `<div style="margin-top:6px;font-style:normal;color:${theme.mutedColor};font-size:13px;">— ${escape(substituteVariables(b.author, ctx))}</div>` : ""}</blockquote>`;
+}
+
+function renderSocial(b: any, theme: EmailTheme, ctx: RenderContext): string {
+  const links = b.links ?? {};
+  const items: string[] = [];
+  const ICON: Record<string, string> = {
+    website: "🌐",
+    linkedin: "in",
+    facebook: "f",
+    instagram: "ig",
+    youtube: "yt",
+    twitter: "x",
+  };
+  for (const [k, v] of Object.entries(links)) {
+    if (!v || !String(v).trim()) continue;
+    const url = substituteVariables(String(v), ctx);
+    items.push(
+      `<a href="${escape(url)}" style="display:inline-block;width:34px;height:34px;line-height:34px;border-radius:50%;background:${theme.brandColor};color:#fff;text-align:center;text-decoration:none;font-size:12px;font-weight:700;margin:0 3px;">${ICON[k] ?? k.slice(0, 2)}</a>`
+    );
+  }
+  if (!items.length) return "";
+  return `<div style="text-align:center;margin:18px 0;">${items.join("")}</div>`;
+}
+
+// ---------------------------------------------------------------------------
+// Footer
+// ---------------------------------------------------------------------------
+
+function renderFooter(footer: EmailFooter, theme: EmailTheme, ctx: RenderContext): string {
+  const lines: string[] = [];
+  const t = ctx.tenant ?? {};
+  if (footer.customText) lines.push(escape(substituteVariables(footer.customText, ctx)));
+  if (footer.includeArn && (t.arn || t.principalEuin)) {
+    const arn = t.arn ? `ARN-${t.arn}` : "";
+    const euin = t.principalEuin ? ` · EUIN ${t.principalEuin}` : "";
+    lines.push(`${escape(t.displayName ?? t.legalName ?? "")} · ${arn}${euin}`);
+  }
+  if (footer.includeAddress && t.address) lines.push(escape(t.address));
+  if (lines.length === 0 && !footer.includeUnsubscribe) return "";
+  const unsubscribe = footer.includeUnsubscribe
+    ? `<div style="margin-top:8px;"><a href="${escape(ctx.unsubscribeUrl ?? "{{unsubscribe_url}}")}" style="color:${theme.mutedColor};text-decoration:underline;">Unsubscribe</a></div>`
+    : "";
+  return `<tr><td style="padding:18px 28px 28px;background:#fafbfd;border-top:1px solid #eef0f4;font-size:11px;color:${theme.mutedColor};text-align:center;line-height:1.6;">${lines.map((l) => `<div>${l}</div>`).join("")}<div style="margin-top:6px;">Mutual fund investments are subject to market risks. Please read the scheme information document carefully before investing.</div>${unsubscribe}</td></tr>`;
+}
+
+// ---------------------------------------------------------------------------
+// Theme defaults
+// ---------------------------------------------------------------------------
+
+function resolveTheme(theme: EmailTheme | undefined, tenant: RenderContext["tenant"]): EmailTheme {
+  const base: EmailTheme = {
+    logoUrl: tenant?.logoUrl ?? undefined,
+    logoHeight: 40,
+    logoAlign: "center",
+    brandColor: tenant?.brandColor ?? "#0ea5e9",
+    accentColor: "#0e2557",
+    pageBackground: "#f5f7fb",
+    cardBackground: "#ffffff",
+    textColor: "#111827",
+    mutedColor: "#6b7280",
+    fontFamily: "sans",
+    baseFontSize: 15,
+    containerWidth: 600,
+    cornerRadius: 12,
+  };
+  return { ...base, ...(theme ?? {}) };
+}
+
+// ---------------------------------------------------------------------------
+// Merge field substitution: `{{path.to.value}}`
+// ---------------------------------------------------------------------------
+
+const MERGE_FIELD_RE = /\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}/g;
+
+export function substituteVariables(input: string, ctx: RenderContext): string {
+  if (!input) return "";
+  return input.replace(MERGE_FIELD_RE, (full, path: string) => {
+    const v = readPath({ ...ctx.variables, tenant: ctx.tenant }, path);
+    if (v === undefined || v === null) return full; // keep unresolved tokens visible
+    if (typeof v === "string") return v;
+    if (typeof v === "number" || typeof v === "boolean") return String(v);
+    if (v instanceof Date) return v.toLocaleDateString("en-IN");
+    return String(v);
+  });
+}
+
+function readPath(obj: Record<string, unknown>, path: string): unknown {
+  const parts = path.split(".");
+  let cur: any = obj;
+  for (const p of parts) {
+    if (cur === null || cur === undefined) return undefined;
+    cur = cur[p];
+  }
+  return cur;
+}
+
+// ---------------------------------------------------------------------------
+// Utils
+// ---------------------------------------------------------------------------
+
+function escape(s: string): string {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function stripHtml(s: string): string {
+  return s.replace(/<[^>]+>/g, "").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function blockToText(b: EmailBlock): string {
+  switch (b.type) {
+    case "hero":
+      return `${(b as any).title}\n${(b as any).subtitle ?? ""}`;
+    case "heading":
+      return (b as any).text;
+    case "text":
+      return stripHtml((b as any).html);
+    case "button":
+      return `${(b as any).label}: ${(b as any).url}`;
+    case "quote":
+      return `"${(b as any).text}" ${(b as any).author ? `— ${(b as any).author}` : ""}`;
+    case "data_table":
+      return ((b as any).rows as { label: string; value: string }[]).map((r) => `${r.label}: ${r.value}`).join("\n");
+    case "html":
+      return stripHtml((b as any).html ?? "");
+    default:
+      return "";
+  }
+}

@@ -1,0 +1,125 @@
+/**
+ * recordAudit() — single helper every mutation path calls.
+ *
+ * Writes one row to `audit_log`. Safe to call inside `withTenant` (preferred) or
+ * `withSystem` (for cross-tenant ops). Failures are swallowed and logged so a
+ * broken audit write never blocks the real business mutation — but every call
+ * site should log at least the action + entityId so a missing audit row is
+ * easy to spot during inspections.
+ *
+ * Usage:
+ *   await withTenant(session.tenantId, async (tx) => {
+ *     await tx.update(investors).set({...}).where(...);
+ *     await recordAudit(tx, {
+ *       tenantId: session.tenantId,
+ *       actorUserId: session.userId,
+ *       action: "investor.update",
+ *       entityType: "investor",
+ *       entityId: investorId,
+ *       before, after,
+ *     });
+ *   });
+ */
+
+import { v4 as uuid } from "uuid";
+import { auditLog } from "@/db/schema";
+import type { Tx } from "@/db/client";
+
+export type AuditAction =
+  // Investor / lead
+  | "investor.create"
+  | "investor.update"
+  | "investor.bulk_import"
+  | "investor.bulk_export"
+  | "investor.tier.recompute"
+  | "lead.create"
+  | "lead.update"
+  | "lead.stage_change"
+  | "lead.convert"
+  | "lead.note_add"
+  | "lead.bulk_import"
+  // Family
+  | "family.create"
+  | "family.member.add"
+  | "family.member.remove"
+  // Transactions
+  | "transaction.bulk_import"
+  | "transaction.reconcile"
+  // Tasks / SR
+  | "task.create"
+  | "service_request.create"
+  | "service_request.status_change"
+  // Templates / workflows / campaigns
+  | "template.create"
+  | "template.submit"
+  | "template.approve"
+  | "workflow.create"
+  | "workflow.publish"
+  | "workflow.install_recipe"
+  | "campaign.launch"
+  // Employees / roles
+  | "employee.invite"
+  | "employee.role_change"
+  | "employee.deactivate"
+  // Documents
+  | "document.upload"
+  | "document.delete"
+  // Tenant / billing
+  | "tenant.status_change"
+  | "tenant.profile_update"
+  | "package.update"
+  // Generic
+  | (string & {}); // allow free-form keys without losing IDE help
+
+export interface RecordAuditInput {
+  tenantId: string;
+  actorUserId?: string | null;
+  actorType?: "user" | "system" | "workflow" | "webhook";
+  action: AuditAction;
+  entityType?: string | null;
+  entityId?: string | null;
+  before?: Record<string, unknown> | null;
+  after?: Record<string, unknown> | null;
+  meta?: Record<string, unknown> | null;
+  piiAccessed?: Record<string, unknown> | null;
+  reason?: string | null;
+  ipAddress?: string | null;
+  userAgent?: string | null;
+}
+
+export async function recordAudit(tx: Tx, input: RecordAuditInput): Promise<void> {
+  try {
+    await tx.insert(auditLog).values({
+      id: uuid(),
+      tenantId: input.tenantId,
+      actorUserId: input.actorUserId ?? null,
+      actorType: input.actorType ?? "user",
+      action: input.action,
+      entityType: input.entityType ?? null,
+      entityId: input.entityId ?? null,
+      before: input.before ?? null,
+      after: input.after ?? null,
+      meta: input.meta ?? null,
+      piiAccessed: input.piiAccessed ?? null,
+      reason: input.reason ?? null,
+      ipAddress: input.ipAddress ?? null,
+      userAgent: input.userAgent ?? null,
+    } as any);
+  } catch (err) {
+    // Audit writes must never break business flows. Surface in logs only.
+    console.error("[audit] write failed", { action: input.action, entityId: input.entityId, err });
+  }
+}
+
+/**
+ * Convenience for routes — pulls IP/UA from a NextRequest if available.
+ */
+export function clientMetaFromHeaders(headers: Headers) {
+  return {
+    ipAddress:
+      headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+      headers.get("x-real-ip") ??
+      null,
+    userAgent: headers.get("user-agent") ?? null,
+  };
+}
