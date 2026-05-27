@@ -14,7 +14,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { X, Upload, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
+import { X, Upload, CheckCircle2, AlertCircle, Loader2, Download } from "lucide-react";
 import { RTA_FILE_TYPES, cadenceLabel } from "@/lib/rta/file-types";
 import { RTA_SOURCES, type RtaSource } from "@/db/schema/rta_imports";
 
@@ -179,9 +179,21 @@ export function UploadDialog({
 
               {/* Step 3 — file */}
               <div>
-                <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-                  3. Pick the file from your computer
-                </label>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    3. Pick the file from your computer
+                  </label>
+                  {def?.sampleFiles?.[source] && (
+                    <a
+                      href={def.sampleFiles[source]}
+                      download
+                      className="text-[11px] inline-flex items-center gap-1 text-brand-cyan-deep hover:underline"
+                      title="Download a synthetic sample wired to your demo investors — use it to verify the upload pipeline end-to-end."
+                    >
+                      <Download className="size-3" /> Download sample
+                    </a>
+                  )}
+                </div>
                 <div
                   onClick={() => inputRef.current?.click()}
                   onDragOver={(e) => e.preventDefault()}

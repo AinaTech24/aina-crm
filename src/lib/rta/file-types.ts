@@ -46,6 +46,12 @@ export type RtaFileTypeDef = {
   graceDays: number;
   /** Higher = more important; drives sort order on the dashboard. */
   priority: number;
+  /**
+   * Public path to a synthetic sample. Mapped to the seeded demo investors
+   * so an end-to-end upload actually populates rows instead of skipping
+   * unknown PANs. Tenants on production data can ignore this.
+   */
+  sampleFiles?: Partial<Record<RtaSource, string>>;
 };
 
 export const RTA_FILE_TYPES: RtaFileTypeDef[] = [
@@ -61,6 +67,10 @@ export const RTA_FILE_TYPES: RtaFileTypeDef[] = [
     populates: ["transactions", "folios", "sips"],
     graceDays: 1,
     priority: 100,
+    sampleFiles: {
+      cams: "/sample-rta/cams_daily_transaction_feed.txt",
+      kfintech: "/sample-rta/kfintech_daily_transaction_feed.csv",
+    },
   },
   {
     kind: "sip_rejection_report",
@@ -73,6 +83,9 @@ export const RTA_FILE_TYPES: RtaFileTypeDef[] = [
     populates: ["sip_rejections", "transactions"],
     graceDays: 1,
     priority: 95,
+    sampleFiles: {
+      cams: "/sample-rta/cams_sip_rejection_report.txt",
+    },
   },
   {
     kind: "nach_mandate_status",
@@ -97,6 +110,9 @@ export const RTA_FILE_TYPES: RtaFileTypeDef[] = [
     populates: ["transactions"],
     graceDays: 1,
     priority: 80,
+    sampleFiles: {
+      cams: "/sample-rta/cams_redemption_report.txt",
+    },
   },
   // ──────────────────────────────────────────────────── Weekly ──
   {
@@ -123,6 +139,9 @@ export const RTA_FILE_TYPES: RtaFileTypeDef[] = [
     populates: ["commission_statements", "commission_rows"],
     graceDays: 5,
     priority: 90,
+    sampleFiles: {
+      cams: "/sample-rta/cams_monthly_brokerage.txt",
+    },
   },
   {
     kind: "monthly_aum_statement",
