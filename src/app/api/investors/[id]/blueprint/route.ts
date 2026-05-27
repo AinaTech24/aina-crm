@@ -31,17 +31,39 @@ import { getStage } from "@/lib/blueprints/engine";
 
 export const dynamic = "force-dynamic";
 
-/** Synthetic stage view for an investor with no source lead. */
-function syntheticClientStageView(investorId: string) {
-  // The 3 client-phase stages — mirrors lead_to_client.ts order 13-15.
+/**
+ * Synthetic stage view for an investor with no source lead.
+ *
+ * Returns the FULL 15-stage Lead → Client journey so the user sees the
+ * whole picture, with stages 1-12 marked as `skipped` (this client never
+ * went through them) and stages 13-15 as actually traversed. The UI
+ * renders `skipped` with a greyed-out / dashed style so it's clearly
+ * different from `done`.
+ *
+ * Final stage (Active Client) is `current` — the client lives there
+ * indefinitely until churn.
+ */
+function syntheticClientStageView(_investorId: string) {
   const STAGES = [
-    { key: "ops_in_progress", name: "Operations In Progress", order: 13 },
-    { key: "portal_welcome_sent", name: "Portal Welcome Sent", order: 14 },
-    { key: "active_client", name: "Active Client", order: 15 },
+    // ── Lead phase (skipped for direct-import) ────────────────────────
+    { key: "new", name: "New Lead Created", order: 1, phase: "lead" as const },
+    { key: "first_call_pending", name: "First Call Pending", order: 2, phase: "lead" as const },
+    { key: "appointment_scheduled", name: "Appointment Scheduled", order: 3, phase: "lead" as const },
+    { key: "meeting_done", name: "Meeting Completed", order: 4, phase: "lead" as const },
+    { key: "post_meeting_qualified", name: "Post-Meeting Qualification", order: 5, phase: "lead" as const },
+    { key: "risk_profile_sent", name: "Risk Profile Sent", order: 6, phase: "lead" as const },
+    { key: "risk_profiled", name: "Risk Profile Completed", order: 7, phase: "lead" as const },
+    { key: "proposal_drafted", name: "Proposal Drafted", order: 8, phase: "lead" as const },
+    { key: "proposal_sent", name: "Proposal Sent", order: 9, phase: "lead" as const },
+    { key: "proposal_approved", name: "Proposal Approved", order: 10, phase: "lead" as const },
+    { key: "docs_requested", name: "Documents Requested", order: 11, phase: "lead" as const },
+    { key: "docs_received", name: "Documents Received", order: 12, phase: "lead" as const },
+    // ── Client phase ──────────────────────────────────────────────────
+    { key: "ops_in_progress", name: "Operations In Progress", order: 13, phase: "client" as const },
+    { key: "portal_welcome_sent", name: "Portal Welcome Sent", order: 14, phase: "client" as const },
+    { key: "active_client", name: "Active Client", order: 15, phase: "client" as const },
   ];
-  // Direct-import investors are already past onboarding — mark them as
-  // active client (the final stage).
-  const currentIdx = 2;
+  const currentIdx = 14; // active_client = stage 15 (index 14)
   return {
     current: {
       key: STAGES[currentIdx].key,
@@ -58,12 +80,15 @@ function syntheticClientStageView(investorId: string) {
     },
     allStages: STAGES.map((s, i) => ({
       ...s,
-      status: (i < currentIdx
-        ? "done"
-        : i === currentIdx
-          ? "current"
-          : "upcoming") as "done" | "current" | "upcoming",
-      phase: "client" as const,
+      // Lead-phase stages weren't traversed → "skipped" (distinct from "done").
+      // Client-phase stages 13/14 were done implicitly; 15 is current.
+      status: (s.phase === "lead"
+        ? "skipped"
+        : i < currentIdx
+          ? "done"
+          : i === currentIdx
+            ? "current"
+            : "upcoming") as "done" | "current" | "upcoming" | "skipped",
     })),
     history: [] as any[],
     leadId: null,
