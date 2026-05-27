@@ -38,3 +38,4 @@ export * from "./share_tokens";
 export * from "./proposal_approvals";
 export * from "./blueprints";
 export * from "./proposal_schemes";
+export * from "./rta_imports";

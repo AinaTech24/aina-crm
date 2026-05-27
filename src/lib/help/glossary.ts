@@ -220,4 +220,16 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
       "Distributed Ledger Technology — TRAI rule. Every SMS template must be pre-registered on a telco's DLT platform before it can be sent.",
     category: "Marketing",
   },
+  RTA: {
+    short:
+      "Registrar and Transfer Agent — companies that maintain investor records on behalf of AMCs. In India this is mostly CAMS and KFintech.",
+    long:
+      "Registrar and Transfer Agent. Two registrars (CAMS ~70%, KFintech ~30%) handle the back-office for every Indian mutual fund. MFDs receive daily / weekly / monthly flat files from them (transaction feed, brokerage statement, AUM snapshot, etc.) which the CRM imports automatically.",
+    category: "Operations",
+  },
+  WBR: {
+    short:
+      "Weekly Business Report — flat file from CAMS/KFintech every Monday with net business + commission accrual for the prior week.",
+    category: "Operations",
+  },
 };

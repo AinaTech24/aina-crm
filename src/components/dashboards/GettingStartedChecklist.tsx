@@ -30,7 +30,8 @@ export async function GettingStartedChecklist({ tenantId }: { tenantId: string }
         (SELECT COUNT(*)::int FROM leads) AS lead_count,
         (SELECT COUNT(*)::int FROM investors) AS client_count,
         (SELECT COUNT(*)::int FROM communications WHERE status IN ('sent','delivered','read')) AS sent_count,
-        (SELECT COUNT(*)::int FROM workflow_rules WHERE enabled = true) AS active_rules
+        (SELECT COUNT(*)::int FROM workflow_rules WHERE enabled = true) AS active_rules,
+        (SELECT COUNT(*)::int FROM rta_file_imports WHERE status IN ('completed','partial')) AS rta_imports
     `);
     const counts = r.rows[0] as Record<string, number>;
 
@@ -41,6 +42,7 @@ export async function GettingStartedChecklist({ tenantId }: { tenantId: string }
       clientsDone: (counts.client_count ?? 0) > 0,
       commsDone: (counts.sent_count ?? 0) > 0,
       automationDone: (counts.active_rules ?? 0) > 0,
+      rtaDone: (counts.rta_imports ?? 0) > 0,
     };
   });
 
@@ -79,6 +81,13 @@ export async function GettingStartedChecklist({ tenantId }: { tenantId: string }
       sub: "WhatsApp, email or SMS — we'll auto-attach your ARN tagline and stay SEBI-compliant.",
       href: "/dashboard/communications",
       cta: "Send message",
+    },
+    {
+      done: data.rtaDone,
+      title: "Upload your first RTA file",
+      sub: "Drop in the latest CAMS/KFintech daily transaction feed so the platform can populate folios, SIPs and AUM from real data.",
+      href: "/dashboard/rta-imports",
+      cta: "Upload RTA file",
     },
     {
       done: data.automationDone,

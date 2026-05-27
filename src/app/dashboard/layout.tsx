@@ -97,6 +97,8 @@ const NAV: NavSection[] = [
       // Transactions hidden from marketing
       { href: "/dashboard/transactions", label: "MF Transactions", icon: Repeat, module: "transactions",
         roles: ["owner", "back_office", "ops", "rm", "branch_head", "compliance"] },
+      { href: "/dashboard/rta-imports", label: "RTA File Imports", icon: FolderArchive, module: "transactions",
+        roles: ["owner", "back_office", "ops", "compliance"] },
       { href: "/dashboard/sips", label: "SIP Tracker", icon: TrendingUp, module: "sip_tracker",
         roles: ["owner", "back_office", "ops", "rm", "branch_head", "compliance"] },
       { href: "/dashboard/sip-rejections", label: "SIP Rejections", icon: XOctagon, module: "sip_rejection",
@@ -193,9 +195,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
     .toUpperCase();
 
   return (
-    <div className="min-h-screen flex bg-background print:block print:min-h-0">
+    // h-screen + overflow-hidden on the outer wrapper means the page itself
+    // never scrolls — the sidebar and the main pane each get their own
+    // scrollbar from the `overflow-y-auto` they already declare. Print mode
+    // reverts to block flow so the whole document prints in one stream.
+    <div className="h-screen flex bg-background overflow-hidden print:block print:h-auto print:overflow-visible">
       {/* ────────────────────────── Sidebar ────────────────────────── */}
-      <aside className="w-64 flex-shrink-0 flex flex-col bg-card border-r border-border/70 shadow-sm print:hidden">
+      <aside className="w-64 flex-shrink-0 h-full flex flex-col bg-card border-r border-border/70 shadow-sm print:hidden">
         {/* Brand header — gradient mesh + logo */}
         <div className="relative overflow-hidden">
           <div className="absolute inset-0 brand-mesh opacity-95" />
@@ -285,7 +291,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
       </aside>
 
       {/* ────────────────────────── Main ────────────────────────── */}
-      <main className="flex-1 overflow-y-auto print:overflow-visible">
+      {/* h-full + overflow-y-auto = independent scroll, sticky topbar stays
+          pinned inside this pane (not at viewport top). */}
+      <main className="flex-1 h-full overflow-y-auto print:overflow-visible print:h-auto">
         {/* Topbar — glass, sticky; hidden when printing */}
         <div className="sticky top-0 z-20 border-b border-border/60 bg-background/80 backdrop-blur-xl backdrop-saturate-150 px-6 py-3 flex items-center justify-between gap-4 print:hidden">
           <div className="flex items-center gap-3 min-w-0">
