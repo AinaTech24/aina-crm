@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Plus, Upload } from "lucide-react";
+import { Plus, Upload, LayoutGrid, List } from "lucide-react";
 import { desc, ilike, or, sql, eq, and, inArray } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { investors } from "@/db/schema";
@@ -12,6 +12,7 @@ import { CustomViews } from "@/components/common/CustomViews";
 import { HelpHint } from "@/components/help/HelpHint";
 import { EmptyState } from "@/components/common/EmptyState";
 import { Users } from "lucide-react";
+import { InvestorsKanban, type InvestorRow } from "@/components/investors/InvestorsKanban";
 
 const segmentColors: Record<string, string> = {
   HNI: "bg-violet-50 text-violet-700",
@@ -41,8 +42,9 @@ export default async function InvestorsPage({
   const tier = (sp.tier ?? "").split(",").filter(Boolean);
   const status = (sp.status ?? "").split(",").filter(Boolean);
   const kyc = (sp.kyc ?? "").split(",").filter(Boolean);
+  const view = sp.view === "kanban" ? "kanban" : "table";
 
-  const { rows, total } = await withTenant(session.tenantId, async (tx) => {
+  const { rows, total, kanbanRows } = await withTenant(session.tenantId, async (tx) => {
     const conditions: any[] = [];
     if (q) {
       conditions.push(
@@ -64,14 +66,55 @@ export default async function InvestorsPage({
       .from(investors)
       .where(where as any)
       .orderBy(desc(investors.aum))
-      .limit(50);
+      .limit(view === "kanban" ? 300 : 50);
 
     const c = await tx
       .select({ c: sql<number>`count(*)::int` })
       .from(investors)
       .where(where as any);
 
-    return { rows: r, total: Number(c[0]?.c ?? 0) };
+    // For the Kanban, also fetch each investor's blueprint stage. We join
+    // through the source lead (leads.converted_investor_id = investor.id)
+    // to lead_blueprint_instances. Direct-import investors get a NULL
+    // leadId and fall back to "add_in_review_sheet" (Active Client).
+    let kanbanRows: InvestorRow[] = [];
+    if (view === "kanban") {
+      const ids = r.map((i) => i.id);
+      const stageMap: Record<string, { leadId: string; stageKey: string }> = {};
+      if (ids.length > 0) {
+        const stageRows = await tx.execute(sql`
+          SELECT l.id AS lead_id, l.converted_investor_id AS investor_id,
+                 lbi.current_stage_key AS stage_key
+          FROM leads l
+          INNER JOIN lead_blueprint_instances lbi ON lbi.lead_id = l.id
+          WHERE l.converted_investor_id = ANY(${ids}::uuid[])
+        `);
+        for (const row of stageRows.rows as any[]) {
+          stageMap[row.investor_id] = { leadId: row.lead_id, stageKey: row.stage_key };
+        }
+      }
+      kanbanRows = r.map((i) => {
+        const linked = stageMap[i.id];
+        return {
+          investor: {
+            id: i.id,
+            name: i.name,
+            pan: i.pan,
+            segmentTag: i.segmentTag,
+            serviceTier: i.serviceTier,
+            aum: i.aum != null ? String(i.aum) : null,
+            activeSipAmount: i.activeSipAmount != null ? String(i.activeSipAmount) : null,
+            kycStatus: i.kycStatus,
+            status: i.status,
+            updatedAt: i.updatedAt,
+          },
+          leadId: linked?.leadId ?? null,
+          stageKey: linked?.stageKey ?? "add_in_review_sheet",
+        };
+      });
+    }
+
+    return { rows: r, total: Number(c[0]?.c ?? 0), kanbanRows };
   }, { userId: session.userId, branchId: session.branchId, roles: session.roles });
 
   return (
@@ -83,7 +126,32 @@ export default async function InvestorsPage({
             {total === 0 ? "No investors yet." : `${total} investors in your firm.`}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
+          {/* View toggle — Table vs Kanban. Mirrors the leads page pattern.
+              `view=kanban` query param drives the server-side query (loads
+              blueprint stages too) and which component renders below. */}
+          <div className="inline-flex rounded-lg border border-border bg-secondary/40 p-0.5 gap-0.5 mr-1">
+            <Link
+              href="/dashboard/investors"
+              className={`px-2.5 py-1 rounded-md text-xs font-medium inline-flex items-center gap-1.5 transition-colors ${
+                view === "table"
+                  ? "bg-card shadow-sm text-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <List className="size-3.5" /> Table
+            </Link>
+            <Link
+              href="/dashboard/investors?view=kanban"
+              className={`px-2.5 py-1 rounded-md text-xs font-medium inline-flex items-center gap-1.5 transition-colors ${
+                view === "kanban"
+                  ? "bg-card shadow-sm text-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <LayoutGrid className="size-3.5" /> Kanban
+            </Link>
+          </div>
           <RecomputeTiersButton />
           <Link
             href="/dashboard/investors/import"
@@ -162,6 +230,28 @@ export default async function InvestorsPage({
         }
       />
 
+      {view === "kanban" ? (
+        <div className="card-surface p-3">
+          <div className="flex items-center justify-between mb-3 px-1">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <LayoutGrid className="size-3.5" />
+              <span className="font-medium">Client onboarding pipeline</span>
+              <span>·</span>
+              <span>{kanbanRows.length} clients</span>
+            </div>
+            <span className="text-[11px] text-muted-foreground">
+              Drag a card to move stages (works for clients converted from a lead)
+            </span>
+          </div>
+          {kanbanRows.length === 0 ? (
+            <div className="p-12 text-center text-sm text-muted-foreground">
+              No clients yet — add some or convert a lead to populate the pipeline.
+            </div>
+          ) : (
+            <InvestorsKanban initialRows={kanbanRows} />
+          )}
+        </div>
+      ) : (
       <div className="card-surface overflow-hidden">
         {rows.length === 0 ? (
           // Brand-new tenant with zero investors AND no active filter → big friendly EmptyState.
@@ -271,6 +361,7 @@ export default async function InvestorsPage({
           </table>
         )}
       </div>
+      )}
     </div>
   );
 }
