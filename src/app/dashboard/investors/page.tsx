@@ -82,12 +82,19 @@ export default async function InvestorsPage({
       const ids = r.map((i) => i.id);
       const stageMap: Record<string, { leadId: string; stageKey: string }> = {};
       if (ids.length > 0) {
+        // Drizzle's sql template expands a JS array into $1, $2, …, $N — so
+        // `${ids}::uuid[]` produces `($1,$2,…)::uuid[]` which is invalid SQL.
+        // Build an explicit IN list with per-value uuid casts via sql.join.
+        const idParams = sql.join(
+          ids.map((id) => sql`${id}::uuid`),
+          sql`, `
+        );
         const stageRows = await tx.execute(sql`
           SELECT l.id AS lead_id, l.converted_investor_id AS investor_id,
                  lbi.current_stage_key AS stage_key
           FROM leads l
           INNER JOIN lead_blueprint_instances lbi ON lbi.lead_id = l.id
-          WHERE l.converted_investor_id = ANY(${ids}::uuid[])
+          WHERE l.converted_investor_id IN (${idParams})
         `);
         for (const row of stageRows.rows as any[]) {
           stageMap[row.investor_id] = { leadId: row.lead_id, stageKey: row.stage_key };
