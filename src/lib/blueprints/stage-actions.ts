@@ -251,17 +251,26 @@ export const STAGE_ACTIONS: Record<string, StageAction[]> = {
     },
   ],
 
-  // 9. Won Lead — boundary stage; conversion happens here
+  // 9. Won Lead — boundary; conversion happens here. Two paths into
+  // onboarding mirror the reference SOP:
+  //   - Request Documents  → kick off the doc-collection flow
+  //   - Documents Received → docs already on file, skip the request
   won_lead: [
     {
-      key: "convert",
-      label: "Convert to Client",
-      tone: "success",
+      key: "request_docs",
+      label: "Request Documents",
+      tone: "primary",
       targetStage: "request_documents",
-      hint: "Creates an investor record and begins onboarding.",
-      // Conversion is handled by the dedicated convert dialog on the
-      // page header. Clicking here scrolls there.
-      behaviour: { kind: "open_dialog", dialog: "log_call" /* unused */ },
+      hint: "Mint a doc-collection link and send it to the client.",
+      behaviour: { kind: "open_dialog", dialog: "send_doc_checklist" },
+    },
+    {
+      key: "docs_already_received",
+      label: "Documents Already Received",
+      tone: "secondary",
+      targetStage: "documents_received",
+      hint: "Client gave docs in-person — skip the request step.",
+      behaviour: { kind: "advance_only" },
     },
   ],
 
@@ -347,7 +356,7 @@ export const STAGE_ACTIONS: Record<string, StageAction[]> = {
     },
   ],
 
-  // 14. KYC Validated
+  // 14. KYC Validated — create UCC or mark already-active.
   kyc_validated: [
     {
       key: "ucc_create",
@@ -355,6 +364,14 @@ export const STAGE_ACTIONS: Record<string, StageAction[]> = {
       tone: "primary",
       targetStage: "ucc_create",
       hint: "Generate BSE/NSE Unique Client Code.",
+      behaviour: { kind: "advance_only" },
+    },
+    {
+      key: "ucc_already",
+      label: "UCC Already Active",
+      tone: "secondary",
+      targetStage: "ucc_activated",
+      hint: "Client already has an active UCC from a prior platform.",
       behaviour: { kind: "advance_only" },
     },
   ],
@@ -447,7 +464,8 @@ export const STAGE_ACTIONS: Record<string, StageAction[]> = {
     },
   ],
 
-  // 21. UCC Activated
+  // 21. UCC Activated — register mandate, mark already-active, or
+  // record an upfront rejection (skipping create).
   ucc_activated: [
     {
       key: "mandate",
@@ -455,6 +473,22 @@ export const STAGE_ACTIONS: Record<string, StageAction[]> = {
       tone: "primary",
       targetStage: "mandate_create",
       hint: "Submit NACH / e-mandate to the bank.",
+      behaviour: { kind: "advance_only" },
+    },
+    {
+      key: "mandate_already",
+      label: "Mandate Already Active",
+      tone: "secondary",
+      targetStage: "mandate_activated",
+      hint: "Client already has an active mandate (e.g. via MFU).",
+      behaviour: { kind: "advance_only" },
+    },
+    {
+      key: "mandate_rejected",
+      label: "Record Bank Rejection",
+      tone: "danger",
+      targetStage: "mandate_reject",
+      hint: "Mandate was rejected by the bank — flag for retry.",
       behaviour: { kind: "advance_only" },
     },
   ],

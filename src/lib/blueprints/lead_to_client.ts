@@ -431,7 +431,9 @@ export const LEAD_TO_CLIENT_TRANSITIONS: Array<{
   { from: "not_qualified", to: "call_done", name: "Reopen Lead" },
 
   // ─── Won Lead → Onboarding kickoff ─────────────────────────────
+  // Two paths matching the reference SOP: request docs OR mark already received.
   { from: "won_lead", to: "request_documents", name: "Request Documents" },
+  { from: "won_lead", to: "documents_received", name: "Documents Already Received" },
 
   // ─── Document collection ───────────────────────────────────────
   { from: "request_documents", to: "documents_pending", name: "Waiting on Client" },
@@ -450,12 +452,15 @@ export const LEAD_TO_CLIENT_TRANSITIONS: Array<{
   { from: "physical_kyc", to: "kyc_validated", name: "IPV Complete" },
   { from: "online_kyc", to: "kyc_validated", name: "e-KYC Complete" },
 
-  // ─── UCC ───────────────────────────────────────────────────────
+  // ─── UCC — normal + skip path ──────────────────────────────────
   { from: "kyc_validated", to: "ucc_create", name: "Create UCC" },
+  { from: "kyc_validated", to: "ucc_activated", name: "UCC Already Active" },
   { from: "ucc_create", to: "ucc_activated", name: "UCC Active" },
 
-  // ─── Mandate ───────────────────────────────────────────────────
+  // ─── Mandate — normal + skip path + direct rejection ───────────
   { from: "ucc_activated", to: "mandate_create", name: "Register Mandate" },
+  { from: "ucc_activated", to: "mandate_activated", name: "Mandate Already Active" },
+  { from: "ucc_activated", to: "mandate_reject", name: "Record Bank Rejection" },
   { from: "mandate_create", to: "mandate_activated", name: "Mandate Active" },
   { from: "mandate_create", to: "mandate_reject", name: "Bank Rejected" },
   { from: "mandate_reject", to: "mandate_create", name: "Retry Mandate" },
