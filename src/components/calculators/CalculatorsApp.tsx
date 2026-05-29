@@ -1,0 +1,586 @@
+"use client";
+
+/**
+ * 8-calculator tabbed app — Network FP "3.5 MF Investment Calculators"
+ * parity. Pure client-side; uses the existing goal-planning math
+ * helpers.
+ */
+
+import { useState } from "react";
+import { Printer } from "lucide-react";
+import {
+  fvSip,
+  fvLumpsum,
+  requiredSip,
+  inflatedTarget,
+  fvStepUpSip,
+  costOfDelay,
+  retirementCorpus,
+  swpDeplete,
+  DEFAULT_EXPECTED_RETURN_PCT,
+  DEFAULT_INFLATION_PCT,
+} from "@/lib/goal-planning/calc";
+
+type TabKey =
+  | "sip"
+  | "lumpsum"
+  | "goal"
+  | "inflation"
+  | "delay"
+  | "retirement"
+  | "stepup"
+  | "swp";
+
+const TABS: Array<{ key: TabKey; label: string }> = [
+  { key: "sip", label: "1. SIP" },
+  { key: "lumpsum", label: "2. Lumpsum" },
+  { key: "goal", label: "3. Goal" },
+  { key: "inflation", label: "4. Inflation" },
+  { key: "delay", label: "5. Cost of Delay" },
+  { key: "retirement", label: "6. Retirement" },
+  { key: "stepup", label: "7. Step-up SIP" },
+  { key: "swp", label: "8. SWP" },
+];
+
+export function CalculatorsApp() {
+  const [tab, setTab] = useState<TabKey>("sip");
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between print:hidden">
+        <div className="flex flex-wrap gap-1">
+          {TABS.map((t) => (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              className={`chip text-xs ${
+                tab === t.key ? "bg-slate-900 text-white" : "bg-slate-100"
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <button onClick={() => window.print()} className="btn-ghost text-xs">
+          <Printer className="size-3.5" /> Print
+        </button>
+      </div>
+
+      {tab === "sip" && <SipCalc />}
+      {tab === "lumpsum" && <LumpsumCalc />}
+      {tab === "goal" && <GoalCalc />}
+      {tab === "inflation" && <InflationCalc />}
+      {tab === "delay" && <DelayCalc />}
+      {tab === "retirement" && <RetirementCalc />}
+      {tab === "stepup" && <StepUpCalc />}
+      {tab === "swp" && <SwpCalc />}
+    </div>
+  );
+}
+
+/* ───────────────────────── 1. SIP ───────────────────────── */
+function SipCalc() {
+  const [clientName, setClientName] = useState("");
+  const [objective, setObjective] = useState("");
+  const [presentValue, setPresentValue] = useState(0);
+  const [sipAmount, setSipAmount] = useState(10000);
+  const [years, setYears] = useState(10);
+  const [returnPct, setReturnPct] = useState(DEFAULT_EXPECTED_RETURN_PCT);
+
+  const months = years * 12;
+  const fvOfPv = fvLumpsum(presentValue, returnPct, months);
+  const fvOfSip = fvSip(sipAmount, returnPct, months);
+  const total = fvOfPv + fvOfSip;
+  const invested = presentValue + sipAmount * months;
+
+  return (
+    <CalcShell
+      title="SIP Investment Calculator"
+      purpose="Future value of a monthly SIP, with optional present value."
+    >
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Client name">
+          <input
+            value={clientName}
+            onChange={(e) => setClientName(e.target.value)}
+            className="input-base text-sm w-full"
+          />
+        </Field>
+        <Field label="Investment objective">
+          <input
+            value={objective}
+            onChange={(e) => setObjective(e.target.value)}
+            className="input-base text-sm w-full"
+          />
+        </Field>
+        <NumberField label="Present value (₹)" value={presentValue} setValue={setPresentValue} />
+        <NumberField
+          label="Monthly SIP (₹)"
+          value={sipAmount}
+          setValue={setSipAmount}
+        />
+        <NumberField label="Years" value={years} setValue={setYears} step={1} />
+        <NumberField label="Expected return (% p.a.)" value={returnPct} setValue={setReturnPct} step={0.1} />
+      </div>
+      <ResultRow
+        cells={[
+          { label: "Amount invested", value: inr(invested) },
+          { label: "Future value", value: inr(total), tone: "emerald" },
+          { label: "Wealth gain", value: inr(total - invested), tone: "emerald" },
+        ]}
+      />
+    </CalcShell>
+  );
+}
+
+/* ───────────────────────── 2. Lumpsum ───────────────────────── */
+function LumpsumCalc() {
+  const [clientName, setClientName] = useState("");
+  const [objective, setObjective] = useState("");
+  const [amount, setAmount] = useState(100000);
+  const [years, setYears] = useState(10);
+  const [returnPct, setReturnPct] = useState(DEFAULT_EXPECTED_RETURN_PCT);
+
+  const fv = fvLumpsum(amount, returnPct, years * 12);
+
+  return (
+    <CalcShell title="Lumpsum Investment Calculator" purpose="Future value of a one-shot lumpsum.">
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Client name">
+          <input value={clientName} onChange={(e) => setClientName(e.target.value)} className="input-base text-sm w-full" />
+        </Field>
+        <Field label="Investment objective">
+          <input value={objective} onChange={(e) => setObjective(e.target.value)} className="input-base text-sm w-full" />
+        </Field>
+        <NumberField label="Investment amount (₹)" value={amount} setValue={setAmount} />
+        <NumberField label="Years" value={years} setValue={setYears} step={1} />
+        <NumberField label="Expected return (% p.a.)" value={returnPct} setValue={setReturnPct} step={0.1} />
+      </div>
+      <ResultRow
+        cells={[
+          { label: "Amount invested", value: inr(amount) },
+          { label: "Future value", value: inr(fv), tone: "emerald" },
+          { label: "Wealth gain", value: inr(fv - amount), tone: "emerald" },
+        ]}
+      />
+    </CalcShell>
+  );
+}
+
+/* ───────────────────────── 3. Goal ───────────────────────── */
+function GoalCalc() {
+  const [clientName, setClientName] = useState("");
+  const [goalName, setGoalName] = useState("");
+  const [goalAmount, setGoalAmount] = useState(10000000);
+  const [years, setYears] = useState(15);
+  const [returnPct, setReturnPct] = useState(DEFAULT_EXPECTED_RETURN_PCT);
+
+  const monthly = requiredSip(goalAmount, 0, returnPct, years * 12);
+
+  return (
+    <CalcShell title="Goal Calculator" purpose="Monthly SIP required to reach a target goal amount.">
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Client name">
+          <input value={clientName} onChange={(e) => setClientName(e.target.value)} className="input-base text-sm w-full" />
+        </Field>
+        <Field label="Goal name">
+          <input value={goalName} onChange={(e) => setGoalName(e.target.value)} className="input-base text-sm w-full" />
+        </Field>
+        <NumberField label="Goal amount (₹)" value={goalAmount} setValue={setGoalAmount} />
+        <NumberField label="Years to goal" value={years} setValue={setYears} step={1} />
+        <NumberField label="Expected return (% p.a.)" value={returnPct} setValue={setReturnPct} step={0.1} />
+      </div>
+      <ResultRow
+        cells={[
+          { label: "Goal amount", value: inr(goalAmount) },
+          { label: "Monthly SIP required", value: inr(monthly), tone: "emerald" },
+          { label: "Total invested over goal", value: inr(monthly * years * 12) },
+        ]}
+      />
+    </CalcShell>
+  );
+}
+
+/* ───────────────────────── 4. Inflation ───────────────────────── */
+function InflationCalc() {
+  const [clientName, setClientName] = useState("");
+  const [expenseType, setExpenseType] = useState("");
+  const [amount, setAmount] = useState(100000);
+  const [years, setYears] = useState(15);
+  const [ratePct, setRatePct] = useState(DEFAULT_INFLATION_PCT);
+
+  const fv = inflatedTarget(amount, ratePct, years);
+
+  return (
+    <CalcShell title="Inflation Calculator" purpose="Future value of an expense or goal, inflated.">
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Client name">
+          <input value={clientName} onChange={(e) => setClientName(e.target.value)} className="input-base text-sm w-full" />
+        </Field>
+        <Field label="Type of expense">
+          <input value={expenseType} onChange={(e) => setExpenseType(e.target.value)} className="input-base text-sm w-full" placeholder="e.g. College fees, home cost" />
+        </Field>
+        <NumberField label="Current amount (₹)" value={amount} setValue={setAmount} />
+        <NumberField label="Years" value={years} setValue={setYears} step={1} />
+        <NumberField label="Inflation rate (% p.a.)" value={ratePct} setValue={setRatePct} step={0.1} />
+      </div>
+      <ResultRow
+        cells={[
+          { label: "Today's value", value: inr(amount) },
+          { label: "Future value", value: inr(fv), tone: "amber" },
+          { label: "Inflation impact", value: inr(fv - amount), tone: "rose" },
+        ]}
+      />
+    </CalcShell>
+  );
+}
+
+/* ───────────────────────── 5. Cost of Delay ───────────────────────── */
+function DelayCalc() {
+  const [startAgeNow, setStartAgeNow] = useState(25);
+  const [startAgeLater, setStartAgeLater] = useState(35);
+  const [endAge, setEndAge] = useState(60);
+  const [lumpsum, setLumpsum] = useState(0);
+  const [sip, setSip] = useState(10000);
+  const [returnPct, setReturnPct] = useState(DEFAULT_EXPECTED_RETURN_PCT);
+
+  const res = costOfDelay({
+    sipAmount: sip,
+    lumpsum,
+    startAgeNow,
+    startAgeLater,
+    endAge,
+    returnPct,
+  });
+
+  return (
+    <CalcShell title="Cost of Delay Calculator" purpose="Wealth difference between starting now vs later.">
+      <div className="grid grid-cols-3 gap-3">
+        <NumberField label="SIP starting age (now)" value={startAgeNow} setValue={setStartAgeNow} step={1} />
+        <NumberField label="SIP starting age (later)" value={startAgeLater} setValue={setStartAgeLater} step={1} />
+        <NumberField label="SIP ending age" value={endAge} setValue={setEndAge} step={1} />
+        <NumberField label="Lumpsum (₹)" value={lumpsum} setValue={setLumpsum} />
+        <NumberField label="Monthly SIP (₹)" value={sip} setValue={setSip} />
+        <NumberField label="Expected return (% p.a.)" value={returnPct} setValue={setReturnPct} step={0.1} />
+      </div>
+      <div className="grid grid-cols-2 gap-3 mt-3">
+        <DelayColumn label="Invest now" body={res.now} />
+        <DelayColumn label="Invest later" body={res.later} />
+      </div>
+      <ResultRow
+        cells={[
+          {
+            label: "Cost of delay",
+            value: inr(res.costOfDelay),
+            tone: "rose",
+          },
+        ]}
+      />
+    </CalcShell>
+  );
+}
+
+function DelayColumn({
+  label,
+  body,
+}: {
+  label: string;
+  body: { years: number; invested: number; finalValue: number; gain: number };
+}) {
+  return (
+    <div className="border border-slate-200 rounded-md p-3 space-y-1.5">
+      <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">
+        {label}
+      </div>
+      <Row k="Years invested" v={body.years.toString()} />
+      <Row k="Invested" v={inr(body.invested)} />
+      <Row k="Final value" v={inr(body.finalValue)} />
+      <Row k="Gain" v={inr(body.gain)} />
+    </div>
+  );
+}
+
+/* ───────────────────────── 6. Retirement ───────────────────────── */
+function RetirementCalc() {
+  const [currentAge, setCurrentAge] = useState(35);
+  const [retirementAge, setRetirementAge] = useState(60);
+  const [lifeExpectancy, setLifeExpectancy] = useState(85);
+  const [monthlyIncome, setMonthlyIncome] = useState(100000);
+  const [inflationPct, setInflationPct] = useState(DEFAULT_INFLATION_PCT);
+  const [preReturnPct, setPreReturnPct] = useState(12);
+  const [postReturnPct, setPostReturnPct] = useState(7);
+  const [existingFund, setExistingFund] = useState(0);
+
+  const res = retirementCorpus({
+    currentAge,
+    retirementAge,
+    lifeExpectancy,
+    monthlyIncomeTodayInr: monthlyIncome,
+    inflationPct,
+    preReturnPct,
+    postReturnPct,
+    existingFundInr: existingFund,
+  });
+
+  return (
+    <CalcShell title="Retirement Planning Calculator" purpose="Corpus required + monthly savings to fund retirement.">
+      <div className="grid grid-cols-3 gap-3">
+        <NumberField label="Current age" value={currentAge} setValue={setCurrentAge} step={1} />
+        <NumberField label="Retirement age" value={retirementAge} setValue={setRetirementAge} step={1} />
+        <NumberField label="Life expectancy" value={lifeExpectancy} setValue={setLifeExpectancy} step={1} />
+        <NumberField label="Monthly income today (₹)" value={monthlyIncome} setValue={setMonthlyIncome} />
+        <NumberField label="Inflation rate (% p.a.)" value={inflationPct} setValue={setInflationPct} step={0.1} />
+        <NumberField label="Existing fund (₹)" value={existingFund} setValue={setExistingFund} />
+        <NumberField label="Pre-retirement return (%)" value={preReturnPct} setValue={setPreReturnPct} step={0.1} />
+        <NumberField label="Post-retirement return (%)" value={postReturnPct} setValue={setPostReturnPct} step={0.1} />
+      </div>
+      <ResultRow
+        cells={[
+          {
+            label: "Monthly income at retirement",
+            value: inr(res.monthlyIncomeAtRetirement),
+            tone: "amber",
+          },
+          {
+            label: "Corpus required",
+            value: inr(res.corpusRequired),
+            tone: "amber",
+          },
+          {
+            label: "FV of existing fund",
+            value: inr(res.fvOfExistingFund),
+          },
+          {
+            label: "Monthly savings required",
+            value: inr(res.monthlySavingsRequired),
+            tone: "emerald",
+          },
+        ]}
+      />
+    </CalcShell>
+  );
+}
+
+/* ───────────────────────── 7. Step-up SIP ───────────────────────── */
+function StepUpCalc() {
+  const [sip, setSip] = useState(10000);
+  const [stepUpPct, setStepUpPct] = useState(10);
+  const [years, setYears] = useState(15);
+  const [returnPct, setReturnPct] = useState(DEFAULT_EXPECTED_RETURN_PCT);
+
+  const months = years * 12;
+  const fvFlat = fvSip(sip, returnPct, months);
+  const fvStep = fvStepUpSip(sip, stepUpPct, returnPct, months);
+  const investedFlat = sip * months;
+  // Step-up invested
+  let investedStep = 0;
+  let cur = sip;
+  for (let y = 0; y < years; y++) {
+    investedStep += cur * 12;
+    cur *= 1 + stepUpPct / 100;
+  }
+
+  return (
+    <CalcShell title="Step-up SIP Calculator" purpose="Compare flat SIP vs SIP increased annually.">
+      <div className="grid grid-cols-2 gap-3">
+        <NumberField label="Initial monthly SIP (₹)" value={sip} setValue={setSip} />
+        <NumberField label="Annual step-up (%)" value={stepUpPct} setValue={setStepUpPct} step={1} />
+        <NumberField label="Years" value={years} setValue={setYears} step={1} />
+        <NumberField label="Expected return (% p.a.)" value={returnPct} setValue={setReturnPct} step={0.1} />
+      </div>
+      <div className="grid grid-cols-2 gap-3 mt-3">
+        <div className="border border-slate-200 rounded-md p-3 space-y-1.5">
+          <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">
+            Without step-up
+          </div>
+          <Row k="Invested" v={inr(investedFlat)} />
+          <Row k="Final value" v={inr(fvFlat)} />
+          <Row k="Gain" v={inr(fvFlat - investedFlat)} />
+        </div>
+        <div className="border border-slate-200 rounded-md p-3 space-y-1.5">
+          <div className="text-[10px] uppercase tracking-wide text-emerald-700 font-semibold">
+            With step-up
+          </div>
+          <Row k="Invested" v={inr(investedStep)} />
+          <Row k="Final value" v={inr(fvStep)} />
+          <Row k="Gain" v={inr(fvStep - investedStep)} />
+        </div>
+      </div>
+      <ResultRow
+        cells={[
+          {
+            label: "Difference (step-up advantage)",
+            value: inr(fvStep - fvFlat),
+            tone: "emerald",
+          },
+        ]}
+      />
+    </CalcShell>
+  );
+}
+
+/* ───────────────────────── 8. SWP ───────────────────────── */
+function SwpCalc() {
+  const [corpus, setCorpus] = useState(500000);
+  const [withdrawal, setWithdrawal] = useState(10000);
+  const [returnPct, setReturnPct] = useState(8);
+  const [years, setYears] = useState(5);
+
+  const res = swpDeplete({
+    corpusInr: corpus,
+    monthlyWithdrawalInr: withdrawal,
+    returnPct,
+    years,
+  });
+
+  return (
+    <CalcShell title="SWP Calculator" purpose="Monthly withdrawal from a corpus over a period.">
+      <div className="grid grid-cols-2 gap-3">
+        <NumberField label="Total investment (₹)" value={corpus} setValue={setCorpus} />
+        <NumberField label="Monthly withdrawal (₹)" value={withdrawal} setValue={setWithdrawal} />
+        <NumberField label="Expected return (% p.a.)" value={returnPct} setValue={setReturnPct} step={0.1} />
+        <NumberField label="Years" value={years} setValue={setYears} step={1} />
+      </div>
+      <ResultRow
+        cells={[
+          { label: "Invested", value: inr(res.invested) },
+          { label: "Total withdrawn", value: inr(res.totalWithdrawn), tone: "amber" },
+          {
+            label: "Final value",
+            value: inr(res.finalValue),
+            tone: res.finalValue > 0 ? "emerald" : "rose",
+          },
+        ]}
+      />
+      {res.monthsBeforeDepletion != null && (
+        <div className="text-[11px] text-rose-700 bg-rose-50 border border-rose-200 rounded-md px-3 py-2 mt-2">
+          ⚠️ Corpus depletes after {Math.floor(res.monthsBeforeDepletion / 12)}{" "}
+          years {res.monthsBeforeDepletion % 12} months.
+        </div>
+      )}
+    </CalcShell>
+  );
+}
+
+/* ───────────────────────── Shared shell + bits ───────────────────────── */
+function CalcShell({
+  title,
+  purpose,
+  children,
+}: {
+  title: string;
+  purpose: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="card-surface p-5 space-y-3">
+      <div>
+        <h2 className="text-base font-semibold">{title}</h2>
+        <p className="text-xs text-muted-foreground">{purpose}</p>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className="block">
+      <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium block mb-1">
+        {label}
+      </span>
+      {children}
+    </label>
+  );
+}
+
+function NumberField({
+  label,
+  value,
+  setValue,
+  step = 1000,
+}: {
+  label: string;
+  value: number;
+  setValue: (v: number) => void;
+  step?: number;
+}) {
+  return (
+    <Field label={label}>
+      <input
+        type="number"
+        value={value}
+        step={step}
+        onChange={(e) =>
+          setValue(e.target.value === "" ? 0 : Number(e.target.value))
+        }
+        className="input-base text-sm w-full"
+      />
+    </Field>
+  );
+}
+
+function ResultRow({
+  cells,
+}: {
+  cells: Array<{
+    label: string;
+    value: string;
+    tone?: "emerald" | "amber" | "rose";
+  }>;
+}) {
+  return (
+    <div
+      className={`grid gap-3 mt-3`}
+      style={{
+        gridTemplateColumns: `repeat(${cells.length}, minmax(0, 1fr))`,
+      }}
+    >
+      {cells.map((c, i) => {
+        const cardTone =
+          c.tone === "emerald"
+            ? "border-emerald-200 bg-emerald-50/60"
+            : c.tone === "amber"
+              ? "border-amber-200 bg-amber-50/60"
+              : c.tone === "rose"
+                ? "border-rose-200 bg-rose-50/60"
+                : "";
+        return (
+          <div
+            key={i}
+            className={`border rounded-md p-3 ${cardTone}`}
+          >
+            <div className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium">
+              {c.label}
+            </div>
+            <div className="text-lg font-semibold mt-0.5">{c.value}</div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function Row({ k, v }: { k: string; v: string }) {
+  return (
+    <div className="flex items-center justify-between text-xs">
+      <span className="text-muted-foreground">{k}</span>
+      <span className="font-medium">{v}</span>
+    </div>
+  );
+}
+
+function inr(n: number): string {
+  if (!Number.isFinite(n)) return "—";
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 0,
+  }).format(n);
+}

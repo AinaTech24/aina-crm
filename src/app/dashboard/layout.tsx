@@ -36,6 +36,7 @@ import {
   HelpCircle,
   BookOpen,
   Briefcase,
+  Calculator,
 } from "lucide-react";
 import { eq } from "drizzle-orm";
 import { db } from "@/db/client";
@@ -85,6 +86,7 @@ const NAV: NavSection[] = [
       // Leads (1-10) and Clients (11-30). Page redirects to /dashboard/leads.
       { href: "/dashboard/risk-profiles", label: "Risk Profile", icon: ShieldCheck, module: "risk_profile",
         roles: ["owner", "compliance", "back_office", "ops", "rm"] },
+      { href: "/dashboard/calculators", label: "Calculators", icon: Calculator },
       { href: "/dashboard/goals", label: "Goal Planning", icon: Target, module: "goal_planning",
         roles: ["owner", "rm", "branch_head", "back_office", "ops"] },
       { href: "/dashboard/proposals", label: "Proposals", icon: FileSignature, module: "proposals",

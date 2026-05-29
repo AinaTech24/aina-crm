@@ -139,6 +139,172 @@ export function monthsBetween(from: Date, to: Date): number {
   return (to.getFullYear() - from.getFullYear()) * 12 + (to.getMonth() - from.getMonth());
 }
 
+/* ──────────── Network FP 3.5 calculators (5) (6) (8) ──────────── */
+
+/**
+ * Cost of Delay — same SIP, two start ages. How much wealth lost by
+ * starting later?
+ *
+ * lumpsum is optional one-shot at the start; sipAmount runs monthly
+ * from startAge to endAge.
+ */
+export function costOfDelay(params: {
+  sipAmount: number;
+  lumpsum?: number;
+  startAgeNow: number;
+  startAgeLater: number;
+  endAge: number;
+  returnPct: number;
+}): {
+  now: { years: number; invested: number; finalValue: number; gain: number };
+  later: { years: number; invested: number; finalValue: number; gain: number };
+  costOfDelay: number;
+} {
+  const { sipAmount, lumpsum = 0, startAgeNow, startAgeLater, endAge, returnPct } = params;
+  function run(startAge: number) {
+    const years = Math.max(0, endAge - startAge);
+    const months = years * 12;
+    const invested = sipAmount * months + lumpsum;
+    const fv = fvSip(sipAmount, returnPct, months) + fvLumpsum(lumpsum, returnPct, months);
+    return { years, invested, finalValue: fv, gain: fv - invested };
+  }
+  const now = run(startAgeNow);
+  const later = run(startAgeLater);
+  return {
+    now,
+    later,
+    costOfDelay: now.finalValue - later.finalValue,
+  };
+}
+
+/**
+ * Retirement Planning — compute the corpus required at retirement to
+ * sustain a monthly income (inflation-adjusted) through life expectancy,
+ * then the monthly savings required to build that corpus from now.
+ *
+ * Two phases:
+ *   pre-retirement  — accumulation, monthly SIP at preReturnPct
+ *   post-retirement — distribution, corpus draws monthly at postReturnPct
+ *
+ * Corpus needed = PV of growing annuity (income grows with inflation)
+ * over distribution years at postReturnPct.
+ */
+export function retirementCorpus(params: {
+  currentAge: number;
+  retirementAge: number;
+  lifeExpectancy: number;
+  monthlyIncomeTodayInr: number;
+  inflationPct: number;
+  preReturnPct: number;
+  postReturnPct: number;
+  existingFundInr: number;
+}): {
+  preRetirementYears: number;
+  distributionYears: number;
+  monthlyIncomeAtRetirement: number;
+  corpusRequired: number;
+  fvOfExistingFund: number;
+  monthlySavingsRequired: number;
+} {
+  const {
+    currentAge,
+    retirementAge,
+    lifeExpectancy,
+    monthlyIncomeTodayInr,
+    inflationPct,
+    preReturnPct,
+    postReturnPct,
+    existingFundInr,
+  } = params;
+  const preYears = Math.max(0, retirementAge - currentAge);
+  const distYears = Math.max(0, lifeExpectancy - retirementAge);
+  const distMonths = distYears * 12;
+
+  // Inflate today's monthly income to its value at retirement
+  const monthlyIncomeAtRet = monthlyIncomeTodayInr * Math.pow(1 + inflationPct / 100, preYears);
+
+  // Corpus required: PV at retirement of monthly withdrawals growing
+  // at inflation, draw rate = postReturnPct. Closed-form:
+  //   PV = P × (1 − ((1+g)/(1+r))^n) / (r − g)
+  // where g = monthly inflation, r = monthly return, P = first month's withdrawal.
+  const g = inflationPct / 100 / 12;
+  const r = postReturnPct / 100 / 12;
+  let corpusRequired = 0;
+  if (distMonths === 0) {
+    corpusRequired = 0;
+  } else if (Math.abs(r - g) < 1e-9) {
+    // Degenerate — equal growth and return
+    corpusRequired = monthlyIncomeAtRet * distMonths;
+  } else {
+    const ratio = Math.pow((1 + g) / (1 + r), distMonths);
+    corpusRequired = (monthlyIncomeAtRet * (1 - ratio)) / (r - g);
+  }
+
+  // Existing fund grows for preYears at preReturnPct
+  const fvOfExisting = fvLumpsum(existingFundInr, preReturnPct, preYears * 12);
+  const shortfall = Math.max(0, corpusRequired - fvOfExisting);
+  const monthlySavingsRequired = requiredSip(
+    shortfall,
+    0,
+    preReturnPct,
+    preYears * 12
+  );
+
+  return {
+    preRetirementYears: preYears,
+    distributionYears: distYears,
+    monthlyIncomeAtRetirement: monthlyIncomeAtRet,
+    corpusRequired,
+    fvOfExistingFund: fvOfExisting,
+    monthlySavingsRequired,
+  };
+}
+
+/**
+ * SWP (Systematic Withdrawal Plan) — given a starting corpus, monthly
+ * withdrawal, return, and years, simulate the depletion month-by-month
+ * and return the final balance + total withdrawn.
+ *
+ * Corpus is exhausted partway? finalValue clamps at 0 and totalWithdrawn
+ * reflects only what was actually paid out before depletion.
+ */
+export function swpDeplete(params: {
+  corpusInr: number;
+  monthlyWithdrawalInr: number;
+  returnPct: number;
+  years: number;
+}): {
+  invested: number;
+  totalWithdrawn: number;
+  finalValue: number;
+  monthsBeforeDepletion: number | null;
+} {
+  const { corpusInr, monthlyWithdrawalInr, returnPct, years } = params;
+  const months = years * 12;
+  const m = returnPct / 100 / 12;
+  let balance = corpusInr;
+  let withdrawn = 0;
+  let depletedAt: number | null = null;
+  for (let i = 0; i < months; i++) {
+    // Withdraw at month start (Begin Mode, matching the template note).
+    if (balance <= 0) {
+      depletedAt = i;
+      break;
+    }
+    const w = Math.min(monthlyWithdrawalInr, balance);
+    balance -= w;
+    withdrawn += w;
+    // Grow remaining balance for the month
+    balance = balance * (1 + m);
+  }
+  return {
+    invested: corpusInr,
+    totalWithdrawn: withdrawn,
+    finalValue: Math.max(0, balance),
+    monthsBeforeDepletion: depletedAt,
+  };
+}
+
 /* ───────────────────────── Year-by-year projection ───────────────────────── */
 
 export type ProjectionRow = {
