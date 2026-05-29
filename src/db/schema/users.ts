@@ -70,10 +70,50 @@ export const users = pgTable(
     /** Free-form HR / manager notes. */
     notes: text("notes"),
 
+    /**
+     * HR-side employee code — distinct from the system UUID. Optional
+     * but unique within a tenant when set (partial unique index in
+     * migration 0018).
+     */
+    employeeCode: text("employee_code"),
+
+    /**
+     * AMC codes the employee is authorised to distribute. Used by:
+     *   - the ARN/EUIN compliance report ("can this RM sell HDFC MF?")
+     *   - the transaction-execution gate when we wire BSE Star MF.
+     * Format: an array of AMC short-codes (e.g. ['HDFC','ICICI','SBI']).
+     */
+    distributingAmcs: jsonb("distributing_amcs").$type<string[]>(),
+
     euin: text("euin"),
+    /** EUIN expiry — tracked separately even though it's tied to NISM,
+     *  because the renewal flow with AMFI is independent. */
+    euinExpiryAt: date("euin_expiry_at"),
+
     nismCertificateNo: text("nism_cert_no"),
+    /** Date the employee passed the NISM-VA exam. */
+    nismExamDate: date("nism_exam_date"),
     nismExpiryAt: date("nism_expiry_at"),
     nismCategory: text("nism_category"), // V-A, V-B, etc.
+
+    /**
+     * Per-employee personal ARN — distinct from the firm's ARN on the
+     * tenant row. Used when the firm registers individual ARNs for
+     * senior RMs or sub-distributors (legitimately mapped to commission
+     * payouts in the brokerage reconciler).
+     */
+    personalArn: text("personal_arn"),
+    arnRegistrationDate: date("arn_registration_date"),
+    arnExpiryAt: date("arn_expiry_at"),
+
+    /**
+     * Digital Signature Certificate — required for BSE Star MF / NSE NMF
+     * II execution. Track submission status + last filed date + expiry
+     * (DSCs have 1-2 year validity).
+     */
+    dscSubmitted: boolean("dsc_submitted").default(false),
+    dscLastSubmittedAt: date("dsc_last_submitted_at"),
+    dscExpiryAt: date("dsc_expiry_at"),
 
     territory: jsonb("territory").$type<{ states?: string[]; cities?: string[]; pincodes?: string[] }>(),
 

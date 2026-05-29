@@ -71,6 +71,7 @@ const REPORTS = [
   ]},
   { group: "Compliance", items: [
     { key: "ddq_readiness", label: "DDQ Readiness", icon: FileText },
+    { key: "arn-euin-tracker", label: "ARN / EUIN / NISM / DSC tracker", icon: Shield },
   ]},
 ];
 

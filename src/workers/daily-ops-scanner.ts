@@ -11,8 +11,12 @@
  *   investor.minor_to_major        — DOB + 18 years <= today, category='minor'
  *   investor.dormant               — no transaction in last 365 days,
  *                                    not already flagged
- *   investor.kyc_expiring          — CKYC expiry within 30 days
+*   investor.kyc_expiring          — CKYC expiry within 30 days
  *   investor.risk_profile_expired  — risk profile signed > 365 days ago
+ *   employee.nism_expiring         — NISM expiry within 90 days
+ *   employee.arn_expiring          — personal ARN expiry within 90 days
+ *   employee.euin_expiring         — EUIN expiry within 90 days
+ *   employee.dsc_expiring          — DSC expiry within 60 days
  *
  * Idempotency: each event carries `meta.scanDate = YYYY-MM-DD`. The
  * outbox poller dedupes by (kind, entity_id, meta.scanDate) — so a
@@ -39,6 +43,11 @@ interface ScanResult {
   dormant: number;
   kycExpiring: number;
   riskExpired: number;
+  // Employee-level licensing (Network FP template parity).
+  nismExpiring: number;
+  arnExpiring: number;
+  euinExpiring: number;
+  dscExpiring: number;
   durationMs: number;
 }
 
@@ -78,6 +87,10 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
     dormant: 0,
     kycExpiring: 0,
     riskExpired: 0,
+    nismExpiring: 0,
+    arnExpiring: 0,
+    euinExpiring: 0,
+    dscExpiring: 0,
     durationMs: 0,
   };
 
@@ -248,6 +261,76 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
           meta: { scanDate, source: "daily-ops-scanner" } as any,
         } as any);
       }
+
+      // ── 7-10. Employee licensing expiries (NISM / ARN / EUIN / DSC) ──
+      // NISM expiry → 90 days (existing nism_expiry_alert recipe consumes)
+      // ARN  expiry → 90 days (existing arn_expiry_alert recipe consumes)
+      // EUIN expiry → 90 days (alerts on the same cadence as NISM)
+      // DSC  expiry → 60 days (DSC renewal is faster — 1-2 day turnaround)
+      const employeeExpiryRows = await tx.execute(sql`
+        SELECT id, name, email, nism_expiry_at, arn_expiry_at,
+               euin_expiry_at, dsc_expiry_at, reporting_manager_id
+        FROM users
+        WHERE status IN ('active', 'offboarding')
+          AND (
+            (nism_expiry_at IS NOT NULL
+              AND nism_expiry_at BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '90 days')
+            OR (arn_expiry_at IS NOT NULL
+              AND arn_expiry_at BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '90 days')
+            OR (euin_expiry_at IS NOT NULL
+              AND euin_expiry_at BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '90 days')
+            OR (dsc_expiry_at IS NOT NULL
+              AND dsc_expiry_at BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '60 days')
+          )
+      `);
+      for (const row of employeeExpiryRows.rows as Array<{
+        id: string;
+        name: string;
+        email: string;
+        nism_expiry_at: string | null;
+        arn_expiry_at: string | null;
+        euin_expiry_at: string | null;
+        dsc_expiry_at: string | null;
+        reporting_manager_id: string | null;
+      }>) {
+        const checks: Array<{
+          kind: string;
+          field: keyof typeof row;
+          windowDays: number;
+        }> = [
+          { kind: "employee.nism_expiring", field: "nism_expiry_at", windowDays: 90 },
+          { kind: "employee.arn_expiring", field: "arn_expiry_at", windowDays: 90 },
+          { kind: "employee.euin_expiring", field: "euin_expiry_at", windowDays: 90 },
+          { kind: "employee.dsc_expiring", field: "dsc_expiry_at", windowDays: 60 },
+        ];
+        for (const c of checks) {
+          const date = row[c.field] as string | null;
+          if (!date) continue;
+          const d = new Date(date);
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const daysOut = Math.round((d.getTime() - today.getTime()) / 86400000);
+          if (daysOut < 0 || daysOut > c.windowDays) continue;
+          await tx.insert(eventsOutbox).values({
+            tenantId,
+            kind: c.kind,
+            entityType: "user",
+            entityId: row.id,
+            after: {
+              name: row.name,
+              email: row.email,
+              expiresAt: date,
+              daysOut,
+              managerId: row.reporting_manager_id,
+            } as any,
+            meta: { scanDate, source: "daily-ops-scanner" } as any,
+          } as any);
+          if (c.kind === "employee.nism_expiring") result.nismExpiring++;
+          if (c.kind === "employee.arn_expiring") result.arnExpiring++;
+          if (c.kind === "employee.euin_expiring") result.euinExpiring++;
+          if (c.kind === "employee.dsc_expiring") result.dscExpiring++;
+        }
+      }
     },
     { roles: ["system"] }
   );
@@ -277,6 +360,10 @@ export async function runDailyOpsScan(): Promise<{
     dormant: 0,
     kycExpiring: 0,
     riskExpired: 0,
+    nismExpiring: 0,
+    arnExpiring: 0,
+    euinExpiring: 0,
+    dscExpiring: 0,
   };
   for (const tenantId of tenants) {
     try {
@@ -287,6 +374,10 @@ export async function runDailyOpsScan(): Promise<{
       totals.dormant += r.dormant;
       totals.kycExpiring += r.kycExpiring;
       totals.riskExpired += r.riskExpired;
+      totals.nismExpiring += r.nismExpiring;
+      totals.arnExpiring += r.arnExpiring;
+      totals.euinExpiring += r.euinExpiring;
+      totals.dscExpiring += r.dscExpiring;
     } catch (err: any) {
       console.error(`[daily-ops-scanner] tenant ${tenantId} failed:`, err.message);
       failed.push(tenantId);

@@ -45,9 +45,29 @@ const PatchBody = z.object({
   annualTarget: z.number().nonnegative().nullable().optional(),
   sipMonthlyTarget: z.number().nonnegative().nullable().optional(),
   notes: z.string().max(4000).nullable().optional(),
-  euin: z.string().max(40).nullable().optional(),
+  // ARN / EUIN / NISM / DSC — full Network FP template parity.
+  employeeCode: z.string().max(40).nullable().optional(),
+  distributingAmcs: z.array(z.string().max(40)).max(60).nullable().optional(),
+  euin: z
+    .string()
+    .regex(/^E\d{6}$/i, "EUIN format: E + 6 digits")
+    .nullable()
+    .optional(),
+  euinExpiryAt: z.string().nullable().optional(),
   nismCertificateNo: z.string().max(80).nullable().optional(),
+  nismExamDate: z.string().nullable().optional(),
   nismExpiryAt: z.string().nullable().optional(),
+  nismCategory: z.string().max(20).nullable().optional(),
+  personalArn: z
+    .string()
+    .regex(/^ARN-?\d{1,8}$/i, "ARN format: ARN-XXXXXX")
+    .nullable()
+    .optional(),
+  arnRegistrationDate: z.string().nullable().optional(),
+  arnExpiryAt: z.string().nullable().optional(),
+  dscSubmitted: z.boolean().nullable().optional(),
+  dscLastSubmittedAt: z.string().nullable().optional(),
+  dscExpiryAt: z.string().nullable().optional(),
   status: z.enum(["invited", "active", "suspended", "offboarding", "offboarded"]).optional(),
   branchId: z.string().uuid().nullable().optional(),
   permissions: z.array(z.string()).nullable().optional(),
@@ -103,9 +123,20 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       if (body.annualTarget !== undefined) patch.annualTarget = body.annualTarget?.toString() ?? null;
       if (body.sipMonthlyTarget !== undefined) patch.sipMonthlyTarget = body.sipMonthlyTarget?.toString() ?? null;
       if (body.notes !== undefined) patch.notes = body.notes;
+      if (body.employeeCode !== undefined) patch.employeeCode = body.employeeCode;
+      if (body.distributingAmcs !== undefined) patch.distributingAmcs = body.distributingAmcs;
       if (body.euin !== undefined) patch.euin = body.euin;
+      if (body.euinExpiryAt !== undefined) patch.euinExpiryAt = body.euinExpiryAt;
       if (body.nismCertificateNo !== undefined) patch.nismCertificateNo = body.nismCertificateNo;
+      if (body.nismExamDate !== undefined) patch.nismExamDate = body.nismExamDate;
       if (body.nismExpiryAt !== undefined) patch.nismExpiryAt = body.nismExpiryAt;
+      if (body.nismCategory !== undefined) patch.nismCategory = body.nismCategory;
+      if (body.personalArn !== undefined) patch.personalArn = body.personalArn;
+      if (body.arnRegistrationDate !== undefined) patch.arnRegistrationDate = body.arnRegistrationDate;
+      if (body.arnExpiryAt !== undefined) patch.arnExpiryAt = body.arnExpiryAt;
+      if (body.dscSubmitted !== undefined) patch.dscSubmitted = body.dscSubmitted;
+      if (body.dscLastSubmittedAt !== undefined) patch.dscLastSubmittedAt = body.dscLastSubmittedAt;
+      if (body.dscExpiryAt !== undefined) patch.dscExpiryAt = body.dscExpiryAt;
       if (body.branchId !== undefined) patch.branchId = body.branchId;
       if (body.permissions !== undefined) patch.permissions = body.permissions;
       if (body.status !== undefined) {
