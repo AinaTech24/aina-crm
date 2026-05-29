@@ -141,6 +141,7 @@ const NAV: NavSection[] = [
       { href: "/dashboard/sub-distributors", label: "Sub-Distributors", icon: HeartHandshake, roles: ["owner", "compliance"] },
       { href: "/dashboard/legal-registrations", label: "Legal Registrations", icon: ScrollText, roles: ["owner", "compliance"] },
       { href: "/dashboard/amc-empanelments", label: "AMC Empanelments", icon: Briefcase, roles: ["owner", "compliance", "back_office"] },
+      { href: "/dashboard/product-offerings", label: "Products & Services", icon: Megaphone, roles: ["owner", "compliance"] },
       { href: "/dashboard/cybersecurity", label: "Cybersecurity", icon: Lock, module: "cybersecurity", roles: ["owner", "compliance"] },
     ],
   },
