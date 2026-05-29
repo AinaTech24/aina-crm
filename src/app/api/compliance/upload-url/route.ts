@@ -1,3 +1,4 @@
+import { handleApiError } from "@/lib/api/error-handler";
 /**
  * POST /api/compliance/upload-url
  * Body: { filename, contentType, kind?: 'compliance'|'kyc'|'marketing'|'general' }
@@ -31,6 +32,6 @@ export async function POST(req: NextRequest) {
     const url = await presignedPutUrl(key, parse.data.contentType, 600);
     return NextResponse.json({ url, key });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message ?? "internal" }, { status: err.status ?? 500 });
+    return handleApiError(err);
   }
 }

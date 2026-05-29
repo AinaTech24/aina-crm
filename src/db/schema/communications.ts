@@ -87,6 +87,7 @@ export const communications = pgTable(
       .on(t.workflowRunId)
       .where(sql`workflow_run_id IS NOT NULL`),
     timelineIdx: index("comms_timeline_idx").on(t.tenantId, t.createdAt),
+    leadIdx: index("comms_lead_idx").on(t.tenantId, t.leadId, t.createdAt),
   })
 );
 

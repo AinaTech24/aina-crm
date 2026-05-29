@@ -145,8 +145,8 @@ export function verifyRazorpayWebhook(rawBody: string, signature: string): boole
 }
 
 /**
- * Stub: create a Razorpay customer for a tenant. Real impl posts to
- * https://api.razorpay.com/v1/customers with basic auth.
+ * Create a Razorpay customer for a tenant.
+ * Uses direct fetch API with HTTP Basic Authentication.
  */
 export async function createRazorpayCustomer(params: {
   name: string;
@@ -154,9 +154,33 @@ export async function createRazorpayCustomer(params: {
   contact?: string;
   notes?: Record<string, string>;
 }): Promise<{ id: string }> {
-  if (process.env.RAZORPAY_MODE !== "live") {
+  const keyId = process.env.RAZORPAY_KEY_ID;
+  const keySecret = process.env.RAZORPAY_KEY_SECRET;
+
+  if (process.env.RAZORPAY_MODE !== "live" || !keyId || !keySecret) {
     return { id: `cust_stub_${Date.now()}` };
   }
-  // TODO: real implementation using @razorpay/razorpay-node SDK
-  throw new Error("Razorpay live mode not implemented");
+
+  const authString = Buffer.from(`${keyId}:${keySecret}`).toString("base64");
+  const response = await fetch("https://api.razorpay.com/v1/customers", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Basic ${authString}`,
+    },
+    body: JSON.stringify({
+      name: params.name,
+      email: params.email,
+      contact: params.contact,
+      notes: params.notes,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Razorpay Customer creation failed: ${response.statusText} - ${errorText}`);
+  }
+
+  const data = await response.json();
+  return { id: data.id };
 }

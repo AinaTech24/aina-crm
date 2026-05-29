@@ -1,3 +1,4 @@
+import { handleApiError } from "@/lib/api/error-handler";
 /**
  * PATCH /api/employees/[id]
  *   Update the HR / Module-19 fields on a team member.
@@ -126,7 +127,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (!updated) return NextResponse.json({ error: "Not found" }, { status: 404 });
     return NextResponse.json({ user: updated });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message ?? "internal" }, { status: err.status ?? 500 });
+    return handleApiError(err);
   }
 }
 
@@ -161,6 +162,6 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     if (!updated) return NextResponse.json({ error: "Not found" }, { status: 404 });
     return NextResponse.json({ user: updated });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message ?? "internal" }, { status: err.status ?? 500 });
+    return handleApiError(err);
   }
 }

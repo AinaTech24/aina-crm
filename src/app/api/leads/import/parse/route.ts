@@ -1,3 +1,4 @@
+import { handleApiError } from "@/lib/api/error-handler";
 /**
  * POST /api/leads/import/parse  multipart/form-data: file=<xlsx|csv>
  * Returns parsed headers + suggested mapping + first 200 rows for preview.
@@ -67,6 +68,6 @@ export async function POST(req: NextRequest) {
       total: rows.length,
     });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message ?? "internal" }, { status: err.status ?? 500 });
+    return handleApiError(err);
   }
 }

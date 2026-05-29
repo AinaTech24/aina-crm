@@ -1,4 +1,4 @@
-import { date, jsonb, numeric, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { date, index, jsonb, numeric, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { id, tenantId, timestamps } from "./_shared";
 import { tenants } from "./tenants";
 import { investors } from "./investors";
@@ -102,7 +102,9 @@ export const goals = pgTable("goals", {
     .default("not_started"),
 
   ...timestamps,
-});
+}, (t) => ({
+  investorIdx: index("goals_investor_idx").on(t.tenantId, t.investorId),
+}));
 
 export type Goal = typeof goals.$inferSelect;
 export type NewGoal = typeof goals.$inferInsert;

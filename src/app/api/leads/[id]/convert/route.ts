@@ -1,3 +1,4 @@
+import { handleApiError } from "@/lib/api/error-handler";
 /**
  * POST /api/leads/[id]/convert
  * Body: { pan, segmentTag?, investorCategory?, rmId?, notes? }
@@ -240,6 +241,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         { status: 409 }
       );
     }
-    return NextResponse.json({ error: err.message ?? "internal" }, { status: err.status ?? 500 });
+    return handleApiError(err);
   }
 }

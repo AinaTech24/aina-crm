@@ -1,3 +1,4 @@
+import { handleApiError } from "@/lib/api/error-handler";
 /**
  * POST /api/employees/invite
  * Body: { email, name, roles[], branchId? }
@@ -42,7 +43,7 @@ export async function GET() {
     });
     return NextResponse.json({ invites: rows });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message ?? "internal" }, { status: err.status ?? 500 });
+    return handleApiError(err);
   }
 }
 
@@ -92,6 +93,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ id, inviteUrl, expiresAt }, { status: 201 });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message ?? "internal" }, { status: err.status ?? 500 });
+    return handleApiError(err);
   }
 }

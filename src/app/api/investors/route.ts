@@ -1,3 +1,4 @@
+import { handleApiError } from "@/lib/api/error-handler";
 /**
  * Investors collection.
  *
@@ -110,7 +111,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json(result);
   } catch (err: any) {
-    return NextResponse.json({ error: err.message ?? "internal" }, { status: err.status ?? 500 });
+    return handleApiError(err);
   }
 }
 
@@ -177,6 +178,6 @@ export async function POST(req: NextRequest) {
     if (String(err?.message ?? "").includes("investors_tenant_pan_unique")) {
       return NextResponse.json({ error: "investor with this PAN already exists" }, { status: 409 });
     }
-    return NextResponse.json({ error: err.message ?? "internal" }, { status: err.status ?? 500 });
+    return handleApiError(err);
   }
 }

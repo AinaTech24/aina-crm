@@ -1,3 +1,4 @@
+import { handleApiError } from "@/lib/api/error-handler";
 /**
  * PUT /api/blueprints/[id]/design
  *
@@ -338,9 +339,6 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     invalidateBlueprintCache(session.tenantId);
     return NextResponse.json(result);
   } catch (err: any) {
-    return NextResponse.json(
-      { error: err.message ?? "internal" },
-      { status: err.status ?? 500 }
-    );
+    return handleApiError(err);
   }
 }

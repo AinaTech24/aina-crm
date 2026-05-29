@@ -1,3 +1,4 @@
+import { handleApiError } from "@/lib/api/error-handler";
 /**
  * POST /api/ai/nl-to-filter
  * Body: { query: string, subject?: 'investor'|'lead'|'task' }
@@ -25,6 +26,6 @@ export async function POST(req: NextRequest) {
     const result = await nlToFilterAst(parse.data.query, parse.data.subject);
     return NextResponse.json(result);
   } catch (err: any) {
-    return NextResponse.json({ error: err.message ?? "internal" }, { status: err.status ?? 500 });
+    return handleApiError(err);
   }
 }

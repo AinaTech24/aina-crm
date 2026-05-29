@@ -1,3 +1,4 @@
+import { handleApiError } from "@/lib/api/error-handler";
 /**
  * GET /api/employees
  *   List active team members for the current tenant. Used by every
@@ -52,9 +53,6 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ rows });
   } catch (err: any) {
-    return NextResponse.json(
-      { error: err.message ?? "internal" },
-      { status: err.status ?? 500 }
-    );
+    return handleApiError(err);
   }
 }

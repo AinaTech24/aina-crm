@@ -1,3 +1,4 @@
+import { handleApiError } from "@/lib/api/error-handler";
 /**
  * GET   /api/notifications?unreadOnly=1   — list for the current user
  * POST  /api/notifications/mark-read       — mark some/all as read
@@ -38,6 +39,6 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ notifications: rows.list, unreadCount: rows.unreadCount });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message ?? "internal" }, { status: err.status ?? 500 });
+    return handleApiError(err);
   }
 }

@@ -1,3 +1,4 @@
+import { handleApiError } from "@/lib/api/error-handler";
 /**
  * AINA Content Library — platform-shared.
  *
@@ -70,7 +71,7 @@ export async function GET() {
         });
     return NextResponse.json({ assets: safe });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message ?? "internal" }, { status: err.status ?? 500 });
+    return handleApiError(err);
   }
 }
 
@@ -111,6 +112,6 @@ export async function POST(req: NextRequest) {
     });
     return NextResponse.json({ id }, { status: 201 });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message ?? "internal" }, { status: err.status ?? 500 });
+    return handleApiError(err);
   }
 }

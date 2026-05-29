@@ -1,3 +1,4 @@
+import { handleApiError } from "@/lib/api/error-handler";
 /**
  * POST /api/transactions/import/commit
  *
@@ -135,6 +136,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ inserted, skipped: 0, errored: errors.length, errors: errors.slice(0, 50) });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message ?? "internal" }, { status: err.status ?? 500 });
+    return handleApiError(err);
   }
 }

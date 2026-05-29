@@ -1,3 +1,4 @@
+import { handleApiError } from "@/lib/api/error-handler";
 /**
  * POST /api/content-library/upload-url     (AINA platform admins only)
  *
@@ -38,6 +39,6 @@ export async function POST(req: NextRequest) {
     const publicUrl = `https://${bucket()}.s3.${region}.amazonaws.com/${key}`;
     return NextResponse.json({ url, key, publicUrl });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message ?? "internal" }, { status: err.status ?? 500 });
+    return handleApiError(err);
   }
 }

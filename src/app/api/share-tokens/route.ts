@@ -1,9 +1,10 @@
+import { handleApiError } from "@/lib/api/error-handler";
 /**
  * POST /api/share-tokens
  *   Body: { kind, subjectType, subjectId, payload?, expiresInDays? }
  *   Returns: { token, url, expiresAt }   ← token is plaintext, ONE TIME.
  *
- * RM uses this to mint risk-profile / docs / proposal-approval public links.
+ * RM uses this to mint risk-profile / docs / proposal-approval / onboarding-progress public links.
  * Also advances the lead's blueprint stage so the progress bar reflects that
  * the form has been sent (risk_profile_sent / docs_requested / proposal_sent).
  */
@@ -21,7 +22,7 @@ import { proposals } from "@/db/schema";
 export const dynamic = "force-dynamic";
 
 const Body = z.object({
-  kind: z.enum(["risk_profile", "document_collection", "proposal_approval"]),
+  kind: z.enum(["risk_profile", "document_collection", "proposal_approval", "onboarding_progress"]),
   subjectType: z.enum(["lead", "investor", "proposal"]),
   subjectId: z.string().uuid(),
   payload: z.record(z.string(), z.unknown()).optional(),
@@ -85,6 +86,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(res, { status: 201 });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message ?? "internal" }, { status: err.status ?? 500 });
+    return handleApiError(err);
   }
 }

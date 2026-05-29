@@ -1,3 +1,4 @@
+import { handleApiError } from "@/lib/api/error-handler";
 /**
  * Investor blueprint endpoint.
  *
@@ -135,6 +136,6 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     }
     return NextResponse.json(data);
   } catch (err: any) {
-    return NextResponse.json({ error: err.message ?? "internal" }, { status: err.status ?? 500 });
+    return handleApiError(err);
   }
 }

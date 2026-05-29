@@ -1,3 +1,4 @@
+import { handleApiError } from "@/lib/api/error-handler";
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuid } from "uuid";
 import { eq } from "drizzle-orm";
@@ -50,6 +51,6 @@ export async function POST(req: NextRequest) {
     if (String(err?.message ?? "").includes("sops_tenant_key_unique")) {
       return NextResponse.json({ error: "key already exists" }, { status: 409 });
     }
-    return NextResponse.json({ error: err.message ?? "internal" }, { status: err.status ?? 500 });
+    return handleApiError(err);
   }
 }

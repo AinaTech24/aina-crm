@@ -1,3 +1,4 @@
+import { handleApiError } from "@/lib/api/error-handler";
 /**
  * POST /api/employees/accept-invite
  * Body: { token, password, name? }
@@ -95,6 +96,6 @@ export async function POST(req: NextRequest) {
     });
     return res;
   } catch (err: any) {
-    return NextResponse.json({ error: err.message ?? "internal" }, { status: err.status ?? 500 });
+    return handleApiError(err);
   }
 }

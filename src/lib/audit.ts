@@ -87,6 +87,31 @@ export interface RecordAuditInput {
   userAgent?: string | null;
 }
 
+/**
+ * Hard cap on a single audit row's JSONB payload size. Keeps the
+ * compliance trail intact without ballooning into terabytes of storage
+ * when callers dump full Drizzle returning() rows. 4 KB per field is
+ * enough for diff context; large blobs (proposal HTML, doc payloads)
+ * are summarised with a marker so the row is still useful.
+ */
+const AUDIT_PAYLOAD_CAP_BYTES = 4 * 1024;
+
+function capPayload(value: Record<string, unknown> | null | undefined) {
+  if (value == null) return null;
+  try {
+    const json = JSON.stringify(value);
+    if (json.length <= AUDIT_PAYLOAD_CAP_BYTES) return value;
+    return {
+      __truncated: true,
+      __originalSizeBytes: json.length,
+      __cap: AUDIT_PAYLOAD_CAP_BYTES,
+      preview: json.slice(0, AUDIT_PAYLOAD_CAP_BYTES - 200) + "…",
+    } as Record<string, unknown>;
+  } catch {
+    return { __truncated: true, __reason: "serialisation_error" };
+  }
+}
+
 export async function recordAudit(tx: Tx, input: RecordAuditInput): Promise<void> {
   try {
     await tx.insert(auditLog).values({
@@ -97,9 +122,10 @@ export async function recordAudit(tx: Tx, input: RecordAuditInput): Promise<void
       action: input.action,
       entityType: input.entityType ?? null,
       entityId: input.entityId ?? null,
-      before: input.before ?? null,
-      after: input.after ?? null,
-      meta: input.meta ?? null,
+      // Cap before/after at 4 KB each — keep diff context, drop blob bloat.
+      before: capPayload(input.before),
+      after: capPayload(input.after),
+      meta: capPayload(input.meta),
       piiAccessed: input.piiAccessed ?? null,
       reason: input.reason ?? null,
       ipAddress: input.ipAddress ?? null,

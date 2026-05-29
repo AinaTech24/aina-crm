@@ -1,3 +1,4 @@
+import { handleApiError } from "@/lib/api/error-handler";
 /**
  * Risk-profile template API.
  *
@@ -25,7 +26,7 @@ export async function GET() {
     const tpl = await withTenant(session.tenantId, async (tx) => loadActiveTemplate(tx, session.tenantId));
     return NextResponse.json({ template: tpl });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message ?? "internal" }, { status: err.status ?? 500 });
+    return handleApiError(err);
   }
 }
 
@@ -106,6 +107,6 @@ export async function PUT(req: NextRequest) {
 
     return NextResponse.json({ template: saved }, { status: 201 });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message ?? "internal" }, { status: err.status ?? 500 });
+    return handleApiError(err);
   }
 }

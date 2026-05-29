@@ -1,3 +1,4 @@
+import { handleApiError } from "@/lib/api/error-handler";
 /**
  * POST /api/ai/draft-message
  * Body: { channel, intent, audienceContext?, variables? }
@@ -28,6 +29,6 @@ export async function POST(req: NextRequest) {
     const result = await draftMessage(parse.data);
     return NextResponse.json(result);
   } catch (err: any) {
-    return NextResponse.json({ error: err.message ?? "internal" }, { status: err.status ?? 500 });
+    return handleApiError(err);
   }
 }

@@ -17,7 +17,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { withSystem, withTenant } from "@/db/client";
 import { shareTokens } from "@/db/schema";
 
-export type ShareTokenKind = "risk_profile" | "document_collection" | "proposal_approval";
+export type ShareTokenKind = "risk_profile" | "document_collection" | "proposal_approval" | "onboarding_progress";
 export type ShareTokenSubjectType = "lead" | "investor" | "proposal";
 
 export interface CreateShareTokenInput {
@@ -42,6 +42,7 @@ const KIND_TO_PATH: Record<ShareTokenKind, string> = {
   risk_profile: "/r",
   document_collection: "/d",
   proposal_approval: "/p",
+  onboarding_progress: "/onboarding",
 };
 
 export async function createShareToken(input: CreateShareTokenInput): Promise<CreateShareTokenResult> {
@@ -98,7 +99,7 @@ export async function resolveShareToken(token: string): Promise<{
   });
   if (!row) throw new Error("Token not found");
   if (row.revokedAt) throw new Error("This link was revoked");
-  if (row.usedAt) throw new Error("This link has already been used");
+  if (row.usedAt && row.kind !== "onboarding_progress") throw new Error("This link has already been used");
   if (new Date(row.expiresAt as any) < new Date()) throw new Error("This link has expired");
   return {
     id: row.id,

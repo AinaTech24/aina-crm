@@ -47,6 +47,8 @@ export interface ComplianceContext {
   subject?: string;
   /** SMS-specific: DLT template id assigned by TRAI */
   dltTemplateId?: string;
+  /** SMS-specific: Approved DLT template content pattern */
+  dltTemplateContent?: string;
   /** WhatsApp-specific session window check */
   whatsappSessionActive?: boolean;
   /** Has marketing-scope consent for this channel? */
@@ -179,6 +181,27 @@ function ruleSchemeSpecific(ctx: ComplianceContext): ComplianceFinding[] {
   return findings;
 }
 
+export function matchDltTemplate(text: string, template: string): boolean {
+  // Normalize whitespace
+  const normText = text.replace(/\s+/g, " ").trim();
+  const normTemplate = template.replace(/\s+/g, " ").trim();
+
+  // Escape special regex characters
+  const escapeRegex = (s: string) => s.replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&");
+
+  // Placeholder regex pattern: matches {#...#}, {#...}, {%...%}, etc.
+  const placeholderRegex = /\{#[^#]*#\}|\{#[^}]*\}|\{%[^%]*%\}/g;
+
+  const segments = normTemplate.split(placeholderRegex);
+  const escapedSegments = segments.map(escapeRegex);
+
+  // Combine segments with non-greedy wildcard matcher
+  const regexStr = "^" + escapedSegments.join(".*?") + "$";
+  const regex = new RegExp(regexStr, "i");
+
+  return regex.test(normText);
+}
+
 function ruleDltTemplate(ctx: ComplianceContext): ComplianceFinding[] {
   if (ctx.channel !== "sms") return [];
   if (!ctx.dltTemplateId) {
@@ -190,6 +213,30 @@ function ruleDltTemplate(ctx: ComplianceContext): ComplianceFinding[] {
       },
     ];
   }
+
+  if (ctx.dltTemplateContent) {
+    const isMatch = matchDltTemplate(ctx.text, ctx.dltTemplateContent);
+    if (!isMatch) {
+      return [
+        {
+          rule: "trai.dlt_template_mismatch",
+          severity: "block",
+          message: "SMS text does not match the approved TRAI DLT template content structure.",
+          remediation: `Ensure your message text conforms to the approved DLT format: "${ctx.dltTemplateContent}"`,
+        },
+      ];
+    }
+  } else {
+    return [
+      {
+        rule: "trai.dlt_template_not_registered",
+        severity: "block",
+        message: `DLT Template ID '${ctx.dltTemplateId}' is not registered in the AINA DLT pre-registry.`,
+        remediation: "Go to Settings -> DLT templates to pre-register this Template ID.",
+      },
+    ];
+  }
+
   return [];
 }
 

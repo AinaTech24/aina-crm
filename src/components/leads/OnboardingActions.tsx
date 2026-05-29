@@ -26,10 +26,11 @@ import {
   CheckCircle2,
   AlertCircle,
   Link as LinkIcon,
+  ClipboardList,
 } from "lucide-react";
 import { CallOutcomeForm } from "./CallOutcomeForm";
 
-type Action = "risk_profile" | "document_collection" | "proposal_approval";
+type Action = "risk_profile" | "document_collection" | "proposal_approval" | "onboarding_progress";
 
 export function OnboardingActions({
   leadId,
@@ -67,7 +68,7 @@ export function OnboardingActions({
           kind,
           subjectType: kind === "proposal_approval" ? "proposal" : "lead",
           subjectId: kind === "proposal_approval" ? subjectId : leadId,
-          expiresInDays: kind === "proposal_approval" ? 14 : 7,
+          expiresInDays: kind === "onboarding_progress" ? 30 : (kind === "proposal_approval" ? 14 : 7),
           payload,
         }),
       });
@@ -161,6 +162,14 @@ export function OnboardingActions({
           onClick={() => pendingProposalId && makeLink("proposal_approval", pendingProposalId)}
           disabled={!pendingProposalId || isConverted}
           busy={busy === "proposal_approval"}
+        />
+        <ActionTile
+          icon={ClipboardList}
+          title="Share onboarding tracker"
+          subtitle="Generate a live view-only progress page for the client to track onboarding status."
+          status="Multi-use link, remains active for 30 days"
+          onClick={() => makeLink("onboarding_progress")}
+          busy={busy === "onboarding_progress"}
         />
         <ActionTile
           icon={UserCheck}
@@ -292,6 +301,11 @@ function LinkPanel({
       subject: "Please review and approve your investment proposal",
       wa: `Hi ${leadName}, please review your investment proposal and approve here (signed link, expires soon):\n\n${link.url}`,
       email: `Hi ${leadName},\n\nPlease find your investment proposal attached. Review it carefully, then approve here:\n\n${link.url}\n\nThe link captures your typed signature + timestamp as your formal acceptance — required by SEBI for our records.\n\nReach out with any questions before approving.\n\nRegards`,
+    },
+    onboarding_progress: {
+      subject: "Track your account setup progress live",
+      wa: `Hi ${leadName}, you can track the status of your account opening and onboarding here:\n\n${link.url}\n\nWe will update this page as we complete each step!`,
+      email: `Hi ${leadName},\n\nWe are currently setting up your investment account. You can track our progress live using this secure tracker page:\n\n${link.url}\n\nWe'll update this page in real-time as we complete each step (KYC validation, UCC activation, mandate setup, etc.).\n\nRegards`,
     },
   };
 

@@ -1,3 +1,4 @@
+import { handleApiError } from "@/lib/api/error-handler";
 /**
  * POST /api/leads/[id]/blueprint/advance
  *   Body: { toStageKey: string, remarks?: string }
@@ -17,11 +18,12 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { sql } from "drizzle-orm";
+import { sql, eq } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { transitionTo } from "@/lib/blueprints/engine";
+import { leads } from "@/db/schema";
 
 export const dynamic = "force-dynamic";
 
@@ -36,6 +38,7 @@ const Body = z.object({
    * the SOP prereq gates still run.
    */
   force: z.boolean().optional(),
+  fields: z.record(z.string(), z.any()).optional(),
 });
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -47,10 +50,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!parsed.success) {
       return NextResponse.json({ error: "invalid body", issues: parsed.error.issues }, { status: 400 });
     }
-    const { toStageKey, remarks, force } = parsed.data;
+    const { toStageKey, remarks, force, fields } = parsed.data;
 
     const res = await withTenant(session.tenantId, async (tx) => {
-      // Force mode — admin override (e.g. Kanban drag). Skip the SOP graph
+      // Update any required fields collected during the transition
+      if (fields && Object.keys(fields).length > 0) {
+        await tx
+          .update(leads)
+          .set({
+            ...fields,
+            updatedAt: new Date(),
+          })
+          .where(eq(leads.id, id));
+      }
+
+      // Force mode — admin override — (e.g. Kanban drag). Skip the SOP graph
       // and just move directly. No walk, no intermediate history rows.
       if (force) {
         return await transitionTo(tx, session.tenantId, id, toStageKey, {
@@ -130,6 +144,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
     return NextResponse.json(res);
   } catch (err: any) {
-    return NextResponse.json({ error: err.message ?? "internal" }, { status: err.status ?? 500 });
+    return handleApiError(err);
   }
 }

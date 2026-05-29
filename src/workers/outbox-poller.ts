@@ -55,9 +55,11 @@ export async function pollOutboxOnce(): Promise<{ processed: number; errors: num
       errors++;
       const msg = (err as Error).message;
       await withSystem(async (tx) => {
+        // `attempts` is integer (migration 0016); SET … = attempts + 1 is
+        // atomic now so concurrent retries can't race past each other.
         await tx.execute(
           sql`UPDATE events_outbox
-              SET attempts = (COALESCE(attempts, '0')::int + 1)::text,
+              SET attempts = COALESCE(attempts, 0) + 1,
                   last_error = ${msg},
                   claimed_at = NULL
               WHERE id = ${event.id}`

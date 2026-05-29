@@ -1,3 +1,4 @@
+import { handleApiError } from "@/lib/api/error-handler";
 import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from "xlsx";
 import { requireSession } from "@/lib/auth/session";
@@ -64,6 +65,6 @@ export async function POST(req: NextRequest) {
       total: rows.length,
     });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message ?? "internal" }, { status: err.status ?? 500 });
+    return handleApiError(err);
   }
 }

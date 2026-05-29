@@ -1,3 +1,4 @@
+import { handleApiError } from "@/lib/api/error-handler";
 /**
  * Leads collection.
  *   GET  /api/leads
@@ -49,7 +50,7 @@ export async function GET() {
     });
     return NextResponse.json({ leads: rows });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message ?? "internal" }, { status: err.status ?? 500 });
+    return handleApiError(err);
   }
 }
 
@@ -138,6 +139,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ id, ownerId: assignedOwnerId, assignedVia }, { status: 201 });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message ?? "internal" }, { status: err.status ?? 500 });
+    return handleApiError(err);
   }
 }

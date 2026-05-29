@@ -22,6 +22,7 @@ import {
   consents,
   templateVersions,
   templates,
+  dltTemplates,
   type Consent,
   type Template,
   type TemplateVersion,
@@ -146,6 +147,26 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
   // -----------------------------------------------------------
   // 5. Compliance gate
   // -----------------------------------------------------------
+  let dltContent: string | undefined = undefined;
+  if (input.channel === "sms") {
+    const dltId = extractDltId(version);
+    if (dltId) {
+      const [dltRow] = await tx
+        .select()
+        .from(dltTemplates)
+        .where(
+          and(
+            eq(dltTemplates.tenantId, input.tenantId),
+            eq(dltTemplates.dltTemplateId, dltId),
+            eq(dltTemplates.isActive, true)
+          )
+        );
+      if (dltRow) {
+        dltContent = dltRow.content;
+      }
+    }
+  }
+
   const compliance = runComplianceChecks({
     channel: input.channel,
     category: input.category,
@@ -158,6 +179,7 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
     text: rendered.text,
     subject: rendered.subject,
     dltTemplateId: input.channel === "sms" ? extractDltId(version) : undefined,
+    dltTemplateContent: dltContent,
     whatsappSessionActive: sessionActive,
     hasMarketingConsent: input.category === "marketing" ? !!consentSnapshot : true,
     amcApprovalRef: (version.body as any)?.amcApprovalRef,

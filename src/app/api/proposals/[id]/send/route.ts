@@ -1,3 +1,4 @@
+import { handleApiError } from "@/lib/api/error-handler";
 /**
  * POST /api/proposals/[id]/send
  *
@@ -344,9 +345,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       });
     });
   } catch (err: any) {
-    return NextResponse.json(
-      { error: err.message ?? "internal" },
-      { status: err.status ?? 500 }
-    );
+    return handleApiError(err);
   }
 }

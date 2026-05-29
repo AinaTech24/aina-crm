@@ -1,3 +1,4 @@
+import { handleApiError } from "@/lib/api/error-handler";
 /**
  * POST /api/risk-profile-template/reset — replace the active template with
  * the seed default. Same versioning rules as PUT.
@@ -63,6 +64,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ template: saved });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message ?? "internal" }, { status: err.status ?? 500 });
+    return handleApiError(err);
   }
 }

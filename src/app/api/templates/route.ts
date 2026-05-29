@@ -1,3 +1,4 @@
+import { handleApiError } from "@/lib/api/error-handler";
 /**
  * Templates collection.
  *
@@ -48,7 +49,7 @@ export async function GET() {
     });
     return NextResponse.json({ templates: rows });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message ?? "internal" }, { status: err.status ?? 500 });
+    return handleApiError(err);
   }
 }
 
@@ -123,7 +124,7 @@ export async function POST(req: NextRequest) {
     if (String(err?.message).includes("templates_tenant_key_channel_locale_unique")) {
       return NextResponse.json({ error: "template key already exists for this channel + locale" }, { status: 409 });
     }
-    return NextResponse.json({ error: err.message ?? "internal" }, { status: err.status ?? 500 });
+    return handleApiError(err);
   }
 }
 

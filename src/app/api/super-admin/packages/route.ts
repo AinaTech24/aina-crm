@@ -1,3 +1,4 @@
+import { handleApiError } from "@/lib/api/error-handler";
 /**
  * Packages CRUD (AINA only).
  *
@@ -45,7 +46,7 @@ export async function GET() {
     });
     return NextResponse.json({ packages: rows });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message ?? "internal" }, { status: err.status ?? 500 });
+    return handleApiError(err);
   }
 }
 
@@ -69,6 +70,6 @@ export async function POST(req: NextRequest) {
     if (String(err?.message ?? "").includes("packages_key_unique")) {
       return NextResponse.json({ error: "package key already exists" }, { status: 409 });
     }
-    return NextResponse.json({ error: err.message ?? "internal" }, { status: err.status ?? 500 });
+    return handleApiError(err);
   }
 }

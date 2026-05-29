@@ -1,4 +1,4 @@
-import { bigserial, index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { bigserial, index, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { tenantId } from "./_shared";
 
@@ -36,8 +36,9 @@ export const eventsOutbox = pgTable(
     processedAt: timestamp("processed_at", { withTimezone: true }),
     /** When the poller picked it up — used to detect stuck claims. */
     claimedAt: timestamp("claimed_at", { withTimezone: true }),
-    /** When the poller hands it to subscribers, this is set; on success processedAt is set */
-    attempts: text("attempts").default("0"),
+    /** Retry counter. Integer (migration 0016) so SET attempts = attempts + 1
+     *  is atomic; previously stored as text which racy concurrent retries. */
+    attempts: integer("attempts").default(0),
     lastError: text("last_error"),
   },
   (t) => ({

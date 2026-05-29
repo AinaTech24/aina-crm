@@ -1,3 +1,4 @@
+import { handleApiError } from "@/lib/api/error-handler";
 /**
  * AINA platform-staff CRUD.
  * Only platform_admin can create new platform users.
@@ -45,6 +46,6 @@ export async function POST(req: NextRequest) {
     if (String(err?.message ?? "").includes("users_tenant_email_unique")) {
       return NextResponse.json({ error: "email already used by another platform user" }, { status: 409 });
     }
-    return NextResponse.json({ error: err.message ?? "internal" }, { status: err.status ?? 500 });
+    return handleApiError(err);
   }
 }

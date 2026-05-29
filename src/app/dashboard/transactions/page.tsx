@@ -99,6 +99,7 @@ export default async function TransactionsPage({
   const statusFilter = (sp.status ?? "").split(",").filter(Boolean);
   const dateFrom = sp.date_from ?? "";
   const dateTo = sp.date_to ?? "";
+  const cursor = sp.cursor;
 
   const conds: any[] = [];
   if (q) {
@@ -110,6 +111,15 @@ export default async function TransactionsPage({
   if (statusFilter.length) conds.push(inArray(transactions.status, statusFilter as any));
   if (dateFrom) conds.push(sql`${transactions.orderDate} >= ${dateFrom}::date`);
   if (dateTo) conds.push(sql`${transactions.orderDate} <= ${dateTo}::date`);
+
+  if (cursor) {
+    const [cursorOrderDate, cursorCreatedMs, cursorId] = cursor.split(":");
+    if (cursorCreatedMs && cursorId) {
+      conds.push(
+        sql`(COALESCE(${transactions.orderDate}, '1970-01-01'::date), ${transactions.createdAt}, ${transactions.id}) < (${cursorOrderDate === "null" ? "1970-01-01" : cursorOrderDate}::date, ${new Date(Number(cursorCreatedMs)).toISOString()}::timestamp, ${cursorId}::uuid)`
+      );
+    }
+  }
 
   const data = await withTenant(session.tenantId, async (tx) => {
     const stats = await tx.execute(sql`
@@ -137,18 +147,27 @@ export default async function TransactionsPage({
     const rows = conds.length
       ? await baseQ
           .where(sql.join(conds, sql` AND `) as any)
-          .orderBy(desc(transactions.orderDate), desc(transactions.createdAt))
-          .limit(200)
+          .orderBy(desc(transactions.orderDate), desc(transactions.createdAt), desc(transactions.id))
+          .limit(51)
       : await baseQ
-          .orderBy(desc(transactions.orderDate), desc(transactions.createdAt))
-          .limit(200);
+          .orderBy(desc(transactions.orderDate), desc(transactions.createdAt), desc(transactions.id))
+          .limit(51);
+
+    const hasMore = rows.length > 50;
+    const displayRows = hasMore ? rows.slice(0, 50) : rows;
+    const lastRow = displayRows[displayRows.length - 1];
+    const nextCursor = lastRow
+      ? `${lastRow.tx.orderDate ?? "null"}:${lastRow.tx.createdAt.getTime()}:${lastRow.tx.id}`
+      : "";
 
     return {
       todayPurchaseCount: Number(s.today_purchase_count),
       todayPurchaseAmt: Number(s.today_purchase_amt),
       todayRedemptionAmt: Number(s.today_redemption_amt),
       rejected7d: Number(s.rejected_7d),
-      rows,
+      displayRows,
+      hasMore,
+      nextCursor,
     };
   });
 
@@ -198,7 +217,7 @@ export default async function TransactionsPage({
       </div>
 
       <FilterBar
-        totalCount={data.rows.length}
+        totalCount={data.displayRows.length}
         filters={[
           { type: "search", key: "q", placeholder: "Search scheme, client, or folio…" },
           {
@@ -248,7 +267,7 @@ export default async function TransactionsPage({
       />
 
       <div className="card-surface">
-        {data.rows.length === 0 ? (
+        {data.displayRows.length === 0 ? (
           <div className="p-12 text-center text-sm text-muted-foreground">
             <Repeat className="size-8 mx-auto text-muted-foreground/50" />
             <div className="mt-2 font-medium">No transactions yet.</div>
@@ -258,83 +277,109 @@ export default async function TransactionsPage({
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm" data-table="transactions">
-              <thead className="text-xs text-muted-foreground border-b">
-                <tr>
-                  <th data-col="date" className="text-left px-4 py-2 font-medium">Date</th>
-                  <th data-col="investor" className="text-left py-2 font-medium">Investor</th>
-                  <th data-col="folio" className="text-left py-2 font-medium">Folio</th>
-                  <th data-col="scheme" className="text-left py-2 font-medium">AMC / Scheme</th>
-                  <th data-col="category" className="text-left py-2 font-medium">Category</th>
-                  <th data-col="type" className="text-left py-2 font-medium">Type</th>
-                  <th data-col="amount" className="text-right py-2 font-medium">Amount</th>
-                  <th data-col="units" className="text-right py-2 font-medium">Units</th>
-                  <th data-col="nav" className="text-right py-2 font-medium">NAV</th>
-                  <th data-col="status" className="text-left py-2 font-medium">Status</th>
-                  <th data-col="source" className="text-left py-2 font-medium">Source</th>
-                  <th data-col="rm" className="text-left py-2 font-medium">RM</th>
-                  <th data-col="remarks" className="text-left py-2 font-medium pr-4">Remarks</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.rows.map(({ tx: t, investorName, rmName }) => (
-                  <tr key={t.id} className="border-b last:border-0 hover:bg-secondary/40">
-                    <td data-col="date" className="px-4 py-3 text-xs text-muted-foreground tabular-nums whitespace-nowrap">
-                      {t.orderDate ? formatDate(t.orderDate) : "—"}
-                    </td>
-                    <td data-col="investor" className="py-3 whitespace-nowrap">
-                      {investorName ? (
-                        <Link href={`/dashboard/investors/${t.investorId}`} className="hover:underline">
-                          {investorName}
-                        </Link>
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                    <td data-col="folio" className="py-3 text-xs font-mono text-muted-foreground whitespace-nowrap">
-                      {t.folioNumber ?? "—"}
-                    </td>
-                    <td data-col="scheme" className="py-3 max-w-[220px]">
-                      <div className="text-sm truncate">{t.schemeName ?? t.schemeCode ?? "—"}</div>
-                      <div className="text-xs text-muted-foreground truncate">
-                        {t.amcName ?? t.amcCode ?? "—"}
-                      </div>
-                    </td>
-                    <td data-col="category" className="py-3 text-xs text-muted-foreground capitalize">
-                      {t.schemeCategory ?? "—"}
-                    </td>
-                    <td data-col="type" className="py-3">
-                      <span className={`chip ${TYPE_TONE[t.type] ?? ""} font-medium`}>
-                        {TYPE_LABEL[t.type] ?? t.type}
-                      </span>
-                    </td>
-                    <td data-col="amount" className="py-3 text-right tabular-nums">
-                      {t.amount != null ? formatINR(Number(t.amount)) : "—"}
-                    </td>
-                    <td data-col="units" className="py-3 text-right tabular-nums text-muted-foreground">
-                      {t.units ? Number(t.units).toFixed(2) : "—"}
-                    </td>
-                    <td data-col="nav" className="py-3 text-right tabular-nums text-muted-foreground">
-                      {t.nav ? Number(t.nav).toFixed(4) : "—"}
-                    </td>
-                    <td data-col="status" className="py-3">
-                      <span className={`chip ${STATUS_TONE[t.status] ?? ""}`}>
-                        {STATUS_LABEL[t.status] ?? t.status}
-                      </span>
-                    </td>
-                    <td data-col="source" className="py-3 text-xs text-muted-foreground">
-                      {SOURCE_LABEL[t.sourceFeed ?? ""] ?? t.sourceFeed ?? "—"}
-                    </td>
-                    <td data-col="rm" className="py-3 text-xs">{rmName ?? "—"}</td>
-                    <td data-col="remarks" className="py-3 pr-4 text-xs text-muted-foreground max-w-[180px] truncate">
-                      {t.remarks ?? t.reasonDescription ?? "—"}
-                    </td>
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm" data-table="transactions">
+                <thead className="text-xs text-muted-foreground border-b">
+                  <tr>
+                    <th data-col="date" className="text-left px-4 py-2 font-medium">Date</th>
+                    <th data-col="investor" className="text-left py-2 font-medium">Investor</th>
+                    <th data-col="folio" className="text-left py-2 font-medium">Folio</th>
+                    <th data-col="scheme" className="text-left py-2 font-medium">AMC / Scheme</th>
+                    <th data-col="category" className="text-left py-2 font-medium">Category</th>
+                    <th data-col="type" className="text-left py-2 font-medium">Type</th>
+                    <th data-col="amount" className="text-right py-2 font-medium">Amount</th>
+                    <th data-col="units" className="text-right py-2 font-medium">Units</th>
+                    <th data-col="nav" className="text-right py-2 font-medium">NAV</th>
+                    <th data-col="status" className="text-left py-2 font-medium">Status</th>
+                    <th data-col="source" className="text-left py-2 font-medium">Source</th>
+                    <th data-col="rm" className="text-left py-2 font-medium">RM</th>
+                    <th data-col="remarks" className="text-left py-2 font-medium pr-4">Remarks</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {data.displayRows.map(({ tx: t, investorName, rmName }) => (
+                    <tr key={t.id} className="border-b last:border-0 hover:bg-secondary/40">
+                      <td data-col="date" className="px-4 py-3 text-xs text-muted-foreground tabular-nums whitespace-nowrap">
+                        {t.orderDate ? formatDate(t.orderDate) : "—"}
+                      </td>
+                      <td data-col="investor" className="py-3 whitespace-nowrap">
+                        {investorName ? (
+                          <Link href={`/dashboard/investors/${t.investorId}`} className="hover:underline">
+                            {investorName}
+                          </Link>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td data-col="folio" className="py-3 text-xs font-mono text-muted-foreground whitespace-nowrap">
+                        {t.folioNumber ?? "—"}
+                      </td>
+                      <td data-col="scheme" className="py-3 max-w-[220px]">
+                        <div className="text-sm truncate">{t.schemeName ?? t.schemeCode ?? "—"}</div>
+                        <div className="text-xs text-muted-foreground truncate">
+                          {t.amcName ?? t.amcCode ?? "—"}
+                        </div>
+                      </td>
+                      <td data-col="category" className="py-3 text-xs text-muted-foreground capitalize">
+                        {t.schemeCategory ?? "—"}
+                      </td>
+                      <td data-col="type" className="py-3">
+                        <span className={`chip ${TYPE_TONE[t.type] ?? ""} font-medium`}>
+                          {TYPE_LABEL[t.type] ?? t.type}
+                        </span>
+                      </td>
+                      <td data-col="amount" className="py-3 text-right tabular-nums">
+                        {t.amount != null ? formatINR(Number(t.amount)) : "—"}
+                      </td>
+                      <td data-col="units" className="py-3 text-right tabular-nums text-muted-foreground">
+                        {t.units ? Number(t.units).toFixed(2) : "—"}
+                      </td>
+                      <td data-col="nav" className="py-3 text-right tabular-nums text-muted-foreground">
+                        {t.nav ? Number(t.nav).toFixed(4) : "—"}
+                      </td>
+                      <td data-col="status" className="py-3">
+                        <span className={`chip ${STATUS_TONE[t.status] ?? ""}`}>
+                          {STATUS_LABEL[t.status] ?? t.status}
+                        </span>
+                      </td>
+                      <td data-col="source" className="py-3 text-xs text-muted-foreground">
+                        {SOURCE_LABEL[t.sourceFeed ?? ""] ?? t.sourceFeed ?? "—"}
+                      </td>
+                      <td data-col="rm" className="py-3 text-xs">{rmName ?? "—"}</td>
+                      <td data-col="remarks" className="py-3 pr-4 text-xs text-muted-foreground max-w-[180px] truncate">
+                        {t.remarks ?? t.reasonDescription ?? "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {data.hasMore && (
+              <div className="p-4 border-t flex justify-end">
+                <Link
+                  href={{
+                    pathname: "/dashboard/transactions",
+                    query: {
+                      ...Object.fromEntries(
+                        Object.entries({
+                          q,
+                          txtype: sp.txtype,
+                          status: sp.status,
+                          date_from: dateFrom,
+                          date_to: dateTo,
+                        }).filter(([_, v]) => v !== undefined && v !== "")
+                      ),
+                      cursor: data.nextCursor,
+                    },
+                  }}
+                  className="rounded-md border bg-background px-3 py-1.5 text-xs font-medium hover:bg-accent hover:text-accent-foreground"
+                >
+                  Next Page →
+                </Link>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

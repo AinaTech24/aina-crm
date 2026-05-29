@@ -1,3 +1,4 @@
+import { handleApiError } from "@/lib/api/error-handler";
 /**
  * GET /api/search?q=…
  *
@@ -76,6 +77,6 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ q, ...results });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message ?? "internal" }, { status: err.status ?? 500 });
+    return handleApiError(err);
   }
 }

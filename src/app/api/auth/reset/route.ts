@@ -1,3 +1,4 @@
+import { handleApiError } from "@/lib/api/error-handler";
 /**
  * POST /api/auth/reset  Body: { token, password }
  *
@@ -77,6 +78,6 @@ export async function POST(req: NextRequest) {
     });
     return res;
   } catch (err: any) {
-    return NextResponse.json({ error: err.message ?? "internal" }, { status: err.status ?? 500 });
+    return handleApiError(err);
   }
 }

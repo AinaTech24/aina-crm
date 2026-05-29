@@ -1,3 +1,4 @@
+import { handleApiError } from "@/lib/api/error-handler";
 /**
  * Master values CRUD.
  *
@@ -40,7 +41,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ typ
     });
     return NextResponse.json({ values: rows });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message ?? "internal" }, { status: err.status ?? 500 });
+    return handleApiError(err);
   }
 }
 
@@ -72,7 +73,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ typ
     if (String(err?.message ?? "").includes("master_values_unique")) {
       return NextResponse.json({ error: "key already exists for this master type" }, { status: 409 });
     }
-    return NextResponse.json({ error: err.message ?? "internal" }, { status: err.status ?? 500 });
+    return handleApiError(err);
   }
 }
 
@@ -100,7 +101,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ty
     });
     return NextResponse.json({ ok: true });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message ?? "internal" }, { status: err.status ?? 500 });
+    return handleApiError(err);
   }
 }
 
@@ -133,6 +134,6 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ t
     });
     return NextResponse.json({ ok: true });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message ?? "internal" }, { status: err.status ?? 500 });
+    return handleApiError(err);
   }
 }

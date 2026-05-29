@@ -1,3 +1,4 @@
+import { handleApiError } from "@/lib/api/error-handler";
 /**
  * Single-package CRUD (AINA only).
  *
@@ -54,7 +55,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     if (!row) return NextResponse.json({ error: "not found" }, { status: 404 });
     return NextResponse.json(row);
   } catch (err: any) {
-    return NextResponse.json({ error: err.message ?? "internal" }, { status: err.status ?? 500 });
+    return handleApiError(err);
   }
 }
 
@@ -110,6 +111,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     return NextResponse.json(updated);
   } catch (err: any) {
-    return NextResponse.json({ error: err.message ?? "internal" }, { status: err.status ?? 500 });
+    return handleApiError(err);
   }
 }

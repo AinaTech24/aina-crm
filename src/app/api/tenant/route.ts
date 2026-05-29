@@ -1,3 +1,4 @@
+import { handleApiError } from "@/lib/api/error-handler";
 /**
  * PATCH /api/tenant
  * Body: partial tenant fields (owner-only).
@@ -87,6 +88,6 @@ export async function PATCH(req: NextRequest) {
     });
     return NextResponse.json(result);
   } catch (err: any) {
-    return NextResponse.json({ error: err.message ?? "internal" }, { status: err.status ?? 500 });
+    return handleApiError(err);
   }
 }

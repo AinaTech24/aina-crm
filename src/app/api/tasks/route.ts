@@ -1,3 +1,4 @@
+import { handleApiError } from "@/lib/api/error-handler";
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuid } from "uuid";
 import { desc } from "drizzle-orm";
@@ -47,7 +48,7 @@ export async function GET() {
     const rows = await withTenant(session.tenantId, async (tx) => tx.select().from(tasks).orderBy(desc(tasks.createdAt)).limit(200));
     return NextResponse.json({ tasks: rows });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message ?? "internal" }, { status: err.status ?? 500 });
+    return handleApiError(err);
   }
 }
 
@@ -103,6 +104,6 @@ export async function POST(req: NextRequest) {
     });
     return NextResponse.json({ id }, { status: 201 });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message ?? "internal" }, { status: err.status ?? 500 });
+    return handleApiError(err);
   }
 }

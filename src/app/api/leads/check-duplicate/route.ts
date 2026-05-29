@@ -1,3 +1,4 @@
+import { handleApiError } from "@/lib/api/error-handler";
 /**
  * POST /api/leads/check-duplicate
  *   Body: { phone?, email?, pan? }
@@ -71,6 +72,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ matches });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message ?? "internal" }, { status: err.status ?? 500 });
+    return handleApiError(err);
   }
 }

@@ -108,36 +108,222 @@ export const stubBseStar: BseStarAdapter = {
   },
 };
 
-/**
- * Real adapter — to be implemented when BSE membership lands.
- * Pseudocode:
- *
- *   const client = await soap.createClientAsync(WSDL);
- *   const [authResult] = await client.getPasswordAsync({
- *     UserId: creds.userId,
- *     Password: creds.password,
- *     PassKey: passkey,
- *   });
- *   ...
- */
+async function callSoap(action: string, bodyXml: string): Promise<string> {
+  const isLive = process.env.BSE_STAR_MODE === "live";
+  const baseUrl = isLive
+    ? "https://bsestarmf.in/MFOrderEntry/MFOrder.svc"
+    : "https://bsestarmfdemo.bseindia.com/MFOrderEntry/MFOrder.svc";
+
+  const xmlPayload = `<?xml version="1.0" encoding="utf-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:bses="http://bsestarmf.in/">
+   <soapenv:Header/>
+   <soapenv:Body>
+      ${bodyXml}
+   </soapenv:Body>
+</soapenv:Envelope>`;
+
+  const response = await fetch(baseUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "text/xml; charset=utf-8",
+      "SOAPAction": `http://bsestarmf.in/IMFOrderEntry/${action}`,
+    },
+    body: xmlPayload,
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`BSE Star MF SOAP call failed: ${response.statusText} - ${errorText}`);
+  }
+
+  return await response.text();
+}
+
+function extractXmlTag(xml: string, tag: string): string {
+  const regex = new RegExp(`<${tag}[^>]*>([^<]*)</${tag}>`, "i");
+  const match = xml.match(regex);
+  return match ? match[1] : "";
+}
+
+function jsonToXml(obj: any): string {
+  if (!obj || typeof obj !== "object") return "";
+  return Object.entries(obj)
+    .map(([k, v]) => `<bses:${k}>${v ?? ""}</bses:${k}>`)
+    .join("\n");
+}
+
 export const liveBseStar: BseStarAdapter = {
-  async authenticate() {
-    throw new Error("BSE Star MF live adapter not implemented — use stubBseStar in development");
+  async authenticate(creds) {
+    const passkey = process.env.BSE_STAR_PASSKEY ?? "12345";
+    const body = `
+      <bses:getPassword>
+        <bses:UserId>${creds.userId}</bses:UserId>
+        <bses:Password>${creds.password}</bses:Password>
+        <bses:PassKey>${passkey}</bses:PassKey>
+      </bses:getPassword>
+    `;
+    const response = await callSoap("getPassword", body);
+    const result = extractXmlTag(response, "getPasswordResult");
+    const parts = result.split("|");
+    if (parts[0] !== "100" && parts[0] !== "0") {
+      throw new Error(`BSE Star MF Authentication Failed: ${result}`);
+    }
+    return { token: parts[1] || result, expiresAt: new Date(Date.now() + 15 * 60 * 1000) };
   },
-  async createUcc() {
-    throw new Error("not implemented");
+
+  async createUcc(creds, params: any) {
+    const tokenResult = await this.authenticate(creds);
+    const uccCode = params.uccCode || `UCC${Date.now().toString().slice(-8)}`;
+    const body = `
+      <bses:createUcc>
+        <bses:UserId>${creds.userId}</bses:UserId>
+        <bses:EncryptedPassword>${tokenResult.token}</bses:EncryptedPassword>
+        ${jsonToXml(params)}
+      </bses:createUcc>
+    `;
+    await callSoap("createUcc", body);
+    return { uccCode };
   },
-  async placeLumpsum() {
-    throw new Error("not implemented");
+
+  async placeLumpsum(creds, order) {
+    const tokenResult = await this.authenticate(creds);
+    const orderId = `LMP${Date.now()}`;
+    const body = `
+      <bses:orderEntryParam>
+        <bses:TransType>NEW</bses:TransType>
+        <bses:TransNo>${orderId}</bses:TransNo>
+        <bses:SchemeCD>${order.schemeCode}</bses:SchemeCD>
+        <bses:UserId>${creds.userId}</bses:UserId>
+        <bses:MemberId>${creds.memberCode}</bses:MemberId>
+        <bses:ClientCode>${order.uccCode}</bses:ClientCode>
+        <bses:BuySell>B</bses:BuySell>
+        <bses:BuySellType>FRESH</bses:BuySellType>
+        <bses:Dptxn>P</bses:Dptxn>
+        <bses:Qty></bses:Qty>
+        <bses:Amount>${order.amount}</bses:Amount>
+        <bses:Euin>${order.euin}</bses:Euin>
+        <bses:EuinVal>N</bses:EuinVal>
+        <bses:EncryptedPassword>${tokenResult.token}</bses:EncryptedPassword>
+        <bses:OrderValType>V</bses:OrderValType>
+        <bses:IpAdd></bses:IpAdd>
+        <bses:Password></bses:Password>
+        <bses:PassKey></bses:PassKey>
+        <bses:Par1></bses:Par1>
+        <bses:Par2></bses:Par2>
+        <bses:Par3></bses:Par3>
+      </bses:orderEntryParam>
+    `;
+    const response = await callSoap("orderEntryParam", body);
+    const resultText = extractXmlTag(response, "orderEntryParamResult");
+    const parts = resultText.split("|");
+    const status = parts[1] === "SUCCESS" || parts[0] === "100" || parts[0] === "0" ? "submitted" : "rejected";
+    return {
+      orderId: parts[2] || orderId,
+      status,
+      reasonCode: status === "rejected" ? parts[0] : undefined,
+      reasonDescription: parts[3] || resultText,
+    };
   },
-  async registerSip() {
-    throw new Error("not implemented");
+
+  async registerSip(creds, order) {
+    const tokenResult = await this.authenticate(creds);
+    const orderId = `SIP${Date.now()}`;
+    const body = `
+      <bses:xsipOrderEntryParam>
+        <bses:TransactionCode>NEW</bses:TransactionCode>
+        <bses:SchemeCode>${order.schemeCode}</bses:SchemeCode>
+        <bses:MemberId>${creds.memberCode}</bses:MemberId>
+        <bses:ClientCode>${order.uccCode}</bses:ClientCode>
+        <bses:TransNo>${orderId}</bses:TransNo>
+        <bses:Amount>${order.amount}</bses:Amount>
+        <bses:FrequencyType>${order.frequency}</bses:FrequencyType>
+        <bses:StartDate>${order.startDate}</bses:StartDate>
+        <bses:InstallmentAmount>${order.amount}</bses:InstallmentAmount>
+        <bses:NoOfInstallment>${order.noOfInstallments}</bses:NoOfInstallment>
+        <bses:MandateId>${order.mandateId}</bses:MandateId>
+        <bses:Euin>${order.euin}</bses:Euin>
+        <bses:UserId>${creds.userId}</bses:UserId>
+        <bses:EncryptedPassword>${tokenResult.token}</bses:EncryptedPassword>
+        <bses:IpAddress></bses:IpAddress>
+        <bses:Password></bses:Password>
+        <bses:PassKey></bses:PassKey>
+        <bses:Param1></bses:Param1>
+        <bses:Param2></bses:Param2>
+        <bses:Param3></bses:Param3>
+      </bses:xsipOrderEntryParam>
+    `;
+    const response = await callSoap("xsipOrderEntryParam", body);
+    const resultText = extractXmlTag(response, "xsipOrderEntryParamResult");
+    const parts = resultText.split("|");
+    const status = parts[1] === "SUCCESS" || parts[0] === "100" || parts[0] === "0" ? "submitted" : "rejected";
+    return {
+      orderId: parts[2] || orderId,
+      status,
+      reasonCode: status === "rejected" ? parts[0] : undefined,
+      reasonDescription: parts[3] || resultText,
+    };
   },
-  async redeem() {
-    throw new Error("not implemented");
+
+  async redeem(creds, order) {
+    const tokenResult = await this.authenticate(creds);
+    const orderId = `RED${Date.now()}`;
+    const body = `
+      <bses:orderEntryParam>
+        <bses:TransType>NEW</bses:TransType>
+        <bses:TransNo>${orderId}</bses:TransNo>
+        <bses:SchemeCD>${order.schemeCode}</bses:SchemeCD>
+        <bses:UserId>${creds.userId}</bses:UserId>
+        <bses:MemberId>${creds.memberCode}</bses:MemberId>
+        <bses:ClientCode>${order.uccCode}</bses:ClientCode>
+        <bses:BuySell>S</bses:BuySell>
+        <bses:BuySellType>FRESH</bses:BuySellType>
+        <bses:Dptxn>P</bses:Dptxn>
+        <bses:Qty>${order.units ?? ""}</bses:Qty>
+        <bses:Amount>${order.amount ?? ""}</bses:Amount>
+        <bses:Euin>${order.euin}</bses:Euin>
+        <bses:EuinVal>N</bses:EuinVal>
+        <bses:EncryptedPassword>${tokenResult.token}</bses:EncryptedPassword>
+        <bses:OrderValType>V</bses:OrderValType>
+        <bses:IpAdd></bses:IpAdd>
+        <bses:Password></bses:Password>
+        <bses:PassKey></bses:PassKey>
+        <bses:Par1></bses:Par1>
+        <bses:Par2></bses:Par2>
+        <bses:Par3></bses:Par3>
+      </bses:orderEntryParam>
+    `;
+    const response = await callSoap("orderEntryParam", body);
+    const resultText = extractXmlTag(response, "orderEntryParamResult");
+    const parts = resultText.split("|");
+    const status = parts[1] === "SUCCESS" || parts[0] === "100" || parts[0] === "0" ? "submitted" : "rejected";
+    return {
+      orderId: parts[2] || orderId,
+      status,
+      reasonCode: status === "rejected" ? parts[0] : undefined,
+      reasonDescription: parts[3] || resultText,
+    };
   },
-  async fetchOrderStatus() {
-    throw new Error("not implemented");
+
+  async fetchOrderStatus(creds, orderId) {
+    const tokenResult = await this.authenticate(creds);
+    const body = `
+      <bses:getOrderStatus>
+        <bses:UserId>${creds.userId}</bses:UserId>
+        <bses:MemberId>${creds.memberCode}</bses:MemberId>
+        <bses:OrderId>${orderId}</bses:OrderId>
+        <bses:EncryptedPassword>${tokenResult.token}</bses:EncryptedPassword>
+      </bses:getOrderStatus>
+    `;
+    const response = await callSoap("getOrderStatus", body);
+    const resultText = extractXmlTag(response, "getOrderStatusResult");
+    const parts = resultText.split("|");
+    const status = parts[1] === "SUCCESS" || parts[0] === "100" || parts[0] === "0" ? "submitted" : "rejected";
+    return {
+      orderId,
+      status,
+      reasonCode: status === "rejected" ? parts[0] : undefined,
+      reasonDescription: parts[3] || resultText,
+    };
   },
 };
 

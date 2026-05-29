@@ -39,3 +39,5 @@ export * from "./proposal_approvals";
 export * from "./blueprints";
 export * from "./proposal_schemes";
 export * from "./rta_imports";
+export * from "./dlt_templates";
+

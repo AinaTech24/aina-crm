@@ -83,6 +83,7 @@ export const serviceRequests = pgTable(
     statusIdx: index("svc_status_idx").on(t.tenantId, t.status),
     slaIdx: index("svc_sla_idx").on(t.tenantId, t.slaResolutionAt),
     ticketIdx: index("svc_ticket_idx").on(t.tenantId, t.ticketNo),
+    investorIdx: index("svc_investor_idx").on(t.tenantId, t.investorId),
   })
 );
 

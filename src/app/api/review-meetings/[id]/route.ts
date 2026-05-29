@@ -1,3 +1,4 @@
+import { handleApiError } from "@/lib/api/error-handler";
 /**
  * Single review meeting endpoints.
  *
@@ -196,7 +197,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (!result) return NextResponse.json({ error: "not found" }, { status: 404 });
     return NextResponse.json(result);
   } catch (err: any) {
-    return NextResponse.json({ error: err.message ?? "internal" }, { status: err.status ?? 500 });
+    return handleApiError(err);
   }
 }
 
@@ -223,6 +224,6 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     });
     return NextResponse.json({ ok: true });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message ?? "internal" }, { status: err.status ?? 500 });
+    return handleApiError(err);
   }
 }

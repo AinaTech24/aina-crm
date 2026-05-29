@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { desc, and, eq, gte, sql } from "drizzle-orm";
 import { ClipboardCheck, Bot, User, Workflow, Webhook, AlertCircle } from "lucide-react";
 import { withTenant } from "@/db/client";
@@ -12,25 +13,40 @@ export const dynamic = "force-dynamic";
 export default async function AuditLogPage({
   searchParams,
 }: {
-  searchParams: Promise<{ action?: string; actor?: string; days?: string }>;
+  searchParams: Promise<{ action?: string; actor?: string; days?: string; cursor?: string }>;
 }) {
   const session = await requireSession();
   const sp = await searchParams;
   const days = Number(sp.days ?? "7");
   const fromDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  const cursor = sp.cursor;
 
   const result = await withTenant(session.tenantId, async (tx) => {
     const conditions = [gte(auditLog.at, fromDate)];
     if (sp.action) conditions.push(eq(auditLog.action, sp.action));
     if (sp.actor) conditions.push(eq(auditLog.actorType, sp.actor as any));
 
+    if (cursor) {
+      const [cursorMs, cursorId] = cursor.split(":");
+      if (cursorMs && cursorId) {
+        conditions.push(
+          sql`(${auditLog.at}, ${auditLog.id}) < (${new Date(Number(cursorMs)).toISOString()}::timestamp, ${cursorId}::uuid)`
+        );
+      }
+    }
+
     const rows = await tx
       .select({ log: auditLog, userName: users.name })
       .from(auditLog)
       .leftJoin(users, eq(users.id, auditLog.actorUserId))
       .where(and(...conditions))
-      .orderBy(desc(auditLog.at))
-      .limit(500);
+      .orderBy(desc(auditLog.at), desc(auditLog.id))
+      .limit(51);
+
+    const hasMore = rows.length > 50;
+    const displayRows = hasMore ? rows.slice(0, 50) : rows;
+    const lastRow = displayRows[displayRows.length - 1];
+    const nextCursor = lastRow ? `${lastRow.log.at.getTime()}:${lastRow.log.id}` : "";
 
     // PII access count for the period
     const piiCount = await tx.execute(sql`
@@ -40,7 +56,7 @@ export default async function AuditLogPage({
     `);
     const piiAccessed = Number((piiCount.rows[0] as any)?.c ?? 0);
 
-    return { rows, piiAccessed };
+    return { displayRows, hasMore, nextCursor, piiAccessed };
   });
 
   return (
@@ -53,7 +69,7 @@ export default async function AuditLogPage({
       </div>
 
       <div className="grid grid-cols-4 gap-3">
-        <Stat label="Total events (window)" value={String(result.rows.length)} />
+        <Stat label="Total events (window)" value={String(result.displayRows.length)} />
         <Stat label="PII access events" value={String(result.piiAccessed)} />
         <Stat label="Window" value={`${days} days`} />
         <Stat label="Retention" value="7 years" />
@@ -92,40 +108,52 @@ export default async function AuditLogPage({
           <button className="rounded-md border px-3 text-sm">Apply</button>
         </div>
 
-        {result.rows.length === 0 ? (
+        {result.displayRows.length === 0 ? (
           <div className="p-12 text-center text-sm text-muted-foreground">
             No audit events in this window.
           </div>
         ) : (
-          <ul className="divide-y text-sm font-mono">
-            {result.rows.map((r) => {
-              const Icon = actorIcons[r.log.actorType as keyof typeof actorIcons] ?? User;
-              const piiAccess = !!(r.log.piiAccessed && Object.keys(r.log.piiAccessed as any).length > 0);
-              return (
-                <li key={r.log.id} className="px-4 py-2.5 flex items-center gap-3 hover:bg-accent/40">
-                  <Icon className="size-3.5 text-muted-foreground flex-shrink-0" />
-                  <span className="text-xs text-muted-foreground tabular-nums w-32 flex-shrink-0">
-                    {formatRelative(r.log.at)}
-                  </span>
-                  <span className="text-xs w-32 truncate flex-shrink-0">
-                    {r.userName ?? r.log.actorType}
-                  </span>
-                  <span className="text-xs flex-1 truncate">
-                    <span className="font-semibold">{r.log.action}</span>
-                    {r.log.entityType && (
-                      <span className="text-muted-foreground"> · {r.log.entityType}:{r.log.entityId?.slice(0, 8)}</span>
-                    )}
-                    {r.log.reason && <span className="text-muted-foreground"> · "{r.log.reason}"</span>}
-                  </span>
-                  {piiAccess && (
-                    <span className="text-xs px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 flex items-center gap-1 flex-shrink-0">
-                      <AlertCircle className="size-3" /> PII
+          <>
+            <ul className="divide-y text-sm font-mono">
+              {result.displayRows.map((r) => {
+                const Icon = actorIcons[r.log.actorType as keyof typeof actorIcons] ?? User;
+                const piiAccess = !!(r.log.piiAccessed && Object.keys(r.log.piiAccessed as any).length > 0);
+                return (
+                  <li key={r.log.id} className="px-4 py-2.5 flex items-center gap-3 hover:bg-accent/40">
+                    <Icon className="size-3.5 text-muted-foreground flex-shrink-0" />
+                    <span className="text-xs text-muted-foreground tabular-nums w-32 flex-shrink-0">
+                      {formatRelative(r.log.at)}
                     </span>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
+                    <span className="text-xs w-32 truncate flex-shrink-0">
+                      {r.userName ?? r.log.actorType}
+                    </span>
+                    <span className="text-xs flex-1 truncate">
+                      <span className="font-semibold">{r.log.action}</span>
+                      {r.log.entityType && (
+                        <span className="text-muted-foreground"> · {r.log.entityType}:{r.log.entityId?.slice(0, 8)}</span>
+                      )}
+                      {r.log.reason && <span className="text-muted-foreground"> · "{r.log.reason}"</span>}
+                    </span>
+                    {piiAccess && (
+                      <span className="text-xs px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 flex items-center gap-1 flex-shrink-0">
+                        <AlertCircle className="size-3" /> PII
+                      </span>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+            {result.hasMore && (
+              <div className="p-4 border-t flex justify-end">
+                <Link
+                  href={`/dashboard/audit-log?days=${days}&actor=${sp.actor ?? ""}&action=${sp.action ?? ""}&cursor=${result.nextCursor}`}
+                  className="rounded-md border bg-background px-3 py-1.5 text-xs font-medium hover:bg-accent hover:text-accent-foreground"
+                >
+                  Next Page →
+                </Link>
+              </div>
+            )}
+          </>
         )}
       </form>
     </div>

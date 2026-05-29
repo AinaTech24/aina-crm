@@ -1,3 +1,4 @@
+import { handleApiError } from "@/lib/api/error-handler";
 /**
  * GET /api/content-library/[id]/branded?mode=preview|download
  *
@@ -103,6 +104,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     });
     return new NextResponse(new Uint8Array(pngBuf), { status: 200, headers });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message ?? "internal" }, { status: 500 });
+    return handleApiError(err);
   }
 }

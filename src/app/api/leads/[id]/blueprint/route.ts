@@ -1,3 +1,4 @@
+import { handleApiError } from "@/lib/api/error-handler";
 /**
  * Lead blueprint endpoints.
  *
@@ -20,6 +21,6 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     const data = await withTenant(session.tenantId, async (tx) => getStage(tx, session.tenantId, id));
     return NextResponse.json(data);
   } catch (err: any) {
-    return NextResponse.json({ error: err.message ?? "internal" }, { status: err.status ?? 500 });
+    return handleApiError(err);
   }
 }

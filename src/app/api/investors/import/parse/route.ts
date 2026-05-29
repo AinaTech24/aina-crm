@@ -1,3 +1,4 @@
+import { handleApiError } from "@/lib/api/error-handler";
 /**
  * POST /api/investors/import/parse
  * multipart/form-data: file=<xlsx|csv>
@@ -104,6 +105,6 @@ export async function POST(req: NextRequest) {
       total: rows.length,
     });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message ?? "internal" }, { status: err.status ?? 500 });
+    return handleApiError(err);
   }
 }

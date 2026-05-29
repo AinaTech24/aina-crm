@@ -1,3 +1,4 @@
+import { handleApiError } from "@/lib/api/error-handler";
 import { NextRequest, NextResponse } from "next/server";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -33,6 +34,6 @@ export async function POST(req: NextRequest) {
     });
     return NextResponse.json({ ok: true });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message ?? "internal" }, { status: err.status ?? 500 });
+    return handleApiError(err);
   }
 }

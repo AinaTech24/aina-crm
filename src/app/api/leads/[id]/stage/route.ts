@@ -1,3 +1,4 @@
+import { handleApiError } from "@/lib/api/error-handler";
 /**
  * POST /api/leads/[id]/stage
  * Body: { stage: 'new'|'contacted'|'qualified'|'proposal_sent'|'converted'|'lost'|'cold' }
@@ -75,6 +76,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!result) return NextResponse.json({ error: "not found" }, { status: 404 });
     return NextResponse.json(result);
   } catch (err: any) {
-    return NextResponse.json({ error: err.message ?? "internal" }, { status: err.status ?? 500 });
+    return handleApiError(err);
   }
 }

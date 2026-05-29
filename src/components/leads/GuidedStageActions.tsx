@@ -61,18 +61,27 @@ export function GuidedStageActions({
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
+  
+  // Zoho CRM Blueprint Transition Dialog states
+  const [transitioningAction, setTransitioningAction] = useState<StageAction | null>(null);
+  const [missingFields, setMissingFields] = useState<Array<{ key: string; label: string; type: string; options?: string[] }>>([]);
+  const [fieldValues, setFieldValues] = useState<Record<string, any>>({});
+  const [remarks, setRemarks] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
   const actions = STAGE_ACTIONS[currentStage] ?? [];
 
   if (actions.length === 0) {
     return null; // terminal / boundary stage — nothing to do here
   }
 
-  async function checkPrereq(targetStage: string): Promise<{ ok: boolean; items: Prereq[] }> {
+  async function checkPrereq(targetStage: string): Promise<{ ok: boolean; items: Prereq[]; missingFields?: any[] }> {
     const res = await fetch(
       `/api/leads/${leadId}/blueprint/can-advance?to=${encodeURIComponent(targetStage)}`
     );
     if (!res.ok) return { ok: false, items: [] };
-    return (await res.json()) as { ok: boolean; items: Prereq[] };
+    return (await res.json()) as { ok: boolean; items: Prereq[]; missingFields?: any[] };
   }
 
   async function advance(targetStage: string, remarks?: string): Promise<boolean> {
@@ -104,6 +113,17 @@ export function GuidedStageActions({
             items: pre.items,
             targetStage: action.targetStage,
           });
+          return;
+        }
+
+        // Zoho Blueprint check: if there are missing required fields or if this is a direct advance_only,
+        // show the Zoho CRM Transition Modal to gather remarks and required fields.
+        if ((pre.missingFields && pre.missingFields.length > 0) || action.behaviour.kind === "advance_only") {
+          setTransitioningAction(action);
+          setMissingFields(pre.missingFields ?? []);
+          setFieldValues({});
+          setRemarks("");
+          setError(null);
           return;
         }
       }
@@ -155,6 +175,44 @@ export function GuidedStageActions({
       }
     } finally {
       setBusy(null);
+    }
+  }
+
+  async function handleCompleteTransition() {
+    if (!transitioningAction) return;
+
+    // Validate that all missing required fields are filled out
+    for (const f of missingFields) {
+      if (!fieldValues[f.key]) {
+        setError(`Please fill out the required field: ${f.label}`);
+        return;
+      }
+    }
+
+    setSubmitting(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/leads/${leadId}/blueprint/advance`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          toStageKey: transitioningAction.targetStage,
+          remarks: remarks || `Transitioned to ${transitioningAction.targetStage}`,
+          fields: fieldValues,
+        }),
+      });
+
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d?.error ?? "Failed to complete transition");
+
+      setTransitioningAction(null);
+      router.refresh();
+      window.dispatchEvent(new CustomEvent("blueprint:refresh"));
+      onAfterAdvance?.();
+    } catch (e: any) {
+      setError(e.message ?? "An error occurred");
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -253,6 +311,114 @@ export function GuidedStageActions({
           >
             Dismiss
           </button>
+        </div>
+      )}
+
+      {/* Zoho CRM Blueprint Transition Dialog */}
+      {transitioningAction && (
+        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-xl max-w-md w-full p-6 space-y-4 shadow-2xl text-slate-100">
+            <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
+              <Sparkles className="size-5 text-brand-cyan animate-pulse" />
+              <h3 className="font-bold text-base text-white">
+                Transition: {transitioningAction.label}
+              </h3>
+            </div>
+            
+            <p className="text-xs text-slate-400">
+              Please complete the required details to transition the lead to{" "}
+              <strong className="text-slate-200">
+                {transitioningAction.targetStage.replace(/_/g, " ")}
+              </strong>.
+            </p>
+
+            {/* Dynamic Required Fields */}
+            {missingFields.length > 0 && (
+              <div className="space-y-3 border-t border-b border-slate-800/50 py-3">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-brand-cyan">
+                  Required Information (Zoho Blueprint Gate)
+                </div>
+                {missingFields.map((f) => (
+                  <div key={f.key} className="space-y-1">
+                    <label className="text-xs text-slate-300 font-medium">
+                      {f.label} <span className="text-rose-500">*</span>
+                    </label>
+                    {f.type === "select" ? (
+                      <select
+                        required
+                        value={fieldValues[f.key] ?? ""}
+                        onChange={(e) =>
+                          setFieldValues((prev) => ({ ...prev, [f.key]: e.target.value }))
+                        }
+                        className="input-base text-xs w-full bg-slate-950/60 border-slate-800 text-white"
+                      >
+                        <option value="">— choose —</option>
+                        {f.options?.map((opt) => (
+                          <option key={opt} value={opt}>
+                            {opt}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        type={f.type}
+                        required
+                        value={fieldValues[f.key] ?? ""}
+                        onChange={(e) =>
+                          setFieldValues((prev) => ({ ...prev, [f.key]: e.target.value }))
+                        }
+                        placeholder={`Enter ${f.label.toLowerCase()}`}
+                        className="input-base text-xs w-full bg-slate-950/60 border-slate-800 text-white"
+                      />
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Remarks / Notes */}
+            <div className="space-y-1">
+              <label className="text-xs text-slate-300 font-medium">
+                Transition Notes / Remarks (Optional)
+              </label>
+              <textarea
+                value={remarks}
+                onChange={(e) => setRemarks(e.target.value)}
+                rows={3}
+                placeholder="Capture notes about this status update..."
+                className="input-base text-xs w-full bg-slate-950/60 border-slate-800 text-white"
+              />
+            </div>
+
+            {error && (
+              <div className="text-xs text-rose-500 bg-rose-500/10 border border-rose-500/20 rounded-lg p-2.5 flex items-start gap-1.5">
+                <AlertTriangle className="size-3.5 mt-0.5" /> {error}
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setTransitioningAction(null)}
+                className="btn-secondary text-xs border-slate-800 hover:bg-slate-800 text-slate-300"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleCompleteTransition}
+                disabled={submitting}
+                className="btn-primary text-xs bg-brand-cyan hover:bg-brand-cyan-deep text-white font-semibold flex items-center gap-1"
+              >
+                {submitting ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="size-3.5" />
+                )}
+                Save & Transition
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
