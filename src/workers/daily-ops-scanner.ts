@@ -20,6 +20,7 @@
  *   sub_distributor.nism_expiring  — sub-dist NISM within 90 days
  *   sub_distributor.arn_expiring   — sub-dist ARN within 90 days
  *   sub_distributor.euin_expiring  — sub-dist EUIN within 90 days
+ *   legal_registration.expiring    — statutory registration within 90 days
  *
  * Idempotency: each event carries `meta.scanDate = YYYY-MM-DD`. The
  * outbox poller dedupes by (kind, entity_id, meta.scanDate) — so a
@@ -55,6 +56,7 @@ interface ScanResult {
   subDistNismExpiring: number;
   subDistArnExpiring: number;
   subDistEuinExpiring: number;
+  legalRegExpiring: number;
   durationMs: number;
 }
 
@@ -101,6 +103,7 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
     subDistNismExpiring: 0,
     subDistArnExpiring: 0,
     subDistEuinExpiring: 0,
+    legalRegExpiring: 0,
     durationMs: 0,
   };
 
@@ -411,6 +414,47 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
             result.subDistEuinExpiring++;
         }
       }
+
+      // ── 12. Legal registration expiries (SEBI / IRDAI / GST / etc.) ───
+      // 90-day renewal-reminder window matches what most renewal portals
+      // ask for — compliance team has the lead time to act.
+      const legalRegRows = await tx.execute(sql`
+        SELECT id, registered_in_name_of, authority, registration_for,
+               registration_number, expiry_at
+        FROM legal_registrations
+        WHERE status IN ('active', 'pending_renewal')
+          AND expiry_at IS NOT NULL
+          AND expiry_at BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '90 days'
+      `);
+      for (const row of legalRegRows.rows as Array<{
+        id: string;
+        registered_in_name_of: string;
+        authority: string;
+        registration_for: string;
+        registration_number: string | null;
+        expiry_at: string;
+      }>) {
+        const d = new Date(row.expiry_at);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const daysOut = Math.round((d.getTime() - today.getTime()) / 86400000);
+        await tx.insert(eventsOutbox).values({
+          tenantId,
+          kind: "legal_registration.expiring",
+          entityType: "legal_registration",
+          entityId: row.id,
+          after: {
+            registeredInNameOf: row.registered_in_name_of,
+            authority: row.authority,
+            registrationFor: row.registration_for,
+            registrationNumber: row.registration_number,
+            expiresAt: row.expiry_at,
+            daysOut,
+          } as any,
+          meta: { scanDate, source: "daily-ops-scanner" } as any,
+        } as any);
+        result.legalRegExpiring++;
+      }
     },
     { roles: ["system"] }
   );
@@ -447,6 +491,7 @@ export async function runDailyOpsScan(): Promise<{
     subDistNismExpiring: 0,
     subDistArnExpiring: 0,
     subDistEuinExpiring: 0,
+    legalRegExpiring: 0,
   };
   for (const tenantId of tenants) {
     try {
@@ -464,6 +509,7 @@ export async function runDailyOpsScan(): Promise<{
       totals.subDistNismExpiring += r.subDistNismExpiring;
       totals.subDistArnExpiring += r.subDistArnExpiring;
       totals.subDistEuinExpiring += r.subDistEuinExpiring;
+      totals.legalRegExpiring += r.legalRegExpiring;
     } catch (err: any) {
       console.error(`[daily-ops-scanner] tenant ${tenantId} failed:`, err.message);
       failed.push(tenantId);
