@@ -119,9 +119,22 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
           annualTarget: (emp as any).annualTarget ? Number((emp as any).annualTarget) : null,
           sipMonthlyTarget: (emp as any).sipMonthlyTarget ? Number((emp as any).sipMonthlyTarget) : null,
           notes: (emp as any).notes ?? "",
+          employeeCode: (emp as any).employeeCode ?? "",
+          distributingAmcs: ((emp as any).distributingAmcs as string[] | null) ?? [],
           euin: emp.euin ?? "",
+          euinExpiryAt: ((emp as any).euinExpiryAt as string | null) ?? null,
           nismCertificateNo: emp.nismCertificateNo ?? "",
+          nismExamDate: ((emp as any).nismExamDate as string | null) ?? null,
           nismExpiryAt: emp.nismExpiryAt ?? null,
+          nismCategory: ((emp as any).nismCategory as string | null) ?? "",
+          personalArn: ((emp as any).personalArn as string | null) ?? "",
+          arnRegistrationDate:
+            ((emp as any).arnRegistrationDate as string | null) ?? null,
+          arnExpiryAt: ((emp as any).arnExpiryAt as string | null) ?? null,
+          dscSubmitted: !!((emp as any).dscSubmitted),
+          dscLastSubmittedAt:
+            ((emp as any).dscLastSubmittedAt as string | null) ?? null,
+          dscExpiryAt: ((emp as any).dscExpiryAt as string | null) ?? null,
           status: emp.status,
           permissions: (emp as any).permissions as string[] | null,
         }}

@@ -130,9 +130,27 @@ export type EmployeeFormValues = {
   annualTarget: number | null;
   sipMonthlyTarget: number | null;
   notes: string;
-  euin: string;
+  // — Network FP "ARN/EUIN Tracker" parity (migration 0018). Compliance team
+  //   fills these so the per-team licensing report at
+  //   /dashboard/reports/arn-euin-tracker stays current.
+  employeeCode: string;
+  distributingAmcs: string[];
+  // NISM
   nismCertificateNo: string;
+  nismExamDate: string | null;
   nismExpiryAt: string | null;
+  nismCategory: string;
+  // EUIN
+  euin: string;
+  euinExpiryAt: string | null;
+  // ARN (personal — distinct from firm ARN on the tenant row)
+  personalArn: string;
+  arnRegistrationDate: string | null;
+  arnExpiryAt: string | null;
+  // DSC
+  dscSubmitted: boolean;
+  dscLastSubmittedAt: string | null;
+  dscExpiryAt: string | null;
   status: string;
   permissions: string[] | null;
 };
@@ -190,9 +208,20 @@ export function EmployeeEditForm({
           annualTarget: v.annualTarget,
           sipMonthlyTarget: v.sipMonthlyTarget,
           notes: v.notes || null,
+          employeeCode: v.employeeCode || null,
+          distributingAmcs: v.distributingAmcs.length ? v.distributingAmcs : null,
           euin: v.euin || null,
+          euinExpiryAt: v.euinExpiryAt || null,
           nismCertificateNo: v.nismCertificateNo || null,
+          nismExamDate: v.nismExamDate || null,
           nismExpiryAt: v.nismExpiryAt || null,
+          nismCategory: v.nismCategory || null,
+          personalArn: v.personalArn || null,
+          arnRegistrationDate: v.arnRegistrationDate || null,
+          arnExpiryAt: v.arnExpiryAt || null,
+          dscSubmitted: v.dscSubmitted,
+          dscLastSubmittedAt: v.dscLastSubmittedAt || null,
+          dscExpiryAt: v.dscExpiryAt || null,
           status: v.status,
         }),
       });
@@ -381,13 +410,47 @@ export function EmployeeEditForm({
         </Field>
       </div>
 
-      {/* Compliance fields */}
-      <details className="border rounded-md p-3 bg-secondary/20">
-        <summary className="text-xs font-semibold cursor-pointer">Compliance — EUIN / NISM (optional)</summary>
+      {/* Compliance / licensing — Network FP "ARN/EUIN Tracker" parity.
+          These fields drive the team licensing report at
+          /dashboard/reports/arn-euin-tracker + the daily expiry events. */}
+      <details className="border rounded-md p-3 bg-secondary/20" open>
+        <summary className="text-xs font-semibold cursor-pointer">
+          Compliance — ARN / EUIN / NISM / DSC
+        </summary>
+
+        {/* HR + AMCs */}
         <div className="grid grid-cols-2 gap-3 mt-3">
-          <Field label="EUIN">
-            <input value={v.euin} onChange={(e) => update("euin", e.target.value)} className="input-base text-sm w-full font-mono" />
+          <Field label="Employee Code">
+            <input
+              value={v.employeeCode}
+              onChange={(e) => update("employeeCode", e.target.value)}
+              className="input-base text-sm w-full font-mono"
+              placeholder="e.g. EMP-001"
+            />
           </Field>
+          <Field label="Distributing AMCs (comma-separated)">
+            <input
+              value={v.distributingAmcs.join(", ")}
+              onChange={(e) =>
+                update(
+                  "distributingAmcs",
+                  e.target.value
+                    .split(",")
+                    .map((s) => s.trim())
+                    .filter(Boolean)
+                )
+              }
+              className="input-base text-sm w-full"
+              placeholder="HDFC, ICICI, SBI, Axis"
+            />
+          </Field>
+        </div>
+
+        {/* NISM block */}
+        <div className="mt-4 mb-1 text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">
+          NISM
+        </div>
+        <div className="grid grid-cols-2 gap-3">
           <Field label="NISM Certificate No.">
             <input
               value={v.nismCertificateNo}
@@ -395,11 +458,121 @@ export function EmployeeEditForm({
               className="input-base text-sm w-full font-mono"
             />
           </Field>
-          <Field label="NISM Expiry">
+          <Field label="NISM Category (V-A, V-B, …)">
+            <input
+              value={v.nismCategory}
+              onChange={(e) => update("nismCategory", e.target.value)}
+              className="input-base text-sm w-full"
+              placeholder="V-A"
+            />
+          </Field>
+          <Field label="NISM Exam Date">
+            <input
+              type="date"
+              value={v.nismExamDate ?? ""}
+              onChange={(e) => update("nismExamDate", e.target.value || null)}
+              className="input-base text-sm w-full"
+            />
+          </Field>
+          <Field label="NISM Expiry Date">
             <input
               type="date"
               value={v.nismExpiryAt ?? ""}
               onChange={(e) => update("nismExpiryAt", e.target.value || null)}
+              className="input-base text-sm w-full"
+            />
+          </Field>
+        </div>
+
+        {/* ARN block */}
+        <div className="mt-4 mb-1 text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">
+          Personal ARN (only for sub-distributors / individual MFDs)
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          <Field label="ARN Number">
+            <input
+              value={v.personalArn}
+              onChange={(e) => update("personalArn", e.target.value)}
+              className="input-base text-sm w-full font-mono"
+              placeholder="ARN-123456"
+            />
+          </Field>
+          <Field label="ARN Registration Date">
+            <input
+              type="date"
+              value={v.arnRegistrationDate ?? ""}
+              onChange={(e) =>
+                update("arnRegistrationDate", e.target.value || null)
+              }
+              className="input-base text-sm w-full"
+            />
+          </Field>
+          <Field label="ARN Expiry Date">
+            <input
+              type="date"
+              value={v.arnExpiryAt ?? ""}
+              onChange={(e) => update("arnExpiryAt", e.target.value || null)}
+              className="input-base text-sm w-full"
+            />
+          </Field>
+        </div>
+
+        {/* EUIN block */}
+        <div className="mt-4 mb-1 text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">
+          EUIN
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="EUIN Number">
+            <input
+              value={v.euin}
+              onChange={(e) => update("euin", e.target.value)}
+              className="input-base text-sm w-full font-mono"
+              placeholder="E123456"
+            />
+          </Field>
+          <Field label="EUIN Expiry Date">
+            <input
+              type="date"
+              value={v.euinExpiryAt ?? ""}
+              onChange={(e) => update("euinExpiryAt", e.target.value || null)}
+              className="input-base text-sm w-full"
+            />
+          </Field>
+        </div>
+
+        {/* DSC block */}
+        <div className="mt-4 mb-1 text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">
+          DSC (Digital Signature Certificate)
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          <Field label="DSC Submitted?">
+            <label className="flex items-center gap-2 h-9 px-3 border rounded-md bg-background">
+              <input
+                type="checkbox"
+                checked={v.dscSubmitted}
+                onChange={(e) => update("dscSubmitted", e.target.checked)}
+                className="size-4"
+              />
+              <span className="text-xs">
+                {v.dscSubmitted ? "Yes, on file" : "Not submitted"}
+              </span>
+            </label>
+          </Field>
+          <Field label="DSC Last Submitted Date">
+            <input
+              type="date"
+              value={v.dscLastSubmittedAt ?? ""}
+              onChange={(e) =>
+                update("dscLastSubmittedAt", e.target.value || null)
+              }
+              className="input-base text-sm w-full"
+            />
+          </Field>
+          <Field label="DSC Expiry Date">
+            <input
+              type="date"
+              value={v.dscExpiryAt ?? ""}
+              onChange={(e) => update("dscExpiryAt", e.target.value || null)}
               className="input-base text-sm w-full"
             />
           </Field>
