@@ -13,6 +13,7 @@ import { sql } from "drizzle-orm";
 import { withSystem } from "@/db/client";
 import { signSession, SESSION_COOKIE, SESSION_TTL_SECONDS } from "@/lib/auth/session";
 import { MASTER_SEEDS } from "@/lib/masters/seeds";
+import { installDefaultRecipes } from "@/lib/recipes/install-defaults";
 import { enforce } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
@@ -80,6 +81,21 @@ export async function POST(req: NextRequest) {
             ON CONFLICT (tenant_id, master_type, key) DO NOTHING
           `);
         }
+      }
+
+      // Pre-install the 9 default workflow recipes (disabled — owner
+      // reviews + enables each). Curated subset of ALL_RECIPES; the
+      // remaining 15+ live in the library at /dashboard/workflows.
+      try {
+        const r = await installDefaultRecipes(tx, tenantId, userId);
+        console.log(
+          `[signup] installed ${r.installed.length} default recipes for tenant ${tenantId}`
+        );
+      } catch (err) {
+        // Default-recipe install is additive — if it fails we still want
+        // the tenant create to succeed. The owner can install from the
+        // library later.
+        console.error("[signup] default-recipe install failed:", err);
       }
     });
   } catch (err: any) {
