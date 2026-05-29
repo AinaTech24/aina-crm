@@ -271,15 +271,15 @@ Two weeks of focused work would close most of the meaningful gaps:
 
 **Status: 8/8 done.** 13 line items moved from gap → done. Verified on Demo Wealth (all 9 default recipes installed).
 
-### Sprint 2 (5 days) — AI quick wins
+### Sprint 2 (5 days) — AI quick wins ✅ DONE
 
-9. **Meeting summary endpoint** — Claude call on review meeting save.
-10. **Lead scoring endpoint** — Claude reads activity history + outputs score.
-11. **Campaign idea generator** — Claude proposes 3 campaign concepts per segment.
-12. **DDQ checklist generator** — AI drafts DDQ Q&A from policy docs.
-13. **Client review summary** — Claude-generated 1-page QRR commentary.
+9.  ✅ **Meeting summary endpoint** — `POST /api/ai/meeting-summary` returns `{ summary, keyPoints, decisions, actionItems, nextSteps }`. UI wired into `ReviewMeetingDetailEditor` — "AI summarise" button under meeting notes, applies summary + appends action items.
+10. ✅ **Lead scoring endpoint** — `POST /api/ai/lead-score` returns `{ score 0-100, band, reasoning, nextAction }`. Uses Haiku for speed; conservative scoring when data is sparse.
+11. ✅ **Campaign idea generator** — `POST /api/ai/campaign-ideas` returns 3 distinct concepts with channel mix + sample copy. Accepts segment ID or inline params.
+12. ✅ **DDQ checklist generator** — `POST /api/ai/ddq-draft` grounds the response in the tenant's ARN/EUIN/AUM range; cites SEBI 2013 / AMFI / PMLA frameworks; says "to be confirmed by compliance" rather than fabricating numbers.
+13. ✅ **Client review (QRR) commentary** — `POST /api/ai/qrr-commentary` reads the investor + last 10 transactions + last completed review's notes; generates 250-400 word commentary with mandatory risk-disclosure footer.
 
-5 more line items in 1 week. AI work is genuinely faster because Claude does the heavy lifting.
+**Status: 5/5 shipped.** All routes gated by capability checks; AI is advisory (never auto-writes to DB). One UI hookup live (meeting summary); other 4 ready for UI in the next iteration.
 
 ### Sprint 3 (10 days) — the 6 real gaps
 

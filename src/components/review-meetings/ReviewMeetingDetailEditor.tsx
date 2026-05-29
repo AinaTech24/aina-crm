@@ -19,7 +19,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Save, Plus, Trash2, CheckCircle2, X } from "lucide-react";
+import { Loader2, Save, Plus, Trash2, CheckCircle2, X, Sparkles } from "lucide-react";
 
 const STATUSES = [
   ["scheduled", "Scheduled"],
@@ -67,6 +67,78 @@ export function ReviewMeetingDetailEditor({
   const [busy, setBusy] = useState(false);
   const [ok, setOk] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+
+  // AI summary state
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiPreview, setAiPreview] = useState<null | {
+    summary: string;
+    keyPoints: string[];
+    decisions: string[];
+    actionItems: Array<{ title: string; owner?: string; dueHint?: string }>;
+    nextSteps: string[];
+  }>(null);
+  const [aiErr, setAiErr] = useState<string | null>(null);
+
+  async function runAiSummary() {
+    setAiBusy(true);
+    setAiErr(null);
+    setAiPreview(null);
+    try {
+      const res = await fetch("/api/ai/meeting-summary", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          notes,
+          agenda: discussion || undefined,
+          meetingType: meeting.meetingType,
+          durationMinutes: meeting.durationMinutes
+            ? Number(meeting.durationMinutes)
+            : undefined,
+          clientName: investorName,
+        }),
+      });
+      const j = await res.json();
+      if (!res.ok) {
+        setAiErr(j.error ?? `AI failed (${res.status})`);
+        return;
+      }
+      setAiPreview(j);
+    } catch (e: any) {
+      setAiErr(e?.message ?? "AI request failed");
+    } finally {
+      setAiBusy(false);
+    }
+  }
+
+  function acceptAiSummary() {
+    if (!aiPreview) return;
+    // Replace notes with the AI-formatted summary block.
+    const formatted = [
+      aiPreview.summary,
+      aiPreview.keyPoints.length
+        ? "\n\nKey points:\n" + aiPreview.keyPoints.map((p) => `  • ${p}`).join("\n")
+        : "",
+      aiPreview.decisions.length
+        ? "\n\nDecisions:\n" + aiPreview.decisions.map((p) => `  • ${p}`).join("\n")
+        : "",
+      aiPreview.nextSteps.length
+        ? "\n\nNext steps:\n" + aiPreview.nextSteps.map((p) => `  • ${p}`).join("\n")
+        : "",
+    ]
+      .filter(Boolean)
+      .join("");
+    setNotes(formatted.trim());
+    // Append action items to the existing list (don't replace — preserves
+    // anything the RM already typed).
+    if (aiPreview.actionItems.length) {
+      setItems((prev) => [
+        ...prev,
+        ...aiPreview.actionItems.map((a) => ({ title: a.title })),
+      ]);
+    }
+    setAiPreview(null);
+    setOk("AI summary applied — review + save when ready.");
+  }
 
   function addItem() {
     setItems((s) => [...s, { title: "" }]);
@@ -186,7 +258,26 @@ export function ReviewMeetingDetailEditor({
 
       {/* Meeting notes */}
       <div className="card-surface p-5 space-y-2">
-        <h3 className="font-semibold">Meeting notes</h3>
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold">Meeting notes</h3>
+          <button
+            onClick={runAiSummary}
+            disabled={aiBusy || notes.trim().length < 20}
+            title={
+              notes.trim().length < 20
+                ? "Write at least 20 chars of notes first"
+                : "Claude summarises your notes into key points + action items"
+            }
+            className="btn-ghost text-xs"
+          >
+            {aiBusy ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <Sparkles className="size-3.5" />
+            )}
+            AI summarise
+          </button>
+        </div>
         <textarea
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
@@ -198,6 +289,95 @@ export function ReviewMeetingDetailEditor({
           When you mark this meeting completed without notes, a 24-hour high-priority "write up your notes"
           task is auto-created.
         </p>
+
+        {aiErr && (
+          <div className="border border-destructive/30 bg-destructive/5 text-destructive rounded-lg px-3 py-2 text-sm">
+            {aiErr}
+          </div>
+        )}
+
+        {aiPreview && (
+          <div className="mt-3 border border-violet-200 bg-violet-50/60 rounded-lg p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-sm font-medium text-violet-900">
+                <Sparkles className="size-3.5" /> AI draft (review before applying)
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setAiPreview(null)}
+                  className="btn-ghost text-xs"
+                >
+                  <X className="size-3.5" /> Discard
+                </button>
+                <button onClick={acceptAiSummary} className="btn-primary text-xs">
+                  <CheckCircle2 className="size-3.5" /> Apply
+                </button>
+              </div>
+            </div>
+            <div className="space-y-2 text-sm">
+              <p className="text-foreground">{aiPreview.summary}</p>
+              {aiPreview.keyPoints.length > 0 && (
+                <div>
+                  <div className="text-[11px] uppercase tracking-wide text-violet-700 font-medium mt-2">
+                    Key points
+                  </div>
+                  <ul className="list-disc ml-5 text-foreground">
+                    {aiPreview.keyPoints.map((p, i) => (
+                      <li key={i}>{p}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {aiPreview.decisions.length > 0 && (
+                <div>
+                  <div className="text-[11px] uppercase tracking-wide text-violet-700 font-medium mt-2">
+                    Decisions
+                  </div>
+                  <ul className="list-disc ml-5 text-foreground">
+                    {aiPreview.decisions.map((p, i) => (
+                      <li key={i}>{p}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {aiPreview.actionItems.length > 0 && (
+                <div>
+                  <div className="text-[11px] uppercase tracking-wide text-violet-700 font-medium mt-2">
+                    Action items — will be appended below
+                  </div>
+                  <ul className="list-disc ml-5 text-foreground">
+                    {aiPreview.actionItems.map((a, i) => (
+                      <li key={i}>
+                        {a.title}
+                        {a.owner && (
+                          <span className="text-muted-foreground"> · {a.owner}</span>
+                        )}
+                        {a.dueHint && (
+                          <span className="text-muted-foreground"> · {a.dueHint}</span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {aiPreview.nextSteps.length > 0 && (
+                <div>
+                  <div className="text-[11px] uppercase tracking-wide text-violet-700 font-medium mt-2">
+                    Next steps
+                  </div>
+                  <ul className="list-disc ml-5 text-foreground">
+                    {aiPreview.nextSteps.map((p, i) => (
+                      <li key={i}>{p}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+            <p className="text-[11px] text-violet-700">
+              AI is advisory. Edit the draft after applying — nothing saves until you hit Save above.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Action items */}
