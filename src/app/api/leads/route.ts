@@ -11,7 +11,7 @@ import { desc } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { require as requireCap } from "@/lib/auth/rbac";
+import { require as requireCap, requireAny } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { pickRmForNewLead } from "@/lib/leads/assign";
@@ -57,12 +57,10 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    // Allow either edit-all (owner/marketing) or edit-assigned (rm)
-    if (
-      !session.roles.some((r) => ["owner", "marketing", "rm", "branch_head"].includes(r))
-    ) {
-      return NextResponse.json({ error: "forbidden" }, { status: 403 });
-    }
+    // Allow lead.edit.all (marketing) OR lead.edit.assigned (rm). Owner
+    // always wins via the can() override. branch_head doesn't have a
+    // dedicated lead-edit cap in the matrix — treat as edit.assigned.
+    requireAny(session.roles, ["lead.edit.all", "lead.edit.assigned"]);
     await assertActiveLicense(session.tenantId, session.roles);
 
     const parse = CreateBody.safeParse(await req.json().catch(() => ({})));

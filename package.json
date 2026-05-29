@@ -12,6 +12,7 @@
     "start:prod": "npm run build && next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
+    "check:rbac": "node scripts/check-require-cap.mjs",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",

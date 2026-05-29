@@ -13,6 +13,7 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { tenants } from "@/db/schema";
@@ -46,9 +47,9 @@ const Body = z.object({
 export async function PATCH(req: NextRequest) {
   try {
     const session = await requireSession();
-    if (!session.roles.includes("owner")) {
-      return NextResponse.json({ error: "owner role required" }, { status: 403 });
-    }
+    // Org-profile edits are owner-only. settings.users is owner-only in
+    // the matrix; we use that as the umbrella tenant-admin capability.
+    requireCap(session.roles, "settings.users");
     await assertActiveLicense(session.tenantId, session.roles);
 
     const parse = Body.safeParse(await req.json().catch(() => ({})));

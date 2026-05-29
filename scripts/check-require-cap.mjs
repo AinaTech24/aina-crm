@@ -1,0 +1,95 @@
+#!/usr/bin/env node
+/**
+ * CI guard — every POST/PUT/PATCH/DELETE handler under src/app/api/**
+ * must reference `require(` or `requirePlatform(` so RBAC is enforced.
+ *
+ * Skips known-legitimate routes (auth, public form tokens, webhooks,
+ * health probe, super-admin uses its own gate).
+ *
+ * Exits with code 1 + a list of offending files if any are found.
+ * Use as a pre-commit hook or a GitHub Actions step.
+ */
+
+import { readdir, readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const ROOT = join(fileURLToPath(import.meta.url), "..", "..", "src", "app", "api");
+
+const SKIP_PREFIXES = [
+  "auth/",         // rate-limited, no session yet
+  "public/",       // share_tokens are the credential
+  "webhooks/",     // HMAC-signed
+  "internal/",     // cron-triggered, gated by internal secret
+  "super-admin/",  // uses isPlatformAdmin
+  "health",        // anonymous probe
+];
+
+/**
+ * Per-file exemptions — these have explicit, audited reasons not to call
+ * requireCap. Adding a line here is a security review checkpoint.
+ */
+const SKIP_FILES = new Set([
+  // AI helpers — read-only text generation, any logged-in user can use them
+  "ai/draft-message/route.ts",
+  "ai/nl-to-filter/route.ts",
+  // Read-only lookups + preview endpoints — commit/save paths are gated
+  "leads/check-duplicate/route.ts",
+  "segments/preview/route.ts",
+  "investors/import/parse/route.ts",
+  "leads/import/parse/route.ts",
+  "transactions/import/parse/route.ts",
+  // Invite acceptance — the invite token is the credential, no session yet
+  "employees/accept-invite/route.ts",
+  // Notifications mark-read — user can only touch their own (scoped to session.userId)
+  "notifications/mark-read/route.ts",
+  // Support tickets — any logged-in user can raise an internal support ticket
+  "support/tickets/route.ts",
+]);
+
+const MUTATION = /export\s+async\s+function\s+(POST|PUT|PATCH|DELETE)/g;
+// A route is gated if it calls any of these:
+//   require(roles, cap)          - tenant capability check
+//   requireCap(...)              - alias from rbac.ts
+//   requireAny(roles, [caps])    - pass-if-any caps
+//   requirePlatform(...)         - platform-admin capability
+//   isPlatformAdmin(roles)       - inline boolean check + 403 in route
+const HAS_REQUIRE = /\b(?:require|requireCap|requireAny|requirePlatform|isPlatformAdmin)\s*\(/;
+
+async function walk(dir) {
+  const out = [];
+  for (const e of await readdir(dir, { withFileTypes: true })) {
+    const p = join(dir, e.name);
+    if (e.isDirectory()) out.push(...(await walk(p)));
+    else if (e.name === "route.ts") out.push(p);
+  }
+  return out;
+}
+
+const offenders = [];
+
+for (const file of await walk(ROOT)) {
+  const rel = file.slice(ROOT.length + 1).replace(/\\/g, "/");
+  if (SKIP_PREFIXES.some((p) => rel.startsWith(p))) continue;
+  if (SKIP_FILES.has(rel)) continue;
+  const src = await readFile(file, "utf8");
+  if (!MUTATION.test(src)) continue;
+  MUTATION.lastIndex = 0;
+  if (!HAS_REQUIRE.test(src)) {
+    offenders.push(rel);
+  }
+}
+
+if (offenders.length === 0) {
+  console.log("[check-require-cap] ✓ every mutation route is gated");
+  process.exit(0);
+}
+
+console.error(
+  `[check-require-cap] ✗ ${offenders.length} route(s) have a mutation handler without require(...)`
+);
+for (const f of offenders) console.error(`  - src/app/api/${f}`);
+console.error(
+  "\nAdd a requireCap(session.roles, \"<capability>\") line after requireSession() in each."
+);
+process.exit(1);

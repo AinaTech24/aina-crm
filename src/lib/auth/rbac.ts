@@ -275,6 +275,18 @@ export function require(userRoles: string[] | undefined, cap: Capability): void 
 }
 
 /**
+ * Pass-if-any helper — handler that legitimately accepts multiple
+ * capabilities (e.g. lead create allowed for owners, marketing, RMs,
+ * AND branch heads). Avoids ugly inline OR chains.
+ *
+ *   requireAny(session.roles, ["lead.edit.all", "lead.edit.assigned"]);
+ */
+export function requireAny(userRoles: string[] | undefined, caps: Capability[]): void {
+  if (caps.some((c) => can(userRoles, c))) return;
+  throw Object.assign(new Error(`forbidden: missing one of ${caps.join(", ")}`), { status: 403 });
+}
+
+/**
  * Platform-capability check — separate from the tenant `can()` matrix because
  * tenant role mixtures must never grant these.
  */
