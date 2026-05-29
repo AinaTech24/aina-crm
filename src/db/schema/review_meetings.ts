@@ -127,6 +127,31 @@ export const reviewMeetings = pgTable(
     actionItems: jsonb("action_items").$type<
       Array<{ title: string; assigneeId?: string; dueAt?: string; taskId?: string }>
     >().default([]),
+
+    /**
+     * Network FP "2.5 MOM Tracker" attendees list — beyond just RM +
+     * investor. Captures spouse / family / CA / AMC RM / sub-distributor
+     * / back-office / compliance presence so the per-client meeting
+     * history shows who was actually in the room.
+     */
+    attendees: jsonb("attendees").$type<
+      Array<{
+        name: string;
+        role:
+          | "rm"
+          | "investor"
+          | "spouse"
+          | "family"
+          | "ca"
+          | "amc_rm"
+          | "sub_distributor"
+          | "back_office"
+          | "compliance"
+          | "other";
+        isExternal: boolean;
+        notes?: string;
+      }>
+    >().default([]),
     attachments: jsonb("attachments").$type<
       Array<{ name: string; url: string; size?: number; uploadedAt?: string }>
     >().default([]),

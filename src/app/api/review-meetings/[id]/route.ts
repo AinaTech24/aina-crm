@@ -33,6 +33,24 @@ const ActionItem = z.object({
   taskId: z.string().uuid().optional(),
 });
 
+const Attendee = z.object({
+  name: z.string().min(1).max(120),
+  role: z.enum([
+    "rm",
+    "investor",
+    "spouse",
+    "family",
+    "ca",
+    "amc_rm",
+    "sub_distributor",
+    "back_office",
+    "compliance",
+    "other",
+  ]),
+  isExternal: z.boolean(),
+  notes: z.string().max(500).optional(),
+});
+
 const Patch = z.object({
   status: z.enum(REVIEW_MEETING_STATUSES).optional(),
   meetingDate: z.string().optional(),
@@ -41,6 +59,7 @@ const Patch = z.object({
   discussionPoints: z.string().optional(),
   meetingNotes: z.string().optional(),
   actionItems: z.array(ActionItem).optional(),
+  attendees: z.array(Attendee).max(30).optional(),
   attachments: z
     .array(z.object({ name: z.string(), url: z.string(), size: z.number().optional() }))
     .optional(),

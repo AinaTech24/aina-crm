@@ -43,6 +43,35 @@ const STATUS_TONE: Record<string, string> = {
 
 type ActionItem = { title: string; dueAt?: string; taskId?: string };
 type Attachment = { name: string; url: string };
+type Attendee = {
+  name: string;
+  role:
+    | "rm"
+    | "investor"
+    | "spouse"
+    | "family"
+    | "ca"
+    | "amc_rm"
+    | "sub_distributor"
+    | "back_office"
+    | "compliance"
+    | "other";
+  isExternal: boolean;
+  notes?: string;
+};
+
+const ATTENDEE_ROLE_LABELS: Record<string, string> = {
+  rm: "RM (firm)",
+  investor: "Investor",
+  spouse: "Spouse",
+  family: "Family member",
+  ca: "CA / Tax advisor",
+  amc_rm: "AMC RM",
+  sub_distributor: "Sub-distributor",
+  back_office: "Back office",
+  compliance: "Compliance",
+  other: "Other",
+};
 
 export function ReviewMeetingDetailEditor({
   meeting,
@@ -61,6 +90,14 @@ export function ReviewMeetingDetailEditor({
   const [atts, setAtts] = useState<Attachment[]>(
     (meeting.attachments as Attachment[] | null) ?? []
   );
+  const [attendees, setAttendees] = useState<Attendee[]>(
+    (meeting.attendees as Attendee[] | null) ?? []
+  );
+  const [newAttendee, setNewAttendee] = useState<Attendee>({
+    name: "",
+    role: "investor",
+    isExternal: true,
+  });
   const [nextReview, setNextReview] = useState(
     meeting.nextReviewDate ? String(meeting.nextReviewDate).slice(0, 10) : defaultNextReview()
   );
@@ -171,6 +208,7 @@ export function ReviewMeetingDetailEditor({
         meetingNotes: notes || undefined,
         actionItems: items.filter((i) => i.title.trim().length > 0),
         attachments: atts.filter((a) => a.url.trim().length > 0),
+        attendees: attendees.filter((a) => a.name.trim().length > 0),
         nextReviewDate: nextReview || undefined,
       };
       const res = await fetch(`/api/review-meetings/${meeting.id}`, {
@@ -243,6 +281,103 @@ export function ReviewMeetingDetailEditor({
           {err}
         </div>
       )}
+
+      {/* Attendees */}
+      <div className="card-surface p-5 space-y-2">
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold">Attendees ({attendees.length})</h3>
+        </div>
+        {attendees.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-2">
+            Add who was actually in the room — spouse, family CA, AMC RM, etc.
+          </p>
+        ) : (
+          <ul className="space-y-1.5">
+            {attendees.map((a, i) => (
+              <li
+                key={i}
+                className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-md px-3 py-2"
+              >
+                <div className="min-w-0 flex items-center gap-3">
+                  <span
+                    className={`chip text-[10px] ${
+                      a.isExternal
+                        ? "bg-violet-50 text-violet-700"
+                        : "bg-cyan-50 text-cyan-700"
+                    }`}
+                  >
+                    {ATTENDEE_ROLE_LABELS[a.role] ?? a.role}
+                  </span>
+                  <span className="text-sm font-medium">{a.name}</span>
+                  {a.notes && (
+                    <span className="text-[11px] text-muted-foreground truncate">
+                      · {a.notes}
+                    </span>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setAttendees((p) => p.filter((_, idx) => idx !== i))
+                  }
+                  className="p-1.5 text-muted-foreground hover:text-rose-600 hover:bg-rose-50 rounded-md"
+                >
+                  <X className="size-3.5" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <div className="grid grid-cols-12 gap-2 mt-2">
+          <input
+            value={newAttendee.name}
+            onChange={(e) =>
+              setNewAttendee((p) => ({ ...p, name: e.target.value }))
+            }
+            placeholder="Name"
+            className="input-base text-sm col-span-4"
+          />
+          <select
+            value={newAttendee.role}
+            onChange={(e) =>
+              setNewAttendee((p) => ({
+                ...p,
+                role: e.target.value as Attendee["role"],
+                isExternal: !["rm", "back_office", "compliance"].includes(
+                  e.target.value
+                ),
+              }))
+            }
+            className="input-base text-sm col-span-3"
+          >
+            {Object.entries(ATTENDEE_ROLE_LABELS).map(([k, v]) => (
+              <option key={k} value={k}>
+                {v}
+              </option>
+            ))}
+          </select>
+          <input
+            value={newAttendee.notes ?? ""}
+            onChange={(e) =>
+              setNewAttendee((p) => ({ ...p, notes: e.target.value || undefined }))
+            }
+            placeholder="Notes (optional)"
+            className="input-base text-sm col-span-4"
+          />
+          <button
+            type="button"
+            onClick={() => {
+              if (!newAttendee.name.trim()) return;
+              setAttendees((p) => [...p, { ...newAttendee }]);
+              setNewAttendee({ name: "", role: "investor", isExternal: true });
+            }}
+            disabled={!newAttendee.name.trim()}
+            className="btn-ghost text-xs col-span-1"
+          >
+            <Plus className="size-3.5" />
+          </button>
+        </div>
+      </div>
 
       {/* Discussion points */}
       <div className="card-surface p-5 space-y-2">
