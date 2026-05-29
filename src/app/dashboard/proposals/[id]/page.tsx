@@ -161,6 +161,13 @@ export default async function ProposalDetailPage({
           </div>
           <div className="flex items-center gap-2">
             <Link
+              href={`/dashboard/proposals/${p.id}/recommendation`}
+              className="btn-ghost text-xs"
+              title="Build the 4-section SIP/Lumpsum/SWP/STP worksheet"
+            >
+              Recommendation →
+            </Link>
+            <Link
               href={`/dashboard/proposals/${p.id}/print`}
               target="_blank"
               className="btn-secondary text-xs"

@@ -36,6 +36,35 @@ export const proposalSchemes = pgTable(
     /** aligned | warning | overridden — drives the audit banner */
     suitabilityStatus: text("suitability_status").notNull().default("aligned"),
     overrideReason: text("override_reason"),
+
+    /**
+     * Network FP "3.6 Product Recommendation" parity (migration 0029).
+     * One of 4 modes per row: sip / lumpsum / swp / stp.
+     */
+    recommendationType: text("recommendation_type", {
+      enum: ["sip", "lumpsum", "swp", "stp"],
+    }).default("sip"),
+    planType: text("plan_type", { enum: ["regular", "direct"] }),
+    stepUpPct: numeric("step_up_pct", { precision: 5, scale: 2 }),
+    goalOrObjective: text("goal_or_objective"),
+
+    // SWP fields
+    corpusRequired: numeric("corpus_required", { precision: 18, scale: 2 }),
+    monthlyWithdrawal: numeric("monthly_withdrawal", {
+      precision: 18,
+      scale: 2,
+    }),
+    swpPeriodMonths: integer("swp_period_months"),
+
+    // STP fields — transfers FROM scheme_name TO to_scheme_name
+    toSchemeName: text("to_scheme_name"),
+    toSchemeCode: text("to_scheme_code"),
+    monthlyTransfer: numeric("monthly_transfer", { precision: 18, scale: 2 }),
+    numInstallments: integer("num_installments"),
+    totalCorpusForStp: numeric("total_corpus_for_stp", {
+      precision: 18,
+      scale: 2,
+    }),
     ...timestamps,
   },
   (t) => ({
