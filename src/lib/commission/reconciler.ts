@@ -86,11 +86,30 @@ export async function reconcilePeriod(
     GROUP BY amc_code, COALESCE(scheme_code, '__NO_SCHEME__')
   `);
 
+  // Load per-AMC trail-rate overrides from the empanelment register.
+  // When set, we use the negotiated rate instead of the category fallback
+  // — this is the difference between "we'd expect ~₹2L" and "they
+  // promised us 0.85% which on this AUM is ₹X" in the variance column.
+  const overrides = await tx.execute(sql`
+    SELECT amc_code, trail_rate_override_pct
+    FROM amc_empanelments
+    WHERE tenant_id = ${tenantId}
+      AND status = 'empanelled'
+      AND trail_rate_override_pct IS NOT NULL
+  `);
+  const overrideByAmc = new Map<string, number>();
+  for (const row of overrides.rows as any[]) {
+    overrideByAmc.set(
+      row.amc_code,
+      Number(row.trail_rate_override_pct) / 100
+    );
+  }
+
   // Merge by (amc, scheme)
   const map = new Map<string, { amcCode: string; schemeCode: string; schemeName?: string; expected: number; received: number; category?: string }>();
   for (const row of expected.rows as any[]) {
     const key = `${row.amc_code}|${row.scheme_code}`;
-    const trail = trailRate(row.category);
+    const trail = overrideByAmc.get(row.amc_code) ?? trailRate(row.category);
     map.set(key, {
       amcCode: row.amc_code,
       schemeCode: row.scheme_code === "__NO_SCHEME__" ? "" : row.scheme_code,
@@ -146,7 +165,7 @@ export async function reconcilePeriod(
       )
       VALUES (
         gen_random_uuid(), ${tenantId}, ${period}, ${v.amcCode}, ${v.schemeCode}, ${v.schemeName ?? null},
-        ${trailRate(v.category) * 100}, ${v.expected}, ${v.received}, ${variance}, ${variancePct},
+        ${(overrideByAmc.get(v.amcCode) ?? trailRate(v.category)) * 100}, ${v.expected}, ${v.received}, ${variance}, ${variancePct},
         ${status}, now(), now()
       )
       ON CONFLICT (tenant_id, period, amc_code, scheme_code) DO UPDATE

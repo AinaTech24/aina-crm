@@ -35,6 +35,7 @@ import {
   AlertTriangle,
   HelpCircle,
   BookOpen,
+  Briefcase,
 } from "lucide-react";
 import { eq } from "drizzle-orm";
 import { db } from "@/db/client";
@@ -139,6 +140,7 @@ const NAV: NavSection[] = [
       { href: "/dashboard/employees", label: "Employees", icon: UserCog, module: "employees", roles: ["owner", "branch_head"] },
       { href: "/dashboard/sub-distributors", label: "Sub-Distributors", icon: HeartHandshake, roles: ["owner", "compliance"] },
       { href: "/dashboard/legal-registrations", label: "Legal Registrations", icon: ScrollText, roles: ["owner", "compliance"] },
+      { href: "/dashboard/amc-empanelments", label: "AMC Empanelments", icon: Briefcase, roles: ["owner", "compliance", "back_office"] },
       { href: "/dashboard/cybersecurity", label: "Cybersecurity", icon: Lock, module: "cybersecurity", roles: ["owner", "compliance"] },
     ],
   },
