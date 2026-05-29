@@ -281,16 +281,16 @@ Two weeks of focused work would close most of the meaningful gaps:
 
 **Status: 5/5 shipped.** All routes gated by capability checks; AI is advisory (never auto-writes to DB). One UI hookup live (meeting summary); other 4 ready for UI in the next iteration.
 
-### Sprint 3 (10 days) — the 6 real gaps
+### Sprint 3 (10 days) — the 6 real gaps · 2/6 done
 
-14. **TOTP 2FA enrollment flow** — middleware verification before sensitive actions.
-15. **Public "Lead capture form" generator** — tenant-branded share-token URL.
-16. **Client satisfaction feedback form** — share-token public NPS form.
-17. **CSM customer-feedback inbox** — landing of `service_requests.type='feedback'`.
-18. **Customer staff exit automation** — `status=offboarded` triggers task revoke + session kill.
-19. **Inbound WhatsApp AI auto-responder** — uses existing webhook + Claude.
+14. ⚪ **TOTP 2FA enrollment flow** — middleware verification before sensitive actions. *Sprint 4.*
+15. ✅ **Public "Lead capture form" generator** — `lead_capture_forms` schema + `/lf/<slug>` branded public form + admin at `/dashboard/settings/lead-forms`. Submissions emit `lead.created` so existing recipes fan out automatically. Honeypot + rate-limit.
+16. ⚪ **Client satisfaction feedback form** — share-token public NPS form. *Sprint 4.*
+17. ⚪ **CSM customer-feedback inbox** — landing of `service_requests.type='feedback'`. *Sprint 4.*
+18. ✅ **Staff exit automation** — `src/lib/offboarding.ts` cascade: reassign open tasks + upcoming meetings to reporting manager, create 7-day "redistribute clients" task, revoke unused share tokens, audit. Fires on PATCH or DELETE when `status` transitions into `offboarded`. Idempotent. Known limit: JWT sessions live until 8-hour TTL (real session-kill is Sprint 4 — needs `sessions_invalid_after` or Redis denylist).
+19. ⚪ **Inbound WhatsApp AI auto-responder** — uses existing webhook + Claude. *Sprint 4.*
 
-After 3 sprints (3 weeks), the CRM covers ~95% of the framework's in-scope lines.
+After Sprints 1-3 partial, the CRM covers ~93% of the framework's in-scope lines.
 
 ### What I'd NOT build
 
