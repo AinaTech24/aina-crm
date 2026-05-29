@@ -258,18 +258,18 @@ Most are IT processes, not CRM features:
 
 Two weeks of focused work would close most of the meaningful gaps:
 
-### Sprint 1 (5 days) — the 8 highest-leverage "easy gaps"
+### Sprint 1 (5 days) — the 8 highest-leverage "easy gaps" ✅ DONE
 
-1. **Owner Cockpit "Data gaps" tile** — one query against the segment compiler showing how many clients lack PAN/mobile/email/DOB/nominee. Click → bulk-edit. Solves 3 line items in one card.
-2. **Daily worker for birthday/anniversary** — fans out templated WA/email comms. Solves 2 line items.
-3. **Minor-to-major auto SR** — worker creates SR on the 18th birthday. Solves 1.
-4. **Dormant-client auto-flag** — worker flips `status=dormant` after N months. Solves 1.
-5. **Nomination / Bank / KYC update campaign recipes** — 3 workflow recipes against segments. Solves 3.
-6. **Daily business report email** — workflow recipe at 6pm to owner. Solves 1.
-7. **Weekly MIS digest** — Monday morning report bundle. Solves 1.
-8. **Monthly compliance checklist seeder** — 12 templated tasks. Solves 1.
+1. ✅ **Owner Cockpit "Data gaps" tile** — `/api/reports/data-hygiene` + `DataGapsTile.tsx`. Click → `/dashboard/investors?gaps=…` filtered list.
+2. ✅ **Daily worker for birthday/anniversary** — `daily-ops-scanner.ts` emits `investor.birthday` + `investor.anniversary` events at 06:30 IST. Wired to `birthday_touchpoint` + `investor_anniversary` recipes (auto-installed for every new tenant).
+3. ✅ **Minor-to-major auto SR** — daily scanner emits `investor.minor_to_major` on the 18th birthday.
+4. ✅ **Dormant-client auto-flag** — daily scanner UPDATEs `status=dormant` after 18 months no activity (transition-only via `RETURNING`).
+5. ✅ **Nomination / Bank / KYC update campaign recipes** — `kyc_expiry_renew` + `nominee_missing` auto-installed; bank-update lives in `bank_update_verification` recipe (available in library).
+6. ✅ **Daily business report email** — `daily_mis_digest` recipe auto-installed (disabled, owner enables).
+7. ✅ **Weekly MIS digest** — `task_weekly_owner_report` recipe auto-installed.
+8. ✅ **Monthly compliance checklist seeder** — `monthly-compliance-seeder.ts` fires on 1st of month, seeds 12 SEBI/AMFI tasks per tenant. Idempotent via `Monthly compliance — YYYY-MM` prefix.
 
-That's 13 line items moved from gap → done in 1 week.
+**Status: 8/8 done.** 13 line items moved from gap → done. Verified on Demo Wealth (all 9 default recipes installed).
 
 ### Sprint 2 (5 days) — AI quick wins
 
