@@ -56,6 +56,10 @@ export default async function InvestorsPage({
   const status = (sp.status ?? "").split(",").filter(Boolean);
   const kyc = (sp.kyc ?? "").split(",").filter(Boolean);
   const view = sp.view === "kanban" ? "kanban" : "table";
+  // `?gaps=field` — deep-link from the Owner Cockpit "Data gaps" tile.
+  // Filters the list to clients missing the named field so the user can
+  // bulk-fix in one place.
+  const gaps = (sp.gaps ?? "").split(",").filter(Boolean);
 
   const { rows, total, kanbanRows } = await withTenant(session.tenantId, async (tx) => {
     const conditions: any[] = [];
@@ -72,6 +76,41 @@ export default async function InvestorsPage({
     if (tier.length) conditions.push(inArray(investors.serviceTier, tier as any));
     if (status.length) conditions.push(inArray(investors.status, status as any));
     if (kyc.length) conditions.push(inArray(investors.kycStatus, kyc as any));
+    // Data-gap filters from the Owner Cockpit "Data gaps" tile. Each
+    // value targets a NULL/empty column on the investor master so the
+    // user can scroll the filtered list and bulk-fix.
+    for (const gap of gaps) {
+      switch (gap) {
+        case "pan":
+          conditions.push(sql`(${investors.pan} IS NULL OR ${investors.pan} = '')`);
+          break;
+        case "phone":
+          conditions.push(sql`(${investors.phone} IS NULL OR ${investors.phone} = '')`);
+          break;
+        case "email":
+          conditions.push(sql`(${investors.email} IS NULL OR ${investors.email} = '')`);
+          break;
+        case "dob":
+          conditions.push(sql`${investors.dob} IS NULL`);
+          break;
+        case "nominee":
+          conditions.push(sql`(${investors.nomineeName} IS NULL OR ${investors.nomineeName} = '')`);
+          break;
+        case "bank":
+          conditions.push(
+            sql`(${investors.bankAccountNumberMasked} IS NULL OR ${investors.bankAccountNumberMasked} = '')`
+          );
+          break;
+        case "risk_profile":
+          conditions.push(
+            sql`(${investors.riskProfile} IS NULL OR ${investors.riskProfileSignedAt} IS NULL)`
+          );
+          break;
+        case "rm":
+          conditions.push(sql`${investors.rmId} IS NULL`);
+          break;
+      }
+    }
     const where = conditions.length ? and(...conditions) : undefined;
 
     const r = await tx

@@ -12,8 +12,9 @@ import { startWorkflowRunnerWorker } from "./workflow-runner";
 import { startSegmentMaterializerWorker } from "./segment-materializer";
 import { startMasterSchedulerWorker } from "./master-scheduler";
 import { startAiSensyTemplateSyncWorker } from "./aisensy-template-sync";
+import { runDailyOpsScan } from "./daily-ops-scanner";
 
-const groups = (process.env.WORKER_GROUPS ?? "outbox,wf,seg,sched,wa_sync")
+const groups = (process.env.WORKER_GROUPS ?? "outbox,wf,seg,sched,wa_sync,ops")
   .split(",")
   .map((s) => s.trim());
 
@@ -24,6 +25,44 @@ if (groups.includes("wf")) stops.push(startWorkflowRunnerWorker());
 if (groups.includes("seg")) stops.push(startSegmentMaterializerWorker());
 if (groups.includes("sched")) stops.push(startMasterSchedulerWorker());
 if (groups.includes("wa_sync")) stops.push(startAiSensyTemplateSyncWorker());
+
+/**
+ * Daily ops scanner — fires once a day at 06:30 local time. Scans every
+ * tenant for birthdays / anniversaries / minor-to-major / dormancy /
+ * KYC + risk-profile expiry and emits events the recipes consume.
+ *
+ * Why not in master-scheduler: the scanner is a single sweep, not a
+ * per-trigger fire. Wiring it through workflow_triggers would create
+ * one trigger per tenant. A self-scheduled tick is cheaper and easier
+ * to reason about.
+ */
+if (groups.includes("ops")) {
+  const scheduleNext = () => {
+    const now = new Date();
+    const next = new Date(now);
+    next.setHours(6, 30, 0, 0);
+    if (next <= now) next.setDate(next.getDate() + 1);
+    const delayMs = next.getTime() - now.getTime();
+    const t = setTimeout(async () => {
+      try {
+        await runDailyOpsScan();
+      } catch (err) {
+        console.error("[daily-ops-scanner] sweep failed:", err);
+      }
+      scheduleNext();
+    }, delayMs);
+    t.unref?.();
+    stops.push(() => clearTimeout(t));
+    console.log(
+      `[daily-ops-scanner] next run at ${next.toISOString()} (in ${Math.round(delayMs / 60000)} min)`
+    );
+  };
+  // Also run on boot if the env var asks for it — useful for testing.
+  if (process.env.DAILY_OPS_ON_BOOT === "1") {
+    void runDailyOpsScan();
+  }
+  scheduleNext();
+}
 
 console.log(`✓ Worker process up. Groups: ${groups.join(", ")}`);
 

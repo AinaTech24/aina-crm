@@ -6,6 +6,7 @@ import { formatINR } from "@/lib/utils";
 import type { SessionUser } from "@/lib/auth/session";
 import { NetSalesChart } from "./NetSalesChart";
 import { GettingStartedChecklist } from "./GettingStartedChecklist";
+import { DataGapsTile } from "./DataGapsTile";
 
 /**
  * MFD Owner Cockpit — spec § 6, Module 2.
@@ -284,6 +285,9 @@ export async function OwnerCockpit({ session }: { session: SessionUser }) {
           <Stat href="/dashboard/sips?status=stopped" label="SIP Stopped MTD" value={String(data.sipStoppedCount)} tone={data.sipStoppedCount > 0 ? "amber" : "muted"} />
         </div>
       </Group>
+
+      {/* ---------- 2b. Data gaps — fixes from MFD ops checklist ---------- */}
+      <DataGapsTile />
 
       {/* ---------- 3. Attention queues ---------- */}
       <Group title="Needs attention">

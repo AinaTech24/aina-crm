@@ -91,6 +91,8 @@ export const subscriptions = pgTable(
     /** Seat & resource overrides (null = use package defaults) */
     seatsOverride: integer("seats_override"),
     storageOverrideGb: integer("storage_override_gb"),
+    modulesOverride: jsonb("modules_override").$type<string[]>(),
+    allowedFields: jsonb("allowed_fields").$type<string[]>(),
 
     /** Billing — minimal scaffold; real Razorpay integration extends this */
     razorpayCustomerId: text("razorpay_customer_id"),

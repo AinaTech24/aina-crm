@@ -79,6 +79,7 @@ export const users = pgTable(
 
     twoFaEnabled: boolean("two_fa_enabled").default(false),
     twoFaSecret: text("two_fa_secret"),
+    permissions: jsonb("permissions").$type<string[]>(),
     lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
     status: text("status", { enum: ["invited", "active", "suspended", "offboarding", "offboarded"] })
       .notNull()
