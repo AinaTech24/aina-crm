@@ -254,6 +254,13 @@ export function ReviewMeetingDetailEditor({
           </select>
         </div>
         <div className="flex items-center gap-2">
+          <a
+            href={`/dashboard/review-meetings/${meeting.id}/portfolio`}
+            className="btn-ghost text-xs"
+            title="Open the per-folio review worksheet"
+          >
+            Portfolio review →
+          </a>
           {status !== "completed" && (
             <button
               onClick={() => save("completed")}

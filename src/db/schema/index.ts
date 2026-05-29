@@ -48,5 +48,6 @@ export * from "./amc_empanelments";
 export * from "./product_offerings";
 export * from "./firm_directors";
 export * from "./suitability_matrix";
+export * from "./portfolio_review_items";
 
 
