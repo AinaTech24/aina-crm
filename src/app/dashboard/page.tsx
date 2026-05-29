@@ -9,6 +9,7 @@
  */
 
 import { requireSession } from "@/lib/auth/session";
+import { can } from "@/lib/auth/rbac";
 import { OwnerCockpit } from "@/components/dashboards/OwnerCockpit";
 import { RmDashboard } from "@/components/dashboards/RmDashboard";
 import { BackOfficeDashboard } from "@/components/dashboards/BackOfficeDashboard";
@@ -19,21 +20,22 @@ export const dynamic = "force-dynamic";
 export default async function DashboardPage() {
   const session = await requireSession();
   const roles = session.roles;
+  const perms = session.permissions;
 
   // Owner / Branch Head sees the full cockpit
-  if (roles.includes("owner") || roles.includes("branch_head")) {
+  if (can(roles, "dashboard.view.owner", perms)) {
     return <OwnerCockpit session={session} />;
   }
-  if (roles.includes("compliance")) {
+  if (can(roles, "dashboard.view.compliance", perms)) {
     return <OwnerCockpit session={session} />; // shares cockpit; compliance has full visibility
   }
-  if (roles.includes("marketing")) {
+  if (can(roles, "dashboard.view.marketing", perms)) {
     return <MarketingDashboard session={session} />;
   }
-  if (roles.includes("back_office") || roles.includes("ops")) {
+  if (can(roles, "dashboard.view.ops", perms)) {
     return <BackOfficeDashboard session={session} />;
   }
-  if (roles.includes("rm")) {
+  if (can(roles, "dashboard.view.rm", perms)) {
     return <RmDashboard session={session} />;
   }
   // Team member fallback — just tasks

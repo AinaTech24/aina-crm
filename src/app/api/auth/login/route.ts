@@ -31,10 +31,9 @@ export async function POST(req: NextRequest) {
   const limited = enforce(req, "auth.login", { limit: 10, windowSec: 15 * 60 }, email);
   if (limited) return limited;
 
-  // System-context lookup because we don't know the tenant yet — the email is the lookup key.
   const userRow = await withSystem(async (tx) => {
     const r = await tx.execute(sql`
-      SELECT u.id, u.tenant_id, u.branch_id, u.email, u.name, u.password_hash, u.roles, u.status
+      SELECT u.id, u.tenant_id, u.branch_id, u.email, u.name, u.password_hash, u.roles, u.status, u.permissions
       FROM users u
       WHERE lower(u.email) = ${email}
       LIMIT 1
@@ -67,6 +66,7 @@ export async function POST(req: NextRequest) {
     roles: userRow.roles ?? [],
     email: userRow.email,
     name: userRow.name,
+    permissions: userRow.permissions ?? [],
   });
 
   const res = NextResponse.json({ ok: true, user: { id: userRow.id, name: userRow.name, email: userRow.email, roles: userRow.roles } });

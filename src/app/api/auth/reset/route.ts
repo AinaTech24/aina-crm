@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
     const session = await withSystem(async (tx) => {
       const r = await tx.execute(sql`
         SELECT pr.id, pr.user_id, pr.tenant_id, pr.expires_at, pr.consumed_at,
-               u.email, u.name, u.branch_id, u.roles
+               u.email, u.name, u.branch_id, u.roles, u.permissions
         FROM password_resets pr
         JOIN users u ON u.id = pr.user_id
         WHERE pr.token_hash = ${tokenHash}
@@ -64,6 +64,7 @@ export async function POST(req: NextRequest) {
         roles: row.roles ?? [],
         email: row.email,
         name: row.name,
+        permissions: row.permissions ?? [],
       };
     });
 

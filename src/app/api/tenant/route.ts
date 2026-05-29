@@ -14,7 +14,7 @@ import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
-import { assertActiveLicense } from "@/lib/auth/license";
+import { assertActiveLicense, loadTenantLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { tenants } from "@/db/schema";
 
@@ -86,6 +86,20 @@ export async function PATCH(req: NextRequest) {
       });
 
       return r[0];
+    });
+    return NextResponse.json(result);
+  } catch (err: any) {
+    return handleApiError(err);
+  }
+}
+
+export async function GET(req: NextRequest) {
+  try {
+    const session = await requireSession();
+    const result = await withTenant(session.tenantId, async (tx) => {
+      const tenant = (await tx.select().from(tenants).where(eq(tenants.id, session.tenantId)).limit(1))[0];
+      const license = await loadTenantLicense(session.tenantId, session.roles);
+      return { tenant, license };
     });
     return NextResponse.json(result);
   } catch (err: any) {

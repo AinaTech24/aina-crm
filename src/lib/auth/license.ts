@@ -20,6 +20,7 @@ export type LicenseState = {
   status: "trial" | "active" | "past_due" | "suspended" | "expired" | "cancelled" | "no_subscription";
   packageKey: string | null;
   enabledModules: string[];
+  allowedFields: string[] | null;
   featureFlags: Record<string, any>;
   maxUsers: number;
   maxInvestors: number;
@@ -39,6 +40,7 @@ export async function loadTenantLicense(tenantId: string, roles?: string[]): Pro
       status: "active",
       packageKey: "platform_admin",
       enabledModules: [],
+      allowedFields: null,
       featureFlags: {},
       maxUsers: 1e9,
       maxInvestors: 1e9,
@@ -58,6 +60,7 @@ export async function loadTenantLicense(tenantId: string, roles?: string[]): Pro
       status: "no_subscription",
       packageKey: null,
       enabledModules: [],
+      allowedFields: null,
       featureFlags: {},
       maxUsers: 1,
       maxInvestors: 100,
@@ -83,10 +86,16 @@ export async function loadTenantLicense(tenantId: string, roles?: string[]): Pro
 
   const isRestricted = RESTRICTED_STATUSES.has(effectiveStatus);
 
+  const enabledModules = sub.modulesOverride
+    ? (sub.modulesOverride as string[])
+    : ((pkg?.enabledModules as string[]) ?? []);
+  const allowedFields = (sub.allowedFields as string[]) ?? null;
+
   return {
     status: effectiveStatus as LicenseState["status"],
     packageKey: sub.packageKey,
-    enabledModules: (pkg?.enabledModules as string[]) ?? [],
+    enabledModules,
+    allowedFields,
     featureFlags: (pkg?.featureFlags as Record<string, any>) ?? {},
     maxUsers: pkg?.maxUsers ?? 1,
     maxInvestors: pkg?.maxInvestors ?? 100,

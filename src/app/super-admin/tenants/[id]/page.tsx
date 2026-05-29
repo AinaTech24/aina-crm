@@ -3,10 +3,11 @@ import { notFound } from "next/navigation";
 import { sql, eq, desc } from "drizzle-orm";
 import { ChevronLeft, Building2, Users, TrendingUp } from "lucide-react";
 import { withPlatformAdmin } from "@/db/client";
-import { tenants, subscriptions, subscriptionEvents, users, investors } from "@/db/schema";
+import { tenants, subscriptions, subscriptionEvents, users, investors, packages } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { formatDate, formatRelative, formatINR } from "@/lib/utils";
 import { TenantActions } from "@/components/super-admin/TenantActions";
+import { TenantAccessControl } from "@/components/super-admin/TenantAccessControl";
 
 const STATUS_COLORS: Record<string, string> = {
   trial: "bg-blue-50 text-blue-700",
@@ -27,6 +28,7 @@ export default async function TenantDetailPage({ params }: { params: Promise<{ i
     const tenant = (await tx.select().from(tenants).where(eq(tenants.id, id)).limit(1))[0];
     if (!tenant) return null;
     const sub = (await tx.select().from(subscriptions).where(eq(subscriptions.tenantId, id)).limit(1))[0];
+    const pkg = sub ? (await tx.select().from(packages).where(eq(packages.id, sub.packageId)).limit(1))[0] : null;
     const events = await tx
       .select()
       .from(subscriptionEvents)
@@ -44,7 +46,7 @@ export default async function TenantDetailPage({ params }: { params: Promise<{ i
            AND created_at >= now() - interval '30 days') AS runs_30d,
         (SELECT COALESCE(SUM(aum::numeric),0) FROM investors WHERE tenant_id = ${id}) AS aum
     `);
-    return { tenant, subscription: sub, events, usage: usage.rows[0] as any };
+    return { tenant, subscription: sub, package: pkg, events, usage: usage.rows[0] as any };
   });
 
   if (!data) notFound();
@@ -135,6 +137,15 @@ export default async function TenantDetailPage({ params }: { params: Promise<{ i
           )}
         </div>
       </div>
+
+      {data.subscription && (
+        <TenantAccessControl
+          tenantId={id}
+          packageModules={(data.package?.enabledModules as string[]) ?? []}
+          initialModulesOverride={data.subscription.modulesOverride as string[] | null}
+          initialAllowedFields={data.subscription.allowedFields as string[] | null}
+        />
+      )}
     </div>
   );
 }

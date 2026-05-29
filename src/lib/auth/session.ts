@@ -29,6 +29,7 @@ export type SessionUser = {
   /** AINA platform staff. When true, this user bypasses tenant isolation and
    *  is routed to /super-admin instead of /dashboard on login. */
   isPlatformAdmin?: boolean;
+  permissions?: string[];
 };
 
 function secretKey(): Uint8Array {
@@ -50,6 +51,7 @@ export async function verifySession(token: string): Promise<SessionUser | null> 
     const { payload } = await jwtVerify(token, secretKey(), { algorithms: ["HS256"] });
     if (!payload.userId || !payload.tenantId) return null;
     const roles = Array.isArray(payload.roles) ? payload.roles.map(String) : [];
+    const permissions = Array.isArray(payload.permissions) ? payload.permissions.map(String) : [];
     return {
       userId: String(payload.userId),
       tenantId: String(payload.tenantId),
@@ -58,6 +60,7 @@ export async function verifySession(token: string): Promise<SessionUser | null> 
       email: String(payload.email ?? ""),
       name: String(payload.name ?? ""),
       isPlatformAdmin: roles.includes("platform_admin") || roles.includes("platform_support"),
+      permissions,
     };
   } catch {
     return null;

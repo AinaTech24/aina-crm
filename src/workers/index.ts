@@ -13,8 +13,9 @@ import { startSegmentMaterializerWorker } from "./segment-materializer";
 import { startMasterSchedulerWorker } from "./master-scheduler";
 import { startAiSensyTemplateSyncWorker } from "./aisensy-template-sync";
 import { runDailyOpsScan } from "./daily-ops-scanner";
+import { runMonthlyComplianceSweep } from "./monthly-compliance-seeder";
 
-const groups = (process.env.WORKER_GROUPS ?? "outbox,wf,seg,sched,wa_sync,ops")
+const groups = (process.env.WORKER_GROUPS ?? "outbox,wf,seg,sched,wa_sync,ops,monthly")
   .split(",")
   .map((s) => s.trim());
 
@@ -62,6 +63,37 @@ if (groups.includes("ops")) {
     void runDailyOpsScan();
   }
   scheduleNext();
+}
+
+/**
+ * Monthly compliance checklist — seeds the standard SEBI-flavoured tasks
+ * to every active tenant on the 1st of each month at 06:00. Hourly tick
+ * is cheap; we no-op unless it's actually the 1st and we haven't run
+ * already in this calendar month.
+ */
+if (groups.includes("monthly")) {
+  let lastRunYearMonth = ""; // YYYY-MM of last run
+  const tick = async () => {
+    const now = new Date();
+    const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    // Only fire on the 1st of the month and at most once per calendar month.
+    if (now.getDate() === 1 && ym !== lastRunYearMonth) {
+      try {
+        await runMonthlyComplianceSweep();
+        lastRunYearMonth = ym;
+      } catch (err) {
+        console.error("[monthly-compliance] sweep failed:", err);
+      }
+    }
+  };
+  // Once on boot if requested.
+  if (process.env.MONTHLY_COMPLIANCE_ON_BOOT === "1") {
+    void runMonthlyComplianceSweep();
+  }
+  const interval = setInterval(tick, 60 * 60 * 1000); // hourly
+  interval.unref?.();
+  stops.push(() => clearInterval(interval));
+  console.log("[monthly-compliance] hourly check armed — fires on 1st of each month");
 }
 
 console.log(`✓ Worker process up. Groups: ${groups.join(", ")}`);

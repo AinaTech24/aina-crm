@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Save, AlertCircle } from "lucide-react";
+import { can, type Capability } from "@/lib/auth/rbac";
 
 const DEPARTMENTS = [
   { value: "sales", label: "Sales" },
@@ -34,6 +35,89 @@ const STATUSES = [
   { value: "offboarded", label: "Offboarded" },
 ];
 
+const ALL_CAPABILITIES = [
+  {
+    group: "Clients & Leads",
+    items: [
+      { key: "investor.view.all", label: "View All Clients" },
+      { key: "investor.view.assigned", label: "View Assigned Clients Only" },
+      { key: "investor.edit.all", label: "Edit All Clients" },
+      { key: "investor.edit.assigned", label: "Edit Assigned Clients Only" },
+      { key: "investor.bulk_export", label: "Bulk Export Clients" },
+      { key: "investor.note.add", label: "Add Client Notes" },
+      { key: "lead.view.all", label: "View All Leads" },
+      { key: "lead.view.assigned", label: "View Assigned Leads Only" },
+      { key: "lead.edit.all", label: "Edit All Leads" },
+      { key: "lead.edit.assigned", label: "Edit Assigned Leads Only" },
+    ]
+  },
+  {
+    group: "Transactions & Operations",
+    items: [
+      { key: "transactions.view", label: "View Transactions" },
+      { key: "transactions.execute", label: "Execute Transactions" },
+      { key: "onboarding.manage", label: "Manage Onboarding" },
+      { key: "kyc.manage", label: "Manage KYC Status" },
+      { key: "review_meeting.manage.all", label: "Manage All Review Meetings" },
+      { key: "review_meeting.manage.assigned", label: "Manage Assigned Review Meetings" },
+      { key: "task.view.all", label: "View All Tasks" },
+      { key: "task.view.assigned", label: "View Assigned Tasks Only" },
+      { key: "task.edit.all", label: "Edit All Tasks" },
+      { key: "task.edit.assigned", label: "Edit Assigned Tasks Only" },
+      { key: "service_request.view.all", label: "View All Service Requests" },
+      { key: "service_request.view.assigned", label: "View Assigned Service Requests" },
+      { key: "service_request.manage", label: "Manage Service Requests" },
+      { key: "complaint.manage", label: "Manage Complaints" },
+    ]
+  },
+  {
+    group: "Workflows & Marketing",
+    items: [
+      { key: "workflow.view", label: "View Workflow Rules" },
+      { key: "workflow.edit", label: "Edit Workflow Rules" },
+      { key: "workflow.publish", label: "Publish Workflow Rules" },
+      { key: "segments.view", label: "View Segments & Filters" },
+      { key: "segments.manage", label: "Manage Segments & Filters" },
+      { key: "template.view", label: "View Comms Templates" },
+      { key: "template.edit", label: "Edit Comms Templates" },
+      { key: "template.approve", label: "Approve Comms Templates" },
+      { key: "campaign.send", label: "Send Marketing Campaigns" },
+      { key: "content_calendar.manage", label: "Manage Content Calendar" },
+      { key: "consent.manage", label: "Manage Client Consents" },
+      { key: "sop.manage", label: "Manage SOP Library" },
+    ]
+  },
+  {
+    group: "Compliance & Settings",
+    items: [
+      { key: "compliance.view", label: "View DDQ Compliance Status" },
+      { key: "compliance.edit", label: "Edit DDQ Compliance Info" },
+      { key: "compliance.approve", label: "Approve DDQ Compliance Items" },
+      { key: "risk_profile.manage", label: "Manage Risk Profiles" },
+      { key: "document.view", label: "View Documents" },
+      { key: "document.upload", label: "Upload Documents" },
+      { key: "document.delete", label: "Delete Documents" },
+      { key: "settings.users", label: "Manage Users & Roles Settings" },
+      { key: "settings.billing", label: "Manage Subscription & Billing" },
+      { key: "settings.masters", label: "Manage Master Lists" },
+      { key: "settings.security", label: "Manage Cybersecurity Settings" },
+    ]
+  },
+  {
+    group: "Dashboards & Reports",
+    items: [
+      { key: "dashboard.view.owner", label: "Owner Cockpit Dashboard" },
+      { key: "dashboard.view.compliance", label: "Compliance Summary Dashboard" },
+      { key: "dashboard.view.marketing", label: "Marketing Dashboard" },
+      { key: "dashboard.view.ops", label: "Operations Dashboard" },
+      { key: "dashboard.view.rm", label: "Relationship Manager Dashboard" },
+      { key: "reports.business", label: "Access Business MIS Reports" },
+      { key: "reports.team", label: "Access Team Performance Reports" },
+      { key: "reports.commission", label: "Access Commission Reconciliation Reports" },
+    ]
+  }
+];
+
 export type EmployeeFormValues = {
   id: string;
   name: string;
@@ -50,6 +134,7 @@ export type EmployeeFormValues = {
   nismCertificateNo: string;
   nismExpiryAt: string | null;
   status: string;
+  permissions: string[] | null;
 };
 
 export function EmployeeEditForm({
@@ -60,7 +145,8 @@ export function EmployeeEditForm({
   teammates: { id: string; name: string; email: string | null }[];
 }) {
   const router = useRouter();
-  const [v, setV] = useState<EmployeeFormValues>(employee);
+  const [v, setV] = useState<EmployeeFormValues>({ ...employee, permissions: employee.permissions || [] });
+  const [customActive, setCustomActive] = useState(!!employee.permissions);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -68,6 +154,17 @@ export function EmployeeEditForm({
   function toggleRole(k: string) {
     setV((p) => ({ ...p, roles: p.roles.includes(k) ? p.roles.filter((r) => r !== k) : [...p.roles, k] }));
   }
+  
+  const togglePermission = (cap: string) => {
+    setV((p) => {
+      const prevPerms = p.permissions || [];
+      const next = prevPerms.includes(cap)
+        ? prevPerms.filter((x) => x !== cap)
+        : [...prevPerms, cap];
+      return { ...p, permissions: next };
+    });
+  };
+
   function update<K extends keyof EmployeeFormValues>(k: K, val: EmployeeFormValues[K]) {
     setV((p) => ({ ...p, [k]: val }));
     setSaved(false);
@@ -86,6 +183,7 @@ export function EmployeeEditForm({
           name: v.name,
           phone: v.phone || null,
           roles: v.roles,
+          permissions: customActive ? (v.permissions || []) : null,
           department: v.department || null,
           joiningDate: v.joiningDate || null,
           reportingManagerId: v.reportingManagerId || null,
@@ -151,6 +249,78 @@ export function EmployeeEditForm({
             </label>
           ))}
         </div>
+      </div>
+
+      {/* Custom Permissions Override */}
+      <div className="border rounded-lg p-4 bg-secondary/10 space-y-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-xs font-semibold">Customize Access Permissions</div>
+            <div className="text-[11px] text-muted-foreground mt-0.5">
+              Override default role-based capabilities and dashboard/report access.
+            </div>
+          </div>
+          <label className="flex items-center gap-1.5 text-xs font-medium cursor-pointer">
+            <input
+              type="checkbox"
+              checked={customActive}
+              onChange={(e) => {
+                setCustomActive(e.target.checked);
+                // If checking custom active, populate from roles defaults if empty
+                if (e.target.checked && (!v.permissions || v.permissions.length === 0)) {
+                  const defaults: string[] = [];
+                  ALL_CAPABILITIES.forEach((grp) => {
+                    grp.items.forEach((item) => {
+                      if (can(v.roles, item.key as Capability)) {
+                        defaults.push(item.key);
+                      }
+                    });
+                  });
+                  setV((prev) => ({ ...prev, permissions: defaults }));
+                }
+                setSaved(false);
+              }}
+            />
+            <span>Customize</span>
+          </label>
+        </div>
+
+        {customActive && (
+          <div className="space-y-4 max-h-[300px] overflow-y-auto border rounded-md p-3 bg-card scrollbar-thin">
+            {ALL_CAPABILITIES.map((grp) => (
+              <div key={grp.group} className="space-y-1.5">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground border-b pb-0.5">
+                  {grp.group}
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-1.5">
+                  {grp.items.map((item) => {
+                    const isChecked = v.permissions?.includes(item.key) ?? false;
+                    return (
+                      <label
+                        key={item.key}
+                        className="flex items-center gap-2 border rounded p-1.5 hover:bg-secondary/40 text-[11px] cursor-pointer"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => togglePermission(item.key)}
+                        />
+                        <span>{item.label}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {!customActive && (
+          <div className="text-[11px] text-muted-foreground bg-secondary/30 p-2.5 rounded border">
+            Using default permissions determined by selected roles:{" "}
+            <strong className="text-foreground">{v.roles.join(", ")}</strong>. Check "Customize" to set granular access overrides.
+          </div>
+        )}
       </div>
 
       {/* HR fields */}

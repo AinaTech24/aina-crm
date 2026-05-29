@@ -123,6 +123,7 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
           nismCertificateNo: emp.nismCertificateNo ?? "",
           nismExpiryAt: emp.nismExpiryAt ?? null,
           status: emp.status,
+          permissions: (emp as any).permissions as string[] | null,
         }}
         teammates={teammates.filter((t) => t.id !== id)}
       />

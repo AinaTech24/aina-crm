@@ -127,11 +127,18 @@ export type Capability =
   | "reports.business"
   | "reports.team"
   | "reports.commission"
+  // Dashboards
+  | "dashboard.view.owner"
+  | "dashboard.view.compliance"
+  | "dashboard.view.marketing"
+  | "dashboard.view.ops"
+  | "dashboard.view.rm"
   // Master settings + admin
   | "settings.users"
   | "settings.billing"
   | "settings.masters"
   | "settings.security";
+
 
 /**
  * Capability matrix per role. Roles in the array are allowed.
@@ -220,6 +227,13 @@ const MATRIX: Record<Capability, Role[]> = {
   "reports.team": ["branch_head"],
   "reports.commission": [],
 
+  // Dashboards
+  "dashboard.view.owner": ["compliance", "branch_head"],
+  "dashboard.view.compliance": ["compliance"],
+  "dashboard.view.marketing": ["marketing"],
+  "dashboard.view.ops": ["back_office", "ops"],
+  "dashboard.view.rm": ["rm"],
+
   // Org admin — owner only (no other role)
   "settings.users": [],
   "settings.billing": [],
@@ -259,17 +273,23 @@ export const PLATFORM_CAPS: PlatformCapability[] = [
   "platform.staff.manage",
 ];
 
-/** Returns true if the caller has the capability via any of their roles. */
-export function can(userRoles: string[] | undefined, cap: Capability): boolean {
+/** Returns true if the caller has the capability via any of their roles or custom permissions override. */
+export function can(userRoles: string[] | undefined, cap: Capability, userPermissions?: string[] | null): boolean {
   if (!userRoles?.length) return false;
   if (userRoles.includes("owner")) return true; // owner always wins
+  
+  // If custom permissions override is specified, check that list instead of default roles
+  if (userPermissions && userPermissions.length > 0) {
+    return userPermissions.includes(cap);
+  }
+  
   const allowed = MATRIX[cap] ?? [];
   return userRoles.some((r) => allowed.includes(r as Role));
 }
 
 /** Throws a 403-shaped error if the caller is not authorised. */
-export function require(userRoles: string[] | undefined, cap: Capability): void {
-  if (!can(userRoles, cap)) {
+export function require(userRoles: string[] | undefined, cap: Capability, userPermissions?: string[] | null): void {
+  if (!can(userRoles, cap, userPermissions)) {
     throw Object.assign(new Error(`forbidden: missing ${cap}`), { status: 403 });
   }
 }
@@ -279,10 +299,10 @@ export function require(userRoles: string[] | undefined, cap: Capability): void 
  * capabilities (e.g. lead create allowed for owners, marketing, RMs,
  * AND branch heads). Avoids ugly inline OR chains.
  *
- *   requireAny(session.roles, ["lead.edit.all", "lead.edit.assigned"]);
+ *   requireAny(session.roles, ["lead.edit.all", "lead.edit.assigned"], session.permissions);
  */
-export function requireAny(userRoles: string[] | undefined, caps: Capability[]): void {
-  if (caps.some((c) => can(userRoles, c))) return;
+export function requireAny(userRoles: string[] | undefined, caps: Capability[], userPermissions?: string[] | null): void {
+  if (caps.some((c) => can(userRoles, c, userPermissions))) return;
   throw Object.assign(new Error(`forbidden: missing one of ${caps.join(", ")}`), { status: 403 });
 }
 
