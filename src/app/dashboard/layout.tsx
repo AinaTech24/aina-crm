@@ -88,8 +88,11 @@ const NAV: NavSection[] = [
         roles: ["owner", "rm", "branch_head", "back_office", "ops"] },
       { href: "/dashboard/proposals", label: "Proposals", icon: FileSignature, module: "proposals",
         roles: ["owner", "rm", "branch_head", "back_office", "ops", "compliance"] },
+      { href: "/dashboard/financial-plans", label: "Financial Plans", icon: ScrollText, module: "goal_planning",
+        roles: ["owner", "rm", "branch_head", "back_office", "ops", "compliance"] },
       { href: "/dashboard/insurance", label: "Insurance Policies", icon: Shield, module: "insurance",
         roles: ["owner", "rm", "branch_head", "back_office", "ops", "compliance"] },
+
     ],
   },
   {
@@ -134,6 +137,7 @@ const NAV: NavSection[] = [
       { href: "/dashboard/tasks", label: "Tasks", icon: ListChecks, module: "tasks" },
       { href: "/dashboard/calendar", label: "Calendar", icon: Calendar },
       { href: "/dashboard/employees", label: "Employees", icon: UserCog, module: "employees", roles: ["owner", "branch_head"] },
+      { href: "/dashboard/sub-distributors", label: "Sub-Distributors", icon: HeartHandshake, roles: ["owner", "compliance"] },
       { href: "/dashboard/cybersecurity", label: "Cybersecurity", icon: Lock, module: "cybersecurity", roles: ["owner", "compliance"] },
     ],
   },

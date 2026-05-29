@@ -19,5 +19,6 @@ async function main() {
 }
 main().catch((e) => {
   console.error("[apply] failed:", e?.message ?? e);
+  console.error(e);
   process.exit(1);
 });
