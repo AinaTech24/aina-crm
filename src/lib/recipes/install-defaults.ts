@@ -29,11 +29,11 @@ const DEFAULT_RECIPE_KEYS = [
   // Compliance / regulatory cadence
   "kyc_expiry_renew",
   "nominee_missing",
-  "nism_expiry",
-  "arn_expiry",
+  "nism_expiry_alert",
+  "arn_expiry_alert",
   // Engagement
   "birthday_touchpoint",
-  "anniversary",
+  "investor_anniversary",
   // Operations safety net
   "sip_rejection_followup",
 ];
