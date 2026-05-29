@@ -42,6 +42,36 @@ const Patch = z.object({
   bankAccountNumberMasked: z.string().optional(),
   bankIfsc: z.string().optional(),
   notes: z.string().optional(),
+  // KYC tracker (Network FP 2.4 parity, migration 0024)
+  nameAsPerPan: z.string().max(200).nullable().optional(),
+  kycStatus: z
+    .enum([
+      "pending",
+      "registered",
+      "verified",
+      "hold",
+      "rejected",
+      "expired",
+      "re_kyc_required",
+    ])
+    .optional(),
+  panAadhaarLinkStatus: z
+    .enum(["linked", "not_linked", "pending", "not_applicable"])
+    .nullable()
+    .optional(),
+  residencyStatus: z
+    .enum(["indian_resident", "nri", "oci", "pio", "foreign_national"])
+    .nullable()
+    .optional(),
+  aadhaarLast4: z
+    .string()
+    .regex(/^\d{4}$/, "Aadhaar last 4 must be 4 digits")
+    .nullable()
+    .optional()
+    .or(z.literal("")),
+  kycValidatedAt: z.string().nullable().optional(),
+  ckycNumber: z.string().max(40).nullable().optional(),
+  ckycExpiryAt: z.string().nullable().optional(),
 });
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -108,9 +138,26 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       const before = (await tx.select().from(investors).where(eq(investors.id, id)).limit(1))[0];
       if (!before) return null;
 
+      // Stamp KYC audit fields when any KYC-related column is touched.
+      const touchingKyc =
+        parse.data.kycStatus !== undefined ||
+        parse.data.nameAsPerPan !== undefined ||
+        parse.data.panAadhaarLinkStatus !== undefined ||
+        parse.data.residencyStatus !== undefined ||
+        parse.data.aadhaarLast4 !== undefined ||
+        parse.data.kycValidatedAt !== undefined ||
+        parse.data.ckycNumber !== undefined ||
+        parse.data.ckycExpiryAt !== undefined;
+
       const after = await tx
         .update(investors)
-        .set({ ...parse.data, updatedAt: new Date() } as any)
+        .set({
+          ...parse.data,
+          updatedAt: new Date(),
+          ...(touchingKyc
+            ? { kycLastUpdatedBy: session.userId }
+            : {}),
+        } as any)
         .where(eq(investors.id, id))
         .returning();
 

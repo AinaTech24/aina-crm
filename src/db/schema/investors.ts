@@ -84,9 +84,37 @@ export const investors = pgTable(
     clientTypes: jsonb("client_types").$type<string[]>().default([]),
 
     /** KYC */
-    kycStatus: text("kyc_status", { enum: ["pending", "verified", "rejected", "expired"] })
+    kycStatus: text("kyc_status", {
+      enum: [
+        "pending",
+        "registered", // CERSAI-registered but not validated
+        "verified", // CERSAI-validated
+        "hold", // flagged for manual review
+        "rejected",
+        "expired",
+        "re_kyc_required",
+      ],
+    })
       .notNull()
       .default("pending"),
+    /** Name exactly as on PAN card — distinct from `name` (display). */
+    nameAsPerPan: text("name_as_per_pan"),
+    /** PAN-Aadhaar link status — SEBI mandate; without 'linked', new
+     *  investments are blocked AMC-side. */
+    panAadhaarLinkStatus: text("pan_aadhaar_link_status", {
+      enum: ["linked", "not_linked", "pending", "not_applicable"],
+    }),
+    /** Granular residency status (more specific than investor_category's
+     *  nri flag — distinguishes OCI / PIO / foreign nationals). */
+    residencyStatus: text("residency_status", {
+      enum: ["indian_resident", "nri", "oci", "pio", "foreign_national"],
+    }),
+    /** Last 4 digits of Aadhaar only — never store the full number. */
+    aadhaarLast4: text("aadhaar_last4"),
+    /** When CERSAI validation completed. */
+    kycValidatedAt: date("kyc_validated_at"),
+    /** User who last updated KYC fields — audit-friendly source. */
+    kycLastUpdatedBy: uuid("kyc_last_updated_by").references(() => users.id),
     ckycNumber: text("ckyc_number"),
     ckycExpiryAt: date("ckyc_expiry_at"),
     kraName: text("kra_name"),

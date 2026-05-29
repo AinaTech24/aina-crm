@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { BarChart3, TrendingUp, TrendingDown, Users, Filter, AlertTriangle, FileText, Calendar, Briefcase, Shield, Clock, CheckCircle2 } from "lucide-react";
+import { BarChart3, TrendingUp, TrendingDown, Users, Filter, AlertTriangle, FileText, Calendar, Briefcase, Shield, ShieldCheck, Clock, CheckCircle2 } from "lucide-react";
 
 const REPORTS = [
   { group: "Sales & Business", items: [
@@ -72,6 +72,7 @@ const REPORTS = [
   { group: "Compliance", items: [
     { key: "ddq_readiness", label: "DDQ Readiness", icon: FileText },
     { key: "arn-euin-tracker", label: "ARN / EUIN / NISM / DSC tracker", icon: Shield },
+    { key: "kyc-tracker", label: "Client KYC tracker", icon: ShieldCheck },
   ]},
 ];
 
