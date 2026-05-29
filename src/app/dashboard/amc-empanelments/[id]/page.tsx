@@ -81,6 +81,9 @@ export default async function AmcEmpanelmentDetailPage({
               : null,
           documents: (row.documents ?? []) as any[],
           remarks: row.remarks,
+          investmentPhilosophy: (row as any).investmentPhilosophy ?? null,
+          fundHouseStrengths: (row as any).fundHouseStrengths ?? null,
+          redFlags: (row as any).redFlags ?? null,
         }}
       />
     </div>

@@ -62,6 +62,9 @@ type FormValues = {
   trailRateOverridePct: number | null;
   documents: Doc[];
   remarks: string | null;
+  investmentPhilosophy: string | null;
+  fundHouseStrengths: string | null;
+  redFlags: string | null;
 };
 
 const EMPTY: FormValues = {
@@ -84,6 +87,9 @@ const EMPTY: FormValues = {
   trailRateOverridePct: null,
   documents: [],
   remarks: null,
+  investmentPhilosophy: null,
+  fundHouseStrengths: null,
+  redFlags: null,
 };
 
 export function AmcEmpanelmentForm({
@@ -500,6 +506,43 @@ export function AmcEmpanelmentForm({
           >
             <Plus className="size-3.5" /> Add
           </button>
+        </div>
+      </Section>
+
+      {/* Investment-committee due diligence (Network FP 3.1 parity) */}
+      <Section title="Investment-committee due diligence">
+        <div className="space-y-3">
+          <Field label="Core investment philosophy">
+            <textarea
+              rows={2}
+              value={v.investmentPhilosophy ?? ""}
+              onChange={(e) =>
+                field("investmentPhilosophy", e.target.value || null)
+              }
+              className="input-base text-sm w-full"
+              placeholder="e.g. GARP equity, top-down macro, conservative credit"
+            />
+          </Field>
+          <Field label="Fund-house strengths">
+            <textarea
+              rows={2}
+              value={v.fundHouseStrengths ?? ""}
+              onChange={(e) =>
+                field("fundHouseStrengths", e.target.value || null)
+              }
+              className="input-base text-sm w-full"
+              placeholder="What this AMC is genuinely good at — research depth, debt fund track record, low-cost leadership, etc."
+            />
+          </Field>
+          <Field label="Red flags / concerns">
+            <textarea
+              rows={2}
+              value={v.redFlags ?? ""}
+              onChange={(e) => field("redFlags", e.target.value || null)}
+              className="input-base text-sm w-full"
+              placeholder="Key-man risk, AUM concentration, regulatory issues, fund-manager turnover, etc."
+            />
+          </Field>
         </div>
       </Section>
 

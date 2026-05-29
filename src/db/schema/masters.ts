@@ -14,7 +14,7 @@
  * structure that a dedicated table reads better.
  */
 
-import { boolean, index, integer, jsonb, pgTable, text, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { id, tenantId, timestamps } from "./_shared";
 
 /**
@@ -115,6 +115,25 @@ export const schemeMaster = pgTable(
     riskCategory: text("risk_category"), // very_low, low, moderate, high, very_high
     isActive: boolean("is_active").notNull().default(true),
     isClosed: boolean("is_closed").default(false),
+
+    /**
+     * Shortlist (Network FP "3.1 AMC Schemes" parity, migration 0026) —
+     * the firm's investment-committee buy list. Distinct from `isActive`
+     * (which is "available in our catalog"). RM proposals SHOULD pick
+     * from shortlisted schemes; non-shortlist picks should require a
+     * justification field (future work).
+     */
+    isShortlisted: boolean("is_shortlisted").default(false),
+    shortlistedAt: timestamp("shortlisted_at", { withTimezone: true }),
+    shortlistedBy: uuid("shortlisted_by"),
+    shortlistRationale: text("shortlist_rationale"),
+    /**
+     * Coarse category bucket for the shortlist UI — separate from the
+     * fine-grained `category` ("Equity - Large Cap"). One of:
+     *   'equity' | 'hybrid' | 'debt' | 'liquid' | 'commodity'
+     *   | 'international' | 'other'
+     */
+    coarseCategory: text("coarse_category"),
     ...timestamps,
   },
   (t) => ({

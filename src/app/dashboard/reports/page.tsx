@@ -73,6 +73,7 @@ const REPORTS = [
     { key: "ddq_readiness", label: "DDQ Readiness", icon: FileText },
     { key: "arn-euin-tracker", label: "ARN / EUIN / NISM / DSC tracker", icon: Shield },
     { key: "kyc-tracker", label: "Client KYC tracker", icon: ShieldCheck },
+    { key: "shortlisted-schemes", label: "AMC scheme shortlist (IC)", icon: Briefcase },
   ]},
 ];
 

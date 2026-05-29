@@ -133,6 +133,15 @@ export const amcEmpanelments = pgTable(
 
     remarks: text("remarks"),
 
+    /**
+     * Firm's investment-committee due-diligence notes — Network FP
+     * "3.1 AMC Schemes" parity (migration 0026). RM-facing context for
+     * why we do or don't lean into this AMC.
+     */
+    investmentPhilosophy: text("investment_philosophy"),
+    fundHouseStrengths: text("fund_house_strengths"),
+    redFlags: text("red_flags"),
+
     createdBy: text("created_by"),
 
     ...timestamps,

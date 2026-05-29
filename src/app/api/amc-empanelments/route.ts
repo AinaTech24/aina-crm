@@ -60,6 +60,10 @@ const PostBody = z.object({
   trailRateOverridePct: z.number().min(0).max(10).nullable().optional(),
   documents: z.array(DocumentSchema).max(20).default([]),
   remarks: z.string().max(4000).nullable().optional(),
+  // Network FP 3.1 — investment-committee due diligence
+  investmentPhilosophy: z.string().max(4000).nullable().optional(),
+  fundHouseStrengths: z.string().max(4000).nullable().optional(),
+  redFlags: z.string().max(4000).nullable().optional(),
 });
 
 export async function GET(req: NextRequest) {
@@ -141,6 +145,9 @@ export async function POST(req: NextRequest) {
                 : null,
             documents: data.documents,
             remarks: data.remarks || null,
+            investmentPhilosophy: data.investmentPhilosophy || null,
+            fundHouseStrengths: data.fundHouseStrengths || null,
+            redFlags: data.redFlags || null,
             createdBy: session.userId,
           } as any)
           .returning();

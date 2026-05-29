@@ -63,6 +63,10 @@ const PatchBody = z.object({
     .max(20)
     .optional(),
   remarks: z.string().max(4000).nullable().optional(),
+  // Network FP 3.1 — investment-committee due diligence
+  investmentPhilosophy: z.string().max(4000).nullable().optional(),
+  fundHouseStrengths: z.string().max(4000).nullable().optional(),
+  redFlags: z.string().max(4000).nullable().optional(),
 });
 
 export async function GET(
