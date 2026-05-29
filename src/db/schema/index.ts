@@ -40,4 +40,7 @@ export * from "./blueprints";
 export * from "./proposal_schemes";
 export * from "./rta_imports";
 export * from "./dlt_templates";
+export * from "./financial_plans";
+export * from "./lead_capture_forms";
+
 
