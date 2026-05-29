@@ -134,6 +134,32 @@ export const schemeMaster = pgTable(
      *   | 'international' | 'other'
      */
     coarseCategory: text("coarse_category"),
+
+    /**
+     * IC scorecard snapshot — Network FP "3.3 MF Selection" parity.
+     * Captures the 11 criteria the IC used at the time of shortlisting.
+     * Compare snapshots across reviews to defensibly de-shortlist when
+     * criteria degrade.
+     */
+    evaluation: jsonb("evaluation").$type<{
+      fundCategoryNote?: string;
+      fundObjective?: string;
+      schemeRiskProfile?: "low" | "moderate" | "high" | "very_high";
+      fmName?: string;
+      fmExperienceYears?: number;
+      amcReputationNote?: string;
+      fiveYearCagrPct?: number;
+      consistencyPct?: number;
+      sharpeRatio?: number;
+      stdDevPct?: number;
+      expenseRatioPct?: number;
+      portfolioCompositionNote?: string;
+      aumCrore?: number;
+      liquidityNote?: string;
+      verdict?: "pass" | "watch" | "reject";
+      evaluatedAt?: string;
+      evaluatedBy?: string;
+    }>(),
     ...timestamps,
   },
   (t) => ({

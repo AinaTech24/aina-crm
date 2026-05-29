@@ -74,6 +74,7 @@ const REPORTS = [
     { key: "arn-euin-tracker", label: "ARN / EUIN / NISM / DSC tracker", icon: Shield },
     { key: "kyc-tracker", label: "Client KYC tracker", icon: ShieldCheck },
     { key: "shortlisted-schemes", label: "AMC scheme shortlist (IC)", icon: Briefcase },
+    { key: "suitability-matrix", label: "MF suitability matrix (IC)", icon: Filter },
   ]},
 ];
 
