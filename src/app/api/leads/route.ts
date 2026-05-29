@@ -40,6 +40,8 @@ const CreateBody = z.object({
   /** When source is 'referral' or 'existing_client' — link to the referrer in the Clients module. */
   referredByInvestorId: z.string().uuid().optional(),
   referredByName: z.string().max(200).optional(),
+  /** When sourced by a channel partner — drives commission split on conversion. */
+  subDistributorId: z.string().uuid().optional(),
 });
 
 export async function GET() {
@@ -112,6 +114,7 @@ export async function POST(req: NextRequest) {
           ownerId: assignedOwnerId,
           referredByInvestorId: body.referredByInvestorId ?? null,
           referredByName: body.referredByName ?? null,
+          subDistributorId: body.subDistributorId ?? null,
         } as any)
         .returning();
 

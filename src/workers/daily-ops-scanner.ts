@@ -17,6 +17,9 @@
  *   employee.arn_expiring          — personal ARN expiry within 90 days
  *   employee.euin_expiring         — EUIN expiry within 90 days
  *   employee.dsc_expiring          — DSC expiry within 60 days
+ *   sub_distributor.nism_expiring  — sub-dist NISM within 90 days
+ *   sub_distributor.arn_expiring   — sub-dist ARN within 90 days
+ *   sub_distributor.euin_expiring  — sub-dist EUIN within 90 days
  *
  * Idempotency: each event carries `meta.scanDate = YYYY-MM-DD`. The
  * outbox poller dedupes by (kind, entity_id, meta.scanDate) — so a
@@ -48,6 +51,10 @@ interface ScanResult {
   arnExpiring: number;
   euinExpiring: number;
   dscExpiring: number;
+  // Sub-distributor licensing — same expiry-tracking model.
+  subDistNismExpiring: number;
+  subDistArnExpiring: number;
+  subDistEuinExpiring: number;
   durationMs: number;
 }
 
@@ -91,6 +98,9 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
     arnExpiring: 0,
     euinExpiring: 0,
     dscExpiring: 0,
+    subDistNismExpiring: 0,
+    subDistArnExpiring: 0,
+    subDistEuinExpiring: 0,
     durationMs: 0,
   };
 
@@ -331,6 +341,76 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
           if (c.kind === "employee.dsc_expiring") result.dscExpiring++;
         }
       }
+
+      // ── 11. Sub-distributor licensing expiries ───────────────────────
+      // Same 90-day window as employees for NISM/ARN/EUIN. Skips
+      // terminated rows (they don't need renewal nudges).
+      const subDistExpiryRows = await tx.execute(sql`
+        SELECT id, name, email, mobile, arn_number,
+               nism_expiry_at, arn_expiry_at, euin_expiry_at,
+               relationship_manager_id
+        FROM sub_distributors
+        WHERE status = 'active'
+          AND (
+            (nism_expiry_at IS NOT NULL
+              AND nism_expiry_at BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '90 days')
+            OR (arn_expiry_at IS NOT NULL
+              AND arn_expiry_at BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '90 days')
+            OR (euin_expiry_at IS NOT NULL
+              AND euin_expiry_at BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '90 days')
+          )
+      `);
+      for (const row of subDistExpiryRows.rows as Array<{
+        id: string;
+        name: string;
+        email: string | null;
+        mobile: string | null;
+        arn_number: string | null;
+        nism_expiry_at: string | null;
+        arn_expiry_at: string | null;
+        euin_expiry_at: string | null;
+        relationship_manager_id: string | null;
+      }>) {
+        const checks: Array<{
+          kind: string;
+          field: "nism_expiry_at" | "arn_expiry_at" | "euin_expiry_at";
+        }> = [
+          { kind: "sub_distributor.nism_expiring", field: "nism_expiry_at" },
+          { kind: "sub_distributor.arn_expiring", field: "arn_expiry_at" },
+          { kind: "sub_distributor.euin_expiring", field: "euin_expiry_at" },
+        ];
+        for (const c of checks) {
+          const date = row[c.field];
+          if (!date) continue;
+          const d = new Date(date);
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const daysOut = Math.round((d.getTime() - today.getTime()) / 86400000);
+          if (daysOut < 0 || daysOut > 90) continue;
+          await tx.insert(eventsOutbox).values({
+            tenantId,
+            kind: c.kind,
+            entityType: "sub_distributor",
+            entityId: row.id,
+            after: {
+              name: row.name,
+              email: row.email,
+              mobile: row.mobile,
+              arn: row.arn_number,
+              expiresAt: date,
+              daysOut,
+              relationshipManagerId: row.relationship_manager_id,
+            } as any,
+            meta: { scanDate, source: "daily-ops-scanner" } as any,
+          } as any);
+          if (c.kind === "sub_distributor.nism_expiring")
+            result.subDistNismExpiring++;
+          if (c.kind === "sub_distributor.arn_expiring")
+            result.subDistArnExpiring++;
+          if (c.kind === "sub_distributor.euin_expiring")
+            result.subDistEuinExpiring++;
+        }
+      }
     },
     { roles: ["system"] }
   );
@@ -364,6 +444,9 @@ export async function runDailyOpsScan(): Promise<{
     arnExpiring: 0,
     euinExpiring: 0,
     dscExpiring: 0,
+    subDistNismExpiring: 0,
+    subDistArnExpiring: 0,
+    subDistEuinExpiring: 0,
   };
   for (const tenantId of tenants) {
     try {
@@ -378,6 +461,9 @@ export async function runDailyOpsScan(): Promise<{
       totals.arnExpiring += r.arnExpiring;
       totals.euinExpiring += r.euinExpiring;
       totals.dscExpiring += r.dscExpiring;
+      totals.subDistNismExpiring += r.subDistNismExpiring;
+      totals.subDistArnExpiring += r.subDistArnExpiring;
+      totals.subDistEuinExpiring += r.subDistEuinExpiring;
     } catch (err: any) {
       console.error(`[daily-ops-scanner] tenant ${tenantId} failed:`, err.message);
       failed.push(tenantId);

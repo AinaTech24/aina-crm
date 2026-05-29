@@ -99,6 +99,12 @@ export const leads = pgTable(
     /** Optional referral chain — populated when source = 'existing_client' or 'referral' */
     referredByInvestorId: uuid("referred_by_investor_id"),
     referredByName: text("referred_by_name"),
+    /**
+     * When sourced via a sub-distributor / channel partner — drives
+     * commission attribution at conversion. Nullable; FK added in
+     * migration 0019.
+     */
+    subDistributorId: uuid("sub_distributor_id"),
 
     ownerId: uuid("owner_id").references(() => users.id),
     lastContactAt: timestamp("last_contact_at", { withTimezone: true }),

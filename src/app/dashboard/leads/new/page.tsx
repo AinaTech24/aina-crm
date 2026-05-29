@@ -6,6 +6,7 @@ import Link from "next/link";
 import { ChevronLeft, Sparkles, Loader2 } from "lucide-react";
 import { InvestorLookup } from "@/components/common/InvestorLookup";
 import { RmSelector } from "@/components/common/RmSelector";
+import { SubDistributorLookup } from "@/components/common/SubDistributorLookup";
 
 /** Sources that require / suggest linking an existing client as the referrer. */
 const REFERRAL_SOURCES = new Set(["referral", "existing_client"]);
@@ -23,6 +24,8 @@ export default function NewLeadPage() {
     referredByInvestorId: "" as string | null | "",
     referredByName: "" as string | null | "",
     ownerId: "" as string | null | "",
+    subDistributorId: "" as string | null | "",
+    subDistributorName: "" as string | null | "",
   });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -42,6 +45,12 @@ export default function NewLeadPage() {
       // When ownerId is unset the API auto-assigns via round-robin.
       if (!form.ownerId) {
         delete payload.ownerId;
+      }
+      // Strip the displayName-only field (it's UI helper, not a column);
+      // omit subDistributorId if not picked.
+      delete payload.subDistributorName;
+      if (!form.subDistributorId) {
+        delete payload.subDistributorId;
       }
       const res = await fetch("/api/leads", {
         method: "POST",
@@ -160,6 +169,33 @@ export default function NewLeadPage() {
             </p>
           </div>
         )}
+
+        <div>
+          <div className="text-xs font-medium mb-1">
+            Sub-distributor
+            <span className="ml-1 text-[10px] text-muted-foreground font-normal">
+              · optional · channel partner credit
+            </span>
+          </div>
+          <SubDistributorLookup
+            value={form.subDistributorId || null}
+            displayName={form.subDistributorName || null}
+            onSelect={(id, name) =>
+              setForm((s) => ({
+                ...s,
+                subDistributorId: id,
+                subDistributorName: name,
+              }))
+            }
+            onClear={() =>
+              setForm((s) => ({ ...s, subDistributorId: "", subDistributorName: "" }))
+            }
+          />
+          <p className="text-[10px] text-muted-foreground mt-1">
+            Attribute this lead to a channel partner. On conversion, their
+            commission split applies in the brokerage reconciler.
+          </p>
+        </div>
 
         <div>
           <div className="text-xs font-medium mb-1">

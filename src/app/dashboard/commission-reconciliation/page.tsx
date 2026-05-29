@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { sql } from "drizzle-orm";
-import { Coins, AlertTriangle, TrendingDown, TrendingUp } from "lucide-react";
+import { Coins, AlertTriangle, TrendingDown, TrendingUp, HeartHandshake } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { formatINR } from "@/lib/utils";
 import { ReconcileButton } from "@/components/commission/ReconcileButton";
+import { computeSubDistributorPayouts } from "@/lib/commission/sub_distributor_payouts";
 
 const STATUS_COLORS: Record<string, string> = {
   pending: "bg-gray-50 text-gray-700",
@@ -58,11 +59,19 @@ export default async function CommissionReconciliationPage({
       SELECT DISTINCT period FROM commission_records ORDER BY period DESC LIMIT 24
     `);
 
+    // Sub-distributor payouts due for the same period.
+    const subDistPayouts = await computeSubDistributorPayouts(
+      tx,
+      session.tenantId,
+      period
+    );
+
     return {
       rows: rows.rows as any[],
       stats: stats.rows[0] as any,
       ytd: ytd.rows[0] as any,
       availablePeriods: (availablePeriods.rows as any[]).map((r) => r.period),
+      subDistPayouts,
     };
   });
 
@@ -174,6 +183,90 @@ export default async function CommissionReconciliationPage({
           </table>
         )}
       </div>
+
+      {/* Sub-distributor payouts due (period) */}
+      {data.subDistPayouts.length > 0 && (
+        <div className="card-surface p-5 space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="font-semibold text-base flex items-center gap-2">
+                <HeartHandshake className="size-4 text-violet-600" />
+                Sub-distributor payouts due — {period}
+              </h2>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Computed from this period's blended trail rate × each
+                partner's attributed AUM × their commission split %.
+                Estimate — confirm with the AMC payout before disbursing.
+              </p>
+            </div>
+            <div className="text-right">
+              <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                Total payable
+              </div>
+              <div className="text-lg font-semibold text-violet-700">
+                {formatINR(
+                  data.subDistPayouts.reduce(
+                    (s, r) => s + r.estimatedPartnerShare,
+                    0
+                  )
+                )}
+              </div>
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs min-w-[860px]">
+              <thead className="bg-slate-50 text-slate-600">
+                <tr>
+                  <th className="px-3 py-2 text-left">Partner</th>
+                  <th className="px-3 py-2 text-left">ARN</th>
+                  <th className="px-3 py-2 text-right">Clients</th>
+                  <th className="px-3 py-2 text-right">Attributed AUM</th>
+                  <th className="px-3 py-2 text-right">Split %</th>
+                  <th className="px-3 py-2 text-right">Est. monthly trail</th>
+                  <th className="px-3 py-2 text-right">Partner share</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.subDistPayouts.map((p) => (
+                  <tr key={p.subDistributorId} className="border-t">
+                    <td className="px-3 py-2">
+                      <Link
+                        href={`/dashboard/sub-distributors/${p.subDistributorId}`}
+                        className="font-medium hover:underline"
+                      >
+                        {p.name}
+                      </Link>
+                      {p.code && (
+                        <div className="text-[10px] text-muted-foreground font-mono">
+                          {p.code}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 font-mono">
+                      {p.arnNumber ?? "—"}
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      {p.attributedInvestorCount}
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      {formatINR(p.attributedAum)}
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      {p.commissionSplitPct.toFixed(2)}%
+                    </td>
+                    <td className="px-3 py-2 text-right text-muted-foreground">
+                      {formatINR(p.estimatedMonthlyTrail)}
+                    </td>
+                    <td className="px-3 py-2 text-right font-semibold text-violet-700">
+                      {formatINR(p.estimatedPartnerShare)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       <div className="border rounded-lg bg-blue-50 border-blue-200 p-4 text-sm text-blue-900">
         <strong>How it works:</strong> The reconciler pulls payouts from CAMS / KFintech distributor feeds
