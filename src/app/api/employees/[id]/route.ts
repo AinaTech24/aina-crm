@@ -18,6 +18,7 @@ import { users } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
+import { offboardUser, type OffboardSummary } from "@/lib/offboarding";
 
 export const dynamic = "force-dynamic";
 
@@ -88,7 +89,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const body = parse.data;
     const meta = clientMetaFromHeaders(req.headers);
 
-    const updated = await withTenant(session.tenantId, async (tx) => {
+    const result = await withTenant(session.tenantId, async (tx) => {
       const [existing] = await tx.select().from(users).where(eq(users.id, id));
       if (!existing) return null;
 
@@ -123,11 +124,28 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         after: next,
         ...meta,
       });
-      return next;
+
+      // Run the cascade only on the actual transition into offboarded —
+      // skip the work if the user was already offboarded (idempotent
+      // PATCHes shouldn't re-create the "redistribute clients" task).
+      let cascade: OffboardSummary | null = null;
+      if (
+        body.status === "offboarded" &&
+        existing.status !== "offboarded"
+      ) {
+        cascade = await offboardUser({
+          tx,
+          tenantId: session.tenantId,
+          userId: id,
+          actorUserId: session.userId,
+        });
+      }
+
+      return { user: next, cascade };
     });
 
-    if (!updated) return NextResponse.json({ error: "Not found" }, { status: 404 });
-    return NextResponse.json({ user: updated });
+    if (!result) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    return NextResponse.json(result);
   } catch (err: any) {
     return handleApiError(err);
   }
@@ -140,7 +158,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     const { id } = await params;
     const meta = clientMetaFromHeaders(req.headers);
 
-    const updated = await withTenant(session.tenantId, async (tx) => {
+    const result = await withTenant(session.tenantId, async (tx) => {
       const [existing] = await tx.select().from(users).where(eq(users.id, id));
       if (!existing) return null;
       const [next] = await tx
@@ -158,11 +176,23 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
         after: next,
         ...meta,
       });
-      return next;
+
+      // Only cascade on actual transition.
+      let cascade: OffboardSummary | null = null;
+      if (existing.status !== "offboarded") {
+        cascade = await offboardUser({
+          tx,
+          tenantId: session.tenantId,
+          userId: id,
+          actorUserId: session.userId,
+        });
+      }
+
+      return { user: next, cascade };
     });
 
-    if (!updated) return NextResponse.json({ error: "Not found" }, { status: 404 });
-    return NextResponse.json({ user: updated });
+    if (!result) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    return NextResponse.json(result);
   } catch (err: any) {
     return handleApiError(err);
   }
