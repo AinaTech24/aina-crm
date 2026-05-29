@@ -158,6 +158,7 @@ const NAV: NavSection[] = [
     title: "Admin",
     items: [
       { href: "/dashboard/billing", label: "Billing", icon: CreditCard, roles: ["owner"] },
+      { href: "/dashboard/settings/firm-profile", label: "Firm Profile", icon: ClipboardCheck, roles: ["owner", "compliance"] },
       { href: "/dashboard/settings", label: "Settings", icon: Settings, roles: ["owner"] },
     ],
   },

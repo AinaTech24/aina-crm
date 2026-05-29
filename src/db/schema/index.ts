@@ -46,5 +46,6 @@ export * from "./sub_distributors";
 export * from "./legal_registrations";
 export * from "./amc_empanelments";
 export * from "./product_offerings";
+export * from "./firm_directors";
 
 

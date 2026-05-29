@@ -42,6 +42,65 @@ const Body = z.object({
       country: z.string().optional(),
     })
     .optional(),
+  // Network FP "Firm Details" expansion (migration 0023)
+  legalStructure: z
+    .enum([
+      "sole_proprietorship",
+      "partnership",
+      "llp",
+      "private_limited",
+      "public_limited",
+      "huf",
+      "one_person_company",
+      "other",
+    ])
+    .nullable()
+    .optional(),
+  incorporationDate: z.string().nullable().optional(),
+  panNumber: z
+    .string()
+    .regex(/^[A-Z]{5}\d{4}[A-Z]$/i, "PAN format: ABCDE1234F")
+    .nullable()
+    .optional()
+    .or(z.literal("")),
+  tan: z
+    .string()
+    .regex(/^[A-Z]{4}\d{5}[A-Z]$/i, "TAN format: ABCD12345E")
+    .nullable()
+    .optional()
+    .or(z.literal("")),
+  gstNumber: z.string().max(20).nullable().optional().or(z.literal("")),
+  nationalDistributorCode: z.string().max(40).nullable().optional(),
+  primaryDin: z
+    .string()
+    .regex(/^\d{8}$/, "DIN format: 8 digits")
+    .nullable()
+    .optional()
+    .or(z.literal("")),
+  auditorName: z.string().max(200).nullable().optional(),
+  auditorFrn: z.string().max(40).nullable().optional(),
+  bankAccount: z
+    .object({
+      bankName: z.string().optional(),
+      accountHolder: z.string().optional(),
+      accountNumber: z.string().optional(),
+      ifsc: z.string().optional(),
+      branch: z.string().optional(),
+      accountType: z.enum(["current", "savings", "od", "cc"]).optional(),
+    })
+    .nullable()
+    .optional(),
+  authorizedSignatory: z
+    .object({
+      name: z.string().optional(),
+      designation: z.string().optional(),
+      email: z.string().email().optional().or(z.literal("")),
+      phone: z.string().optional(),
+      panNumber: z.string().optional(),
+      din: z.string().optional(),
+    })
+    .nullable()
+    .optional(),
 });
 
 export async function PATCH(req: NextRequest) {

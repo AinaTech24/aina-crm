@@ -48,6 +48,48 @@ export const tenants = pgTable(
     currentSoftwareUsed: text("current_software_used"),
     onboardingNotes: text("onboarding_notes"),
 
+    /** Firm profile — Network FP "1.6 Firm Details" template parity. */
+    legalStructure: text("legal_structure", {
+      enum: [
+        "sole_proprietorship",
+        "partnership",
+        "llp",
+        "private_limited",
+        "public_limited",
+        "huf",
+        "one_person_company",
+        "other",
+      ],
+    }),
+    incorporationDate: date("incorporation_date"),
+    /** TAN — Tax deduction and collection account number. Distinct from PAN. */
+    tan: text("tan"),
+    /** National Distributor Code — issued by AMFI to multi-AMC distributors. */
+    nationalDistributorCode: text("national_distributor_code"),
+    /** Primary director's DIN (full director list is in firm_directors). */
+    primaryDin: text("primary_din"),
+    /** Statutory auditor. */
+    auditorName: text("auditor_name"),
+    auditorFrn: text("auditor_frn"), // Firm Registration Number from ICAI
+    /** Firm bank account for AMC payouts / refunds. */
+    bankAccount: jsonb("bank_account").$type<{
+      bankName?: string;
+      accountHolder?: string;
+      accountNumber?: string;
+      ifsc?: string;
+      branch?: string;
+      accountType?: "current" | "savings" | "od" | "cc";
+    }>(),
+    /** Authorized signatory — board-appointed person for AMC + SEBI docs. */
+    authorizedSignatory: jsonb("authorized_signatory").$type<{
+      name?: string;
+      designation?: string;
+      email?: string;
+      phone?: string;
+      panNumber?: string;
+      din?: string;
+    }>(),
+
     /** Public-facing */
     publicWebsiteSlug: text("public_website_slug"), // for white-label landing page
     isWhiteLabel: boolean("is_white_label").default(false),
