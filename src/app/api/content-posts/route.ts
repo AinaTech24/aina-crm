@@ -7,14 +7,16 @@ import { handleApiError } from "@/lib/api/error-handler";
 
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuid } from "uuid";
-import { desc } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
+import { scanCaption } from "@/lib/content/scan";
 import {
+  campaigns,
   contentPosts,
   POST_PLATFORMS,
   POST_CONTENT_TYPES,
@@ -33,11 +35,12 @@ const CreateBody = z.object({
   creativeFiles: z
     .array(
       z.object({
-        name: z.string(),
-        url: z.string(),
+        name: z.string().max(300),
+        url: z.string().max(2000),
         kind: z.enum(["image", "video", "doc"]).optional(),
       })
     )
+    .max(20)
     .optional(),
   complianceChecked: z.boolean().optional(),
   complianceNotes: z.string().max(1000).optional(),
@@ -52,8 +55,13 @@ const CreateBody = z.object({
 export async function GET() {
   try {
     const session = await requireSession();
+    requireCap(session.roles, "content_calendar.manage");
     const rows = await withTenant(session.tenantId, async (tx) =>
-      tx.select().from(contentPosts).orderBy(desc(contentPosts.contentDate))
+      tx
+        .select()
+        .from(contentPosts)
+        .where(eq(contentPosts.tenantId, session.tenantId))
+        .orderBy(desc(contentPosts.contentDate))
     );
     return NextResponse.json({ posts: rows });
   } catch (err: any) {
@@ -74,27 +82,28 @@ export async function POST(req: NextRequest) {
       );
     }
     const body = parse.data;
-    // Defensive: even on POST, refuse to set posted_status='posted' without both gates.
-    if (body.postedStatus === "posted") {
-      const okCompliance = body.complianceChecked === true;
-      const okApproval = body.approvalStatus === "approved";
-      if (!okCompliance || !okApproval) {
-        return NextResponse.json(
-          {
-            error:
-              "Cannot create a post in 'posted' state until compliance is checked and approval is granted.",
-            blockedBy: { compliance: !okCompliance, approval: !okApproval },
-          },
-          { status: 409 }
-        );
-      }
-    }
-
     const id = uuid();
     const clientMeta = clientMetaFromHeaders(req.headers);
 
+    // A post always starts UNGATED. Compliance check, approval, and posting are
+    // deliberate, audited later steps — you cannot create-and-publish, nor
+    // self-pre-approve, in one shot (the compliance + approval gates would be
+    // meaningless otherwise). Client-supplied approved/posted/checked are dropped.
+    const startApproval = body.approvalStatus === "approved" ? "pending" : (body.approvalStatus ?? "pending");
+
+    let scan: Awaited<ReturnType<typeof scanCaption>> = null;
     await withTenant(session.tenantId, async (tx) => {
-      const now = new Date();
+      if (body.campaignId) {
+        const [c] = await tx
+          .select({ id: campaigns.id })
+          .from(campaigns)
+          .where(and(eq(campaigns.id, body.campaignId), eq(campaigns.tenantId, session.tenantId)))
+          .limit(1);
+        if (!c) throw Object.assign(new Error("Linked campaign not found in this tenant."), { status: 400 });
+      }
+
+      scan = await scanCaption(tx, session.tenantId, body.caption);
+
       await tx.insert(contentPosts).values({
         id,
         tenantId: session.tenantId,
@@ -105,16 +114,17 @@ export async function POST(req: NextRequest) {
         topic: body.topic,
         caption: body.caption ?? null,
         creativeFiles: body.creativeFiles ?? [],
-        complianceChecked: body.complianceChecked ?? false,
-        complianceCheckedAt: body.complianceChecked ? now : null,
-        complianceCheckedByUserId: body.complianceChecked ? session.userId : null,
+        complianceChecked: false,
+        complianceCheckedAt: null,
+        complianceCheckedByUserId: null,
         complianceNotes: body.complianceNotes ?? null,
-        approvalStatus: body.approvalStatus ?? "pending",
-        approvedByUserId: body.approvalStatus === "approved" ? session.userId : null,
-        approvedAt: body.approvalStatus === "approved" ? now : null,
-        postedStatus: body.postedStatus ?? "not_posted",
-        postedAt: body.postedStatus === "posted" ? now : null,
-        postLink: body.postLink ?? null,
+        complianceScan: scan as any,
+        approvalStatus: startApproval,
+        approvedByUserId: null,
+        approvedAt: null,
+        postedStatus: "not_posted",
+        postedAt: null,
+        postLink: null,
         campaignId: body.campaignId ?? null,
         remarks: body.remarks ?? null,
         createdByUserId: session.userId,
@@ -126,16 +136,12 @@ export async function POST(req: NextRequest) {
         action: "content_post.create",
         entityType: "content_post",
         entityId: id,
-        after: {
-          platform: body.platform,
-          topic: body.topic,
-          contentDate: body.contentDate,
-        },
+        after: { platform: body.platform, topic: body.topic, contentDate: body.contentDate },
         ...clientMeta,
       });
     });
 
-    return NextResponse.json({ id }, { status: 201 });
+    return NextResponse.json({ id, complianceScan: scan }, { status: 201 });
   } catch (err: any) {
     return handleApiError(err);
   }

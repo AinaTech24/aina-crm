@@ -38,6 +38,14 @@ import {
 } from "@react-email/components";
 import { renderTemplateText } from "./tokens";
 
+/** Strip dangerous link protocols from token-resolved hrefs (a variable value
+ *  like `javascript:…` in a CTA url would otherwise become a live link). */
+function safeUrl(url: string): string {
+  const trimmed = (url ?? "").trim();
+  if (/^(javascript|data|vbscript):/i.test(trimmed)) return "#";
+  return trimmed;
+}
+
 interface EmailTemplateBody {
   subject: string;
   preheader?: string;
@@ -96,7 +104,7 @@ function renderBlock(block: EmailBlock, tokens: Record<string, string>, primary:
           </Text>
           {block.ctaText && block.ctaUrl && (
             <Button
-              href={renderTemplateText(block.ctaUrl, tokens)}
+              href={safeUrl(renderTemplateText(block.ctaUrl, tokens))}
               style={{
                 backgroundColor: primary,
                 color: "white",
@@ -125,7 +133,7 @@ function renderBlock(block: EmailBlock, tokens: Record<string, string>, primary:
       return (
         <Section key={Math.random()} style={{ textAlign: block.align ?? "center", padding: "16px 0" }}>
           <Button
-            href={renderTemplateText(block.url, tokens)}
+            href={safeUrl(renderTemplateText(block.url, tokens))}
             style={{
               backgroundColor: primary,
               color: "white",

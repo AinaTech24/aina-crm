@@ -43,6 +43,10 @@ import { leadWelcomeRecipe } from "./lead_welcome";
 import { proposalApprovedRequestDocsRecipe } from "./proposal_approved_request_docs";
 import { docsReceivedConvertRecipe } from "./docs_received_convert";
 import { opsCompletePortalWelcomeRecipe } from "./ops_complete_portal_welcome";
+import { insurancePremiumReminderRecipe } from "./insurance_premium_reminder";
+import { insuranceLapseRecoveryRecipe } from "./insurance_lapse_recovery";
+import { sipExpiryReminderRecipe } from "./sip_expiry_reminder";
+import { meetingConfirmationRecipe } from "./meeting_confirmation";
 
 export interface RecipeDef {
   key: string;
@@ -98,4 +102,8 @@ export const ALL_RECIPES: RecipeDef[] = [
   proposalApprovedRequestDocsRecipe,
   docsReceivedConvertRecipe,
   opsCompletePortalWelcomeRecipe,
+  insurancePremiumReminderRecipe,
+  insuranceLapseRecoveryRecipe,
+  sipExpiryReminderRecipe,
+  meetingConfirmationRecipe,
 ];

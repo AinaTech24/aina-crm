@@ -6,6 +6,7 @@ import { requireSession } from "@/lib/auth/session";
 import { formatDate } from "@/lib/utils";
 import { ResolutionEditor } from "@/components/complaints/ResolutionEditor";
 import { FilterBar } from "@/components/common/FilterBar";
+import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
 import { CustomViews } from "@/components/common/CustomViews";
 
 const STATUS_TONE: Record<string, string> = {
@@ -24,6 +25,14 @@ const PRIORITY_TONE: Record<string, string> = {
   low: "bg-gray-50 text-gray-700",
 };
 
+const CATEGORY_LABEL: Record<string, string> = {
+  service: "Service / TAT", mis_selling: "Mis-selling", transaction: "Transaction / order",
+  fee: "Fee / commission", kyc: "KYC / documents", communication: "Communication", other: "Other",
+};
+const SOURCE_LABEL: Record<string, string> = {
+  direct: "Direct", scores: "SCORES", amfi: "AMFI", amc: "AMC", email: "Email", phone: "Phone", walk_in: "Walk-in", other: "Other",
+};
+
 export const dynamic = "force-dynamic";
 
 export default async function ComplaintsPage({
@@ -37,10 +46,11 @@ export default async function ComplaintsPage({
   const statusFilter = (sp.status ?? "").split(",").filter(Boolean);
   const priorityFilter = (sp.priority ?? "").split(",").filter(Boolean);
   const categoryFilter = (sp.category ?? "").split(",").filter(Boolean);
+  const sourceFilter = (sp.source ?? "").split(",").filter(Boolean);
   const breachedOnly = sp.breached === "1";
 
   const data = await withTenant(session.tenantId, async (tx) => {
-    const filters: any[] = [sql`sr.type = 'complaint'`];
+    const filters: any[] = [sql`sr.type = 'complaint'`, sql`sr.tenant_id = ${session.tenantId}::uuid`];
     if (q) {
       filters.push(
         sql`(sr.ticket_no ILIKE ${`%${q}%`} OR sr.subject ILIKE ${`%${q}%`} OR sr.description ILIKE ${`%${q}%`} OR i.name ILIKE ${`%${q}%`})`
@@ -61,11 +71,18 @@ export default async function ComplaintsPage({
         sql`sr.sebi_category IN (${sql.join(categoryFilter.map((v) => sql`${v}`), sql`, `)})`
       );
     }
+    if (sourceFilter.length) {
+      filters.push(
+        sql`sr.complaint_source IN (${sql.join(sourceFilter.map((v) => sql`${v}`), sql`, `)})`
+      );
+    }
     if (breachedOnly) {
       filters.push(
         sql`(sr.status NOT IN ('resolved','closed') AND sr.sla_resolution_at < now())`
       );
     }
+    const dr = dateRangeCond(sp, "created", "sr.created_at");
+    if (dr) filters.push(dr);
     const whereSql = sql.join(filters, sql` AND `);
 
     const stats = await tx.execute(sql`
@@ -83,13 +100,13 @@ export default async function ComplaintsPage({
           1
         ) AS avg_resolution_days
       FROM service_requests
-      WHERE type = 'complaint'
+      WHERE tenant_id = ${session.tenantId}::uuid AND type = 'complaint'
     `);
     const s = stats.rows[0] as any;
 
     const rows = await tx.execute(sql`
       SELECT sr.id, sr.ticket_no, sr.investor_id, sr.subject, sr.description,
-             sr.sebi_category, sr.sebi_sub_category,
+             sr.sebi_category, sr.sebi_sub_category, sr.complaint_source, sr.scores_ref_no,
              sr.status, sr.priority, sr.assigned_to_user_id,
              sr.sla_resolution_at, sr.resolved_at, sr.escalated_at, sr.escalated_to_user_id,
              sr.resolution_notes,
@@ -130,10 +147,13 @@ export default async function ComplaintsPage({
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Link href="/dashboard/complaints/disclosure" className="btn-secondary text-xs">
+            <FileText className="size-3.5" /> Monthly disclosure
+          </Link>
           <Link href="/dashboard/reports/complaint_category" className="btn-secondary text-xs">
             <FileText className="size-3.5" /> Category report
           </Link>
-          <Link href="/dashboard/service-requests/new" className="btn-primary">
+          <Link href="/dashboard/service-requests/new?type=complaint" className="btn-primary">
             Log complaint
           </Link>
         </div>
@@ -189,6 +209,21 @@ export default async function ComplaintsPage({
               { value: "other", label: "Other" },
             ],
           },
+          {
+            type: "multi",
+            key: "source",
+            label: "Source",
+            options: [
+              { value: "direct", label: "Direct" },
+              { value: "scores", label: "SCORES" },
+              { value: "amfi", label: "AMFI" },
+              { value: "amc", label: "AMC" },
+              { value: "email", label: "Email" },
+              { value: "phone", label: "Phone" },
+              { value: "walk_in", label: "Walk-in" },
+            ],
+          },
+          dateRangeFilter("created", "Logged"),
         ]}
         rightSlot={
           <CustomViews
@@ -222,6 +257,7 @@ export default async function ComplaintsPage({
                   <th className="text-left py-2 font-medium">Client</th>
                   <th className="text-left py-2 font-medium">Date</th>
                   <th className="text-left py-2 font-medium">Category</th>
+                  <th className="text-left py-2 font-medium">Source</th>
                   <th className="text-left py-2 font-medium">Description</th>
                   <th className="text-left py-2 font-medium">Assigned to</th>
                   <th className="text-left py-2 font-medium">Priority</th>
@@ -242,7 +278,9 @@ export default async function ComplaintsPage({
                       r.breached ? "bg-rose-50/30" : ""
                     }`}
                   >
-                    <td className="px-4 py-3 font-mono text-xs whitespace-nowrap">{r.ticket_no}</td>
+                    <td className="px-4 py-3 font-mono text-xs whitespace-nowrap">
+                      <Link href={`/dashboard/service-requests/${r.id}`} className="hover:underline text-brand-cyan-deep">{r.ticket_no}</Link>
+                    </td>
                     <td className="py-3 whitespace-nowrap">
                       {r.investor_id ? (
                         <Link href={`/dashboard/investors/${r.investor_id}`} className="hover:underline font-medium">
@@ -257,9 +295,15 @@ export default async function ComplaintsPage({
                       {formatDate(r.created_at)}
                     </td>
                     <td className="py-3 text-xs">
-                      <div className="font-medium">{r.sebi_category ?? "Other"}</div>
+                      <div className="font-medium">{CATEGORY_LABEL[r.sebi_category] ?? r.sebi_category ?? "Other"}</div>
                       {r.sebi_sub_category && (
                         <div className="text-[11px] text-muted-foreground">{r.sebi_sub_category}</div>
+                      )}
+                    </td>
+                    <td className="py-3 text-xs whitespace-nowrap">
+                      {SOURCE_LABEL[r.complaint_source] ?? "—"}
+                      {r.scores_ref_no && (
+                        <div className="text-[10px] text-muted-foreground font-mono">{r.scores_ref_no}</div>
                       )}
                     </td>
                     <td className="py-3 text-xs max-w-[220px]">

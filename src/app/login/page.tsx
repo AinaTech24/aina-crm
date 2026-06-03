@@ -3,7 +3,7 @@
 import { useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Zap, Loader2, ArrowRight } from "lucide-react";
+import { Zap, Loader2, ArrowRight, ShieldCheck } from "lucide-react";
 
 function LoginForm() {
   const router = useRouter();
@@ -13,6 +13,9 @@ function LoginForm() {
   const [password, setPassword] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // 2FA step: set once the password leg returns a challenge.
+  const [challenge, setChallenge] = useState<string | null>(null);
+  const [twoFaCode, setTwoFaCode] = useState("");
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -24,9 +27,35 @@ function LoginForm() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
+      const j = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
         setErr(j.error ?? "Sign-in failed");
+        return;
+      }
+      if (j.require2fa) {
+        // Password OK — switch to the second-factor step.
+        setChallenge(j.challenge);
+        return;
+      }
+      router.push(next);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submit2fa(e: React.FormEvent) {
+    e.preventDefault();
+    setErr(null);
+    setBusy(true);
+    try {
+      const res = await fetch("/api/auth/2fa/verify", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ challenge, code: twoFaCode.trim() }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setErr(j.error ?? "Verification failed");
         return;
       }
       router.push(next);
@@ -90,10 +119,67 @@ function LoginForm() {
             <span>MFD Growth OS</span>
           </div>
 
-          <h1 className="text-3xl font-bold tracking-tight">Welcome back</h1>
+          <h1 className="text-3xl font-bold tracking-tight">
+            {challenge ? "Two-factor verification" : "Welcome back"}
+          </h1>
           <p className="text-muted-foreground mt-1.5 text-sm">
-            Sign in to your firm's workspace
+            {challenge
+              ? "Enter the 6-digit code from your authenticator app"
+              : "Sign in to your firm's workspace"}
           </p>
+
+          {/* 2FA step */}
+          {challenge ? (
+            <form onSubmit={submit2fa} className="mt-8 space-y-4">
+              <div>
+                <label className="text-xs font-semibold text-foreground/80 block mb-1.5">
+                  Authentication code
+                </label>
+                <input
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  autoFocus
+                  value={twoFaCode}
+                  onChange={(e) => setTwoFaCode(e.target.value.replace(/[^\dA-Za-z-]/g, "").slice(0, 11))}
+                  placeholder="123456"
+                  className="input-base text-center text-lg tracking-[0.3em] font-mono"
+                  required
+                />
+                <p className="text-[11px] text-muted-foreground mt-1.5">
+                  Lost your device? Enter one of your backup codes instead.
+                </p>
+              </div>
+
+              {err && (
+                <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+                  {err}
+                </div>
+              )}
+
+              <button disabled={busy} className="btn-primary w-full mt-2">
+                {busy ? (
+                  <>
+                    <Loader2 className="size-4 animate-spin" /> Verifying…
+                  </>
+                ) : (
+                  <>
+                    <ShieldCheck className="size-4" /> Verify & sign in
+                  </>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setChallenge(null);
+                  setTwoFaCode("");
+                  setErr(null);
+                }}
+                className="text-xs text-muted-foreground hover:underline w-full text-center"
+              >
+                ← Back to sign in
+              </button>
+            </form>
+          ) : (
 
           <form onSubmit={submit} className="mt-8 space-y-4">
             <div>
@@ -144,6 +230,7 @@ function LoginForm() {
               )}
             </button>
           </form>
+          )}
 
           <div className="mt-6 pt-6 border-t border-border text-center text-sm text-muted-foreground">
             Don't have a workspace yet?{" "}

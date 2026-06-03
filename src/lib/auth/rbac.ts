@@ -105,6 +105,7 @@ export type Capability =
   | "template.edit"
   | "template.approve"
   | "campaign.send"
+  | "communication.send"
   | "content_calendar.manage"
   // Segments (audience lists for campaigns + workflow triggers)
   | "segments.view"
@@ -112,6 +113,8 @@ export type Capability =
   // Proposals (Mutual Fund / Insurance / PMS / AIF)
   | "proposal.view"
   | "proposal.write"
+  | "financial_plan.view"
+  | "financial_plan.manage"
   | "proposal.send"
   // Insurance policy register
   | "insurance.view"
@@ -121,12 +124,14 @@ export type Capability =
   | "compliance.edit"
   | "compliance.approve"
   | "risk_profile.manage"
+  | "goal.manage"
   | "consent.manage"
   | "sop.manage"
   // Reports
   | "reports.business"
   | "reports.team"
   | "reports.commission"
+  | "reports.manage"
   // Dashboards
   | "dashboard.view.owner"
   | "dashboard.view.compliance"
@@ -156,7 +161,7 @@ const MATRIX: Record<Capability, Role[]> = {
   // Leads — marketing + owner own pipeline; RM works assigned.
   "lead.view.all": ["marketing", "branch_head", "compliance"],
   "lead.view.assigned": ["rm"],
-  "lead.edit.all": ["marketing"],
+  "lead.edit.all": ["marketing", "branch_head"],
   "lead.edit.assigned": ["rm"],
 
   // Transactions — execute by back_office + RM; everyone in ops/compliance views.
@@ -188,16 +193,20 @@ const MATRIX: Record<Capability, Role[]> = {
   "document.upload": ["back_office", "ops", "rm", "compliance", "team_member", "branch_head"],
   "document.delete": ["compliance"],
 
-  // Workflows — owner publishes; ops/marketing/compliance can view + draft.
+  // Workflows — ops/compliance draft, owner + compliance publish (publishing
+  // changes live automation, so it stays close to the compliance gate).
   "workflow.view": ["compliance", "marketing", "back_office", "ops"],
-  "workflow.edit": [],
-  "workflow.publish": [],
+  "workflow.edit": ["back_office", "ops", "compliance"],
+  "workflow.publish": ["compliance"],
 
   // Templates + campaigns + content calendar
   "template.view": ["marketing", "compliance"],
   "template.edit": ["marketing"],
   "template.approve": ["compliance"],
   "campaign.send": ["marketing"],
+  // Ad-hoc 1:1 client email (Compose) — the front-line + ops who actually
+  // correspond with clients; marketing already has campaign.send for bulk.
+  "communication.send": ["rm", "branch_head", "back_office", "ops", "marketing"],
   "content_calendar.manage": ["marketing"],
 
   // Segments (audience lists). Marketing builds them for campaigns;
@@ -208,6 +217,10 @@ const MATRIX: Record<Capability, Role[]> = {
   // Proposals — RM/back_office prepare, compliance reviews, owner sends.
   "proposal.view": ["rm", "branch_head", "back_office", "ops", "compliance", "marketing"],
   "proposal.write": ["rm", "branch_head", "back_office", "ops"],
+  // Financial plans are a distinct advisory deliverable — same role set as
+  // proposals so no one loses access, but a dedicated capability.
+  "financial_plan.view": ["rm", "branch_head", "back_office", "ops", "compliance", "marketing"],
+  "financial_plan.manage": ["rm", "branch_head", "back_office", "ops"],
   "proposal.send": ["rm", "branch_head"],
 
   // Insurance — RM + back-office maintain; compliance reads.
@@ -219,13 +232,24 @@ const MATRIX: Record<Capability, Role[]> = {
   "compliance.edit": ["compliance"],
   "compliance.approve": ["compliance"],
   "risk_profile.manage": ["compliance", "back_office", "ops", "rm"],
+  // Goal planning is an RM/back-office advisory task (distinct from risk
+  // profiling). branch_head supervises; compliance kept for back-compat with
+  // the prior risk_profile.manage gate so no one loses existing access.
+  "goal.manage": ["rm", "branch_head", "back_office", "ops", "compliance"],
   "consent.manage": ["compliance", "back_office", "ops"],
   "sop.manage": ["compliance"],
 
   // Reports
   "reports.business": ["compliance", "branch_head"],
   "reports.team": ["branch_head"],
-  "reports.commission": [],
+  // Commission/brokerage MIS — the back-office team that runs reconciliation,
+  // branch heads (team payout view) and compliance. Owner sees all via the
+  // hard-case in can(). RMs are intentionally excluded (firm-level economics).
+  "reports.commission": ["back_office", "ops", "branch_head", "compliance"],
+  // Custom report builder — can compose reports over any catalog field
+  // (incl. PII columns), so it's limited to management/back-office roles.
+  // Owner wins via can(). RM/ops excluded until per-field gating lands.
+  "reports.manage": ["branch_head", "compliance", "back_office"],
 
   // Dashboards
   "dashboard.view.owner": ["compliance", "branch_head"],
@@ -234,12 +258,51 @@ const MATRIX: Record<Capability, Role[]> = {
   "dashboard.view.ops": ["back_office", "ops"],
   "dashboard.view.rm": ["rm"],
 
-  // Org admin — owner only (no other role)
+  // Org admin. User management + billing stay owner-only by design (account
+  // ownership boundary) — owner is granted them via the hard-case in can().
+  // Master lookup lists are operational data the back-office/compliance team
+  // legitimately maintains, so they're delegable.
   "settings.users": [],
   "settings.billing": [],
-  "settings.masters": [],
+  "settings.masters": ["compliance", "back_office", "ops"],
   "settings.security": ["compliance"],
 };
+
+/**
+ * Roles a tenant admin is allowed to GRANT to a team member (invite / edit).
+ *
+ * CRITICAL: this excludes the platform roles (`platform_admin`,
+ * `platform_support`) and `investor`. A tenant must never be able to mint a
+ * platform_admin — that role bypasses tenant RLS via withPlatformAdmin() and
+ * would be a cross-tenant superuser escalation. Always validate inbound role
+ * arrays against this set before persisting them.
+ */
+export const ASSIGNABLE_ROLES: Role[] = [
+  "owner",
+  "rm",
+  "back_office",
+  "ops",
+  "marketing",
+  "compliance",
+  "branch_head",
+  "team_member",
+];
+
+const ASSIGNABLE_ROLE_SET = new Set<string>(ASSIGNABLE_ROLES);
+
+/** True iff every role in the list is a tenant-assignable role. */
+export function areAssignableRoles(roles: string[] | undefined | null): boolean {
+  return Array.isArray(roles) && roles.length > 0 && roles.every((r) => ASSIGNABLE_ROLE_SET.has(r));
+}
+
+/** Runtime list of every tenant capability (the keys of MATRIX). */
+export const ALL_CAPABILITIES = Object.keys(MATRIX) as Capability[];
+const CAPABILITY_SET = new Set<string>(ALL_CAPABILITIES);
+
+/** True iff every entry is a known capability (used to validate custom grants). */
+export function areKnownCapabilities(caps: string[] | undefined | null): boolean {
+  return Array.isArray(caps) && caps.every((c) => CAPABILITY_SET.has(c));
+}
 
 /**
  * Platform-level (AINA) capabilities. Held only by `platform_admin`.
@@ -273,18 +336,23 @@ export const PLATFORM_CAPS: PlatformCapability[] = [
   "platform.staff.manage",
 ];
 
-/** Returns true if the caller has the capability via any of their roles or custom permissions override. */
+/** Returns true if the caller has the capability via any of their roles OR a custom permission grant. */
 export function can(userRoles: string[] | undefined, cap: Capability, userPermissions?: string[] | null): boolean {
   if (!userRoles?.length) return false;
   if (userRoles.includes("owner")) return true; // owner always wins
-  
-  // If custom permissions override is specified, check that list instead of default roles
-  if (userPermissions && userPermissions.length > 0) {
-    return userPermissions.includes(cap);
-  }
-  
+
+  // Role-matrix grant.
   const allowed = MATRIX[cap] ?? [];
-  return userRoles.some((r) => allowed.includes(r as Role));
+  if (userRoles.some((r) => allowed.includes(r as Role))) return true;
+
+  // Custom permissions AUGMENT the role matrix — they are additive grants, not
+  // a replacement allow-list. (The old code REPLACED: giving a back-office user
+  // one extra custom permission silently stripped every capability their role
+  // already had. That was a privilege-loss bug, not a feature.) To RESTRICT a
+  // user below their role, change their role — don't rely on this list.
+  if (userPermissions?.includes(cap)) return true;
+
+  return false;
 }
 
 /** Throws a 403-shaped error if the caller is not authorised. */

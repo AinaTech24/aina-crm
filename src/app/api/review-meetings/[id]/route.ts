@@ -14,7 +14,7 @@ import { handleApiError } from "@/lib/api/error-handler";
 
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuid } from "uuid";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
@@ -22,7 +22,14 @@ import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { autoAdvance, resolveLeadIdForInvestor } from "@/lib/blueprints/auto-advance";
-import { reviewMeetings, investors, tasks, REVIEW_MEETING_STATUSES } from "@/db/schema";
+import {
+  reviewMeetings,
+  investors,
+  leads,
+  tasks,
+  REVIEW_MEETING_STATUSES,
+  REVIEW_MEETING_OUTCOMES,
+} from "@/db/schema";
 
 export const dynamic = "force-dynamic";
 
@@ -53,6 +60,7 @@ const Attendee = z.object({
 
 const Patch = z.object({
   status: z.enum(REVIEW_MEETING_STATUSES).optional(),
+  subject: z.string().max(300).optional(),
   meetingDate: z.string().optional(),
   meetingMode: z.string().optional(),
   locationOrLink: z.string().optional(),
@@ -64,6 +72,11 @@ const Patch = z.object({
     .array(z.object({ name: z.string(), url: z.string(), size: z.number().optional() }))
     .optional(),
   nextReviewDate: z.string().optional(),
+  /** Post-meeting outcome — drives the lead-to-client funnel. */
+  outcome: z.enum(REVIEW_MEETING_OUTCOMES).optional(),
+  outcomeNotes: z.string().max(2000).optional(),
+  /** Reason captured when the meeting date is moved. */
+  rescheduleReason: z.string().max(500).optional(),
 });
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -80,7 +93,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const clientMeta = clientMetaFromHeaders(req.headers);
 
     const result = await withTenant(session.tenantId, async (tx) => {
-      const before = (await tx.select().from(reviewMeetings).where(eq(reviewMeetings.id, id)).limit(1))[0];
+      const before = (await tx.select().from(reviewMeetings).where(and(eq(reviewMeetings.id, id), eq(reviewMeetings.tenantId, session.tenantId))).limit(1))[0];
       if (!before) return null;
 
       const patch: any = { ...body, updatedAt: new Date() };
@@ -92,7 +105,54 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         patch.actualEndAt = new Date();
       }
 
-      await tx.update(reviewMeetings).set(patch).where(eq(reviewMeetings.id, id));
+      // ─── Reschedule hygiene ────────────────────────────────────────────
+      // Moving the meeting date (without completing it) is a reschedule:
+      // bump the counter and move the existing T-1 reminder task to the new
+      // date instead of leaving a stale "meeting tomorrow" nag.
+      const newDate = body.meetingDate ? new Date(body.meetingDate) : null;
+      const dateChanged =
+        !becomingCompleted &&
+        newDate != null &&
+        newDate.getTime() !== new Date(before.meetingDate).getTime();
+      if (dateChanged) {
+        patch.rescheduleCount = (before.rescheduleCount ?? 0) + 1;
+        if (before.reminderTaskId) {
+          await tx
+            .update(tasks)
+            .set({
+              dueAt: new Date(newDate!.getTime() - 24 * 60 * 60 * 1000),
+              status: "open",
+              updatedAt: new Date(),
+            } as any)
+            .where(eq(tasks.id, before.reminderTaskId));
+        }
+      }
+
+      await tx.update(reviewMeetings).set(patch).where(and(eq(reviewMeetings.id, id), eq(reviewMeetings.tenantId, session.tenantId)));
+
+      // ─── Outcome → funnel ──────────────────────────────────────────────
+      // The post-meeting outcome drives the lead's journey: ready → won,
+      // not_interested → not_qualified, more_info/not_ready → re-nurture
+      // (resurface in 7 days). Investor-side meetings just store the outcome.
+      if (body.outcome && body.outcome !== before.outcome && before.leadId) {
+        if (body.outcome === "ready") {
+          await autoAdvance(tx, session.tenantId, before.leadId, "lead.won", {
+            remarks: "Auto: meeting outcome = ready to proceed.",
+          });
+        } else if (body.outcome === "not_interested") {
+          await autoAdvance(tx, session.tenantId, before.leadId, "lead.not_qualified", {
+            remarks: "Auto: meeting outcome = not interested.",
+          });
+        } else if (body.outcome === "more_info" || body.outcome === "not_ready") {
+          await tx
+            .update(leads)
+            .set({
+              nextFollowUpAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+              updatedAt: new Date(),
+            } as any)
+            .where(and(eq(leads.id, before.leadId), eq(leads.tenantId, session.tenantId)));
+        }
+      }
 
       // ─── Automation: propagate review dates to investor on completion ──
       if (becomingCompleted) {
@@ -115,7 +175,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
               lastContactAt: new Date(),
               updatedAt: new Date(),
             } as any)
-            .where(eq(investors.id, before.investorId));
+            .where(and(eq(investors.id, before.investorId), eq(investors.tenantId, session.tenantId)));
         }
 
         // ─── Smart blueprint advance — meeting completed ──────────────
@@ -173,7 +233,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
               followUpTaskCreated: "true",
               updatedAt: new Date(),
             } as any)
-            .where(eq(reviewMeetings.id, id));
+            .where(and(eq(reviewMeetings.id, id), eq(reviewMeetings.tenantId, session.tenantId)));
         }
 
         // ─── Automation: nudge the RM if notes are still empty ─────────
@@ -196,7 +256,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           await tx
             .update(reviewMeetings)
             .set({ notesReminderTaskId: notesTaskId } as any)
-            .where(eq(reviewMeetings.id, id));
+            .where(and(eq(reviewMeetings.id, id), eq(reviewMeetings.tenantId, session.tenantId)));
         }
       }
 
@@ -228,10 +288,20 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     await assertActiveLicense(session.tenantId, session.roles);
     const clientMeta = clientMetaFromHeaders(req.headers);
     await withTenant(session.tenantId, async (tx) => {
+      const before = (await tx.select().from(reviewMeetings).where(and(eq(reviewMeetings.id, id), eq(reviewMeetings.tenantId, session.tenantId))).limit(1))[0];
       await tx
         .update(reviewMeetings)
         .set({ status: "cancelled", updatedAt: new Date() } as any)
-        .where(eq(reviewMeetings.id, id));
+        .where(and(eq(reviewMeetings.id, id), eq(reviewMeetings.tenantId, session.tenantId)));
+
+      // Cancel the dangling T-1 reminder task so the RM isn't nagged about a
+      // meeting that's no longer happening.
+      if (before?.reminderTaskId) {
+        await tx
+          .update(tasks)
+          .set({ status: "cancelled", updatedAt: new Date() } as any)
+          .where(eq(tasks.id, before.reminderTaskId));
+      }
       await recordAudit(tx, {
         tenantId: session.tenantId,
         actorUserId: session.userId,

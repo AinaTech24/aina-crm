@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { ChevronLeft } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { segments, segmentMemberships } from "@/db/schema";
@@ -13,13 +13,15 @@ export default async function SegmentDetailPage({ params }: { params: Promise<{ 
   const { id } = await params;
   const session = await requireSession();
   const data = await withTenant(session.tenantId, async (tx) => {
-    const seg = (await tx.select().from(segments).where(eq(segments.id, id)).limit(1))[0];
+    const seg = (await tx.select().from(segments).where(and(eq(segments.id, id), eq(segments.tenantId, session.tenantId))).limit(1))[0];
     if (!seg) return null;
     const members = await tx.execute(sql`
       SELECT i.id, i.name, i.pan, i.segment_tag, i.aum, sm.added_at
       FROM segment_memberships sm
-      JOIN investors i ON i.id = sm.subject_id
-      WHERE sm.segment_id = ${id} AND sm.removed_at IS NULL
+      JOIN investors i ON i.id = sm.subject_id AND i.tenant_id = ${session.tenantId}::uuid
+      WHERE sm.segment_id = ${id}::uuid 
+        AND sm.tenant_id = ${session.tenantId}::uuid
+        AND sm.removed_at IS NULL
       ORDER BY sm.added_at DESC LIMIT 200
     `);
     return { seg, members: members.rows as any[] };

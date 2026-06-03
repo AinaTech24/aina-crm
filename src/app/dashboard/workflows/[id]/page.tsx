@@ -5,7 +5,7 @@ import { ChevronLeft } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { workflows, workflowVersions, workflowRuns } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
-import { WorkflowEditor } from "@/components/workflow/WorkflowEditor";
+import { WorkflowEditor } from "@/components/workflow/WorkflowEditorLazy";
 
 export const dynamic = "force-dynamic";
 

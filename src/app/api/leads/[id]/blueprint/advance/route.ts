@@ -18,12 +18,22 @@ import { handleApiError } from "@/lib/api/error-handler";
 
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { sql, eq } from "drizzle-orm";
+import { sql, eq, and } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { require as requireCap } from "@/lib/auth/rbac";
+import { requireAny } from "@/lib/auth/rbac";
+import { assertActiveLicense } from "@/lib/auth/license";
+import { clientMetaFromHeaders } from "@/lib/audit";
 import { transitionTo } from "@/lib/blueprints/engine";
 import { leads } from "@/db/schema";
+import { loadEditableLead } from "@/lib/leads/access";
+import {
+  normalizeEmail,
+  normalizeLeadSource,
+  normalizeLeadStage,
+  normalizePan,
+  normalizePhoneLast10,
+} from "@/lib/leads/normalize";
 
 export const dynamic = "force-dynamic";
 
@@ -44,34 +54,52 @@ const Body = z.object({
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "lead.edit.all");
+    // Capability gate (ownership is further enforced by loadEditableLead).
+    requireAny(session.roles, ["lead.edit.all", "lead.edit.assigned"], session.permissions);
+    await assertActiveLicense(session.tenantId, session.roles);
     const { id } = await params;
     const parsed = Body.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
       return NextResponse.json({ error: "invalid body", issues: parsed.error.issues }, { status: 400 });
     }
-    const { toStageKey, remarks, force, fields } = parsed.data;
+    const { remarks, force, fields } = parsed.data;
+
+    // Validate the target stage. normalizeLeadStage() falls back to "new" for
+    // unrecognized input — detect that silent coercion and 400, instead of
+    // (under force) stamping the lead backward to stage 1.
+    const toStageKey = normalizeLeadStage(parsed.data.toStageKey);
+    const rawKey = parsed.data.toStageKey.trim().toLowerCase().replace(/[\s-]+/g, "_");
+    if (toStageKey === "new" && rawKey !== "new") {
+      return NextResponse.json({ error: `Unknown stage "${parsed.data.toStageKey}"` }, { status: 400 });
+    }
+
+    const clientMeta = clientMetaFromHeaders(req.headers);
 
     const res = await withTenant(session.tenantId, async (tx) => {
+      await loadEditableLead(tx, session, id);
+
       // Update any required fields collected during the transition
-      if (fields && Object.keys(fields).length > 0) {
+      const safeFields = sanitizeLeadFields(fields);
+      if (Object.keys(safeFields).length > 0) {
         await tx
           .update(leads)
           .set({
-            ...fields,
+            ...safeFields,
             updatedAt: new Date(),
           })
-          .where(eq(leads.id, id));
+          .where(and(eq(leads.id, id), eq(leads.tenantId, session.tenantId)));
       }
 
       // Force mode — admin override — (e.g. Kanban drag). Skip the SOP graph
-      // and just move directly. No walk, no intermediate history rows.
+      // and just move directly. No walk, no intermediate history rows. The move
+      // is audit-logged (forced=true) by transitionTo.
       if (force) {
         return await transitionTo(tx, session.tenantId, id, toStageKey, {
           actorUserId: session.userId,
           actorRoles: session.roles ?? [],
           remarks: remarks ?? `Forced move via Kanban drag.`,
           systemBypass: true,
+          ...clientMeta,
         });
       }
 
@@ -80,8 +108,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         actorUserId: session.userId,
         actorRoles: session.roles ?? [],
         remarks,
+        ...clientMeta,
       });
       if (first.ok) return first;
+      // Don't let the multi-hop walk silently bypass a prerequisite / role /
+      // terminal block from the direct hop — surface it so the user fixes it.
+      if (first.code === "prereq" || first.code === "role" || first.code === "terminal") return first;
 
       // 2. No direct transition. If the target stage is forward in the
       //    canonical order, walk hop-by-hop along the **happy path**
@@ -125,14 +157,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
       // Walk forward along the happy path. Each hop uses systemBypass so
       // the intermediate transitions don't need to be defined in the graph.
+      // Intermediate hops suppress their on-enter/on-exit automations — a stage
+      // the lead only passes THROUGH shouldn't fire its recipes; only the final
+      // target stage does.
       let last = first;
       for (let i = currentIdx + 1; i <= targetIdx; i++) {
         const nextKey = HAPPY_PATH[i];
+        const isFinal = i === targetIdx;
         last = await transitionTo(tx, session.tenantId, id, nextKey, {
           actorUserId: session.userId,
           actorRoles: session.roles ?? [],
-          remarks: i === targetIdx ? remarks : `Auto-skipped en route to ${toStageKey}`,
+          remarks: isFinal ? remarks : `Auto-skipped en route to ${toStageKey}`,
           systemBypass: true,
+          suppressAutomations: !isFinal,
+          ...clientMeta,
         });
         if (!last.ok) return last;
       }
@@ -146,4 +184,29 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   } catch (err: any) {
     return handleApiError(err);
   }
+}
+
+function sanitizeLeadFields(fields?: Record<string, any>) {
+  if (!fields) return {};
+  const out: Record<string, any> = {};
+  if (typeof fields.name === "string") out.name = fields.name.trim();
+  if (typeof fields.email === "string") {
+    out.email = fields.email.trim() || null;
+    out.emailNormalized = normalizeEmail(fields.email);
+  }
+  if (typeof fields.phone === "string") {
+    out.phone = fields.phone.trim() || null;
+    out.phoneNormalized = normalizePhoneLast10(fields.phone);
+  }
+  if (typeof fields.pan === "string") out.pan = normalizePan(fields.pan);
+  if (typeof fields.city === "string") out.city = fields.city.trim() || null;
+  if (typeof fields.pincode === "string") out.pincode = fields.pincode.trim() || null;
+  if (typeof fields.intendedAmount === "string" || typeof fields.intendedAmount === "number") {
+    out.intendedAmount = String(fields.intendedAmount).trim() || null;
+  }
+  if (typeof fields.source === "string") out.source = normalizeLeadSource(fields.source);
+  if (typeof fields.nextFollowUpAt === "string") out.nextFollowUpAt = new Date(fields.nextFollowUpAt);
+  if (typeof fields.lostReason === "string") out.lostReason = fields.lostReason.trim() || null;
+  if (typeof fields.lostAt === "string") out.lostAt = new Date(fields.lostAt);
+  return out;
 }

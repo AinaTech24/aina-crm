@@ -7,11 +7,12 @@ import { handleApiError } from "@/lib/api/error-handler";
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { withPlatformAdmin, withSystem } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { isPlatformAdmin } from "@/lib/platform";
+import { assetVisibleTo } from "@/lib/content/asset-url";
 import {
   contentLibraryAssets,
   ASSET_CATEGORIES,
@@ -45,9 +46,16 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
   try {
     const session = await requireSession();
+    const platformAdmin = isPlatformAdmin(session.roles);
+    // withSystem bypasses RLS, so the visibility predicate is mandatory for
+    // non-admins — without it any user could read any tenant's private asset by id.
     const row = await withSystem(async (tx) =>
       (
-        await tx.select().from(contentLibraryAssets).where(eq(contentLibraryAssets.id, id)).limit(1)
+        await tx
+          .select()
+          .from(contentLibraryAssets)
+          .where(platformAdmin ? eq(contentLibraryAssets.id, id) : and(eq(contentLibraryAssets.id, id), assetVisibleTo(session.tenantId)))
+          .limit(1)
       )[0] ?? null
     );
     if (!row) return NextResponse.json({ error: "not found" }, { status: 404 });

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { RmSelector } from "@/components/common/RmSelector";
@@ -23,17 +23,44 @@ const TYPES = [
   { key: "other", label: "Other" },
 ];
 
+// Mirrors SEBI_COMPLAINT_CATEGORIES / COMPLAINT_SOURCES in db/schema (can't
+// import server schema into a client component).
+const SEBI_CATEGORIES = [
+  { value: "service", label: "Service / TAT" },
+  { value: "mis_selling", label: "Mis-selling" },
+  { value: "transaction", label: "Transaction / order" },
+  { value: "fee", label: "Fee / commission" },
+  { value: "kyc", label: "KYC / documents" },
+  { value: "communication", label: "Communication / statements" },
+  { value: "other", label: "Other" },
+];
+const COMPLAINT_SOURCES = [
+  { value: "direct", label: "Direct (client)" },
+  { value: "scores", label: "SCORES (SEBI)" },
+  { value: "amfi", label: "AMFI" },
+  { value: "amc", label: "AMC" },
+  { value: "email", label: "Email" },
+  { value: "phone", label: "Phone" },
+  { value: "walk_in", label: "Walk-in" },
+  { value: "other", label: "Other" },
+];
+
 export default function NewServiceRequestPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const initialType = searchParams.get("type") === "complaint" ? "complaint" : "kyc_update";
   const [investors, setInvestors] = useState<any[]>([]);
   const [form, setForm] = useState({
     investorId: "",
-    type: "kyc_update",
+    type: initialType,
     subject: "",
     description: "",
     priority: "normal",
     channel: "phone",
-    sebiCategory: "",
+    sebiCategory: "service",
+    sebiSubCategory: "",
+    complaintSource: "direct",
+    scoresRefNo: "",
     assignedToUserId: "",
   });
   const [busy, setBusy] = useState(false);
@@ -62,6 +89,12 @@ export default function NewServiceRequestPage() {
           priority: form.priority,
           channel: form.channel,
           sebiCategory: form.type === "complaint" ? form.sebiCategory || undefined : undefined,
+          sebiSubCategory: form.type === "complaint" ? form.sebiSubCategory || undefined : undefined,
+          complaintSource: form.type === "complaint" ? form.complaintSource || undefined : undefined,
+          scoresRefNo:
+            form.type === "complaint" && form.complaintSource === "scores"
+              ? form.scoresRefNo || undefined
+              : undefined,
           assignedToUserId: form.assignedToUserId || undefined,
         }),
       });
@@ -144,10 +177,34 @@ export default function NewServiceRequestPage() {
           </label>
         </div>
         {form.type === "complaint" && (
-          <label className="block">
-            <div className="text-xs font-medium mb-1">SEBI category</div>
-            <input value={form.sebiCategory} onChange={(e) => setForm({ ...form, sebiCategory: e.target.value })} placeholder="e.g. Mis-selling, Service delay" className="w-full border rounded-md px-3 py-2 text-sm bg-background" />
-          </label>
+          <div className="rounded-md border border-amber-200 bg-amber-50/40 p-3 space-y-3">
+            <div className="text-xs font-semibold text-amber-800">SEBI complaint register</div>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block">
+                <div className="text-xs font-medium mb-1">SEBI category<span className="text-rose-600">*</span></div>
+                <select value={form.sebiCategory} onChange={(e) => setForm({ ...form, sebiCategory: e.target.value })} className="w-full border rounded-md px-3 py-2 text-sm bg-background">
+                  {SEBI_CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+                </select>
+              </label>
+              <label className="block">
+                <div className="text-xs font-medium mb-1">Sub-category</div>
+                <input value={form.sebiSubCategory} onChange={(e) => setForm({ ...form, sebiSubCategory: e.target.value })} placeholder="e.g. Scheme switch, NAV dispute" className="w-full border rounded-md px-3 py-2 text-sm bg-background" />
+              </label>
+              <label className="block">
+                <div className="text-xs font-medium mb-1">Source</div>
+                <select value={form.complaintSource} onChange={(e) => setForm({ ...form, complaintSource: e.target.value })} className="w-full border rounded-md px-3 py-2 text-sm bg-background">
+                  {COMPLAINT_SOURCES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+                </select>
+              </label>
+              {form.complaintSource === "scores" && (
+                <label className="block">
+                  <div className="text-xs font-medium mb-1">SCORES ref no</div>
+                  <input value={form.scoresRefNo} onChange={(e) => setForm({ ...form, scoresRefNo: e.target.value })} placeholder="e.g. 2026/0001234" className="w-full border rounded-md px-3 py-2 text-sm bg-background" />
+                </label>
+              )}
+            </div>
+            <p className="text-[11px] text-amber-700">Complaints carry a 21-day resolution SLA and feed the monthly disclosure statement.</p>
+          </div>
         )}
         {err && <div className="text-sm text-rose-600">{err}</div>}
         <div className="flex justify-end gap-2 pt-2 border-t">

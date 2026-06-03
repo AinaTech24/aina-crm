@@ -13,12 +13,12 @@ import { handleApiError } from "@/lib/api/error-handler";
 
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuid } from "uuid";
-import { desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
-import { campaigns, segments, segmentMemberships } from "@/db/schema";
+import { campaigns, segmentMemberships } from "@/db/schema";
 
 export const dynamic = "force-dynamic";
 
@@ -69,8 +69,13 @@ const CreateBody = z.object({
 export async function GET() {
   try {
     const session = await requireSession();
+    requireCap(session.roles, "campaign.send");
     const rows = await withTenant(session.tenantId, async (tx) => {
-      return tx.select().from(campaigns).orderBy(desc(campaigns.createdAt));
+      return tx
+        .select()
+        .from(campaigns)
+        .where(eq(campaigns.tenantId, session.tenantId))
+        .orderBy(desc(campaigns.createdAt));
     });
     return NextResponse.json({ campaigns: rows });
   } catch (err: any) {
@@ -101,7 +106,13 @@ export async function POST(req: NextRequest) {
         const countRes = await tx
           .select({ c: sql<number>`count(*)::int` })
           .from(segmentMemberships)
-          .where(eq(segmentMemberships.segmentId, body.segmentId));
+          .where(
+            and(
+              eq(segmentMemberships.segmentId, body.segmentId),
+              eq(segmentMemberships.tenantId, session.tenantId),
+              sql`${segmentMemberships.removedAt} IS NULL`
+            )
+          );
         total = Number(countRes[0]?.c ?? 0);
       }
 
@@ -125,7 +136,9 @@ export async function POST(req: NextRequest) {
         throttlePerMinute: body.throttlePerMinute,
         contentStatus: body.contentStatus ?? "not_started",
         complianceCheckStatus: body.complianceCheckStatus ?? "pending",
-        approvalStatus: body.approvalStatus ?? "pending",
+        // A campaign cannot self-approve at create time — approval is a separate,
+        // audited step (PATCH) before it can be launched.
+        approvalStatus: body.approvalStatus === "approved" ? "pending" : (body.approvalStatus ?? "pending"),
         leadsGenerated: body.leadsGenerated ?? 0,
         meetingsBooked: body.meetingsBooked ?? 0,
         clientsConverted: body.clientsConverted ?? 0,

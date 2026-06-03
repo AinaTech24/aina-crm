@@ -23,6 +23,7 @@
  */
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   DndContext,
   PointerSensor,
@@ -100,9 +101,11 @@ export function InvestorsKanban({
 }: {
   initialRows: InvestorRow[];
 }) {
+  const router = useRouter();
   const [rows, setRows] = useState(initialRows);
   const [savingIds, setSavingIds] = useState<Set<string>>(new Set());
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
   const byStage = useMemo(() => {
@@ -132,6 +135,7 @@ export function InvestorsKanban({
       return;
     }
 
+    setError(null);
     const previousStage = current.stageKey;
     setRows((prev) =>
       prev.map((r) =>
@@ -158,11 +162,14 @@ export function InvestorsKanban({
         // Revert + surface the API error so the user knows why.
         const j = await res.json().catch(() => ({}));
         console.warn("[InvestorsKanban] advance failed:", j.error ?? res.status);
+        setError(j.error ?? `Failed to move client stage (${res.status})`);
         setRows((prev) =>
           prev.map((r) =>
             r.investor.id === invId ? { ...r, stageKey: previousStage } : r
           )
         );
+      } else {
+        router.refresh();
       }
     } finally {
       setSavingIds((s) => {
@@ -176,7 +183,14 @@ export function InvestorsKanban({
   const activeRow = rows.find((r) => r.investor.id === activeId);
 
   return (
-    <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+    <>
+      {error && (
+        <div className="mb-3 rounded-lg border border-destructive/30 bg-destructive/5 text-destructive text-xs px-3 py-2 flex items-center justify-between">
+          <span>{error}</span>
+          <button onClick={() => setError(null)} className="hover:opacity-70 text-sm font-semibold">✕</button>
+        </div>
+      )}
+      <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
       <div className="overflow-x-auto pb-2">
         <div className="flex gap-3 min-w-max">
           {CLIENT_PHASE_STAGES.map((s) => (
@@ -193,6 +207,7 @@ export function InvestorsKanban({
         {activeRow ? <InvestorCard row={activeRow} dragging /> : null}
       </DragOverlay>
     </DndContext>
+    </>
   );
 }
 

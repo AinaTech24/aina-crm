@@ -14,6 +14,7 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { workflows, workflowVersions } from "@/db/schema";
+import { setTriggersEnabled } from "@/lib/workflow/triggers";
 
 export const dynamic = "force-dynamic";
 
@@ -30,10 +31,23 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   try {
     const session = await requireSession();
     const row = await withTenant(session.tenantId, async (tx) => {
-      const wf = await tx.select().from(workflows).where(eq(workflows.id, id)).limit(1);
+      const wf = await tx
+        .select()
+        .from(workflows)
+        .where(and(eq(workflows.id, id), eq(workflows.tenantId, session.tenantId)))
+        .limit(1);
       if (!wf.length) return null;
       const ver = wf[0].currentVersionId
-        ? await tx.select().from(workflowVersions).where(eq(workflowVersions.id, wf[0].currentVersionId!)).limit(1)
+        ? await tx
+            .select()
+            .from(workflowVersions)
+            .where(
+              and(
+                eq(workflowVersions.id, wf[0].currentVersionId!),
+                eq(workflowVersions.tenantId, session.tenantId)
+              )
+            )
+            .limit(1)
         : [];
       return { workflow: wf[0], version: ver[0] ?? null };
     });
@@ -56,8 +70,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       const r = await tx
         .update(workflows)
         .set({ ...parse.data, updatedAt: new Date() } as any)
-        .where(eq(workflows.id, id))
+        .where(and(eq(workflows.id, id), eq(workflows.tenantId, session.tenantId)))
         .returning();
+      // Keep the workflow's triggers in lockstep with its enabled flag so a
+      // disabled workflow never fires (and re-enabling resumes it).
+      if (r[0] && parse.data.enabled !== undefined) {
+        await setTriggersEnabled(tx, id, parse.data.enabled, session.tenantId);
+      }
       return r[0] ?? null;
     });
     if (!result) return NextResponse.json({ error: "not found" }, { status: 404 });
@@ -73,7 +92,12 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
     const session = await requireSession();
     requireCap(session.roles, "workflow.edit");
     await withTenant(session.tenantId, async (tx) => {
-      await tx.update(workflows).set({ enabled: false, pausedReason: "deleted", pausedAt: new Date() } as any).where(eq(workflows.id, id));
+      await tx
+        .update(workflows)
+        .set({ enabled: false, pausedReason: "deleted", pausedAt: new Date() } as any)
+        .where(and(eq(workflows.id, id), eq(workflows.tenantId, session.tenantId)));
+      // Stop the workflow firing once soft-deleted.
+      await setTriggersEnabled(tx, id, false, session.tenantId);
     });
     return NextResponse.json({ ok: true });
   } catch (err: any) {

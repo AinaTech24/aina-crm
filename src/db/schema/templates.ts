@@ -89,10 +89,20 @@ export const templateVersions = pgTable(
       .notNull()
       .default([]),
 
+    /** Files that auto-attach on send (email). Each: { name, url }. */
+    attachments: jsonb("attachments")
+      .$type<Array<{ name: string; url: string }>>()
+      .notNull()
+      .default([]),
+
     /** Last compliance scan output */
     complianceChecks: jsonb("compliance_checks"),
     complianceScore: numeric("compliance_score", { precision: 5, scale: 2 }),
     autoComplianceBlocked: boolean("auto_compliance_blocked").default(false),
+
+    /** Author of this version — used for maker-checker (an author may not be
+     *  the approver of their own version). */
+    createdByUserId: uuid("created_by_user_id").references(() => users.id),
 
     /** Approval pipeline */
     approvalStatus: text("approval_status", {

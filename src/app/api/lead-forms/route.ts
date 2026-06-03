@@ -14,6 +14,7 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { leadCaptureForms } from "@/db/schema";
+import { normalizeLeadSource } from "@/lib/leads/normalize";
 
 export const dynamic = "force-dynamic";
 
@@ -42,6 +43,7 @@ const PostBody = z.object({
   defaultRmId: z.string().uuid().nullable().optional(),
   leadSource: z.string().max(40).default("website"),
   sourceCampaign: z.string().max(120).optional(),
+  rateLimitPerHour: z.coerce.number().int().min(1).max(500).optional(),
   branding: z
     .object({
       primaryColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
@@ -88,8 +90,9 @@ export async function POST(req: NextRequest) {
             description: parse.data.description,
             fields: parse.data.fields,
             defaultRmId: parse.data.defaultRmId ?? null,
-            leadSource: parse.data.leadSource,
+            leadSource: normalizeLeadSource(parse.data.leadSource),
             sourceCampaign: parse.data.sourceCampaign,
+            rateLimitPerHour: parse.data.rateLimitPerHour ? String(parse.data.rateLimitPerHour) : undefined,
             branding: parse.data.branding,
             enabled: parse.data.enabled,
             createdBy: session.userId,

@@ -1,19 +1,21 @@
 import { handleApiError } from "@/lib/api/error-handler";
 /**
- * AINA Content Library — platform-shared.
+ * AINA Content Library — platform-shared and tenant-specific.
  *
  *   GET  /api/content-library         — list active assets (any logged-in user)
- *   POST /api/content-library         — register an asset (AINA platform admins only)
- *   POST /api/content-library/upload-url — presigned S3 PUT (AINA only)
+ *   POST /api/content-library         — register an asset (AINA platform admins and MFD admins/marketing)
+ *   POST /api/content-library/upload-url — presigned S3 PUT (AINA and MFD admins/marketing)
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuid } from "uuid";
 import { desc } from "drizzle-orm";
 import { z } from "zod";
-import { withPlatformAdmin, withSystem } from "@/db/client";
+import { withPlatformAdmin, withSystem, withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { isPlatformAdmin } from "@/lib/platform";
+import { can } from "@/lib/auth/rbac";
+import { assetVisibleTo, isUnsafeAssetUrl } from "@/lib/content/asset-url";
 import {
   contentLibraryAssets,
   ASSET_TYPES,
@@ -47,13 +49,22 @@ const CreateBody = z.object({
 export async function GET() {
   try {
     const session = await requireSession();
-    // Allow any logged-in tenant user OR a platform admin to list.
-    // Use system context because the table has no tenant_id and the RLS
-    // policy already restricts writes to platform admins.
-    const rows = await withSystem(async (tx) =>
-      tx.select().from(contentLibraryAssets).orderBy(desc(contentLibraryAssets.createdAt))
-    );
     const platformAdmin = isPlatformAdmin(session.roles);
+    // Platform admins see all assets; normal users see global assets + their tenant assets.
+    // Query uses withTenant for normal users to automatically trigger Postgres RLS.
+    const rows = platformAdmin
+      ? await withSystem(async (tx) =>
+          tx.select().from(contentLibraryAssets).orderBy(desc(contentLibraryAssets.createdAt))
+        )
+      : await withTenant(session.tenantId, async (tx) =>
+          // Explicit visibility predicate — the table has no single-tenant RLS
+          // policy, so without this a non-admin would see EVERY tenant's assets.
+          tx
+            .select()
+            .from(contentLibraryAssets)
+            .where(assetVisibleTo(session.tenantId))
+            .orderBy(desc(contentLibraryAssets.createdAt))
+        );
     const visible = platformAdmin
       ? rows
       : rows.filter((r) => r.isActive && (!r.expireAt || new Date(r.expireAt) > new Date()));
@@ -78,8 +89,10 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    if (!isPlatformAdmin(session.roles)) {
-      return NextResponse.json({ error: "forbidden — platform admin only" }, { status: 403 });
+    const platformAdmin = isPlatformAdmin(session.roles);
+    const canUpload = platformAdmin || can(session.roles, "template.edit");
+    if (!canUpload) {
+      return NextResponse.json({ error: "forbidden — insufficient capabilities" }, { status: 403 });
     }
     const parse = CreateBody.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) {
@@ -89,27 +102,62 @@ export async function POST(req: NextRequest) {
       );
     }
     const body = parse.data;
+
+    // Reject internal/non-http asset URLs at write time — the stored fileUrl is
+    // later fetched server-side (branded / batch-download), so a `http://169.254…`
+    // URL here would be an SSRF primitive.
+    for (const u of [body.fileUrl, body.thumbnailUrl].filter(Boolean) as string[]) {
+      const unsafe = isUnsafeAssetUrl(u);
+      if (unsafe) return NextResponse.json({ error: `Unsafe asset URL (${unsafe})` }, { status: 400 });
+    }
+
     const id = uuid();
-    await withPlatformAdmin(session.userId, async (tx) => {
-      await tx.insert(contentLibraryAssets).values({
-        id,
-        title: body.title,
-        description: body.description ?? null,
-        type: body.type,
-        category: body.category,
-        fileUrl: body.fileUrl,
-        fileName: body.fileName ?? null,
-        fileSizeBytes: body.fileSizeBytes != null ? String(body.fileSizeBytes) : null,
-        mimeType: body.mimeType ?? null,
-        thumbnailUrl: body.thumbnailUrl ?? body.fileUrl, // images: self-thumbnail
-        tags: body.tags ?? [],
-        brandingConfig: body.brandingConfig ?? null,
-        publishAt: body.publishAt ? new Date(body.publishAt) : null,
-        expireAt: body.expireAt ? new Date(body.expireAt) : null,
-        uploadedByUserId: session.userId,
-        isActive: true,
-      } as any);
-    });
+
+    if (platformAdmin) {
+      await withPlatformAdmin(session.userId, async (tx) => {
+        await tx.insert(contentLibraryAssets).values({
+          id,
+          title: body.title,
+          description: body.description ?? null,
+          type: body.type,
+          category: body.category,
+          fileUrl: body.fileUrl,
+          fileName: body.fileName ?? null,
+          fileSizeBytes: body.fileSizeBytes != null ? String(body.fileSizeBytes) : null,
+          mimeType: body.mimeType ?? null,
+          thumbnailUrl: body.thumbnailUrl ?? body.fileUrl,
+          tags: body.tags ?? [],
+          brandingConfig: body.brandingConfig ?? null,
+          publishAt: body.publishAt ? new Date(body.publishAt) : null,
+          expireAt: body.expireAt ? new Date(body.expireAt) : null,
+          uploadedByUserId: session.userId,
+          tenantId: null,
+          isActive: true,
+        } as any);
+      });
+    } else {
+      await withTenant(session.tenantId, async (tx) => {
+        await tx.insert(contentLibraryAssets).values({
+          id,
+          title: body.title,
+          description: body.description ?? null,
+          type: body.type,
+          category: body.category,
+          fileUrl: body.fileUrl,
+          fileName: body.fileName ?? null,
+          fileSizeBytes: body.fileSizeBytes != null ? String(body.fileSizeBytes) : null,
+          mimeType: body.mimeType ?? null,
+          thumbnailUrl: body.thumbnailUrl ?? body.fileUrl,
+          tags: body.tags ?? [],
+          brandingConfig: body.brandingConfig ?? null,
+          publishAt: body.publishAt ? new Date(body.publishAt) : null,
+          expireAt: body.expireAt ? new Date(body.expireAt) : null,
+          uploadedByUserId: session.userId,
+          tenantId: session.tenantId,
+          isActive: true,
+        } as any);
+      });
+    }
     return NextResponse.json({ id }, { status: 201 });
   } catch (err: any) {
     return handleApiError(err);

@@ -104,6 +104,10 @@ export const proposals = pgTable(
     /** Attachments — uploaded supporting docs (factsheets, brochures). */
     attachments: jsonb("attachments").$type<{ name: string; url: string }[]>().default([]),
 
+    /** Suitability & Compliance */
+    suitabilityNote: text("suitability_note"),
+    suitabilityOverrideReason: text("suitability_override_reason"),
+
     ...timestamps,
   },
   (t) => ({
@@ -155,6 +159,7 @@ export type ProposalLineItem =
       minInvestment?: number;
       proposedAmount?: number;
       expectedReturn?: number;
+      termYears?: number;
       exitLoad?: string;
       notes?: string;
     }

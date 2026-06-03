@@ -44,30 +44,33 @@ export default async function SubDistributorsListPage({
   const sp = await searchParams;
   const statusFilter = sp.status ?? "active";
 
-  const rows = await withTenant(session.tenantId, async (tx) => {
-    const where = [eq(subDistributors.tenantId, session.tenantId)];
-    if (statusFilter !== "all") {
-      where.push(eq(subDistributors.status, statusFilter as any));
-    }
-    return tx
-      .select()
-      .from(subDistributors)
-      .where(and(...where))
-      .orderBy(subDistributors.name);
-  });
-
-  const counts = await withTenant(session.tenantId, async (tx) => {
-    const all = await tx
-      .select()
-      .from(subDistributors)
-      .where(eq(subDistributors.tenantId, session.tenantId));
-    return {
-      total: all.length,
-      active: all.filter((r) => r.status === "active").length,
-      inactive: all.filter((r) => r.status === "inactive").length,
-      terminated: all.filter((r) => r.status === "terminated").length,
-    };
-  });
+  // Independent reads — run concurrently (separate connections = real
+  // parallelism) instead of one-after-another.
+  const [rows, counts] = await Promise.all([
+    withTenant(session.tenantId, async (tx) => {
+      const where = [eq(subDistributors.tenantId, session.tenantId)];
+      if (statusFilter !== "all") {
+        where.push(eq(subDistributors.status, statusFilter as any));
+      }
+      return tx
+        .select()
+        .from(subDistributors)
+        .where(and(...where))
+        .orderBy(subDistributors.name);
+    }),
+    withTenant(session.tenantId, async (tx) => {
+      const all = await tx
+        .select()
+        .from(subDistributors)
+        .where(eq(subDistributors.tenantId, session.tenantId));
+      return {
+        total: all.length,
+        active: all.filter((r) => r.status === "active").length,
+        inactive: all.filter((r) => r.status === "inactive").length,
+        terminated: all.filter((r) => r.status === "terminated").length,
+      };
+    }),
+  ]);
 
   return (
     <div className="space-y-5">

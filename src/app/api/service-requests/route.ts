@@ -17,6 +17,7 @@ import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { serviceRequests, eventsOutbox } from "@/db/schema";
+import { acknowledgeServiceRequest } from "@/lib/service/acknowledge";
 
 export const dynamic = "force-dynamic";
 
@@ -76,6 +77,8 @@ const CreateBody = z.object({
   priority: z.enum(["low", "normal", "high", "urgent"]).default("normal"),
   sebiCategory: z.string().optional(),
   sebiSubCategory: z.string().optional(),
+  complaintSource: z.string().optional(),
+  scoresRefNo: z.string().max(80).optional(),
   remarks: z.string().optional(),
 });
 
@@ -110,7 +113,7 @@ export async function POST(req: NextRequest) {
       // Ticket number: per-tenant per-year counter
       const seqRes = await tx.execute(sql`
         SELECT COUNT(*)::int + 1 AS n FROM service_requests
-        WHERE created_at >= date_trunc('year', now())
+        WHERE tenant_id = ${session.tenantId}::uuid AND created_at >= date_trunc('year', now())
       `);
       const n = Number((seqRes.rows[0] as any)?.n ?? 1);
       const ticketNo = `SR-${new Date().getFullYear()}-${String(n).padStart(5, "0")}`;
@@ -131,6 +134,8 @@ export async function POST(req: NextRequest) {
         slaResolutionAt,
         sebiCategory: body.sebiCategory,
         sebiSubCategory: body.sebiSubCategory,
+        complaintSource: body.type === "complaint" ? (body.complaintSource ?? "direct") : null,
+        scoresRefNo: body.scoresRefNo ?? null,
         remarks: body.remarks ?? null,
         timeline: [
           {
@@ -150,6 +155,16 @@ export async function POST(req: NextRequest) {
         after: { ticketNo, type: body.type, priority: body.priority } as any,
         meta: { userId: session.userId } as any,
       } as any);
+
+      // Instant client acknowledgement with a promised resolution ETA.
+      await acknowledgeServiceRequest(tx, {
+        tenantId: session.tenantId,
+        srId: id,
+        ticketNo,
+        type: body.type,
+        slaResolutionAt,
+        investorId: body.investorId ?? null,
+      });
     });
 
     return NextResponse.json({ id }, { status: 201 });

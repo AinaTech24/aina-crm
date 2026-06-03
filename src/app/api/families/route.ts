@@ -16,6 +16,8 @@ import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { families } from "@/db/schema";
+import { familyHealthFields } from "@/lib/families/health";
+import { computeFamilyNextReview } from "@/lib/families/cadence";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +27,10 @@ const Body = z.object({
   primaryInvestorId: z.string().uuid().optional(),
   rmId: z.string().uuid().optional(),
   notes: z.string().max(2000).optional(),
+  familyCode: z.string().max(60).optional(),
+  familyCategory: z.enum(["HNI", "Affluent", "Retail", "NRI", "Corporate"]).optional(),
+  reviewFrequency: z.enum(["monthly", "quarterly", "half_yearly", "annual"]).optional(),
+  firstMeetingDate: z.string().optional(), // YYYY-MM-DD
 });
 
 export async function GET() {
@@ -50,6 +56,11 @@ export async function POST(req: NextRequest) {
 
     const id = uuid();
     const clientMeta = clientMetaFromHeaders(req.headers);
+    // Auto-derive the next household review from the cadence + first meeting.
+    const nextReviewAt = computeFamilyNextReview(
+      parse.data.firstMeetingDate ?? null,
+      parse.data.reviewFrequency ?? null
+    );
     await withTenant(session.tenantId, async (tx) => {
       await tx.insert(families).values({
         id,
@@ -60,6 +71,21 @@ export async function POST(req: NextRequest) {
         primaryInvestorId: parse.data.primaryInvestorId ?? null,
         rmId: parse.data.rmId ?? session.userId,
         notes: parse.data.notes,
+        familyCode: parse.data.familyCode ?? null,
+        familyCategory: parse.data.familyCategory ?? null,
+        reviewFrequency: parse.data.reviewFrequency ?? null,
+        firstMeetingDate: parse.data.firstMeetingDate ?? null,
+        nextReviewAt: nextReviewAt ?? null,
+        // Initial health (no members yet ⇒ reflects the setup backlog).
+        ...familyHealthFields(
+          {
+            primaryInvestorId: parse.data.primaryInvestorId ?? null,
+            rmId: parse.data.rmId ?? session.userId,
+            lastReviewAt: null,
+            nextReviewAt: nextReviewAt ?? null,
+          },
+          []
+        ),
       } as any);
 
       await recordAudit(tx, {

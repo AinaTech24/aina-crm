@@ -7,15 +7,24 @@ import { handleApiError } from "@/lib/api/error-handler";
 
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuid } from "uuid";
-import { desc } from "drizzle-orm";
+import { and, desc, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
+import { pickAssignee } from "@/lib/assignment/engine";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap, requireAny } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { pickRmForNewLead } from "@/lib/leads/assign";
-import { leads, eventsOutbox } from "@/db/schema";
+import { canEditAllLeads, leadScopeCondition, requireLeadView } from "@/lib/leads/access";
+import {
+  normalizeEmail,
+  normalizeLeadSource,
+  normalizePan,
+  normalizePhoneLast10,
+} from "@/lib/leads/normalize";
+import { leads, eventsOutbox, tasks } from "@/db/schema";
+import { scoreFields } from "@/lib/leads/score";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +32,7 @@ const CreateBody = z.object({
   name: z.string().min(2).max(120),
   email: z.string().email().optional().or(z.literal("")),
   phone: z.string().optional(),
+  pan: z.string().optional(),
   city: z.string().optional(),
   source: z
     .enum([
@@ -35,6 +45,18 @@ const CreateBody = z.object({
     .default("manual"),
   sourceCampaign: z.string().optional(),
   intendedAmount: z.string().optional(),
+  /** Canonical pipeline value in rupees (preferred over the free-text amount). */
+  expectedBusinessAmount: z.number().min(0).max(1e12).optional(),
+  aumPotential: z.enum(["under_10l", "10l_50l", "50l_2cr", "hni_2cr_plus"]).optional(),
+  leadType: z.enum(["individual", "hni", "nri", "corporate", "minor"]).optional(),
+  /** Products of interest (multi). The column already existed — now captured. */
+  interestProducts: z.array(z.string().max(60)).max(20).optional(),
+  occupation: z.string().max(120).optional(),
+  currentInvestments: z.array(z.string().max(60)).max(20).optional(),
+  altPhone: z.string().max(20).optional(),
+  altEmail: z.string().email().optional().or(z.literal("")),
+  /** First follow-up moment — sets next_follow_up_at + spawns a follow-up task. */
+  followUpDate: z.string().datetime().optional().or(z.literal("")),
   notes: z.string().optional(),
   ownerId: z.string().uuid().optional(),
   /** When source is 'referral' or 'existing_client' — link to the referrer in the Clients module. */
@@ -47,8 +69,12 @@ const CreateBody = z.object({
 export async function GET() {
   try {
     const session = await requireSession();
+    requireLeadView(session);
     const rows = await withTenant(session.tenantId, async (tx) => {
-      return tx.select().from(leads).orderBy(desc(leads.createdAt));
+      const scope = leadScopeCondition(session);
+      const where = scope ? and(isNull(leads.convertedInvestorId), scope) : isNull(leads.convertedInvestorId);
+      // Hottest leads first (persisted deterministic score), newest as tiebreak.
+      return tx.select().from(leads).where(where).orderBy(desc(leads.leadScore), desc(leads.createdAt));
     });
     return NextResponse.json({ leads: rows });
   } catch (err: any) {
@@ -77,23 +103,46 @@ export async function POST(req: NextRequest) {
     await withTenant(session.tenantId, async (tx) => {
       // Resolve owner: explicit body.ownerId wins; otherwise auto-assign to an
       // RM via least-loaded round-robin; otherwise fall back to the creator.
-      if (body.ownerId) {
+      if (body.ownerId && canEditAllLeads(session)) {
         assignedOwnerId = body.ownerId;
         assignedVia = "manual";
+      } else if (!canEditAllLeads(session)) {
+        assignedOwnerId = session.userId;
+        assignedVia = "creator";
       } else {
-        const picked = await pickRmForNewLead(tx, {
-          branchId: session.branchId ?? null,
-          strategy: "least_loaded",
-          excludeUserId: session.roles.includes("rm") ? null : session.userId,
+        // Configurable Assignment Rules win when defined; else the built-in
+        // least-loaded picker; else the creator.
+        const rulePick = await pickAssignee(tx, {
+          tenantId: session.tenantId,
+          subjectType: "lead",
+          record: { source: body.source },
         });
-        if (picked) {
-          assignedOwnerId = picked;
+        if (rulePick) {
+          assignedOwnerId = rulePick;
           assignedVia = "round_robin";
         } else {
-          assignedOwnerId = session.userId;
-          assignedVia = "creator";
+          const picked = await pickRmForNewLead(tx, {
+            branchId: session.branchId ?? null,
+            strategy: "least_loaded",
+            excludeUserId: session.roles.includes("rm") ? null : session.userId,
+          });
+          if (picked) {
+            assignedOwnerId = picked;
+            assignedVia = "round_robin";
+          } else {
+            assignedOwnerId = session.userId;
+            assignedVia = "creator";
+          }
         }
       }
+
+      // Canonical pipeline value wins; keep intended_amount populated (from it)
+      // so legacy scoring + old readers keep working.
+      const intendedAmount =
+        body.intendedAmount ??
+        (body.expectedBusinessAmount != null ? String(body.expectedBusinessAmount) : null);
+      const followUpAt =
+        body.followUpDate && body.followUpDate !== "" ? new Date(body.followUpDate) : null;
 
       const inserted = await tx
         .insert(leads)
@@ -103,20 +152,65 @@ export async function POST(req: NextRequest) {
           branchId: session.branchId,
           name: body.name,
           email: body.email || null,
+          emailNormalized: normalizeEmail(body.email),
           phone: body.phone || null,
+          phoneNormalized: normalizePhoneLast10(body.phone),
+          pan: normalizePan(body.pan),
           city: body.city || null,
-          source: body.source,
+          source: normalizeLeadSource(body.source),
           sourceCampaign: body.sourceCampaign || null,
           stage: "new",
           stageChangedAt: new Date(),
-          intendedAmount: body.intendedAmount,
+          intendedAmount,
+          expectedBusinessAmount:
+            body.expectedBusinessAmount != null ? String(body.expectedBusinessAmount) : null,
+          aumPotential: body.aumPotential ?? null,
+          leadType: body.leadType ?? null,
+          interestProducts: body.interestProducts ?? [],
+          profile: {
+            ...(body.occupation ? { occupation: body.occupation } : {}),
+            ...(body.currentInvestments?.length ? { currentInvestments: body.currentInvestments } : {}),
+          },
+          altPhone: body.altPhone || null,
+          altEmail: body.altEmail || null,
+          nextFollowUpAt: followUpAt,
           notes: body.notes,
           ownerId: assignedOwnerId,
           referredByInvestorId: body.referredByInvestorId ?? null,
           referredByName: body.referredByName ?? null,
           subDistributorId: body.subDistributorId ?? null,
+          // Deterministic initial score from the captured signals.
+          ...scoreFields({
+            source: normalizeLeadSource(body.source),
+            stage: "new",
+            intendedAmount,
+            stageChangedAt: new Date(),
+            email: body.email || null,
+            phone: body.phone || null,
+            pan: normalizePan(body.pan),
+          }),
         } as any)
         .returning();
+
+      // First follow-up — set on the lead above + spawn a task the RM sees in
+      // their queue (mirrors how the call-outcome flow creates follow-ups).
+      if (followUpAt && !Number.isNaN(followUpAt.getTime())) {
+        await tx.insert(tasks).values({
+          tenantId: session.tenantId,
+          subjectType: "lead",
+          subjectId: id,
+          relatedLeadId: id,
+          type: "follow_up",
+          title: `Follow-up: ${body.name}`,
+          description: body.notes ?? null,
+          priority: "normal",
+          status: "open",
+          assigneeId: assignedOwnerId ?? session.userId,
+          createdById: session.userId,
+          department: "sales",
+          dueAt: followUpAt,
+        } as any);
+      }
 
       await tx.insert(eventsOutbox).values({
         tenantId: session.tenantId,

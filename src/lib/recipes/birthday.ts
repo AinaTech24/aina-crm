@@ -10,7 +10,7 @@ export const birthdayRecipe: RecipeDef = {
   graph: graph({
     start: "trigger",
     nodes: [
-      n("trigger", "trigger", {}),
+      n("trigger", "trigger", { kind: "investor.birthday", subjectType: "investor" }),
       n("wa", "send_whatsapp", {
         templateKey: "happy_birthday",
         variables: { name: "subject.name" },

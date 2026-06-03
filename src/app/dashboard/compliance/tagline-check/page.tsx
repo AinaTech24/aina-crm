@@ -45,7 +45,9 @@ function extractText(channel: string, body: any): string {
 
 export default async function TaglineCheckPage() {
   const session = await requireSession();
-  const tenant = (await db.select().from(tenants).where(eq(tenants.id, session.tenantId)).limit(1))[0];
+  const tenant = (await withTenant(session.tenantId, async (tx) =>
+    tx.select().from(tenants).where(eq(tenants.id, session.tenantId)).limit(1)
+  ))[0];
   const arnNumber = (tenant?.arn ?? "").replace(/[^A-Z0-9]/gi, "");
 
   const rows = await withTenant(session.tenantId, async (tx) => {

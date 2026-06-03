@@ -15,6 +15,9 @@ import { eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withSystem } from "@/db/client";
 import { signSession, SESSION_COOKIE, SESSION_TTL_SECONDS } from "@/lib/auth/session";
+import { ASSIGNABLE_ROLES } from "@/lib/auth/rbac";
+
+const ASSIGNABLE = new Set<string>(ASSIGNABLE_ROLES);
 
 export const dynamic = "force-dynamic";
 
@@ -44,7 +47,16 @@ export async function POST(req: NextRequest) {
 
       const userId = uuid();
       const pwHash = await bcrypt.hash(password, 12);
-      const rolesLiteral = sql.raw(`ARRAY[${(inv.roles_to_grant as string[]).map((r) => `'${r}'`).join(",")}]::text[]`);
+
+      // Re-validate the granted roles against the assignable allowlist and bind
+      // them as a PARAMETER (never string-interpolated). This closes both the
+      // SQL-injection vector (the old sql.raw(`ARRAY[...]`) built the literal
+      // from invite-supplied strings) and any privilege-escalation attempt to
+      // smuggle in a platform role.
+      const safeRoles = ((inv.roles_to_grant as string[] | null) ?? []).filter((r) => ASSIGNABLE.has(r));
+      if (safeRoles.length === 0) {
+        throw Object.assign(new Error("invite has no valid roles to grant"), { status: 400 });
+      }
 
       await tx.execute(sql`
         INSERT INTO users (
@@ -52,7 +64,7 @@ export async function POST(req: NextRequest) {
         )
         VALUES (
           ${userId}, ${inv.tenant_id}, ${inv.branch_id}, ${inv.email}, ${name ?? inv.name ?? inv.email},
-          ${pwHash}, ${rolesLiteral}, 'active', now(), now(), now()
+          ${pwHash}, ${safeRoles}::text[], 'active', now(), now(), now()
         )
         ON CONFLICT (tenant_id, email) DO UPDATE
         SET password_hash = EXCLUDED.password_hash,
@@ -73,7 +85,7 @@ export async function POST(req: NextRequest) {
         branchId: inv.branch_id,
         email: inv.email,
         name: name ?? inv.name ?? inv.email,
-        roles: inv.roles_to_grant as string[],
+        roles: safeRoles,
       };
     });
 

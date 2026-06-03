@@ -11,8 +11,9 @@
  * Everything else shows the restricted screen, no data leaks.
  */
 
+import { cache } from "react";
 import { eq } from "drizzle-orm";
-import { db } from "@/db/client";
+import { withTenant } from "@/db/client";
 import { subscriptions, packages } from "@/db/schema";
 import { isPlatformAdmin } from "@/lib/platform";
 
@@ -33,7 +34,15 @@ export type LicenseState = {
 
 const RESTRICTED_STATUSES = new Set(["suspended", "expired", "cancelled"]);
 
-export async function loadTenantLicense(tenantId: string, roles?: string[]): Promise<LicenseState> {
+/**
+ * Per-request memoized. The layout + several server components all call this
+ * with the same (tenantId, session.roles) within one render; React.cache()
+ * collapses them to a single subscription+package DB read. session.roles is a
+ * stable reference per request (getSession is itself cached), so it hits.
+ */
+export const loadTenantLicense = cache(loadTenantLicenseImpl);
+
+async function loadTenantLicenseImpl(tenantId: string, roles?: string[]): Promise<LicenseState> {
   // Platform admins are never restricted.
   if (isPlatformAdmin(roles)) {
     return {
@@ -51,10 +60,17 @@ export async function loadTenantLicense(tenantId: string, roles?: string[]): Pro
     };
   }
 
-  // Query directly without RLS — license info is OK to surface to the tenant
-  // owner regardless. Uses a separate connection / public role.
-  const subs = await db.select().from(subscriptions).where(eq(subscriptions.tenantId, tenantId)).limit(1);
-  const sub = subs[0];
+  // Read the tenant's own subscription + package inside a tenant context so it
+  // works under RLS (a non-superuser app role can't read cross-tenant). The
+  // tenant_isolation policy scopes the subscription; packages is a public
+  // catalog (packages_read).
+  const { sub, pkg } = await withTenant(tenantId, async (tx) => {
+    const subs = await tx.select().from(subscriptions).where(eq(subscriptions.tenantId, tenantId)).limit(1);
+    const s = subs[0];
+    if (!s) return { sub: null as typeof subs[number] | null, pkg: null as any };
+    const pkgRows = await tx.select().from(packages).where(eq(packages.id, s.packageId)).limit(1);
+    return { sub: s, pkg: pkgRows[0] ?? null };
+  });
   if (!sub) {
     return {
       status: "no_subscription",
@@ -72,8 +88,7 @@ export async function loadTenantLicense(tenantId: string, roles?: string[]): Pro
     };
   }
 
-  const pkgRows = await db.select().from(packages).where(eq(packages.id, sub.packageId)).limit(1);
-  const pkg = pkgRows[0];
+  // `pkg` already loaded in the withTenant block above.
 
   // Auto-expire if trial / license end passed
   let effectiveStatus = sub.status;

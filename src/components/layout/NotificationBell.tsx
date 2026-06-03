@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Bell, AlertTriangle, CheckCircle2, Info, AlertOctagon } from "lucide-react";
+import { Bell, AlertTriangle, CheckCircle2, Info, AlertOctagon, Cake } from "lucide-react";
 
 type Notification = {
   id: string;
@@ -98,19 +98,24 @@ export function NotificationBell() {
           ) : (
             <ul className="divide-y">
               {items.map((n) => {
+                // Today's-birthday reminder is a live, pinned nudge — distinct
+                // look (cake + violet wash), a "Today" label, and no unread dot.
+                const isBday = n.kind === "birthday_today";
                 const Sev = SEVERITY[n.severity] ?? SEVERITY.info;
-                const Icon = Sev.icon;
+                const Icon = isBday ? Cake : Sev.icon;
                 const Inner = (
-                  <div className={`flex items-start gap-2 px-3 py-2 hover:bg-accent ${n.readAt ? "opacity-60" : ""}`}>
-                    <Icon className={`size-4 mt-0.5 flex-shrink-0 ${Sev.color}`} />
+                  <div className={`flex items-start gap-2 px-3 py-2 hover:bg-accent ${isBday ? "bg-violet-50/60" : ""} ${!isBday && n.readAt ? "opacity-60" : ""}`}>
+                    <Icon className={`size-4 mt-0.5 flex-shrink-0 ${isBday ? "text-violet-600" : Sev.color}`} />
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-medium leading-tight">{n.title}</div>
                       {n.body && <div className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{n.body}</div>}
                       <div className="text-[10px] text-muted-foreground mt-1">
-                        {new Date(n.createdAt).toLocaleString("en-IN", { dateStyle: "short", timeStyle: "short" })}
+                        {isBday
+                          ? "Today · tap to wish them"
+                          : new Date(n.createdAt).toLocaleString("en-IN", { dateStyle: "short", timeStyle: "short" })}
                       </div>
                     </div>
-                    {!n.readAt && <span className="size-1.5 rounded-full bg-primary mt-1.5" />}
+                    {!isBday && !n.readAt && <span className="size-1.5 rounded-full bg-primary mt-1.5" />}
                   </div>
                 );
                 return (

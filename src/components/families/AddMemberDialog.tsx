@@ -20,6 +20,8 @@ const RELATIONSHIPS = [
   { key: "son", label: "Son" },
   { key: "daughter", label: "Daughter" },
   { key: "sibling", label: "Sibling" },
+  { key: "huf_karta", label: "HUF Karta" },
+  { key: "huf_coparcener", label: "HUF Co-parcener" },
   { key: "huf", label: "HUF Member" },
   { key: "other", label: "Other" },
 ];

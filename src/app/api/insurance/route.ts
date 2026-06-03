@@ -7,7 +7,7 @@ import { handleApiError } from "@/lib/api/error-handler";
 
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuid } from "uuid";
-import { desc } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
@@ -16,6 +16,7 @@ import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import {
   insurancePolicies,
+  investors,
   POLICY_TYPES,
   POLICY_STATUSES,
   PREMIUM_FREQUENCIES,
@@ -61,6 +62,9 @@ const CreateBody = z.object({
   remarks: z.string().max(1000).optional(),
   status: z.enum(POLICY_STATUSES).optional(),
   soldByUserId: z.string().uuid().optional(),
+  /** Category-specific extras (motor/health/general) + businessType + proposer
+   *  when different from holder. Free-form JSON, capped to keep payloads sane. */
+  details: z.record(z.any()).optional(),
 });
 
 export async function GET() {
@@ -68,7 +72,7 @@ export async function GET() {
     const session = await requireSession();
     requireCap(session.roles, "insurance.view");
     const rows = await withTenant(session.tenantId, async (tx) =>
-      tx.select().from(insurancePolicies).orderBy(desc(insurancePolicies.createdAt))
+      tx.select().from(insurancePolicies).orderBy(desc(insurancePolicies.createdAt)).limit(500)
     );
     return NextResponse.json({ policies: rows });
   } catch (err: any) {
@@ -93,6 +97,15 @@ export async function POST(req: NextRequest) {
     const clientMeta = clientMetaFromHeaders(req.headers);
 
     await withTenant(session.tenantId, async (tx) => {
+      const clientExists = await tx
+        .select({ id: investors.id })
+        .from(investors)
+        .where(eq(investors.id, body.investorId))
+        .limit(1);
+      if (clientExists.length === 0) {
+        throw Object.assign(new Error("Client investor not found in this tenant context"), { status: 404 });
+      }
+
       await tx.insert(insurancePolicies).values({
         id,
         tenantId: session.tenantId,
@@ -121,6 +134,7 @@ export async function POST(req: NextRequest) {
         nomineeShare: body.nomineeShare ?? 100,
         riders: body.riders ?? [],
         documents: body.documents ?? [],
+        details: body.details ?? {},
         remarks: body.remarks ?? null,
         status: body.status ?? "active",
         soldByUserId: body.soldByUserId ?? session.userId,

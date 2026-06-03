@@ -91,6 +91,10 @@ export const transactions = pgTable(
     /** Free-text RM remarks — spec § Module 9. */
     remarks: text("remarks"),
 
+    /** Import idempotency key — real order_id when available, else a hash of the
+     *  natural transaction key. Unique per tenant; makes re-import a no-op. */
+    dedupKey: text("dedup_key"),
+
     ...timestamps,
   },
   (t) => ({
@@ -98,6 +102,7 @@ export const transactions = pgTable(
     statusIdx: index("tx_status_idx").on(t.tenantId, t.status),
     typeIdx: index("tx_type_idx").on(t.tenantId, t.type, t.orderDate),
     orderUnique: uniqueIndex("tx_tenant_order_unique").on(t.tenantId, t.orderId).where(sql`order_id IS NOT NULL`),
+    dedupUnique: uniqueIndex("tx_tenant_dedup_unique").on(t.tenantId, t.dedupKey),
   })
 );
 
@@ -170,6 +175,7 @@ export const sips = pgTable(
   (t) => ({
     statusIdx: index("sips_status_idx").on(t.tenantId, t.status),
     investorIdx: index("sips_investor_idx").on(t.tenantId, t.investorId),
+    endDateIdx: index("sips_end_date_idx").on(t.tenantId, t.status, t.endDate),
   })
 );
 

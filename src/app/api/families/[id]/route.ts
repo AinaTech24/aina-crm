@@ -16,6 +16,8 @@ import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { families, investors } from "@/db/schema";
+import { familyHealthFields } from "@/lib/families/health";
+import { computeFamilyNextReview } from "@/lib/families/cadence";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +29,10 @@ const Patch = z.object({
   notes: z.string().max(2000).optional(),
   lastReviewAt: z.string().optional(),
   nextReviewAt: z.string().optional(),
+  familyCode: z.string().max(60).nullable().optional(),
+  familyCategory: z.enum(["HNI", "Affluent", "Retail", "NRI", "Corporate"]).nullable().optional(),
+  reviewFrequency: z.enum(["monthly", "quarterly", "half_yearly", "annual"]).nullable().optional(),
+  firstMeetingDate: z.string().nullable().optional(),
 });
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -57,9 +63,32 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const result = await withTenant(session.tenantId, async (tx) => {
       const before = (await tx.select().from(families).where(eq(families.id, id)).limit(1))[0];
       if (!before) return null;
+
+      // Family-level fields (primary, RM, review dates) feed the health score —
+      // recompute from the post-patch family + its current members.
+      const merged: any = { ...before, ...parse.data };
+
+      // If the cadence inputs changed (and the caller didn't set nextReviewAt
+      // explicitly), re-derive nextReviewAt from frequency + first meeting.
+      const cadenceTouched =
+        parse.data.reviewFrequency !== undefined || parse.data.firstMeetingDate !== undefined;
+      let recomputedNextReview: Date | null | undefined;
+      if (cadenceTouched && parse.data.nextReviewAt === undefined) {
+        recomputedNextReview = computeFamilyNextReview(merged.firstMeetingDate, merged.reviewFrequency);
+        merged.nextReviewAt = recomputedNextReview;
+      }
+
+      const members = await tx.select().from(investors).where(eq(investors.familyId, id));
+      const health = familyHealthFields(merged as any, members as any);
+
       const after = await tx
         .update(families)
-        .set({ ...parse.data, updatedAt: new Date() } as any)
+        .set({
+          ...parse.data,
+          ...(recomputedNextReview !== undefined ? { nextReviewAt: recomputedNextReview } : {}),
+          updatedAt: new Date(),
+          ...health,
+        } as any)
         .where(eq(families.id, id))
         .returning();
       await recordAudit(tx, {

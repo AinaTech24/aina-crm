@@ -51,7 +51,7 @@ export const riskProfileResponses = pgTable(
     }),
 
     /** Computed final category + total. */
-    finalCategory: text("final_category", { enum: ["conservative", "moderate", "aggressive"] }).notNull(),
+    finalCategory: text("final_category", { enum: ["conservative", "moderate", "aggressive", "very_aggressive"] }).notNull(),
     totalScore: integer("total_score").notNull(),
 
     /** Full per-question payload — store everything for audit. */

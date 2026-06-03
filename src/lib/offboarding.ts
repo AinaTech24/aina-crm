@@ -12,9 +12,10 @@
  *      We create a single task: "Reassign investors of <name>".
  *   4. Revoke any unused share_tokens they created — a public link they
  *      generated shouldn't outlive their access.
- *   5. Stamp users.sessionsInvalidAfter = now() so the JWT verifier
- *      bounces them on next request (caller is responsible for adding
- *      this check to verifySession — see TODO at bottom).
+ *   5. Stamp users.sessionsInvalidAfter = now() so getSession() bounces
+ *      their still-valid JWT on the next request (enforced by the
+ *      revocation check in src/lib/auth/revocation.ts), and clear the
+ *      in-process revocation cache so it takes effect immediately.
  *
  * Idempotent — safe to call again on an already-offboarded user; it
  * just won't find anything to do.
@@ -27,6 +28,7 @@
 import { sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import { recordAudit } from "@/lib/audit";
+import { clearSessionRevocationCache } from "@/lib/auth/revocation";
 
 export type OffboardSummary = {
   reassignedTasks: number;
@@ -149,7 +151,21 @@ export async function offboardUser(params: {
   `);
   const revokedShareTokens = revokedRows.rows.length;
 
-  // 6. Audit. The employees PATCH route already audits the status flip
+  // 6. Kill the leaver's live sessions. Their JWT stays cryptographically
+  //    valid until its 8h TTL, but stamping sessions_invalid_after = now()
+  //    makes getSession() reject it on the very next request (the token's
+  //    `iat` now predates the epoch). We clear the in-process revocation
+  //    cache too so it takes effect immediately rather than after the 30s TTL.
+  await tx.execute(sql`
+    UPDATE users
+    SET sessions_invalid_after = now(),
+        updated_at = now()
+    WHERE id = ${userId}::uuid
+      AND tenant_id = ${tenantId}::uuid
+  `);
+  clearSessionRevocationCache(userId);
+
+  // 7. Audit. The employees PATCH route already audits the status flip
   //    itself; this audit captures the cascade so investigators can see
   //    "what else got moved when X left".
   await recordAudit(tx, {
@@ -167,12 +183,6 @@ export async function offboardUser(params: {
       revokedShareTokens,
     },
   });
-
-  // TODO (Sprint 4): stamp users.sessions_invalid_after = now() and add
-  // the check to verifySession. Without this, the JWT remains valid until
-  // its 8-hour TTL. For now, the manual mitigation is for the owner to
-  // disable the user in their identity provider if SSO is configured,
-  // or accept the 8-hour window for password-only auth.
 
   return {
     reassignedTasks,

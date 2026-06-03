@@ -5,6 +5,7 @@ import { withTenant } from "@/db/client";
 import { investors, leads, tasks, communications, sips } from "@/db/schema";
 import { formatINR, formatRelative, formatDate } from "@/lib/utils";
 import type { SessionUser } from "@/lib/auth/session";
+import { RmInsightsSection } from "./RmInsightsSection";
 
 /**
  * RM dashboard — shows only what's assigned to this RM. Per spec section 2:
@@ -40,9 +41,9 @@ export async function RmDashboard({
     // My leads by stage
     const leadStats = await tx.execute(sql`
       SELECT
-        COUNT(*) FILTER (WHERE stage NOT IN ('converted', 'lost', 'cold'))::int AS open_leads,
-        COUNT(*) FILTER (WHERE stage = 'converted' AND converted_at >= ${startOfMonth.toISOString()})::int AS converted_mtd,
-        COUNT(*) FILTER (WHERE next_follow_up_at <= ${endOfDay.toISOString()} AND stage NOT IN ('converted', 'lost'))::int AS follow_ups_today
+        COUNT(*) FILTER (WHERE converted_investor_id IS NULL AND stage NOT IN ('lost', 'cold'))::int AS open_leads,
+        COUNT(*) FILTER (WHERE converted_investor_id IS NOT NULL AND converted_at >= ${startOfMonth.toISOString()})::int AS converted_mtd,
+        COUNT(*) FILTER (WHERE next_follow_up_at <= ${endOfDay.toISOString()} AND converted_investor_id IS NULL AND stage NOT IN ('lost', 'cold'))::int AS follow_ups_today
       FROM leads WHERE owner_id = ${userId}
     `);
     const l = leadStats.rows[0] as any;
@@ -53,7 +54,7 @@ export async function RmDashboard({
         COALESCE(SUM(CASE WHEN direction = 'inflow' THEN amount::numeric ELSE 0 END), 0) AS gross,
         COALESCE(SUM(CASE WHEN direction = 'outflow' THEN amount::numeric ELSE 0 END), 0) AS redemption
       FROM transactions t
-      WHERE t.status = 'successful'
+      WHERE t.status IN ('processed', 'successful')
         AND t.order_date >= ${startOfMonth.toISOString().slice(0, 10)}::date
         AND t.investor_id IN (SELECT id FROM investors WHERE rm_id = ${userId})
     `);
@@ -78,7 +79,7 @@ export async function RmDashboard({
       SELECT 'lead' AS kind, id, name AS title, next_follow_up_at AS due_at FROM leads
       WHERE owner_id = ${userId} AND next_follow_up_at IS NOT NULL
         AND next_follow_up_at <= ${endOfDay.toISOString()}
-        AND stage NOT IN ('converted', 'lost', 'cold')
+        AND converted_investor_id IS NULL AND stage NOT IN ('lost', 'cold')
       UNION ALL
       SELECT 'task', id, title, due_at FROM tasks
       WHERE assignee_id = ${userId} AND status = 'open'
@@ -155,6 +156,20 @@ export async function RmDashboard({
       LIMIT 8
     `);
 
+    // RM personal targets — annual_target / 12 = monthly sales target
+    // sip_monthly_target = monthly SIP mobilisation target
+    const myTargets = await tx.execute(sql`
+      SELECT
+        COALESCE(annual_target::numeric, 0) AS annual_target,
+        COALESCE(sip_monthly_target::numeric, 0) AS sip_monthly_target
+      FROM users WHERE id = ${userId}
+    `);
+    const t = myTargets.rows[0] as any;
+    const annualTarget = Number(t?.annual_target ?? 0);
+    // Monthly sales target = annualTarget / 12; fallback 0 (no target set)
+    const monthlyTarget = annualTarget > 0 ? annualTarget / 12 : 0;
+    const sipMonthlyTarget = Number(t?.sip_monthly_target ?? 0);
+
     return {
       myClients: Number(c.my_clients),
       myAum: Number(c.my_aum),
@@ -172,6 +187,9 @@ export async function RmDashboard({
       sipRejections: sipRejections.rows as any[],
       anniversaries: anniversaries.rows as any[],
       myServiceReqs: myServiceReqs.rows as any[],
+      monthlyTarget,
+      sipMonthlyTarget,
+      annualTarget,
     };
   }, { userId: session.userId, branchId: session.branchId, roles: session.roles });
 
@@ -184,14 +202,75 @@ export async function RmDashboard({
         </p>
       </div>
 
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
         <Kpi label="My clients" value={String(data.myClients)} sub={formatINR(data.myAum) + " AUM"} />
         <Kpi label="My SIP book" value={formatINR(data.mySipBook)} sub="per month" />
         <Kpi label="My net sales MTD" value={formatINR(data.netMtd)} sub={`Gross ${formatINR(data.grossMtd)}`} />
         <Kpi label="Open leads" value={String(data.openLeads)} sub={`${data.convertedMtd} converted MTD`} />
+        {/* Sales Quota Ring — driven by users.annual_target / 12 */}
+        {data.monthlyTarget > 0 ? (
+          <div className="card-surface glass-card p-4 flex flex-col items-center justify-center text-center">
+            <div className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-2">MTD Sales Quota</div>
+            <div className="relative size-16 flex items-center justify-center">
+              <svg className="size-full transform -rotate-90">
+                <circle
+                  cx="32"
+                  cy="32"
+                  r="26"
+                  className="stroke-slate-100 dark:stroke-slate-800 fill-none"
+                  strokeWidth="5"
+                />
+                <circle
+                  cx="32"
+                  cy="32"
+                  r="26"
+                  className={`fill-none ${
+                    data.netMtd >= data.monthlyTarget
+                      ? "stroke-emerald-500"
+                      : data.netMtd >= data.monthlyTarget * 0.75
+                      ? "stroke-amber-500"
+                      : "stroke-brand-cyan"
+                  }`}
+                  strokeWidth="5"
+                  strokeDasharray={`${2 * Math.PI * 26}`}
+                  strokeDashoffset={`${2 * Math.PI * 26 * (1 - Math.min(100, Math.max(0, data.netMtd > 0 ? (data.netMtd / data.monthlyTarget) * 100 : 0)) / 100)}`}
+                  strokeLinecap="round"
+                />
+              </svg>
+              <div className="absolute text-center">
+                <span className={`text-xs font-bold ${
+                  data.netMtd >= data.monthlyTarget ? "text-emerald-600" : "text-gradient"
+                }`}>
+                  {Math.min(100, Math.round(data.netMtd > 0 ? (data.netMtd / data.monthlyTarget) * 100 : 0))}%
+                </span>
+              </div>
+            </div>
+            <div className="text-[9px] text-muted-foreground mt-2 font-medium">
+              Target {formatINR(data.monthlyTarget)} · Got {formatINR(data.netMtd)}
+            </div>
+            {data.sipMonthlyTarget > 0 && (
+              <div className="text-[9px] text-muted-foreground mt-1">
+                SIP target: {formatINR(data.sipMonthlyTarget)}/mo
+              </div>
+            )}
+          </div>
+        ) : (
+          <Link
+            href="/dashboard/settings/targets"
+            className="card-surface glass-card p-4 flex flex-col items-center justify-center text-center hover:bg-accent/40 transition-colors"
+          >
+            <div className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-2">MTD Quota</div>
+            <div className="size-16 rounded-full border-2 border-dashed border-border flex items-center justify-center">
+              <span className="text-xl text-muted-foreground/40">—</span>
+            </div>
+            <div className="text-[9px] text-brand-cyan-deep mt-2 font-semibold">
+              Set your target →
+            </div>
+          </Link>
+        )}
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Section title="Follow-ups today" count={data.followUps.length}>
           {data.followUps.length === 0 ? (
             <Empty text="No follow-ups due today. ✓" />
@@ -200,6 +279,7 @@ export async function RmDashboard({
               {data.followUps.map((f: any) => (
                 <li key={`${f.kind}-${f.id}`} className="py-2 flex items-center justify-between text-sm">
                   <div className="flex items-center gap-2">
+                    <span className={f.kind === "lead" ? "pulse-warning-dot" : "pulse-danger-dot"} />
                     {f.kind === "lead" ? (
                       <Phone className="size-3.5 text-blue-600" />
                     ) : (
@@ -237,7 +317,7 @@ export async function RmDashboard({
 
       {!limited && (
         <>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Section title="SIP rejection follow-ups (14d)" count={data.sipRejections.length}>
               {data.sipRejections.length === 0 ? (
                 <Empty text="No recent SIP rejections. ✓" />
@@ -290,7 +370,7 @@ export async function RmDashboard({
             </Section>
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <Section title="Birthdays this week" count={data.birthdays.length}>
               {data.birthdays.length === 0 ? (
                 <Empty text="No birthdays this week." />
@@ -369,26 +449,33 @@ export async function RmDashboard({
           </ul>
         )}
       </Section>
+
+      {/* ---------- RM Insights — service-first cockpit additions ---------- */}
+      {!limited && <RmInsightsSection session={session} />}
     </div>
   );
 }
 
 function Kpi({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
-    <div className="border rounded-lg p-5 bg-card">
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="text-2xl font-bold mt-1">{value}</div>
-      {sub && <div className="text-xs text-muted-foreground mt-1">{sub}</div>}
+    <div className="card-surface glass-card p-5 hover-glow-cyan">
+      <div className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">{label}</div>
+      <div className="text-2xl font-bold mt-2 tracking-tight text-gradient">{value}</div>
+      {sub && <div className="text-xs text-muted-foreground mt-1 font-medium">{sub}</div>}
     </div>
   );
 }
 
 function Section({ title, count, children }: { title: string; count?: number; children: React.ReactNode }) {
   return (
-    <div className="border rounded-lg bg-card p-5">
+    <div className="card-surface glass-card p-5">
       <div className="font-semibold flex items-center justify-between mb-3">
-        <span>{title}</span>
-        {count !== undefined && <span className="text-xs text-muted-foreground">{count}</span>}
+        <span className="text-sm font-semibold tracking-tight text-foreground/90">{title}</span>
+        {count !== undefined && (
+          <span className="chip bg-brand-cyan-light text-brand-cyan-deep text-xs font-semibold px-2 py-0.5">
+            {count}
+          </span>
+        )}
       </div>
       {children}
     </div>

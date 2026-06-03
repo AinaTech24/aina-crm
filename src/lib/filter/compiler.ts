@@ -1,5 +1,9 @@
-import { type FilterAST, type Predicate, isGroup, isPredicate, type FieldRef, type FilterOperator } from "./ast";
+import { type FilterAST, type Predicate, isGroup, isPredicate, type FieldRef, type FilterOperator, astDepth, MAX_AST_DEPTH } from "./ast";
 import { getCatalog, getField, type FieldDef, type SubjectCatalog } from "./catalog";
+
+/** Longest regex a `matches` predicate may carry — a crude ReDoS guard that
+ *  pairs with the statement_timeout the preview/materializer set. */
+const MAX_REGEX_LEN = 200;
 
 /**
  * Compiles a FilterAST into a parameterized SQL fragment safe to drop into
@@ -17,7 +21,8 @@ export interface CompileResult {
 }
 
 class Compiler {
-  private params: unknown[] = [];
+  /** Public so compileToSelect() can append a tenant-id param after compiling. */
+  params: unknown[] = [];
   private joins = new Set<string>();
   private catalog: SubjectCatalog;
 
@@ -113,9 +118,15 @@ class Compiler {
         return `${fieldSql} ILIKE ${this.bind(`${escapeLike(String(node.value ?? ""))}%`)}`;
       case "ends_with":
         return `${fieldSql} ILIKE ${this.bind(`%${escapeLike(String(node.value ?? ""))}`)}`;
-      case "matches":
-        // Postgres POSIX regex
-        return `${fieldSql} ~ ${this.bind(String(node.value ?? ""))}`;
+      case "matches": {
+        // Postgres POSIX regex. Bound as a parameter (no injection), but cap the
+        // length to blunt catastrophic-backtracking (ReDoS) patterns.
+        const pat = String(node.value ?? "");
+        if (pat.length > MAX_REGEX_LEN) {
+          throw new Error(`Regex pattern too long (max ${MAX_REGEX_LEN} chars)`);
+        }
+        return `${fieldSql} ~ ${this.bind(pat)}`;
+      }
       case "in": {
         const arr = Array.isArray(node.value) ? node.value : [];
         if (arr.length === 0) return "FALSE";
@@ -202,6 +213,9 @@ class Compiler {
 }
 
 export function compileToSql(ast: FilterAST, subject: string): CompileResult {
+  if (astDepth(ast) > MAX_AST_DEPTH) {
+    throw new Error(`Filter is nested too deeply (max ${MAX_AST_DEPTH} levels)`);
+  }
   const c = new Compiler(subject);
   return c.compileNode(ast);
 }
@@ -212,8 +226,11 @@ export function compileToSql(ast: FilterAST, subject: string): CompileResult {
 export function compileToSelect(
   ast: FilterAST,
   subject: string,
-  opts: { columns?: string[]; limit?: number; offset?: number; count?: boolean } = {}
+  opts: { columns?: string[]; limit?: number; offset?: number; count?: boolean; tenantId?: string } = {}
 ): CompileResult {
+  if (astDepth(ast) > MAX_AST_DEPTH) {
+    throw new Error(`Filter is nested too deeply (max ${MAX_AST_DEPTH} levels)`);
+  }
   const c = new Compiler(subject);
   const { sql: where, params } = c.compileNode(ast);
   const cat = getCatalog(subject);
@@ -222,10 +239,17 @@ export function compileToSelect(
     : opts.columns?.length
       ? opts.columns.join(", ")
       : `${cat.alias}.id`;
-  let sql = `SELECT ${cols} FROM ${cat.table} ${cat.alias} WHERE ${where}`;
+
+  let tenantFilter = "";
+  if (opts.tenantId) {
+    c.params.push(opts.tenantId);
+    tenantFilter = `${cat.alias}.tenant_id = $${c.params.length} AND `;
+  }
+
+  let sql = `SELECT ${cols} FROM ${cat.table} ${cat.alias} WHERE ${tenantFilter}${where}`;
   if (typeof opts.limit === "number") sql += ` LIMIT ${opts.limit}`;
   if (typeof opts.offset === "number") sql += ` OFFSET ${opts.offset}`;
-  return { sql, params, joins: [] };
+  return { sql, params: c.params, joins: [] };
 }
 
 function escapeLike(value: string): string {

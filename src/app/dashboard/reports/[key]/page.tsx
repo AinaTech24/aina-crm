@@ -203,8 +203,8 @@ const REPORTS: Record<
     ],
     runSql: (sql) => sql`
       SELECT source, COUNT(*)::int AS total,
-        COUNT(*) FILTER (WHERE stage = 'converted')::int AS converted,
-        ROUND(100.0 * COUNT(*) FILTER (WHERE stage = 'converted') / NULLIF(COUNT(*),0), 1) AS rate
+        COUNT(*) FILTER (WHERE converted_investor_id IS NOT NULL)::int AS converted,
+        ROUND(100.0 * COUNT(*) FILTER (WHERE converted_investor_id IS NOT NULL) / NULLIF(COUNT(*),0), 1) AS rate
       FROM leads GROUP BY source ORDER BY total DESC
     `,
   },

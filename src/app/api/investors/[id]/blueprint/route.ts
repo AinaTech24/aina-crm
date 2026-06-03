@@ -28,6 +28,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { requireAny, can } from "@/lib/auth/rbac";
 import { getStage } from "@/lib/blueprints/engine";
 import type { Tx } from "@/db/client";
 
@@ -112,8 +113,22 @@ async function syntheticClientStageView(tx: Tx) {
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await requireSession();
+    // Investor-data capability gate (marketing is excluded from investor.view.*).
+    requireAny(session.roles, ["investor.view.all", "investor.view.assigned"], session.permissions);
+    const viewAll = can(session.roles, "investor.view.all", session.permissions);
     const { id: investorId } = await params;
     const data = await withTenant(session.tenantId, async (tx) => {
+      // Assigned-only roles may read just their own clients' journey. 404 (not
+      // 403) so we don't leak which investor ids exist outside their book.
+      if (!viewAll) {
+        const own = await tx.execute(
+          sql`SELECT 1 FROM investors WHERE id = ${investorId}::uuid AND tenant_id = ${session.tenantId}::uuid AND rm_id = ${session.userId}::uuid LIMIT 1` as any
+        );
+        if ((own.rows?.length ?? 0) === 0) {
+          throw Object.assign(new Error("Not found"), { status: 404 });
+        }
+      }
+
       // Path 1: real blueprint via source lead
       const lead = await tx.execute(sql`
         SELECT id FROM leads WHERE converted_investor_id = ${investorId}::uuid LIMIT 1

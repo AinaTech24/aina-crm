@@ -178,6 +178,15 @@ export const workflowRuleExecutions = pgTable(
   (t) => ({
     ruleIdx: index("wre_rule_idx").on(t.ruleId, t.executedAt),
     subjectIdx: index("wre_subject_idx").on(t.tenantId, t.subjectType, t.subjectId),
+    // Monitor: per-tenant execution-status rollup + recent failures by time.
+    tenantStatusIdx: index("wre_tenant_status_idx").on(t.tenantId, t.status, t.executedAt),
+    // Idempotency: one execution row per (rule, outbox event). The runner
+    // claims this up-front with ON CONFLICT DO NOTHING so a re-delivered event
+    // never fires instant actions (external sends) twice. Partial — manual /
+    // test executions have a NULL trigger_event_id and are exempt.
+    eventUnique: uniqueIndex("wre_rule_event_unique")
+      .on(t.ruleId, t.triggerEventId)
+      .where(sql`trigger_event_id IS NOT NULL`),
   })
 );
 
@@ -235,6 +244,8 @@ export const workflowRuleScheduledJobs = pgTable(
       .where(sql`status = 'pending'`),
     ruleSubjectIdx: index("wrsj_rule_subject_idx").on(t.ruleId, t.subjectType, t.subjectId),
     statusIdx: index("wrsj_status_idx").on(t.status, t.runAt),
+    // Monitor: per-tenant scheduled-job status rollup + recent failures.
+    tenantStatusIdx: index("wrsj_tenant_status_idx").on(t.tenantId, t.status, t.runAt),
   })
 );
 

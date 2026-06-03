@@ -10,7 +10,7 @@ export const anniversaryRecipe: RecipeDef = {
   graph: graph({
     start: "trigger",
     nodes: [
-      n("trigger", "trigger", {}),
+      n("trigger", "trigger", { kind: "investor.anniversary", subjectType: "investor" }),
       n("wa", "send_whatsapp", {
         templateKey: "thank_you_anniversary",
         variables: { name: "subject.name", years: "event.years" },

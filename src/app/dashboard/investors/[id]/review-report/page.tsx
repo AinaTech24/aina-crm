@@ -46,7 +46,9 @@ export default async function ReviewReportPage({
   const period = sp.period ?? `Q${quarter} FY${now.getFullYear()}`;
 
   const session = await requireSession();
-  const tenant = (await db.select().from(tenants).where(eq(tenants.id, session.tenantId)).limit(1))[0];
+  const tenant = (await withTenant(session.tenantId, async (tx) =>
+    tx.select().from(tenants).where(eq(tenants.id, session.tenantId)).limit(1)
+  ))[0];
 
   const data = await withTenant(session.tenantId, async (tx) => {
     const inv = (await tx.select().from(investors).where(eq(investors.id, id)).limit(1))[0];
@@ -285,6 +287,15 @@ export default async function ReviewReportPage({
           <ul className="text-sm space-y-1 list-disc list-inside text-gray-700">
             {!inv.nomineeName && <li>Add a nominee for your folios (currently missing).</li>}
             {inv.kycStatus === "expired" && <li>Renew KYC — currently expired.</li>}
+            {inv.panAadhaarLinkStatus === "not_linked" && (
+              <li>Link PAN and Aadhaar (currently unlinked; required to prevent investment freeze).</li>
+            )}
+            {(!inv.riskProfile || !inv.riskProfileSignedAt) && (
+              <li>Complete your Risk Profile assessment (SEBI compliance requires signed profile).</li>
+            )}
+            {inv.riskProfileSignedAt && new Date(inv.riskProfileSignedAt).getTime() < Date.now() - 365 * 24 * 60 * 60 * 1000 && (
+              <li>Renew your annual Risk Profile assessment (last completed &gt;1 year ago).</li>
+            )}
             {goalsRows.some((g) => Number(g.progressPct ?? 0) < 50) && (
               <li>Some goals are tracking behind — let's discuss a top-up.</li>
             )}

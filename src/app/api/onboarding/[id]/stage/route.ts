@@ -19,7 +19,7 @@ import { handleApiError } from "@/lib/api/error-handler";
 
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuid } from "uuid";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
@@ -70,14 +70,35 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const clientMeta = clientMetaFromHeaders(req.headers);
 
     const result = await withTenant(session.tenantId, async (tx) => {
+      // Lock the pipeline row FOR UPDATE before the read-modify-write of the
+      // stages jsonb. Two RMs marking different stages concurrently would
+      // otherwise both read the pre-update blob and the second writer's
+      // full-object overwrite would silently drop the first's stage entry
+      // (a lost update). The lock serializes them.
       const pipe = (await tx
         .select()
         .from(onboardingPipelines)
-        .where(eq(onboardingPipelines.id, id))
-        .limit(1))[0];
+        .where(and(eq(onboardingPipelines.id, id), eq(onboardingPipelines.tenantId, session.tenantId)))
+        .limit(1)
+        .for("update"))[0];
       if (!pipe) throw Object.assign(new Error("pipeline not found"), { status: 404 });
 
       const stages = { ...(pipe.stages as Record<string, any>) };
+
+      // Idempotency: if this stage is already marked done, don't re-fire the
+      // side effects (next-stage task, welcome outbox event, notifications).
+      if (stages[body.stage]) {
+        const next = ONBOARDING_STAGES.find((s) => !stages[s]) ?? null;
+        return {
+          id,
+          currentStage: pipe.currentStage,
+          stageJustDone: body.stage,
+          nextStage: next,
+          allDone: ONBOARDING_STAGES.every((s) => stages[s]),
+          alreadyDone: true,
+        };
+      }
+
       stages[body.stage] = {
         doneAt: new Date().toISOString(),
         byUserId: session.userId,
@@ -102,7 +123,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         patch.actualCompletionAt = new Date().toISOString().slice(0, 10);
       }
 
-      await tx.update(onboardingPipelines).set(patch).where(eq(onboardingPipelines.id, id));
+      await tx
+        .update(onboardingPipelines)
+        .set(patch)
+        .where(and(eq(onboardingPipelines.id, id), eq(onboardingPipelines.tenantId, session.tenantId)));
 
       // Outbox event — any workflow can subscribe (e.g. welcome comm)
       await tx.insert(eventsOutbox).values({

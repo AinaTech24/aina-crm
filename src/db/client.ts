@@ -1,8 +1,15 @@
 import { drizzle } from "drizzle-orm/node-postgres";
+import { sql } from "drizzle-orm";
 import { Pool, type PoolClient } from "pg";
 import * as schema from "./schema";
 
-const connectionString = process.env.DATABASE_URL;
+// The APP connects with APP_DATABASE_URL when set — a NON-superuser role
+// (mfd_app) so Postgres Row-Level Security is actually enforced (a superuser
+// bypasses RLS even with FORCE, defeating tenant isolation). Falls back to
+// DATABASE_URL, which is also what migrations/seed/scripts use (they need DDL,
+// so they run as the privileged role). Setting APP_DATABASE_URL is opt-in:
+// nothing changes until it's provided.
+const connectionString = process.env.APP_DATABASE_URL ?? process.env.DATABASE_URL;
 if (!connectionString) {
   throw new Error("DATABASE_URL is not set");
 }
@@ -77,24 +84,18 @@ export async function withTenant<T>(
   opts?: { userId?: string; branchId?: string; roles?: string[] }
 ): Promise<T> {
   return db.transaction(async (tx) => {
-    await tx.execute(
-      // SET LOCAL only persists for this transaction
-      `SELECT set_config('app.tenant_id', '${escape(tenantId)}', true)` as any
-    );
+    // Parameterized set_config (transaction-LOCAL). MUST use a drizzle `sql`
+    // object — a raw string passed to tx.execute() is NOT reliably executed
+    // under the bundled runtime, which silently leaves the RLS context unset.
+    await tx.execute(sql`SELECT set_config('app.tenant_id', ${tenantId}, true)`);
     if (opts?.userId) {
-      await tx.execute(
-        `SELECT set_config('app.user_id', '${escape(opts.userId)}', true)` as any
-      );
+      await tx.execute(sql`SELECT set_config('app.user_id', ${opts.userId}, true)`);
     }
     if (opts?.branchId) {
-      await tx.execute(
-        `SELECT set_config('app.branch_id', '${escape(opts.branchId)}', true)` as any
-      );
+      await tx.execute(sql`SELECT set_config('app.branch_id', ${opts.branchId}, true)`);
     }
     if (opts?.roles?.length) {
-      await tx.execute(
-        `SELECT set_config('app.roles', '${escape(opts.roles.join(","))}', true)` as any
-      );
+      await tx.execute(sql`SELECT set_config('app.roles', ${opts.roles.join(",")}, true)`);
     }
     return fn(tx);
   });
@@ -113,12 +114,8 @@ export async function withPlatformAdmin<T>(
   fn: (tx: Parameters<Parameters<typeof db.transaction>[0]>[0]) => Promise<T>
 ): Promise<T> {
   return db.transaction(async (tx) => {
-    await tx.execute(
-      `SELECT set_config('app.is_platform_admin', 'true', true)` as any
-    );
-    await tx.execute(
-      `SELECT set_config('app.user_id', '${escape(adminUserId)}', true)` as any
-    );
+    await tx.execute(sql`SELECT set_config('app.is_platform_admin', 'true', true)`);
+    await tx.execute(sql`SELECT set_config('app.user_id', ${adminUserId}, true)`);
     return fn(tx);
   });
 }
@@ -134,9 +131,10 @@ export async function withSystem<T>(
     throw new Error("withSystem disabled — set ALLOW_SYSTEM_TX=1 to enable");
   }
   return db.transaction(async (tx) => {
-    // We're connected as the postgres superuser already; just disable RLS
-    // for the duration of this transaction by setting is_platform_admin.
-    await tx.execute(`SELECT set_config('app.is_platform_admin', 'true', true)` as any);
+    // Grant cross-tenant access for this transaction via the platform-admin
+    // branch of every RLS policy (works whether or not the connecting role is
+    // a superuser).
+    await tx.execute(sql`SELECT set_config('app.is_platform_admin', 'true', true)`);
     return fn(tx);
   });
 }

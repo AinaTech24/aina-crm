@@ -9,6 +9,12 @@ import { formatINR, formatDate, formatRelative } from "@/lib/utils";
 import { AddMemberDialog } from "@/components/families/AddMemberDialog";
 import { RemoveMemberButton } from "@/components/families/RemoveMemberButton";
 import { FamilyEditPanel } from "@/components/families/FamilyEditPanel";
+import { FamilyHealthCard } from "@/components/families/FamilyHealthCard";
+import { FamilyPortfolioAllocation } from "@/components/families/FamilyPortfolioAllocation";
+import { FamilyTouchpoints } from "@/components/families/FamilyTouchpoints";
+import { EngageNextGenButton } from "@/components/families/EngageNextGenButton";
+import { FamilyTreeVisualizer } from "@/components/families/FamilyTreeVisualizer";
+import { CalendarPlus } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +26,8 @@ const ROLE_LABELS: Record<string, string> = {
   son: "Son",
   daughter: "Daughter",
   sibling: "Sibling",
+  huf_karta: "HUF Karta",
+  huf_coparcener: "HUF Co-parcener",
   huf: "HUF Member",
   other: "Other",
 };
@@ -64,10 +72,10 @@ export default async function FamilyDetailPage({ params }: { params: Promise<{ i
         ? []
         : (await tx.execute(sql`
             SELECT g.id, g.name, g.category, g.target_amount, g.current_value,
-                   g.target_date, g.progress_pct, i.name AS member_name
+                   g.target_date, g.progress_pct, g.monthly_contribution, i.name AS member_name
             FROM goals g
             JOIN investors i ON i.id = g.investor_id
-            WHERE g.investor_id = ANY(${sql.raw(`ARRAY[${memberIds.map((mid) => `'${mid}'::uuid`).join(",")}]`)})
+            WHERE g.investor_id IN (${sql.join(memberIds.map((mid) => sql`${mid}::uuid`), sql`, `)})
             ORDER BY g.target_date ASC NULLS LAST
             LIMIT 20
           `)).rows;
@@ -99,9 +107,20 @@ export default async function FamilyDetailPage({ params }: { params: Promise<{ i
 
   return (
     <div className="space-y-6 max-w-5xl">
-      <Link href="/dashboard/families" className="text-sm text-muted-foreground hover:underline flex items-center gap-1">
-        <ChevronLeft className="size-4" /> Back to families
-      </Link>
+      <div className="flex items-center justify-between">
+        <Link href="/dashboard/families" className="text-sm text-muted-foreground hover:underline flex items-center gap-1">
+          <ChevronLeft className="size-4" /> Back to families
+        </Link>
+        {/* Schedule family review — deep-link into the meetings module
+            pre-filled with this family. Family-level review meetings are
+            already supported via review_meetings.familyId. */}
+        <Link
+          href={`/dashboard/review-meetings/new?familyId=${id}&meetingType=family_review`}
+          className="rounded-md bg-brand-cyan text-white px-3 py-1.5 text-sm font-medium flex items-center gap-1.5 hover:opacity-90"
+        >
+          <CalendarPlus className="size-4" /> Schedule family review
+        </Link>
+      </div>
 
       {/* Header */}
       <div className="border rounded-lg bg-card p-6">
@@ -128,6 +147,19 @@ export default async function FamilyDetailPage({ params }: { params: Promise<{ i
           </div>
         </div>
       </div>
+
+      {/* Family Tree Visualizer */}
+      <FamilyTreeVisualizer
+        members={data.members as any}
+        primaryInvestorId={data.family.primaryInvestorId}
+      />
+
+      {/* Composite family health — derived from already-loaded data */}
+      <FamilyHealthCard
+        family={data.family as any}
+        members={data.members as any}
+        familyId={id}
+      />
 
       {/* Inline edit panel for the family-level fields */}
       <FamilyEditPanel
@@ -235,6 +267,16 @@ export default async function FamilyDetailPage({ params }: { params: Promise<{ i
         )}
       </div>
 
+      {/* Combined family portfolio allocation — server-fetched roll-up of
+          asset class + AMC concentration across all members */}
+      <FamilyPortfolioAllocation
+        session={session}
+        memberIds={data.members.map((m) => m.id)}
+      />
+
+      {/* Touchpoint horizon — birthdays + anniversaries next 90 days */}
+      <FamilyTouchpoints members={data.members as any} />
+
       {/* Family goals + Next-gen */}
       <div className="grid grid-cols-2 gap-4">
         <div className="border rounded-lg bg-card p-5">
@@ -246,11 +288,39 @@ export default async function FamilyDetailPage({ params }: { params: Promise<{ i
               No goals set across family members.
             </p>
           ) : (
-            <ul className="space-y-3">
+            <ul className="space-y-4">
               {data.familyGoals.map((g: any) => {
                 const pct = Number(g.progress_pct ?? 0);
+                
+                // Compounding calculations
+                const targetDate = g.target_date ? new Date(g.target_date) : null;
+                let N = 0;
+                if (targetDate) {
+                  const now = new Date();
+                  const diffYears = targetDate.getFullYear() - now.getFullYear();
+                  const diffMonths = targetDate.getMonth() - now.getMonth();
+                  N = diffYears * 12 + diffMonths;
+                }
+
+                const currentVal = Number(g.current_value ?? 0);
+                const sip = Number(g.monthly_contribution ?? 0);
+                const targetAmount = Number(g.target_amount);
+
+                let projectedValue = currentVal;
+                let shortfall = 0;
+                let neededIncrease = 0;
+
+                if (targetDate && N > 0) {
+                  const r = 0.10 / 12; // 10% expected return rate per annum
+                  projectedValue = currentVal * Math.pow(1 + r, N) + sip * ((Math.pow(1 + r, N) - 1) / r);
+                  if (projectedValue < targetAmount) {
+                    shortfall = targetAmount - projectedValue;
+                    neededIncrease = (shortfall * r) / (Math.pow(1 + r, N) - 1);
+                  }
+                }
+
                 return (
-                  <li key={g.id}>
+                  <li key={g.id} className="border-b last:border-0 pb-3 last:pb-0">
                     <div className="flex items-center justify-between text-sm">
                       <div>
                         <span className="font-medium">{g.name}</span>{" "}
@@ -263,9 +333,22 @@ export default async function FamilyDetailPage({ params }: { params: Promise<{ i
                     <div className="mt-1.5 h-1.5 bg-muted rounded-full overflow-hidden">
                       <div className="h-full bg-emerald-500" style={{ width: `${Math.min(100, pct)}%` }} />
                     </div>
-                    <div className="text-xs text-muted-foreground mt-1">
-                      {pct.toFixed(0)}% · target {g.target_date ? formatDate(g.target_date) : "—"} · {g.category}
+                    <div className="text-xs text-muted-foreground mt-1 flex justify-between">
+                      <span>
+                        {pct.toFixed(0)}% · target {g.target_date ? formatDate(g.target_date) : "—"} · {g.category.replace(/_/g, " ")}
+                      </span>
+                      {sip > 0 && <span className="tabular-nums font-mono text-[10px]">SIP: {formatINR(sip)}/mo</span>}
                     </div>
+                    {shortfall > 0 && (
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-rose-50 text-rose-700 border border-rose-200">
+                          ⚠️ Shortfall Projected: {formatINR(shortfall)}
+                        </span>
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-200">
+                          Suggested step-up: +{formatINR(neededIncrease)}/mo
+                        </span>
+                      </div>
+                    )}
                   </li>
                 );
               })}
@@ -292,9 +375,12 @@ export default async function FamilyDetailPage({ params }: { params: Promise<{ i
                       {m.dob ? formatDate(m.dob) : "DOB unknown"}
                     </div>
                   </Link>
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-amber-50 text-amber-700">
-                    {m.isMinor ? "minor" : "next-gen"}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-amber-50 text-amber-700">
+                      {m.isMinor ? "minor" : "next-gen"}
+                    </span>
+                    <EngageNextGenButton investorId={m.id} investorName={m.name} />
+                  </div>
                 </li>
               ))}
             </ul>

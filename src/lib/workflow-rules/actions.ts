@@ -16,10 +16,21 @@
  *   - add_tag / remove_tag — appends/removes from a `tags` jsonb array
  */
 
-import { sql } from "drizzle-orm";
+import { sql, eq, and } from "drizzle-orm";
 import { getModule } from "./modules";
 import type { Action } from "./types";
-import { tasks, notifications, reviewMeetings } from "@/db/schema";
+import {
+  tasks,
+  notifications,
+  reviewMeetings,
+  leads,
+  investors,
+  eventsOutbox,
+  proposals,
+  communications,
+} from "@/db/schema";
+import { v4 as uuid } from "uuid";
+import { autoAdvance } from "@/lib/blueprints/auto-advance";
 
 export interface ActionContext {
   tenantId: string;
@@ -215,7 +226,7 @@ async function runUpdateField(config: Record<string, unknown>, ctx: ActionContex
   setParts.push(sql`updated_at = now()`);
 
   await ctx.tx.execute(
-    sql`UPDATE ${sql.identifier(mod.table)} SET ${sql.join(setParts, sql`, `)} WHERE id = ${ctx.subjectId}`
+    sql`UPDATE ${sql.identifier(mod.table)} SET ${sql.join(setParts, sql`, `)} WHERE id = ${ctx.subjectId} AND tenant_id = ${ctx.tenantId}::uuid`
   );
   return { type: "update_field", status: "succeeded" };
 }
@@ -239,7 +250,7 @@ async function runTagOp(op: "add" | "remove", config: Record<string, unknown>, c
 
   try {
     await ctx.tx.execute(
-      sql`UPDATE ${sql.identifier(mod.table)} SET tags = ${tagsExpr}, updated_at = now() WHERE id = ${ctx.subjectId}`
+      sql`UPDATE ${sql.identifier(mod.table)} SET tags = ${tagsExpr}, updated_at = now() WHERE id = ${ctx.subjectId} AND tenant_id = ${ctx.tenantId}::uuid`
     );
     return { type: `${op}_tag`, status: "succeeded" };
   } catch (e: any) {
@@ -251,10 +262,53 @@ async function runTagOp(op: "add" | "remove", config: Record<string, unknown>, c
 // Webhook
 // ---------------------------------------------------------------------------
 
+const WEBHOOK_TIMEOUT_MS = 10_000;
+
+/**
+ * Conservative SSRF guard for tenant-authored webhook URLs.
+ *
+ * Blocks the obvious internal targets — loopback, private RFC-1918 ranges,
+ * link-local (incl. the 169.254.169.254 cloud-metadata endpoint) and non-HTTP
+ * schemes — so a rule can't be pointed at our own infra. It inspects the
+ * literal host only (no DNS resolution), so it is NOT a complete SSRF defense;
+ * pair it with network-egress controls in production. Returns a reason string
+ * when the URL should be blocked, or null when it's allowed.
+ */
+function unsafeWebhookUrl(raw: string): string | null {
+  let u: URL;
+  try {
+    u = new URL(raw);
+  } catch {
+    return "invalid URL";
+  }
+  if (u.protocol !== "http:" && u.protocol !== "https:") {
+    return `unsupported protocol "${u.protocol}"`;
+  }
+  const host = u.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  if (host === "localhost" || host.endsWith(".localhost") || host === "0.0.0.0" || host === "::1" || host === "::") {
+    return "host is loopback/unspecified";
+  }
+  const m = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (m) {
+    const a = Number(m[1]);
+    const b = Number(m[2]);
+    if (a === 10 || a === 127 || a === 0 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168)) {
+      return "host is a private/loopback/link-local IP";
+    }
+  }
+  if (/^f[cd][0-9a-f]{2}:/i.test(host) || /^fe[89ab][0-9a-f]:/i.test(host)) {
+    return "host is a private/link-local IPv6 address";
+  }
+  return null;
+}
+
 async function runWebhook(config: Record<string, unknown>, ctx: ActionContext): Promise<ActionResult> {
   const url = String(config.url ?? "");
   if (!url) return { type: "webhook", status: "skipped", detail: "no url" };
-  const method = String(config.method ?? "POST");
+  const unsafe = unsafeWebhookUrl(url);
+  if (unsafe) return { type: "webhook", status: "failed", error: `Blocked webhook URL (${unsafe})` };
+
+  const method = String(config.method ?? "POST").toUpperCase();
   const headers = (config.headers as Record<string, string>) ?? {};
   const body = {
     tenantId: ctx.tenantId,
@@ -263,15 +317,25 @@ async function runWebhook(config: Record<string, unknown>, ctx: ActionContext): 
     record: ctx.record,
     extra: config.body ?? null,
   };
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), WEBHOOK_TIMEOUT_MS);
   try {
     const r = await fetch(url, {
       method,
       headers: { "content-type": "application/json", ...headers },
-      body: method === "GET" ? undefined : JSON.stringify(body),
+      body: method === "GET" || method === "HEAD" ? undefined : JSON.stringify(body),
+      signal: controller.signal,
+      // Don't auto-follow redirects — a 3xx to an internal host would bypass
+      // the SSRF guard above.
+      redirect: "manual",
     });
     return { type: "webhook", status: r.ok ? "succeeded" : "failed", detail: `HTTP ${r.status}` };
   } catch (e: any) {
-    return { type: "webhook", status: "failed", error: e?.message ?? String(e) };
+    const msg = e?.name === "AbortError" ? `timed out after ${WEBHOOK_TIMEOUT_MS}ms` : e?.message ?? String(e);
+    return { type: "webhook", status: "failed", error: msg };
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -299,18 +363,192 @@ async function runCreateRecord(_config: Record<string, unknown>, _ctx: ActionCon
   };
 }
 
-async function runConvertLead(_config: Record<string, unknown>, ctx: ActionContext): Promise<ActionResult> {
+async function runConvertLead(config: Record<string, unknown>, ctx: ActionContext): Promise<ActionResult> {
   if (ctx.subjectType !== "lead") {
     return { type: "convert_lead", status: "skipped", detail: "subject is not a lead" };
   }
-  // Defer to existing /api/leads/[id]/convert handler — but that requires a session.
-  // For now, just flag the lead as 'converted' — the existing convert flow can be
-  // re-used via a follow-up task action.
-  return {
-    type: "convert_lead",
-    status: "skipped",
-    detail: "convert_lead currently runs via the leads UI — wire to /api/leads/<id>/convert in a follow-up.",
-  };
+
+  const tx = ctx.tx;
+  const leadId = ctx.subjectId;
+  const tenantId = ctx.tenantId;
+
+  try {
+    const lead = (await tx.select().from(leads).where(and(eq(leads.id, leadId), eq(leads.tenantId, tenantId))).limit(1))[0];
+    if (!lead) {
+      return { type: "convert_lead", status: "failed", error: "lead not found" };
+    }
+
+    if (lead.convertedInvestorId) {
+      return {
+        type: "convert_lead",
+        status: "skipped",
+        detail: "lead already converted",
+        externalId: lead.convertedInvestorId,
+      };
+    }
+
+    // Determine PAN (pan is notNull in investors schema). We must NOT invent a
+    // placeholder — a fake PAN on a real investor record corrupts KYC, breaks
+    // RTA/BSE submission, and is a compliance violation. If no real PAN can be
+    // sourced, skip the conversion and surface why so a human can fix it.
+    let pan = (config?.pan as string | undefined) ?? (ctx.record?.pan as string | undefined);
+    if (!pan && typeof lead.notes === "string") {
+      const match = lead.notes.match(/[A-Z]{5}[0-9]{4}[A-Z]/i);
+      if (match) pan = match[0].toUpperCase();
+    }
+    if (!pan || !/^[A-Z]{5}[0-9]{4}[A-Z]$/i.test(pan)) {
+      return {
+        type: "convert_lead",
+        status: "skipped",
+        detail:
+          "Lead has no valid PAN — cannot auto-convert to a client. Add the PAN on the lead (or in the rule's action config) and retry.",
+      };
+    }
+
+    const investorId = uuid();
+
+    // 1. Create investor
+    const inserted = await tx
+      .insert(investors)
+      .values({
+        id: investorId,
+        tenantId,
+        branchId: lead.branchId,
+        name: lead.name,
+        pan: pan.toUpperCase(),
+        email: lead.email,
+        phone: lead.phone,
+        whatsappPhone: lead.phone,
+        address: lead.city ? ({ city: lead.city, country: "India" } as any) : null,
+        segmentTag: (config?.segmentTag as any) ?? "Retail",
+        investorCategory: (config?.investorCategory as any) ?? "individual",
+        rmId: lead.ownerId,
+        status: "active",
+        onboardedAt: new Date(),
+        notes: lead.notes ?? null,
+        kycStatus: "pending",
+      } as any)
+      .returning();
+
+    // 2. Stamp lead
+    await tx
+      .update(leads)
+      .set({
+        stage: "converted",
+        stageChangedAt: new Date(),
+        convertedInvestorId: investorId,
+        convertedAt: new Date(),
+        updatedAt: new Date(),
+      } as any)
+      .where(and(eq(leads.id, leadId), eq(leads.tenantId, tenantId)));
+
+    // ─── DATA CARRYOVER ──────────────────────────────────────────────
+    // 1. Risk profile responses
+    const carriedRpr = await tx.execute(sql`
+      UPDATE risk_profile_responses
+         SET investor_id = ${investorId}::uuid,
+             updated_at = now()
+       WHERE tenant_id = ${tenantId}::uuid
+         AND investor_id = ${leadId}::uuid
+      RETURNING id, final_category, total_score, signed_at
+    `);
+    const latestRisk = (carriedRpr.rows as any[])[0];
+    if (latestRisk) {
+      const signedAt = latestRisk.signed_at ? new Date(latestRisk.signed_at) : null;
+      await tx
+        .update(investors)
+        .set({
+          riskProfile: latestRisk.final_category as any,
+          riskProfileScore: Number(latestRisk.total_score),
+          riskProfileSignedAt: signedAt,
+          updatedAt: new Date(),
+        } as any)
+        .where(eq(investors.id, investorId));
+    }
+
+    // 2. Proposals
+    await tx
+      .update(proposals)
+      .set({ investorId, recipientType: "investor" as any, updatedAt: new Date() } as any)
+      .where(and(eq(proposals.leadId, leadId), eq(proposals.tenantId, tenantId)));
+
+    // 3. Compliance documents
+    await tx.execute(sql`
+      UPDATE compliance_documents
+         SET related_entity_type = 'investor',
+             related_entity_id = ${investorId}::uuid,
+             updated_at = now()
+       WHERE tenant_id = ${tenantId}::uuid
+         AND related_entity_type = 'lead'
+         AND related_entity_id = ${leadId}::uuid
+    `);
+
+    // 4. Communications
+    await tx
+      .update(communications)
+      .set({ investorId, updatedAt: new Date() } as any)
+      .where(and(eq(communications.leadId, leadId), eq(communications.tenantId, tenantId)));
+
+    // 5. Meetings
+    await tx.execute(sql`
+      UPDATE review_meetings
+         SET investor_id = ${investorId}::uuid,
+             updated_at = now()
+       WHERE tenant_id = ${tenantId}::uuid
+         AND investor_id = ${leadId}::uuid
+    `);
+
+    // 6. Open share tokens
+    await tx.execute(sql`
+      UPDATE share_tokens
+         SET subject_type = 'investor',
+             subject_id = ${investorId}::uuid,
+             updated_at = now()
+       WHERE tenant_id = ${tenantId}::uuid
+         AND subject_type = 'lead'
+         AND subject_id = ${leadId}::uuid
+         AND used_at IS NULL
+    `);
+
+    // 3. Emit outbox events
+    const investorSnapshot = JSON.parse(JSON.stringify(inserted[0] ?? {}));
+    await tx.insert(eventsOutbox).values([
+      {
+        tenantId,
+        kind: "lead.converted",
+        entityType: "lead",
+        entityId: leadId,
+        after: { investorId } as any,
+        meta: { source: "workflow_rule" } as any,
+      },
+      {
+        tenantId,
+        kind: "investor.created",
+        entityType: "investor",
+        entityId: investorId,
+        after: investorSnapshot as any,
+        meta: { source: "workflow_rule", leadId } as any,
+      },
+    ] as any);
+
+    // 4. Blueprint onboarding auto-advance
+    await autoAdvance(tx, tenantId, leadId, "client.converted", {
+      remarks: "Lead converted to client by workflow rule automation — entering onboarding phase.",
+    });
+
+    return {
+      type: "convert_lead",
+      status: "succeeded",
+      externalId: investorId,
+      detail: `Lead converted to Client. Created investor record ${investorId}.`,
+    };
+  } catch (err: any) {
+    return {
+      type: "convert_lead",
+      status: "failed",
+      error: err.message ?? String(err),
+    };
+  }
 }
 
 // ---------------------------------------------------------------------------

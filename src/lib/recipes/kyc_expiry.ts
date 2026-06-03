@@ -11,7 +11,7 @@ export const kycExpiryRecipe: RecipeDef = {
   graph: graph({
     start: "trigger",
     nodes: [
-      n("trigger", "trigger", {}),
+      n("trigger", "trigger", { kind: "investor.kyc_expiring", subjectType: "investor" }),
       n("wa", "send_whatsapp", {
         templateKey: "kyc_renew",
         variables: { name: "subject.name", expiry: "subject.ckyc_expiry_at" },

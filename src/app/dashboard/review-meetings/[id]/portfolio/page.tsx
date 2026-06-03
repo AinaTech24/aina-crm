@@ -57,7 +57,12 @@ export default async function MeetingPortfolioPage({
       ? await tx
           .select()
           .from(investors)
-          .where(eq(investors.id, meeting.investorId))
+          .where(
+            and(
+              eq(investors.id, meeting.investorId),
+              eq(investors.tenantId, session.tenantId)
+            )
+          )
           .limit(1)
       : [null];
 
@@ -76,7 +81,12 @@ export default async function MeetingPortfolioPage({
     const items = await tx
       .select()
       .from(portfolioReviewItems)
-      .where(eq(portfolioReviewItems.meetingId, id));
+      .where(
+        and(
+          eq(portfolioReviewItems.meetingId, id),
+          eq(portfolioReviewItems.tenantId, session.tenantId)
+        )
+      );
 
     return { meeting, investor, folios: investorFolios, items };
   });

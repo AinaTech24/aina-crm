@@ -19,9 +19,11 @@ import {
 } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { require as requireCap } from "@/lib/auth/rbac";
 import { formatDate, formatINR } from "@/lib/utils";
 import { RowActions } from "@/components/common/RowActions";
 import { FilterBar } from "@/components/common/FilterBar";
+import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
 import { CustomViews } from "@/components/common/CustomViews";
 
 const KIND_LABEL: Record<string, string> = {
@@ -90,6 +92,7 @@ export default async function CampaignsPage({
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const session = await requireSession();
+  requireCap(session.roles, "campaign.send");
   const sp = await searchParams;
   const q = (sp.q ?? "").trim();
   const kindFilter = (sp.kind ?? "").split(",").filter(Boolean);
@@ -98,7 +101,8 @@ export default async function CampaignsPage({
   const complianceFilter = (sp.compliance ?? "").split(",").filter(Boolean);
 
   const data = await withTenant(session.tenantId, async (tx) => {
-    const filters: any[] = [];
+    // Explicit tenant predicate (defense-in-depth alongside RLS) — always first.
+    const filters: any[] = [sql`c.tenant_id = ${session.tenantId}::uuid`];
     if (q) {
       filters.push(
         sql`(c.name ILIKE ${`%${q}%`} OR c.theme ILIKE ${`%${q}%`} OR c.target_audience ILIKE ${`%${q}%`})`
@@ -124,6 +128,8 @@ export default async function CampaignsPage({
         sql`c.compliance_check_status IN (${sql.join(complianceFilter.map((v) => sql`${v}`), sql`, `)})`
       );
     }
+    const dr = dateRangeCond(sp, "created", "c.created_at");
+    if (dr) filters.push(dr);
     const whereSql = filters.length ? sql` WHERE ${sql.join(filters, sql` AND `)}` : sql``;
 
     const rows = await tx.execute(sql`
@@ -157,6 +163,7 @@ export default async function CampaignsPage({
         COALESCE(SUM(campaign_cost::numeric) FILTER (WHERE created_at >= date_trunc('year', now())), 0)::numeric AS ytd_cost,
         COUNT(*) FILTER (WHERE approval_status = 'pending')::int AS pending_approval
       FROM campaigns
+      WHERE tenant_id = ${session.tenantId}::uuid
     `);
     return { rows: rows.rows as any[], s: stats.rows[0] as any };
   });
@@ -184,21 +191,34 @@ export default async function CampaignsPage({
 
       {/* KPI strip */}
       <div className="grid grid-cols-6 gap-3">
-        <Stat icon={Megaphone} label="Active" value={data.s.active ?? 0} tone="emerald" />
-        <Stat icon={Users} label="Leads (YTD)" value={data.s.ytd_leads ?? 0} />
-        <Stat icon={Target} label="Meetings (YTD)" value={data.s.ytd_meetings ?? 0} />
-        <Stat icon={TrendingUp} label="Conversions (YTD)" value={data.s.ytd_conversions ?? 0} tone="emerald" />
-        <Stat
-          icon={IndianRupee}
-          label="Spend (YTD)"
-          value={data.s.ytd_cost ? formatINR(Number(data.s.ytd_cost)) : "₹0"}
-        />
-        <Stat
-          icon={FileText}
-          label="Pending approval"
-          value={data.s.pending_approval ?? 0}
-          tone={Number(data.s.pending_approval) > 0 ? "amber" : "muted"}
-        />
+        <Link href="/dashboard/campaigns?status=scheduled,sending,sent" className="block transition-transform hover:scale-[1.01]">
+          <Stat icon={Megaphone} label="Active" value={data.s.active ?? 0} tone="emerald" active={sp.status === "scheduled,sending,sent"} />
+        </Link>
+        <div className="block">
+          <Stat icon={Users} label="Leads (YTD)" value={data.s.ytd_leads ?? 0} />
+        </div>
+        <div className="block">
+          <Stat icon={Target} label="Meetings (YTD)" value={data.s.ytd_meetings ?? 0} />
+        </div>
+        <div className="block">
+          <Stat icon={TrendingUp} label="Conversions (YTD)" value={data.s.ytd_conversions ?? 0} tone="emerald" />
+        </div>
+        <div className="block">
+          <Stat
+            icon={IndianRupee}
+            label="Spend (YTD)"
+            value={data.s.ytd_cost ? formatINR(Number(data.s.ytd_cost)) : "₹0"}
+          />
+        </div>
+        <Link href="/dashboard/campaigns?approval=pending" className="block transition-transform hover:scale-[1.01]">
+          <Stat
+            icon={FileText}
+            label="Pending approval"
+            value={data.s.pending_approval ?? 0}
+            tone={Number(data.s.pending_approval) > 0 ? "amber" : "muted"}
+            active={sp.approval === "pending"}
+          />
+        </Link>
       </div>
 
       <FilterBar
@@ -258,6 +278,7 @@ export default async function CampaignsPage({
               { value: "not_required", label: "Not required" },
             ],
           },
+          dateRangeFilter("created", "Created"),
         ]}
         rightSlot={
           <CustomViews
@@ -404,19 +425,21 @@ function Stat({
   value,
   tone,
   icon: Icon,
+  active,
 }: {
   label: string;
   value: number | string;
   tone?: "rose" | "amber" | "emerald" | "muted";
   icon?: any;
+  active?: boolean;
 }) {
   const color =
     tone === "rose"
-      ? "text-rose-600"
+      ? "text-rose-600 font-bold"
       : tone === "amber"
-      ? "text-amber-600"
+      ? "text-amber-600 font-bold"
       : tone === "emerald"
-      ? "text-emerald-600"
+      ? "text-emerald-600 font-bold"
       : "text-foreground";
   const iconBg =
     tone === "rose"
@@ -427,7 +450,11 @@ function Stat({
       ? "bg-emerald-50 text-emerald-600"
       : "bg-brand-cyan-light text-brand-cyan-deep";
   return (
-    <div className="kpi-card">
+    <div className={`kpi-card transition-all ${
+      active 
+        ? "ring-2 ring-primary/65 border-primary bg-slate-50/50 shadow-sm" 
+        : "hover:border-slate-300 bg-white"
+    }`}>
       <div className="flex items-center justify-between">
         <span className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">
           {label}

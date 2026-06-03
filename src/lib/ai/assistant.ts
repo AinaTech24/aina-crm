@@ -15,6 +15,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { FilterASTSchema, type FilterAST } from "@/lib/filter/ast";
 import { CATALOGS } from "@/lib/filter/catalog";
+import { POLICY_TYPES, PREMIUM_FREQUENCIES } from "@/db/schema/insurance";
 
 const FAST_MODEL = process.env.ANTHROPIC_MODEL_FAST ?? "claude-haiku-4-5-20251001";
 const REASONING_MODEL = process.env.ANTHROPIC_MODEL_REASONING ?? "claude-opus-4-7";
@@ -24,6 +25,218 @@ function client(): Anthropic {
     throw new Error("ANTHROPIC_API_KEY not set");
   }
   return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+}
+
+/* ============================================================================
+ * Insurance policy document → structured auto-fill
+ * ============================================================================
+ * Reads an uploaded policy PDF / image and extracts the fields our insurance
+ * form needs, mapped to our own schema (policy-type enum, premium frequency,
+ * ISO dates). Advisory only — the route persists nothing; the RM reviews every
+ * field (low-confidence ones are flagged) before saving. Mirrors the Sanchay
+ * "Upload Policy Document → Auto-Fills in ~15s" flow but lands in our model.
+ */
+
+export type InsuranceCategory = "life" | "health" | "motor" | "general";
+
+export type InsuranceExtraction = {
+  insurer: string | null;
+  planName: string | null;
+  policyNumber: string | null;
+  policyType: (typeof POLICY_TYPES)[number] | null;
+  category: InsuranceCategory | null;
+  sumAssured: number | null;
+  annualPremium: number | null;
+  premiumFrequency: (typeof PREMIUM_FREQUENCIES)[number] | null;
+  premiumPayingTermYears: number | null;
+  policyTermYears: number | null;
+  policyStartDate: string | null;
+  maturityDate: string | null;
+  nextPremiumDueDate: string | null;
+  livesCovered: number | null;
+  nomineeName: string | null;
+  nomineeRelation: string | null;
+  businessType: "new" | "renewal" | "portability" | null;
+  proposerName: string | null;
+  proposerPan: string | null;
+  /** Category-specific extras (motor IDV/NCB, health co-pay/room-rent, etc.). */
+  details: Record<string, unknown>;
+  /** Per-field 0..1 confidence so the UI can highlight what to double-check. */
+  fieldConfidence: Record<string, number>;
+  overallConfidence: number;
+  warnings: string[];
+};
+
+const CATEGORY_BY_POLICY_TYPE: Record<string, InsuranceCategory> = {
+  term: "life",
+  ulip: "life",
+  endowment: "life",
+  money_back: "life",
+  life_other: "life",
+  health: "health",
+  critical_illness: "health",
+  personal_accident: "general",
+  motor: "motor",
+  travel: "general",
+  home: "general",
+  general_other: "general",
+};
+
+/** Best-effort normalise a date string to ISO yyyy-mm-dd, else null. */
+function toIsoDate(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const s = v.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  // dd/mm/yyyy or dd-mm-yyyy
+  const m = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+  if (m) {
+    const [, d, mo, y] = m;
+    return `${y}-${mo.padStart(2, "0")}-${d.padStart(2, "0")}`;
+  }
+  return null;
+}
+
+function num(v: unknown): number | null {
+  if (v == null || v === "") return null;
+  const n = typeof v === "number" ? v : Number(String(v).replace(/[,₹\s]/g, ""));
+  return Number.isFinite(n) ? n : null;
+}
+
+export async function extractInsurancePolicy(params: {
+  base64: string;
+  mediaType: "application/pdf" | "image/jpeg" | "image/png";
+}): Promise<InsuranceExtraction | { error: string }> {
+  const typeList = POLICY_TYPES.join(" | ");
+  const freqList = PREMIUM_FREQUENCIES.join(" | ");
+
+  const system = `You read an Indian insurance policy document (life / health / motor / general) and
+extract its key fields for a Mutual Fund Distributor's CRM. Output a SINGLE JSON object — no markdown, no preamble.
+
+Exact shape:
+{
+  "insurer": string|null,                 // insurance company, e.g. "HDFC Life", "Star Health"
+  "planName": string|null,                // product/plan name, e.g. "Click 2 Protect Super"
+  "policyNumber": string|null,
+  "policyType": ${typeList} | null,       // map to the CLOSEST of these exact values
+  "category": "life" | "health" | "motor" | "general" | null,
+  "sumAssured": number|null,              // in rupees (for motor, use IDV); digits only
+  "annualPremium": number|null,           // annualised premium in rupees, digits only
+  "premiumFrequency": ${freqList} | null,
+  "premiumPayingTermYears": number|null,
+  "policyTermYears": number|null,
+  "policyStartDate": "YYYY-MM-DD"|null,
+  "maturityDate": "YYYY-MM-DD"|null,      // null for pure-protection/health/motor
+  "nextPremiumDueDate": "YYYY-MM-DD"|null,
+  "livesCovered": number|null,            // family-floater members; 1 for individual
+  "nomineeName": string|null,
+  "nomineeRelation": string|null,
+  "businessType": "new" | "renewal" | "portability" | null,
+  "proposerName": string|null,            // only if proposer differs from the life assured / holder
+  "proposerPan": string|null,
+  "details": { ... },                     // category-specific extras, see below
+  "fieldConfidence": { "<field>": 0..1 }, // your confidence per field you filled
+  "overallConfidence": 0..1,
+  "warnings": [ "short notes about anything ambiguous or unreadable" ]
+}
+
+category-specific "details" keys:
+  motor   → { "vehicleRegNo": string, "makeModel": string, "idv": number, "ncbPercent": number, "coverType": "comprehensive"|"third_party"|"od_only" }
+  health  → { "roomRentCapInr": number, "coPayPercent": number, "preExistingWaitingMonths": number, "familyFloater": boolean }
+  general → { "coverageNotes": string }
+  life    → {} (the top-level fields cover it)
+
+Rules:
+- Use ONLY the listed enum values for policyType / premiumFrequency / businessType / coverType. If unsure, pick the closest and lower its confidence.
+- Derive "category" from the policy type.
+- Money: digits only (strip ₹ and commas). Dates: ISO yyyy-mm-dd.
+- NEVER invent a value that isn't in the document — use null and add a warning instead.
+- If the file is not an insurance policy, return all nulls, overallConfidence 0, and a warning saying so.
+- Output ONLY the JSON object.`;
+
+  const docBlock =
+    params.mediaType === "application/pdf"
+      ? {
+          type: "document",
+          source: { type: "base64", media_type: "application/pdf", data: params.base64 },
+        }
+      : {
+          type: "image",
+          source: { type: "base64", media_type: params.mediaType, data: params.base64 },
+        };
+
+  try {
+    const res = await client().messages.create({
+      model: REASONING_MODEL,
+      max_tokens: 2000,
+      system,
+      messages: [
+        {
+          role: "user",
+          content: [docBlock as any, { type: "text", text: "Extract this policy into the JSON schema." }],
+        },
+      ],
+    });
+    const text = res.content
+      .filter((b) => b.type === "text")
+      .map((b: any) => b.text)
+      .join("\n")
+      .trim();
+    const json = text.replace(/^```(?:json)?\n?/, "").replace(/```$/, "").trim();
+    const p = JSON.parse(json);
+
+    const policyType = (POLICY_TYPES as readonly string[]).includes(p.policyType)
+      ? (p.policyType as (typeof POLICY_TYPES)[number])
+      : null;
+    const category: InsuranceCategory | null =
+      p.category === "life" || p.category === "health" || p.category === "motor" || p.category === "general"
+        ? p.category
+        : policyType
+          ? CATEGORY_BY_POLICY_TYPE[policyType]
+          : null;
+    const premiumFrequency = (PREMIUM_FREQUENCIES as readonly string[]).includes(p.premiumFrequency)
+      ? (p.premiumFrequency as (typeof PREMIUM_FREQUENCIES)[number])
+      : null;
+    const businessType =
+      p.businessType === "new" || p.businessType === "renewal" || p.businessType === "portability"
+        ? p.businessType
+        : null;
+
+    const conf: Record<string, number> = {};
+    if (p.fieldConfidence && typeof p.fieldConfidence === "object") {
+      for (const [k, v] of Object.entries(p.fieldConfidence)) {
+        const n = Number(v);
+        if (Number.isFinite(n)) conf[k] = Math.max(0, Math.min(1, n));
+      }
+    }
+
+    return {
+      insurer: p.insurer ? String(p.insurer).slice(0, 120) : null,
+      planName: p.planName ? String(p.planName).slice(0, 200) : null,
+      policyNumber: p.policyNumber ? String(p.policyNumber).slice(0, 60) : null,
+      policyType,
+      category,
+      sumAssured: num(p.sumAssured),
+      annualPremium: num(p.annualPremium),
+      premiumFrequency,
+      premiumPayingTermYears: num(p.premiumPayingTermYears),
+      policyTermYears: num(p.policyTermYears),
+      policyStartDate: toIsoDate(p.policyStartDate),
+      maturityDate: toIsoDate(p.maturityDate),
+      nextPremiumDueDate: toIsoDate(p.nextPremiumDueDate),
+      livesCovered: num(p.livesCovered),
+      nomineeName: p.nomineeName ? String(p.nomineeName).slice(0, 120) : null,
+      nomineeRelation: p.nomineeRelation ? String(p.nomineeRelation).slice(0, 40) : null,
+      businessType,
+      proposerName: p.proposerName ? String(p.proposerName).slice(0, 120) : null,
+      proposerPan: p.proposerPan ? String(p.proposerPan).slice(0, 10).toUpperCase() : null,
+      details: p.details && typeof p.details === "object" ? p.details : {},
+      fieldConfidence: conf,
+      overallConfidence: Math.max(0, Math.min(1, Number(p.overallConfidence) || 0)),
+      warnings: Array.isArray(p.warnings) ? p.warnings.map(String).slice(0, 8) : [],
+    };
+  } catch (err: any) {
+    return { error: err?.message ?? "AI extraction error" };
+  }
 }
 
 /**
@@ -338,6 +551,221 @@ Output ONLY the JSON object.`;
 }
 
 /**
+ * Suggest a retention play for an at-risk client. Fed the churn score + the
+ * explainable factors from the scorecard, returns a concrete next-best-action
+ * the RM can execute today. Advisory only — the deterministic score is the
+ * source of truth; this just helps the RM act on it.
+ */
+export async function suggestRetention(params: {
+  name: string;
+  score: number;
+  band: "low" | "medium" | "high";
+  factors: Array<{ label: string; why: string }>;
+  serviceTier?: string | null;
+  currentValueInr?: number | null;
+}): Promise<
+  | {
+      summary: string;
+      talkingPoints: string[];
+      actions: string[];
+      suggestedChannel: "call" | "whatsapp" | "email" | "meeting";
+    }
+  | { error: string }
+> {
+  const sig = [
+    `Client: ${params.name}`,
+    `Churn risk score: ${params.score}/100 (${params.band})`,
+    params.serviceTier ? `Service tier: ${params.serviceTier}` : null,
+    params.currentValueInr != null
+      ? `Portfolio value: ₹${Math.round(params.currentValueInr).toLocaleString("en-IN")}`
+      : null,
+    "Risk factors:",
+    ...params.factors.map((f) => `- ${f.label} (${f.why})`),
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const system = `You advise an Indian Mutual Fund Distributor (MFD) on RETAINING an at-risk client.
+
+You are given a transparent churn-risk score and the specific factors driving it.
+Recommend a practical, compliant retention play. SEBI rules: no assured returns,
+no paid inducements to stay, no disparaging other products. Lead with empathy and
+genuine service, not a hard sell.
+
+Output a JSON object with this exact shape:
+{
+  "summary": "1-2 sentences on the core retention angle, citing the factors",
+  "talkingPoints": ["2-4 short talking points the RM can use in the conversation"],
+  "actions": ["2-4 concrete next steps, e.g. 'book a portfolio review', 'restart a small SIP'"],
+  "suggestedChannel": "call" | "whatsapp" | "email" | "meeting"
+}
+
+Prioritise the biggest factor. For redemptions/negative returns, lead with a
+portfolio review + goal re-anchoring. For silence/dormancy, lead with a warm
+check-in. For SIP stops, understand the cashflow reason before re-pitching.
+Output ONLY the JSON object.`;
+
+  try {
+    const res = await client().messages.create({
+      model: REASONING_MODEL,
+      max_tokens: 700,
+      system,
+      messages: [{ role: "user", content: sig }],
+    });
+    const text = res.content
+      .filter((b) => b.type === "text")
+      .map((b: any) => b.text)
+      .join("\n")
+      .trim();
+    const json = text.replace(/^```(?:json)?\n?/, "").replace(/```$/, "").trim();
+    const parsed = JSON.parse(json);
+    const ch = parsed.suggestedChannel;
+    return {
+      summary: String(parsed.summary ?? ""),
+      talkingPoints: Array.isArray(parsed.talkingPoints) ? parsed.talkingPoints.map(String).slice(0, 5) : [],
+      actions: Array.isArray(parsed.actions) ? parsed.actions.map(String).slice(0, 5) : [],
+      suggestedChannel:
+        ch === "call" || ch === "whatsapp" || ch === "email" || ch === "meeting" ? ch : "call",
+    };
+  } catch (err: any) {
+    return { error: err?.message ?? "AI error" };
+  }
+}
+
+/**
+ * Triage an inbound WhatsApp message from a client: classify intent + urgency
+ * and DRAFT a reply for the RM to review and send. Human-in-the-loop by design —
+ * we never auto-send unreviewed AI text to a client (SEBI: no assured returns,
+ * no advice without context). The draft is a starting point the RM edits.
+ */
+export async function triageInboundMessage(params: {
+  text: string;
+  investorName?: string | null;
+}): Promise<
+  | {
+      intent: string;
+      urgency: "low" | "normal" | "high";
+      suggestedReply: string;
+    }
+  | { error: string }
+> {
+  const system = `You triage an inbound WhatsApp message a client sent to their Indian Mutual Fund
+Distributor (MFD), and draft a reply the human advisor will review before sending.
+
+Output a JSON object with this exact shape:
+{
+  "intent": "short label, e.g. 'redemption request', 'statement request', 'SIP query', 'complaint', 'greeting'",
+  "urgency": "low" | "normal" | "high",
+  "suggestedReply": "a warm, concise WhatsApp reply (<= 60 words) the advisor can send"
+}
+
+Rules for suggestedReply:
+- NEVER promise returns, guarantee performance, or give specific buy/sell advice.
+- For transactions (redemption/switch/new investment), acknowledge + say the advisor will assist, don't execute.
+- For complaints, be empathetic + assure escalation.
+- Keep it human and brief. No disclaimers needed (the platform appends them).
+urgency "high" for complaints, redemptions, or anything time-sensitive.
+Output ONLY the JSON object.`;
+
+  try {
+    const res = await client().messages.create({
+      model: FAST_MODEL,
+      max_tokens: 400,
+      system,
+      messages: [
+        {
+          role: "user",
+          content: `${params.investorName ? `From client: ${params.investorName}\n` : ""}Message: ${params.text.slice(0, 2000)}`,
+        },
+      ],
+    });
+    const text = res.content
+      .filter((b) => b.type === "text")
+      .map((b: any) => b.text)
+      .join("\n")
+      .trim();
+    const json = text.replace(/^```(?:json)?\n?/, "").replace(/```$/, "").trim();
+    const parsed = JSON.parse(json);
+    const u = parsed.urgency;
+    return {
+      intent: String(parsed.intent ?? "message"),
+      urgency: u === "high" || u === "low" ? u : "normal",
+      suggestedReply: String(parsed.suggestedReply ?? ""),
+    };
+  } catch (err: any) {
+    return { error: err?.message ?? "AI error" };
+  }
+}
+
+/**
+ * Summarise a pasted AMFI/SEBI/CBDT circular into a distributor-friendly digest:
+ * a plain-English summary, the concrete actions an MFD must take, a category and
+ * a severity. Helps AINA / the MFD turn dense regulator PDFs into the
+ * amfi_circulars digest entries.
+ */
+export async function summariseCircular(params: {
+  text: string;
+  issuerHint?: string;
+}): Promise<
+  | {
+      title: string;
+      summary: string;
+      mfdActions: string[];
+      category: string;
+      severity: "info" | "action_required" | "critical";
+    }
+  | { error: string }
+> {
+  const system = `You turn an Indian mutual-fund regulatory circular (AMFI / SEBI / RBI / CBDT)
+into a concise digest for a Mutual Fund Distributor (MFD).
+
+Output a JSON object with this exact shape:
+{
+  "title": "short headline (<= 90 chars)",
+  "summary": "2-4 sentences in plain English — what changed and who it affects",
+  "mfdActions": ["2-5 concrete actions the distributor must take"],
+  "category": "one of: KYC, Nomination, Disclosure, Commission, Taxation, Onboarding, Reporting, Other",
+  "severity": "info" | "action_required" | "critical"
+}
+
+severity: "critical" if it blocks transactions or has a hard near-term deadline;
+"action_required" if the MFD must do something; "info" otherwise.
+Be accurate to the text — do NOT invent deadlines or requirements not stated.
+Output ONLY the JSON object.`;
+
+  try {
+    const res = await client().messages.create({
+      model: REASONING_MODEL,
+      max_tokens: 800,
+      system,
+      messages: [
+        {
+          role: "user",
+          content: `${params.issuerHint ? `Likely issuer: ${params.issuerHint}\n\n` : ""}Circular text:\n${params.text.slice(0, 12000)}`,
+        },
+      ],
+    });
+    const text = res.content
+      .filter((b) => b.type === "text")
+      .map((b: any) => b.text)
+      .join("\n")
+      .trim();
+    const json = text.replace(/^```(?:json)?\n?/, "").replace(/```$/, "").trim();
+    const parsed = JSON.parse(json);
+    const sev = parsed.severity;
+    return {
+      title: String(parsed.title ?? "").slice(0, 120),
+      summary: String(parsed.summary ?? ""),
+      mfdActions: Array.isArray(parsed.mfdActions) ? parsed.mfdActions.map(String).slice(0, 6) : [],
+      category: String(parsed.category ?? "Other"),
+      severity: sev === "critical" || sev === "action_required" ? sev : "info",
+    };
+  } catch (err: any) {
+    return { error: err?.message ?? "AI error" };
+  }
+}
+
+/**
  * Generate 3 campaign concepts for a given segment.
  */
 export async function generateCampaignIdeas(params: {
@@ -486,6 +914,93 @@ Rules:
       .join("\n")
       .trim();
     return { draft };
+  } catch (err: any) {
+    return { error: err?.message ?? "AI error" };
+  }
+}
+
+/**
+ * AI Relationship Copilot — a per-client "situation brief". Given the
+ * deterministic context we already compute (portfolio value, risk profile,
+ * open next-best-actions, data gaps, recent interactions), Claude produces a
+ * tight pre-call brief: the relationship state, what to talk about, the
+ * recommended next steps, and a compliant opener the RM can send. Advisory —
+ * the RM reviews everything; nothing is persisted or auto-sent.
+ */
+export async function generateClientBrief(params: {
+  name: string;
+  serviceTier?: string | null;
+  riskProfile?: string | null;
+  segmentTag?: string | null;
+  aumInr?: number | null;
+  monthlySipInr?: number | null;
+  lastContactDaysAgo?: number | null;
+  tenureMonths?: number | null;
+  openActions?: Array<{ label: string; reason: string; impactInr?: number }>;
+  dataGaps?: string[];
+  recentInteractions?: Array<{ kind: string; subject?: string; whenDaysAgo?: number }>;
+  allocationNote?: string;
+}): Promise<
+  | { summary: string; talkingPoints: string[]; recommendedActions: string[]; suggestedOpener: string; watchouts: string[] }
+  | { error: string }
+> {
+  const ctx = [
+    `Client: ${params.name}`,
+    params.serviceTier ? `Service tier: ${params.serviceTier}` : null,
+    params.segmentTag ? `Segment: ${params.segmentTag}` : null,
+    params.riskProfile ? `Risk profile: ${params.riskProfile}` : null,
+    params.aumInr != null ? `AUM: ₹${Math.round(params.aumInr).toLocaleString("en-IN")}` : null,
+    params.monthlySipInr != null ? `Monthly SIP: ₹${Math.round(params.monthlySipInr).toLocaleString("en-IN")}` : null,
+    params.tenureMonths != null ? `Tenure: ${params.tenureMonths} months` : null,
+    params.lastContactDaysAgo != null ? `Last contact: ${params.lastContactDaysAgo} days ago` : null,
+    params.allocationNote ? `Allocation: ${params.allocationNote}` : null,
+    params.openActions?.length
+      ? `Open next-best-actions:\n${params.openActions.map((a) => `  - ${a.label}: ${a.reason}${a.impactInr ? ` (₹${Math.round(a.impactInr).toLocaleString("en-IN")} impact)` : ""}`).join("\n")}`
+      : null,
+    params.dataGaps?.length ? `Data gaps: ${params.dataGaps.join(", ")}` : null,
+    params.recentInteractions?.length
+      ? `Recent interactions:\n${params.recentInteractions.map((i) => `  - ${i.kind}${i.subject ? ` · ${i.subject}` : ""}${i.whenDaysAgo != null ? ` · ${i.whenDaysAgo}d ago` : ""}`).join("\n")}`
+      : "Recent interactions: none logged",
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const system = `You are an Indian Mutual Fund Distributor's (MFD) relationship copilot. Given a
+client's current state, produce a tight pre-call brief the advisor reads in 20 seconds.
+
+Output a JSON object with this exact shape:
+{
+  "summary": "2-3 sentences: relationship state + the single most important thing right now",
+  "talkingPoints": ["3-5 specific, personalised points grounded ONLY in the data given"],
+  "recommendedActions": ["2-4 concrete next steps, prioritised by the ₹-impact shown"],
+  "suggestedOpener": "a warm, compliant WhatsApp opener (<= 45 words) to restart the conversation",
+  "watchouts": ["0-3 sensitivities, e.g. 'dormant 8m — lead with a check-in, not a pitch'"]
+}
+
+Hard rules (SEBI / AMFI):
+- NEVER promise or project returns ("guaranteed", "assured", "X%").
+- NEVER recommend a specific scheme by name (AMFI Code 4(k)).
+- Ground every point in the supplied data — do NOT invent holdings, goals, or facts.
+- suggestedOpener: warm and human, no disclaimers (the platform appends them), no hard sell.
+- Output ONLY the JSON object.`;
+
+  try {
+    const res = await client().messages.create({
+      model: REASONING_MODEL,
+      max_tokens: 1200,
+      system,
+      messages: [{ role: "user", content: ctx }],
+    });
+    const text = res.content.filter((b) => b.type === "text").map((b: any) => b.text).join("\n").trim();
+    const json = text.replace(/^```(?:json)?\n?/, "").replace(/```$/, "").trim();
+    const p = JSON.parse(json);
+    return {
+      summary: String(p.summary ?? ""),
+      talkingPoints: Array.isArray(p.talkingPoints) ? p.talkingPoints.map(String).slice(0, 6) : [],
+      recommendedActions: Array.isArray(p.recommendedActions) ? p.recommendedActions.map(String).slice(0, 5) : [],
+      suggestedOpener: String(p.suggestedOpener ?? ""),
+      watchouts: Array.isArray(p.watchouts) ? p.watchouts.map(String).slice(0, 4) : [],
+    };
   } catch (err: any) {
     return { error: err?.message ?? "AI error" };
   }

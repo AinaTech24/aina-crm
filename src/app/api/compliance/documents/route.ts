@@ -4,6 +4,7 @@ import { handleApiError } from "@/lib/api/error-handler";
  *
  *   GET  /api/compliance/documents
  *   POST /api/compliance/documents          — register an uploaded doc (after presigned PUT)
+ *   DELETE /api/compliance/documents?id=...  — remove a saved doc from S3 and DB
  *
  * Upload flow:
  *   1. Client POSTs metadata to /upload-url to get a presigned PUT
@@ -13,12 +14,14 @@ import { handleApiError } from "@/lib/api/error-handler";
 
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuid } from "uuid";
-import { desc, sql } from "drizzle-orm";
+import { desc, sql, eq, and } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { require as requireCap } from "@/lib/auth/rbac";
+import { require as requireCap, requireAny } from "@/lib/auth/rbac";
 import { complianceDocuments } from "@/db/schema";
+import { deleteObject } from "@/lib/storage/s3";
+import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
 
@@ -52,6 +55,10 @@ const CreateBody = z.object({
 export async function GET() {
   try {
     const session = await requireSession();
+    // The compliance vault holds DDQ, audit reports, complaints, empanelment
+    // and RIA docs — restrict reads to the compliance + back-office team
+    // (owner wins via can()). Previously any authenticated session could list it.
+    requireAny(session.roles, ["compliance.view", "kyc.manage"]);
     const rows = await withTenant(session.tenantId, async (tx) => {
       return tx.select().from(complianceDocuments).orderBy(desc(complianceDocuments.createdAt));
     });
@@ -89,6 +96,54 @@ export async function POST(req: NextRequest) {
       } as any);
     });
     return NextResponse.json({ id }, { status: 201 });
+  } catch (err: any) {
+    return handleApiError(err);
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const session = await requireSession();
+    requireCap(session.roles, "compliance.edit"); // gated by compliance settings management
+
+    const id = new URL(req.url).searchParams.get("id");
+    if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
+
+    const meta = clientMetaFromHeaders(req.headers);
+
+    await withTenant(session.tenantId, async (tx) => {
+      const [doc] = await tx
+        .select()
+        .from(complianceDocuments)
+        .where(and(eq(complianceDocuments.id, id), eq(complianceDocuments.tenantId, session.tenantId)))
+        .limit(1);
+
+      if (!doc) {
+        throw new Error("Document not found");
+      }
+
+      // Delete from S3 storage if storageKey exists
+      if (doc.storageKey) {
+        await deleteObject(doc.storageKey);
+      }
+
+      // Delete from database
+      await tx
+        .delete(complianceDocuments)
+        .where(eq(complianceDocuments.id, id));
+
+      await recordAudit(tx, {
+        tenantId: session.tenantId,
+        actorUserId: session.userId,
+        action: "compliance_document.delete",
+        entityType: "compliance_document",
+        entityId: id,
+        before: doc as any,
+        ...meta,
+      });
+    });
+
+    return NextResponse.json({ ok: true });
   } catch (err: any) {
     return handleApiError(err);
   }

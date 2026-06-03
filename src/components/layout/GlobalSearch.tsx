@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Search, Users, Sparkles, FileText, Repeat, LifeBuoy, FolderArchive, Loader2 } from "lucide-react";
+import { Search, Users, Sparkles, FileText, Repeat, LifeBuoy, FolderArchive, Loader2, X } from "lucide-react";
 
 type Results = {
   investors?: any[];
@@ -13,28 +13,47 @@ type Results = {
   documents?: any[];
 };
 
+/**
+ * Inline global search. The input lives in the header; results drop into a
+ * popover anchored directly beneath it — no full-screen overlay, so the header
+ * is never blurred and the bar never jumps. Ctrl/⌘-K focuses it; Esc closes.
+ */
 export function GlobalSearch() {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const [results, setResults] = useState<Results>({});
   const [busy, setBusy] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
 
-  // Cmd/Ctrl-K to open
+  // Ctrl/⌘-K focuses the inline input; Esc closes + blurs.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
+        inputRef.current?.focus();
         setOpen(true);
-        setTimeout(() => inputRef.current?.focus(), 50);
       }
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape") {
+        setOpen(false);
+        inputRef.current?.blur();
+      }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  // Debounced search
+  // Close when clicking outside the search widget.
+  useEffect(() => {
+    if (!open) return;
+    function onDown(e: MouseEvent) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
+
+  // Debounced search.
   useEffect(() => {
     if (q.trim().length < 2) {
       setResults({});
@@ -61,81 +80,90 @@ export function GlobalSearch() {
     (results.serviceRequests?.length ?? 0) +
     (results.documents?.length ?? 0);
 
+  const close = () => setOpen(false);
+  const showPanel = open && q.trim().length >= 1;
+
   return (
-    <>
-      <button
-        onClick={() => {
-          setOpen(true);
-          setTimeout(() => inputRef.current?.focus(), 50);
-        }}
-        className="flex items-center gap-2 text-xs text-muted-foreground border border-border bg-card rounded-lg px-3 py-2 shadow-sm hover:shadow hover:border-brand-cyan/40 hover:text-foreground min-w-[260px] transition-all duration-150"
+    <div ref={wrapRef} className="relative min-w-[200px] max-w-md flex-1">
+      {/* Input shell — styled like a search field, focus-within highlights it */}
+      <div
+        className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 shadow-sm
+                   transition-all duration-150
+                   focus-within:border-brand-cyan/50 focus-within:ring-2 focus-within:ring-brand-cyan/15 focus-within:shadow"
       >
-        <Search className="size-3.5 text-brand-cyan" />
-        <span className="flex-1 text-left">Search investors, leads, folios…</span>
-        <kbd className="hidden md:inline border border-border rounded px-1.5 py-0.5 text-[10px] bg-secondary/60 font-mono">
-          Ctrl K
-        </kbd>
-      </button>
-
-      {open && (
-        <div
-          className="fixed inset-0 z-50 bg-brand-navy/40 backdrop-blur-md grid place-items-start pt-[12vh] px-4 animate-fade-in"
-          onClick={() => setOpen(false)}
-        >
-          <div
-            className="card-elevated max-w-2xl w-full max-h-[70vh] flex flex-col overflow-hidden animate-scale-in"
-            onClick={(e) => e.stopPropagation()}
+        <Search className="size-3.5 text-brand-cyan shrink-0" />
+        <input
+          ref={inputRef}
+          value={q}
+          onChange={(e) => {
+            setQ(e.target.value);
+            setOpen(true);
+          }}
+          onFocus={() => setOpen(true)}
+          placeholder="Search investors, leads, folios…"
+          className="flex-1 min-w-0 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+          aria-label="Global search"
+        />
+        {busy ? (
+          <Loader2 className="size-3.5 animate-spin text-brand-cyan shrink-0" />
+        ) : q ? (
+          <button
+            type="button"
+            onClick={() => {
+              setQ("");
+              inputRef.current?.focus();
+            }}
+            className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+            aria-label="Clear search"
           >
-            <div className="border-b border-border bg-secondary/30 p-3.5 flex items-center gap-2.5">
-              <Search className="size-4 text-brand-cyan" />
-              <input
-                ref={inputRef}
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder="Search name, PAN, mobile, folio, ticket, SIP scheme…"
-                className="flex-1 bg-transparent outline-none text-sm placeholder:text-muted-foreground"
-              />
-              {busy && <Loader2 className="size-3.5 animate-spin text-brand-cyan" />}
-              <kbd className="text-[10px] text-muted-foreground border border-border rounded px-1.5 py-0.5 bg-card font-mono">
-                Esc
-              </kbd>
-            </div>
+            <X className="size-3.5" />
+          </button>
+        ) : (
+          <kbd className="hidden md:inline shrink-0 border border-border rounded px-1.5 py-0.5 text-[10px] bg-secondary/60 font-mono text-muted-foreground">
+            Ctrl K
+          </kbd>
+        )}
+      </div>
 
-            <div className="flex-1 overflow-y-auto p-2 text-sm">
-              {q.length < 2 ? (
+      {/* Results popover — anchored directly under the input */}
+      {showPanel && (
+        <div className="absolute left-0 right-0 top-full mt-2 z-50 origin-top animate-scale-in">
+          <div className="card-elevated max-h-[min(70vh,30rem)] overflow-hidden flex flex-col">
+            <div className="flex-1 overflow-y-auto p-2 text-sm scrollbar-thin">
+              {q.trim().length < 2 ? (
                 <div className="p-6 text-center text-xs text-muted-foreground">
                   Type at least 2 characters. Try a name, PAN, mobile, folio number, or ticket #.
                 </div>
               ) : total === 0 && !busy ? (
-                <div className="p-6 text-center text-xs text-muted-foreground">No results for "{q}".</div>
+                <div className="p-6 text-center text-xs text-muted-foreground">No results for &ldquo;{q}&rdquo;.</div>
               ) : (
                 <div className="space-y-3">
-                  <Group icon={Users} label="Investors" items={results.investors ?? []} onPick={() => setOpen(false)}
+                  <Group icon={Users} label="Investors" items={results.investors ?? []} onPick={close}
                     href={(r) => `/dashboard/investors/${r.id}`}
                     primary={(r) => r.name}
                     secondary={(r) => `${r.pan ?? "—"} · ${r.segment_tag ?? "—"}`}
                   />
-                  <Group icon={Sparkles} label="Leads" items={results.leads ?? []} onPick={() => setOpen(false)}
+                  <Group icon={Sparkles} label="Leads" items={results.leads ?? []} onPick={close}
                     href={(r) => `/dashboard/leads/${r.id}`}
                     primary={(r) => r.name}
                     secondary={(r) => `${r.stage} · ${r.source}`}
                   />
-                  <Group icon={FileText} label="Folios" items={results.folios ?? []} onPick={() => setOpen(false)}
+                  <Group icon={FileText} label="Folios" items={results.folios ?? []} onPick={close}
                     href={(r) => r.investor_id ? `/dashboard/investors/${r.investor_id}` : `/dashboard/investors`}
                     primary={(r) => `${r.folio_number}`}
                     secondary={(r) => `${r.amc_name} · ${r.investor_name ?? "—"}`}
                   />
-                  <Group icon={Repeat} label="SIPs" items={results.sips ?? []} onPick={() => setOpen(false)}
-                    href={(r) => `/dashboard/sips`}
+                  <Group icon={Repeat} label="SIPs" items={results.sips ?? []} onPick={close}
+                    href={() => `/dashboard/sips`}
                     primary={(r) => r.scheme_name}
                     secondary={(r) => `₹${r.amount}/mo · ${r.investor_name ?? "—"} · ${r.status}`}
                   />
-                  <Group icon={LifeBuoy} label="Service requests" items={results.serviceRequests ?? []} onPick={() => setOpen(false)}
+                  <Group icon={LifeBuoy} label="Service requests" items={results.serviceRequests ?? []} onPick={close}
                     href={() => `/dashboard/service-requests`}
                     primary={(r) => r.subject}
                     secondary={(r) => `${r.ticket_no} · ${r.investor_name ?? "—"} · ${r.status}`}
                   />
-                  <Group icon={FolderArchive} label="Documents" items={results.documents ?? []} onPick={() => setOpen(false)}
+                  <Group icon={FolderArchive} label="Documents" items={results.documents ?? []} onPick={close}
                     href={() => `/dashboard/documents`}
                     primary={(r) => r.name}
                     secondary={(r) => r.category}
@@ -146,7 +174,7 @@ export function GlobalSearch() {
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 }
 
@@ -172,9 +200,7 @@ function Group({
     <div>
       <div className="px-2 py-1.5 text-[10px] uppercase tracking-[0.1em] font-bold text-muted-foreground/80 flex items-center gap-1.5">
         <Icon className="size-3 text-brand-cyan" /> {label}
-        <span className="ml-auto text-muted-foreground/50 normal-case font-medium">
-          {items.length}
-        </span>
+        <span className="ml-auto text-muted-foreground/50 normal-case font-medium">{items.length}</span>
       </div>
       <ul className="space-y-0.5">
         {items.map((r) => (

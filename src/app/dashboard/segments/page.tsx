@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { desc } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { Plus, Filter as FilterIcon, Zap } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { segments } from "@/db/schema";
@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 export default async function SegmentsPage() {
   const session = await requireSession();
   const rows = await withTenant(session.tenantId, async (tx) => {
-    return tx.select().from(segments).orderBy(desc(segments.updatedAt));
+    return tx.select().from(segments).where(eq(segments.tenantId, session.tenantId)).orderBy(desc(segments.updatedAt));
   });
 
   return (

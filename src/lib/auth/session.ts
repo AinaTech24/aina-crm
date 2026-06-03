@@ -1,81 +1,76 @@
 /**
- * Lightweight JWT session via signed httpOnly cookie. Chose this over NextAuth
- * v5 beta because the beta peer-deps conflict with the rest of the stack and
- * because our session shape is small + opinionated (tenant_id is sacred).
+ * Node-side session helpers. Reads the session JWT from the request and (for
+ * authenticated reads) enforces server-side revocation.
  *
  * Cookie name: `mfd_session`
  * Algorithm:   HS256 over the NEXTAUTH_SECRET env var
- * Payload:     { userId, tenantId, branchId?, roles[], email, name, exp }
+ * Payload:     { userId, tenantId, branchId?, roles[], email, name, iat, exp }
  * TTL:         8 hours sliding (refreshed on every request via middleware)
  *
- * The middleware in `src/middleware.ts` reads this cookie, validates the JWT,
- * and stashes the decoded session on request headers so server components and
- * API routes can pull it via `getSession()` without re-verifying.
+ * The Edge-safe sign/verify primitives + the SessionUser shape live in
+ * `./jwt` (so `src/middleware.ts` can import them without pulling `pg` into
+ * the Edge bundle). This module re-exports them so the ~250 callers of
+ * `@/lib/auth/session` keep working unchanged, and adds the Node-only pieces:
+ * getSession / requireSession (which run the DB-backed revocation check) plus
+ * the dev escape hatch.
  */
 
-import { SignJWT, jwtVerify } from "jose";
+import { cache } from "react";
 import { cookies, headers } from "next/headers";
+import {
+  SESSION_COOKIE,
+  SESSION_TTL_SECONDS,
+  signSession,
+  verifySession,
+  type SessionUser,
+} from "./jwt";
+import { isSessionRevoked } from "./revocation";
 
-export const SESSION_COOKIE = "mfd_session";
-export const SESSION_TTL_SECONDS = 8 * 60 * 60;
-
-export type SessionUser = {
-  userId: string;
-  tenantId: string;
-  branchId?: string;
-  roles: string[];
-  email: string;
-  name: string;
-  /** AINA platform staff. When true, this user bypasses tenant isolation and
-   *  is routed to /super-admin instead of /dashboard on login. */
-  isPlatformAdmin?: boolean;
-  permissions?: string[];
-};
-
-function secretKey(): Uint8Array {
-  const secret = process.env.NEXTAUTH_SECRET;
-  if (!secret) throw new Error("NEXTAUTH_SECRET is not set");
-  return new TextEncoder().encode(secret);
-}
-
-export async function signSession(user: SessionUser): Promise<string> {
-  return await new SignJWT({ ...user })
-    .setProtectedHeader({ alg: "HS256" })
-    .setIssuedAt()
-    .setExpirationTime(`${SESSION_TTL_SECONDS}s`)
-    .sign(secretKey());
-}
-
-export async function verifySession(token: string): Promise<SessionUser | null> {
-  try {
-    const { payload } = await jwtVerify(token, secretKey(), { algorithms: ["HS256"] });
-    if (!payload.userId || !payload.tenantId) return null;
-    const roles = Array.isArray(payload.roles) ? payload.roles.map(String) : [];
-    const permissions = Array.isArray(payload.permissions) ? payload.permissions.map(String) : [];
-    return {
-      userId: String(payload.userId),
-      tenantId: String(payload.tenantId),
-      branchId: payload.branchId ? String(payload.branchId) : undefined,
-      roles,
-      email: String(payload.email ?? ""),
-      name: String(payload.name ?? ""),
-      isPlatformAdmin: roles.includes("platform_admin") || roles.includes("platform_support"),
-      permissions,
-    };
-  } catch {
-    return null;
-  }
-}
+// Re-export the Edge-safe surface so existing `@/lib/auth/session` imports
+// (signSession in the auth routes, verifySession/SESSION_COOKIE, the type) are
+// unaffected by the jwt.ts split.
+export { SESSION_COOKIE, SESSION_TTL_SECONDS, signSession, verifySession };
+export type { SessionUser };
 
 /**
  * Server-side session read. Use from server components, server actions, API
  * route handlers, and worker code (workers must pass tenantId explicitly —
  * this function will throw because there's no request context).
  *
- * Returns null if no session — caller decides whether that's an error.
+ * Returns null if no session, OR if the session has been REVOKED
+ * (offboarding / forced logout / password reset stamped
+ * users.sessions_invalid_after after the token was issued).
+ *
+ * Caller decides whether null is an error (requireSession turns it into 401).
  */
-export async function getSession(): Promise<SessionUser | null> {
-  // Prefer middleware-decoded header (cheap), fall back to cookie verify.
+export const getSession = cache(async (): Promise<SessionUser | null> => {
+  // React.cache() memoizes this for the lifetime of a single server render, so
+  // the ~250 callers (layout + page + nested server components) resolve the
+  // session ONCE per request instead of re-parsing the header + re-running the
+  // revocation check on every call. No behaviour change — the request's session
+  // is immutable within the request.
+  const session = await readSession();
+  if (!session) return null;
+
+  // Revocation gate. Platform-admin sessions live under the platform tenant;
+  // the lookup is tenant-scoped and works the same for them. Skipped only when
+  // there's no iat (legacy token) — handled inside isSessionRevoked.
+  const revoked = await isSessionRevoked({
+    userId: session.userId,
+    tenantId: session.tenantId,
+    iatSeconds: session.iat,
+  });
+  if (revoked) return null;
+
+  return session;
+});
+
+/**
+ * Reads + decodes the session without the revocation check. Prefers the
+ * middleware-decoded header (cheap — middleware already verified the JWT),
+ * falls back to verifying the cookie directly.
+ */
+async function readSession(): Promise<SessionUser | null> {
   try {
     const h = await headers();
     const headerPayload = h.get("x-mfd-session");
@@ -97,7 +92,7 @@ export async function getSession(): Promise<SessionUser | null> {
 
 /**
  * Server-side helper that throws if no session. Use in API routes that
- * absolutely require auth — turns a missing session into a clean 401.
+ * absolutely require auth — turns a missing OR revoked session into a clean 401.
  */
 export async function requireSession(): Promise<SessionUser> {
   const session = await getSession();
@@ -124,12 +119,16 @@ export function devSession(): SessionUser {
       "devSession() called in production — this would bypass tenant isolation"
     );
   }
+  // Defaults point at the seeded demo owner (the tenant that holds the demo
+  // book) so tenant-scoped reads render populated. Overridable via DEMO_* env
+  // vars when the DB is reseeded with fresh ids. Kept in sync with the inline
+  // NO_AUTH session in src/middleware.ts.
   return {
-    userId: "00000000-0000-0000-0000-000000000001",
-    tenantId: "00000000-0000-0000-0000-000000000001",
-    branchId: "00000000-0000-0000-0000-000000000002",
+    userId: process.env.DEMO_USER_ID ?? "c59fb71f-2bc9-426d-a7b4-8d59cad5481b",
+    tenantId: process.env.DEMO_TENANT_ID ?? "3a8231bb-8ff2-4f49-bcca-bb41857c5be2",
+    branchId: process.env.DEMO_BRANCH_ID ?? "cfdc80f1-e03f-414f-bab5-460967f524a5",
     roles: ["owner", "rm", "compliance"],
-    email: "owner@demo.local",
-    name: "Demo Owner",
+    email: "owner@demo.in",
+    name: "Rajesh Demo (Owner)",
   };
 }

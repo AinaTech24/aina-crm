@@ -92,7 +92,9 @@ DECLARE
     'content_posts',
     'workflow_rules',
     'workflow_rule_executions',
-    'workflow_rule_scheduled_jobs'
+    'workflow_rule_scheduled_jobs',
+    'tenant_integrations',
+    'ignored_duplicates'
   ];
 BEGIN
   FOREACH t IN ARRAY tenant_tables

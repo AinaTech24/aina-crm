@@ -93,6 +93,11 @@ export function LeadActions(props: Props) {
             .querySelector("[data-onboarding-actions]")
             ?.scrollIntoView({ behavior: "smooth", block: "start" });
           break;
+        case "convert":
+          // Green "Convert to Client →" CTA on the blueprint bar opens the
+          // same convert dialog as the header button.
+          setDialog("convert");
+          break;
         case "mark_lost":
           setDialog("stage"); // stage dropdown lets user pick Lost
           break;
@@ -105,40 +110,6 @@ export function LeadActions(props: Props) {
   return (
     <>
       <div className="flex flex-wrap gap-2">
-        <StageDropdown
-          leadId={props.leadId}
-          fallbackStage={props.currentStage}
-          onChange={async (s) => {
-            // Single source of truth — advance the blueprint. The
-            // legacy /api/leads/[id]/stage still exists for back-compat
-            // but the user-facing stage = the blueprint stage now.
-            await fetch(`/api/leads/${props.leadId}/blueprint/advance`, {
-              method: "POST",
-              headers: { "content-type": "application/json" },
-              body: JSON.stringify({ toStageKey: s, remarks: "Manual stage change from header dropdown." }),
-            });
-            router.refresh();
-          }}
-        />
-
-        <button
-          onClick={() => setDialog("activity")}
-          className="rounded-md border px-3 py-1.5 text-sm flex items-center gap-1.5 hover:bg-accent"
-        >
-          <MessageSquarePlus className="size-4" /> Log activity
-        </button>
-        <button
-          onClick={() => setDialog("task")}
-          className="rounded-md border px-3 py-1.5 text-sm flex items-center gap-1.5 hover:bg-accent"
-        >
-          <ListPlus className="size-4" /> Add task
-        </button>
-        <button
-          onClick={() => setDialog("schedule_meeting")}
-          className="rounded-md border px-3 py-1.5 text-sm flex items-center gap-1.5 hover:bg-accent"
-        >
-          <CalendarPlus className="size-4" /> Schedule meeting
-        </button>
         {props.alreadyConvertedInvestorId ? (
           <button
             onClick={() => router.push(`/dashboard/investors/${props.alreadyConvertedInvestorId}`)}
@@ -147,12 +118,48 @@ export function LeadActions(props: Props) {
             <CheckCircle2 className="size-4" /> Already converted · View client
           </button>
         ) : (
-          <button
-            onClick={() => setDialog("convert")}
-            className="rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-sm font-medium flex items-center gap-1.5"
-          >
-            <ArrowRight className="size-4" /> Convert to client
-          </button>
+          <>
+            <StageDropdown
+              leadId={props.leadId}
+              fallbackStage={props.currentStage}
+              onChange={async (s) => {
+                // Single source of truth — advance the blueprint. The
+                // legacy /api/leads/[id]/stage still exists for back-compat
+                // but the user-facing stage = the blueprint stage now.
+                await fetch(`/api/leads/${props.leadId}/blueprint/advance`, {
+                  method: "POST",
+                  headers: { "content-type": "application/json" },
+                  body: JSON.stringify({ toStageKey: s, remarks: "Manual stage change from header dropdown." }),
+                });
+                router.refresh();
+              }}
+            />
+
+            <button
+              onClick={() => setDialog("activity")}
+              className="rounded-md border px-3 py-1.5 text-sm flex items-center gap-1.5 hover:bg-accent"
+            >
+              <MessageSquarePlus className="size-4" /> Log activity
+            </button>
+            <button
+              onClick={() => setDialog("task")}
+              className="rounded-md border px-3 py-1.5 text-sm flex items-center gap-1.5 hover:bg-accent"
+            >
+              <ListPlus className="size-4" /> Add task
+            </button>
+            <button
+              onClick={() => setDialog("schedule_meeting")}
+              className="rounded-md border px-3 py-1.5 text-sm flex items-center gap-1.5 hover:bg-accent"
+            >
+              <CalendarPlus className="size-4" /> Schedule meeting
+            </button>
+            <button
+              onClick={() => setDialog("convert")}
+              className="rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-sm font-medium flex items-center gap-1.5"
+            >
+              <ArrowRight className="size-4" /> Convert to client
+            </button>
+          </>
         )}
       </div>
 
@@ -572,7 +579,7 @@ function TaskDialog({
  * /api/review-meetings which emits a meeting.scheduled.lead event,
  * auto-advancing the blueprint to meeting_scheduled.
  */
-function ScheduleMeetingDialog({
+export function ScheduleMeetingDialog({
   leadId,
   leadName,
   onClose,

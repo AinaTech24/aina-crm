@@ -15,13 +15,14 @@
  * "low / moderate / high / very_high" mirrors AMFI's riskometer dial.
  */
 
-export type ClientProfile = "conservative" | "moderate" | "aggressive" | null | undefined;
+export type ClientProfile = "conservative" | "moderate" | "aggressive" | "very_aggressive" | null | undefined;
 export type SchemeRisk = "low" | "moderate" | "high" | "very_high" | null | undefined;
 
 const ALLOWED: Record<NonNullable<ClientProfile>, SchemeRisk[]> = {
   conservative: ["low", "moderate"],
   moderate: ["low", "moderate", "high"],
   aggressive: ["low", "moderate", "high", "very_high"],
+  very_aggressive: ["low", "moderate", "high", "very_high"],
 };
 
 export interface SchemeLine {
@@ -119,6 +120,7 @@ function riskGap(profile: NonNullable<ClientProfile>, risk: NonNullable<SchemeRi
     conservative: 1,
     moderate: 2,
     aggressive: 3,
+    very_aggressive: 4,
   };
   const riskLvl: Record<NonNullable<SchemeRisk>, number> = {
     low: 1,

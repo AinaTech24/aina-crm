@@ -45,7 +45,8 @@ type Prereq = {
 
 type Outcome =
   | { kind: "advanced" }
-  | { kind: "needs_action"; items: Prereq[]; targetStage: string };
+  | { kind: "needs_action"; items: Prereq[]; targetStage: string }
+  | { kind: "error"; message: string };
 
 export function GuidedStageActions({
   leadId,
@@ -80,7 +81,13 @@ export function GuidedStageActions({
     const res = await fetch(
       `/api/leads/${leadId}/blueprint/can-advance?to=${encodeURIComponent(targetStage)}`
     );
-    if (!res.ok) return { ok: false, items: [] };
+    // A non-OK response (session expiry, 404, 500) is a TRANSPORT failure, not
+    // "prerequisites unmet" — throw so the caller can show a real error instead
+    // of a misleading empty checklist.
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      throw new Error(j?.error ?? `Couldn't check prerequisites (HTTP ${res.status}). Please try again.`);
+    }
     return (await res.json()) as { ok: boolean; items: Prereq[]; missingFields?: any[] };
   }
 
@@ -105,7 +112,13 @@ export function GuidedStageActions({
       // 1. If the action targets a *forward* stage, check prereqs first.
       const forwardJump = action.targetStage && action.targetStage !== currentStage;
       if (forwardJump) {
-        const pre = await checkPrereq(action.targetStage);
+        let pre: { ok: boolean; items: Prereq[]; missingFields?: any[] };
+        try {
+          pre = await checkPrereq(action.targetStage);
+        } catch (e: any) {
+          setOutcome({ kind: "error", message: e?.message ?? "Couldn't check prerequisites. Please try again." });
+          return;
+        }
         if (!pre.ok) {
           // Show the checklist of unsatisfied items.
           setOutcome({
@@ -311,6 +324,28 @@ export function GuidedStageActions({
           >
             Dismiss
           </button>
+        </div>
+      )}
+
+      {/* Error panel — transport failure checking prerequisites */}
+      {outcome?.kind === "error" && (
+        <div className="rounded-xl border-2 border-rose-300 bg-rose-50/70 p-4">
+          <div className="flex items-start gap-3">
+            <div className="size-9 rounded-lg bg-rose-100 grid place-items-center flex-shrink-0">
+              <AlertTriangle className="size-4 text-rose-700" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-semibold text-rose-900">Couldn’t check this step</div>
+              <p className="text-xs text-rose-800/90 mt-0.5">{outcome.message}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setOutcome(null)}
+              className="text-xs text-rose-800 hover:underline flex-shrink-0"
+            >
+              Dismiss
+            </button>
+          </div>
         </div>
       )}
 

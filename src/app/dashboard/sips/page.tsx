@@ -6,8 +6,10 @@ import { sips, investors, mandates, users } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { formatINR, formatDate } from "@/lib/utils";
 import { FilterBar } from "@/components/common/FilterBar";
+import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
 import { CustomViews } from "@/components/common/CustomViews";
 import { ColumnManager } from "@/components/common/ColumnManager";
+import { Pager } from "@/components/common/Pager";
 
 const SIPS_COLUMNS = [
   { key: "investor", label: "Investor", required: true },
@@ -63,8 +65,20 @@ export default async function SipsPage({
   const session = await requireSession();
   const sp = await searchParams;
   const q = (sp.q ?? "").trim();
-  const statusFilter = (sp.status ?? "").split(",").filter(Boolean);
+  const statusFilterRaw = (sp.status ?? "").split(",").filter(Boolean);
   const freqFilter = (sp.frequency ?? "").split(",").filter(Boolean);
+  const PAGE_SIZE = 50;
+  const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
+
+  // Map status to cover both completed and expired (defense against mismatch)
+  const statusFilter: string[] = [];
+  for (const s of statusFilterRaw) {
+    if (s === "completed" || s === "expired") {
+      statusFilter.push("completed", "expired");
+    } else {
+      statusFilter.push(s);
+    }
+  }
 
   const data = await withTenant(session.tenantId, async (tx) => {
     const stats = await tx.execute(sql`
@@ -76,6 +90,7 @@ export default async function SipsPage({
         COUNT(*) FILTER (WHERE status = 'active' AND end_date IS NOT NULL
           AND end_date <= current_date + interval '90 days')::int AS expiring_soon
       FROM sips
+      WHERE tenant_id = ${session.tenantId}::uuid
     `);
     const s = stats.rows[0] as any;
 
@@ -92,6 +107,8 @@ export default async function SipsPage({
     }
     if (statusFilter.length) conds.push(inArray(sips.status, statusFilter as any));
     if (freqFilter.length) conds.push(inArray(sips.frequency, freqFilter as any));
+    const dr = dateRangeCond(sp, "created", "sips.created_at");
+    if (dr) conds.push(dr);
     const where = conds.length ? and(...conds) : undefined;
 
     const rowsQuery = tx
@@ -107,9 +124,18 @@ export default async function SipsPage({
       .leftJoin(investors, eq(investors.id, sips.investorId))
       .leftJoin(mandates, eq(mandates.id, sips.mandateId))
       .leftJoin(users, eq(users.id, sips.rmId));
-    const rows = await (where
-      ? rowsQuery.where(where as any).orderBy(desc(sips.updatedAt)).limit(200)
-      : rowsQuery.orderBy(desc(sips.updatedAt)).limit(200));
+    const rows = await rowsQuery
+      .where(where as any)
+      .orderBy(desc(sips.updatedAt))
+      .limit(PAGE_SIZE)
+      .offset((page - 1) * PAGE_SIZE);
+
+    // True count of the filtered set (drives the pager + accurate header count).
+    const cnt = await tx
+      .select({ c: sql<number>`count(*)::int` })
+      .from(sips)
+      .leftJoin(investors, eq(investors.id, sips.investorId))
+      .where(where as any);
 
     return {
       activeSips: Number(s.active_sips),
@@ -118,6 +144,7 @@ export default async function SipsPage({
       lostMtd: Number(s.lost_mtd),
       expiringSoon: Number(s.expiring_soon),
       rows,
+      filteredTotal: Number(cnt[0]?.c ?? 0),
     };
   });
 
@@ -141,7 +168,7 @@ export default async function SipsPage({
       </div>
 
       <FilterBar
-        totalCount={data.rows.length}
+        totalCount={data.filteredTotal}
         filters={[
           { type: "search", key: "q", placeholder: "Search by scheme, AMC, folio, investor…" },
           {
@@ -170,6 +197,7 @@ export default async function SipsPage({
               { value: "yearly", label: "Yearly" },
             ],
           },
+          dateRangeFilter("created", "Started"),
         ]}
         rightSlot={
           <div className="flex items-center gap-2">
@@ -277,6 +305,14 @@ export default async function SipsPage({
                 ))}
               </tbody>
             </table>
+            <div className="px-4 pb-3">
+              <Pager
+                page={page}
+                totalPages={Math.ceil(data.filteredTotal / PAGE_SIZE)}
+                total={data.filteredTotal}
+                pageSize={PAGE_SIZE}
+              />
+            </div>
           </div>
         )}
       </div>

@@ -44,7 +44,18 @@ export interface FieldDef {
 }
 
 export interface SubjectCatalog {
-  subject: "investor" | "lead" | "task" | "folio" | "user" | "transaction";
+  subject:
+    | "investor"
+    | "lead"
+    | "task"
+    | "folio"
+    | "user"
+    | "transaction"
+    | "sip"
+    | "insurance"
+    | "goal"
+    | "service_request"
+    | "claim";
   /** Primary table + alias used in compiled SQL. */
   table: string;
   alias: string;
@@ -152,6 +163,15 @@ export const investorCatalog: SubjectCatalog = {
     },
 
     { key: "aum", label: "AUM (₹)", type: "currency", sql: "inv.aum", ops: COMMON_NUMBER_OPS },
+    { key: "health_score", label: "Health score (0–100)", type: "integer", sql: "inv.health_score", ops: COMMON_NUMBER_OPS },
+    {
+      key: "health_band",
+      label: "Health band",
+      type: "enum",
+      sql: "inv.health_band",
+      ops: COMMON_ENUM_OPS,
+      enumValues: ["green", "amber", "red"],
+    },
     {
       key: "active_sip_amount",
       label: "Active SIP (₹)",
@@ -342,7 +362,15 @@ export const leadCatalog: SubjectCatalog = {
       ops: COMMON_ENUM_OPS,
       enumValues: ["website", "referral", "meta_ads", "google_ads", "linkedin", "youtube", "webinar", "event", "walk_in", "manual", "other"],
     },
-    { key: "score", label: "Lead score", type: "integer", sql: "ld.score::int", ops: COMMON_NUMBER_OPS },
+    { key: "score", label: "Lead score (0–100)", type: "integer", sql: "ld.lead_score", ops: COMMON_NUMBER_OPS },
+    {
+      key: "score_band",
+      label: "Score band",
+      type: "enum",
+      sql: "ld.score_band",
+      ops: COMMON_ENUM_OPS,
+      enumValues: ["hot", "warm", "cold"],
+    },
     {
       key: "stage_changed_at",
       label: "Stage changed at",
@@ -434,11 +462,144 @@ export const userCatalog: SubjectCatalog = {
   relations: {},
 };
 
+/** MF Transactions — purchases, redemptions, switches, SIP debits. */
+export const transactionCatalog: SubjectCatalog = {
+  subject: "transaction",
+  table: "transactions",
+  alias: "tx",
+  fields: [
+    { key: "type", label: "Type", type: "enum", sql: "tx.type", ops: COMMON_ENUM_OPS, enumValues: ["purchase", "redemption", "switch", "sip", "sip_stop", "sip_pause", "stp", "swp", "lumpsum", "dividend_payout", "dividend_reinvest"] },
+    { key: "direction", label: "Direction", type: "enum", sql: "tx.direction", ops: COMMON_ENUM_OPS, enumValues: ["inflow", "outflow"] },
+    { key: "status", label: "Status", type: "enum", sql: "tx.status", ops: COMMON_ENUM_OPS, enumValues: ["pending", "processed", "rejected", "cancelled", "submitted", "successful", "failed"] },
+    { key: "amount", label: "Amount (₹)", type: "currency", sql: "tx.amount", ops: COMMON_NUMBER_OPS },
+    { key: "scheme_name", label: "Scheme", type: "string", sql: "tx.scheme_name", ops: COMMON_STRING_OPS },
+    { key: "amc_name", label: "AMC", type: "string", sql: "tx.amc_name", ops: COMMON_STRING_OPS },
+    { key: "scheme_category", label: "Scheme category", type: "string", sql: "tx.scheme_category", ops: COMMON_STRING_OPS },
+    { key: "order_date", label: "Order date", type: "date", sql: "tx.order_date", ops: COMMON_DATE_OPS },
+    { key: "exchange", label: "Exchange", type: "enum", sql: "tx.exchange", ops: COMMON_ENUM_OPS, enumValues: ["BSE", "NSE", "MFU", "DIRECT"] },
+    { key: "source_feed", label: "Source", type: "enum", sql: "tx.source_feed", ops: COMMON_ENUM_OPS, enumValues: ["manual", "cams", "kfintech", "nse", "mfu", "other", "bse", "import"] },
+    { key: "investor_id", label: "Client (id)", type: "uuid", sql: "tx.investor_id", ops: COMMON_ENUM_OPS },
+    { key: "created_at", label: "Created", type: "datetime", sql: "tx.created_at", ops: COMMON_DATE_OPS },
+  ],
+  relations: {},
+};
+
+/** SIP book — recurring mandates. */
+export const sipCatalog: SubjectCatalog = {
+  subject: "sip",
+  table: "sips",
+  alias: "s",
+  fields: [
+    { key: "scheme_name", label: "Scheme", type: "string", sql: "s.scheme_name", ops: COMMON_STRING_OPS },
+    { key: "amc_name", label: "AMC", type: "string", sql: "s.amc_name", ops: COMMON_STRING_OPS },
+    { key: "amount", label: "Amount (₹)", type: "currency", sql: "s.amount", ops: COMMON_NUMBER_OPS },
+    { key: "frequency", label: "Frequency", type: "enum", sql: "s.frequency", ops: COMMON_ENUM_OPS, enumValues: ["monthly", "quarterly", "weekly", "fortnightly", "yearly"] },
+    { key: "status", label: "Status", type: "enum", sql: "s.status", ops: COMMON_ENUM_OPS, enumValues: ["active", "paused", "stopped", "rejected", "completed", "pending", "expired"] },
+    { key: "start_date", label: "Start date", type: "date", sql: "s.start_date", ops: COMMON_DATE_OPS },
+    { key: "end_date", label: "End date", type: "date", sql: "s.end_date", ops: COMMON_DATE_OPS },
+    { key: "next_installment_at", label: "Next due", type: "date", sql: "s.next_installment_at", ops: COMMON_DATE_OPS },
+    { key: "investor_id", label: "Client (id)", type: "uuid", sql: "s.investor_id", ops: COMMON_ENUM_OPS },
+    { key: "created_at", label: "Created", type: "datetime", sql: "s.created_at", ops: COMMON_DATE_OPS },
+  ],
+  relations: {},
+};
+
+/** Insurance policies. */
+export const insuranceCatalog: SubjectCatalog = {
+  subject: "insurance",
+  table: "insurance_policies",
+  alias: "ip",
+  fields: [
+    { key: "insurer", label: "Insurer", type: "string", sql: "ip.insurer", ops: COMMON_STRING_OPS },
+    { key: "plan_name", label: "Plan", type: "string", sql: "ip.plan_name", ops: COMMON_STRING_OPS },
+    { key: "policy_type", label: "Policy type", type: "enum", sql: "ip.policy_type", ops: COMMON_ENUM_OPS, enumValues: ["term", "ulip", "endowment", "money_back", "health", "critical_illness", "personal_accident", "motor", "travel", "home", "life_other", "general_other"] },
+    { key: "status", label: "Status", type: "enum", sql: "ip.status", ops: COMMON_ENUM_OPS, enumValues: ["proposed", "in_underwriting", "active", "lapsed", "matured", "surrendered", "cancelled", "claim_filed", "claim_settled"] },
+    { key: "sum_assured", label: "Sum assured (₹)", type: "currency", sql: "ip.sum_assured", ops: COMMON_NUMBER_OPS },
+    { key: "annual_premium", label: "Annual premium (₹)", type: "currency", sql: "ip.annual_premium", ops: COMMON_NUMBER_OPS },
+    { key: "premium_frequency", label: "Premium frequency", type: "enum", sql: "ip.premium_frequency", ops: COMMON_ENUM_OPS, enumValues: ["single", "annual", "semi_annual", "quarterly", "monthly"] },
+    { key: "policy_start_date", label: "Start date", type: "date", sql: "ip.policy_start_date", ops: COMMON_DATE_OPS },
+    { key: "maturity_date", label: "Maturity", type: "date", sql: "ip.maturity_date", ops: COMMON_DATE_OPS },
+    { key: "next_premium_due_date", label: "Next premium due", type: "date", sql: "ip.next_premium_due_date", ops: COMMON_DATE_OPS },
+    { key: "investor_id", label: "Client (id)", type: "uuid", sql: "ip.investor_id", ops: COMMON_ENUM_OPS },
+    { key: "created_at", label: "Created", type: "datetime", sql: "ip.created_at", ops: COMMON_DATE_OPS },
+  ],
+  relations: {},
+};
+
+/** Financial goals. */
+export const goalCatalog: SubjectCatalog = {
+  subject: "goal",
+  table: "goals",
+  alias: "g",
+  fields: [
+    { key: "name", label: "Goal", type: "string", sql: "g.name", ops: COMMON_STRING_OPS },
+    { key: "category", label: "Category", type: "enum", sql: "g.category", ops: COMMON_ENUM_OPS, enumValues: ["retirement", "child_education", "child_marriage", "house", "car", "vacation", "emergency_fund", "wealth_creation", "other"] },
+    { key: "status", label: "Status", type: "enum", sql: "g.status", ops: COMMON_ENUM_OPS, enumValues: ["not_started", "on_track", "behind_track", "achieved", "active", "on_hold", "abandoned"] },
+    { key: "target_amount", label: "Target (₹)", type: "currency", sql: "g.target_amount", ops: COMMON_NUMBER_OPS },
+    { key: "current_value", label: "Current value (₹)", type: "currency", sql: "g.current_value", ops: COMMON_NUMBER_OPS },
+    { key: "progress_pct", label: "Progress %", type: "number", sql: "g.progress_pct", ops: COMMON_NUMBER_OPS },
+    { key: "target_date", label: "Target date", type: "date", sql: "g.target_date", ops: COMMON_DATE_OPS },
+    { key: "next_review_at", label: "Next review", type: "datetime", sql: "g.next_review_at", ops: COMMON_DATE_OPS },
+    { key: "investor_id", label: "Client (id)", type: "uuid", sql: "g.investor_id", ops: COMMON_ENUM_OPS },
+    { key: "created_at", label: "Created", type: "datetime", sql: "g.created_at", ops: COMMON_DATE_OPS },
+  ],
+  relations: {},
+};
+
+/** Service requests / complaints. */
+export const serviceRequestCatalog: SubjectCatalog = {
+  subject: "service_request",
+  table: "service_requests",
+  alias: "sr",
+  fields: [
+    { key: "ticket_no", label: "Ticket #", type: "string", sql: "sr.ticket_no", ops: COMMON_STRING_OPS },
+    { key: "subject", label: "Subject", type: "string", sql: "sr.subject", ops: COMMON_STRING_OPS },
+    { key: "type", label: "Type", type: "enum", sql: "sr.type", ops: COMMON_ENUM_OPS, enumValues: ["nominee_update", "bank_update", "mobile_update", "email_update", "kyc_update", "minor_to_major", "capital_gain_report", "statement_request", "redemption_request", "switch_request", "transmission_case", "folio_correction", "complaint", "other"] },
+    { key: "status", label: "Status", type: "enum", sql: "sr.status", ops: COMMON_ENUM_OPS, enumValues: ["open", "in_progress", "waiting_customer", "resolved", "closed", "escalated"] },
+    { key: "priority", label: "Priority", type: "enum", sql: "sr.priority", ops: COMMON_ENUM_OPS, enumValues: ["low", "normal", "high", "urgent"] },
+    { key: "channel", label: "Channel", type: "enum", sql: "sr.channel", ops: COMMON_ENUM_OPS, enumValues: ["whatsapp", "email", "phone", "in_person", "form"] },
+    { key: "resolved_at", label: "Resolved at", type: "datetime", sql: "sr.resolved_at", ops: COMMON_DATE_OPS },
+    { key: "investor_id", label: "Client (id)", type: "uuid", sql: "sr.investor_id", ops: COMMON_ENUM_OPS },
+    { key: "created_at", label: "Created", type: "datetime", sql: "sr.created_at", ops: COMMON_DATE_OPS },
+  ],
+  relations: {},
+};
+
+/** Insurance claims — claim lifecycle + amounts. */
+export const claimCatalog: SubjectCatalog = {
+  subject: "claim",
+  table: "insurance_claims",
+  alias: "icl",
+  fields: [
+    { key: "proposer_name", label: "Proposer", type: "string", sql: "icl.proposer_name", ops: COMMON_STRING_OPS },
+    { key: "insurer", label: "Insurer", type: "string", sql: "icl.insurer", ops: COMMON_STRING_OPS },
+    { key: "policy_number", label: "Policy number", type: "string", sql: "icl.policy_number", ops: COMMON_STRING_OPS },
+    { key: "claim_status", label: "Claim status", type: "enum", sql: "icl.claim_status", ops: COMMON_ENUM_OPS, enumValues: ["empty", "claim_intimated", "file_awaited", "file_received", "add_info_awaited", "query", "query_replied", "under_process", "settled_fully", "settled_partially", "rejected", "withdrawn"] },
+    { key: "claim_type", label: "Claim type", type: "enum", sql: "icl.claim_type", ops: COMMON_ENUM_OPS, enumValues: ["main_claim", "supplementary", "pre_authorization", "rider", "other"] },
+    { key: "claim_mode", label: "Claim mode", type: "enum", sql: "icl.claim_mode", ops: COMMON_ENUM_OPS, enumValues: ["cashless", "reimbursement"] },
+    { key: "claimed_amount", label: "Claimed (₹)", type: "currency", sql: "icl.claimed_amount", ops: COMMON_NUMBER_OPS },
+    { key: "settled_amount", label: "Settled (₹)", type: "currency", sql: "icl.settled_amount", ops: COMMON_NUMBER_OPS },
+    { key: "intimation_date", label: "Intimation date", type: "date", sql: "icl.intimation_date", ops: COMMON_DATE_OPS },
+    { key: "submission_date", label: "Submission date", type: "date", sql: "icl.submission_date", ops: COMMON_DATE_OPS },
+    { key: "settlement_date", label: "Settlement date", type: "date", sql: "icl.settlement_date", ops: COMMON_DATE_OPS },
+    { key: "investor_id", label: "Client (id)", type: "uuid", sql: "icl.investor_id", ops: COMMON_ENUM_OPS },
+    { key: "rm_id", label: "RM (id)", type: "uuid", sql: "icl.rm_id", ops: COMMON_ENUM_OPS },
+    { key: "created_at", label: "Created", type: "datetime", sql: "icl.created_at", ops: COMMON_DATE_OPS },
+  ],
+  relations: {},
+};
+
 export const CATALOGS: Record<string, SubjectCatalog> = {
   investor: investorCatalog,
   lead: leadCatalog,
   task: taskCatalog,
   user: userCatalog,
+  transaction: transactionCatalog,
+  sip: sipCatalog,
+  insurance: insuranceCatalog,
+  goal: goalCatalog,
+  service_request: serviceRequestCatalog,
+  claim: claimCatalog,
 };
 
 export function getCatalog(subject: string): SubjectCatalog {

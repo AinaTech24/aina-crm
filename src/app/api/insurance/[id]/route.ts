@@ -16,6 +16,7 @@ import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import {
   insurancePolicies,
+  investors,
   POLICY_STATUSES,
   POLICY_TYPES,
   PREMIUM_FREQUENCIES,
@@ -47,6 +48,7 @@ const Patch = z
     nomineeShare: z.number().int().min(0).max(100).optional(),
     riders: z.array(z.any()).optional(),
     documents: z.array(z.object({ name: z.string(), url: z.string() })).optional(),
+    details: z.record(z.any()).optional(),
     remarks: z.string().max(1000).optional(),
     lapseReason: z.string().max(300).optional(),
     surrenderValue: z.number().min(0).optional(),
@@ -60,9 +62,25 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   try {
     const session = await requireSession();
     requireCap(session.roles, "insurance.view");
-    const row = await withTenant(session.tenantId, async (tx) =>
-      (await tx.select().from(insurancePolicies).where(eq(insurancePolicies.id, id)).limit(1))[0] ?? null
-    );
+    const row = await withTenant(session.tenantId, async (tx) => {
+      const p = (
+        await tx.select().from(insurancePolicies).where(eq(insurancePolicies.id, id)).limit(1)
+      )[0];
+      if (!p) return null;
+
+      const inv = (
+        await tx
+          .select({ name: investors.name })
+          .from(investors)
+          .where(eq(investors.id, p.investorId))
+          .limit(1)
+      )[0];
+
+      return {
+        ...p,
+        investorName: inv?.name ?? null,
+      };
+    });
     if (!row) return NextResponse.json({ error: "not found" }, { status: 404 });
     return NextResponse.json(row);
   } catch (err: any) {

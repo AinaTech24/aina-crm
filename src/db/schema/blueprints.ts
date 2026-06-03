@@ -185,7 +185,11 @@ export const leadStageHistory = pgTable(
     /** Did we breach this stage's SLA before exiting? */
     breachedSla: boolean("breached_sla").notNull().default(false),
 
+    /** Actor who CLOSED this row (stamped on exit). */
     completedBy: uuid("completed_by").references(() => users.id),
+    /** Actor who OPENED this row (stamped on entry) — so the current stage's
+     *  actor is recorded, not only the exiting one. Null for system/auto moves. */
+    enteredBy: uuid("entered_by").references(() => users.id),
     transitionName: text("transition_name"),
     remarks: text("remarks"),
 

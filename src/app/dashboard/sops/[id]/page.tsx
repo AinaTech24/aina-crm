@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
 import { ChevronLeft, ScrollText } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { sops, sopVersions, sopAcknowledgements } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { formatDate } from "@/lib/utils";
+import { AcknowledgeButton } from "@/components/sops/AcknowledgeButton";
 
 export const dynamic = "force-dynamic";
 
@@ -21,13 +22,28 @@ export default async function SopDetailPage({ params }: { params: Promise<{ id: 
       .where(eq(sopVersions.sopId, id))
       .orderBy(desc(sopVersions.createdAt));
     const current = versions.find((v) => v.id === sop.currentVersionId);
+    
     const acks = current
       ? await tx
           .select()
           .from(sopAcknowledgements)
           .where(eq(sopAcknowledgements.sopVersionId, current.id))
       : [];
-    return { sop, versions, current, acks };
+
+    const myAck = current
+      ? (await tx
+          .select()
+          .from(sopAcknowledgements)
+          .where(
+            and(
+              eq(sopAcknowledgements.sopVersionId, current.id),
+              eq(sopAcknowledgements.userId, session.userId)
+            )
+          )
+          .limit(1))[0] || null
+      : null;
+
+    return { sop, versions, current, acks, myAck };
   });
   if (!data) notFound();
 
@@ -38,27 +54,36 @@ export default async function SopDetailPage({ params }: { params: Promise<{ id: 
       </Link>
 
       <div className="border rounded-lg bg-card p-6">
-        <div className="flex items-start gap-4">
-          <ScrollText className="size-8 text-muted-foreground mt-1" />
-          <div className="flex-1">
-            <h1 className="text-2xl font-bold tracking-tight">{data.sop.title}</h1>
-            <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-              <span className="font-mono">{data.sop.key}</span>
-              {data.sop.category && <span>· {data.sop.category}</span>}
-              {data.current && <span>· v{data.current.versionNumber}</span>}
-              <span>· {data.acks.length} acknowledged</span>
-            </div>
-            {(data.sop.requiredRoles ?? []).length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {(data.sop.requiredRoles ?? []).map((r: string) => (
-                  <span key={r} className="text-xs px-1.5 py-0.5 rounded bg-muted">{r}</span>
-                ))}
+        <div className="flex items-start gap-4 flex-wrap justify-between">
+          <div className="flex items-start gap-4 min-w-0 flex-1">
+            <ScrollText className="size-8 text-muted-foreground mt-1 shrink-0" />
+            <div className="min-w-0 flex-1">
+              <h1 className="text-2xl font-bold tracking-tight">{data.sop.title}</h1>
+              <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                <span className="font-mono">{data.sop.key}</span>
+                {data.sop.category && <span>· {data.sop.category}</span>}
+                {data.current && <span>· v{data.current.versionNumber}</span>}
+                <span>· {data.acks.length} acknowledged</span>
               </div>
-            )}
+              {(data.sop.requiredRoles ?? []).length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {(data.sop.requiredRoles ?? []).map((r: string) => (
+                    <span key={r} className="text-xs px-1.5 py-0.5 rounded bg-muted">{r}</span>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-          <button className="rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-sm font-medium">
-            Acknowledge
-          </button>
+          
+          {data.current && (
+            <div className="pt-2 sm:pt-0 shrink-0">
+              <AcknowledgeButton
+                sopId={data.sop.id}
+                hasAcknowledged={!!data.myAck}
+                acknowledgedAt={data.myAck?.acknowledgedAt}
+              />
+            </div>
+          )}
         </div>
       </div>
 

@@ -10,7 +10,7 @@ import { handleApiError } from "@/lib/api/error-handler";
 
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuid } from "uuid";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
@@ -32,7 +32,11 @@ export async function GET() {
   try {
     const session = await requireSession();
     const rows = await withTenant(session.tenantId, async (tx) => {
-      return tx.select().from(workflows).orderBy(desc(workflows.updatedAt));
+      return tx
+        .select()
+        .from(workflows)
+        .where(eq(workflows.tenantId, session.tenantId))
+        .orderBy(desc(workflows.updatedAt));
     });
     return NextResponse.json({ workflows: rows });
   } catch (err: any) {
@@ -85,7 +89,7 @@ export async function POST(req: NextRequest) {
       await tx
         .update(workflows)
         .set({ currentVersionId: versionId })
-        .where(eq(workflows.id, wfId));
+        .where(and(eq(workflows.id, wfId), eq(workflows.tenantId, session.tenantId)));
 
       return { id: wfId, versionId };
     }, { userId: session.userId, branchId: session.branchId, roles: session.roles });

@@ -8,10 +8,11 @@
  */
 
 import { notFound } from "next/navigation";
-import { eq } from "drizzle-orm";
-import { withSystem, db } from "@/db/client";
+import { and, eq } from "drizzle-orm";
+import { withSystem, withTenant } from "@/db/client";
 import { contentLibraryAssets, tenants } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
+import { assetVisibleTo } from "@/lib/content/asset-url";
 import { ProposalPrintHelper } from "@/components/proposals/ProposalPrintHelper";
 
 export const dynamic = "force-dynamic";
@@ -23,12 +24,19 @@ export default async function CoverSheetPage({
 }) {
   const { id } = await params;
   const session = await requireSession();
+  // Tenant-scoped lookup (global OR own tenant) — withSystem bypasses RLS, so
+  // the predicate is what prevents reading another tenant's asset by id.
   const asset = await withSystem(async (tx) =>
-    (await tx.select().from(contentLibraryAssets).where(eq(contentLibraryAssets.id, id)).limit(1))[0] ??
-    null
+    (await tx
+      .select()
+      .from(contentLibraryAssets)
+      .where(and(eq(contentLibraryAssets.id, id), assetVisibleTo(session.tenantId)))
+      .limit(1))[0] ?? null
   );
   if (!asset) notFound();
-  const tenant = (await db.select().from(tenants).where(eq(tenants.id, session.tenantId)).limit(1))[0];
+  const tenant = (await withTenant(session.tenantId, async (tx) =>
+    tx.select().from(tenants).where(eq(tenants.id, session.tenantId)).limit(1)
+  ))[0];
   const primary = (tenant as any)?.primaryColor || "#0e2557";
   const accent = "#0ea5e9";
   const address = (tenant as any)?.address;

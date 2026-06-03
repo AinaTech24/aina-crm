@@ -1,40 +1,13 @@
 import Link from "next/link";
-import { desc } from "drizzle-orm";
-import {
-  Image as ImageIcon,
-  FileText,
-  Presentation,
-  Video,
-  Music,
-  File,
-  Sparkles,
-} from "lucide-react";
+import { desc, or, isNull, eq } from "drizzle-orm";
+import { Sparkles, Plus } from "lucide-react";
 import { withSystem } from "@/db/client";
 import { contentLibraryAssets } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
-import { formatDate } from "@/lib/utils";
 import { FilterBar } from "@/components/common/FilterBar";
 import { CustomViews } from "@/components/common/CustomViews";
-
-const TYPE_ICON: Record<string, any> = {
-  image: ImageIcon,
-  pdf: FileText,
-  article: FileText,
-  presentation: Presentation,
-  video: Video,
-  audio: Music,
-  other: File,
-};
-
-const TYPE_TONE: Record<string, string> = {
-  image: "bg-emerald-50 text-emerald-700",
-  pdf: "bg-rose-50 text-rose-700",
-  article: "bg-blue-50 text-blue-700",
-  presentation: "bg-amber-50 text-amber-700",
-  video: "bg-violet-50 text-violet-700",
-  audio: "bg-cyan-50 text-cyan-700",
-  other: "bg-gray-50 text-gray-700",
-};
+import { can } from "@/lib/auth/rbac";
+import { LibraryGrid } from "@/components/content-library/LibraryGrid";
 
 export const dynamic = "force-dynamic";
 
@@ -44,14 +17,27 @@ export default async function AinaLibraryPage({
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const sp = await searchParams;
-  await requireSession();
+  const session = await requireSession();
   const q = (sp.q ?? "").trim().toLowerCase();
   const categoryFilter = (sp.category ?? "").split(",").filter(Boolean);
   const typeFilter = (sp.type ?? "").split(",").filter(Boolean);
 
+  const canUpload = can(session.roles, "template.edit");
+
+  // Fetch platform-shared assets (tenantId IS NULL) plus current tenant's custom assets
   const allRows = await withSystem(async (tx) =>
-    tx.select().from(contentLibraryAssets).orderBy(desc(contentLibraryAssets.createdAt))
+    tx
+      .select()
+      .from(contentLibraryAssets)
+      .where(
+        or(
+          isNull(contentLibraryAssets.tenantId),
+          eq(contentLibraryAssets.tenantId, session.tenantId)
+        )
+      )
+      .orderBy(desc(contentLibraryAssets.createdAt))
   );
+  
   let rows = allRows.filter(
     (r) => r.isActive && (!r.expireAt || new Date(r.expireAt) > new Date())
   );
@@ -67,14 +53,21 @@ export default async function AinaLibraryPage({
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <div>
-        <h1 className="page-title">
-          <Sparkles className="size-6 text-brand-cyan" /> AINA Content Library
-        </h1>
-        <p className="page-subtitle">
-          Festive creatives, market updates, articles, presentations — download with your branding
-          baked in.
-        </p>
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <div>
+          <h1 className="page-title">
+            <Sparkles className="size-6 text-brand-cyan" /> AINA Content Library
+          </h1>
+          <p className="page-subtitle">
+            Festive creatives, market updates, articles, presentations — download with your branding
+            baked in.
+          </p>
+        </div>
+        {canUpload && (
+          <Link href="/dashboard/aina-library/new" className="btn-primary flex items-center gap-1 text-xs">
+            <Plus className="size-4" /> Upload Custom Creative
+          </Link>
+        )}
       </div>
 
       <FilterBar
@@ -135,62 +128,9 @@ export default async function AinaLibraryPage({
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-          {rows.map((a) => {
-            const Icon = TYPE_ICON[a.type] ?? File;
-            return (
-              <Link
-                key={a.id}
-                href={`/dashboard/aina-library/${a.id}`}
-                className="card-surface overflow-hidden hover:shadow-lg hover:-translate-y-0.5 transition-all duration-150 block"
-              >
-                <div className="aspect-video bg-secondary/40 grid place-items-center overflow-hidden relative">
-                  {a.type === "image" ? (
-                    // Always pull image previews through the branded endpoint
-                    // so we never expose the raw S3 URL to the MFD's browser.
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={`/api/content-library/${a.id}/branded?mode=preview`}
-                      alt={a.title}
-                      className="object-cover w-full h-full"
-                    />
-                  ) : a.thumbnailUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={a.thumbnailUrl}
-                      alt={a.title}
-                      className="object-cover w-full h-full"
-                    />
-                  ) : (
-                    <Icon className="size-10 text-muted-foreground/50" />
-                  )}
-                  <span
-                    className={`absolute top-2 left-2 chip text-[10px] ${
-                      TYPE_TONE[a.type] ?? ""
-                    }`}
-                  >
-                    {a.type}
-                  </span>
-                </div>
-                <div className="p-3 space-y-1">
-                  <div className="font-semibold text-sm leading-tight line-clamp-2">
-                    {a.title}
-                  </div>
-                  {a.description && (
-                    <div className="text-[11px] text-muted-foreground line-clamp-2">
-                      {a.description}
-                    </div>
-                  )}
-                  <div className="text-[10px] text-muted-foreground capitalize flex items-center justify-between">
-                    <span>{a.category.replace(/_/g, " ")}</span>
-                    <span className="tabular-nums">{formatDate(a.createdAt)}</span>
-                  </div>
-                </div>
-              </Link>
-            );
-          })}
-        </div>
+        <LibraryGrid rows={rows} />
       )}
     </div>
   );
 }
+

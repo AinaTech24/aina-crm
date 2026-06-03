@@ -11,7 +11,7 @@ export const minorToMajorRecipe: RecipeDef = {
   graph: graph({
     start: "trigger",
     nodes: [
-      n("trigger", "trigger", {}),
+      n("trigger", "trigger", { kind: "investor.minor_to_major", subjectType: "investor" }),
       n("task", "create_task", {
         title: "Minor-to-major KYC + folio transition — {{subject.name}}",
         type: "minor_major_transition",

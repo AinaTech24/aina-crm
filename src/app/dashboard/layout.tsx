@@ -27,8 +27,11 @@ import {
   Megaphone,
   Image as ImageIcon,
   UserCog,
+  CalendarOff,
+  CalendarCheck,
   BarChart3,
   FolderArchive,
+  Scale,
   Lock,
   Bot,
   CreditCard,
@@ -36,18 +39,33 @@ import {
   HelpCircle,
   BookOpen,
   Briefcase,
+  Boxes,
+  Cake,
+  PhoneCall,
+  Copy,
+  PieChart,
+  Radio,
+  Columns3,
   Calculator,
+  Wallet,
+  Server,
+  Inbox,
+  Activity,
+  Users2,
 } from "lucide-react";
 import { eq } from "drizzle-orm";
-import { db } from "@/db/client";
+import { withTenant } from "@/db/client";
 import { tenants } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { primaryRoleLabel } from "@/lib/auth/rbac";
 import { loadTenantLicense, isPathAllowedWhenRestricted } from "@/lib/auth/license";
 import { GlobalSearch } from "@/components/layout/GlobalSearch";
 import { NotificationBell } from "@/components/layout/NotificationBell";
+import { BirthdayBell } from "@/components/layout/BirthdayBell";
 import { SidebarNavLink } from "@/components/layout/SidebarNavLink";
 import { QuickCreateFab } from "@/components/layout/QuickCreateFab";
+import { MobileNav } from "@/components/layout/MobileNav";
+import { ProfileMenu } from "@/components/layout/ProfileMenu";
 
 export const dynamic = "force-dynamic";
 
@@ -68,12 +86,22 @@ const NAV: NavSection[] = [
     title: "",
     items: [
       { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+      { href: "/dashboard/command-center", label: "Command Center", icon: Inbox,
+        roles: ["owner", "rm", "branch_head", "back_office", "ops", "compliance"] },
+      { href: "/dashboard/next-best-action", label: "Next Best Action", icon: Sparkles,
+        roles: ["owner", "rm", "branch_head", "back_office", "ops"] },
+      { href: "/dashboard/signals", label: "Sales Signals", icon: Radio,
+        roles: ["owner", "rm", "branch_head", "back_office", "ops"] },
+      { href: "/dashboard/team", label: "Team Dashboard", icon: Users2,
+        roles: ["owner", "branch_head"] },
     ],
   },
   {
     title: "CRM",
     items: [
       // Leads visible to owner, marketing, rm, branch_head
+      { href: "/dashboard/pipeline-board", label: "Pipeline Board", icon: Columns3, module: "lead_management",
+        roles: ["owner", "rm", "branch_head", "back_office", "ops"] },
       { href: "/dashboard/leads", label: "Leads", icon: Sparkles, module: "lead_management",
         roles: ["owner", "marketing", "rm", "branch_head", "back_office", "ops", "compliance"] },
       // Investor data hidden from marketing per spec section 3
@@ -95,6 +123,16 @@ const NAV: NavSection[] = [
         roles: ["owner", "rm", "branch_head", "back_office", "ops", "compliance"] },
       { href: "/dashboard/insurance", label: "Insurance Policies", icon: Shield, module: "insurance",
         roles: ["owner", "rm", "branch_head", "back_office", "ops", "compliance"] },
+      { href: "/dashboard/insurance-claims", label: "Insurance Claims", icon: FileText, module: "insurance",
+        roles: ["owner", "rm", "branch_head", "back_office", "ops", "compliance"] },
+      { href: "/dashboard/insurance/renewals", label: "Insurance Renewals", icon: CalendarCheck, module: "insurance",
+        roles: ["owner", "rm", "branch_head", "back_office", "ops"] },
+      { href: "/dashboard/insurance/protection-gap", label: "Protection-Gap Radar", icon: Shield, module: "insurance",
+        roles: ["owner", "rm", "branch_head", "back_office", "ops"] },
+      { href: "/dashboard/insurance/commission", label: "Insurance Commission", icon: CreditCard, module: "insurance",
+        roles: ["owner", "branch_head", "back_office"] },
+      { href: "/dashboard/celebrations", label: "Celebrations", icon: Cake,
+        roles: ["owner", "rm", "branch_head", "back_office", "ops"] },
 
     ],
   },
@@ -106,12 +144,16 @@ const NAV: NavSection[] = [
         roles: ["owner", "back_office", "ops", "rm", "branch_head", "compliance"] },
       { href: "/dashboard/rta-imports", label: "RTA File Imports", icon: FolderArchive, module: "transactions",
         roles: ["owner", "back_office", "ops", "compliance"] },
+      { href: "/dashboard/reconciliation", label: "Reconciliation", icon: Scale, module: "transactions",
+        roles: ["owner", "back_office", "ops", "compliance"] },
       { href: "/dashboard/sips", label: "SIP Tracker", icon: TrendingUp, module: "sip_tracker",
         roles: ["owner", "back_office", "ops", "rm", "branch_head", "compliance"] },
       { href: "/dashboard/sip-rejections", label: "SIP Rejections", icon: XOctagon, module: "sip_rejection",
         roles: ["owner", "back_office", "ops", "rm", "branch_head"] },
       { href: "/dashboard/review-meetings", label: "Meetings", icon: Calendar, module: "review_meetings",
         roles: ["owner", "rm", "branch_head", "back_office", "ops"] },
+      { href: "/dashboard/activities", label: "Activity Log", icon: PhoneCall,
+        roles: ["owner", "rm", "branch_head", "back_office", "ops", "compliance"] },
       { href: "/dashboard/service-requests", label: "Service Requests", icon: LifeBuoy, module: "service_requests",
         roles: ["owner", "back_office", "ops", "rm", "branch_head", "compliance"] },
       { href: "/dashboard/complaints", label: "Complaints", icon: AlertOctagon, module: "complaints",
@@ -122,7 +164,10 @@ const NAV: NavSection[] = [
     title: "Automation",
     items: [
       { href: "/dashboard/workflows/rules", label: "Workflow Rules", icon: GitBranch, module: "automation_workflows" },
+      { href: "/dashboard/sales-ops", label: "Sales-Ops Rules", icon: GitBranch, roles: ["owner", "branch_head", "compliance"] },
       { href: "/dashboard/workflows", label: "Workflows (advanced)", icon: GitBranch, module: "automation_workflows" },
+      { href: "/dashboard/workflows/runs", label: "Automation Monitor", icon: Activity, module: "automation_workflows",
+        roles: ["owner", "compliance", "back_office", "ops"] },
       { href: "/dashboard/segments", label: "Segments & Filters", icon: Filter, module: "automation_workflows" },
       { href: "/dashboard/templates", label: "Templates", icon: FileText, module: "broadcasts" },
       { href: "/dashboard/campaigns", label: "Marketing Campaigns", icon: Megaphone, module: "marketing_campaigns", roles: ["owner", "marketing"] },
@@ -134,15 +179,22 @@ const NAV: NavSection[] = [
   {
     title: "Compliance & Team",
     items: [
+      { href: "/dashboard/compliance/command-center", label: "Compliance Center", icon: ShieldCheck, roles: ["owner", "compliance", "branch_head"] },
       { href: "/dashboard/compliance", label: "DDQ Readiness", icon: ShieldCheck, module: "ddq", roles: ["owner", "compliance"] },
+      { href: "/dashboard/compliance/amfi-circulars", label: "Circular Digest", icon: ScrollText, roles: ["owner", "compliance", "back_office", "ops", "rm", "branch_head"] },
       { href: "/dashboard/documents", label: "Documents", icon: FolderArchive, module: "documents" },
       { href: "/dashboard/sops", label: "SOP Library", icon: ScrollText, roles: ["owner", "compliance"] },
+      { href: "/dashboard/announcements", label: "Announcements", icon: Megaphone },
+      { href: "/dashboard/duplicates", label: "Find Duplicates", icon: Copy, roles: ["owner", "branch_head"] },
       { href: "/dashboard/tasks", label: "Tasks", icon: ListChecks, module: "tasks" },
       { href: "/dashboard/calendar", label: "Calendar", icon: Calendar },
       { href: "/dashboard/employees", label: "Employees", icon: UserCog, module: "employees", roles: ["owner", "branch_head"] },
+      { href: "/dashboard/leave-applications", label: "Leave Applications", icon: CalendarOff },
+      { href: "/dashboard/attendance", label: "Attendance", icon: CalendarCheck },
       { href: "/dashboard/sub-distributors", label: "Sub-Distributors", icon: HeartHandshake, roles: ["owner", "compliance"] },
       { href: "/dashboard/legal-registrations", label: "Legal Registrations", icon: ScrollText, roles: ["owner", "compliance"] },
       { href: "/dashboard/amc-empanelments", label: "AMC Empanelments", icon: Briefcase, roles: ["owner", "compliance", "back_office"] },
+      { href: "/dashboard/schemes", label: "Scheme Master", icon: Boxes, roles: ["owner", "compliance", "back_office", "branch_head", "rm"] },
       { href: "/dashboard/product-offerings", label: "Products & Services", icon: Megaphone, roles: ["owner", "compliance"] },
       { href: "/dashboard/cybersecurity", label: "Cybersecurity", icon: Lock, module: "cybersecurity", roles: ["owner", "compliance"] },
     ],
@@ -151,7 +203,12 @@ const NAV: NavSection[] = [
     title: "Insights",
     items: [
       { href: "/dashboard/reports", label: "Reports & MIS", icon: BarChart3, module: "reports", roles: ["owner", "branch_head", "compliance"] },
+      { href: "/dashboard/portfolio-intelligence", label: "Portfolio Intelligence", icon: PieChart, roles: ["owner", "branch_head", "compliance", "rm", "back_office", "ops"] },
+      { href: "/dashboard/reports/churn-risk", label: "Churn-risk Radar", icon: AlertTriangle, roles: ["owner", "branch_head", "compliance", "rm", "back_office", "ops"] },
+      { href: "/dashboard/reports/tax-harvesting", label: "Tax-Harvesting", icon: TrendingUp, roles: ["owner", "branch_head", "compliance", "rm", "back_office", "ops"] },
+      { href: "/dashboard/reports/cross-sell", label: "Cross-sell Radar", icon: TrendingUp, roles: ["owner", "branch_head", "compliance", "rm", "back_office", "ops"] },
       { href: "/dashboard/commission-reconciliation", label: "Commission Reconciliation", icon: CreditCard, module: "reports", roles: ["owner", "compliance", "back_office"] },
+      { href: "/dashboard/finances", label: "Practice Finances", icon: Wallet, module: "reports", roles: ["owner", "compliance", "back_office"] },
       { href: "/dashboard/ai-assistant", label: "AI Assistant", icon: Bot, module: "ai_assistant" },
       { href: "/dashboard/audit-log", label: "Audit Log", icon: ClipboardCheck, module: "audit_log", roles: ["owner", "compliance"] },
     ],
@@ -185,7 +242,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const pathname = reqHeaders.get("x-pathname") ?? "";
   const pathAllowed = isPathAllowedWhenRestricted(pathname);
 
-  const tenantRow = await db.select().from(tenants).where(eq(tenants.id, session.tenantId)).limit(1);
+  const tenantRow = await withTenant(session.tenantId, async (tx) =>
+    tx.select().from(tenants).where(eq(tenants.id, session.tenantId)).limit(1)
+  );
   const tenant = tenantRow[0];
 
   const visible = NAV.map((section) => ({
@@ -206,24 +265,23 @@ export default async function DashboardLayout({ children }: { children: React.Re
     .join("")
     .toUpperCase();
 
-  return (
-    // h-screen + overflow-hidden on the outer wrapper means the page itself
-    // never scrolls — the sidebar and the main pane each get their own
-    // scrollbar from the `overflow-y-auto` they already declare. Print mode
-    // reverts to block flow so the whole document prints in one stream.
-    <div className="h-screen flex bg-background overflow-hidden print:block print:h-auto print:overflow-visible">
-      {/* ────────────────────────── Sidebar ────────────────────────── */}
-      <aside className="w-64 flex-shrink-0 h-full flex flex-col bg-card border-r border-border/70 shadow-sm print:hidden">
+  // Sidebar inner content — brand header + nav + user card. Rendered in BOTH
+  // the desktop aside and the mobile drawer (MobileNav), so the navigation has
+  // a single source of truth and never drifts between the two.
+  const sidebarInner = (
+    <>
         {/* Brand header — gradient mesh + logo */}
-        <div className="relative overflow-hidden">
+        <div className="relative overflow-hidden border-b border-white/10">
           <div className="absolute inset-0 brand-mesh opacity-95" />
-          <div className="relative px-5 py-5 flex items-center gap-3">
+          {/* faint cyan glow accent in the corner for depth */}
+          <div className="absolute -top-8 -right-8 size-24 rounded-full bg-brand-cyan/20 blur-2xl" />
+          <div className="relative px-5 py-[1.15rem] flex items-center gap-3">
             {tenant?.logoUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={tenant.logoUrl}
                 alt="logo"
-                className="size-10 rounded-xl shadow-lg ring-2 ring-white/20"
+                className="size-10 rounded-xl shadow-lg ring-2 ring-white/20 object-cover"
               />
             ) : (
               <div
@@ -234,11 +292,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
               </div>
             )}
             <div className="min-w-0 text-white">
-              <div className="font-semibold tracking-tight truncate text-sm">
+              <div className="font-semibold tracking-tight truncate text-sm leading-tight">
                 {tenant?.displayName ?? "MFD Growth OS"}
               </div>
-              <div className="text-[11px] text-white/70 truncate font-mono">
-                {tenant?.arn ?? "—"}
+              <div className="mt-0.5 inline-flex items-center gap-1 text-[10px] text-white/75 font-mono">
+                <span className="size-1.5 rounded-full bg-brand-cyan shadow-[0_0_6px_hsl(var(--brand-cyan))]" />
+                <span className="truncate">{tenant?.arn ?? "—"}</span>
               </div>
             </div>
           </div>
@@ -300,6 +359,18 @@ export default async function DashboardLayout({ children }: { children: React.Re
             </div>
           )}
         </div>
+    </>
+  );
+
+  return (
+    // h-screen + overflow-hidden on the outer wrapper means the page itself
+    // never scrolls — the sidebar and the main pane each get their own
+    // scrollbar from the `overflow-y-auto` they already declare. Print mode
+    // reverts to block flow so the whole document prints in one stream.
+    <div className="h-screen flex bg-background overflow-hidden print:block print:h-auto print:overflow-visible">
+      {/* ───────────── Desktop sidebar (hidden below lg — mobile uses drawer) ───────────── */}
+      <aside className="hidden lg:flex w-64 flex-shrink-0 h-full flex-col bg-card border-r border-border/70 shadow-sm print:hidden">
+        {sidebarInner}
       </aside>
 
       {/* ────────────────────────── Main ────────────────────────── */}
@@ -309,6 +380,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
         {/* Topbar — glass, sticky; hidden when printing */}
         <div className="sticky top-0 z-20 border-b border-border/60 bg-background/80 backdrop-blur-xl backdrop-saturate-150 px-6 py-3 flex items-center justify-between gap-4 print:hidden">
           <div className="flex items-center gap-3 min-w-0">
+            {/* Mobile hamburger — opens the nav drawer (shares sidebarInner) */}
+            <MobileNav>{sidebarInner}</MobileNav>
             <div className="hidden md:flex flex-col">
               <span className="text-[11px] font-semibold text-foreground truncate max-w-[16rem]">
                 {tenant?.legalName ?? "Acme Wealth"}
@@ -338,10 +411,15 @@ export default async function DashboardLayout({ children }: { children: React.Re
             >
               <HelpCircle className="size-4" />
             </Link>
+            <BirthdayBell />
             <NotificationBell />
-            <div className="size-9 rounded-full brand-gradient text-white grid place-items-center text-xs font-bold shadow-md ring-2 ring-white">
-              {initials}
-            </div>
+            <span className="h-6 w-px bg-border mx-0.5" />
+            <ProfileMenu
+              name={session.name}
+              email={session.email}
+              roleLabel={roleLabel}
+              initials={initials}
+            />
           </div>
         </div>
         <div className="p-6 animate-fade-in print:p-0 print:animate-none">

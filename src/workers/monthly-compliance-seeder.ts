@@ -122,7 +122,7 @@ interface SeedResult {
 async function listActiveTenants(): Promise<string[]> {
   return await withSystem(async (tx) => {
     const r = await tx.execute(sql`
-      SELECT id FROM tenants WHERE license_status IN ('active', 'trial')
+      SELECT id FROM tenants WHERE status IN ('active', 'trial')
     `);
     return (r.rows as Array<{ id: string }>).map((row) => row.id);
   });
@@ -149,7 +149,8 @@ export async function seedTenant(tenantId: string, monthDate?: Date): Promise<Se
       // these to. Falls back to the owner if no compliance role is set.
       const ownerRow = await tx.execute(sql`
         SELECT id FROM users
-         WHERE status = 'active'
+         WHERE tenant_id = ${tenantId}::uuid
+           AND status = 'active'
            AND ('compliance' = ANY(roles) OR 'owner' = ANY(roles))
          ORDER BY ('compliance' = ANY(roles)) DESC, ('owner' = ANY(roles)) DESC
          LIMIT 1
@@ -165,7 +166,8 @@ export async function seedTenant(tenantId: string, monthDate?: Date): Promise<Se
       // Skip-existing check: load any tasks already seeded this month.
       const existing = await tx.execute(sql`
         SELECT title FROM tasks
-         WHERE department = 'compliance'
+         WHERE tenant_id = ${tenantId}::uuid
+           AND department = 'compliance'
            AND status = 'open'
            AND COALESCE(remarks, '') LIKE ${`${remarkPrefix}%`}
       `);

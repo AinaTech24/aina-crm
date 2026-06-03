@@ -4,9 +4,9 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { sql } from "drizzle-orm";
 import { withSystem } from "@/db/client";
 import { emailAdapter } from "@/lib/comms/adapters/resend";
+import { applyMonotonicStatus } from "@/lib/comms/webhook-status";
 
 export const dynamic = "force-dynamic";
 
@@ -46,22 +46,10 @@ export async function POST(req: NextRequest) {
   const newStatus = statusMap[type] ?? null;
   if (!newStatus) return NextResponse.json({ ok: true });
 
-  const tsField =
-    newStatus === "delivered"
-      ? "delivered_at"
-      : newStatus === "read"
-      ? "read_at"
-      : newStatus === "failed" || newStatus === "bounced"
-      ? "failed_at"
-      : "sent_at";
-
+  // Monotonic apply — an out-of-order "delivered" after "read" won't regress,
+  // and a late "sent" can't resurrect a terminal "bounced"/"failed".
   await withSystem(async (tx) => {
-    await tx.execute(sql`
-      UPDATE communications
-      SET status = ${newStatus},
-          ${sql.raw(tsField)} = COALESCE(${sql.raw(tsField)}, now())
-      WHERE external_id = ${emailId} AND channel = 'email'
-    `);
+    await applyMonotonicStatus(tx, { externalId: emailId, channel: "email", newStatus });
   });
 
   return NextResponse.json({ ok: true });

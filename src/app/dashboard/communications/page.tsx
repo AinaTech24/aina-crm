@@ -1,54 +1,73 @@
 import Link from "next/link";
-import { desc, eq, and, sql } from "drizzle-orm";
-import { MessageCircle, Mail, MessageSquare, CheckCheck, Check, AlertCircle } from "lucide-react";
+import { desc, eq, and, or, ilike, inArray, sql } from "drizzle-orm";
+import { Mail, PenSquare } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { communications, investors, leads } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
-import { formatRelative } from "@/lib/utils";
-
-const channelIcons = { whatsapp: MessageCircle, email: Mail, sms: MessageSquare };
-const statusIcons: Record<string, any> = {
-  queued: AlertCircle,
-  sent: Check,
-  delivered: Check,
-  read: CheckCheck,
-  replied: CheckCheck,
-  failed: AlertCircle,
-  bounced: AlertCircle,
-  skipped_consent: AlertCircle,
-  skipped_compliance: AlertCircle,
-  skipped_session: AlertCircle,
-  skipped_rate_limit: AlertCircle,
-};
+import { FilterBar } from "@/components/common/FilterBar";
+import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
+import { CustomViews } from "@/components/common/CustomViews";
+import { Pager } from "@/components/common/Pager";
+import { CommsList, type CommRow } from "@/components/communications/CommsList";
 
 export const dynamic = "force-dynamic";
+
+const PAGE_SIZE = 50;
+const SKIPPED = ["skipped_consent", "skipped_compliance", "skipped_session", "skipped_rate_limit"];
 
 export default async function CommunicationsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ cursor?: string; channel?: string }>;
+  searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const session = await requireSession();
   const sp = await searchParams;
-  const cursor = sp.cursor;
-  const channel = sp.channel;
+  const q = (sp.q ?? "").trim();
+  const channels = (sp.channel ?? "").split(",").filter(Boolean);
+  const statusesRaw = (sp.status ?? "").split(",").filter(Boolean);
+  const flagged = sp.flagged === "1";
+  const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
 
-  const result = await withTenant(session.tenantId, async (tx) => {
-    const conditions: any[] = [];
-    if (channel) {
-      conditions.push(eq(communications.channel, channel as any));
-    }
-    if (cursor) {
-      const [cursorMs, cursorId] = cursor.split(":");
-      if (cursorMs && cursorId) {
-        conditions.push(
-          sql`(${communications.createdAt}, ${communications.id}) < (${new Date(Number(cursorMs)).toISOString()}::timestamp, ${cursorId}::uuid)`
-        );
-      }
-    }
+  // Expand the "skipped" folder to its four concrete statuses.
+  const statuses: string[] = [];
+  for (const s of statusesRaw) (s === "skipped" ? statuses.push(...SKIPPED) : statuses.push(s));
 
-    // Pull comms (Page size 50 + 1 for pagination lookahead)
-    const rows = await tx
+  const data = await withTenant(session.tenantId, async (tx) => {
+    // Tenant-wide headline counts (NOT page-scoped — the previous bug).
+    const k = (
+      await tx.execute(sql`
+        SELECT
+          count(*) FILTER (WHERE status = 'scheduled')::int AS scheduled,
+          count(*) FILTER (WHERE status IN ('sent','delivered','read','replied'))::int AS sent,
+          count(*) FILTER (WHERE status IN ('delivered','read'))::int AS delivered,
+          count(*) FILTER (WHERE status IN ('read','replied'))::int AS read,
+          count(*) FILTER (WHERE status = 'failed')::int AS failed
+        FROM communications WHERE tenant_id = ${session.tenantId}::uuid
+      `)
+    ).rows[0] as any;
+
+    // Tenant scope is mandatory: under the superuser/RLS-bypass model the
+    // explicit predicate is the live protection. Without it this list (and the
+    // filtered total) would render every tenant's inbox/outbox.
+    const conds: any[] = [eq(communications.tenantId, session.tenantId)];
+    if (channels.length) conds.push(inArray(communications.channel, channels as any));
+    if (statuses.length) conds.push(inArray(communications.status, statuses as any));
+    if (flagged) conds.push(sql`${communications.flaggedAt} IS NOT NULL`);
+    const dr = dateRangeCond(sp, "created", "communications.created_at");
+    if (dr) conds.push(dr);
+    if (q) {
+      conds.push(
+        or(
+          ilike(investors.name, `%${q}%`),
+          ilike(leads.name, `%${q}%`),
+          ilike(communications.templateKey, `%${q}%`),
+          sql`(${communications.payload}->'rendered'->>'subject') ILIKE ${"%" + q + "%"}`
+        )!
+      );
+    }
+    const where = conds.length ? and(...conds) : undefined;
+
+    const base = tx
       .select({
         comm: communications,
         investorName: investors.name,
@@ -56,147 +75,152 @@ export default async function CommunicationsPage({
       })
       .from(communications)
       .leftJoin(investors, eq(investors.id, communications.investorId))
-      .leftJoin(leads, eq(leads.id, communications.leadId))
-      .where(conditions.length ? and(...conditions) : undefined)
+      .leftJoin(leads, eq(leads.id, communications.leadId));
+
+    const rows = await base
+      .where(where as any)
       .orderBy(desc(communications.createdAt), desc(communications.id))
-      .limit(51);
+      .limit(PAGE_SIZE)
+      .offset((page - 1) * PAGE_SIZE);
 
-    const hasMore = rows.length > 50;
-    const displayRows = hasMore ? rows.slice(0, 50) : rows;
-    const lastRow = displayRows[displayRows.length - 1];
-    const nextCursor = lastRow ? `${lastRow.comm.createdAt.getTime()}:${lastRow.comm.id}` : "";
+    const cnt = await tx
+      .select({ c: sql<number>`count(*)::int` })
+      .from(communications)
+      .leftJoin(investors, eq(investors.id, communications.investorId))
+      .leftJoin(leads, eq(leads.id, communications.leadId))
+      .where(where as any);
 
-    return { displayRows, hasMore, nextCursor };
+    return {
+      counts: k,
+      rows,
+      filteredTotal: Number(cnt[0]?.c ?? 0),
+    };
   });
 
-  const displayRows = result.displayRows;
-
-  const counts = displayRows.reduce(
-    (acc, r) => {
-      const s = r.comm.status;
-      if (s === "sent" || s === "delivered" || s === "read") acc.sent++;
-      if (s === "delivered" || s === "read") acc.delivered++;
-      if (s === "read" || s === "replied") acc.read++;
-      if (s === "replied") acc.replied++;
-      return acc;
-    },
-    { sent: 0, delivered: 0, read: 0, replied: 0 }
-  );
+  const listRows: CommRow[] = data.rows.map(({ comm: c, investorName, leadName }) => {
+    const payload = (c.payload ?? {}) as any;
+    return {
+      id: c.id,
+      channel: c.channel,
+      direction: c.direction,
+      status: c.status,
+      recipient: investorName ?? leadName ?? payload.recipient ?? "—",
+      subject: payload?.rendered?.subject ?? "",
+      preview: String(payload?.rendered?.text ?? (c.inboundContent as any)?.text ?? "").slice(0, 120),
+      createdAt: c.createdAt.toISOString(),
+      scheduledAt: c.scheduledAt ? new Date(c.scheduledAt).toISOString() : null,
+      templateKey: c.templateKey,
+      workflowRunId: c.workflowRunId,
+      flagged: !!c.flaggedAt,
+    };
+  });
 
   return (
-    <div className="space-y-6 max-w-6xl">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Communications</h1>
-        <p className="text-muted-foreground text-sm">
-          Unified inbox + outbox. Every send carries a consent + compliance snapshot for audit.
-        </p>
-      </div>
-
-      <div className="grid grid-cols-4 gap-3">
-        <Stat label="Sent" value={String(counts.sent)} />
-        <Stat label="Delivered" value={String(counts.delivered)} />
-        <Stat label="Read" value={String(counts.read)} />
-        <Stat label="Replies" value={String(counts.replied)} />
-      </div>
-
-      <div className="border rounded-lg bg-card">
-        <div className="border-b px-4 py-2.5 flex items-center gap-2">
-          <Link
-            href="/dashboard/communications"
-            className={`text-xs rounded-md px-2.5 py-1 font-medium ${!channel ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent"}`}
-          >
-            All
+    <div className="space-y-5 max-w-6xl">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+            <Mail className="size-6 text-brand-cyan" /> Communications
+          </h1>
+          <p className="text-muted-foreground text-sm">
+            Unified inbox + outbox. Every send carries a consent + compliance snapshot for audit.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Link href="/dashboard/communications/cadence" className="btn-secondary text-xs whitespace-nowrap">
+            Cadence (SOP) →
           </Link>
-          <Link
-            href="/dashboard/communications?channel=whatsapp"
-            className={`text-xs rounded-md px-2.5 py-1 font-medium ${channel === "whatsapp" ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent"}`}
-          >
-            WhatsApp
-          </Link>
-          <Link
-            href="/dashboard/communications?channel=email"
-            className={`text-xs rounded-md px-2.5 py-1 font-medium ${channel === "email" ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent"}`}
-          >
-            Email
-          </Link>
-          <Link
-            href="/dashboard/communications?channel=sms"
-            className={`text-xs rounded-md px-2.5 py-1 font-medium ${channel === "sms" ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent"}`}
-          >
-            SMS
+          <Link href="/dashboard/communications/compose" className="btn-primary text-xs whitespace-nowrap">
+            <PenSquare className="size-4" /> Compose
           </Link>
         </div>
-        {displayRows.length === 0 ? (
-          <div className="p-12 text-center text-sm text-muted-foreground">
-            No communications yet. Sends from workflows + manual messages will appear here.
-          </div>
-        ) : (
-          <>
-            <ul className="divide-y">
-              {displayRows.map((r) => {
-                const c = r.comm;
-                const ChannelIcon = channelIcons[c.channel as keyof typeof channelIcons] ?? MessageSquare;
-                const StatusIcon = statusIcons[c.status] ?? AlertCircle;
-                const recipient = r.investorName ?? r.leadName ?? "—";
-                const body = ((c.payload as any)?.rendered ?? (c.inboundContent as any)?.text ?? "").toString();
-                return (
-                  <li key={c.id} className="px-4 py-3 hover:bg-accent/40">
-                    <div className="flex items-start gap-3">
-                      <div className="size-9 rounded-full bg-muted grid place-items-center flex-shrink-0">
-                        <ChannelIcon className="size-4 text-muted-foreground" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 text-sm">
-                          <span className="font-medium">{recipient}</span>
-                          <span className="text-xs text-muted-foreground">{formatRelative(c.createdAt)}</span>
-                          {c.direction === "inbound" && (
-                            <span className="text-xs bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded">inbound</span>
-                          )}
-                        </div>
-                        <div className="text-sm text-muted-foreground mt-0.5 line-clamp-1">{body || "—"}</div>
-                        <div className="flex items-center gap-2 mt-1.5 text-xs text-muted-foreground">
-                          {c.templateKey && <span className="font-mono">{c.templateKey}</span>}
-                          {c.workflowRunId && (
-                            <Link
-                              href={`/dashboard/workflows/runs/${c.workflowRunId}`}
-                              className="hover:underline"
-                            >
-                              via workflow
-                            </Link>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                        <StatusIcon className="size-3.5" />
-                        <span className="capitalize">{c.status.replace(/_/g, " ")}</span>
-                      </div>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-            {result.hasMore && (
-              <div className="p-4 border-t flex justify-end">
-                <Link
-                  href={`/dashboard/communications?${channel ? `channel=${channel}&` : ""}cursor=${result.nextCursor}`}
-                  className="rounded-md border bg-background px-3 py-1.5 text-xs font-medium hover:bg-accent hover:text-accent-foreground"
-                >
-                  Next Page →
-                </Link>
-              </div>
-            )}
-          </>
-        )}
       </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+        <StatLink label="Scheduled" value={data.counts?.scheduled ?? 0} param="scheduled" />
+        <StatLink label="Sent" value={data.counts?.sent ?? 0} param="sent" />
+        <StatLink label="Delivered" value={data.counts?.delivered ?? 0} param="delivered" />
+        <StatLink label="Read" value={data.counts?.read ?? 0} param="read" />
+        <StatLink label="Failed" value={data.counts?.failed ?? 0} param="failed" tone="rose" />
+      </div>
+
+      <FilterBar
+        totalCount={data.filteredTotal}
+        filters={[
+          { type: "search", key: "q", placeholder: "Search recipient, subject, template…" },
+          {
+            type: "multi",
+            key: "channel",
+            label: "Channel",
+            options: [
+              { value: "email", label: "Email" },
+              { value: "whatsapp", label: "WhatsApp" },
+              { value: "sms", label: "SMS" },
+              { value: "call", label: "Call" },
+              { value: "inapp", label: "In-app" },
+            ],
+          },
+          {
+            type: "multi",
+            key: "status",
+            label: "Status",
+            options: [
+              { value: "scheduled", label: "Scheduled" },
+              { value: "queued", label: "Queued" },
+              { value: "sent", label: "Sent" },
+              { value: "delivered", label: "Delivered" },
+              { value: "read", label: "Read" },
+              { value: "replied", label: "Replied" },
+              { value: "failed", label: "Failed" },
+              { value: "skipped", label: "Skipped" },
+              { value: "cancelled", label: "Cancelled" },
+            ],
+          },
+          dateRangeFilter("created", "Date"),
+        ]}
+        rightSlot={
+          <CustomViews
+            viewsKey="views:communications"
+            presets={[
+              { id: "scheduled", name: "Scheduled", params: "status=scheduled" },
+              { id: "failed", name: "Failed", params: "status=failed" },
+              { id: "email", name: "Email", params: "channel=email" },
+              { id: "flagged", name: "Flagged", params: "flagged=1" },
+            ]}
+          />
+        }
+      />
+
+      <div className="border rounded-lg bg-card overflow-hidden">
+        <CommsList rows={listRows} />
+      </div>
+      <Pager
+        page={page}
+        totalPages={Math.ceil(data.filteredTotal / PAGE_SIZE)}
+        total={data.filteredTotal}
+        pageSize={PAGE_SIZE}
+      />
     </div>
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function StatLink({
+  label,
+  value,
+  param,
+  tone,
+}: {
+  label: string;
+  value: number;
+  param: string;
+  tone?: "rose";
+}) {
   return (
-    <div className="border rounded-lg p-4 bg-card">
+    <Link href={`/dashboard/communications?status=${param}`} className="border rounded-lg p-4 bg-card hover:bg-accent/40 transition-colors">
       <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="text-2xl font-bold mt-1">{value}</div>
-    </div>
+      <div className={`text-2xl font-bold mt-1 tabular-nums ${tone === "rose" && value > 0 ? "text-rose-600" : ""}`}>
+        {value}
+      </div>
+    </Link>
   );
 }

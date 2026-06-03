@@ -1,0 +1,357 @@
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { formatRelative } from "@/lib/utils";
+import { RowActions } from "@/components/common/RowActions";
+import { TaskDetailDrawer } from "./TaskDetailDrawer";
+import type { Task } from "@/db/schema";
+import { CheckSquare, Square, Loader2, Plus, AlertTriangle } from "lucide-react";
+
+interface TaskRow {
+  task: Task;
+  assignee: string | null;
+  investorName: string | null;
+  leadName: string | null;
+}
+
+interface TaskListProps {
+  initialRows: TaskRow[];
+  currentUserId: string;
+}
+
+const priorityColors: Record<string, string> = {
+  urgent: "bg-rose-50 text-rose-700 border-rose-100",
+  high: "bg-amber-50 text-amber-700 border-amber-100",
+  normal: "bg-blue-50 text-blue-700 border-blue-100",
+  low: "bg-gray-50 text-gray-700 border-gray-250",
+};
+
+const statusColors: Record<string, string> = {
+  open: "bg-sky-50 text-sky-700 border-sky-200",
+  in_progress: "bg-indigo-50 text-indigo-700 border-indigo-200",
+  blocked: "bg-rose-50 text-rose-700 border-rose-200",
+  completed: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  cancelled: "bg-slate-50 text-slate-700 border-slate-200",
+};
+
+export function TaskList({ initialRows, currentUserId }: TaskListProps) {
+  const router = useRouter();
+  const [rows, setRows] = useState(initialRows);
+  const [selectedRow, setSelectedRow] = useState<TaskRow | null>(null);
+  const [completingTaskId, setCompletingTaskId] = useState<string | null>(null);
+
+  // Quick Add states
+  const [quickTitle, setQuickTitle] = useState("");
+  const [quickBusy, setQuickBusy] = useState(false);
+
+  // Sync rows from parent when query changes
+  if (JSON.stringify(initialRows.map(r => r.task.id)) !== JSON.stringify(rows.map(r => r.task.id))) {
+    setRows(initialRows);
+  }
+
+  async function handleToggleComplete(taskId: string, isCompleted: boolean, e: React.MouseEvent) {
+    e.stopPropagation(); // prevent opening the drawer
+    setCompletingTaskId(taskId);
+    
+    // Optimistic Update
+    const previousRows = [...rows];
+    setRows(prev =>
+      prev.map(r =>
+        r.task.id === taskId
+          ? { ...r, task: { ...r.task, status: isCompleted ? "completed" : "open" } }
+          : r
+      )
+    );
+
+    try {
+      const res = await fetch(`/api/tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: isCompleted ? "completed" : "open" }),
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to update status");
+      }
+      
+      // Allow some animation feedback, then reload to filter out
+      setTimeout(() => {
+        router.refresh();
+      }, 300);
+    } catch (err) {
+      console.error(err);
+      // Revert on error
+      setRows(previousRows);
+    } finally {
+      setCompletingTaskId(null);
+    }
+  }
+
+  async function handleStatusChange(taskId: string, newStatus: string, e: React.ChangeEvent<HTMLSelectElement>) {
+    e.stopPropagation();
+    const previousRows = [...rows];
+    setRows(prev =>
+      prev.map(r =>
+        r.task.id === taskId
+          ? { ...r, task: { ...r.task, status: newStatus as any } }
+          : r
+      )
+    );
+    try {
+      const res = await fetch(`/api/tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      if (!res.ok) throw new Error("Failed to update status");
+      router.refresh();
+    } catch (err) {
+      console.error(err);
+      setRows(previousRows);
+    }
+  }
+
+  async function handlePriorityChange(taskId: string, newPriority: string, e: React.ChangeEvent<HTMLSelectElement>) {
+    e.stopPropagation();
+    const previousRows = [...rows];
+    setRows(prev =>
+      prev.map(r =>
+        r.task.id === taskId
+          ? { ...r, task: { ...r.task, priority: newPriority as any } }
+          : r
+      )
+    );
+    try {
+      const res = await fetch(`/api/tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ priority: newPriority }),
+      });
+      if (!res.ok) throw new Error("Failed to update priority");
+      router.refresh();
+    } catch (err) {
+      console.error(err);
+      setRows(previousRows);
+    }
+  }
+
+  async function handleQuickAdd(e: React.FormEvent) {
+    e.preventDefault();
+    if (!quickTitle.trim()) return;
+    setQuickBusy(true);
+    try {
+      const res = await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: quickTitle.trim(),
+          type: "follow_up",
+          priority: "normal",
+        }),
+      });
+      if (!res.ok) throw new Error("Failed to create task");
+      setQuickTitle("");
+      router.refresh();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setQuickBusy(false);
+    }
+  }
+
+  const handleUpdate = () => {
+    router.refresh();
+  };
+
+  return (
+    <div className="border rounded-lg bg-card bg-white overflow-hidden shadow-sm flex flex-col">
+      {/* Inline Quick Add Input */}
+      <form onSubmit={handleQuickAdd} className="p-3 border-b bg-slate-50/50 flex gap-2 items-center">
+        <input
+          value={quickTitle}
+          onChange={(e) => setQuickTitle(e.target.value)}
+          disabled={quickBusy}
+          placeholder="⚡ Quick add a follow-up task... (Press Enter to save)"
+          className="flex-1 input-base text-xs py-1.5 px-3 bg-white"
+        />
+        <button
+          type="submit"
+          disabled={quickBusy || !quickTitle.trim()}
+          className="btn-primary text-xs py-1.5 px-3 flex-shrink-0 flex items-center gap-1"
+        >
+          {quickBusy ? <Loader2 className="size-3 animate-spin" /> : <Plus className="size-3.5" />}
+          Add Task
+        </button>
+      </form>
+
+      {rows.length === 0 ? (
+        <div className="p-12 text-center text-sm text-muted-foreground bg-slate-50/20">
+          No open tasks found. Workflows will create tasks automatically when SIPs fail, reviews come due, etc.
+        </div>
+      ) : (
+        <ul className="divide-y divide-slate-100">
+          {rows.map((row) => {
+            const t = row.task;
+            const assigneeName = row.assignee;
+            const isDone = t.status === "completed";
+            const isOverdue = t.dueAt && new Date(t.dueAt).getTime() < Date.now() && !isDone;
+
+            // SLA warning badges
+            const isSlaBreached = t.slaDueAt && new Date(t.slaDueAt).getTime() < Date.now() && !isDone;
+            const isSlaAtRisk = t.slaDueAt && new Date(t.slaDueAt).getTime() < Date.now() + 24 * 60 * 60 * 1000 && !isDone;
+            
+            let slaText = "";
+            let slaColor = "";
+            if (t.slaDueAt && !isDone) {
+              const diffMs = new Date(t.slaDueAt).getTime() - Date.now();
+              const diffHours = Math.round(diffMs / (60 * 60 * 1000));
+              if (isSlaBreached) {
+                slaText = "SLA Breached";
+                slaColor = "bg-rose-100 text-rose-800 border-rose-200 font-bold";
+              } else if (diffHours <= 24) {
+                slaText = `SLA: ${diffHours}h left`;
+                slaColor = "bg-amber-100 text-amber-800 border-amber-200 font-semibold animate-pulse";
+              } else {
+                const diffDays = Math.round(diffHours / 24);
+                slaText = `SLA: ${diffDays}d left`;
+                slaColor = "bg-slate-100 text-slate-600 border-slate-200";
+              }
+            }
+
+            return (
+              <li
+                key={t.id}
+                onClick={() => setSelectedRow(row)}
+                className={`px-4 py-3.5 flex items-center gap-3 hover:bg-slate-50/70 transition-colors cursor-pointer select-none ${
+                  isDone ? "opacity-60 bg-slate-50/30" : ""
+                }`}
+              >
+                {/* Complete checkbox */}
+                <button
+                  type="button"
+                  onClick={(e) => handleToggleComplete(t.id, !isDone, e)}
+                  disabled={completingTaskId === t.id}
+                  className="text-slate-400 hover:text-primary transition-colors focus:outline-none flex-shrink-0"
+                >
+                  {isDone ? (
+                    <CheckSquare className="size-4.5 text-emerald-600" />
+                  ) : (
+                    <Square className="size-4.5" />
+                  )}
+                </button>
+
+                <div className="flex-1 min-w-0">
+                  <div
+                    className={`font-semibold text-sm text-slate-800 truncate ${
+                      isDone ? "line-through text-slate-400 font-normal" : ""
+                    }`}
+                  >
+                    {t.title}
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-1 flex items-center gap-2 flex-wrap">
+                    <span className="font-mono bg-slate-100 text-slate-600 px-1.5 py-0.2 rounded border text-[10px] uppercase font-bold tracking-wide">
+                      {t.type.replace(/_/g, " ")}
+                    </span>
+                    {t.workflowRunId && (
+                      <span className="text-[11px] text-slate-400 font-medium">via workflow</span>
+                    )}
+                    {t.department && (
+                      <>
+                        <span className="text-slate-300">·</span>
+                        <span className="capitalize text-[11px] text-slate-500 font-medium">{t.department}</span>
+                      </>
+                    )}
+                    {(row.investorName || row.leadName) && (
+                      <>
+                        <span className="text-slate-300">·</span>
+                        <span className="text-[11px] text-slate-500 truncate max-w-[150px]">
+                          {row.investorName ? `Client: ${row.investorName}` : `Lead: ${row.leadName}`}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {/* SLA Warning Badge */}
+                {slaText && (
+                  <span className={`text-[10px] px-2 py-0.5 rounded border ${slaColor} flex-shrink-0`}>
+                    {slaText}
+                  </span>
+                )}
+
+                {/* Priority Selector */}
+                <select
+                  value={t.priority}
+                  onChange={(e) => handlePriorityChange(t.id, e.target.value, e)}
+                  onClick={(e) => e.stopPropagation()}
+                  className={`text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded border focus:outline-none flex-shrink-0 cursor-pointer ${
+                    priorityColors[t.priority] ?? ""
+                  }`}
+                >
+                  <option value="low">Low</option>
+                  <option value="normal">Normal</option>
+                  <option value="high">High</option>
+                  <option value="urgent">Urgent</option>
+                </select>
+
+                {/* Status Selector */}
+                <select
+                  value={t.status}
+                  onChange={(e) => handleStatusChange(t.id, e.target.value, e)}
+                  onClick={(e) => e.stopPropagation()}
+                  className={`text-[11px] font-medium border px-1.5 py-0.5 rounded capitalize focus:outline-none flex-shrink-0 cursor-pointer ${
+                    statusColors[t.status] ?? ""
+                  }`}
+                >
+                  <option value="open">Open</option>
+                  <option value="in_progress">In Progress</option>
+                  <option value="blocked">Blocked</option>
+                  <option value="completed">Completed</option>
+                  <option value="cancelled">Cancelled</option>
+                </select>
+
+                {t.dueAt && (
+                  <span className={`text-xs tabular-nums flex-shrink-0 font-semibold ${
+                    isOverdue ? "text-rose-600" : "text-muted-foreground"
+                  }`}>
+                    {formatRelative(t.dueAt)}
+                    {isOverdue && " (Overdue)"}
+                  </span>
+                )}
+
+                {assigneeName && (
+                  <span className="text-xs text-slate-600 font-medium border bg-slate-50 px-2 py-0.5 rounded flex-shrink-0">
+                    {assigneeName === currentUserId ? "Me" : assigneeName}
+                  </span>
+                )}
+
+                <div onClick={(e) => e.stopPropagation()}>
+                  <RowActions
+                    deleteUrl={`/api/tasks/${t.id}`}
+                    itemLabel="task"
+                    itemName={t.title}
+                    verb="Cancel"
+                  />
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      {selectedRow && (
+        <TaskDetailDrawer
+          task={{
+            ...selectedRow.task,
+            assigneeName: selectedRow.assignee,
+            investorName: selectedRow.investorName,
+            leadName: selectedRow.leadName,
+          }}
+          onClose={() => setSelectedRow(null)}
+          onUpdate={handleUpdate}
+        />
+      )}
+    </div>
+  );
+}

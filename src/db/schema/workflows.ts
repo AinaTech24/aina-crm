@@ -196,6 +196,9 @@ export const workflowRuns = pgTable(
     startedAt: timestamp("started_at", { withTimezone: true }),
     completedAt: timestamp("completed_at", { withTimezone: true }),
     error: text("error"),
+    /** How many times this run was manually re-queued from the monitor. Capped
+     *  so a deterministically-failing run can't be retried forever. */
+    retryCount: integer("retry_count").notNull().default(0),
     triggeredByUserId: uuid("triggered_by_user_id").references(() => users.id),
     ...timestamps,
   },
@@ -203,6 +206,8 @@ export const workflowRuns = pgTable(
     workflowStatusIdx: index("wf_runs_workflow_status_idx").on(t.workflowId, t.status),
     subjectIdx: index("wf_runs_subject_idx").on(t.tenantId, t.subjectType, t.subjectId),
     pausedIdx: index("wf_runs_paused_idx").on(t.pausedUntil).where(sql`status = 'paused'`),
+    // Monitor (Control Tower): status rollup + recent failures per tenant/window.
+    tenantStatusCreatedIdx: index("wf_runs_tenant_status_created_idx").on(t.tenantId, t.status, t.createdAt),
     activeSubjectUnique: uniqueIndex("wf_runs_active_subject_unique")
       .on(t.workflowId, t.subjectType, t.subjectId)
       .where(sql`status IN ('queued', 'running', 'paused')`),

@@ -13,8 +13,9 @@ import { eq } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { leads, tasks, reviewMeetings, eventsOutbox } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
-import { require as requireCap } from "@/lib/auth/rbac";
+import { assertActiveLicense } from "@/lib/auth/license";
 import { transitionTo } from "@/lib/blueprints/engine";
+import { loadEditableLead } from "@/lib/leads/access";
 
 export const dynamic = "force-dynamic";
 
@@ -37,7 +38,7 @@ const Body = z.object({
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "lead.edit.all");
+    await assertActiveLicense(session.tenantId, session.roles);
     const { id } = await params;
     const parsed = Body.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) return NextResponse.json({ error: "invalid body", issues: parsed.error.issues }, { status: 400 });
@@ -45,8 +46,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const now = new Date();
 
     const out = await withTenant(session.tenantId, async (tx) => {
-      const [lead] = await tx.select().from(leads).where(eq(leads.id, id));
-      if (!lead) throw Object.assign(new Error("Lead not found"), { status: 404 });
+      const lead = await loadEditableLead(tx, session, id);
 
       // 1. Log the call as a completed task
       await tx.insert(tasks).values({
@@ -76,11 +76,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // 3. Side-effect: meeting / follow-up / close
       let toStageKey: string | null = null;
 
+      if (body.outcome === "appointment_booked" && !body.meeting) {
+        throw Object.assign(new Error("meeting details are required"), { status: 400 });
+      }
+
       if (body.outcome === "appointment_booked" && body.meeting) {
         const dt = new Date(`${body.meeting.date}T${body.meeting.time}:00`);
         await tx.insert(reviewMeetings).values({
           tenantId: session.tenantId,
-          investorId: id, // polymorphic — using lead id here, view layer reads name from lead/investor
+          leadId: id,
           category: "new" as any,
           meetingType: "discovery_call" as any,
           meetingDate: dt,
@@ -92,7 +96,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           rmId: lead.ownerId ?? session.userId,
         } as any);
 
-        toStageKey = "appointment_scheduled";
+        toStageKey = "meeting_scheduled";
 
         // emit event so the meeting-confirmation comm recipe can fire
         await tx.insert(eventsOutbox).values({
@@ -121,25 +125,30 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           department: "sales",
           dueAt,
         } as any);
-        // Stage stays on first_call_pending; we just scheduled the next call.
+        await tx
+          .update(leads)
+          .set({ nextFollowUpAt: dueAt, updatedAt: now } as any)
+          .where(eq(leads.id, id));
+        toStageKey = "call_back_later";
       }
 
       if (body.outcome === "not_interested" || body.outcome === "wrong_number") {
         await tx
           .update(leads)
           .set({
-            stage: "not_interested" as any,
-            stageChangedAt: now,
+            lostReason: body.lostReason ?? body.outcome.replace(/_/g, " "),
+            lostAt: now,
             updatedAt: now,
             followUpNotes: (lead.followUpNotes ? lead.followUpNotes + "\n\n---\n\n" : "") +
               `[${now.toISOString().slice(0, 16).replace("T", " ")} · ${body.outcome} · ${session.userId}]\n${body.lostReason ?? "no reason"}`,
           } as any)
           .where(eq(leads.id, id));
-        // No further stage transitions needed.
+        toStageKey = "not_qualified";
       }
 
       // "connected" without an appointment → move to post-meeting qualification
-      if (body.outcome === "connected") toStageKey = "post_meeting_qualified";
+      if (body.outcome === "not_reachable") toStageKey = "call_not_connected";
+      if (body.outcome === "connected") toStageKey = "call_done";
 
       // 4. Advance blueprint stage if we picked one — systemBypass so we
       //    can jump from any source stage (e.g. directly new → meeting_done).

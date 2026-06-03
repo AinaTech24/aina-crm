@@ -8,7 +8,7 @@
  * back to the seed default when no tenant template exists.
  */
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight, CheckCircle2, Loader2, ShieldCheck } from "lucide-react";
@@ -33,6 +33,23 @@ export function RiskProfileWizard({
   const [documentUrl, setDocumentUrl] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  // Auto-sync exact age value with the template's age category options
+  useEffect(() => {
+    if (age) {
+      const numAge = Number(age);
+      let choice = "";
+      if (numAge < 30) choice = "under_30";
+      else if (numAge <= 45) choice = "30_to_45";
+      else if (numAge <= 55) choice = "45_to_55";
+      else if (numAge <= 65) choice = "55_to_65";
+      else choice = "over_65";
+
+      if (template.questions.some((q) => q.key === "age") && answers.age !== choice) {
+        setAnswers((prev) => ({ ...prev, age: choice }));
+      }
+    }
+  }, [age, template.questions, answers.age]);
 
   const questions = template.questions;
   const N = questions.length;

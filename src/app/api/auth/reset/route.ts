@@ -12,6 +12,7 @@ import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { withSystem } from "@/db/client";
 import { signSession, SESSION_COOKIE, SESSION_TTL_SECONDS } from "@/lib/auth/session";
+import { clearSessionRevocationCache } from "@/lib/auth/revocation";
 import { enforce } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
@@ -50,8 +51,16 @@ export async function POST(req: NextRequest) {
         throw Object.assign(new Error("token expired"), { status: 410 });
 
       const passwordHash = await bcrypt.hash(parse.data.password, 12);
+      // Reset the password AND revoke every session issued before now — a reset
+      // must kill any token a thief might hold. We truncate the revocation epoch
+      // to the second so the brand-new session we sign below (whose JWT `iat` is
+      // floored to the current second) is never caught by its own reset.
       await tx.execute(sql`
-        UPDATE users SET password_hash = ${passwordHash}, updated_at = now() WHERE id = ${row.user_id}
+        UPDATE users
+        SET password_hash = ${passwordHash},
+            sessions_invalid_after = date_trunc('second', now()),
+            updated_at = now()
+        WHERE id = ${row.user_id}
       `);
       await tx.execute(sql`
         UPDATE password_resets SET consumed_at = now() WHERE id = ${row.id}
@@ -67,6 +76,10 @@ export async function POST(req: NextRequest) {
         permissions: row.permissions ?? [],
       };
     });
+
+    // Drop any cached revocation epoch for this user so the new stamp takes
+    // effect immediately across this process (older sessions die at once).
+    clearSessionRevocationCache(session.userId);
 
     const token = await signSession(session);
     const res = NextResponse.json({ ok: true });

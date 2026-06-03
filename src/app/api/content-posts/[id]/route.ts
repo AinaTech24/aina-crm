@@ -13,14 +13,16 @@ import { handleApiError } from "@/lib/api/error-handler";
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
+import { scanCaption } from "@/lib/content/scan";
 import {
+  campaigns,
   contentPosts,
   POST_APPROVAL_STATUSES,
   POST_CONTENT_TYPES,
@@ -40,11 +42,12 @@ const Patch = z
     creativeFiles: z
       .array(
         z.object({
-          name: z.string(),
-          url: z.string(),
+          name: z.string().max(300),
+          url: z.string().max(2000),
           kind: z.enum(["image", "video", "doc"]).optional(),
         })
       )
+      .max(20)
       .optional(),
     complianceChecked: z.boolean().optional(),
     complianceNotes: z.string().max(1000).optional(),
@@ -61,8 +64,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
   try {
     const session = await requireSession();
+    requireCap(session.roles, "content_calendar.manage");
     const row = await withTenant(session.tenantId, async (tx) =>
-      (await tx.select().from(contentPosts).where(eq(contentPosts.id, id)).limit(1))[0] ?? null
+      (await tx.select().from(contentPosts).where(and(eq(contentPosts.id, id), eq(contentPosts.tenantId, session.tenantId))).limit(1))[0] ?? null
     );
     if (!row) return NextResponse.json({ error: "not found" }, { status: 404 });
     return NextResponse.json(row);
@@ -88,7 +92,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     const result = await withTenant(session.tenantId, async (tx) => {
       const before = (
-        await tx.select().from(contentPosts).where(eq(contentPosts.id, id)).limit(1)
+        await tx.select().from(contentPosts).where(and(eq(contentPosts.id, id), eq(contentPosts.tenantId, session.tenantId))).limit(1)
       )[0];
       if (!before) return { row: null as any };
 
@@ -100,9 +104,38 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         postedStatus: parse.data.postedStatus ?? before.postedStatus,
       };
 
-      // ── Spec automation ─────────────────────────────────────────────
-      // Content cannot be marked as posted unless compliance check is
-      // completed and approved.
+      // ── Maker-checker ───────────────────────────────────────────────
+      // The author of a post may not approve it themselves — a public,
+      // SEBI-sensitive post needs a second pair of eyes. Owners are exempt
+      // (the tenant owner is always an available approver).
+      const isOwner = (session.roles ?? []).includes("owner");
+      if (
+        parse.data.approvalStatus === "approved" &&
+        before.approvalStatus !== "approved" &&
+        before.createdByUserId &&
+        before.createdByUserId === session.userId &&
+        !isOwner
+      ) {
+        return {
+          row: null as any,
+          guard: { error: "You created this post — a different reviewer must approve it." },
+          status: 403 as const,
+        };
+      }
+
+      // Validate a (re)linked campaign belongs to this tenant.
+      if (parse.data.campaignId && parse.data.campaignId !== before.campaignId) {
+        const [c] = await tx
+          .select({ id: campaigns.id })
+          .from(campaigns)
+          .where(and(eq(campaigns.id, parse.data.campaignId), eq(campaigns.tenantId, session.tenantId)))
+          .limit(1);
+        if (!c) return { row: null as any, guard: { error: "Linked campaign not found in this tenant." }, status: 400 as const };
+      }
+
+      // ── Posting gate ────────────────────────────────────────────────
+      // Content cannot be marked posted unless compliance check is completed
+      // AND the post is approved.
       if (eff.postedStatus === "posted") {
         if (!eff.complianceChecked || eff.approvalStatus !== "approved") {
           return {
@@ -115,12 +148,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
                 approval: eff.approvalStatus !== "approved",
               },
             },
+            status: 409 as const,
           };
         }
       }
 
       const patch: any = { ...parse.data, updatedAt: new Date() };
       const now = new Date();
+
+      // Re-run the automated compliance scan if the caption changed (advisory).
+      if (parse.data.caption !== undefined && parse.data.caption !== before.caption) {
+        patch.complianceScan = await scanCaption(tx, session.tenantId, parse.data.caption);
+      }
 
       // Auto-stamp side effects of status transitions
       if (parse.data.complianceChecked === true && !before.complianceChecked) {
@@ -142,7 +181,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       const r = await tx
         .update(contentPosts)
         .set(patch)
-        .where(eq(contentPosts.id, id))
+        .where(and(eq(contentPosts.id, id), eq(contentPosts.tenantId, session.tenantId)))
         .returning();
 
       await recordAudit(tx, {
@@ -164,7 +203,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     });
 
     if ((result as any).guard) {
-      return NextResponse.json((result as any).guard, { status: 409 });
+      return NextResponse.json((result as any).guard, { status: (result as any).status ?? 409 });
     }
     if (!(result as any).row) return NextResponse.json({ error: "not found" }, { status: 404 });
     return NextResponse.json((result as any).row);
@@ -182,13 +221,13 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     const clientMeta = clientMetaFromHeaders(req.headers);
     await withTenant(session.tenantId, async (tx) => {
       const before = (
-        await tx.select().from(contentPosts).where(eq(contentPosts.id, id)).limit(1)
+        await tx.select().from(contentPosts).where(and(eq(contentPosts.id, id), eq(contentPosts.tenantId, session.tenantId))).limit(1)
       )[0];
       if (!before) return;
       await tx
         .update(contentPosts)
         .set({ postedStatus: "cancelled", updatedAt: new Date() } as any)
-        .where(eq(contentPosts.id, id));
+        .where(and(eq(contentPosts.id, id), eq(contentPosts.tenantId, session.tenantId)));
       await recordAudit(tx, {
         tenantId: session.tenantId,
         actorUserId: session.userId,

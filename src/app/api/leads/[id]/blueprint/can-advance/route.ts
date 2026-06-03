@@ -25,8 +25,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { checkPrerequisites } from "@/lib/blueprints/prerequisites";
-import { leads, leadBlueprintInstances, blueprintStages } from "@/db/schema";
+import { leadBlueprintInstances, blueprintStages } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
+import { loadViewableLead } from "@/lib/leads/access";
+import { normalizeLeadStage } from "@/lib/leads/normalize";
 
 export const dynamic = "force-dynamic";
 
@@ -38,12 +40,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     if (!target) {
       return NextResponse.json({ error: "missing ?to=<stageKey>" }, { status: 400 });
     }
+    const targetStage = normalizeLeadStage(target);
     const data = await withTenant(session.tenantId, async (tx) => {
-      const prereqs = await checkPrerequisites(tx, session.tenantId, id, target);
+      const lead = await loadViewableLead(tx, session, id);
+      if (!lead) throw Object.assign(new Error("Lead not found"), { status: 404 });
+      const prereqs = await checkPrerequisites(tx, session.tenantId, id, targetStage);
 
       // Load lead and target stage definition
-      const [lead] = await tx.select().from(leads).where(eq(leads.id, id)).limit(1);
-
       // Resolve the active blueprint instance for this lead to get the blueprintId
       const [inst] = await tx
         .select()
@@ -59,7 +62,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
           .where(
             and(
               eq(blueprintStages.blueprintId, inst.blueprintId),
-              eq(blueprintStages.stageKey, target)
+              eq(blueprintStages.stageKey, targetStage)
             )
           )
           .limit(1);

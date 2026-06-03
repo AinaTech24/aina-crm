@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { eq, desc } from "drizzle-orm";
+import { and, eq, desc } from "drizzle-orm";
 import { ChevronLeft, Lock, Workflow, Sparkles, Clock, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { workflowRules, workflowRuleExecutions } from "@/db/schema";
@@ -39,12 +39,17 @@ export default async function RuleDetailPage({
   const { id } = await params;
 
   const data = await withTenant(session.tenantId, async (tx) => {
-    const [rule] = await tx.select().from(workflowRules).where(eq(workflowRules.id, id));
+    const [rule] = await tx.select().from(workflowRules).where(and(eq(workflowRules.id, id), eq(workflowRules.tenantId, session.tenantId)));
     if (!rule) return null;
     const execs = await tx
       .select()
       .from(workflowRuleExecutions)
-      .where(eq(workflowRuleExecutions.ruleId, id))
+      .where(
+        and(
+          eq(workflowRuleExecutions.ruleId, id),
+          eq(workflowRuleExecutions.tenantId, session.tenantId)
+        )
+      )
       .orderBy(desc(workflowRuleExecutions.executedAt))
       .limit(50);
     return { rule, execs };

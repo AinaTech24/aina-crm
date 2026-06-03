@@ -12,8 +12,9 @@
  *     /api/leads/[id] with the new stage; reverts on failure.
  */
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   DndContext,
   PointerSensor,
@@ -25,9 +26,17 @@ import {
   type DragStartEvent,
   type DragEndEvent,
 } from "@dnd-kit/core";
-import { Loader2 } from "lucide-react";
+import { Loader2, Flame, Clock, AlertCircle, X } from "lucide-react";
 import { RowActions } from "@/components/common/RowActions";
-import { formatRelative } from "@/lib/utils";
+import { formatRelative, formatINR } from "@/lib/utils";
+import {
+  leadTemperature,
+  stageAgingDays,
+  followUpOverdue,
+  parseIntendedAmount,
+  temperatureClasses,
+} from "@/lib/leads/scoring";
+import { ScheduleMeetingDialog } from "@/components/leads/LeadActions";
 
 type LeadRow = {
   lead: {
@@ -38,6 +47,22 @@ type LeadRow = {
     stage: string;
     source: string;
     updatedAt: any;
+    /** Extended fields for temperature + aging display — all optional so
+     *  back-compat with callers that don't pass them is preserved. */
+    stageChangedAt?: string | null;
+    createdAt?: string | null;
+    lastContactAt?: string | null;
+    lastFollowUpAt?: string | null;
+    nextFollowUpAt?: string | null;
+    intendedAmount?: string | null;
+    convertedInvestorId?: string | null;
+    utmParams?: {
+      source?: string;
+      medium?: string;
+      campaign?: string;
+      term?: string;
+      content?: string;
+    } | null;
   };
   owner: string | null;
 };
@@ -97,10 +122,22 @@ export function LeadsKanban({
   stages: ReadonlyArray<Stage>;
   initialRows: LeadRow[];
 }) {
+  const router = useRouter();
   const [rows, setRows] = useState<LeadRow[]>(initialRows);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [savingIds, setSavingIds] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
+
+  // Modal interception state
+  const [pendingTransition, setPendingTransition] = useState<{
+    leadId: string;
+    leadName: string;
+    dest: string;
+    currentStage: string;
+  } | null>(null);
+
+  // Client-side pagination state for Kanban columns
+  const [visibleCounts, setVisibleCounts] = useState<Record<string, number>>({});
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -121,31 +158,21 @@ export function LeadsKanban({
 
   const activeRow = activeId ? rows.find((r) => r.lead.id === activeId) ?? null : null;
 
-  function onDragStart(e: DragStartEvent) {
-    setActiveId(String(e.active.id));
-    setError(null);
-  }
+  const getVisibleCount = (stageKey: string) => visibleCounts[stageKey] ?? 10;
 
-  async function onDragEnd(e: DragEndEvent) {
-    setActiveId(null);
-    const leadId = String(e.active.id);
-    const targetStage = e.over?.id ? String(e.over.id) : null;
-    if (!targetStage) return;
-    const current = rows.find((r) => r.lead.id === leadId);
-    if (!current) return;
-    const currentStage = current.lead.stage;
-    // Resolve the destination by stage definition (in case the user dropped on
-    // an alias). It's always one of the canonical stage keys.
-    const dest = stages.find((s) => s.key === targetStage)?.key;
-    if (!dest) return;
-    if (dest === currentStage) return;
+  const loadMore = (stageKey: string) => {
+    setVisibleCounts((prev) => ({
+      ...prev,
+      [stageKey]: (prev[stageKey] ?? 10) + 10,
+    }));
+  };
 
-    // Optimistic update
-    setRows((prev) =>
-      prev.map((r) =>
-        r.lead.id === leadId ? { ...r, lead: { ...r.lead, stage: dest } } : r
-      )
-    );
+  async function advanceLeadStage(
+    leadId: string,
+    dest: string,
+    currentStage: string,
+    fields?: Record<string, any>
+  ) {
     setSavingIds((s) => new Set(s).add(leadId));
     try {
       // Stage === blueprint. Advancing the blueprint mirrors the new
@@ -161,6 +188,7 @@ export function LeadsKanban({
           // sideways branch moves (e.g. call_back_later ↔ contact_in_future)
           // and out-of-order corrections work without prereq checks.
           force: true,
+          fields,
         }),
       });
       if (!res.ok) {
@@ -193,6 +221,88 @@ export function LeadsKanban({
     }
   }
 
+  function handleCancelTransition() {
+    if (!pendingTransition) return;
+    const { leadId, currentStage } = pendingTransition;
+    setRows((prev) =>
+      prev.map((r) =>
+        r.lead.id === leadId ? { ...r, lead: { ...r.lead, stage: currentStage } } : r
+      )
+    );
+    setPendingTransition(null);
+  }
+
+  async function handleConfirmLost(lostReason: string) {
+    if (!pendingTransition) return;
+    const { leadId, dest, currentStage } = pendingTransition;
+    setPendingTransition(null);
+    await advanceLeadStage(leadId, dest, currentStage, {
+      lostReason,
+      lostAt: new Date().toISOString(),
+    });
+  }
+
+  function onDragStart(e: DragStartEvent) {
+    setActiveId(String(e.active.id));
+    setError(null);
+  }
+
+  async function onDragEnd(e: DragEndEvent) {
+    setActiveId(null);
+    const leadId = String(e.active.id);
+    const targetStage = e.over?.id ? String(e.over.id) : null;
+    if (!targetStage) return;
+    const current = rows.find((r) => r.lead.id === leadId);
+    if (!current) return;
+    const currentStage = current.lead.stage;
+    // Resolve the destination by stage definition (in case the user dropped on
+    // an alias). It's always one of the canonical stage keys.
+    const dest = stages.find((s) => s.key === targetStage)?.key;
+    if (!dest) return;
+    if (dest === currentStage) return;
+
+    // Handle interactive transitions first
+    if (dest === "not_qualified") {
+      setPendingTransition({
+        leadId,
+        leadName: current.lead.name,
+        dest,
+        currentStage,
+      });
+      // Move card optimistically
+      setRows((prev) =>
+        prev.map((r) =>
+          r.lead.id === leadId ? { ...r, lead: { ...r.lead, stage: dest } } : r
+        )
+      );
+      return;
+    }
+
+    if (dest === "meeting_scheduled") {
+      setPendingTransition({
+        leadId,
+        leadName: current.lead.name,
+        dest,
+        currentStage,
+      });
+      // Move card optimistically
+      setRows((prev) =>
+        prev.map((r) =>
+          r.lead.id === leadId ? { ...r, lead: { ...r.lead, stage: dest } } : r
+        )
+      );
+      return;
+    }
+
+    // Optimistic update
+    setRows((prev) =>
+      prev.map((r) =>
+        r.lead.id === leadId ? { ...r, lead: { ...r.lead, stage: dest } } : r
+      )
+    );
+    await advanceLeadStage(leadId, dest, currentStage);
+  }
+
   return (
     <>
       {error && (
@@ -208,6 +318,7 @@ export function LeadsKanban({
           {stages.map((s) => {
             const tone = TONE_STYLES[s.tone];
             const items = byStage[s.key] ?? [];
+            const visibleCount = getVisibleCount(s.key);
             return (
               <DroppableColumn key={s.key} stage={s} tone={tone} count={items.length}>
                 {items.length === 0 ? (
@@ -215,24 +326,21 @@ export function LeadsKanban({
                     Drop a lead here
                   </div>
                 ) : (
-                  items
-                    .slice(0, 10)
-                    .map((row) => (
-                      <DraggableCard
-                        key={row.lead.id}
-                        row={row}
-                        saving={savingIds.has(row.lead.id)}
-                        isDragging={activeId === row.lead.id}
-                      />
-                    ))
-                )}
-                {items.length > 10 && (
-                  <Link
-                    href={`/dashboard/leads?stage=${s.key}`}
-                    className="block text-center text-[11px] text-brand-cyan-deep hover:underline font-medium pt-1"
-                  >
-                    + {items.length - 10} more →
-                  </Link>
+                  <>
+                    {items
+                      .slice(0, visibleCount)
+                      .map((row) => (
+                        <DraggableCard
+                          key={row.lead.id}
+                          row={row}
+                          saving={savingIds.has(row.lead.id)}
+                          isDragging={activeId === row.lead.id}
+                        />
+                      ))}
+                    {items.length > visibleCount && (
+                      <Sentinel onVisible={() => loadMore(s.key)} />
+                    )}
+                  </>
                 )}
               </DroppableColumn>
             );
@@ -258,6 +366,28 @@ export function LeadsKanban({
           ) : null}
         </DragOverlay>
       </DndContext>
+
+      {/* Interactive modal for marking a lead lost */}
+      {pendingTransition?.dest === "not_qualified" && (
+        <LostReasonDialog
+          leadName={pendingTransition.leadName}
+          onClose={handleCancelTransition}
+          onConfirm={handleConfirmLost}
+        />
+      )}
+
+      {/* Interactive modal for scheduling a meeting */}
+      {pendingTransition?.dest === "meeting_scheduled" && (
+        <ScheduleMeetingDialog
+          leadId={pendingTransition.leadId}
+          leadName={pendingTransition.leadName}
+          onClose={handleCancelTransition}
+          onDone={() => {
+            setPendingTransition(null);
+            router.refresh();
+          }}
+        />
+      )}
     </>
   );
 }
@@ -319,6 +449,16 @@ function DraggableCard({
   const { lead: l, owner } = row;
   const { attributes, listeners, setNodeRef } = useDraggable({ id: l.id });
 
+  const temp = leadTemperature(l);
+  let tempBorderCls = "border-l-[3px] border-l-slate-400";
+  if (temp === "hot") {
+    tempBorderCls = "border-l-[3px] border-l-rose-500 shadow-sm hover:shadow-glow-sm hover:shadow-rose-500/10";
+  } else if (temp === "warm") {
+    tempBorderCls = "border-l-[3px] border-l-amber-500";
+  } else if (temp === "cold") {
+    tempBorderCls = "border-l-[3px] border-l-sky-400";
+  }
+
   // Whole card is grabbable. The "Open" link + RowActions stop pointer-down
   // propagation so clicking those doesn't accidentally start a drag.
   return (
@@ -326,7 +466,7 @@ function DraggableCard({
       ref={setNodeRef}
       {...listeners}
       {...attributes}
-      className={`group relative rounded-lg bg-card border p-2.5 text-xs shadow-sm cursor-grab active:cursor-grabbing transition-all duration-150 ${
+      className={`group relative rounded-lg bg-card border p-2.5 text-xs transition-all duration-150 ${tempBorderCls} ${
         isDragging
           ? "opacity-30 border-brand-cyan"
           : "hover:shadow-md hover:-translate-y-0.5 border-border/70"
@@ -353,8 +493,13 @@ function DraggableCard({
 
       {/* Top row — avatar + name + phone */}
       <div className="flex items-start gap-2 pr-5">
-        <div className="size-8 rounded-full brand-gradient text-white grid place-items-center text-[11px] font-bold flex-shrink-0 shadow-sm">
+        <div className="size-8 rounded-full brand-gradient text-white grid place-items-center text-[11px] font-bold flex-shrink-0 shadow-sm relative">
           {initialsOf(l.name)}
+          {/* Temperature dot — top-right corner of the avatar */}
+          <span
+            className={`absolute -top-0.5 -right-0.5 size-2.5 rounded-full ring-2 ring-card ${temperatureClasses(leadTemperature(l)).dot}`}
+            title={`${temperatureClasses(leadTemperature(l)).label} lead`}
+          />
         </div>
         <div className="min-w-0 flex-1">
           <Link
@@ -373,6 +518,9 @@ function DraggableCard({
         </div>
       </div>
 
+      {/* Insight chips row — only renders chips that apply */}
+      <CardInsightChips lead={l} />
+
       {/* Source chip + relative time */}
       <div className="mt-2 flex items-center justify-between gap-1.5">
         <span className={`chip text-[10px] ${sourceColors[l.source] ?? "bg-muted"}`}>
@@ -390,6 +538,211 @@ function DraggableCard({
           <span className="font-medium text-foreground/80">{owner}</span>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Insight chips strip — surfaces the highest-signal facts on the card:
+ *   - intended-amount (₹) if known
+ *   - aging-in-stage if stuck >7d
+ *   - overdue-follow-up if applicable
+ *
+ * Renders nothing when none apply, so we don't add empty space to clean cards.
+ */
+function CardInsightChips({ lead }: { lead: LeadRow["lead"] }) {
+  const aging = stageAgingDays(lead);
+  const overdue = followUpOverdue(lead);
+  const amt = parseIntendedAmount(lead.intendedAmount);
+
+  const chips: React.ReactNode[] = [];
+  const utmLabel = lead.utmParams?.campaign || lead.utmParams?.source;
+  if (utmLabel) {
+    chips.push(
+      <span
+        key="utm"
+        className="chip text-[10px] inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 border border-indigo-200 max-w-[160px] truncate"
+        title={`UTM Campaign/Source: ${utmLabel}`}
+      >
+        📣 {utmLabel}
+      </span>
+    );
+  }
+  if (amt > 0) {
+    chips.push(
+      <span
+        key="amt"
+        className="chip text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200"
+        title="Intended investment amount"
+      >
+        ₹ {formatINR(amt)}
+      </span>
+    );
+  }
+  if (aging != null && aging > 7) {
+    const tone = aging > 14 ? "rose" : "amber";
+    const cls =
+      tone === "rose"
+        ? "bg-rose-50 text-rose-700 border-rose-200"
+        : "bg-amber-50 text-amber-700 border-amber-200";
+    chips.push(
+      <span
+        key="age"
+        className={`chip text-[10px] inline-flex items-center gap-1 border ${cls}`}
+        title={`Stuck ${aging} days in current stage`}
+      >
+        <Clock className="size-2.5" />
+        {aging}d
+      </span>
+    );
+  }
+  if (overdue === true) {
+    chips.push(
+      <span
+        key="ovd"
+        className="chip text-[10px] inline-flex items-center gap-1 bg-rose-50 text-rose-700 border border-rose-200"
+        title="Next follow-up is overdue"
+      >
+        <AlertCircle className="size-2.5" />
+        Overdue
+      </span>
+    );
+  }
+  // HOT_STAGES badge — only show if lead is meaningfully hot AND we have an amount or recent activity
+  if (leadTemperature(lead) === "hot") {
+    chips.push(
+      <span
+        key="hot"
+        className="chip text-[10px] inline-flex items-center gap-1 bg-rose-100 text-rose-700 border border-rose-200 font-semibold"
+        title="Hot lead — late funnel or imminent follow-up"
+      >
+        <Flame className="size-2.5" />
+        Hot
+      </span>
+    );
+  }
+  if (lead.stage === "won_lead") {
+    chips.push(
+      <span
+        key="ready_to_convert"
+        className="chip text-[10px] inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold"
+        title="Lead is won and ready to be converted to client"
+      >
+        ✨ Ready to Convert
+      </span>
+    );
+  }
+
+  if (chips.length === 0) return null;
+  return <div className="mt-2 flex flex-wrap gap-1">{chips}</div>;
+}
+
+/* ─────────────────────── Lazy Loading Sentinel ─────────────────────── */
+
+function Sentinel({ onVisible }: { onVisible: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          onVisible();
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    if (ref.current) {
+      observer.observe(ref.current);
+    }
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [onVisible]);
+
+  return <div ref={ref} className="h-1 my-1" />;
+}
+
+/* ─────────────────────── Lost Reason Dialog ─────────────────────── */
+
+function LostReasonDialog({
+  leadName,
+  onClose,
+  onConfirm,
+}: {
+  leadName: string;
+  onClose: () => void;
+  onConfirm: (reason: string) => void;
+}) {
+  const [reason, setReason] = useState("");
+  const [customReason, setCustomReason] = useState("");
+
+  const presetReasons = [
+    "Not interested in mutual funds/investing",
+    "Already has another advisor/distributor",
+    "High fees/pricing concerns",
+    "Unable to contact / invalid details",
+    "No surplus for investment right now",
+    "Other",
+  ];
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 grid place-items-center p-4">
+      <div className="bg-card rounded-lg shadow-lg max-w-md w-full flex flex-col p-5 space-y-4" onClick={(e) => e.stopPropagation()}>
+        <div>
+          <h3 className="text-base font-semibold text-foreground">
+            Mark Lost · {leadName}
+          </h3>
+          <p className="text-xs text-muted-foreground mt-1">
+            Specify the reason why this lead is not qualified or lost. This helps track conversions.
+          </p>
+        </div>
+
+        <div className="space-y-2">
+          <label className="block text-xs font-medium mb-1">Reason for losing lead</label>
+          <div className="space-y-1.5">
+            {presetReasons.map((r) => (
+              <label key={r} className="flex items-center gap-2 text-sm text-foreground cursor-pointer">
+                <input
+                  type="radio"
+                  name="lostReason"
+                  checked={reason === r}
+                  onChange={() => setReason(r)}
+                  className="size-4 accent-primary"
+                />
+                <span>{r}</span>
+              </label>
+            ))}
+          </div>
+
+          {reason === "Other" && (
+            <textarea
+              value={customReason}
+              onChange={(e) => setCustomReason(e.target.value)}
+              rows={2}
+              placeholder="Enter custom reason..."
+              className="w-full mt-2 border rounded-md px-3 py-2 text-sm bg-background"
+            />
+          )}
+        </div>
+
+        <div className="flex justify-end gap-2 pt-2 border-t">
+          <button
+            onClick={onClose}
+            className="rounded-md border px-4 py-2 text-sm hover:bg-accent"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => onConfirm(reason === "Other" ? customReason : reason)}
+            disabled={!reason || (reason === "Other" && !customReason.trim())}
+            className="rounded-md bg-rose-600 text-white px-4 py-2 text-sm font-medium hover:bg-rose-700 disabled:opacity-50"
+          >
+            Mark Lost
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

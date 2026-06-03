@@ -18,6 +18,7 @@ export default async function LeadNurturePage() {
       FROM leads l
       LEFT JOIN users u ON u.id = l.owner_id
       WHERE l.stage IN ('follow_up', 'contacted', 'meeting_scheduled', 'meeting_done')
+        AND l.converted_investor_id IS NULL
         AND (l.next_follow_up_at IS NOT NULL OR l.last_contact_at < now() - interval '14 days')
       ORDER BY
         CASE WHEN l.next_follow_up_at IS NOT NULL THEN 0 ELSE 1 END,

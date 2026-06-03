@@ -17,8 +17,16 @@ import { and, eq, isNull } from "drizzle-orm";
 import { withSystem, withTenant } from "@/db/client";
 import { shareTokens } from "@/db/schema";
 
-export type ShareTokenKind = "risk_profile" | "document_collection" | "proposal_approval" | "onboarding_progress";
+export type ShareTokenKind =
+  | "risk_profile"
+  | "document_collection"
+  | "proposal_approval"
+  | "onboarding_progress"
+  | "portfolio_view";
 export type ShareTokenSubjectType = "lead" | "investor" | "proposal";
+
+/** Token kinds that are re-usable (not consumed on first view). */
+const MULTI_USE_KINDS: ShareTokenKind[] = ["onboarding_progress", "portfolio_view"];
 
 export interface CreateShareTokenInput {
   tenantId: string;
@@ -43,6 +51,7 @@ const KIND_TO_PATH: Record<ShareTokenKind, string> = {
   document_collection: "/d",
   proposal_approval: "/p",
   onboarding_progress: "/onboarding",
+  portfolio_view: "/portfolio",
 };
 
 export async function createShareToken(input: CreateShareTokenInput): Promise<CreateShareTokenResult> {
@@ -99,7 +108,8 @@ export async function resolveShareToken(token: string): Promise<{
   });
   if (!row) throw new Error("Token not found");
   if (row.revokedAt) throw new Error("This link was revoked");
-  if (row.usedAt && row.kind !== "onboarding_progress") throw new Error("This link has already been used");
+  if (row.usedAt && !MULTI_USE_KINDS.includes(row.kind as ShareTokenKind))
+    throw new Error("This link has already been used");
   if (new Date(row.expiresAt as any) < new Date()) throw new Error("This link has expired");
   return {
     id: row.id,
@@ -130,6 +140,62 @@ export async function markShareTokenUsed(opts: {
         updatedAt: new Date(),
       })
       .where(and(eq(shareTokens.id, opts.id), isNull(shareTokens.usedAt)));
+  });
+}
+
+/**
+ * Atomically CLAIM a single-use token before doing any work.
+ *
+ * Runs one conditional UPDATE (`WHERE id = ? AND used_at IS NULL`) and reports
+ * whether it actually claimed the row. This is the serialization point that
+ * makes a single-use token genuinely single-use under concurrency: two racing
+ * submits both pass the read-only validation, but only the first claim's UPDATE
+ * affects a row — the loser gets `false` and aborts before inserting anything.
+ *
+ * Pair with `finalizeShareToken` (on success, to store the result payload) or
+ * `releaseShareToken` (on failure, to let the user retry).
+ */
+export async function claimShareToken(id: string): Promise<boolean> {
+  return withSystem(async (tx) => {
+    const claimed = await tx
+      .update(shareTokens)
+      .set({ usedAt: new Date(), updatedAt: new Date() })
+      .where(and(eq(shareTokens.id, id), isNull(shareTokens.usedAt)))
+      .returning({ id: shareTokens.id });
+    return claimed.length === 1;
+  });
+}
+
+/** Release a previously-claimed token (set used_at back to NULL) so the client
+ *  can retry — call this if the work after `claimShareToken` fails. */
+export async function releaseShareToken(id: string): Promise<void> {
+  await withSystem(async (tx) => {
+    await tx
+      .update(shareTokens)
+      .set({ usedAt: null, updatedAt: new Date() })
+      .where(eq(shareTokens.id, id));
+  });
+}
+
+/** Store the result payload on an already-claimed token (success path). Unlike
+ *  `markShareTokenUsed`, this does NOT condition on used_at being NULL — the
+ *  token was already claimed by `claimShareToken`. */
+export async function finalizeShareToken(opts: {
+  id: string;
+  result: Record<string, unknown>;
+  ipAddress?: string;
+  userAgent?: string;
+}): Promise<void> {
+  await withSystem(async (tx) => {
+    await tx
+      .update(shareTokens)
+      .set({
+        result: opts.result as any,
+        lastSeenIp: opts.ipAddress ?? null,
+        lastSeenUserAgent: opts.userAgent ?? null,
+        updatedAt: new Date(),
+      })
+      .where(eq(shareTokens.id, opts.id));
   });
 }
 

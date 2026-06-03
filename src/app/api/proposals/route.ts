@@ -57,6 +57,7 @@ const LinePMS = z.object({
   minInvestment: z.number().min(0).optional(),
   proposedAmount: z.number().min(0).optional(),
   expectedReturn: z.number().min(0).max(60).optional(),
+  termYears: z.number().min(0).max(50).optional(),
   exitLoad: z.string().max(120).optional(),
   notes: z.string().max(500).optional(),
 });
@@ -101,6 +102,8 @@ const CreateBody = z
       .optional(),
     validUntil: z.string().optional(),
     attachments: z.array(z.object({ name: z.string(), url: z.string() })).optional(),
+    suitabilityNote: z.string().max(2000).optional(),
+    suitabilityOverrideReason: z.string().max(2000).optional(),
   })
   .refine(
     (b) =>
@@ -133,9 +136,17 @@ function computeTotals(items: any[]) {
     } else if (it.kind === "insurance") {
       inv += Number(it.annualPremium ?? 0);
     } else if (it.kind === "pms") {
-      inv += Number(it.proposedAmount ?? 0);
+      const amt = Number(it.proposedAmount ?? 0);
+      inv += amt;
+      if (amt && it.expectedReturn && it.termYears) {
+        corpus += amt * Math.pow(1 + Number(it.expectedReturn) / 100, Number(it.termYears));
+      }
     } else if (it.kind === "aif") {
-      inv += Number(it.proposedAmount ?? 0);
+      const amt = Number(it.proposedAmount ?? 0);
+      inv += amt;
+      if (amt && it.targetIrr && it.lockInYears) {
+        corpus += amt * Math.pow(1 + Number(it.targetIrr) / 100, Number(it.lockInYears));
+      }
     }
   }
   return { totalInvestment: inv || null, expectedCorpus: corpus || null };
@@ -286,6 +297,8 @@ export async function POST(req: NextRequest) {
         preparedByUserId: session.userId,
         preparedAt: new Date(),
         attachments: body.attachments ?? [],
+        suitabilityNote: body.suitabilityNote ?? null,
+        suitabilityOverrideReason: body.suitabilityOverrideReason ?? null,
       } as any);
 
       await recordAudit(tx, {

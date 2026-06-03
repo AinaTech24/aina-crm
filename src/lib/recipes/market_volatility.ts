@@ -11,12 +11,12 @@ export const marketVolatilityRecipe: RecipeDef = {
   graph: graph({
     start: "trigger",
     nodes: [
-      n("trigger", "trigger", {}),
+      n("trigger", "trigger", { kind: "market.nifty_drop", subjectType: "investor" }),
       n("send_wa", "send_whatsapp", {
         templateKey: "market_volatility_stay_invested",
         variables: {
           name: "subject.name",
-          drop_pct: "event.nifty_change_pct",
+          drop_pct: "event.after.nifty_change_pct",
         },
         category: "marketing",
       }),

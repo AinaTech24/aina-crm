@@ -5,6 +5,8 @@ import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
+import { assertActiveLicense } from "@/lib/auth/license";
+import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { RTA_FILE_KINDS, RTA_SOURCES } from "@/db/schema/rta_imports";
 import { processRtaFile } from "@/lib/rta/process";
 
@@ -35,6 +37,7 @@ export async function POST(req: NextRequest) {
   // Only ops / back-office / owner / compliance can ingest RTA files
   // (anyone who can execute transactions can also ingest the daily feed).
   requireCap(session.roles, "transactions.execute");
+  await assertActiveLicense(session.tenantId, session.roles);
 
   let form: FormData;
   try {
@@ -76,7 +79,7 @@ export async function POST(req: NextRequest) {
       // Dedupe — same checksum within this kind/period already imported?
       const dupe = await tx.execute(sql`
         SELECT id, status FROM rta_file_imports
-        WHERE kind = ${kind} AND source = ${source}
+        WHERE tenant_id = ${session.tenantId}::uuid AND kind = ${kind} AND source = ${source}
           AND file_checksum = ${checksum}
           AND status IN ('completed', 'partial')
         LIMIT 1
@@ -153,6 +156,35 @@ export async function POST(req: NextRequest) {
       `);
 
       return { importId, status, ...outcome };
+    },
+    { userId: session.userId, branchId: session.branchId, roles: session.roles }
+  );
+
+  // Audit the ingestion — RTA files populate transactions / AUM / brokerage,
+  // a regulated action that must leave a trail.
+  const r = result as any;
+  await withTenant(
+    session.tenantId,
+    async (tx) => {
+      await recordAudit(tx, {
+        tenantId: session.tenantId,
+        actorUserId: session.userId,
+        action: "rta_import.upload",
+        entityType: "rta_file_import",
+        entityId: r.importId ?? null,
+        after: {
+          source,
+          kind,
+          fileName: file.name,
+          fileSizeBytes: file.size,
+          status: r.status ?? null,
+          rowsImported: r.rowsImported ?? null,
+          rowsSkipped: r.rowsSkipped ?? null,
+          rowsFailed: r.rowsFailed ?? null,
+          duplicate: r.duplicate ?? false,
+        },
+        ...clientMetaFromHeaders(req.headers),
+      });
     },
     { userId: session.userId, branchId: session.branchId, roles: session.roles }
   );

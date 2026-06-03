@@ -9,6 +9,7 @@ import {
   Users,
   AlertTriangle,
   CalendarClock,
+  Pencil,
 } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { insurancePolicies, investors } from "@/db/schema";
@@ -70,12 +71,20 @@ export default async function InsuranceDetailPage({
 
   return (
     <div className="space-y-6 max-w-5xl">
-      <Link
-        href="/dashboard/insurance"
-        className="text-sm text-muted-foreground hover:underline hover:text-foreground flex items-center gap-1 transition-colors"
-      >
-        <ChevronLeft className="size-4" /> Back to policies
-      </Link>
+      <div className="flex items-center justify-between">
+        <Link
+          href="/dashboard/insurance"
+          className="text-sm text-muted-foreground hover:underline hover:text-foreground flex items-center gap-1 transition-colors"
+        >
+          <ChevronLeft className="size-4" /> Back to policies
+        </Link>
+        <Link
+          href={`/dashboard/insurance/new?edit=${p.id}`}
+          className="btn-secondary text-xs flex items-center gap-1.5 px-3 py-1.5"
+        >
+          <Pencil className="size-3.5" /> Edit Policy
+        </Link>
+      </div>
 
       {/* Hero */}
       <div className="card-elevated overflow-hidden">

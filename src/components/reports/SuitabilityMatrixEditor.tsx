@@ -10,7 +10,8 @@
  */
 
 import { useMemo, useState } from "react";
-import { Loader2, Save, X, Pencil, Printer } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Loader2, Save, X, Pencil, Printer, Sparkles } from "lucide-react";
 
 type Entry = {
   id?: string;
@@ -93,11 +94,45 @@ export function SuitabilityMatrixEditor({
     return m;
   }, [initialEntries]);
 
+  const router = useRouter();
   const [entries, setEntries] = useState<Map<string, Entry>>(entriesMap);
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [draft, setDraft] = useState<Entry | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [prefilling, setPrefilling] = useState(false);
+
+  // How many of the 9 cells are still empty — drives the prefill CTA.
+  const emptyCount = useMemo(
+    () =>
+      Array.from(entries.values()).filter(
+        (e) => e.coarseCategories.length === 0
+      ).length,
+    [entries]
+  );
+
+  async function prefillDefaults() {
+    setPrefilling(true);
+    setErr(null);
+    try {
+      const res = await fetch("/api/suitability-matrix/prefill", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ force: false }),
+      });
+      const j = await res.json();
+      if (!res.ok) {
+        setErr(j.error ?? `Prefill failed (${res.status})`);
+        return;
+      }
+      // Re-fetch from the server so the freshly-seeded cells render.
+      router.refresh();
+    } catch (e: any) {
+      setErr(e?.message ?? "Network error");
+    } finally {
+      setPrefilling(false);
+    }
+  }
 
   function startEdit(key: string) {
     const cur = entries.get(key);
@@ -162,14 +197,32 @@ export function SuitabilityMatrixEditor({
 
   return (
     <>
-      <div className="flex justify-end print:hidden">
-        <button
-          onClick={() => window.print()}
-          className="btn-ghost text-xs"
-        >
+      <div className="flex justify-between items-center gap-2 print:hidden">
+        <div>
+          {emptyCount > 0 && (
+            <button
+              onClick={prefillDefaults}
+              disabled={prefilling}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-md border border-brand-cyan/40 bg-brand-cyan-light/50 text-brand-cyan-deep px-3 py-1.5 hover:bg-brand-cyan-light disabled:opacity-50"
+            >
+              {prefilling ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Sparkles className="size-3.5" />
+              )}
+              Prefill {emptyCount} empty cell{emptyCount === 1 ? "" : "s"} with recommended defaults
+            </button>
+          )}
+        </div>
+        <button onClick={() => window.print()} className="btn-ghost text-xs">
           <Printer className="size-3.5" /> Print
         </button>
       </div>
+      {err && (
+        <div className="rounded-md border border-rose-200 bg-rose-50 text-rose-700 text-xs px-3 py-2 print:hidden">
+          {err}
+        </div>
+      )}
 
       {/* Print header */}
       <div className="hidden print:block text-center mb-3">

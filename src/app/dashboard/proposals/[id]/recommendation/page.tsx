@@ -18,7 +18,7 @@ import {
   proposalSchemes,
   investors,
 } from "@/db/schema";
-import { RecommendationWorksheet } from "@/components/proposals/RecommendationWorksheet";
+import { RecommendationWorksheet } from "@/components/proposals/RecommendationWorksheetLazy";
 
 export const dynamic = "force-dynamic";
 

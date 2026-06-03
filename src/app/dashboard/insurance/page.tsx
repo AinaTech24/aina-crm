@@ -10,6 +10,8 @@ import {
   Activity,
   AlertTriangle,
   IndianRupee,
+  Upload,
+  CalendarClock,
 } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
@@ -17,6 +19,9 @@ import { formatDate, formatINR } from "@/lib/utils";
 import { RowActions } from "@/components/common/RowActions";
 import { FilterBar } from "@/components/common/FilterBar";
 import { CustomViews } from "@/components/common/CustomViews";
+import { Pager } from "@/components/common/Pager";
+import { StatusChips, type StatusChip } from "@/components/common/StatusChips";
+import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
 
 const TYPE_LABEL: Record<string, string> = {
   term: "Term Life",
@@ -74,6 +79,8 @@ export default async function InsurancePage({
   const statusFilter = (sp.status ?? "").split(",").filter(Boolean);
   const freqFilter = (sp.frequency ?? "").split(",").filter(Boolean);
   const dueSoonOnly = sp.due === "1";
+  const PAGE_SIZE = 50;
+  const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
 
   const data = await withTenant(session.tenantId, async (tx) => {
     const filters: any[] = [];
@@ -102,6 +109,8 @@ export default async function InsurancePage({
         sql`(p.status = 'active' AND p.next_premium_due_date IS NOT NULL AND p.next_premium_due_date <= current_date + interval '30 days' AND p.next_premium_due_date >= current_date)`
       );
     }
+    const dr = dateRangeCond(sp, "created", "p.created_at");
+    if (dr) filters.push(dr);
     const whereSql = filters.length ? sql` WHERE ${sql.join(filters, sql` AND `)}` : sql``;
 
     const rows = await tx.execute(sql`
@@ -119,7 +128,14 @@ export default async function InsurancePage({
       LEFT JOIN investors i ON i.id = p.investor_id
       ${whereSql}
       ORDER BY p.created_at DESC
-      LIMIT 200
+      LIMIT ${PAGE_SIZE} OFFSET ${(page - 1) * PAGE_SIZE}
+    `);
+    // True count of the filtered set (drives the pager + accurate header count).
+    const filtered = await tx.execute(sql`
+      SELECT COUNT(*)::int AS c
+      FROM insurance_policies p
+      LEFT JOIN investors i ON i.id = p.investor_id
+      ${whereSql}
     `);
     const stats = await tx.execute(sql`
       SELECT
@@ -143,8 +159,29 @@ export default async function InsurancePage({
         )::int AS life_count
       FROM insurance_policies
     `);
-    return { rows: rows.rows as any[], s: stats.rows[0] as any };
+    const statusCounts = await tx.execute(sql`
+      SELECT status, COUNT(*)::int AS c FROM insurance_policies GROUP BY status
+    `);
+    return {
+      rows: rows.rows as any[],
+      s: stats.rows[0] as any,
+      filteredTotal: Number((filtered.rows[0] as any)?.c ?? 0),
+      statusCounts: statusCounts.rows as Array<{ status: string; c: number }>,
+    };
   });
+
+  const countOf = (st: string) => data.statusCounts.find((r) => r.status === st)?.c ?? 0;
+  const totalPolicies = data.statusCounts.reduce((a, r) => a + Number(r.c), 0);
+  const STATUS_CHIP_TONE: Record<string, StatusChip["tone"]> = {
+    active: "emerald", lapsed: "rose", proposed: "sky", in_underwriting: "amber",
+    claim_filed: "amber", claim_settled: "sky", matured: "slate", surrendered: "slate", cancelled: "slate",
+  };
+  const statusChips: StatusChip[] = [
+    { value: "", label: "All", count: totalPolicies, tone: "slate" },
+    ...["active", "in_underwriting", "proposed", "lapsed", "claim_filed", "claim_settled", "matured", "surrendered", "cancelled"]
+      .map((st) => ({ value: st, label: st.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase()), count: countOf(st), tone: STATUS_CHIP_TONE[st] }))
+      .filter((c) => c.count > 0 || c.value === "active"),
+  ];
 
   return (
     <div className="space-y-6 max-w-7xl">
@@ -158,9 +195,13 @@ export default async function InsurancePage({
             one register.
           </p>
         </div>
-        <Link href="/dashboard/insurance/new" className="btn-primary">
-          <Plus className="size-4" /> New policy
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link href="/dashboard/insurance/renewals" className="btn-secondary"><CalendarClock className="size-4" /> Renewals</Link>
+          <Link href="/dashboard/insurance/import" className="btn-secondary"><Upload className="size-4" /> Import</Link>
+          <Link href="/dashboard/insurance/new" className="btn-primary">
+            <Plus className="size-4" /> New policy
+          </Link>
+        </div>
       </div>
 
       {/* KPI strip */}
@@ -196,10 +237,13 @@ export default async function InsurancePage({
         />
       </div>
 
+      <StatusChips basePath="/dashboard/insurance" paramKey="status" current={sp.status ?? ""} params={sp} chips={statusChips} />
+
       <FilterBar
-        totalCount={data.rows.length}
+        totalCount={data.filteredTotal}
         filters={[
           { type: "search", key: "q", placeholder: "Search by policy no, plan, insurer, client…" },
+          dateRangeFilter("created", "Added"),
           {
             type: "multi",
             key: "type",
@@ -239,10 +283,10 @@ export default async function InsurancePage({
             label: "Frequency",
             options: [
               { value: "annual", label: "Annual" },
-              { value: "half_yearly", label: "Half-yearly" },
+              { value: "semi_annual", label: "Semi-annual" },
               { value: "quarterly", label: "Quarterly" },
               { value: "monthly", label: "Monthly" },
-              { value: "single_premium", label: "Single premium" },
+              { value: "single", label: "Single-pay" },
             ],
           },
         ]}
@@ -386,7 +430,7 @@ export default async function InsurancePage({
                       </td>
                       <td className="px-4 py-3 text-right">
                         <RowActions
-                          editHref={`/dashboard/insurance/${p.id}`}
+                          editHref={`/dashboard/insurance/new?edit=${p.id}`}
                           deleteUrl={`/api/insurance/${p.id}`}
                           itemLabel="policy"
                           itemName={p.plan_name}
@@ -398,6 +442,14 @@ export default async function InsurancePage({
                 })}
               </tbody>
             </table>
+            <div className="px-4 pb-3">
+              <Pager
+                page={page}
+                totalPages={Math.ceil(data.filteredTotal / PAGE_SIZE)}
+                total={data.filteredTotal}
+                pageSize={PAGE_SIZE}
+              />
+            </div>
           </div>
         )}
       </div>

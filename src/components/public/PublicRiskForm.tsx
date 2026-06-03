@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CheckCircle2, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 
 type Option = { value: string; label: string; score: number };
@@ -22,6 +22,80 @@ export function PublicRiskForm({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<null | { bandLabel: string; total: number; color?: string; description?: string }>(null);
+
+  // Canvas drawing state
+  const [drawing, setDrawing] = useState(false);
+  const [canvasRef, setCanvasRef] = useState<HTMLCanvasElement | null>(null);
+
+  useEffect(() => {
+    if (canvasRef) {
+      canvasRef.width = canvasRef.offsetWidth;
+      canvasRef.height = canvasRef.offsetHeight;
+      const ctx = canvasRef.getContext("2d");
+      if (ctx) {
+        ctx.lineWidth = 2.5;
+        ctx.lineCap = "round";
+        ctx.strokeStyle = "#0f172a";
+      }
+    }
+  }, [canvasRef, step]);
+
+  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    if (!canvasRef) return;
+    const ctx = canvasRef.getContext("2d");
+    if (!ctx) return;
+
+    const rect = canvasRef.getBoundingClientRect();
+    let clientX, clientY;
+    if ("touches" in e) {
+      clientX = e.touches[0].clientX;
+      clientY = e.touches[0].clientY;
+    } else {
+      clientX = e.clientX;
+      clientY = e.clientY;
+    }
+    ctx.beginPath();
+    ctx.moveTo(clientX - rect.left, clientY - rect.top);
+    setDrawing(true);
+  };
+
+  const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    if (!drawing || !canvasRef) return;
+    const ctx = canvasRef.getContext("2d");
+    if (!ctx) return;
+
+    const rect = canvasRef.getBoundingClientRect();
+    let clientX, clientY;
+    if ("touches" in e) {
+      if (e.cancelable) e.preventDefault();
+      clientX = e.touches[0].clientX;
+      clientY = e.touches[0].clientY;
+    } else {
+      clientX = e.clientX;
+      clientY = e.clientY;
+    }
+    ctx.lineTo(clientX - rect.left, clientY - rect.top);
+    ctx.stroke();
+  };
+
+  const stopDrawing = () => {
+    setDrawing(false);
+  };
+
+  const clearCanvas = () => {
+    if (!canvasRef) return;
+    const ctx = canvasRef.getContext("2d");
+    if (!ctx) return;
+    ctx.clearRect(0, 0, canvasRef.width, canvasRef.height);
+  };
+
+  const isCanvasBlank = () => {
+    if (!canvasRef) return true;
+    const blank = document.createElement("canvas");
+    blank.width = canvasRef.width;
+    blank.height = canvasRef.height;
+    return canvasRef.toDataURL() === blank.toDataURL();
+  };
 
   const N = template.questions.length;
   const onReview = step === N;

@@ -29,38 +29,39 @@ export async function GET(req: NextRequest) {
         tx.execute(sql`
           SELECT id, name, pan, phone, email, segment_tag
           FROM investors
-          WHERE name ILIKE ${like} OR pan ILIKE ${likeUpper}
-             OR phone ILIKE ${like} OR email ILIKE ${like}
+          WHERE tenant_id = ${session.tenantId}::uuid AND (name ILIKE ${like} OR pan ILIKE ${likeUpper}
+             OR phone ILIKE ${like} OR email ILIKE ${like})
           LIMIT 5
         `),
         tx.execute(sql`
           SELECT id, name, phone, email, stage, source
           FROM leads
-          WHERE name ILIKE ${like} OR phone ILIKE ${like} OR email ILIKE ${like}
+          WHERE tenant_id = ${session.tenantId}::uuid AND (name ILIKE ${like} OR phone ILIKE ${like} OR email ILIKE ${like})
+            AND converted_investor_id IS NULL
           LIMIT 5
         `),
         tx.execute(sql`
           SELECT f.id, f.folio_number, f.amc_name, f.aum, i.name AS investor_name, i.id AS investor_id
           FROM folios f LEFT JOIN investors i ON i.id = f.investor_id
-          WHERE f.folio_number ILIKE ${like}
+          WHERE f.tenant_id = ${session.tenantId}::uuid AND f.folio_number ILIKE ${like}
           LIMIT 5
         `),
         tx.execute(sql`
           SELECT s.id, s.scheme_name, s.amount, s.status, i.name AS investor_name, i.id AS investor_id
           FROM sips s LEFT JOIN investors i ON i.id = s.investor_id
-          WHERE s.scheme_name ILIKE ${like} OR s.scheme_code ILIKE ${like}
+          WHERE s.tenant_id = ${session.tenantId}::uuid AND (s.scheme_name ILIKE ${like} OR s.scheme_code ILIKE ${like})
           LIMIT 5
         `),
         tx.execute(sql`
           SELECT sr.id, sr.ticket_no, sr.subject, sr.type, sr.status, i.name AS investor_name
           FROM service_requests sr LEFT JOIN investors i ON i.id = sr.investor_id
-          WHERE sr.ticket_no ILIKE ${like} OR sr.subject ILIKE ${like}
+          WHERE sr.tenant_id = ${session.tenantId}::uuid AND (sr.ticket_no ILIKE ${like} OR sr.subject ILIKE ${like})
           LIMIT 5
         `),
         tx.execute(sql`
           SELECT id, name, category, created_at
           FROM compliance_documents
-          WHERE name ILIKE ${like}
+          WHERE tenant_id = ${session.tenantId}::uuid AND name ILIKE ${like}
           LIMIT 5
         `),
       ]);

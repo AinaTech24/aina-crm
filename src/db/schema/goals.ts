@@ -53,11 +53,18 @@ export const goals = pgTable("goals", {
 
   targetAmount: numeric("target_amount", { precision: 18, scale: 2 }).notNull(),
   targetDate: date("target_date").notNull(),
+  targetMode: text("target_mode", { enum: ["today", "future"] }).default("future"),
+  presentTargetAmount: numeric("present_target_amount", { precision: 18, scale: 2 }),
+  inflationPct: numeric("inflation_pct", { precision: 5, scale: 2 }),
+  stepUpPct: numeric("step_up_pct", { precision: 5, scale: 2 }),
   startedOn: date("started_on"),
   monthlyContribution: numeric("monthly_contribution", { precision: 18, scale: 2 }),
   expectedReturn: numeric("expected_return", { precision: 5, scale: 2 }),
   currentValue: numeric("current_value", { precision: 18, scale: 2 }).default("0"),
   progressPct: numeric("progress_pct", { precision: 5, scale: 2 }).default("0"),
+  /** Time-elapsed trajectory the goal SHOULD be at (months elapsed / total).
+   *  Recomputed nightly; powers the goal_drift_alert recipe. */
+  expectedProgressPct: numeric("expected_progress_pct", { precision: 5, scale: 2 }),
   linkedFolios: jsonb("linked_folios").$type<string[]>().default([]),
   /** Investor SIP ids whose monthly amount counts toward this goal. */
   linkedSips: jsonb("linked_sips").$type<string[]>().default([]),
@@ -104,6 +111,9 @@ export const goals = pgTable("goals", {
   ...timestamps,
 }, (t) => ({
   investorIdx: index("goals_investor_idx").on(t.tenantId, t.investorId),
+  nextReviewIdx: index("goals_next_review_idx").on(t.tenantId, t.nextReviewAt),
+  statusIdx: index("goals_status_idx").on(t.tenantId, t.status),
+  targetDateIdx: index("goals_target_date_idx").on(t.tenantId, t.targetDate),
 }));
 
 export type Goal = typeof goals.$inferSelect;

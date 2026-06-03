@@ -318,13 +318,10 @@ export function BlueprintStageBar({
             </div>
             <div className="flex-1 min-w-0">
               <div className="text-sm font-bold text-emerald-900">
-                All onboarding documents received
+                Lead qualified and won
               </div>
               <p className="text-xs text-emerald-800/90 mt-1 leading-relaxed">
-                Convert this lead to a client. The remaining stages
-                (Operations · Portal Welcome · Active Client) will continue in
-                the Clients module, with the risk profile, proposals and
-                documents you&apos;ve already captured carried over.
+                This lead is ready to be converted into a client. All captured risk profiles, proposals, and pre-onboarding notes will automatically carry over to the Clients module.
               </p>
             </div>
             <button
@@ -333,8 +330,15 @@ export function BlueprintStageBar({
                 if (onConvertClick) {
                   onConvertClick();
                 } else {
-                  // Default — scroll to the LeadActions panel (which has the
-                  // existing Convert button + dialog) at the top of the page.
+                  // Open the convert dialog directly (LeadActions listens for
+                  // this event), and scroll the panel into view. Previously
+                  // this only scrolled — which looked like "nothing happened"
+                  // when the header panel was already on screen.
+                  window.dispatchEvent(
+                    new CustomEvent("blueprint:open-dialog", {
+                      detail: { kind: "convert", leadId },
+                    })
+                  );
                   document
                     .querySelector("[data-lead-actions]")
                     ?.scrollIntoView({ behavior: "smooth", block: "center" });

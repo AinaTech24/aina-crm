@@ -2,19 +2,12 @@ import { and, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
 import { Plus } from "lucide-react";
 import Link from "next/link";
 import { withTenant } from "@/db/client";
-import { tasks, users } from "@/db/schema";
+import { tasks, users, investors, leads } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
-import { formatRelative } from "@/lib/utils";
-import { RowActions } from "@/components/common/RowActions";
 import { FilterBar } from "@/components/common/FilterBar";
+import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
 import { CustomViews } from "@/components/common/CustomViews";
-
-const priorityColors: Record<string, string> = {
-  urgent: "bg-rose-50 text-rose-700",
-  high: "bg-amber-50 text-amber-700",
-  normal: "bg-blue-50 text-blue-700",
-  low: "bg-gray-50 text-gray-700",
-};
+import { TaskList } from "./TaskList";
 
 export const dynamic = "force-dynamic";
 
@@ -30,27 +23,50 @@ export default async function TasksPage({
   const priorityFilter = (sp.priority ?? "").split(",").filter(Boolean);
   const typeFilter = (sp.type ?? "").split(",").filter(Boolean);
   const deptFilter = (sp.department ?? "").split(",").filter(Boolean);
+  const due = sp.due; // 'today' | 'overdue' | 'sla_risk'
 
   const result = await withTenant(session.tenantId, async (tx) => {
     const conds: any[] = [];
+    
     // Default to status=open if none specified
     if (statusFilter.length) {
       conds.push(inArray(tasks.status, statusFilter as any));
     } else {
       conds.push(eq(tasks.status, "open"));
     }
+    
     if (q) {
       conds.push(or(ilike(tasks.title, `%${q}%`), ilike(tasks.description, `%${q}%`))!);
     }
     if (priorityFilter.length) conds.push(inArray(tasks.priority, priorityFilter as any));
     if (typeFilter.length) conds.push(inArray(tasks.type, typeFilter as any));
     if (deptFilter.length) conds.push(inArray(tasks.department, deptFilter as any));
+    
+    // Apply stats ribbon parameters
+    if (due === "today") {
+      conds.push(sql`due_at::date = current_date`);
+    } else if (due === "overdue") {
+      conds.push(sql`due_at < now()`);
+    } else if (due === "sla_risk") {
+      conds.push(sql`sla_due_at IS NOT NULL AND sla_due_at < now() + interval '24 hours'`);
+    }
+    const dr = dateRangeCond(sp, "created", "tasks.created_at");
+    if (dr) conds.push(dr);
+
     const where = conds.length ? and(...conds) : undefined;
 
+    // Join related entity profiles (Client/Investor and Lead)
     const rows = await tx
-      .select({ task: tasks, assignee: users.name })
+      .select({
+        task: tasks,
+        assignee: users.name,
+        investorName: investors.name,
+        leadName: leads.name,
+      })
       .from(tasks)
       .leftJoin(users, eq(users.id, tasks.assigneeId))
+      .leftJoin(investors, eq(investors.id, tasks.relatedInvestorId))
+      .leftJoin(leads, eq(leads.id, tasks.relatedLeadId))
       .where(where as any)
       .orderBy(desc(tasks.dueAt))
       .limit(100);
@@ -63,6 +79,7 @@ export default async function TasksPage({
         COUNT(*) FILTER (WHERE status = 'open' AND sla_due_at IS NOT NULL AND sla_due_at < now() + interval '24 hours')::int AS sla_at_risk
       FROM tasks
     `);
+    
     const s = (stats.rows[0] as any) ?? { open: 0, due_today: 0, overdue: 0, sla_at_risk: 0 };
     return { rows, stats: s };
   });
@@ -84,11 +101,20 @@ export default async function TasksPage({
         </Link>
       </div>
 
+      {/* Clickable Interactive Stats Ribbon */}
       <div className="grid grid-cols-4 gap-3">
-        <Stat label="Open" value={String(result.stats.open)} />
-        <Stat label="Due today" value={String(result.stats.due_today)} />
-        <Stat label="Overdue" value={String(result.stats.overdue)} tone="rose" />
-        <Stat label="SLA at risk" value={String(result.stats.sla_at_risk)} tone="amber" />
+        <Link href="/dashboard/tasks?status=open" className="block transition-transform hover:scale-[1.01]">
+          <Stat label="Open" value={String(result.stats.open)} active={!due && sp.status !== "done" && sp.status !== "cancelled"} />
+        </Link>
+        <Link href="/dashboard/tasks?status=open&due=today" className="block transition-transform hover:scale-[1.01]">
+          <Stat label="Due today" value={String(result.stats.due_today)} active={due === "today"} />
+        </Link>
+        <Link href="/dashboard/tasks?status=open&due=overdue" className="block transition-transform hover:scale-[1.01]">
+          <Stat label="Overdue" value={String(result.stats.overdue)} tone="rose" active={due === "overdue"} />
+        </Link>
+        <Link href="/dashboard/tasks?status=open&due=sla_risk" className="block transition-transform hover:scale-[1.01]">
+          <Stat label="SLA at risk" value={String(result.stats.sla_at_risk)} tone="amber" active={due === "sla_risk"} />
+        </Link>
       </div>
 
       <FilterBar
@@ -133,6 +159,7 @@ export default async function TasksPage({
               { value: "other", label: "Other" },
             ],
           },
+          dateRangeFilter("created", "Created"),
         ]}
         rightSlot={
           <CustomViews
@@ -146,56 +173,28 @@ export default async function TasksPage({
         }
       />
 
-      <div className="border rounded-lg bg-card">
-        {result.rows.length === 0 ? (
-          <div className="p-12 text-center text-sm text-muted-foreground">
-            No open tasks. Workflows will create tasks here automatically when SIPs fail, reviews come due, etc.
-          </div>
-        ) : (
-          <ul className="divide-y">
-            {result.rows.map(({ task: t, assignee }) => (
-              <li key={t.id} className="px-4 py-3 flex items-center gap-3 hover:bg-accent/40">
-                <input type="checkbox" className="size-4 rounded" />
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium text-sm">{t.title}</div>
-                  <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-2">
-                    <span className="font-mono">{t.type}</span>
-                    {t.workflowRunId && <span>· via workflow</span>}
-                  </div>
-                </div>
-                <span className={`text-xs px-2 py-0.5 rounded-full ${priorityColors[t.priority] ?? ""}`}>
-                  {t.priority}
-                </span>
-                {t.dueAt && (
-                  <span className="text-xs text-muted-foreground tabular-nums">
-                    {formatRelative(t.dueAt)}
-                  </span>
-                )}
-                {assignee && <span className="text-xs">{assignee}</span>}
-                <RowActions
-                  deleteUrl={`/api/tasks/${t.id}`}
-                  itemLabel="task"
-                  itemName={t.title}
-                  verb="Cancel"
-                />
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+      {/* Interactive Client Task List & Details Drawer */}
+      <TaskList
+        initialRows={result.rows}
+        currentUserId={session.userId}
+      />
     </div>
   );
 }
 
-function Stat({ label, value, tone }: { label: string; value: string; tone?: "rose" | "amber" }) {
+function Stat({ label, value, tone, active }: { label: string; value: string; tone?: "rose" | "amber"; active?: boolean }) {
   const color =
     tone === "rose" && value !== "0"
-      ? "text-rose-600"
+      ? "text-rose-600 font-bold"
       : tone === "amber" && value !== "0"
-      ? "text-amber-600"
+      ? "text-amber-600 font-bold"
       : "text-foreground";
   return (
-    <div className="border rounded-lg p-4 bg-card">
+    <div className={`border rounded-lg p-4 bg-card transition-all ${
+      active 
+        ? "border-primary bg-slate-50 ring-1 ring-primary/45 shadow-sm" 
+        : "hover:border-slate-300 bg-white"
+    }`}>
       <div className="text-xs text-muted-foreground">{label}</div>
       <div className={`text-2xl font-bold mt-1 ${color}`}>{value}</div>
     </div>

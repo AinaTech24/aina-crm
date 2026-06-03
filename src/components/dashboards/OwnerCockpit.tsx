@@ -1,12 +1,27 @@
+import React, { Suspense } from "react";
 import Link from "next/link";
 import { sql } from "drizzle-orm";
 import { ArrowDownRight, ArrowUpRight, TrendingUp, Users, UserPlus, ShieldCheck, Megaphone, AlertOctagon, Sparkles, ClipboardList, AlertCircle } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { formatINR } from "@/lib/utils";
 import type { SessionUser } from "@/lib/auth/session";
-import { NetSalesChart } from "./NetSalesChart";
 import { GettingStartedChecklist } from "./GettingStartedChecklist";
 import { DataGapsTile } from "./DataGapsTile";
+import { OwnerInsightsSection } from "./OwnerInsightsSection";
+import { TrailIncomeTile } from "./TrailIncomeTile";
+import { SipPersistencyTile } from "./SipPersistencyTile";
+import { TopMoversPanel } from "./TopMoversPanel";
+import { PeriodSelector } from "./PeriodSelector";
+import { resolvePeriodDates, type Period } from "@/lib/dashboard/period";
+
+// Async parts streamed via Suspense
+import { GrowthRetentionSection } from "./GrowthRetentionSection";
+import { AttentionQueuesSection } from "./AttentionQueuesSection";
+import { RmLeaderboard } from "./RmLeaderboard";
+import { LeadFunnelSection } from "./LeadFunnelSection";
+import { AumSegmentSection } from "./AumSegmentSection";
+import { NetSalesSection } from "./NetSalesSection";
+import { CardSkeleton, ChartSkeleton, LeaderboardSkeleton } from "./DashboardSkeletons";
 
 /**
  * MFD Owner Cockpit — spec § 6, Module 2.
@@ -18,19 +33,27 @@ import { DataGapsTile } from "./DataGapsTile";
  *   4. Team & health (4) — Team tasks, DDQ score, Data quality score, Campaigns running
  *   5. Trends — Lead conversion %, RM-wise business, 30-day net sales chart
  */
-export async function OwnerCockpit({ session }: { session: SessionUser }) {
+export async function OwnerCockpit({
+  session,
+  period = "mtd",
+  customStart,
+}: {
+  session: SessionUser;
+  period?: Period;
+  customStart?: string;
+}) {
   const now = new Date();
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const startOfMonthISO = startOfMonth.toISOString();
+  // Resolve period → start date. All "MTD" aggregates in the queries below
+  // use startOfPeriodISO instead of the hard-coded startOfMonth.
+  const { startISO: startOfPeriodISO, label: periodLabel } = resolvePeriodDates(period, now, customStart);
+  // Keep the original variable name so existing SQL template literals stay unchanged.
+  const startOfMonthISO = startOfPeriodISO;
   const dormantCutoff = new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString();
 
   const data = await withTenant(
     session.tenantId,
     async (tx) => {
-      // All 8 queries below are independent of each other. Fire them in
-      // parallel — the transaction's single connection multiplexes them
-      // server-side, and total wall-clock drops from ~sum-of-queries
-      // (was making /dashboard a 12-second affair) to ~max-of-queries.
+      // Streamlined main cockpit query: only fetch core KPIs immediately
       const [
         headline,
         business,
@@ -38,30 +61,38 @@ export async function OwnerCockpit({ session }: { session: SessionUser }) {
         queues,
         team,
         leadFunnel,
-        rmWise,
-        dailySales,
       ] = await Promise.all([
-      // ---------- 1. Headline counts ----------
+      // ---------- 1. Headline counts (+ period trajectory deltas) ----------
       tx.execute(sql`
         SELECT
           (SELECT COUNT(*)::int FROM investors WHERE status = 'active') AS total_clients,
-          (SELECT COUNT(*)::int FROM leads WHERE stage NOT IN ('converted', 'lost', 'cold', 'not_interested')) AS total_leads,
+          (SELECT COUNT(*)::int FROM leads WHERE converted_investor_id IS NULL AND stage NOT IN ('lost', 'cold', 'not_interested')) AS total_leads,
           (SELECT COALESCE(SUM(active_sip_amount::numeric), 0)::numeric FROM investors WHERE status = 'active') AS sip_book,
-          (SELECT COALESCE(SUM(aum::numeric), 0)::numeric FROM investors WHERE status = 'active') AS total_aum
+          (SELECT COALESCE(SUM(aum::numeric), 0)::numeric FROM investors WHERE status = 'active') AS total_aum,
+          -- trajectory: clients onboarded this period
+          (SELECT COUNT(*)::int FROM investors
+            WHERE status = 'active' AND onboarded_at >= ${startOfMonthISO}) AS new_clients_period,
+          -- trajectory: net new SIPs this period (registered minus stopped)
+          (SELECT COUNT(*)::int FROM sips
+            WHERE created_at >= ${startOfMonthISO}) AS new_sips_period,
+          (SELECT COUNT(*)::int FROM sips
+            WHERE status IN ('stopped','paused','cancelled') AND updated_at >= ${startOfMonthISO}) AS stopped_sips_period,
+          (SELECT COALESCE(SUM(amount::numeric), 0)::numeric FROM sips
+            WHERE created_at >= ${startOfMonthISO})::numeric AS new_sip_amt_period
       `),
 
       // ---------- 2. Monthly business breakdown ----------
       tx.execute(sql`
         SELECT
-          COUNT(*) FILTER (WHERE type = 'sip' AND status = 'successful'
+          COUNT(*) FILTER (WHERE type = 'sip' AND status IN ('processed', 'successful')
               AND order_date >= ${startOfMonthISO}::date)::int AS sip_added_count,
-          COALESCE(SUM(amount::numeric) FILTER (WHERE type = 'sip' AND status = 'successful'
+          COALESCE(SUM(amount::numeric) FILTER (WHERE type = 'sip' AND status IN ('processed', 'successful')
               AND order_date >= ${startOfMonthISO}::date), 0)::numeric AS sip_added_amt,
-          COUNT(*) FILTER (WHERE type = 'lumpsum' AND status = 'successful'
+          COUNT(*) FILTER (WHERE type = 'lumpsum' AND status IN ('processed', 'successful')
               AND order_date >= ${startOfMonthISO}::date)::int AS lumpsum_count,
-          COALESCE(SUM(amount::numeric) FILTER (WHERE type = 'lumpsum' AND status = 'successful'
+          COALESCE(SUM(amount::numeric) FILTER (WHERE type = 'lumpsum' AND status IN ('processed', 'successful')
               AND order_date >= ${startOfMonthISO}::date), 0)::numeric AS lumpsum_amt,
-          COALESCE(SUM(amount::numeric) FILTER (WHERE direction = 'outflow' AND status = 'successful'
+          COALESCE(SUM(amount::numeric) FILTER (WHERE direction = 'outflow' AND status IN ('processed', 'successful')
               AND order_date >= ${startOfMonthISO}::date), 0)::numeric AS redemption_amt,
           COUNT(*) FILTER (WHERE type = 'sip' AND status = 'rejected'
               AND created_at >= ${startOfMonthISO})::int AS sip_rejected_count
@@ -74,7 +105,7 @@ export async function OwnerCockpit({ session }: { session: SessionUser }) {
           AND updated_at >= ${startOfMonthISO}
       `),
 
-      // ---------- 3. Attention queues ----------
+      // ---------- 3. Attention queues (fast stats for summary bar) ----------
       tx.execute(sql`
         SELECT
           (SELECT COUNT(*)::int FROM investors
@@ -109,40 +140,13 @@ export async function OwnerCockpit({ session }: { session: SessionUser }) {
             )::numeric FROM investors WHERE status = 'active') AS data_quality_score
       `),
 
-      // ---------- 5. Lead conversion + RM-wise ----------
+      // ---------- 5. Lead conversion (fast stats for KPI delta) ----------
       tx.execute(sql`
         SELECT
           COUNT(*)::int AS total_leads_mtd,
-          COUNT(*) FILTER (WHERE stage = 'converted')::int AS converted_mtd
+          COUNT(*) FILTER (WHERE converted_investor_id IS NOT NULL)::int AS converted_mtd
         FROM leads
         WHERE created_at >= ${startOfMonthISO}
-      `),
-
-      tx.execute(sql`
-        SELECT u.id, u.name AS rm_name,
-          COUNT(DISTINCT i.id)::int AS clients,
-          COALESCE(SUM(i.aum::numeric), 0)::numeric AS aum,
-          COALESCE(SUM(i.active_sip_amount::numeric), 0)::numeric AS sip_book
-        FROM users u
-        LEFT JOIN investors i ON i.rm_id = u.id AND i.status = 'active'
-        WHERE 'rm' = ANY(u.roles) AND u.status = 'active'
-        GROUP BY u.id, u.name
-        ORDER BY aum DESC NULLS LAST
-        LIMIT 8
-      `),
-
-      // 30-day daily net-sales series for the chart
-      tx.execute(sql`
-        WITH dates AS (
-          SELECT generate_series(current_date - interval '29 days', current_date, interval '1 day')::date AS d
-        )
-        SELECT d::text AS day,
-          COALESCE(SUM(CASE WHEN t.direction = 'inflow' THEN t.amount::numeric END), 0)::numeric AS gross,
-          COALESCE(SUM(CASE WHEN t.direction = 'outflow' THEN t.amount::numeric END), 0)::numeric AS redemption,
-          COALESCE(SUM(CASE WHEN t.direction = 'inflow' THEN t.amount::numeric ELSE -t.amount::numeric END), 0)::numeric AS net
-        FROM dates LEFT JOIN transactions t
-          ON t.order_date = dates.d AND t.status = 'successful'
-        GROUP BY d ORDER BY d
       `),
       ]);
 
@@ -165,6 +169,11 @@ export async function OwnerCockpit({ session }: { session: SessionUser }) {
         totalLeads: Number(h.total_leads),
         sipBook: Number(h.sip_book),
         totalAum: Number(h.total_aum),
+        // trajectory deltas (this period)
+        newClientsPeriod: Number(h.new_clients_period ?? 0),
+        newSipsPeriod: Number(h.new_sips_period ?? 0),
+        stoppedSipsPeriod: Number(h.stopped_sips_period ?? 0),
+        newSipAmtPeriod: Number(h.new_sip_amt_period ?? 0),
         // business
         sipAddedCount: Number(b.sip_added_count),
         sipAddedAmt: Number(b.sip_added_amt),
@@ -189,14 +198,6 @@ export async function OwnerCockpit({ session }: { session: SessionUser }) {
         conversionPct,
         leadsMtd: Number(lf.total_leads_mtd),
         convertedMtd: Number(lf.converted_mtd),
-        rmWise: rmWise.rows as any[],
-        // chart
-        dailySales: (dailySales.rows as any[]).map((r) => ({
-          day: String(r.day),
-          gross: Number(r.gross),
-          redemption: Number(r.redemption),
-          net: Number(r.net),
-        })),
       };
     },
     { userId: session.userId, branchId: session.branchId, roles: session.roles }
@@ -223,11 +224,14 @@ export async function OwnerCockpit({ session }: { session: SessionUser }) {
                 Welcome back, {session.name.split(" ")[0]}
               </h1>
               <p className="text-white/80 text-sm mt-1">
-                {today} · Here's what's happening across the firm today.
+                {today} · Showing data for{" "}
+                <span className="font-semibold">{periodLabel}</span>.
               </p>
             </div>
-            <div className="flex items-center gap-2 text-xs">
-              <span className="chip bg-white/10 text-white backdrop-blur-sm border border-white/20">
+            <div className="flex items-center gap-2">
+              {/* Period selector — client component; changes the ?period= param */}
+              <PeriodSelector current={period} />
+              <span className="chip bg-white/10 text-white backdrop-blur-sm border border-white/20 text-xs">
                 <span className="pulse-dot" /> Live
               </span>
             </div>
@@ -238,14 +242,19 @@ export async function OwnerCockpit({ session }: { session: SessionUser }) {
       {/* Getting-started checklist — auto-hides when all steps complete */}
       <GettingStartedChecklist tenantId={session.tenantId} />
 
-      {/* ---------- 1. Headline KPIs — hero tiles ---------- */}
-      <div className="grid grid-cols-4 gap-3">
+      {/* ---------- State of the firm — daily brief strip ---------- */}
+      <FirmBriefStrip data={data} period={period} />
+
+      {/* ---------- 1. Headline KPIs — hero tiles (with period trajectory) ---------- */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Kpi
           href="/dashboard/investors"
           icon={Users}
           label="Total Clients"
           value={String(data.totalClients)}
           sub={formatINR(data.totalAum) + " AUM"}
+          delta={data.newClientsPeriod > 0 ? `+${data.newClientsPeriod} ${period.toUpperCase()}` : undefined}
+          deltaTone="up"
           accent="cyan"
         />
         <Kpi
@@ -253,7 +262,7 @@ export async function OwnerCockpit({ session }: { session: SessionUser }) {
           icon={UserPlus}
           label="Open Leads"
           value={String(data.totalLeads)}
-          sub={`${data.conversionPct.toFixed(1)}% conversion MTD`}
+          sub={`${data.conversionPct.toFixed(1)}% conversion ${period.toUpperCase()}`}
           accent="violet"
         />
         <Kpi
@@ -262,12 +271,18 @@ export async function OwnerCockpit({ session }: { session: SessionUser }) {
           label="Active SIP Book"
           value={formatINR(data.sipBook)}
           sub="per month"
+          delta={
+            data.newSipsPeriod - data.stoppedSipsPeriod !== 0
+              ? `${data.newSipsPeriod - data.stoppedSipsPeriod >= 0 ? "+" : ""}${data.newSipsPeriod - data.stoppedSipsPeriod} net SIPs`
+              : undefined
+          }
+          deltaTone={data.newSipsPeriod - data.stoppedSipsPeriod >= 0 ? "up" : "down"}
           accent="emerald"
         />
         <Kpi
           href="/dashboard/reports/net_sales"
           icon={TrendingUp}
-          label="Net Business MTD"
+          label={`Net Business ${period.toUpperCase()}`}
           value={formatINR(data.netBusiness)}
           sub={`Gross ${formatINR(data.sipAddedAmt + data.lumpsumAmt)}`}
           trend={data.netBusiness >= 0 ? "up" : "down"}
@@ -276,33 +291,35 @@ export async function OwnerCockpit({ session }: { session: SessionUser }) {
       </div>
 
       {/* ---------- 2. Monthly business breakdown ---------- */}
-      <Group title="Monthly business" link={{ href: "/dashboard/reports/net_sales", label: "Open report" }}>
-        <div className="grid grid-cols-5 gap-3">
-          <Stat href="/dashboard/sips" label="SIP Added MTD" value={String(data.sipAddedCount)} sub={formatINR(data.sipAddedAmt)} />
-          <Stat href="/dashboard/transactions" label="Lumpsum MTD" value={String(data.lumpsumCount)} sub={formatINR(data.lumpsumAmt)} />
-          <Stat href="/dashboard/transactions?type=redemption" label="Redemption MTD" value={formatINR(data.redemptionAmt)} tone={data.redemptionAmt > 0 ? "rose" : "muted"} />
-          <Stat href="/dashboard/sip-rejections" label="SIP Rejected MTD" value={String(data.sipRejectedCount)} tone={data.sipRejectedCount > 0 ? "rose" : "muted"} />
-          <Stat href="/dashboard/sips?status=stopped" label="SIP Stopped MTD" value={String(data.sipStoppedCount)} tone={data.sipStoppedCount > 0 ? "amber" : "muted"} />
+      <Group title={`Business — ${periodLabel}`} link={{ href: "/dashboard/reports/net_sales", label: "Open report" }}>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+          <Stat href="/dashboard/sips" label="SIP Added" value={String(data.sipAddedCount)} sub={formatINR(data.sipAddedAmt)} />
+          <Stat href="/dashboard/transactions" label="Lumpsum" value={String(data.lumpsumCount)} sub={formatINR(data.lumpsumAmt)} />
+          <Stat href="/dashboard/transactions?type=redemption" label="Redemption" value={formatINR(data.redemptionAmt)} tone={data.redemptionAmt > 0 ? "rose" : "muted"} />
+          <Stat href="/dashboard/sip-rejections" label="SIP Rejected" value={String(data.sipRejectedCount)} tone={data.sipRejectedCount > 0 ? "rose" : "muted"} />
+          <Stat href="/dashboard/sips?status=stopped" label="SIP Stopped" value={String(data.sipStoppedCount)} tone={data.sipStoppedCount > 0 ? "amber" : "muted"} />
         </div>
       </Group>
+
+      {/* ---------- Growth & retention — churn, tax-harvest, referrals, regulatory (streamed) ---------- */}
+      <Suspense fallback={<CardSkeleton />}>
+        <GrowthRetentionSection session={session} />
+      </Suspense>
+
+      {/* ---------- 2a. Top movers — the clients behind the period numbers ---------- */}
+      <TopMoversPanel session={session} startISO={startOfPeriodISO} periodLabel={periodLabel} />
 
       {/* ---------- 2b. Data gaps — fixes from MFD ops checklist ---------- */}
       <DataGapsTile />
 
-      {/* ---------- 3. Attention queues ---------- */}
-      <Group title="Needs attention">
-        <div className="grid grid-cols-5 gap-3">
-          <Stat href="/dashboard/review-meetings" label="Review Meetings Due" value={String(data.reviewsDue)} tone={data.reviewsDue > 0 ? "amber" : "muted"} icon={ClipboardList} />
-          <Stat href="/dashboard/service-requests" label="Pending Service Requests" value={String(data.srPending)} tone={data.srPending > 0 ? "amber" : "muted"} />
-          <Stat href="/dashboard/complaints" label="Open Complaints" value={String(data.complaintsOpen)} tone={data.complaintsOpen > 0 ? "rose" : "muted"} icon={AlertOctagon} />
-          <Stat href="/dashboard/reports/high_aum" label="High-AUM Not Reviewed" value={String(data.hniNotReviewed)} tone={data.hniNotReviewed > 0 ? "rose" : "muted"} />
-          <Stat href="/dashboard/reports/dormant" label="Dormant Clients" value={String(data.dormantClients)} tone={data.dormantClients > 0 ? "amber" : "muted"} />
-        </div>
-      </Group>
+      {/* ---------- 3. Attention queues (streamed via Suspense) ---------- */}
+      <Suspense fallback={<CardSkeleton />}>
+        <AttentionQueuesSection session={session} />
+      </Suspense>
 
       {/* ---------- 4. Team & health ---------- */}
       <Group title="Team & health">
-        <div className="grid grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <Stat href="/dashboard/tasks" label="Team Pending Tasks" value={String(data.teamTasks)} tone={data.teamTasks > 20 ? "amber" : "muted"} />
           <Stat
             href="/dashboard/compliance"
@@ -322,99 +339,116 @@ export async function OwnerCockpit({ session }: { session: SessionUser }) {
         </div>
       </Group>
 
-      {/* ---------- 5. Conversion + RM-wise + chart ---------- */}
-      <div className="grid grid-cols-3 gap-4">
-        <div className="card-surface p-5">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold flex items-center gap-2">
-              <div className="size-7 rounded-lg bg-emerald-50 grid place-items-center">
-                <Sparkles className="size-3.5 text-emerald-600" />
-              </div>
-              Lead Conversion (MTD)
-            </h2>
-            <Link href="/dashboard/leads" className="text-xs text-brand-cyan-deep hover:underline font-medium">
-              Pipeline →
-            </Link>
-          </div>
-          <div className="text-4xl font-bold tabular-nums text-gradient">
-            {data.conversionPct.toFixed(1)}%
-          </div>
-          <p className="text-sm text-muted-foreground mt-2">
-            {data.convertedMtd} converted out of {data.leadsMtd} leads created this month.
-          </p>
-          <div className="mt-4 h-2 rounded-full bg-secondary overflow-hidden">
-            <div
-              className="h-full rounded-full"
-              style={{
-                width: `${Math.min(100, data.conversionPct)}%`,
-                backgroundImage:
-                  "linear-gradient(90deg, hsl(165 70% 45%) 0%, hsl(165 75% 38%) 100%)",
-              }}
-            />
-          </div>
-        </div>
+      {/* ---------- 5. Conversion + RM-wise + chart (streamed via Suspense) ---------- */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Suspense fallback={<ChartSkeleton />}>
+          <LeadFunnelSection session={session} period={period} />
+        </Suspense>
 
-        <div className="col-span-2 card-surface p-5">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold flex items-center gap-2">
-              <div className="size-7 rounded-lg bg-brand-cyan-light grid place-items-center">
-                <Users className="size-3.5 text-brand-cyan-deep" />
-              </div>
-              RM-wise Business
-            </h2>
-            <Link
-              href="/dashboard/reports/rm_business"
-              className="text-xs text-brand-cyan-deep hover:underline font-medium"
-            >
-              Full report →
-            </Link>
-          </div>
-          {data.rmWise.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-6 text-center">
-              No RMs configured yet.
-            </p>
-          ) : (
-            <table className="w-full text-sm table-modern">
-              <thead>
-                <tr>
-                  <th className="text-left py-2 px-2">RM</th>
-                  <th className="text-right py-2 px-2">Clients</th>
-                  <th className="text-right py-2 px-2">AUM</th>
-                  <th className="text-right py-2 px-2">SIP book</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.rmWise.map((r: any) => (
-                  <tr key={r.id}>
-                    <td className="py-2.5 px-2 font-medium">{r.rm_name}</td>
-                    <td className="py-2.5 px-2 text-right tabular-nums">{r.clients}</td>
-                    <td className="py-2.5 px-2 text-right tabular-nums">
-                      {formatINR(Number(r.aum))}
-                    </td>
-                    <td className="py-2.5 px-2 text-right tabular-nums">
-                      {formatINR(Number(r.sip_book))}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+        <Suspense fallback={<ChartSkeleton />}>
+          <AumSegmentSection session={session} />
+        </Suspense>
+
+        <Suspense fallback={<LeaderboardSkeleton />}>
+          <RmLeaderboard session={session} />
+        </Suspense>
       </div>
 
-      {/* ---------- Net-sales chart ---------- */}
-      <div className="card-surface p-5">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="font-semibold flex items-center gap-2">
-            <div className="size-7 rounded-lg bg-brand-cyan-light grid place-items-center">
-              <TrendingUp className="size-3.5 text-brand-cyan-deep" />
-            </div>
-            Net sales — last 30 days
-          </h2>
-          <span className="text-xs text-muted-foreground">Daily inflow vs redemption</span>
-        </div>
-        <NetSalesChart data={data.dailySales} />
-      </div>
+      {/* ---------- Net-sales chart (streamed via Suspense) ---------- */}
+      <Suspense fallback={<ChartSkeleton height="h-64" />}>
+        <NetSalesSection session={session} />
+      </Suspense>
+
+      {/* ---------- Trail income — the MFD's revenue, finally on the dashboard ---------- */}
+      <TrailIncomeTile session={session} />
+
+      {/* ---------- SIP Persistency — franchise health metric ---------- */}
+      <SipPersistencyTile session={session} />
+
+      {/* ---------- Owner Insights — service-excellence + scaling section ---------- */}
+      <OwnerInsightsSection session={session} />
+    </div>
+  );
+}
+
+/* -------------------- State of the firm — daily brief -------------------- */
+
+function FirmBriefStrip({
+  data,
+  period,
+}: {
+  data: {
+    totalClients: number;
+    totalAum: number;
+    sipBook: number;
+    sipRejectedCount: number;
+    reviewsDue: number;
+    complaintsOpen: number;
+    netBusiness: number;
+    sipAddedCount: number;
+    sipStoppedCount: number;
+  };
+  period: string;
+}) {
+  const netSipFlow = data.sipAddedCount - data.sipStoppedCount;
+  const signals: Array<{ text: string; tone: "rose" | "amber" | "emerald" | "muted" }> = [];
+
+  if (data.sipRejectedCount > 0) {
+    signals.push({
+      text: `${data.sipRejectedCount} SIP rejection${data.sipRejectedCount > 1 ? "s" : ""} this period`,
+      tone: data.sipRejectedCount >= 5 ? "rose" : "amber",
+    });
+  }
+  if (data.reviewsDue > 0) {
+    signals.push({
+      text: `${data.reviewsDue} review${data.reviewsDue > 1 ? "s" : ""} overdue`,
+      tone: data.reviewsDue >= 10 ? "rose" : "amber",
+    });
+  }
+  if (data.complaintsOpen > 0) {
+    signals.push({
+      text: `${data.complaintsOpen} complaint${data.complaintsOpen > 1 ? "s" : ""} open`,
+      tone: "rose",
+    });
+  }
+  if (netSipFlow > 0) {
+    signals.push({ text: `net +${netSipFlow} SIPs ${period.toUpperCase()}`, tone: "emerald" });
+  } else if (netSipFlow < 0) {
+    signals.push({ text: `net ${netSipFlow} SIPs ${period.toUpperCase()}`, tone: "rose" });
+  }
+
+  const colorMap = {
+    rose: "text-rose-700 bg-rose-50 border-rose-200",
+    amber: "text-amber-700 bg-amber-50 border-amber-200",
+    emerald: "text-emerald-700 bg-emerald-50 border-emerald-200",
+    muted: "text-muted-foreground bg-secondary border-border/40",
+  };
+
+  return (
+    <div className="flex items-center gap-3 p-3 rounded-xl bg-card border border-border/50 flex-wrap">
+      <span className="text-xs text-muted-foreground font-semibold">Today:</span>
+      <span className="text-xs font-semibold text-foreground">
+        {data.totalClients.toLocaleString("en-IN")} clients ·{" "}
+        <span className="text-emerald-700">₹</span>
+        {(data.totalAum / 10_000_000).toFixed(2)} Cr AUM ·{" "}
+        {(data.sipBook / 100_000).toFixed(1)}L SIP/mo
+      </span>
+      {signals.length > 0 && (
+        <span className="text-muted-foreground text-xs">·</span>
+      )}
+      {signals.map((s, i) => (
+        <span
+          key={i}
+          className={`inline-flex items-center text-[11px] font-semibold px-2 py-0.5 rounded-full border ${colorMap[s.tone]}`}
+        >
+          {s.text}
+        </span>
+      ))}
+      {signals.length === 0 && (
+        <span className="inline-flex items-center text-[11px] font-semibold px-2 py-0.5 rounded-full border text-emerald-700 bg-emerald-50 border-emerald-200">
+          ✓ No alerts today
+        </span>
+      )}
     </div>
   );
 }
@@ -462,6 +496,8 @@ function Kpi({
   trend,
   accent,
   hero,
+  delta,
+  deltaTone,
 }: {
   href?: string;
   icon?: any;
@@ -471,6 +507,9 @@ function Kpi({
   trend?: "up" | "down";
   accent?: "cyan" | "violet" | "emerald" | "amber";
   hero?: boolean;
+  /** Small period-trajectory pill, e.g. "+23 MTD". */
+  delta?: string;
+  deltaTone?: "up" | "down";
 }) {
   const TrendIcon = trend === "up" ? ArrowUpRight : trend === "down" ? ArrowDownRight : null;
 
@@ -519,7 +558,7 @@ function Kpi({
       : "text-muted-foreground";
 
   const inner = (
-    <div className="kpi-card">
+    <div className="kpi-card glass-card">
       <div className="flex items-center justify-between">
         <span className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">
           {label}
@@ -530,7 +569,25 @@ function Kpi({
           </div>
         )}
       </div>
-      <div className="text-2xl font-bold mt-2 tabular-nums tracking-tight">{value}</div>
+      <div className="flex items-baseline gap-2 mt-2 flex-wrap">
+        <div className="text-2xl font-bold tabular-nums tracking-tight">{value}</div>
+        {delta && (
+          <span
+            className={`inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+              deltaTone === "down"
+                ? "bg-rose-50 text-rose-700"
+                : "bg-emerald-50 text-emerald-700"
+            }`}
+          >
+            {deltaTone === "down" ? (
+              <ArrowDownRight className="size-2.5" />
+            ) : (
+              <ArrowUpRight className="size-2.5" />
+            )}
+            {delta}
+          </span>
+        )}
+      </div>
       {sub && (
         <div className={`text-xs mt-2 flex items-center gap-1 ${trendColor}`}>
           {TrendIcon && <TrendIcon className="size-3" />}
@@ -575,7 +632,7 @@ function Stat({
       : "bg-brand-cyan-light text-brand-cyan-deep";
 
   const inner = (
-    <div className="kpi-card">
+    <div className="kpi-card glass-card">
       <div className="flex items-center justify-between">
         <span className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">
           {label}

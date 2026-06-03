@@ -15,9 +15,10 @@ import { desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { require as requireCap } from "@/lib/auth/rbac";
+import { require as requireCap, requireAny } from "@/lib/auth/rbac";
 import { tenants, templates, templateVersions } from "@/db/schema";
 import { runComplianceChecks } from "@/lib/comms/compliance";
+import { findUndeclaredPlaceholders } from "@/lib/comms/tokens";
 
 export const dynamic = "force-dynamic";
 
@@ -39,13 +40,19 @@ const CreateBody = z.object({
   locale: z.string().default("en-IN"),
   body: z.any(),
   variables: z.array(VariableDecl).default([]),
+  attachments: z.array(z.object({ name: z.string().max(200), url: z.string().max(2000) })).default([]),
 });
 
 export async function GET() {
   try {
     const session = await requireSession();
+    requireAny(session.roles, ["template.view", "template.edit", "communication.send", "workflow.edit"], session.permissions);
     const rows = await withTenant(session.tenantId, async (tx) => {
-      return tx.select().from(templates).orderBy(desc(templates.updatedAt));
+      return tx
+        .select()
+        .from(templates)
+        .where(eq(templates.tenantId, session.tenantId))
+        .orderBy(desc(templates.updatedAt));
     });
     return NextResponse.json({ templates: rows });
   } catch (err: any) {
@@ -110,13 +117,22 @@ export async function POST(req: NextRequest) {
         versionNumber: 1,
         body: body.body,
         variables: body.variables,
+        attachments: body.attachments ?? [],
         complianceChecks: compliance,
         complianceScore: String(compliance.score),
         autoComplianceBlocked: compliance.blocked,
         approvalStatus: "draft",
+        createdByUserId: session.userId,
       } as any);
 
-      return { id: tplId, versionId: verId, compliance };
+      // Non-blocking authoring hint: merge fields used in the body but not
+      // declared as variables will render blank at send.
+      const undeclared = findUndeclaredPlaceholders(previewText, body.variables.map((v) => v.key));
+      const warnings = undeclared.length
+        ? [`Undeclared merge fields will render blank: ${undeclared.map((k) => `{{${k}}}`).join(", ")}`]
+        : [];
+
+      return { id: tplId, versionId: verId, compliance, warnings };
     });
 
     return NextResponse.json(result, { status: 201 });

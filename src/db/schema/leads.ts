@@ -1,4 +1,4 @@
-import { index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { index, integer, jsonb, numeric, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { id, tenantId, timestamps } from "./_shared";
 import { tenants } from "./tenants";
 import { users } from "./users";
@@ -13,7 +13,10 @@ export const leads = pgTable(
 
     name: text("name").notNull(),
     email: text("email"),
+    emailNormalized: text("email_normalized"),
     phone: text("phone"),
+    phoneNormalized: text("phone_normalized"),
+    pan: text("pan"),
     city: text("city"),
     pincode: text("pincode"),
 
@@ -82,6 +85,35 @@ export const leads = pgTable(
         "converted",
         "lost",
         "not_interested",
+        // SOP Blueprint stages (lead + client phase)
+        "call_done",
+        "call_back_later",
+        "call_not_connected",
+        "contact_in_future",
+        "meeting_pending",
+        "won_lead",
+        "not_qualified",
+        "request_documents",
+        "documents_pending",
+        "documents_received",
+        "kyc_validated",
+        "kyc_registered",
+        "kyc_pending",
+        "modify_kyc",
+        "physical_kyc",
+        "online_kyc",
+        "ucc_create",
+        "ucc_activated",
+        "mandate_create",
+        "mandate_activated",
+        "mandate_reject",
+        "mandate_rejected",
+        "make_transaction",
+        "transaction_successful",
+        "transaction_failed",
+        "family_mapping",
+        "update_information",
+        "add_in_review_sheet",
         // Legacy aliases
         "qualified",
         "proposal_sent",
@@ -91,10 +123,48 @@ export const leads = pgTable(
       .notNull()
       .default("new"),
     stageChangedAt: timestamp("stage_changed_at", { withTimezone: true }),
+    /** Multiple-pipelines (Zoho parity): which sales process this lead runs in
+     *  (mf | insurance | general) + its stage within that pipeline. Separate
+     *  from the blueprint `stage` above. See src/lib/pipelines/config.ts. */
+    pipeline: text("pipeline").notNull().default("mf"),
+    pipelineStage: text("pipeline_stage"),
+    /** Legacy free-text score (AI-advisory; not reliably populated). Kept for
+     *  back-compat — the structured columns below are the source of truth. */
     score: text("score").default("0"),
+    /** Deterministic scorecard output (0–100) — see src/lib/leads/score.ts. */
+    leadScore: integer("lead_score").notNull().default(0),
+    /** Band derived from leadScore: hot | warm | cold. */
+    scoreBand: text("score_band").notNull().default("cold"),
+    /** When leadScore was last (re)computed. NULL ⇒ never scored. */
+    scoredAt: timestamp("scored_at", { withTimezone: true }),
 
     interestProducts: jsonb("interest_products").$type<string[]>().default([]),
+    /** Legacy free-text "intended investment" — kept populated (from
+     *  expectedBusinessAmount) for back-compat scoring + old readers. The
+     *  numeric column below is the canonical pipeline value. */
     intendedAmount: text("intended_amount"),
+
+    /**
+     * Canonical pipeline value in rupees — what this lead is expected to bring
+     * if converted. Drives the "Pipeline value" KPI + forecasting + scoring.
+     * Backfilled from intended_amount in migration 0052.
+     */
+    expectedBusinessAmount: numeric("expected_business_amount", { precision: 16, scale: 2 }),
+    /** Coarse AUM-potential band for one-click segmentation. */
+    aumPotential: text("aum_potential", {
+      enum: ["under_10l", "10l_50l", "50l_2cr", "hni_2cr_plus"],
+    }),
+    /** Lead classification — drives routing, segmentation, scoring inputs. */
+    leadType: text("lead_type", {
+      enum: ["individual", "hni", "nri", "corporate", "minor"],
+    }),
+    /** Qualification context the RM gathers up-front: occupation + what the
+     *  lead already holds elsewhere (for the pitch). JSONB so it can grow. */
+    profile: jsonb("profile").$type<{ occupation?: string; currentInvestments?: string[] }>().default({}),
+    /** Secondary contact points (work vs personal). Primary stays in
+     *  phone/email so dedup via the normalized columns keeps working. */
+    altPhone: text("alt_phone"),
+    altEmail: text("alt_email"),
 
     /** Optional referral chain — populated when source = 'existing_client' or 'referral' */
     referredByInvestorId: uuid("referred_by_investor_id"),
@@ -125,8 +195,13 @@ export const leads = pgTable(
   },
   (t) => ({
     stageIdx: index("leads_stage_idx").on(t.tenantId, t.stage),
+    scoreIdx: index("leads_score_idx").on(t.tenantId, t.leadScore),
     ownerIdx: index("leads_owner_idx").on(t.tenantId, t.ownerId),
     nextFollowUpIdx: index("leads_next_fu_idx").on(t.tenantId, t.nextFollowUpAt),
+    phoneNormIdx: index("leads_phone_norm_idx").on(t.tenantId, t.phoneNormalized),
+    emailNormIdx: index("leads_email_norm_idx").on(t.tenantId, t.emailNormalized),
+    panIdx: index("leads_pan_idx").on(t.tenantId, t.pan),
+    leadTypeIdx: index("leads_type_idx").on(t.tenantId, t.leadType),
   })
 );
 

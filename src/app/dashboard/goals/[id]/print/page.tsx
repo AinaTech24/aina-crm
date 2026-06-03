@@ -70,8 +70,8 @@ export default async function GoalPrintPage({
     existingMonthlySip: existingSip,
     monthsLeft,
     expectedReturnPct: ret,
-    inflationPct: 6,
-    stepUpPct: 10,
+    inflationPct: goal.inflationPct ? Number(goal.inflationPct) : 6,
+    stepUpPct: goal.stepUpPct ? Number(goal.stepUpPct) : 10,
   });
 
   const sensitivity = sensitivitySipRates(targetAmount, currentValue, monthsLeft);
@@ -168,7 +168,7 @@ export default async function GoalPrintPage({
           <Plan
             label="Option B · Step-up SIP (start)"
             value={formatINR(Math.round(calc.requiredStepUpInitialSip))}
-            sub="Increases 10 % every year"
+            sub={`Increases ${calc.stepUpPct} % every year`}
           />
           <Plan
             label="Option C · Lumpsum today"
@@ -302,7 +302,7 @@ export default async function GoalPrintPage({
                 <strong>Lumpsum-today:</strong> Target / (1 + r/12)<sup>n</sup>.
               </li>
               <li>
-                <strong>Step-up SIP:</strong> Starting amount that, when increased 10 % each year,
+                <strong>Step-up SIP:</strong> Starting amount that, when increased {calc.stepUpPct} % each year,
                 reaches the target at the same compounding rate.
               </li>
             </ul>

@@ -13,6 +13,12 @@
  *                                    not already flagged
 *   investor.kyc_expiring          — CKYC expiry within 30 days
  *   investor.risk_profile_expired  — risk profile signed > 365 days ago
+ *   goal.drift                     — an investor's goal is >10pp behind its
+ *                                    time-trajectory (one per investor/day)
+ *   insurance.premium_due          — a policy's premium is due in 15/7/1 days
+ *   insurance.lapsed               — an active policy passed grace unpaid (once)
+ *   sip.expiring                   — an active SIP ends in 30/15/7 days (renewal)
+ *   mandate.expiring               — a NACH mandate expires in 90/60/30 days
  *   employee.nism_expiring         — NISM expiry within 90 days
  *   employee.arn_expiring          — personal ARN expiry within 90 days
  *   employee.euin_expiring         — EUIN expiry within 90 days
@@ -22,9 +28,12 @@
  *   sub_distributor.euin_expiring  — sub-dist EUIN within 90 days
  *   legal_registration.expiring    — statutory registration within 90 days
  *
- * Idempotency: each event carries `meta.scanDate = YYYY-MM-DD`. The
- * outbox poller dedupes by (kind, entity_id, meta.scanDate) — so a
- * second run on the same day is a no-op.
+ * Idempotency: each event carries `meta.source = 'daily-ops-scanner'` and
+ * `meta.scanDate = YYYY-MM-DD`. A partial unique index
+ * (events_outbox_scanner_dedup_idx, migration 0031) enforces uniqueness on
+ * (tenant_id, kind, entity_id, scanDate) for scanner rows, and every INSERT
+ * below uses ON CONFLICT DO NOTHING — so a second run on the same day is a
+ * no-op at the write layer (no duplicate events ever reach the poller).
  *
  * Schedule: invoked by the master scheduler at 06:30 local time. The
  * worker pages through all active tenants, runs each scan with a
@@ -37,6 +46,10 @@
 
 import { sql } from "drizzle-orm";
 import { withSystem, withTenant } from "@/db/client";
+import { recomputeAllHealth } from "@/lib/investors/health-persist";
+import { recomputeAllFamilyHealth } from "@/lib/families/health-persist";
+import { recomputeAllGoals } from "@/lib/goal-planning/recompute";
+import { recomputeAllAum, revalueAllFolios } from "@/lib/finance/aum-persist";
 import { eventsOutbox } from "@/db/schema";
 
 interface ScanResult {
@@ -57,6 +70,30 @@ interface ScanResult {
   subDistArnExpiring: number;
   subDistEuinExpiring: number;
   legalRegExpiring: number;
+  /** Investors whose persisted health score was refreshed this run. */
+  healthScored: number;
+  /** Families whose persisted health score was refreshed this run. */
+  familyHealthScored: number;
+  /** Goals whose progress/required-SIP/status were refreshed this run. */
+  goalsRecomputed: number;
+  /** Investors whose stored AUM was re-valued against live NAV this run. */
+  aumRevalued: number;
+  /** Folios whose holdings were repriced at live NAV this run. */
+  foliosRevalued: number;
+  /** `goal.drift` events emitted this run (one per investor with a behind goal). */
+  goalDrift: number;
+  /** `insurance.premium_due` events emitted (one per investor at a milestone). */
+  premiumDue: number;
+  /** `insurance.lapsed` events emitted (one per newly-lapsed policy). */
+  policyLapsed: number;
+  /** `sip.expiring` events emitted (one per investor at a milestone). */
+  sipExpiring: number;
+  /** `mandate.expiring` events emitted (one per investor at a milestone). */
+  mandateExpiring: number;
+  /** Service requests escalated this run (resolution OR response SLA breach). */
+  srEscalated: number;
+  /** Attendance rows auto-seeded for today (week-off/on-leave/absent). */
+  attendanceSeeded: number;
   durationMs: number;
 }
 
@@ -70,7 +107,7 @@ async function listActiveTenants(): Promise<string[]> {
   return await withSystem(async (tx) => {
     const r = await tx.execute(sql`
       SELECT id FROM tenants
-      WHERE license_status IN ('active', 'trial')
+      WHERE status IN ('active', 'trial')
     `);
     return (r.rows as Array<{ id: string }>).map((row) => row.id);
   });
@@ -82,8 +119,8 @@ async function listActiveTenants(): Promise<string[]> {
  * though the outer loop is system-context.
  *
  * The scanDate string is the key for idempotency. Two runs on the same
- * day for the same tenant will emit the same events; the outbox poller's
- * dedup is responsible for not double-processing them.
+ * day for the same tenant try to emit the same events; the partial unique
+ * index + ON CONFLICT DO NOTHING on each INSERT silently drops the repeats.
  */
 export async function scanTenant(tenantId: string): Promise<ScanResult> {
   const startedAt = Date.now();
@@ -104,6 +141,18 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
     subDistArnExpiring: 0,
     subDistEuinExpiring: 0,
     legalRegExpiring: 0,
+    healthScored: 0,
+    familyHealthScored: 0,
+    goalsRecomputed: 0,
+    aumRevalued: 0,
+    foliosRevalued: 0,
+    goalDrift: 0,
+    premiumDue: 0,
+    policyLapsed: 0,
+    sipExpiring: 0,
+    mandateExpiring: 0,
+    srEscalated: 0,
+    attendanceSeeded: 0,
     durationMs: 0,
   };
 
@@ -133,7 +182,7 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
           entityId: row.id,
           after: { name: row.name, dob: row.dob, rmId: row.rm_id } as any,
           meta: { scanDate, source: "daily-ops-scanner" } as any,
-        } as any);
+        } as any).onConflictDoNothing();
       }
 
       // ── 2. Anniversaries — onboardedAt matches today, > 1 yr ago ──────
@@ -159,7 +208,7 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
           entityId: row.id,
           after: { name: row.name, onboardedAt: row.onboarded_at, rmId: row.rm_id } as any,
           meta: { scanDate, source: "daily-ops-scanner" } as any,
-        } as any);
+        } as any).onConflictDoNothing();
       }
 
       // ── 3. Minor → Major (turned 18, still flagged minor) ─────────────
@@ -183,7 +232,7 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
           entityId: row.id,
           after: { name: row.name, dob: row.dob, rmId: row.rm_id } as any,
           meta: { scanDate, source: "daily-ops-scanner" } as any,
-        } as any);
+        } as any).onConflictDoNothing();
       }
 
       // ── 4. Dormant detection — active row, no transaction in 365 d ────
@@ -224,7 +273,7 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
           entityId: row.id,
           after: { name: row.name, rmId: row.rm_id } as any,
           meta: { scanDate, source: "daily-ops-scanner" } as any,
-        } as any);
+        } as any).onConflictDoNothing();
       }
 
       // ── 5. CKYC expiring within 30 days ───────────────────────────────
@@ -248,7 +297,7 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
           entityId: row.id,
           after: { name: row.name, expiresAt: row.ckyc_expiry_at, rmId: row.rm_id } as any,
           meta: { scanDate, source: "daily-ops-scanner" } as any,
-        } as any);
+        } as any).onConflictDoNothing();
       }
 
       // ── 6. Risk profile > 365 days old (regulatory annual review) ─────
@@ -272,7 +321,7 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
           entityId: row.id,
           after: { name: row.name, signedAt: row.risk_profile_signed_at, rmId: row.rm_id } as any,
           meta: { scanDate, source: "daily-ops-scanner" } as any,
-        } as any);
+        } as any).onConflictDoNothing();
       }
 
       // ── 7-10. Employee licensing expiries (NISM / ARN / EUIN / DSC) ──
@@ -337,7 +386,7 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
               managerId: row.reporting_manager_id,
             } as any,
             meta: { scanDate, source: "daily-ops-scanner" } as any,
-          } as any);
+          } as any).onConflictDoNothing();
           if (c.kind === "employee.nism_expiring") result.nismExpiring++;
           if (c.kind === "employee.arn_expiring") result.arnExpiring++;
           if (c.kind === "employee.euin_expiring") result.euinExpiring++;
@@ -405,7 +454,7 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
               relationshipManagerId: row.relationship_manager_id,
             } as any,
             meta: { scanDate, source: "daily-ops-scanner" } as any,
-          } as any);
+          } as any).onConflictDoNothing();
           if (c.kind === "sub_distributor.nism_expiring")
             result.subDistNismExpiring++;
           if (c.kind === "sub_distributor.arn_expiring")
@@ -452,8 +501,382 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
             daysOut,
           } as any,
           meta: { scanDate, source: "daily-ops-scanner" } as any,
-        } as any);
+        } as any).onConflictDoNothing();
         result.legalRegExpiring++;
+      }
+
+      // ── Refresh persisted client-health ───────────────────────────────
+      // Health has time-based factors (days-since-contact, review overdue) so
+      // it drifts even when rows don't change. Re-score the whole book nightly
+      // off the same JS scorecard the app writes on edit.
+      const scanNow = new Date();
+      const health = await recomputeAllHealth(tx, scanNow);
+      result.healthScored = health.scored;
+
+      // Family health depends on member aggregates + family review cadence —
+      // same nightly-drift argument. One efficient pass per tenant.
+      const famHealth = await recomputeAllFamilyHealth(tx, scanNow);
+      result.familyHealthScored = famHealth.scored;
+
+      // Goal progress drifts as months tick down + linked investments grow.
+      // Refresh required-SIP / gap / progress / status + expected_progress_pct
+      // (which powers the goal_drift_alert recipe).
+      const goalsRes = await recomputeAllGoals(tx, scanNow);
+      result.goalsRecomputed = goalsRes.recomputed;
+
+      // ── Live AUM revaluation ──────────────────────────────────────────
+      // The headline audit fix: investors.aum (firm/RM AUM, tiering, exports,
+      // AI briefs) and the folio rollup (review report, commission-expected)
+      // were stored at import and never repriced. Revalue both against the
+      // live AMFI NAV feed nightly so every surface agrees with today's NAV.
+      // Folios first (so their repriced values are available), then investors.
+      const folioVal = await revalueAllFolios(tx);
+      result.foliosRevalued = folioVal.folios;
+      const aumVal = await recomputeAllAum(tx);
+      result.aumRevalued = aumVal.updated;
+
+      // ── CS5: AUM "moments that matter" ────────────────────────────────
+      // When a client's live AUM crosses a band (₹10L/₹25L/₹50L/₹1Cr/₹2.5Cr/
+      // ₹5Cr), emit a one-time congratulation event + raise their stored band so
+      // it fires once per crossing. A delightful, proactive touch.
+      const MILESTONE_LABELS: Record<number, string> = {
+        1: "₹10 lakh", 2: "₹25 lakh", 3: "₹50 lakh", 4: "₹1 crore", 5: "₹2.5 crore", 6: "₹5 crore",
+      };
+      const milestoneRows = await tx.execute(sql`
+        WITH banded AS (
+          SELECT id, name, rm_id, aum,
+            CASE WHEN aum >= 50000000 THEN 6 WHEN aum >= 25000000 THEN 5 WHEN aum >= 10000000 THEN 4
+                 WHEN aum >= 5000000 THEN 3 WHEN aum >= 2500000 THEN 2 WHEN aum >= 1000000 THEN 1 ELSE 0 END AS band
+          FROM investors WHERE status = 'active'
+        )
+        SELECT b.id, b.name, b.rm_id, b.aum, b.band
+        FROM banded b JOIN investors i ON i.id = b.id
+        WHERE b.band > i.aum_milestone_band
+      `);
+      for (const row of milestoneRows.rows as Array<{ id: string; name: string; rm_id: string | null; aum: string; band: number }>) {
+        await tx.insert(eventsOutbox).values({
+          tenantId,
+          kind: "investor.milestone.aum",
+          entityType: "investor",
+          entityId: row.id,
+          after: { band: row.band, band_label: MILESTONE_LABELS[row.band] ?? "", aum: Number(row.aum), name: row.name, rmId: row.rm_id } as any,
+          meta: { scanDate, source: "daily-ops-scanner" } as any,
+        } as any).onConflictDoNothing();
+        await tx.execute(sql`UPDATE investors SET aum_milestone_band = ${row.band} WHERE id = ${row.id}::uuid`);
+      }
+
+      // ── Goal drift — emit a `goal.drift` event for each investor whose goal
+      // has fallen >10pp behind its time-trajectory. One event per investor
+      // (the worst-drifting goal); the scanner dedup index collapses to one
+      // nudge per client per day. This is what the goal_drift_alert recipe
+      // subscribes to (previously the recipe had no event source at all).
+      const driftRows = await tx.execute(sql`
+        SELECT DISTINCT ON (g.investor_id)
+          g.investor_id, g.id AS goal_id, g.name AS goal_name,
+          ROUND(g.expected_progress_pct - g.progress_pct, 1) AS drift_pct,
+          i.rm_id
+        FROM goals g
+        JOIN investors i ON i.id = g.investor_id AND i.status NOT IN ('closed', 'exited')
+        WHERE g.status IN ('not_started', 'on_track', 'behind_track', 'active')
+          AND g.expected_progress_pct IS NOT NULL
+          AND g.progress_pct < g.expected_progress_pct - 10
+        ORDER BY g.investor_id, (g.expected_progress_pct - g.progress_pct) DESC
+      `);
+      result.goalDrift = driftRows.rows.length;
+      for (const row of driftRows.rows as Array<{
+        investor_id: string;
+        goal_id: string;
+        goal_name: string;
+        drift_pct: string;
+        rm_id: string | null;
+      }>) {
+        await tx
+          .insert(eventsOutbox)
+          .values({
+            tenantId,
+            kind: "goal.drift",
+            entityType: "investor",
+            entityId: row.investor_id,
+            after: {
+              goalId: row.goal_id,
+              goal_name: row.goal_name,
+              drift_pct: Number(row.drift_pct),
+              rmId: row.rm_id,
+            } as any,
+            meta: { scanDate, source: "daily-ops-scanner" } as any,
+          } as any)
+          .onConflictDoNothing();
+      }
+
+      // ── Insurance premium due — emit `insurance.premium_due` at reminder
+      // milestones (15 / 7 / 1 days before the next premium) so the client gets
+      // a proactive nudge instead of a daily drip. One event per investor (the
+      // soonest-due policy); the scanner dedup collapses to one/day.
+      const premiumRows = await tx.execute(sql`
+        SELECT DISTINCT ON (p.investor_id)
+          p.investor_id, p.id AS policy_id, p.plan_name, p.insurer,
+          p.policy_number, p.next_premium_due_date,
+          p.annual_premium::numeric AS annual_premium,
+          (p.next_premium_due_date - current_date)::int AS days_until,
+          i.rm_id
+        FROM insurance_policies p
+        JOIN investors i ON i.id = p.investor_id AND i.status NOT IN ('closed', 'exited')
+        WHERE p.status = 'active'
+          AND p.next_premium_due_date IS NOT NULL
+          AND (p.next_premium_due_date - current_date) IN (15, 7, 1)
+        ORDER BY p.investor_id, p.next_premium_due_date ASC
+      `);
+      result.premiumDue = premiumRows.rows.length;
+      for (const row of premiumRows.rows as any[]) {
+        await tx
+          .insert(eventsOutbox)
+          .values({
+            tenantId,
+            kind: "insurance.premium_due",
+            entityType: "investor",
+            entityId: row.investor_id,
+            after: {
+              policyId: row.policy_id,
+              plan_name: row.plan_name,
+              insurer: row.insurer,
+              policyNumber: row.policy_number,
+              due_date: row.next_premium_due_date,
+              days_until: Number(row.days_until),
+              premium: row.annual_premium != null ? Number(row.annual_premium) : null,
+              rmId: row.rm_id,
+            } as any,
+            meta: { scanDate, source: "daily-ops-scanner" } as any,
+          } as any)
+          .onConflictDoNothing();
+      }
+
+      // ── Insurance lapse — an active policy past next_premium_due_date + grace
+      // with no payment is lapsed. Alert ONCE (lapse_alerted_at marker) and let
+      // the RM confirm/reinstate, rather than re-firing every day or silently
+      // flipping status off a possibly-stale due date.
+      const lapseRows = await tx.execute(sql`
+        SELECT p.id AS policy_id, p.investor_id, p.plan_name, p.insurer,
+               p.policy_number, p.next_premium_due_date, i.rm_id
+        FROM insurance_policies p
+        JOIN investors i ON i.id = p.investor_id AND i.status NOT IN ('closed', 'exited')
+        WHERE p.status = 'active'
+          AND p.lapse_alerted_at IS NULL
+          AND p.next_premium_due_date IS NOT NULL
+          AND p.next_premium_due_date + (COALESCE(p.grace_period_days, 30) || ' days')::interval < current_date
+      `);
+      result.policyLapsed = lapseRows.rows.length;
+      for (const row of lapseRows.rows as any[]) {
+        await tx
+          .insert(eventsOutbox)
+          .values({
+            tenantId,
+            kind: "insurance.lapsed",
+            entityType: "investor",
+            entityId: row.investor_id,
+            after: {
+              policyId: row.policy_id,
+              plan_name: row.plan_name,
+              insurer: row.insurer,
+              policyNumber: row.policy_number,
+              due_date: row.next_premium_due_date,
+              rmId: row.rm_id,
+            } as any,
+            meta: { scanDate, source: "daily-ops-scanner", policyId: row.policy_id } as any,
+          } as any)
+          .onConflictDoNothing();
+        // Mark alerted so we don't re-fire daily.
+        await tx.execute(sql`
+          UPDATE insurance_policies SET lapse_alerted_at = now() WHERE id = ${row.policy_id}::uuid
+        `);
+      }
+
+      // ── Refresh investors.active_sip_amount ───────────────────────────
+      // This cached column was never recomputed, so the client list's
+      // "Monthly SIP", the SIP health card, family suggestions etc. all read
+      // a stale (usually 0) value. Recompute from the live SIP book nightly.
+      await tx.execute(sql`
+        UPDATE investors i SET active_sip_amount = COALESCE((
+          SELECT SUM(s.amount::numeric) FROM sips s
+          WHERE s.investor_id = i.id AND s.status = 'active'
+        ), 0)
+        WHERE i.active_sip_amount IS DISTINCT FROM COALESCE((
+          SELECT SUM(s.amount::numeric) FROM sips s
+          WHERE s.investor_id = i.id AND s.status = 'active'
+        ), 0)
+      `);
+
+      // ── SIP expiring — emit `sip.expiring` at 30/15/7 days before end_date
+      // so the client gets a renewal nudge before recurring AUM quietly ends.
+      // One event per investor (the soonest-ending SIP); dedup collapses to
+      // one/day.
+      const sipExpRows = await tx.execute(sql`
+        SELECT DISTINCT ON (s.investor_id)
+          s.investor_id, s.id AS sip_id, s.scheme_name, s.amount::numeric AS amount,
+          s.end_date, (s.end_date - current_date)::int AS days_until, i.rm_id
+        FROM sips s
+        JOIN investors i ON i.id = s.investor_id AND i.status NOT IN ('closed', 'exited')
+        WHERE s.status = 'active'
+          AND s.end_date IS NOT NULL
+          AND (s.end_date - current_date) IN (30, 15, 7)
+        ORDER BY s.investor_id, s.end_date ASC
+      `);
+      result.sipExpiring = sipExpRows.rows.length;
+      for (const row of sipExpRows.rows as any[]) {
+        await tx
+          .insert(eventsOutbox)
+          .values({
+            tenantId,
+            kind: "sip.expiring",
+            entityType: "investor",
+            entityId: row.investor_id,
+            after: {
+              sipId: row.sip_id,
+              scheme_name: row.scheme_name,
+              amount: row.amount != null ? Number(row.amount) : null,
+              end_date: row.end_date,
+              days_until: Number(row.days_until),
+              rmId: row.rm_id,
+            } as any,
+            meta: { scanDate, source: "daily-ops-scanner" } as any,
+          } as any)
+          .onConflictDoNothing();
+      }
+
+      // ── Mandate expiring — emit `mandate.expiring` at T-90 / T-60 / T-30
+      // (NACH mandate must be renewed or every SIP on it stops). One event per
+      // investor (soonest-expiring mandate); the mandate_expiry_t90_t60_t30
+      // recipe branches on event.days_to_expiry.
+      const mandateExpRows = await tx.execute(sql`
+        SELECT DISTINCT ON (m.investor_id)
+          m.investor_id, m.id AS mandate_id, m.mandate_ref_no, m.expires_at,
+          (m.expires_at - current_date)::int AS days_until, i.rm_id
+        FROM mandates m
+        JOIN investors i ON i.id = m.investor_id AND i.status NOT IN ('closed', 'exited')
+        WHERE m.status = 'active'
+          AND m.expires_at IS NOT NULL
+          AND (m.expires_at - current_date) IN (90, 60, 30)
+        ORDER BY m.investor_id, m.expires_at ASC
+      `);
+      result.mandateExpiring = mandateExpRows.rows.length;
+      for (const row of mandateExpRows.rows as any[]) {
+        await tx
+          .insert(eventsOutbox)
+          .values({
+            tenantId,
+            kind: "mandate.expiring",
+            entityType: "investor",
+            entityId: row.investor_id,
+            after: {
+              mandateId: row.mandate_id,
+              mandate_ref: row.mandate_ref_no,
+              expires_at: row.expires_at,
+              days_to_expiry: Number(row.days_until),
+              rmId: row.rm_id,
+            } as any,
+            meta: { scanDate, source: "daily-ops-scanner" } as any,
+          } as any)
+          .onConflictDoNothing();
+      }
+
+      // ── Attendance auto-seed — ensure today's row per active employee ────
+      // approved leave → on_leave · Sunday → week_off · else absent (until they
+      // clock in). ON CONFLICT DO NOTHING so a real clock-in is never clobbered.
+      const attSeed = await tx.execute(sql`
+        INSERT INTO attendance (tenant_id, employee_user_id, attendance_date, status, source)
+        SELECT u.tenant_id, u.id, current_date,
+          CASE
+            WHEN EXISTS (
+              SELECT 1 FROM leave_applications la
+              WHERE la.tenant_id = u.tenant_id AND la.employee_user_id = u.id
+                AND la.status = 'approved' AND current_date BETWEEN la.from_date AND la.to_date
+            ) THEN 'on_leave'
+            WHEN EXTRACT(DOW FROM current_date) = 0 THEN 'week_off'
+            ELSE 'absent'
+          END,
+          'auto'
+        FROM users u
+        WHERE u.tenant_id = ${tenantId}::uuid AND u.status = 'active'
+        ON CONFLICT (tenant_id, employee_user_id, attendance_date) DO NOTHING
+        RETURNING 1
+      `);
+      result.attendanceSeeded = attSeed.rows.length;
+
+      // ── Service-request SLA escalation (resolution OR first-response) ─────
+      // Deterministic escalation so the "escalate on breach" promise holds even
+      // without the recipe installed. A ticket escalates ONCE (escalated_at
+      // guards re-fire): flips to 'escalated', appends a timeline entry,
+      // notifies owner/branch-head + assignee, and opens an urgent task.
+      const srRows = await tx.execute(sql`
+        SELECT sr.id, sr.ticket_no, sr.type, sr.assigned_to_user_id, sr.investor_id,
+               i.name AS investor_name,
+               (sr.sla_resolution_at < now()) AS resolution_breached,
+               (sr.responded_at IS NULL AND sr.sla_response_at < now()) AS response_breached
+        FROM service_requests sr
+        LEFT JOIN investors i ON i.id = sr.investor_id
+        WHERE sr.status NOT IN ('resolved','closed')
+          AND sr.escalated_at IS NULL
+          AND (sr.sla_resolution_at < now()
+               OR (sr.responded_at IS NULL AND sr.sla_response_at < now()))
+        LIMIT 500
+      `);
+      result.srEscalated = srRows.rows.length;
+      if (srRows.rows.length) {
+        const leads = await tx.execute(sql`
+          SELECT id FROM users WHERE tenant_id = ${tenantId}::uuid AND roles && ARRAY['owner','branch_head']::text[]
+        `);
+        const leadIds = (leads.rows as Array<{ id: string }>).map((u) => u.id);
+        const nowIso = new Date().toISOString();
+        for (const sr of srRows.rows as any[]) {
+          const why = sr.resolution_breached ? "TAT (resolution) breached" : "first response overdue";
+          // Flip to escalated + stamp + append a timeline entry (idempotent: escalated_at was NULL).
+          await tx.execute(sql`
+            UPDATE service_requests
+            SET status = 'escalated', escalated_at = now(), updated_at = now(),
+                timeline = COALESCE(timeline, '[]'::jsonb) ||
+                  ${JSON.stringify([{ at: nowIso, by: "system", event: "escalated", note: why }])}::jsonb
+            WHERE id = ${sr.id}::uuid
+          `);
+          // Notify owner/branch-head + the assignee.
+          const recipients = new Set<string>(leadIds);
+          if (sr.assigned_to_user_id) recipients.add(sr.assigned_to_user_id);
+          for (const userId of recipients) {
+            await tx.execute(sql`
+              INSERT INTO notifications (tenant_id, user_id, kind, title, body, link_url, severity, meta)
+              VALUES (
+                ${tenantId}::uuid, ${userId}::uuid, 'service_request.escalated',
+                ${`SR escalated — ${sr.ticket_no}`},
+                ${`${why} · ${sr.investor_name ?? "client"} · ${String(sr.type).replace(/_/g, " ")}`},
+                ${`/dashboard/service-requests/${sr.id}`}, 'critical',
+                ${JSON.stringify({ service_request_id: sr.id, why })}::jsonb
+              )
+            `);
+          }
+          // Open one urgent task for the assignee (or owner if unassigned).
+          const taskAssignee = sr.assigned_to_user_id ?? leadIds[0] ?? null;
+          if (taskAssignee) {
+            await tx.execute(sql`
+              INSERT INTO tasks (tenant_id, assignee_id, subject_type, subject_id, type, title, description, priority, status, due_at, sla_due_at)
+              VALUES (
+                ${tenantId}::uuid, ${taskAssignee}::uuid, 'service_request', ${sr.id}::uuid,
+                'service_request_escalation', ${`Resolve escalated SR ${sr.ticket_no}`},
+                ${`${why}. Client: ${sr.investor_name ?? "—"}.`}, 'urgent', 'open',
+                now() + interval '1 day', now() + interval '1 day'
+              )
+            `);
+          }
+          // Emit an event (scanner-deduped) so any subscribed workflow can react.
+          await tx
+            .insert(eventsOutbox)
+            .values({
+              tenantId,
+              kind: "service_request.escalated",
+              entityType: "service_request",
+              entityId: sr.id,
+              after: { ticketNo: sr.ticket_no, type: sr.type, why } as any,
+              meta: { scanDate, source: "daily-ops-scanner" } as any,
+            } as any)
+            .onConflictDoNothing();
+        }
       }
     },
     { roles: ["system"] }
@@ -492,6 +915,18 @@ export async function runDailyOpsScan(): Promise<{
     subDistArnExpiring: 0,
     subDistEuinExpiring: 0,
     legalRegExpiring: 0,
+    healthScored: 0,
+    familyHealthScored: 0,
+    goalsRecomputed: 0,
+    aumRevalued: 0,
+    foliosRevalued: 0,
+    goalDrift: 0,
+    premiumDue: 0,
+    policyLapsed: 0,
+    sipExpiring: 0,
+    mandateExpiring: 0,
+    srEscalated: 0,
+    attendanceSeeded: 0,
   };
   for (const tenantId of tenants) {
     try {
@@ -510,6 +945,18 @@ export async function runDailyOpsScan(): Promise<{
       totals.subDistArnExpiring += r.subDistArnExpiring;
       totals.subDistEuinExpiring += r.subDistEuinExpiring;
       totals.legalRegExpiring += r.legalRegExpiring;
+      totals.healthScored += r.healthScored;
+      totals.familyHealthScored += r.familyHealthScored;
+      totals.goalsRecomputed += r.goalsRecomputed;
+      totals.aumRevalued += r.aumRevalued;
+      totals.foliosRevalued += r.foliosRevalued;
+      totals.goalDrift += r.goalDrift;
+      totals.premiumDue += r.premiumDue;
+      totals.policyLapsed += r.policyLapsed;
+      totals.sipExpiring += r.sipExpiring;
+      totals.mandateExpiring += r.mandateExpiring;
+      totals.srEscalated += r.srEscalated;
+      totals.attendanceSeeded += r.attendanceSeeded;
     } catch (err: any) {
       console.error(`[daily-ops-scanner] tenant ${tenantId} failed:`, err.message);
       failed.push(tenantId);

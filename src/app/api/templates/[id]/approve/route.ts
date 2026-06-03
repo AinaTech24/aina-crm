@@ -30,9 +30,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       const ver = (await tx
         .select()
         .from(templateVersions)
-        .where(and(eq(templateVersions.templateId, id), eq(templateVersions.approvalStatus, "submitted")))
+        .where(and(eq(templateVersions.templateId, id), eq(templateVersions.tenantId, session.tenantId), eq(templateVersions.approvalStatus, "submitted")))
         .limit(1))[0];
       if (!ver) throw Object.assign(new Error("no submitted version"), { status: 400 });
+
+      // Maker-checker (segregation of duties): the author of a version may not
+      // approve it. Owners are exempt (a solo MFD is both maker and checker).
+      if (ver.createdByUserId && ver.createdByUserId === session.userId && !(session.roles ?? []).includes("owner")) {
+        throw Object.assign(new Error("you authored this template — a different approver must sign off"), { status: 403 });
+      }
 
       await tx
         .update(templateApprovals)
@@ -40,6 +46,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         .where(
           and(
             eq(templateApprovals.templateVersionId, ver.id),
+            eq(templateApprovals.tenantId, session.tenantId),
             eq(templateApprovals.step, "compliance_officer")
           )
         );
@@ -51,13 +58,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           approvedByUserId: session.userId,
           approvedAt: new Date(),
         } as any)
-        .where(eq(templateVersions.id, ver.id));
+        .where(and(eq(templateVersions.id, ver.id), eq(templateVersions.tenantId, session.tenantId)));
 
-      const tpl = (await tx.select().from(templates).where(eq(templates.id, id)).limit(1))[0];
+      const tpl = (await tx.select().from(templates).where(and(eq(templates.id, id), eq(templates.tenantId, session.tenantId))).limit(1))[0];
       // WA templates still need Meta approval — keep template.status = pending_approval
       // until the sync worker flips to APPROVED on the external side.
       if (tpl?.channel !== "whatsapp") {
-        await tx.update(templates).set({ status: "approved" } as any).where(eq(templates.id, id));
+        await tx.update(templates).set({ status: "approved" } as any).where(and(eq(templates.id, id), eq(templates.tenantId, session.tenantId)));
       }
 
       await recordAudit(tx, {

@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { eq, asc } from "drizzle-orm";
+import { and, eq, asc } from "drizzle-orm";
 import { ChevronLeft, Play, Pause, Check, X } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { workflowRuns, workflowRunSteps, workflows } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
+import { canViewMonitor } from "@/lib/automation/control-tower";
 import { formatDate, formatRelative } from "@/lib/utils";
 
 const STATUS_ICONS: Record<string, any> = {
@@ -29,14 +30,26 @@ export const dynamic = "force-dynamic";
 export default async function WorkflowRunDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const session = await requireSession();
+  // Run detail exposes the error trace + run variables (which can hold investor
+  // PII). Gate it like the monitor list + the sidebar link — not just any
+  // logged-in user. 404 rather than 403 so we don't reveal run existence.
+  if (!canViewMonitor(session.roles, session.permissions)) notFound();
   const data = await withTenant(session.tenantId, async (tx) => {
-    const run = (await tx.select().from(workflowRuns).where(eq(workflowRuns.id, id)).limit(1))[0];
+    const run = (await tx
+      .select()
+      .from(workflowRuns)
+      .where(and(eq(workflowRuns.id, id), eq(workflowRuns.tenantId, session.tenantId)))
+      .limit(1))[0];
     if (!run) return null;
-    const wf = (await tx.select().from(workflows).where(eq(workflows.id, run.workflowId)).limit(1))[0];
+    const wf = (await tx
+      .select()
+      .from(workflows)
+      .where(and(eq(workflows.id, run.workflowId), eq(workflows.tenantId, session.tenantId)))
+      .limit(1))[0];
     const steps = await tx
       .select()
       .from(workflowRunSteps)
-      .where(eq(workflowRunSteps.runId, id))
+      .where(and(eq(workflowRunSteps.runId, id), eq(workflowRunSteps.tenantId, session.tenantId)))
       .orderBy(asc(workflowRunSteps.startedAt));
     return { run, wf, steps };
   });

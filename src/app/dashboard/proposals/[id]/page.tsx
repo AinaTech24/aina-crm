@@ -13,11 +13,12 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { withTenant } from "@/db/client";
-import { proposals, users } from "@/db/schema";
+import { proposals, users, investors } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { formatDate, formatINR } from "@/lib/utils";
 import { ProposalStatusActions } from "@/components/proposals/ProposalStatusActions";
 import { ProposalSendActions } from "@/components/proposals/ProposalSendActions";
+import { ProposalSuitabilityPanel } from "@/components/proposals/ProposalSuitabilityPanel";
 
 const TYPE_LABEL: Record<string, string> = {
   comprehensive: "Comprehensive",
@@ -60,10 +61,13 @@ export default async function ProposalDetailPage({
     const u = p.preparedByUserId
       ? (await tx.select().from(users).where(eq(users.id, p.preparedByUserId)).limit(1))[0]
       : null;
-    return { p, u };
+    const inv = p.investorId
+      ? (await tx.select().from(investors).where(eq(investors.id, p.investorId)).limit(1))[0]
+      : null;
+    return { p, u, inv };
   });
   if (!data) notFound();
-  const { p, u } = data;
+  const { p, u, inv } = data;
   const products = (p.products ?? []) as any[];
 
   return (
@@ -212,6 +216,20 @@ export default async function ProposalDetailPage({
         </div>
       )}
 
+      {/* Suitability & Compliance Panel */}
+      <ProposalSuitabilityPanel
+        proposalId={p.id}
+        initialSuitabilityNote={(p as any).suitabilityNote}
+        initialOverrideReason={(p as any).suitabilityOverrideReason}
+        clientRiskProfile={inv?.riskProfile as any}
+        schemes={products
+          .filter((it: any) => it.kind === "mf")
+          .map((it: any) => ({
+            name: it.schemeName,
+            riskRating: it.riskRating,
+          }))}
+      />
+
       {/* Products */}
       <div className="card-surface p-5">
         <h2 className="section-title mb-3">Products ({products.length})</h2>
@@ -284,6 +302,9 @@ function ProductDetails({ it }: { it: any }) {
     if (it.minInvestment) kv.push(["Min", formatINR(Number(it.minInvestment))]);
     if (it.proposedAmount) kv.push(["Proposed", formatINR(Number(it.proposedAmount))]);
     if (it.expectedReturn) kv.push(["Expected return", `${it.expectedReturn}% p.a.`]);
+    if (it.termYears) kv.push(["Horizon", `${it.termYears} yrs`]);
+    const pmsProj = Number(it.proposedAmount ?? 0) * Math.pow(1 + Number(it.expectedReturn ?? 0) / 100, Number(it.termYears ?? 0));
+    if (pmsProj) kv.push(["Projected", formatINR(Math.round(pmsProj))]);
   } else if (it.kind === "aif") {
     if (it.manager) kv.push(["Manager", it.manager]);
     if (it.category) kv.push(["Category", String(it.category).toUpperCase()]);
@@ -291,6 +312,8 @@ function ProductDetails({ it }: { it: any }) {
     if (it.proposedAmount) kv.push(["Proposed", formatINR(Number(it.proposedAmount))]);
     if (it.lockInYears) kv.push(["Lock-in", `${it.lockInYears} yrs`]);
     if (it.targetIrr) kv.push(["Target IRR", `${it.targetIrr}% p.a.`]);
+    const aifProj = Number(it.proposedAmount ?? 0) * Math.pow(1 + Number(it.targetIrr ?? 0) / 100, Number(it.lockInYears ?? 0));
+    if (aifProj) kv.push(["Projected", formatINR(Math.round(aifProj))]);
   }
   if (kv.length === 0) return null;
   return (

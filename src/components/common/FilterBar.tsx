@@ -71,6 +71,9 @@ export function FilterBar({
         params.set(k, String(v));
       }
     }
+    // Any filter/search change resets paging — otherwise you can land on an
+    // out-of-range page of a now-smaller result set and see nothing.
+    params.delete("page");
     router.push(`${pathname}?${params.toString()}`);
     // Keep "busy" on until route transition completes — Next.js refresh hooks
     // would expose this cleanly; for now a short timer is fine.
@@ -309,6 +312,30 @@ function SingleSelect({
   );
 }
 
+/** Quick presets → compute [from, to] as yyyy-mm-dd. India FY = Apr–Mar. */
+function rangePreset(key: string): [string, string] {
+  const now = new Date();
+  const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const y = now.getFullYear(), m = now.getMonth();
+  const fyStartYear = m >= 3 ? y : y - 1;
+  const qStartMonth = m >= 3 && m <= 5 ? 3 : m >= 6 && m <= 8 ? 6 : m >= 9 && m <= 11 ? 9 : 0;
+  switch (key) {
+    case "today": return [iso(now), iso(now)];
+    case "yesterday": { const d = new Date(now); d.setDate(d.getDate() - 1); return [iso(d), iso(d)]; }
+    case "7d": { const d = new Date(now); d.setDate(d.getDate() - 6); return [iso(d), iso(now)]; }
+    case "30d": { const d = new Date(now); d.setDate(d.getDate() - 29); return [iso(d), iso(now)]; }
+    case "month": return [iso(new Date(y, m, 1)), iso(now)];
+    case "lastmonth": { const s = new Date(y, m - 1, 1); const e = new Date(y, m, 0); return [iso(s), iso(e)]; }
+    case "quarter": return [iso(new Date(qStartMonth === 0 ? y : y, qStartMonth, 1)), iso(now)];
+    case "fy": return [iso(new Date(fyStartYear, 3, 1)), iso(now)];
+    default: return ["", ""];
+  }
+}
+const PRESETS: Array<[string, string]> = [
+  ["today", "Today"], ["yesterday", "Yesterday"], ["7d", "Last 7 days"], ["30d", "Last 30 days"],
+  ["month", "This month"], ["lastmonth", "Last month"], ["quarter", "This quarter"], ["fy", "This FY"],
+];
+
 function DateRange({
   label,
   from,
@@ -328,11 +355,22 @@ function DateRange({
       }`}
     >
       <span className="text-muted-foreground">{label}</span>
+      <select
+        value=""
+        onChange={(e) => { if (e.target.value) { const [f, t] = rangePreset(e.target.value); onChange(f, t); } }}
+        className="bg-transparent text-xs outline-none cursor-pointer"
+        title="Quick range"
+      >
+        <option value="">Range…</option>
+        {PRESETS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+      </select>
+      <span className="text-muted-foreground/50">|</span>
       <input
         type="date"
         value={from}
         onChange={(e) => onChange(e.target.value, to)}
         className="bg-transparent text-xs outline-none"
+        title="From"
       />
       <span className="text-muted-foreground">→</span>
       <input
@@ -340,6 +378,7 @@ function DateRange({
         value={to}
         onChange={(e) => onChange(from, e.target.value)}
         className="bg-transparent text-xs outline-none"
+        title="To"
       />
       {active && (
         <button

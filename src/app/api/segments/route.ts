@@ -11,7 +11,7 @@ import { handleApiError } from "@/lib/api/error-handler";
 
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuid } from "uuid";
-import { desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
@@ -26,16 +26,29 @@ const CreateBody = z.object({
   name: z.string().min(2).max(120),
   description: z.string().max(2000).optional(),
   kind: z.enum(["static", "dynamic"]),
-  subjectType: z.enum(["investor", "lead", "task", "folio"]),
+  subjectType: z.enum(["investor", "lead", "task"]),
   ast: FilterASTSchema,
   refreshCron: z.string().optional(),
 });
+
+/** Postgres caps a statement at 65,535 bind params; memberships bind 3/row, so
+ *  insert in batches well under that ceiling. */
+const MEMBERSHIP_CHUNK = 1000;
+function chunk<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
 
 export async function GET() {
   try {
     const session = await requireSession();
     const rows = await withTenant(session.tenantId, async (tx) => {
-      return tx.select().from(segments).orderBy(desc(segments.updatedAt));
+      return tx
+        .select()
+        .from(segments)
+        .where(eq(segments.tenantId, session.tenantId))
+        .orderBy(desc(segments.updatedAt));
     });
     return NextResponse.json({ segments: rows });
   } catch (err: any) {
@@ -75,15 +88,20 @@ export async function POST(req: NextRequest) {
 
       // Static: materialize once immediately. Dynamic: leave to worker.
       if (body.kind === "static") {
-        const { sql: querySql, params } = compileToSelect(body.ast, body.subjectType, {});
+        // Bound the snapshot + cap query cost so a huge base can't pin the
+        // request transaction.
+        await tx.execute(sql`SET LOCAL statement_timeout = '30000ms'`);
+        const { sql: querySql, params } = compileToSelect(body.ast, body.subjectType, {
+          tenantId: session.tenantId,
+          limit: 100_000,
+        });
         const matches = await tx.execute(bindCompiled(querySql, params) as any);
         const rows = matches.rows as Array<{ id: string }>;
-        if (rows.length > 0) {
-          // Batch insert — was one-row-at-a-time (N+1) before, which was
-          // brutal at 100K matches. Multi-row insert lands in a single
-          // round-trip.
+        // Chunked multi-row insert — a single insert of >~21K rows would blow
+        // past Postgres' 65,535 bind-param ceiling (3 params/row).
+        for (const batch of chunk(rows, MEMBERSHIP_CHUNK)) {
           await tx.insert(segmentMemberships).values(
-            rows.map((r) => ({
+            batch.map((r) => ({
               segmentId: segId,
               tenantId: session.tenantId,
               subjectId: r.id,
@@ -93,7 +111,7 @@ export async function POST(req: NextRequest) {
         await tx
           .update(segments)
           .set({ memberCount: rows.length, lastMaterializedAt: new Date() } as any)
-          .where(eq(segments.id, segId));
+          .where(and(eq(segments.id, segId), eq(segments.tenantId, session.tenantId)));
       }
     });
 

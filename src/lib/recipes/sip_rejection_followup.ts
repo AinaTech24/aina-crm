@@ -11,7 +11,7 @@ export const sipRejectionFollowupRecipe: RecipeDef = {
   graph: graph({
     start: "trigger",
     nodes: [
-      n("trigger", "trigger", {}),
+      n("trigger", "trigger", { kind: "transaction.failed.sip_rejection", subjectType: "investor" }),
       n("branch", "branch", {
         cases: [
           {

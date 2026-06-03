@@ -11,14 +11,14 @@ import { handleApiError } from "@/lib/api/error-handler";
 
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuid } from "uuid";
-import { desc, eq, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
-import { sipRejections, investors, tasks, notifications, eventsOutbox, SIP_RECOVERY_STATUSES } from "@/db/schema";
+import { sipRejections, investors, tasks, notifications, eventsOutbox } from "@/db/schema";
 
 export const dynamic = "force-dynamic";
 
@@ -46,6 +46,7 @@ export async function GET() {
         FROM sip_rejections r
         LEFT JOIN investors i ON i.id = r.investor_id
         LEFT JOIN users u ON u.id = r.assigned_rm_id
+        WHERE r.tenant_id = ${session.tenantId}::uuid
         ORDER BY r.rejection_date DESC, r.created_at DESC
         LIMIT 500
       `);
@@ -73,7 +74,7 @@ export async function POST(req: NextRequest) {
       // Idempotency on transactionId
       if (body.transactionId) {
         const existing = await tx.execute(sql`
-          SELECT id FROM sip_rejections WHERE transaction_id = ${body.transactionId} LIMIT 1
+          SELECT id FROM sip_rejections WHERE tenant_id = ${session.tenantId}::uuid AND transaction_id = ${body.transactionId} LIMIT 1
         `);
         if (existing.rows.length) {
           return { id: (existing.rows[0] as any).id, alreadyExisted: true };

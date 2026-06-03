@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import {
   ChevronLeft,
   Download,
@@ -10,12 +10,16 @@ import {
   Video,
   Music,
   File,
+  Calendar,
 } from "lucide-react";
-import { withSystem, db } from "@/db/client";
+import { withSystem, withTenant } from "@/db/client";
 import { contentLibraryAssets, tenants } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
+import { assetVisibleTo } from "@/lib/content/asset-url";
 import { formatDate } from "@/lib/utils";
 import { BrandingLayoutPicker } from "@/components/content-library/BrandingLayoutPicker";
+import { PdfBrandingPicker } from "@/components/content-library/PdfBrandingPicker";
+import { NonImageSendButton } from "@/components/content-library/NonImageSendButton";
 
 const TYPE_ICON: Record<string, any> = {
   image: ImageIcon,
@@ -46,12 +50,20 @@ export default async function AinaLibraryDetailPage({
 }) {
   const { id } = await params;
   const session = await requireSession();
+  // withSystem bypasses RLS, so the visibility predicate is mandatory — it
+  // scopes the lookup to global assets + the caller's own tenant. Without it,
+  // any MFD could open another tenant's private asset by id.
   const asset = await withSystem(async (tx) =>
-    (await tx.select().from(contentLibraryAssets).where(eq(contentLibraryAssets.id, id)).limit(1))[0] ??
-    null
+    (await tx
+      .select()
+      .from(contentLibraryAssets)
+      .where(and(eq(contentLibraryAssets.id, id), assetVisibleTo(session.tenantId)))
+      .limit(1))[0] ?? null
   );
   if (!asset) notFound();
-  const tenant = (await db.select().from(tenants).where(eq(tenants.id, session.tenantId)).limit(1))[0];
+  const tenant = (await withTenant(session.tenantId, async (tx) =>
+    tx.select().from(tenants).where(eq(tenants.id, session.tenantId)).limit(1)
+  ))[0];
   const Icon = TYPE_ICON[asset.type] ?? File;
 
   // For images we never expose the raw S3 URL — preview + download go
@@ -59,6 +71,14 @@ export default async function AinaLibraryDetailPage({
   // tenant's logo / ARN / contact details server-side.
   const brandedPreview = `/api/content-library/${asset.id}/branded?mode=preview`;
   const brandedDownload = `/api/content-library/${asset.id}/branded?mode=download`;
+
+  const scheduleParams = new URLSearchParams({
+    topic: asset.title,
+    caption: asset.description ?? "",
+    creativeUrl: asset.type === "image" ? brandedDownload : (asset.fileUrl ?? ""),
+    creativeName: asset.fileName ?? `${asset.title.toLowerCase().replace(/[^a-z0-9_]/g, "_")}.${asset.type === "image" ? "jpg" : "pdf"}`
+  });
+  const scheduleUrl = `/dashboard/content-calendar/new?${scheduleParams.toString()}`;
 
   return (
     <div className="space-y-6 max-w-5xl">
@@ -97,26 +117,81 @@ export default async function AinaLibraryDetailPage({
       {/* The actual co-brand / download UX, per asset type */}
       {asset.type === "image" ? (
         <div className="card-surface p-4 space-y-3">
-          <div>
-            <h2 className="section-title">Co-brand & download</h2>
-            <p className="section-subtitle">
-              Pick a layout — your logo, firm name, ARN, mobile, email, website and address are
-              composited server-side. The raw image is not accessible.
-            </p>
+          <div className="flex items-start justify-between flex-wrap gap-3">
+            <div>
+              <h2 className="section-title">Co-brand & download</h2>
+              <p className="section-subtitle">
+                Pick a layout — your logo, firm name, ARN, mobile, email, website and address are
+                composited server-side. The raw image is not accessible.
+              </p>
+            </div>
+            <Link
+              href={scheduleUrl}
+              className="rounded-md bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 text-xs font-semibold flex items-center gap-1.5 border shrink-0"
+            >
+              <Calendar className="size-3.5" /> Schedule as Social Post
+            </Link>
           </div>
           <BrandingLayoutPicker
             assetId={asset.id}
-            defaultLayout={(asset.brandingConfig?.position as any) ?? "bottom"}
-            defaultHeightPct={asset.brandingConfig?.heightPct ?? 18}
+            assetTitle={asset.title}
+            assetType={asset.type}
+            assetFileUrl={asset.fileUrl}
+            defaultHeightPct={asset.brandingConfig?.heightPct ?? undefined}
           />
+        </div>
+      ) : asset.type === "pdf" ? (
+        <div className="card-surface p-4 space-y-3">
+          <div className="flex items-start justify-between flex-wrap gap-3">
+            <div>
+              <h2 className="section-title">Co-brand &amp; download</h2>
+              <p className="section-subtitle">
+                Pick a template — a branded cover page (your logo, firm name, ARN and the title) is
+                prepended and a firm · ARN · SEBI disclaimer · page-number footer is stamped on every
+                page. The raw file is never exposed.
+              </p>
+            </div>
+            <Link
+              href={scheduleUrl}
+              className="rounded-md bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 text-xs font-semibold flex items-center gap-1.5 border shrink-0"
+            >
+              <Calendar className="size-3.5" /> Schedule as Social Post
+            </Link>
+          </div>
+
+          <PdfBrandingPicker
+            assetId={asset.id}
+            assetTitle={asset.title}
+            assetType={asset.type}
+            assetFileUrl={asset.fileUrl}
+          />
+
+          {/* Secondary options */}
+          <div className="flex flex-wrap gap-2 pt-3 border-t border-border">
+            <a
+              href={asset.fileUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              download={asset.fileName ?? undefined}
+              className="btn-secondary"
+            >
+              <Download className="size-4" /> Download original (un-branded)
+            </a>
+            <a
+              href={`/dashboard/aina-library/${asset.id}/cover-sheet?autoprint=0`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn-secondary"
+            >
+              <FileText className="size-4" /> Standalone cover sheet
+            </a>
+          </div>
         </div>
       ) : (
         <div className="card-surface p-5 space-y-4">
           <h2 className="section-title">Download options</h2>
           <p className="text-sm text-muted-foreground">
-            {asset.type === "pdf"
-              ? "Download the PDF as-is, plus a branded cover sheet you can prepend before sharing with clients."
-              : asset.type === "article"
+            {asset.type === "article"
               ? "View the article and download a branded cover sheet to send alongside it."
               : "Download the original file. Use the branded cover sheet to identify it as yours."}
           </p>
@@ -138,14 +213,19 @@ export default async function AinaLibraryDetailPage({
             >
               <FileText className="size-4" /> Branded cover sheet (PDF)
             </a>
+            <NonImageSendButton
+              assetId={asset.id}
+              assetTitle={asset.title}
+              assetType={asset.type}
+              assetFileUrl={asset.fileUrl}
+            />
+            <Link
+              href={scheduleUrl}
+              className="btn-secondary flex items-center gap-1.5"
+            >
+              <Calendar className="size-4" /> Schedule as Social Post
+            </Link>
           </div>
-
-          {/* Inline preview for PDF / article */}
-          {asset.type === "pdf" && (
-            <div className="rounded-xl border border-border overflow-hidden mt-3">
-              <iframe src={asset.fileUrl} className="w-full" style={{ height: "70vh" }} />
-            </div>
-          )}
         </div>
       )}
 

@@ -5,7 +5,7 @@ import { ChevronLeft, Workflow } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { blueprintDefinitions, blueprintStages, blueprintTransitions } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
-import { BlueprintDesigner } from "@/components/blueprints/BlueprintDesigner";
+import { BlueprintDesigner } from "@/components/blueprints/BlueprintDesignerLazy";
 
 export const dynamic = "force-dynamic";
 

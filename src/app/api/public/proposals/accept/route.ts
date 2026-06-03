@@ -11,7 +11,7 @@ import { v4 as uuid } from "uuid";
 import { eq } from "drizzle-orm";
 import { withSystem, withTenant } from "@/db/client";
 import { shareTokens, proposals, proposalApprovals, eventsOutbox, leads } from "@/db/schema";
-import { markShareTokenUsed } from "@/lib/share-tokens";
+import { claimShareToken, releaseShareToken, finalizeShareToken } from "@/lib/share-tokens";
 import { transitionTo } from "@/lib/blueprints/engine";
 import { enforce } from "@/lib/rate-limit";
 
@@ -45,10 +45,21 @@ export async function POST(req: NextRequest) {
       return t;
     });
 
+    // Step 1b: atomically CLAIM the single-use token before doing any work, so
+    // two concurrent accepts can't both record a (SEBI-grade) approval +
+    // double-fire the downstream "send KYC docs" workflow. The loser aborts.
+    const claimed = await claimShareToken(tokenId);
+    if (!claimed) {
+      return NextResponse.json({ error: "This link has already been used" }, { status: 409 });
+    }
+
     // Step 2: writes happen inside the token's tenant scope so RLS blocks
     // any cross-tenant write even if a future bug leaks tokenId across
-    // tenants.
-    const out = await withTenant(tk.tenantId!, async (tx) => {
+    // tenants. If the work throws after the claim, release the token so the
+    // client can retry.
+    let out;
+    try {
+      out = await withTenant(tk.tenantId!, async (tx) => {
       const [proposal] = await tx.select().from(proposals).where(eq(proposals.id, tk.subjectId));
       if (!proposal) throw new Error("Proposal not found");
 
@@ -107,14 +118,21 @@ export async function POST(req: NextRequest) {
         meta: { tokenId, ip, userAgent: ua } as any,
       } as any);
 
-      await markShareTokenUsed({
-        id: tokenId,
-        result: { approvalId, signature: signatureName },
-        ipAddress: ip,
-        userAgent: ua,
-      });
-
+      // Token already claimed up front; finalized after the tx commits below.
       return { approvalId };
+      });
+    } catch (e) {
+      // Work failed after the claim — release so the client can retry.
+      await releaseShareToken(tokenId).catch(() => {});
+      throw e;
+    }
+
+    // Confirm the claim by storing the result payload (used_at already set).
+    await finalizeShareToken({
+      id: tokenId,
+      result: { approvalId: out.approvalId, signature: signatureName },
+      ipAddress: ip,
+      userAgent: ua,
     });
 
     return NextResponse.json(out, { status: 201 });

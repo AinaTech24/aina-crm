@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { require as requireCap } from "@/lib/auth/rbac";
 import { formatDate } from "@/lib/utils";
 import { RowActions } from "@/components/common/RowActions";
 import { FilterBar } from "@/components/common/FilterBar";
@@ -65,6 +66,7 @@ export default async function ContentCalendarPage({
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const session = await requireSession();
+  requireCap(session.roles, "content_calendar.manage");
   const sp = await searchParams;
   const q = (sp.q ?? "").trim();
   const platformFilter = (sp.platform ?? "").split(",").filter(Boolean);
@@ -74,7 +76,8 @@ export default async function ContentCalendarPage({
   const compliancePending = sp.compliance_pending === "1";
 
   const data = await withTenant(session.tenantId, async (tx) => {
-    const filters: any[] = [];
+    // Explicit tenant predicate (defense-in-depth alongside RLS) — always first.
+    const filters: any[] = [sql`p.tenant_id = ${session.tenantId}::uuid`];
     if (q) {
       filters.push(
         sql`(p.topic ILIKE ${`%${q}%`} OR p.caption ILIKE ${`%${q}%`} OR p.remarks ILIKE ${`%${q}%`})`
@@ -109,6 +112,7 @@ export default async function ContentCalendarPage({
       SELECT p.id, p.content_date, p.platform, p.content_type, p.topic, p.caption,
              p.creative_files,
              p.compliance_checked, p.approval_status, p.posted_status,
+             (p.compliance_scan->>'blocked' = 'true') AS scan_flagged,
              p.post_link, p.remarks, p.created_at,
              u.name AS approved_by,
              c.name AS campaign_name
@@ -131,6 +135,7 @@ export default async function ContentCalendarPage({
         )::int AS posted_mtd,
         COUNT(*) FILTER (WHERE posted_status = 'failed')::int AS failed_count
       FROM content_posts
+      WHERE tenant_id = ${session.tenantId}::uuid
     `);
     return { rows: posts.rows as any[], s: stats.rows[0] as any };
   });
@@ -305,11 +310,18 @@ export default async function ContentCalendarPage({
                         <div className="line-clamp-2 text-muted-foreground">{p.caption ?? "—"}</div>
                       </td>
                       <td className="py-3 text-center">
-                        {p.compliance_checked ? (
-                          <CheckCircle2 className="size-4 text-emerald-600 inline-block" />
-                        ) : (
-                          <AlertTriangle className="size-4 text-amber-600 inline-block" />
-                        )}
+                        <div className="inline-flex items-center gap-1">
+                          {p.compliance_checked ? (
+                            <CheckCircle2 className="size-4 text-emerald-600" />
+                          ) : (
+                            <AlertTriangle className="size-4 text-amber-600" />
+                          )}
+                          {p.scan_flagged && (
+                            <span title="Automated scan flagged a compliance red flag in the caption" className="text-[10px] font-semibold text-rose-600">
+                              ⚑ auto
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="py-3">
                         <span

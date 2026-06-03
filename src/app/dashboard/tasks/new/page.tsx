@@ -53,6 +53,8 @@ export default function NewTaskPage() {
     department: "",
     assigneeId: "",
     remarks: "",
+    recurrence: "", // "" = one-off
+    recurrenceUntil: "",
     relatedInvestorId: "",
     relatedInvestorName: "",
     relatedLeadId: "",
@@ -87,6 +89,10 @@ export default function NewTaskPage() {
         assigneeId: form.assigneeId || undefined,
         remarks: form.remarks || undefined,
       };
+      if (form.recurrence) {
+        payload.recurrence = form.recurrence;
+        if (form.recurrenceUntil) payload.recurrenceUntil = form.recurrenceUntil;
+      }
       if (form.relatedInvestorId) payload.relatedInvestorId = form.relatedInvestorId;
       if (form.relatedLeadId) payload.relatedLeadId = form.relatedLeadId;
       if (form.relatedServiceRequestId)
@@ -323,6 +329,50 @@ export default function NewTaskPage() {
               placeholder="— Assign to myself —"
             />
           </label>
+        </div>
+
+        {/* Recurrence (Sanchay "Enable Recurring" parity) */}
+        <div className="rounded-lg border border-border bg-secondary/30 p-3">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={!!form.recurrence}
+              onChange={(e) => set("recurrence", e.target.checked ? "monthly" : "")}
+              className="size-3.5 rounded"
+            />
+            <span className="text-xs font-medium">Repeat this task (recurring)</span>
+          </label>
+          {form.recurrence && (
+            <div className="grid grid-cols-2 gap-3 mt-3">
+              <label className="block">
+                <div className="text-xs font-medium mb-1">Frequency</div>
+                <select
+                  value={form.recurrence}
+                  onChange={(e) => set("recurrence", e.target.value)}
+                  className="input-base"
+                >
+                  <option value="daily">Daily</option>
+                  <option value="weekly">Weekly</option>
+                  <option value="monthly">Monthly</option>
+                  <option value="quarterly">Quarterly</option>
+                  <option value="yearly">Yearly</option>
+                </select>
+              </label>
+              <label className="block">
+                <div className="text-xs font-medium mb-1">Repeat until (optional)</div>
+                <input
+                  type="date"
+                  value={form.recurrenceUntil}
+                  onChange={(e) => set("recurrenceUntil", e.target.value)}
+                  className="input-base"
+                />
+              </label>
+              <p className="col-span-2 text-[11px] text-muted-foreground">
+                When you complete this task, the next occurrence is created automatically with its due
+                date advanced — perfect for monthly SIP reviews, quarterly client reviews, or annual KYC/FATCA renewals.
+              </p>
+            </div>
+          )}
         </div>
 
         {err && (

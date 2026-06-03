@@ -41,7 +41,12 @@ export async function startRun(input: StartRunInput): Promise<{ runId: string; c
     const [wf] = await tx
       .select()
       .from(workflowsTable)
-      .where(eq(workflowsTable.id, input.workflowId));
+      .where(
+        and(
+          eq(workflowsTable.id, input.workflowId),
+          eq(workflowsTable.tenantId, input.tenantId)
+        )
+      );
     if (!wf) throw new Error(`Workflow ${input.workflowId} not found`);
     if (!wf.enabled) throw new Error(`Workflow ${input.workflowId} is disabled`);
     if (wf.pausedAt) throw new Error(`Workflow ${input.workflowId} is paused: ${wf.pausedReason}`);
@@ -59,6 +64,7 @@ export async function startRun(input: StartRunInput): Promise<{ runId: string; c
               eq(workflowRuns.workflowId, wf.id),
               eq(workflowRuns.subjectType, input.subjectType),
               eq(workflowRuns.subjectId, input.subjectId),
+              eq(workflowRuns.tenantId, input.tenantId),
               sql`${workflowRuns.createdAt} > now() - ${sql.raw(`INTERVAL '${window}'`)}`
             )
           )
@@ -74,7 +80,12 @@ export async function startRun(input: StartRunInput): Promise<{ runId: string; c
     const [version] = await tx
       .select()
       .from(workflowVersions)
-      .where(eq(workflowVersions.id, wf.currentVersionId));
+      .where(
+        and(
+          eq(workflowVersions.id, wf.currentVersionId),
+          eq(workflowVersions.tenantId, input.tenantId)
+        )
+      );
     if (!version) throw new Error("Current version missing");
 
     const graph = WorkflowGraphSchema.parse(version.graph);
@@ -128,7 +139,10 @@ export async function executeStep(input: {
 }): Promise<{ status: "completed" | "paused" | "failed" | "running"; nextNodeId?: string }> {
   const { tenantId, runId } = input;
   return withTenant(tenantId, async (tx) => {
-    const [run] = await tx.select().from(workflowRuns).where(eq(workflowRuns.id, runId));
+    const [run] = await tx
+      .select()
+      .from(workflowRuns)
+      .where(and(eq(workflowRuns.id, runId), eq(workflowRuns.tenantId, tenantId)));
     if (!run) throw new Error(`Run ${runId} not found`);
     if (run.status === "completed" || run.status === "failed" || run.status === "cancelled") {
       return { status: run.status as any };
@@ -140,14 +154,14 @@ export async function executeStep(input: {
     const [version] = await tx
       .select()
       .from(workflowVersions)
-      .where(eq(workflowVersions.id, run.versionId));
+      .where(and(eq(workflowVersions.id, run.versionId), eq(workflowVersions.tenantId, tenantId)));
     if (!version) throw new Error("Version missing");
     const graph = WorkflowGraphSchema.parse(version.graph);
 
     const nodeId = run.currentNodeId ?? graph.startNodeId;
     const node = graph.nodes.find((n) => n.id === nodeId);
     if (!node) {
-      await markRunFailed(tx, run.id, `Node ${nodeId} not found in graph`);
+      await markRunFailed(tx, run.id, tenantId, `Node ${nodeId} not found in graph`);
       return { status: "failed" };
     }
 
@@ -155,7 +169,7 @@ export async function executeStep(input: {
       await tx
         .update(workflowRuns)
         .set({ status: "running", startedAt: new Date(), currentNodeId: nodeId })
-        .where(eq(workflowRuns.id, run.id));
+        .where(and(eq(workflowRuns.id, run.id), eq(workflowRuns.tenantId, tenantId)));
     }
 
     // Build context
@@ -194,12 +208,15 @@ export async function executeStep(input: {
           completedAt: new Date(),
           latencyMs,
         })
-        .where(eq(workflowRunSteps.id, stepId));
+        .where(and(eq(workflowRunSteps.id, stepId), eq(workflowRunSteps.tenantId, tenantId)));
 
       // Apply variables produced by this step
       if (result.varsPatch && Object.keys(result.varsPatch).length > 0) {
         const merged = { ...(run.variables ?? {}), ...result.varsPatch };
-        await tx.update(workflowRuns).set({ variables: merged }).where(eq(workflowRuns.id, run.id));
+        await tx
+          .update(workflowRuns)
+          .set({ variables: merged })
+          .where(and(eq(workflowRuns.id, run.id), eq(workflowRuns.tenantId, tenantId)));
       }
 
       // Decide next move
@@ -207,7 +224,7 @@ export async function executeStep(input: {
         await tx
           .update(workflowRuns)
           .set({ status: "completed", completedAt: new Date(), currentNodeId: null })
-          .where(eq(workflowRuns.id, run.id));
+          .where(and(eq(workflowRuns.id, run.id), eq(workflowRuns.tenantId, tenantId)));
         return { status: "completed" };
       }
 
@@ -221,7 +238,7 @@ export async function executeStep(input: {
             waitNodeId: result.waitNodeId ?? node.id,
             currentNodeId: result.waitNodeId ?? node.id,
           })
-          .where(eq(workflowRuns.id, run.id));
+          .where(and(eq(workflowRuns.id, run.id), eq(workflowRuns.tenantId, tenantId)));
         return { status: "paused" };
       }
 
@@ -232,10 +249,13 @@ export async function executeStep(input: {
         await tx
           .update(workflowRuns)
           .set({ status: "completed", completedAt: new Date(), currentNodeId: null })
-          .where(eq(workflowRuns.id, run.id));
+          .where(and(eq(workflowRuns.id, run.id), eq(workflowRuns.tenantId, tenantId)));
         return { status: "completed" };
       }
-      await tx.update(workflowRuns).set({ currentNodeId: nextNodeId }).where(eq(workflowRuns.id, run.id));
+      await tx
+        .update(workflowRuns)
+        .set({ currentNodeId: nextNodeId })
+        .where(and(eq(workflowRuns.id, run.id), eq(workflowRuns.tenantId, tenantId)));
       return { status: "running", nextNodeId };
     } catch (err) {
       const latencyMs = Date.now() - start;
@@ -243,8 +263,8 @@ export async function executeStep(input: {
       await tx
         .update(workflowRunSteps)
         .set({ status: "failed", error: message, completedAt: new Date(), latencyMs })
-        .where(eq(workflowRunSteps.id, stepId));
-      await markRunFailed(tx, run.id, message);
+        .where(and(eq(workflowRunSteps.id, stepId), eq(workflowRunSteps.tenantId, tenantId)));
+      await markRunFailed(tx, run.id, tenantId, message);
       return { status: "failed" };
     }
   });
@@ -262,11 +282,11 @@ function pickNextNode(graph: WorkflowGraph, fromId: string, sourceHandle?: strin
   return def?.target ?? null;
 }
 
-async function markRunFailed(tx: Tx, runId: string, error: string) {
+async function markRunFailed(tx: Tx, runId: string, tenantId: string, error: string) {
   await tx
     .update(workflowRuns)
     .set({ status: "failed", error, completedAt: new Date() })
-    .where(eq(workflowRuns.id, runId));
+    .where(and(eq(workflowRuns.id, runId), eq(workflowRuns.tenantId, tenantId)));
 }
 
 async function buildContext(
@@ -278,7 +298,7 @@ async function buildContext(
   // Load subject
   let subject: Record<string, any> | null = null;
   if (run.subjectId && run.subjectType) {
-    subject = await loadSubject(tx, run.subjectType, run.subjectId);
+    subject = await loadSubject(tx, run.subjectType, run.subjectId, run.tenantId);
   }
   const [tenant] = await tx.select().from(tenants).where(eq(tenants.id, run.tenantId));
 
@@ -301,18 +321,18 @@ async function buildContext(
   };
 }
 
-async function loadSubject(tx: Tx, type: string, id: string): Promise<Record<string, any> | null> {
+async function loadSubject(tx: Tx, type: string, id: string, tenantId: string): Promise<Record<string, any> | null> {
   switch (type) {
     case "investor": {
-      const [r] = await tx.select().from(investors).where(eq(investors.id, id));
+      const [r] = await tx.select().from(investors).where(and(eq(investors.id, id), eq(investors.tenantId, tenantId)));
       return r as any;
     }
     case "lead": {
-      const [r] = await tx.select().from(leads).where(eq(leads.id, id));
+      const [r] = await tx.select().from(leads).where(and(eq(leads.id, id), eq(leads.tenantId, tenantId)));
       return r as any;
     }
     case "task": {
-      const [r] = await tx.select().from(tasksTable).where(eq(tasksTable.id, id));
+      const [r] = await tx.select().from(tasksTable).where(and(eq(tasksTable.id, id), eq(tasksTable.tenantId, tenantId)));
       return r as any;
     }
     default:

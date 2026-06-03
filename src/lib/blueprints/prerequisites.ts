@@ -225,32 +225,27 @@ const hasDocsUploaded: RuleFn = async (tx, _tenantId, leadId) => {
 
 // ── Rule map — target stage key → rules to run ───────────────────────────
 
+// IMPORTANT: keys are CANONICAL stage keys (post-`normalizeLeadStage`), matching
+// the live 30-stage Lead → Client SOP in lead_to_client.ts. The advance and
+// can-advance routes both normalize `toStageKey` before calling
+// checkPrerequisites, so keying this map on legacy aliases (the previous bug)
+// made it a no-op for every stage but one. A target absent from this map has no
+// artefact prerequisite and may advance freely.
+//
+// These are enforced server-side by transitionTo() (skipped on systemBypass /
+// auto-advance / explicit override) and surfaced read-only by GET /can-advance.
 const PREREQ_RULES_BY_TARGET: Record<string, RuleFn[]> = {
-  // Stage 1 → 2: no prereqs (just a logging step)
-  first_call_pending: [],
-  // Stage 2 → 3: meeting must be scheduled
-  appointment_scheduled: [hasScheduledMeeting],
-  // Stage 3 → 4: meeting must be completed
+  // Meeting must be scheduled before Meeting Scheduled.
+  meeting_scheduled: [hasScheduledMeeting],
+  // Meeting must be completed before Meeting Done.
   meeting_done: [hasCompletedMeeting],
-  // Stage 4 → 5: call outcome / qualification captured
-  post_meeting_qualified: [hasCallOutcome],
-  // Stage 5 → 6: risk-profile share link sent
-  risk_profile_sent: [hasRiskProfileLinkSent],
-  // Stage 6 → 7: risk-profile response captured
-  risk_profiled: [hasRiskProfileResponse],
-  // Stage 7 → 8: proposal drafted
-  proposal_drafted: [hasProposalDraft],
-  // Stage 8 → 9: proposal sent
-  proposal_sent: [hasProposalSent],
-  // Stage 9 → 10: client approval captured
-  proposal_approved: [hasProposalApproval],
-  // Stage 10 → 11: doc checklist sent
-  docs_requested: [hasDocChecklistSent],
-  // Stage 11 → 12: docs received
-  docs_received: [hasDocsUploaded],
-  // Stage 12 → 13: this is the Convert-to-Client boundary; handled by
-  // the LeadActions convert flow, not by the advance picker.
-  ops_in_progress: [],
-  portal_welcome_sent: [],
-  active_client: [],
+  // First-call outcome / qualification captured before Won Lead.
+  won_lead: [hasCallOutcome],
+  // Documents on file before Documents Received.
+  documents_received: [hasDocsUploaded],
 };
+
+// Retained for future SOP variants that re-introduce a risk-profile / proposal
+// gate; referenced here so they aren't flagged unused while the current 30-stage
+// graph collapses those steps into Won Lead.
+void [hasRiskProfileLinkSent, hasRiskProfileResponse, hasProposalDraft, hasProposalSent, hasProposalApproval, hasDocChecklistSent];

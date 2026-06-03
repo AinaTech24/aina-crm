@@ -15,7 +15,10 @@ import { renderEmailTemplate } from "../email_renderer";
 import type { TemplateVersion } from "@/db/schema";
 
 let client: Resend | null = null;
-function getClient(): Resend {
+function getClient(apiKey?: string): Resend {
+  if (apiKey) {
+    return new Resend(apiKey);
+  }
   if (!client) {
     const key = process.env.RESEND_API_KEY;
     if (!key) throw new Error("RESEND_API_KEY not set");
@@ -26,43 +29,69 @@ function getClient(): Resend {
 
 export interface SendEmailArgs {
   tenantId: string;
-  templateVersion: TemplateVersion;
+  /** Omitted for ad-hoc Compose sends — pass `inlineHtml` instead. */
+  templateVersion?: TemplateVersion;
   tokens: Record<string, string>;
   rendered: { subject?: string; text: string; tokens: Record<string, string> };
   recipient: string;
   category: "transactional" | "marketing";
   cc?: string[];
   bcc?: string[];
+  /** Pre-rendered HTML for ad-hoc Compose (no template). Wins over templateVersion. */
+  inlineHtml?: string;
+  apiKey?: string;
+  fromOverride?: string;
+  fromNameOverride?: string;
+  /** Stable key so a re-fired send dedupes provider-side (Resend idempotency). */
+  idempotencyKey?: string;
 }
 
 export const emailAdapter = {
   async send(args: SendEmailArgs): Promise<{ externalId: string; status: "sent" | "queued" }> {
-    const from =
-      args.category === "marketing"
+    const baseFrom =
+      args.fromOverride ??
+      (args.category === "marketing"
         ? process.env.EMAIL_FROM_MARKETING ?? "no-reply@example.com"
-        : process.env.EMAIL_FROM_TRANSACTIONAL ?? "no-reply@example.com";
+        : process.env.EMAIL_FROM_TRANSACTIONAL ?? "no-reply@example.com");
 
-    const html = renderEmailTemplate(args.templateVersion.body as any, args.tokens);
+    const from = args.fromNameOverride ? `${args.fromNameOverride} <${baseFrom}>` : baseFrom;
 
-    const c = getClient();
-    const res = await c.emails.send({
-      from,
-      to: [args.recipient],
-      cc: args.cc?.length ? args.cc : undefined,
-      bcc: args.bcc?.length ? args.bcc : undefined,
-      subject: args.rendered.subject ?? "(no subject)",
-      html,
-      text: args.rendered.text,
-      tags: [
-        { name: "tenant_id", value: args.tenantId },
-        { name: "template_key", value: args.templateVersion.id },
-      ],
-    });
+    const html =
+      args.inlineHtml ??
+      (args.templateVersion
+        ? renderEmailTemplate(args.templateVersion.body as any, args.tokens)
+        : `<p>${args.rendered.text.replace(/\n/g, "<br/>")}</p>`);
+
+    // Template-level attachments (factsheet, KYC form, …) — Resend fetches by URL.
+    const tplAttachments = (args.templateVersion?.attachments as Array<{ name: string; url: string }> | undefined) ?? [];
+    const attachments = tplAttachments
+      .filter((a) => a?.url)
+      .map((a) => ({ filename: a.name || a.url.split("/").pop() || "attachment", path: a.url }));
+
+    const c = getClient(args.apiKey);
+    const res = await c.emails.send(
+      {
+        from,
+        to: [args.recipient],
+        cc: args.cc?.length ? args.cc : undefined,
+        bcc: args.bcc?.length ? args.bcc : undefined,
+        subject: args.rendered.subject ?? "(no subject)",
+        html,
+        text: args.rendered.text,
+        attachments: attachments.length ? attachments : undefined,
+        tags: [
+          { name: "tenant_id", value: args.tenantId },
+          { name: "template_key", value: args.templateVersion?.id ?? "adhoc_compose" },
+        ],
+      },
+      args.idempotencyKey ? { idempotencyKey: args.idempotencyKey } : undefined
+    );
     if (res.error) {
       throw new Error(`Resend error: ${res.error.message}`);
     }
     return { externalId: res.data?.id ?? "", status: "sent" };
   },
+
 
   /** Verify Resend webhook (uses Svix-style headers). */
   verifyWebhookSignature(rawBody: string, headers: Record<string, string>): boolean {

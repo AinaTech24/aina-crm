@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { and, eq, sql } from "drizzle-orm";
 import { ChevronLeft, Building2 } from "lucide-react";
-import { db } from "@/db/client";
+import { withTenant } from "@/db/client";
 import { tenants, subscriptions, packages, users } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { loadTenantLicense } from "@/lib/auth/license";
@@ -12,23 +12,26 @@ export const dynamic = "force-dynamic";
 export default async function OrganisationProfilePage() {
   const session = await requireSession();
 
-  // Tenant identity + license + package + owner — fetched in parallel for snappy render
-  const [tenant, sub, license, ownerRow] = await Promise.all([
-    db.select().from(tenants).where(eq(tenants.id, session.tenantId)).limit(1).then((r) => r[0]),
-    db.select().from(subscriptions).where(eq(subscriptions.tenantId, session.tenantId)).limit(1).then((r) => r[0]),
-    loadTenantLicense(session.tenantId, session.roles),
-    db
-      .execute(sql`
-        SELECT id, name, email FROM users
-        WHERE tenant_id = ${session.tenantId} AND 'owner' = ANY(roles)
-        ORDER BY activated_at ASC NULLS LAST LIMIT 1
-      `)
-      .then((r) => (r.rows[0] as { id: string; name: string; email: string } | undefined) ?? null),
-  ]);
-
-  const pkg = sub
-    ? await db.select().from(packages).where(eq(packages.id, sub.packageId)).limit(1).then((r) => r[0])
-    : null;
+  // Tenant identity + license + package + owner. License is loaded via its own
+  // RLS-safe helper; the rest run inside a tenant context so RLS scopes them.
+  const license = await loadTenantLicense(session.tenantId, session.roles);
+  const { tenant, sub, ownerRow, pkg } = await withTenant(session.tenantId, async (tx) => {
+    const [t, s, owner] = await Promise.all([
+      tx.select().from(tenants).where(eq(tenants.id, session.tenantId)).limit(1).then((r) => r[0]),
+      tx.select().from(subscriptions).where(eq(subscriptions.tenantId, session.tenantId)).limit(1).then((r) => r[0]),
+      tx
+        .execute(sql`
+          SELECT id, name, email FROM users
+          WHERE tenant_id = ${session.tenantId} AND 'owner' = ANY(roles)
+          ORDER BY activated_at ASC NULLS LAST LIMIT 1
+        `)
+        .then((r) => (r.rows[0] as { id: string; name: string; email: string } | undefined) ?? null),
+    ]);
+    const p = s
+      ? await tx.select().from(packages).where(eq(packages.id, s.packageId)).limit(1).then((r) => r[0])
+      : null;
+    return { tenant: t, sub: s, ownerRow: owner, pkg: p };
+  });
 
   return (
     <div className="space-y-4 max-w-4xl">

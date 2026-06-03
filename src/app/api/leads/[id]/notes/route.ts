@@ -13,9 +13,10 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { require as requireCap } from "@/lib/auth/rbac";
+import { assertActiveLicense } from "@/lib/auth/license";
 import { leads } from "@/db/schema";
 import { autoAdvance } from "@/lib/blueprints/auto-advance";
+import { loadEditableLead } from "@/lib/leads/access";
 
 export const dynamic = "force-dynamic";
 
@@ -29,13 +30,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
   try {
     const session = await requireSession();
-    requireCap(session.roles, "lead.edit.all");
+    await assertActiveLicense(session.tenantId, session.roles);
     const parse = Body.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) return NextResponse.json({ error: "invalid body" }, { status: 400 });
 
     const result = await withTenant(session.tenantId, async (tx) => {
-      const lead = (await tx.select().from(leads).where(eq(leads.id, id)).limit(1))[0];
-      if (!lead) throw Object.assign(new Error("lead not found"), { status: 404 });
+      const lead = await loadEditableLead(tx, session, id);
 
       const ts = new Date();
       const stamp = ts.toISOString().slice(0, 16).replace("T", " ");

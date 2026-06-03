@@ -15,7 +15,10 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { SESSION_COOKIE, verifySession } from "@/lib/auth/session";
+// Import from the Edge-safe primitives module — NOT @/lib/auth/session, which
+// pulls in the Node-only DB-backed revocation check (pg) and would break the
+// Edge middleware bundle.
+import { SESSION_COOKIE, verifySession } from "@/lib/auth/jwt";
 
 export const config = {
   /**
@@ -67,15 +70,18 @@ export async function middleware(req: NextRequest) {
   // hand any unauthenticated visitor an owner+rm+compliance session.
   if (process.env.NO_AUTH === "1" && process.env.NODE_ENV !== "production") {
     const res = NextResponse.next();
+    // Point the demo session at the seeded demo owner (tenant that actually
+    // holds the demo book) so every tenant-scoped page renders populated.
+    // Overridable via DEMO_* env vars for a reseeded DB with fresh ids.
     res.headers.set(
       "x-mfd-session",
       JSON.stringify({
-        userId: "00000000-0000-0000-0000-000000000001",
-        tenantId: "00000000-0000-0000-0000-000000000001",
-        branchId: "00000000-0000-0000-0000-000000000002",
+        userId: process.env.DEMO_USER_ID ?? "c59fb71f-2bc9-426d-a7b4-8d59cad5481b",
+        tenantId: process.env.DEMO_TENANT_ID ?? "3a8231bb-8ff2-4f49-bcca-bb41857c5be2",
+        branchId: process.env.DEMO_BRANCH_ID ?? "cfdc80f1-e03f-414f-bab5-460967f524a5",
         roles: ["owner", "rm", "compliance"],
-        email: "owner@demo.local",
-        name: "Demo Owner",
+        email: "owner@demo.in",
+        name: "Rajesh Demo (Owner)",
       })
     );
     return res;

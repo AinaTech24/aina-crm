@@ -5,6 +5,7 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { formatDate, formatRelative } from "@/lib/utils";
 import { FilterBar } from "@/components/common/FilterBar";
+import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
 import { CustomViews } from "@/components/common/CustomViews";
 import { ColumnManager } from "@/components/common/ColumnManager";
 
@@ -86,10 +87,10 @@ export default async function ReviewMeetingsPage({
   const typeFilter = (sp.type ?? "").split(",").filter(Boolean);
 
   const data = await withTenant(session.tenantId, async (tx) => {
-    const filters: any[] = [];
+    const filters: any[] = [sql`m.tenant_id = ${session.tenantId}::uuid`];
     if (q) {
       filters.push(
-        sql`(i.name ILIKE ${`%${q}%`} OR m.discussion_points ILIKE ${`%${q}%`} OR m.meeting_notes ILIKE ${`%${q}%`})`
+        sql`(i.name ILIKE ${`%${q}%`} OR l.name ILIKE ${`%${q}%`} OR m.discussion_points ILIKE ${`%${q}%`} OR m.meeting_notes ILIKE ${`%${q}%`})`
       );
     }
     if (categoryFilter.length) {
@@ -112,22 +113,30 @@ export default async function ReviewMeetingsPage({
         sql`m.meeting_type IN (${sql.join(typeFilter.map((v) => sql`${v}`), sql`, `)})`
       );
     }
+    const dr = dateRangeCond(sp, "meeting", "m.meeting_date");
+    if (dr) filters.push(dr);
     const whereSql = filters.length ? sql` WHERE ${sql.join(filters, sql` AND `)}` : sql``;
 
     const meetings = await tx.execute(sql`
-      SELECT m.id, m.investor_id, m.rm_id,
+      SELECT m.id, m.investor_id, m.lead_id, m.rm_id,
              m.category, m.parent_meeting_id,
-             m.meeting_type, m.meeting_date,
+             m.meeting_type, m.subject, m.meeting_date,
              m.duration_minutes, m.meeting_mode, m.location_or_link, m.status,
              m.discussion_points, m.meeting_notes, m.next_review_date,
              m.follow_up_task_created,
              jsonb_array_length(COALESCE(m.action_items, '[]'::jsonb)) AS action_count,
              jsonb_array_length(COALESCE(m.attachments, '[]'::jsonb)) AS attach_count,
              m.created_at,
-             i.name AS investor_name, i.pan AS investor_pan, i.segment_tag,
+             -- A meeting is tied to EITHER an investor or a lead (pre-conversion).
+             -- Surface whichever name exists so the Client column is never blank.
+             COALESCE(i.name, l.name) AS party_name,
+             CASE WHEN i.id IS NOT NULL THEN 'investor'
+                  WHEN l.id IS NOT NULL THEN 'lead' END AS party_kind,
+             i.pan AS investor_pan, i.segment_tag,
              u.name AS rm_name
       FROM review_meetings m
       LEFT JOIN investors i ON i.id = m.investor_id
+      LEFT JOIN leads l ON l.id = m.lead_id
       LEFT JOIN users u ON u.id = m.rm_id
       ${whereSql}
       ORDER BY m.meeting_date DESC
@@ -146,6 +155,7 @@ export default async function ReviewMeetingsPage({
         COUNT(*) FILTER (WHERE status IN ('scheduled','confirmed','in_progress')
           AND meeting_date < now())::int AS overdue
       FROM review_meetings
+      WHERE tenant_id = ${session.tenantId}::uuid
     `);
     const s = stats.rows[0] as any;
     return { rows: meetings.rows as any[], stats: s };
@@ -157,6 +167,13 @@ export default async function ReviewMeetingsPage({
   const past = data.rows.filter(
     (r) => !["scheduled", "confirmed"].includes(r.status) || new Date(r.meeting_date) < new Date()
   );
+  const todays = data.rows
+    .filter(
+      (r) =>
+        ["scheduled", "confirmed", "in_progress"].includes(r.status) &&
+        new Date(r.meeting_date).toDateString() === new Date().toDateString()
+    )
+    .sort((a, b) => new Date(a.meeting_date).getTime() - new Date(b.meeting_date).getTime());
 
   return (
     <div className="space-y-6 max-w-7xl">
@@ -199,6 +216,37 @@ export default async function ReviewMeetingsPage({
         <Stat icon={CheckCircle2} label="Completed MTD" value={data.stats.completed_mtd} tone="emerald" />
       </div>
 
+      {todays.length > 0 && (
+        <div className="card-surface p-4">
+          <div className="flex items-center gap-2 mb-3 font-semibold text-sm">
+            <Calendar className="size-4 text-brand-cyan" /> Today&apos;s agenda
+            <span className="chip bg-brand-cyan-light text-brand-cyan-deep text-[10px]">{todays.length}</span>
+          </div>
+          <div className="flex gap-3 overflow-x-auto pb-1">
+            {todays.map((m) => (
+              <Link
+                key={m.id}
+                href={`/dashboard/review-meetings/${m.id}`}
+                className="min-w-[210px] rounded-lg border border-border p-3 hover:bg-secondary/40 transition-colors"
+              >
+                <div className="text-lg font-bold tabular-nums">
+                  {new Date(m.meeting_date).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" })}
+                </div>
+                <div className="text-sm font-medium truncate">{m.party_name ?? "—"}</div>
+                <div className="text-xs text-muted-foreground truncate">
+                  {m.subject
+                    ? m.subject
+                    : `${TYPE_LABEL[m.meeting_type] ?? m.meeting_type} · ${MODE_LABEL[m.meeting_mode] ?? m.meeting_mode}`}
+                </div>
+                <span className={`chip capitalize mt-1.5 inline-block ${STATUS_TONE[m.status] ?? ""}`}>
+                  {m.status.replace(/_/g, " ")}
+                </span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+
       <FilterBar
         totalCount={data.rows.length}
         filters={[
@@ -238,6 +286,7 @@ export default async function ReviewMeetingsPage({
               { value: "phone", label: "Phone" },
             ],
           },
+          dateRangeFilter("meeting", "Meeting date"),
         ]}
         rightSlot={
           <div className="flex items-center gap-2">
@@ -297,10 +346,23 @@ export default async function ReviewMeetingsPage({
                     </div>
                   </td>
                   <td data-col="client" className="py-3">
-                    <Link href={`/dashboard/investors/${m.investor_id}`} className="hover:underline">
-                      {m.investor_name}
-                    </Link>
-                    <div className="text-xs text-muted-foreground">{m.segment_tag ?? "—"}</div>
+                    {m.party_name ? (
+                      <Link
+                        href={
+                          m.party_kind === "lead"
+                            ? `/dashboard/leads/${m.lead_id}`
+                            : `/dashboard/investors/${m.investor_id}`
+                        }
+                        className="hover:underline"
+                      >
+                        {m.party_name}
+                      </Link>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                    <div className="text-xs text-muted-foreground">
+                      {m.party_kind === "lead" ? "Lead" : m.segment_tag ?? "—"}
+                    </div>
                   </td>
                   <td data-col="category" className="py-3">
                     <span className={`chip text-[10px] ${CATEGORY_TONE[m.category ?? "review"] ?? ""}`}>
@@ -312,7 +374,16 @@ export default async function ReviewMeetingsPage({
                       </div>
                     )}
                   </td>
-                  <td data-col="agenda" className="py-3 text-xs">{TYPE_LABEL[m.meeting_type] ?? m.meeting_type}</td>
+                  <td data-col="agenda" className="py-3 text-xs">
+                    {m.subject ? (
+                      <>
+                        <div className="font-medium max-w-[220px] truncate">{m.subject}</div>
+                        <div className="text-[11px] text-muted-foreground">{TYPE_LABEL[m.meeting_type] ?? m.meeting_type}</div>
+                      </>
+                    ) : (
+                      TYPE_LABEL[m.meeting_type] ?? m.meeting_type
+                    )}
+                  </td>
                   <td data-col="mode" className="py-3">
                     <span className={`chip ${MODE_TONE[m.meeting_mode] ?? ""}`}>
                       {MODE_LABEL[m.meeting_mode] ?? m.meeting_mode}
@@ -357,8 +428,25 @@ export default async function ReviewMeetingsPage({
                     </Link>
                     <div className="text-[11px] text-muted-foreground">{formatRelative(m.meeting_date)}</div>
                   </td>
-                  <td className="py-3">{m.investor_name}</td>
-                  <td className="py-3 text-xs">{TYPE_LABEL[m.meeting_type] ?? m.meeting_type}</td>
+                  <td className="py-3">
+                    {m.party_name ? (
+                      <Link
+                        href={
+                          m.party_kind === "lead"
+                            ? `/dashboard/leads/${m.lead_id}`
+                            : `/dashboard/investors/${m.investor_id}`
+                        }
+                        className="hover:underline"
+                      >
+                        {m.party_name}
+                      </Link>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </td>
+                  <td className="py-3 text-xs">
+                    {m.subject ? <span className="font-medium">{m.subject}</span> : (TYPE_LABEL[m.meeting_type] ?? m.meeting_type)}
+                  </td>
                   <td className="py-3">
                     <span className={`chip capitalize ${STATUS_TONE[m.status] ?? ""}`}>
                       {m.status.replace(/_/g, " ")}

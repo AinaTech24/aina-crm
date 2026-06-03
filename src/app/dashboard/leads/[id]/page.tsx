@@ -10,13 +10,21 @@ import {
   ListChecks,
   ClipboardList,
   CheckCircle2,
+  Flame,
 } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { leads, users, tasks, communications, riskProfileResponses, proposals } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { formatDate, formatRelative } from "@/lib/utils";
 import { LeadActions } from "@/components/leads/LeadActions";
+import { CheckInButton, LogActivityButton } from "@/components/activities/ActivityLogger";
+import { ChangeLogButton } from "@/components/common/ChangeLog";
+import { RecordAutomations } from "@/components/sales-ops/RecordAutomations";
+import { SignalScoreCard } from "@/components/leads/SignalScoreCard";
 import { LeadEditPanel } from "@/components/leads/LeadEditPanel";
+import { LeadScoreButton } from "@/components/leads/LeadScoreButton";
+import { stageBadgeClass, stageLabel } from "@/lib/leads/stages";
+import { bandBadgeClass, bandLabel } from "@/lib/leads/score";
 import { OnboardingActions } from "@/components/leads/OnboardingActions";
 import { BlueprintStageBar } from "@/components/leads/BlueprintStageBar";
 import {
@@ -38,16 +46,6 @@ const LEAD_DETAIL_SECTIONS: RelatedListDef[] = [
   { key: "edit_panel", label: "Editable details" },
   { key: "activity", label: "Activity timeline" },
 ];
-
-const STAGE_COLORS: Record<string, string> = {
-  new: "bg-blue-50 text-blue-700",
-  contacted: "bg-amber-50 text-amber-700",
-  qualified: "bg-emerald-50 text-emerald-700",
-  proposal_sent: "bg-purple-50 text-purple-700",
-  converted: "bg-emerald-50 text-emerald-700",
-  lost: "bg-rose-50 text-rose-700",
-  cold: "bg-gray-50 text-gray-700",
-};
 
 export const dynamic = "force-dynamic";
 
@@ -121,8 +119,14 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
           <div>
             <h1 className="text-2xl font-bold tracking-tight">{l.name}</h1>
             <div className="flex items-center gap-3 mt-1 text-sm">
-              <span className={`text-xs px-2 py-0.5 rounded-full ${STAGE_COLORS[l.stage] ?? ""}`}>
-                {l.stage}
+              <span className={`text-xs px-2 py-0.5 rounded-full border ${stageBadgeClass(l.stage)}`}>
+                {stageLabel(l.stage)}
+              </span>
+              <span
+                className={`text-xs px-2 py-0.5 rounded-full border inline-flex items-center gap-1 ${bandBadgeClass((l.scoreBand as any) ?? "cold")}`}
+                title="Deterministic lead score (0–100)"
+              >
+                <Flame className="size-3" /> {bandLabel((l.scoreBand as any) ?? "cold")} · {l.leadScore ?? 0}
               </span>
               <span className="text-muted-foreground">via {l.source}</span>
               {data.owner && <span className="text-muted-foreground">· owned by {data.owner.name}</span>}
@@ -149,6 +153,12 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
                 </a>
               )}
             </div>
+            <div className="flex flex-wrap gap-2 mt-3">
+              <CheckInButton subject={{ type: "lead", id: l.id, name: l.name, phone: l.phone }} />
+              <LogActivityButton subject={{ type: "lead", id: l.id, name: l.name, phone: l.phone }} label="Log call / visit" variant="secondary" />
+              <ChangeLogButton entityType="lead" entityId={l.id} />
+              <RecordAutomations subject={{ type: "lead", id: l.id }} />
+            </div>
           </div>
           <div className="text-right text-xs text-muted-foreground">
             Created {formatRelative(l.createdAt)}
@@ -158,7 +168,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
         </div>
 
         {/* Actions */}
-        <div className="mt-5 pt-4 border-t" data-lead-actions>
+        <div className="mt-5 pt-4 border-t space-y-3" data-lead-actions>
           <LeadActions
             leadId={l.id}
             leadName={l.name}
@@ -167,9 +177,27 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
             currentStage={l.stage}
             alreadyConvertedInvestorId={l.convertedInvestorId ?? null}
           />
+          <LeadScoreButton
+            name={l.name}
+            source={l.source}
+            stage={l.stage}
+            ageInStageDays={
+              l.createdAt
+                ? Math.max(0, Math.floor((Date.now() - new Date(l.createdAt as any).getTime()) / 86_400_000))
+                : null
+            }
+            lastTouchDaysAgo={
+              l.lastContactAt
+                ? Math.max(0, Math.floor((Date.now() - new Date(l.lastContactAt as any).getTime()) / 86_400_000))
+                : null
+            }
+          />
         </div>
       </div>
       </RelatedListSection>
+
+      {/* Behavioural engagement signals (Zoho scoring parity) */}
+      <SignalScoreCard session={{ tenantId: session.tenantId, userId: session.userId, branchId: session.branchId, roles: session.roles }} leadId={l.id} />
 
       {/* Blueprint stage bar — lead-phase only (stages 1–12, up to Documents
           Received). When the lead reaches docs_received the bar swaps in a
@@ -202,7 +230,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
       </RelatedListSection>
 
       {/* Converted banner */}
-      {l.stage === "converted" && l.convertedInvestorId && (
+      {l.convertedInvestorId && (
         <RelatedListSection moduleKey="leads-detail" sectionKey="converted_banner">
           <div className="rounded-md border border-emerald-300 bg-emerald-50 text-emerald-900 px-4 py-3 text-sm flex items-center gap-2">
             <CheckCircle2 className="size-4" />

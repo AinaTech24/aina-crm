@@ -87,11 +87,15 @@ export const contentPosts = pgTable(
       .$type<Array<{ name: string; url: string; kind?: "image" | "video" | "doc" }>>()
       .default([]),
 
-    /** Compliance gate. */
+    /** Compliance gate (human sign-off). */
     complianceChecked: boolean("compliance_checked").notNull().default(false),
     complianceCheckedAt: timestamp("compliance_checked_at", { withTimezone: true }),
     complianceCheckedByUserId: uuid("compliance_checked_by_user_id").references(() => users.id),
     complianceNotes: text("compliance_notes"),
+    /** Automated deterministic scan of the caption (advisory) — surfaces SEBI
+     *  red flags (guaranteed-returns language, missing disclaimer, etc.) to the
+     *  human reviewer. Shape: { findings, blocked, score } from runComplianceChecks. */
+    complianceScan: jsonb("compliance_scan"),
 
     /** Approval gate. */
     approvalStatus: text("approval_status", { enum: POST_APPROVAL_STATUSES })

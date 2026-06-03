@@ -3,7 +3,7 @@ import { desc } from "drizzle-orm";
 import { Plus, MessageSquare, Mail, MessageCircle } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { templates, templateVersions } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { requireSession } from "@/lib/auth/session";
 import { RowActions } from "@/components/common/RowActions";
 
@@ -19,17 +19,26 @@ const statusColors: Record<string, string> = {
 
 export const dynamic = "force-dynamic";
 
-export default async function TemplatesPage() {
+export default async function TemplatesPage({ searchParams }: { searchParams: Promise<{ channel?: string }> }) {
+  const { channel: activeChannel } = await searchParams;
   const session = await requireSession();
+  
   const rows = await withTenant(session.tenantId, async (tx) => {
-    return tx
+    let baseQuery = tx
       .select({
         tpl: templates,
         score: templateVersions.complianceScore,
       })
       .from(templates)
-      .leftJoin(templateVersions, eq(templateVersions.id, templates.currentVersionId))
-      .orderBy(desc(templates.updatedAt));
+      .leftJoin(templateVersions, eq(templateVersions.id, templates.currentVersionId));
+
+    if (activeChannel) {
+      return baseQuery
+        .where(eq(templates.channel, activeChannel as any))
+        .orderBy(desc(templates.updatedAt));
+    }
+    
+    return baseQuery.orderBy(desc(templates.updatedAt));
   });
 
   return (
@@ -51,14 +60,42 @@ export default async function TemplatesPage() {
 
       <div className="border rounded-lg bg-card">
         <div className="border-b px-4 py-2.5 flex gap-2">
-          <button className="text-xs rounded-md bg-accent px-2.5 py-1 font-medium">All</button>
-          <button className="text-xs rounded-md px-2.5 py-1 text-muted-foreground hover:bg-accent">WhatsApp</button>
-          <button className="text-xs rounded-md px-2.5 py-1 text-muted-foreground hover:bg-accent">Email</button>
-          <button className="text-xs rounded-md px-2.5 py-1 text-muted-foreground hover:bg-accent">SMS</button>
+          <Link
+            href="/dashboard/templates"
+            className={`text-xs rounded-md px-2.5 py-1 font-medium ${
+              !activeChannel ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent"
+            }`}
+          >
+            All
+          </Link>
+          <Link
+            href="/dashboard/templates?channel=whatsapp"
+            className={`text-xs rounded-md px-2.5 py-1 font-medium ${
+              activeChannel === "whatsapp" ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent"
+            }`}
+          >
+            WhatsApp
+          </Link>
+          <Link
+            href="/dashboard/templates?channel=email"
+            className={`text-xs rounded-md px-2.5 py-1 font-medium ${
+              activeChannel === "email" ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent"
+            }`}
+          >
+            Email
+          </Link>
+          <Link
+            href="/dashboard/templates?channel=sms"
+            className={`text-xs rounded-md px-2.5 py-1 font-medium ${
+              activeChannel === "sms" ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent"
+            }`}
+          >
+            SMS
+          </Link>
         </div>
         {rows.length === 0 ? (
           <div className="p-12 text-center text-sm text-muted-foreground">
-            No templates yet.{" "}
+            No templates found.{" "}
             <Link href="/dashboard/templates/new" className="text-primary hover:underline">
               Create your first
             </Link>

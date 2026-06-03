@@ -11,16 +11,26 @@ import { handleApiError } from "@/lib/api/error-handler";
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
-import { withTenant } from "@/db/client";
+import { withTenant, type Tx } from "@/db/client";
 import { users } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
-import { require as requireCap } from "@/lib/auth/rbac";
+import { require as requireCap, areAssignableRoles, areKnownCapabilities } from "@/lib/auth/rbac";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { offboardUser, type OffboardSummary } from "@/lib/offboarding";
 
 export const dynamic = "force-dynamic";
+
+/** Active owners in the tenant other than `excludeUserId` — guards the last-owner rule. */
+async function countOtherActiveOwners(tx: Tx, tenantId: string, excludeUserId: string): Promise<number> {
+  const r = await tx.execute(sql`
+    SELECT COUNT(*)::int AS c FROM users
+    WHERE tenant_id = ${tenantId}::uuid AND id <> ${excludeUserId}::uuid
+      AND status = 'active' AND 'owner' = ANY(roles)
+  `);
+  return Number((r.rows[0] as any)?.c ?? 0);
+}
 
 const PatchBody = z.object({
   name: z.string().min(1).max(120).optional(),
@@ -77,7 +87,12 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const session = await requireSession();
   const { id } = await params;
   const data = await withTenant(session.tenantId, async (tx) => {
-    const [u] = await tx.select().from(users).where(eq(users.id, id));
+    // Tenant predicate is mandatory under the superuser/RLS-bypass model —
+    // without it any owner could read another tenant's user (HR data, certs, PII) by id.
+    const [u] = await tx
+      .select()
+      .from(users)
+      .where(and(eq(users.id, id), eq(users.tenantId, session.tenantId)));
     if (!u) return null;
 
     // Counts used in detail view
@@ -107,11 +122,37 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return NextResponse.json({ error: "invalid body", issues: parse.error.issues }, { status: 400 });
     }
     const body = parse.data;
+
+    // Never let a tenant admin assign a platform role or an unknown capability.
+    if (body.roles !== undefined && !areAssignableRoles(body.roles)) {
+      return NextResponse.json({ error: "one or more roles are not assignable" }, { status: 400 });
+    }
+    if (body.permissions != null && !areKnownCapabilities(body.permissions)) {
+      return NextResponse.json({ error: "one or more permissions are not recognised" }, { status: 400 });
+    }
+
     const meta = clientMetaFromHeaders(req.headers);
 
     const result = await withTenant(session.tenantId, async (tx) => {
-      const [existing] = await tx.select().from(users).where(eq(users.id, id));
+      const [existing] = await tx
+        .select()
+        .from(users)
+        .where(and(eq(users.id, id), eq(users.tenantId, session.tenantId)));
       if (!existing) return null;
+
+      // Lockout guards.
+      const isSelf = id === session.userId;
+      if (isSelf && body.status === "offboarded") {
+        throw Object.assign(new Error("you cannot offboard your own account"), { status: 400 });
+      }
+      const wasOwner = (existing.roles as string[] | null)?.includes("owner") ?? false;
+      const losesOwner =
+        wasOwner &&
+        ((body.status !== undefined && ["offboarded", "suspended"].includes(body.status)) ||
+          (body.roles !== undefined && !body.roles.includes("owner")));
+      if (losesOwner && (await countOtherActiveOwners(tx, session.tenantId, id)) === 0) {
+        throw Object.assign(new Error("cannot remove the last active owner of the firm"), { status: 409 });
+      }
 
       const patch: any = { updatedAt: new Date() };
       if (body.name !== undefined) patch.name = body.name;
@@ -144,7 +185,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         if (body.status === "offboarded") patch.offboardedAt = new Date();
       }
 
-      const [next] = await tx.update(users).set(patch).where(eq(users.id, id)).returning();
+      const [next] = await tx
+        .update(users)
+        .set(patch)
+        .where(and(eq(users.id, id), eq(users.tenantId, session.tenantId)))
+        .returning();
       await recordAudit(tx, {
         tenantId: session.tenantId,
         actorUserId: session.userId,
@@ -190,12 +235,24 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     const meta = clientMetaFromHeaders(req.headers);
 
     const result = await withTenant(session.tenantId, async (tx) => {
-      const [existing] = await tx.select().from(users).where(eq(users.id, id));
+      const [existing] = await tx
+        .select()
+        .from(users)
+        .where(and(eq(users.id, id), eq(users.tenantId, session.tenantId)));
       if (!existing) return null;
+
+      // Lockout guards: can't offboard yourself, and can't remove the last owner.
+      if (id === session.userId) {
+        throw Object.assign(new Error("you cannot offboard your own account"), { status: 400 });
+      }
+      if (((existing.roles as string[] | null)?.includes("owner") ?? false) && (await countOtherActiveOwners(tx, session.tenantId, id)) === 0) {
+        throw Object.assign(new Error("cannot offboard the last active owner of the firm"), { status: 409 });
+      }
+
       const [next] = await tx
         .update(users)
         .set({ status: "offboarded", offboardedAt: new Date(), updatedAt: new Date() })
-        .where(eq(users.id, id))
+        .where(and(eq(users.id, id), eq(users.tenantId, session.tenantId)))
         .returning();
       await recordAudit(tx, {
         tenantId: session.tenantId,

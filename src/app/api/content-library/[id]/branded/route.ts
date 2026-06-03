@@ -15,11 +15,13 @@ import { handleApiError } from "@/lib/api/error-handler";
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
-import { withSystem, db } from "@/db/client";
+import { and, eq } from "drizzle-orm";
+import { withSystem, withTenant } from "@/db/client";
 import { contentLibraryAssets, tenants } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { composeBrandedImage, type BrandingTenant } from "@/lib/branding/compose";
+import { getBrandingTemplate } from "@/lib/branding/templates";
+import { assetVisibleTo, fetchAssetBytes } from "@/lib/content/asset-url";
 
 export const dynamic = "force-dynamic";
 // sharp needs the Node runtime, not Edge.
@@ -31,6 +33,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     const session = await requireSession();
     const url = new URL(req.url);
     const mode = url.searchParams.get("mode") === "download" ? "download" : "preview";
+    // Named branding preset (Classic/Minimal/Bold/Split) — maps to a
+    // position + heightPct via the shared catalog. Explicit position/h params
+    // (below) still win, preserving the original fine-grained controls.
+    const templateParam = url.searchParams.get("template");
     // MFD-controllable layout overrides
     const posParam = url.searchParams.get("position");
     const overridePosition: "top" | "bottom" | "both" | "split" | null =
@@ -40,10 +46,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     const heightParam = url.searchParams.get("h");
     const overrideHeight = heightParam ? Number(heightParam) : null;
 
-    // Load asset (platform-shared) + tenant (caller's)
+    // Load asset — global OR caller's own (withSystem bypasses RLS, so this
+    // predicate is what stops cross-tenant image exfiltration by id).
     const asset = await withSystem(async (tx) =>
-      (await tx.select().from(contentLibraryAssets).where(eq(contentLibraryAssets.id, id)).limit(1))[0] ??
-      null
+      (await tx
+        .select()
+        .from(contentLibraryAssets)
+        .where(and(eq(contentLibraryAssets.id, id), assetVisibleTo(session.tenantId)))
+        .limit(1))[0] ?? null
     );
     if (!asset) return NextResponse.json({ error: "not found" }, { status: 404 });
     if (!asset.isActive) return NextResponse.json({ error: "asset inactive" }, { status: 410 });
@@ -54,18 +64,18 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       );
     }
 
-    const tenant = (await db.select().from(tenants).where(eq(tenants.id, session.tenantId)).limit(1))[0];
+    const tenant = (await withTenant(session.tenantId, async (tx) =>
+      tx.select().from(tenants).where(eq(tenants.id, session.tenantId)).limit(1)
+    ))[0];
     if (!tenant) return NextResponse.json({ error: "tenant not found" }, { status: 404 });
 
     // Fetch the source bytes — server-to-server, never exposed to the browser.
-    const upstream = await fetch(asset.fileUrl);
-    if (!upstream.ok) {
-      return NextResponse.json(
-        { error: `source fetch failed (${upstream.status})` },
-        { status: 502 }
-      );
+    // SSRF-guarded + timed + size-capped (the fileUrl can be tenant-controlled).
+    const fetched = await fetchAssetBytes(asset.fileUrl);
+    if (!fetched.ok) {
+      return NextResponse.json({ error: fetched.error }, { status: fetched.status });
     }
-    const sourceBuf = Buffer.from(await upstream.arrayBuffer());
+    const sourceBuf = fetched.buf;
 
     // Build the branding snapshot
     const brand: BrandingTenant = {
@@ -82,6 +92,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     // Per-request overrides take precedence over the asset's defaults.
     const config = { ...((asset.brandingConfig as any) ?? {}) };
+    // Apply the named template first (if supplied), then let any explicit
+    // position/height params override it.
+    if (templateParam) {
+      const t = getBrandingTemplate(templateParam);
+      config.position = t.image.position;
+      config.heightPct = t.image.heightPct;
+    }
     if (overridePosition) config.position = overridePosition;
     if (overrideHeight && overrideHeight >= 5 && overrideHeight <= 50) {
       config.heightPct = overrideHeight;

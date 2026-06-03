@@ -1,87 +1,78 @@
 "use client";
 
 /**
- * MFD-controlled branding layout picker for the AINA library detail page.
+ * MFD-controlled branding template picker for AINA library IMAGE assets.
  *
- * Four layouts:
- *   - Bottom only          → single strip at the bottom (default)
- *   - Top only             → single strip at the top
- *   - Both                 → same strip top + bottom
- *   - Split (recommended)  → logo + firm name on top, ARN + contact + address on bottom
+ * The MFD picks one of the named presets (Classic / Minimal / Bold / Split)
+ * from the shared catalog; each maps to a server-side composite layout. A
+ * height fine-tune lets them nudge the strip without leaving the preset.
  *
- * Each option re-points the preview <img> and the download link at
- * /api/content-library/[id]/branded?mode=…&position=…&h=… so the server
+ * Every change re-points the preview <img> and the download link at
+ * /api/content-library/[id]/branded?template=…&h=…&mode=… so the server
  * composites the requested layout. The raw S3 URL never leaves the server.
  */
 
 import { useState } from "react";
-import { Download, LayoutTemplate } from "lucide-react";
-
-type Layout = "bottom" | "top" | "both" | "split";
-
-const OPTIONS: { key: Layout; label: string; sub: string }[] = [
-  {
-    key: "bottom",
-    label: "Bottom only",
-    sub: "Everything in one strip at the bottom",
-  },
-  {
-    key: "top",
-    label: "Top only",
-    sub: "Everything in one strip at the top",
-  },
-  {
-    key: "split",
-    label: "Split — logo top, details bottom",
-    sub: "Thin header (logo + firm name) + details (ARN, contact, address)",
-  },
-  {
-    key: "both",
-    label: "Both edges",
-    sub: "Full strip duplicated top + bottom",
-  },
-];
+import { Download, LayoutTemplate, Send } from "lucide-react";
+import { SendToClientDrawer } from "./SendToClientDrawer";
+import {
+  BRANDING_TEMPLATES,
+  DEFAULT_TEMPLATE_ID,
+  getBrandingTemplate,
+} from "@/lib/branding/templates";
 
 export function BrandingLayoutPicker({
   assetId,
-  defaultLayout = "bottom",
-  defaultHeightPct = 18,
+  assetTitle,
+  assetType,
+  assetFileUrl,
+  defaultTemplateId = DEFAULT_TEMPLATE_ID,
+  defaultHeightPct,
 }: {
   assetId: string;
-  defaultLayout?: Layout;
+  assetTitle: string;
+  assetType: string;
+  assetFileUrl: string;
+  defaultTemplateId?: string;
   defaultHeightPct?: number;
 }) {
-  const [layout, setLayout] = useState<Layout>(defaultLayout);
-  const [heightPct, setHeightPct] = useState(defaultHeightPct);
-  // Cache-buster so React swaps the <img> when params change (otherwise
-  // the browser may reuse the cached preview).
+  const initial = getBrandingTemplate(defaultTemplateId);
+  const [templateId, setTemplateId] = useState(initial.id);
+  const [heightPct, setHeightPct] = useState(defaultHeightPct ?? initial.image.heightPct);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  // Cache-buster so React swaps the <img> when params change.
   const [refreshKey, setRefreshKey] = useState(0);
 
-  const params = `position=${layout}&h=${heightPct}&v=${refreshKey}`;
+  const template = getBrandingTemplate(templateId);
+  const params = `template=${templateId}&h=${heightPct}&v=${refreshKey}`;
   const previewSrc = `/api/content-library/${assetId}/branded?mode=preview&${params}`;
   const downloadHref = `/api/content-library/${assetId}/branded?mode=download&${params}`;
 
+  function pick(id: string) {
+    const t = getBrandingTemplate(id);
+    setTemplateId(t.id);
+    setHeightPct(t.image.heightPct); // reset the fine-tune to the preset default
+    setRefreshKey((k) => k + 1);
+  }
+
   return (
     <div className="space-y-3">
-      {/* Layout selector */}
+      {/* Template selector */}
       <div>
         <div className="flex items-center gap-2 mb-2">
           <LayoutTemplate className="size-3.5 text-brand-cyan" />
           <span className="text-[11px] uppercase tracking-wider font-bold text-muted-foreground">
-            Branding layout
+            Branding template
           </span>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-          {OPTIONS.map((o) => {
-            const active = layout === o.key;
+          {BRANDING_TEMPLATES.map((o) => {
+            const active = templateId === o.id;
             return (
               <button
-                key={o.key}
+                key={o.id}
                 type="button"
-                onClick={() => {
-                  setLayout(o.key);
-                  setRefreshKey((k) => k + 1);
-                }}
+                onClick={() => pick(o.id)}
                 className={`text-left rounded-lg border p-2.5 text-xs transition ${
                   active
                     ? "border-brand-cyan bg-brand-cyan-light/40 ring-2 ring-brand-cyan/20"
@@ -90,7 +81,7 @@ export function BrandingLayoutPicker({
               >
                 <div className="font-semibold text-[12px]">{o.label}</div>
                 <div className="text-[10px] text-muted-foreground mt-0.5 leading-tight">
-                  {o.sub}
+                  {o.description}
                 </div>
               </button>
             );
@@ -98,16 +89,19 @@ export function BrandingLayoutPicker({
         </div>
       </div>
 
-      {/* Height slider — applies to the main strip (the small top header in
-          split mode is fixed at ~7 % so it never crowds the image). */}
+      {/* Height fine-tune — applies to the main strip (the small top header in
+          split mode is fixed compact so it never crowds the image). */}
       <div>
         <div className="flex items-center justify-between text-[11px] text-muted-foreground mb-1">
           <span>
-            Strip height — <span className="tabular-nums text-foreground font-semibold">{heightPct}%</span>
+            Strip height —{" "}
+            <span className="tabular-nums text-foreground font-semibold">{heightPct}%</span>
             <span className="opacity-70"> of image</span>
           </span>
           <span className="text-[10px] italic">
-            {layout === "split" ? "Bottom strip only — top header is fixed compact" : "Applies to the strip"}
+            {template.image.position === "split"
+              ? "Bottom strip only — top header is fixed compact"
+              : "Fine-tune the strip"}
           </span>
         </div>
         <input
@@ -140,10 +134,30 @@ export function BrandingLayoutPicker({
         <p className="text-[11px] text-muted-foreground italic">
           Composited server-side · the raw image is never sent to the browser.
         </p>
-        <a href={downloadHref} className="btn-primary" download>
-          <Download className="size-4" /> Download branded PNG
-        </a>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setDrawerOpen(true)}
+            className="rounded-md bg-secondary hover:bg-secondary/80 border text-secondary-foreground px-3 py-1.5 text-xs font-semibold flex items-center gap-1.5"
+          >
+            <Send className="size-3.5" /> Send to Client
+          </button>
+          <a href={downloadHref} className="btn-primary" download>
+            <Download className="size-4" /> Download branded PNG
+          </a>
+        </div>
       </div>
+
+      <SendToClientDrawer
+        isOpen={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        assetId={assetId}
+        assetTitle={assetTitle}
+        assetType={assetType}
+        assetFileUrl={assetFileUrl}
+        brandingPosition={template.image.position}
+        brandingHeightPct={heightPct}
+      />
     </div>
   );
 }

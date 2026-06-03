@@ -110,6 +110,13 @@
   h1 { letter-spacing: -0.025em; }
   h2 { letter-spacing: -0.02em; }
 
+  /* No raw browser outline on interactive controls — we render a custom
+     focus-visible ring (below) for keyboard users instead, so mouse clicks
+     never flash an ugly native outline but keyboard a11y is preserved. */
+  button, a, [role="button"], [role="tab"], summary, [tabindex]:not([tabindex="-1"]) {
+    @apply outline-none;
+  }
+
   /* Smoother focus ring everywhere — keyboard a11y without ugliness */
   :focus-visible {
     @apply outline-none ring-2 ring-ring/40 ring-offset-1 ring-offset-background;
@@ -141,7 +148,7 @@
 
   /* Primary — gradient navy with soft glow + active press */
   .btn-primary {
-    @apply inline-flex items-center justify-center gap-1.5
+    @apply inline-flex items-center justify-center gap-1.5 whitespace-nowrap
            rounded-lg px-4 py-2 text-sm font-medium
            text-white shadow-md
            transition-all duration-150
@@ -159,7 +166,7 @@
 
   /* Accent — electric cyan gradient with a vivid glow on hover */
   .btn-accent {
-    @apply inline-flex items-center justify-center gap-1.5
+    @apply inline-flex items-center justify-center gap-1.5 whitespace-nowrap
            rounded-lg px-4 py-2 text-sm font-semibold
            text-white shadow-md
            transition-all duration-150
@@ -175,7 +182,7 @@
 
   /* Secondary — refined ghost-card button */
   .btn-secondary {
-    @apply inline-flex items-center justify-center gap-1.5
+    @apply inline-flex items-center justify-center gap-1.5 whitespace-nowrap
            rounded-lg border border-border bg-card text-foreground
            px-4 py-2 text-sm font-medium shadow-sm
            hover:bg-secondary hover:border-foreground/15 hover:shadow
@@ -186,7 +193,7 @@
 
   /* Ghost — text-first, polite */
   .btn-ghost {
-    @apply inline-flex items-center justify-center gap-1.5
+    @apply inline-flex items-center justify-center gap-1.5 whitespace-nowrap
            rounded-lg px-3 py-1.5 text-sm font-medium text-muted-foreground
            hover:bg-secondary hover:text-foreground
            active:scale-[0.98]
@@ -195,7 +202,7 @@
 
   /* Danger (destructive) — for delete actions */
   .btn-danger {
-    @apply inline-flex items-center justify-center gap-1.5
+    @apply inline-flex items-center justify-center gap-1.5 whitespace-nowrap
            rounded-lg px-4 py-2 text-sm font-medium
            bg-destructive text-destructive-foreground shadow-sm
            hover:bg-destructive/90 hover:shadow
@@ -239,11 +246,19 @@
     );
   }
 
-  /* KPI card — used on dashboard stat strips. Interactive lift on hover. */
+  /* KPI card — used on dashboard stat strips. Interactive lift on hover.
+     h-full so every tile fills its grid/flex cell → a row of KPI cards is
+     always the same height even when one has a longer sub-label. */
   .kpi-card {
-    @apply rounded-xl bg-card border border-border/70 p-4 shadow-sm
+    @apply h-full rounded-xl bg-card border border-border/70 p-4 shadow-sm
            transition-all duration-200
            hover:shadow-md hover:-translate-y-0.5 hover:border-brand-cyan/30;
+  }
+
+  /* Opt-in equal-height card for any grid/flex row of cards that should never
+     end up "one tall, one short". Add alongside card-surface. */
+  .card-equal {
+    @apply h-full;
   }
 
   /* Highlighted KPI — gradient navy → cyan, white text */
@@ -500,5 +515,94 @@
   /* Number / tabular contexts */
   .tabular-nums {
     font-variant-numeric: tabular-nums;
+  }
+
+  /* Glassmorphism premium card styling */
+  .glass-card {
+    background: rgba(255, 255, 255, 0.45);
+    backdrop-filter: blur(12px) saturate(160%);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    box-shadow: 0 8px 32px 0 rgba(14, 37, 87, 0.03);
+    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .dark .glass-card {
+    background: rgba(15, 23, 42, 0.45);
+    backdrop-filter: blur(12px) saturate(160%);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.2);
+  }
+  .glass-card:hover {
+    transform: translateY(-2px);
+    border-color: rgba(14, 165, 233, 0.35);
+    box-shadow: 0 12px 40px 0 rgba(14, 165, 233, 0.08);
+  }
+
+  /* Hover glow styling */
+  .hover-glow-cyan:hover {
+    box-shadow: 0 0 20px 2px rgba(14, 165, 233, 0.15);
+    border-color: rgba(14, 165, 233, 0.4);
+  }
+  .hover-glow-emerald:hover {
+    box-shadow: 0 0 20px 2px rgba(16, 185, 129, 0.15);
+    border-color: rgba(16, 185, 129, 0.4);
+  }
+
+  /* Animated pulse indicators for SLA / Attention items */
+  .pulse-danger-dot {
+    position: relative;
+    display: inline-flex;
+    height: 8px;
+    width: 8px;
+    border-radius: 9999px;
+    background-color: #ef4444;
+  }
+  .pulse-danger-dot::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 9999px;
+    background-color: rgba(239, 68, 68, 0.65);
+    animation: pulse-glow-ring 2.0s cubic-bezier(0.24, 0, 0.38, 1) infinite;
+  }
+
+  .pulse-warning-dot {
+    position: relative;
+    display: inline-flex;
+    height: 8px;
+    width: 8px;
+    border-radius: 9999px;
+    background-color: #f59e0b;
+  }
+  .pulse-warning-dot::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 9999px;
+    background-color: rgba(245, 158, 11, 0.65);
+    animation: pulse-glow-ring 2.0s cubic-bezier(0.24, 0, 0.38, 1) infinite;
+  }
+
+  @keyframes pulse-glow-ring {
+    0% {
+      transform: scale(0.95);
+      opacity: 0.85;
+    }
+    50% {
+      transform: scale(2.4);
+      opacity: 0;
+    }
+    100% {
+      transform: scale(0.95);
+      opacity: 0;
+    }
+  }
+
+  /* Interactive smooth scale utility */
+  .hover-lift {
+    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .hover-lift:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
   }
 }

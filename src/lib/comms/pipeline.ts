@@ -1,14 +1,16 @@
 /**
  * Unified send pipeline. Called by workflow actions, campaign dispatchers,
  * and manual UI send actions. Routes through:
+ *   0. Idempotency — short-circuit a retried workflow step (no double-send)
  *   1. Template + version resolution
  *   2. Variable / token rendering
  *   3. Consent check
  *   4. (WhatsApp only) session window check
  *   5. Compliance gate
- *   6. Rate limit check (per-tenant queue suffix)
- *   7. Channel adapter dispatch
- *   8. Insert communications row with full audit snapshot
+ *   5b. Rate limit — per-tenant × channel token bucket (auth/OTP exempt)
+ *   6. Insert communications row with full audit snapshot (status='queued')
+ *   7. Channel adapter dispatch (Resend gets a stable idempotency key)
+ *   8. Stamp external id + status
  *
  * Every step is observable — the resulting communications row carries the
  * consent + compliance snapshot at send time, immutable forever.
@@ -32,6 +34,9 @@ import { resolveTokens, renderTemplateText, type VariableDef } from "./tokens";
 import { whatsappAdapter } from "./adapters/aisensy";
 import { emailAdapter } from "./adapters/resend";
 import { smsAdapter } from "./adapters/msg91";
+import { getTenantIntegration } from "./integrations";
+import { consumeRateLimit } from "./rate-limit";
+
 
 export type DispatchChannel = "whatsapp" | "email" | "sms";
 
@@ -63,6 +68,32 @@ export interface DispatchResult {
 
 export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchResult> {
   const communicationId = uuid();
+
+  // -----------------------------------------------------------
+  // 0. Idempotency — a retried workflow step must not double-send.
+  // If a prior attempt for this (tenant, workflowRunStepId) already produced an
+  // in-flight or successful communication, return it instead of sending again.
+  // -----------------------------------------------------------
+  if (input.workflowRunStepId) {
+    const [existing] = await tx
+      .select()
+      .from(communications)
+      .where(
+        and(
+          eq(communications.tenantId, input.tenantId),
+          eq(communications.workflowRunStepId, input.workflowRunStepId)
+        )
+      )
+      .limit(1);
+    if (existing && ["queued", "sent", "delivered", "read", "replied", "scheduled"].includes(existing.status)) {
+      return {
+        communicationId: existing.id,
+        status: existing.status === "queued" ? "queued" : "sent",
+        externalId: existing.externalId ?? undefined,
+      };
+    }
+  }
+
   // -----------------------------------------------------------
   // 1. Resolve template + version
   // -----------------------------------------------------------
@@ -190,6 +221,21 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
   }
 
   // -----------------------------------------------------------
+  // 5b. Rate limit — cap pathological per-tenant bursts (runaway loops,
+  // misconfigured fan-out). Authentication/OTP is exempt inside the limiter.
+  // -----------------------------------------------------------
+  const rl = consumeRateLimit(input.tenantId, input.channel, input.category);
+  if (!rl.allowed) {
+    return await skip(
+      tx,
+      communicationId,
+      input,
+      "skipped_rate_limit",
+      `rate limit exceeded for ${input.channel} (${rl.limitPerMin}/min per tenant)`
+    );
+  }
+
+  // -----------------------------------------------------------
   // 6. Pre-insert communications row (status='queued') for audit
   // -----------------------------------------------------------
   await tx.insert(communications).values({
@@ -222,13 +268,16 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
   try {
     let adapterResult: { externalId: string; status: "sent" | "queued" };
     if (input.channel === "whatsapp") {
+      const integration = await getTenantIntegration(tx, input.tenantId, "aisensy");
       adapterResult = await whatsappAdapter.send({
         tenantId: input.tenantId,
         templateVersion: version,
         tokens: rendered.tokens,
         recipient: input.recipient,
+        apiKey: integration?.config?.apiKey,
       });
     } else if (input.channel === "email") {
+      const integration = await getTenantIntegration(tx, input.tenantId, "resend");
       adapterResult = await emailAdapter.send({
         tenantId: input.tenantId,
         templateVersion: version,
@@ -238,14 +287,22 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
         category: input.category as any,
         cc: (input.meta?.cc as string[]) ?? [],
         bcc: (input.meta?.bcc as string[]) ?? [],
+        apiKey: integration?.config?.apiKey,
+        fromOverride: integration?.senderConfig?.fromEmail,
+        fromNameOverride: integration?.senderConfig?.fromName,
+        // Stable across step retries → Resend dedupes a re-fired send.
+        idempotencyKey: input.workflowRunStepId ?? communicationId,
       });
     } else {
+      const integration = await getTenantIntegration(tx, input.tenantId, "msg91");
       adapterResult = await smsAdapter.send({
         tenantId: input.tenantId,
         templateVersion: version,
         tokens: rendered.tokens,
         rendered,
         recipient: input.recipient,
+        apiKey: integration?.config?.apiKey,
+        senderId: integration?.senderConfig?.senderId,
       });
     }
     await tx
@@ -383,7 +440,7 @@ function extractDltId(version: TemplateVersion): string | undefined {
 // Small helpers — local imports kept off the hot path
 // ---------------------------------------------------------------------------
 
-async function loadTenant(tx: Tx, tenantId: string) {
+export async function loadTenant(tx: Tx, tenantId: string) {
   const { tenants } = await import("@/db/schema");
   const [t] = await tx.select().from(tenants).where(eq(tenants.id, tenantId));
   return t;
@@ -393,7 +450,7 @@ async function loadInvestor(tx: Tx, id: string) {
   const [i] = await tx.select().from(investors).where(eq(investors.id, id));
   return i ?? null;
 }
-async function getConsent(
+export async function getConsent(
   tx: Tx,
   tenantId: string,
   investorId: string,

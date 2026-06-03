@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { desc } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { Plus, Workflow, Lock, ListChecks } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { workflowRules } from "@/db/schema";
@@ -30,7 +30,7 @@ export default async function WorkflowRulesPage({
   const moduleFilter = sp.module ?? "";
 
   const rules = await withTenant(session.tenantId, async (tx) => {
-    const all = await tx.select().from(workflowRules).orderBy(workflowRules.module, workflowRules.executionOrder, desc(workflowRules.createdAt));
+    const all = await tx.select().from(workflowRules).where(eq(workflowRules.tenantId, session.tenantId)).orderBy(workflowRules.module, workflowRules.executionOrder, desc(workflowRules.createdAt));
     return moduleFilter ? all.filter((r) => r.module === moduleFilter) : all;
   });
 

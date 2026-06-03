@@ -32,17 +32,23 @@ export function GoalDetailCalculator({ goal }: { goal: any }) {
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
 
-  const initial = () => ({
-    name: goal.name ?? "",
-    targetAmount: String(Math.round(Number(goal.targetAmount ?? 0))),
-    targetYear: String(new Date(goal.targetDate).getFullYear()),
-    currentValue: String(Math.round(Number(goal.currentValue ?? 0))),
-    existingMonthlySip: String(Math.round(Number(goal.existingMonthlySip ?? goal.monthlyContribution ?? 0))),
-    expectedReturnPct: String(Number(goal.expectedReturn ?? 12)),
-    inflationPct: "6",
-    stepUpPct: "10",
-    remarks: goal.remarks ?? "",
-  });
+  const initial = () => {
+    const mode = goal.targetMode ?? "future";
+    return {
+      name: goal.name ?? "",
+      targetMode: mode as "today" | "future",
+      targetAmount: mode === "today"
+        ? String(Math.round(Number(goal.presentTargetAmount ?? goal.targetAmount ?? 0)))
+        : String(Math.round(Number(goal.targetAmount ?? 0))),
+      targetYear: String(new Date(goal.targetDate).getFullYear()),
+      currentValue: String(Math.round(Number(goal.currentValue ?? 0))),
+      existingMonthlySip: String(Math.round(Number(goal.existingMonthlySip ?? goal.monthlyContribution ?? 0))),
+      expectedReturnPct: String(Number(goal.expectedReturn ?? 12)),
+      inflationPct: goal.inflationPct ? String(Number(goal.inflationPct)) : "6",
+      stepUpPct: goal.stepUpPct ? String(Number(goal.stepUpPct)) : "10",
+      remarks: goal.remarks ?? "",
+    };
+  };
 
   const [form, setForm] = useState(initial);
 
@@ -51,19 +57,19 @@ export function GoalDetailCalculator({ goal }: { goal: any }) {
   }
 
   const calc = useMemo(() => {
-    const target = parseFloat(form.targetAmount) || 0;
+    const targetVal = parseFloat(form.targetAmount) || 0;
     const cur = parseFloat(form.currentValue) || 0;
     const sip = parseFloat(form.existingMonthlySip) || 0;
     const ret = parseFloat(form.expectedReturnPct) || 12;
     const infl = parseFloat(form.inflationPct) || 0;
     const step = parseFloat(form.stepUpPct) || 0;
     const year = parseInt(form.targetYear, 10);
-    if (!target || !year) return null;
+    if (!targetVal || !year) return null;
     const targetDate = new Date(year, 11, 31);
     const monthsLeft = monthsBetween(new Date(), targetDate);
     return computeGoal({
-      // The saved target is in target-date money, so use futureTarget directly
-      futureTarget: target,
+      presentTarget: form.targetMode === "today" ? targetVal : undefined,
+      futureTarget: form.targetMode === "future" ? targetVal : undefined,
       currentValue: cur,
       existingMonthlySip: sip,
       monthsLeft,
@@ -107,7 +113,11 @@ export function GoalDetailCalculator({ goal }: { goal: any }) {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           name: form.name,
-          targetAmount: parseFloat(form.targetAmount) || 0,
+          targetAmount: Math.round(calc.futureTarget),
+          targetMode: form.targetMode,
+          presentTargetAmount: form.targetMode === "today" ? (parseFloat(form.targetAmount) || undefined) : undefined,
+          inflationPct: parseFloat(form.inflationPct) || 0,
+          stepUpPct: parseFloat(form.stepUpPct) || 0,
           targetDate: targetDateIso,
           currentValue: parseFloat(form.currentValue) || 0,
           existingMonthlySip: parseFloat(form.existingMonthlySip) || 0,
@@ -150,8 +160,25 @@ export function GoalDetailCalculator({ goal }: { goal: any }) {
           <input value={form.name} onChange={(e) => set("name", e.target.value)} className="input-base" />
         </Field>
 
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Target (₹, future-value)">
+        <div className="pt-1 border-t">
+          <div className="text-xs font-semibold mb-1.5">Target amount expressed in</div>
+          <div className="grid grid-cols-2 gap-2">
+            <ToggleBtn active={form.targetMode === "today"} onClick={() => set("targetMode", "today")}>
+              Today's value
+            </ToggleBtn>
+            <ToggleBtn active={form.targetMode === "future"} onClick={() => set("targetMode", "future")}>
+              Target-date value
+            </ToggleBtn>
+          </div>
+          <p className="text-[11px] text-muted-foreground mt-1.5">
+            {form.targetMode === "today"
+              ? "We'll inflate this to the target year using the inflation rate below."
+              : "Amount is already in target-year rupees — no inflation applied."}
+          </p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 pt-2">
+          <Field label={form.targetMode === "today" ? "Target amount (₹, today's)" : "Target amount (₹, future)"}>
             <input
               type="number"
               value={form.targetAmount}
@@ -445,5 +472,29 @@ function PlanCard({
       <div className="text-lg font-bold tabular-nums mt-0.5">{value}</div>
       <div className="text-[10px] text-muted-foreground mt-0.5 leading-tight">{sub}</div>
     </div>
+  );
+}
+
+function ToggleBtn({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-lg border-2 px-3 py-2 text-sm font-medium transition-all ${
+        active
+          ? "border-brand-cyan bg-brand-cyan-light/40 text-foreground"
+          : "border-border bg-card text-muted-foreground hover:border-brand-cyan/40"
+      }`}
+    >
+      {children}
+    </button>
   );
 }

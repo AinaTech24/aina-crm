@@ -136,8 +136,12 @@ export function GoalCreateForm({
           investorId,
           name: form.name,
           category: form.category,
-          // Persist the future-money target (after inflation)
+          // Persist the future-target (after inflation)
           targetAmount: Math.round(calc.futureTarget),
+          targetMode: form.targetMode,
+          presentTargetAmount: form.targetMode === "today" ? (parseFloat(form.targetAmount) || undefined) : undefined,
+          inflationPct: parseFloat(form.inflationPct) || 0,
+          stepUpPct: parseFloat(form.stepUpPct) || 0,
           targetDate: targetDateIso,
           currentValue: parseFloat(form.currentValue) || 0,
           existingMonthlySip: parseFloat(form.existingMonthlySip) || 0,

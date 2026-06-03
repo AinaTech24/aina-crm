@@ -12,6 +12,15 @@ import { withTenant, withSystem } from "@/db/client";
 import { eventsOutbox, segmentMemberships, segments } from "@/db/schema";
 import { compileToSelect, bindCompiled } from "@/lib/filter/compiler";
 
+/** Keep every multi-row statement well under Postgres' 65,535 bind-param cap. */
+const WRITE_CHUNK = 1000;
+const OUTBOX_CHUNK = 500;
+function chunk<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
 export async function materializeSegment(tenantId: string, segmentId: string): Promise<{
   added: number;
   removed: number;
@@ -21,7 +30,10 @@ export async function materializeSegment(tenantId: string, segmentId: string): P
   const start = Date.now();
 
   return withTenant(tenantId, async (tx) => {
-    const [seg] = await tx.select().from(segments).where(eq(segments.id, segmentId));
+    // Bound each statement — a bad regex / deep relation EXISTS shouldn't pin a
+    // worker connection. Generous (30s) since this is a background pass.
+    await tx.execute(sql`SET LOCAL statement_timeout = '30000ms'`);
+    const [seg] = await tx.select().from(segments).where(and(eq(segments.id, segmentId), eq(segments.tenantId, tenantId)));
     if (!seg) throw new Error(`Segment ${segmentId} not found`);
     if (seg.kind !== "dynamic") {
       throw new Error(`Cannot materialize static segment ${segmentId}`);
@@ -35,22 +47,24 @@ export async function materializeSegment(tenantId: string, segmentId: string): P
     const { sql: querySql, params } = compileToSelect(ast, seg.subjectType, {
       columns: [`${aliasOf(seg.subjectType)}.id`],
       limit: 100_000,
+      tenantId,
     });
 
-    // RLS scopes by tenant_id via the session — but for safety add an
-    // explicit tenant clause. Bound through sql template (not interpolated)
-    // so it's a real parameter, never string concatenation.
-    const alias = aliasOf(seg.subjectType);
     const compiled = bindCompiled(querySql, params);
-    const rawSql = sql`${compiled} AND ${sql.raw(alias)}.tenant_id = ${tenantId}`;
-    const result = await tx.execute(rawSql as any);
+    const result = await tx.execute(compiled as any);
     const newIds = new Set((result.rows as any[]).map((r) => r.id));
 
     // Current memberships
     const currentRows = await tx
       .select()
       .from(segmentMemberships)
-      .where(and(eq(segmentMemberships.segmentId, segmentId), sql`${segmentMemberships.removedAt} IS NULL`));
+      .where(
+        and(
+          eq(segmentMemberships.segmentId, segmentId),
+          eq(segmentMemberships.tenantId, tenantId),
+          sql`${segmentMemberships.removedAt} IS NULL`
+        )
+      );
     const current = new Set(currentRows.map((r) => r.subjectId));
 
     const added: string[] = [];
@@ -62,12 +76,12 @@ export async function materializeSegment(tenantId: string, segmentId: string): P
       if (!newIds.has(id)) removed.push(id);
     }
 
-    // Apply changes — batched, not row-by-row.
-    if (added.length) {
-      // Build a multi-row VALUES expression with all UUIDs bound as params.
-      // PG's ON CONFLICT lets us upsert in one round-trip instead of N.
+    // Apply changes — batched + CHUNKED. A single VALUES list of >~21K rows
+    // (3 bind params each) or an IN (...) of >65K ids would exceed Postgres'
+    // 65,535 bind-param ceiling and fail the whole materialization.
+    for (const batch of chunk(added, WRITE_CHUNK)) {
       const valuesSql = sql.join(
-        added.map((id) => sql`(${segmentId}::uuid, ${tenantId}::uuid, ${id}::uuid, now(), NULL)`),
+        batch.map((id) => sql`(${segmentId}::uuid, ${tenantId}::uuid, ${id}::uuid, now(), NULL)`),
         sql`, `
       );
       await tx.execute(
@@ -77,35 +91,39 @@ export async function materializeSegment(tenantId: string, segmentId: string): P
             SET added_at = EXCLUDED.added_at, removed_at = NULL`
       );
     }
-    if (removed.length) {
-      // Bind each removed id as a real parameter — previous code did
-      // map(id => `'${id}'`).join(",") which is plain string interpolation.
-      const idList = sql.join(removed.map((id) => sql`${id}::uuid`), sql`, `);
+    for (const batch of chunk(removed, WRITE_CHUNK)) {
+      const idList = sql.join(batch.map((id) => sql`${id}::uuid`), sql`, `);
       await tx.execute(
         sql`UPDATE segment_memberships SET removed_at = now()
             WHERE segment_id = ${segmentId}::uuid
+              AND tenant_id = ${tenantId}::uuid
               AND subject_id IN (${idList})`
       );
     }
 
-    // Emit events
-    for (const id of added) {
-      await tx.insert(eventsOutbox).values({
-        tenantId,
-        kind: `segment_entry.${seg.name}`,
-        entityType: seg.subjectType,
-        entityId: id,
-        after: { segmentId, segmentName: seg.name },
-      } as any);
+    // Emit entry/exit events — CHUNKED multi-row inserts, not one INSERT per id
+    // (the old N+1 loop did up to 100K round-trips inside this transaction).
+    for (const batch of chunk(added, OUTBOX_CHUNK)) {
+      await tx.insert(eventsOutbox).values(
+        batch.map((id) => ({
+          tenantId,
+          kind: `segment_entry.${seg.name}`,
+          entityType: seg.subjectType,
+          entityId: id,
+          after: { segmentId, segmentName: seg.name },
+        })) as any
+      );
     }
-    for (const id of removed) {
-      await tx.insert(eventsOutbox).values({
-        tenantId,
-        kind: `segment_exit.${seg.name}`,
-        entityType: seg.subjectType,
-        entityId: id,
-        before: { segmentId, segmentName: seg.name },
-      } as any);
+    for (const batch of chunk(removed, OUTBOX_CHUNK)) {
+      await tx.insert(eventsOutbox).values(
+        batch.map((id) => ({
+          tenantId,
+          kind: `segment_exit.${seg.name}`,
+          entityType: seg.subjectType,
+          entityId: id,
+          before: { segmentId, segmentName: seg.name },
+        })) as any
+      );
     }
 
     // Update segment counters
@@ -117,7 +135,7 @@ export async function materializeSegment(tenantId: string, segmentId: string): P
         lastMaterializedAt: new Date(),
         lastMaterializationMs: elapsed,
       })
-      .where(eq(segments.id, segmentId));
+      .where(and(eq(segments.id, segmentId), eq(segments.tenantId, tenantId)));
 
     return { added: added.length, removed: removed.length, total: newIds.size, elapsedMs: elapsed };
   });

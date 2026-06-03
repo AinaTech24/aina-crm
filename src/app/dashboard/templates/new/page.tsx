@@ -1,12 +1,20 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, Eye, ShieldCheck, AlertCircle, Save, Send } from "lucide-react";
+import dynamic from "next/dynamic";
+import { ChevronLeft, Eye, ShieldCheck, AlertCircle, Save, Send, Plus, Trash, Paperclip } from "lucide-react";
 import { runComplianceChecks } from "@/lib/comms/compliance";
-import { EmailDesigner } from "@/components/email-designer/EmailDesigner";
+import { MergeFieldInserter, type VarDecl } from "@/components/templates/MergeFieldInserter";
 import type { EmailDesignerBody } from "@/lib/email-designer/types";
+
+// Code-split the block-based email designer (847 lines + its editor deps) so
+// it loads only when the email channel is actually edited, not on page open.
+const EmailDesigner = dynamic(
+  () => import("@/components/email-designer/EmailDesigner").then((m) => m.EmailDesigner),
+  { ssr: false, loading: () => <div className="skeleton h-[60vh] min-h-[400px] w-full rounded-xl" /> }
+);
 
 type Channel = "whatsapp" | "email" | "sms";
 type Category = "transactional" | "utility" | "marketing" | "authentication";
@@ -33,13 +41,46 @@ const defaultEmailBody: EmailDesignerBody = {
   },
 };
 
+function extractVariables(text: string): string[] {
+  const matches = text.match(/\{\{([^}]+)\}\}/g) ?? [];
+  return Array.from(new Set(matches.map((m) => m.slice(2, -2).trim())));
+}
+
 export default function NewTemplatePage() {
   const router = useRouter();
   const [name, setName] = useState("New template");
   const [key, setKey] = useState("new_template");
+  const [description, setDescription] = useState("");
   const [channel, setChannel] = useState<Channel>("email");
   const [category, setCategory] = useState<Category>("transactional");
   const [locale, setLocale] = useState("en-IN");
+  const [attachments, setAttachments] = useState<Array<{ name: string; url: string }>>([]);
+  const waRef = useRef<HTMLTextAreaElement>(null);
+  const smsRef = useRef<HTMLTextAreaElement>(null);
+
+  // Dynamic tenant details loaded from API
+  const [tenant, setTenant] = useState<{
+    legalName?: string;
+    arn?: string;
+    principalEuin?: string;
+    riaRegistered?: boolean;
+  } | null>(null);
+
+  useEffect(() => {
+    fetch("/api/tenant")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data?.tenant) {
+          setTenant({
+            legalName: data.tenant.legalName ?? "",
+            arn: data.tenant.arn ?? "",
+            principalEuin: data.tenant.principalEuin ?? undefined,
+            riaRegistered: !!data.tenant.riaRegistered,
+          });
+        }
+      })
+      .catch((err) => console.error("Failed to load tenant details:", err));
+  }, []);
 
   // Email body (block designer / HTML mode)
   const [emailBody, setEmailBody] = useState<EmailDesignerBody>(defaultEmailBody);
@@ -54,14 +95,17 @@ export default function NewTemplatePage() {
   const [dltId, setDltId] = useState("");
 
   const [saving, setSaving] = useState(false);
-  const [savedId, setSavedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // Compliance score against rendered text (for any channel)
   const previewText = useMemo(() => {
     if (channel === "email") {
       if (emailBody.mode === "html") return emailBody.html ?? "";
-      return [emailBody.subject, emailBody.preheader, ...(emailBody.blocks ?? []).map((b: any) => (b.text || b.title || b.subtitle || b.html || b.label || ""))]
+      return [
+        emailBody.subject,
+        emailBody.preheader,
+        ...(emailBody.blocks ?? []).map((b: any) => b.text || b.title || b.subtitle || b.html || b.label || ""),
+      ]
         .filter(Boolean)
         .join("\n");
     }
@@ -69,20 +113,85 @@ export default function NewTemplatePage() {
     return smsText;
   }, [channel, emailBody, waText, smsText]);
 
-  const compliance = useMemo(
-    () =>
-      runComplianceChecks({
-        channel,
-        category,
-        tenant: { legalName: "Demo Wealth Advisors", arn: "123456", principalEuin: "E123456", riaRegistered: false },
-        text: previewText,
-        subject: channel === "email" ? emailBody.subject : undefined,
-        dltTemplateId: channel === "sms" ? dltId : undefined,
-        whatsappSessionActive: false,
-        hasMarketingConsent: true,
-      }),
-    [previewText, emailBody.subject, channel, category, dltId]
-  );
+  // Declared variables schema state
+  const [declaredVars, setDeclaredVars] = useState<
+    Array<{
+      key: string;
+      type: "string" | "number" | "currency" | "date" | "boolean" | "url";
+      source?: string;
+      required?: boolean;
+      fallback?: unknown;
+      format?: string;
+    }>
+  >([]);
+
+  // Automatically extract variables from text blocks
+  const parsedKeys = useMemo(() => {
+    return extractVariables(previewText);
+  }, [previewText]);
+
+  useEffect(() => {
+    setDeclaredVars((prev) => {
+      return parsedKeys.map((vkey) => {
+        const existing = prev.find((v) => v.key === vkey);
+        if (existing) return existing;
+
+        let guessedType: "string" | "number" | "currency" | "date" | "boolean" | "url" = "string";
+        if (vkey.includes("amount") || vkey.includes("balance") || vkey.includes("value") || vkey.includes("aum") || vkey.includes("price")) {
+          guessedType = "currency";
+        } else if (vkey.includes("date") || vkey.includes("at") || vkey.includes("expiry") || vkey.includes("time")) {
+          guessedType = "date";
+        } else if (vkey.includes("url") || vkey.includes("link") || vkey.includes("href") || vkey.includes("site")) {
+          guessedType = "url";
+        } else if (vkey.includes("count") || vkey.includes("number") || vkey.includes("units") || vkey.includes("id")) {
+          guessedType = "number";
+        } else if (vkey.includes("is_") || vkey.includes("has_") || vkey.includes("active")) {
+          guessedType = "boolean";
+        }
+
+        return {
+          key: vkey,
+          type: guessedType,
+          source: vkey,
+          required: true,
+        };
+      });
+    });
+  }, [parsedKeys]);
+
+  const compliance = useMemo(() => {
+    const activeTenant = tenant ?? {
+      legalName: "Demo Wealth Advisors",
+      arn: "123456",
+      principalEuin: "E123456",
+      riaRegistered: false,
+    };
+    return runComplianceChecks({
+      channel,
+      category,
+      tenant: activeTenant,
+      text: previewText,
+      subject: channel === "email" ? emailBody.subject : undefined,
+      dltTemplateId: channel === "sms" ? dltId : undefined,
+      whatsappSessionActive: false,
+      hasMarketingConsent: true,
+    });
+  }, [previewText, emailBody.subject, channel, category, dltId, tenant]);
+
+  /** Insert a merge token: into WA/SMS at the cursor, or into the email subject;
+   *  and upsert a precise variable declaration so the schema is correct. */
+  function insertMergeField(token: string, decl: VarDecl) {
+    setDeclaredVars((prev) => {
+      const i = prev.findIndex((v) => v.key === decl.key);
+      if (i === -1) return [...prev, decl];
+      const next = [...prev];
+      next[i] = { ...next[i], type: decl.type, source: decl.source };
+      return next;
+    });
+    if (channel === "whatsapp") setWaText((t) => spliceAtCursor(waRef.current, t, token));
+    else if (channel === "sms") setSmsText((t) => spliceAtCursor(smsRef.current, t, token));
+    else setEmailBody((b) => ({ ...b, subject: `${b.subject ?? ""}${token}` }));
+  }
 
   async function save(opts: { submitForApproval?: boolean }) {
     setSaving(true);
@@ -98,11 +207,13 @@ export default function NewTemplatePage() {
       const payload = {
         key,
         name,
+        description: description || undefined,
         channel,
         category,
         locale,
         body,
-        variables: [],
+        variables: declaredVars,
+        attachments,
       };
       const r = await fetch("/api/templates", {
         method: "POST",
@@ -111,7 +222,6 @@ export default function NewTemplatePage() {
       });
       const data = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(data?.error ?? `HTTP ${r.status}`);
-      setSavedId(data.id);
       if (opts.submitForApproval) {
         await fetch(`/api/templates/${data.id}/submit`, { method: "POST" });
       }
@@ -148,13 +258,13 @@ export default function NewTemplatePage() {
           />
         </div>
         <div className="flex gap-2">
-          <button onClick={() => save({ submitForApproval: false })} disabled={saving} className="btn-secondary text-sm">
+          <button onClick={() => save({ submitForApproval: false })} disabled={saving} className="btn-secondary text-sm flex items-center gap-1">
             <Save className="size-4" /> Save draft
           </button>
           <button
             disabled={compliance.blocked || saving}
             onClick={() => save({ submitForApproval: true })}
-            className="btn-primary text-sm disabled:opacity-50"
+            className="btn-primary text-sm disabled:opacity-50 flex items-center gap-1"
           >
             <Send className="size-4" /> Submit for approval
           </button>
@@ -191,6 +301,15 @@ export default function NewTemplatePage() {
         </Field>
       </div>
 
+      <Field label="Description / summary">
+        <input
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="What is this template for? e.g. Sent when a SIP bounces — low-balance variant"
+          className="input-base w-full"
+        />
+      </Field>
+
       {/* Compliance score strip */}
       <div className="card-surface p-3 flex items-center gap-3">
         <ShieldCheck className={`size-4 ${compliance.blocked ? "text-rose-600" : "text-emerald-600"}`} />
@@ -223,6 +342,80 @@ export default function NewTemplatePage() {
         )}
       </div>
 
+      {/* Variable Configuration Panel */}
+      {declaredVars.length > 0 && (
+        <div className="card-surface p-4 space-y-3 bg-slate-50/50">
+          <div className="flex items-center justify-between">
+            <h3 className="font-semibold text-xs text-slate-800">Auto-Detected Variables ({declaredVars.length})</h3>
+            <span className="text-[10px] text-muted-foreground font-mono">Use {"{{variable_name}}"} in text to add more</span>
+          </div>
+          <div className="border rounded-md divide-y bg-background overflow-hidden">
+            {declaredVars.map((v, idx) => (
+              <div key={v.key} className="p-3 grid grid-cols-1 md:grid-cols-4 gap-3 items-center text-xs">
+                <div className="font-mono font-semibold text-slate-700 truncate">{v.key}</div>
+                <div>
+                  <label className="text-[9px] text-muted-foreground block font-medium uppercase tracking-wider mb-0.5">Type</label>
+                  <select
+                    value={v.type}
+                    onChange={(e) => {
+                      const next = [...declaredVars];
+                      next[idx].type = e.target.value as any;
+                      setDeclaredVars(next);
+                    }}
+                    className="input-base py-1 px-2 text-xs w-full bg-background"
+                  >
+                    <option value="string">String</option>
+                    <option value="number">Number</option>
+                    <option value="currency">Currency (INR)</option>
+                    <option value="date">Date</option>
+                    <option value="boolean">Boolean</option>
+                    <option value="url">URL</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[9px] text-muted-foreground block font-medium uppercase tracking-wider mb-0.5">Source path</label>
+                  <input
+                    value={v.source ?? ""}
+                    onChange={(e) => {
+                      const next = [...declaredVars];
+                      next[idx].source = e.target.value;
+                      setDeclaredVars(next);
+                    }}
+                    placeholder="e.g. investor.name"
+                    className="input-base py-1 px-2 text-xs w-full font-mono bg-background"
+                  />
+                </div>
+                <div className="flex items-center gap-2 md:pt-3">
+                  <input
+                    type="checkbox"
+                    id={`req-${v.key}`}
+                    checked={!!v.required}
+                    onChange={(e) => {
+                      const next = [...declaredVars];
+                      next[idx].required = e.target.checked;
+                      setDeclaredVars(next);
+                    }}
+                    className="rounded border-gray-300 text-primary focus:ring-primary size-3.5"
+                  />
+                  <label htmlFor={`req-${v.key}`} className="cursor-pointer text-xs text-slate-600 select-none">
+                    Required Variable
+                  </label>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Merge-field inserter (Sanchay-style target module + field picker) */}
+      <MergeFieldInserter onInsert={insertMergeField} />
+      {channel === "email" && (
+        <p className="text-[11px] text-muted-foreground -mt-1">
+          For email, the field is added to the <strong>subject</strong> + declared as a variable; type{" "}
+          <code className="bg-muted px-1 rounded">{`{{investor.name}}`}</code> directly into body blocks too.
+        </p>
+      )}
+
       {/* Body editor — per channel */}
       {channel === "email" && (
         <EmailDesigner value={emailBody} onChange={setEmailBody} tenant={undefined} />
@@ -232,6 +425,7 @@ export default function NewTemplatePage() {
         <div className="card-surface p-5 space-y-3">
           <Field label="Body">
             <textarea
+              ref={waRef}
               value={waText}
               onChange={(e) => setWaText(e.target.value)}
               rows={10}
@@ -253,6 +447,7 @@ export default function NewTemplatePage() {
           </Field>
           <Field label="SMS body (max ~160 chars per part)">
             <textarea
+              ref={smsRef}
               value={smsText}
               onChange={(e) => setSmsText(e.target.value)}
               rows={5}
@@ -262,6 +457,53 @@ export default function NewTemplatePage() {
           <div className="text-xs text-muted-foreground">{smsText.length} characters · {Math.ceil(smsText.length / 160)} SMS part(s)</div>
         </div>
       )}
+
+      {/* Attachments (auto-attach on email send) */}
+      <div className="card-surface p-5 space-y-2">
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold text-sm flex items-center gap-2">
+            <Paperclip className="size-4 text-brand-cyan" /> Attachments ({attachments.length})
+          </h3>
+          <button
+            type="button"
+            onClick={() => setAttachments((a) => [...a, { name: "", url: "" }])}
+            className="btn-ghost text-xs"
+          >
+            <Plus className="size-3.5" /> Add
+          </button>
+        </div>
+        {attachments.length === 0 ? (
+          <p className="text-xs text-muted-foreground">
+            Attach a hosted file (fund factsheet, KYC form, brochure) — auto-attached on every <strong>email</strong> send.
+          </p>
+        ) : (
+          <ul className="space-y-2">
+            {attachments.map((a, i) => (
+              <li key={i} className="flex items-center gap-2">
+                <input
+                  value={a.name}
+                  onChange={(e) => setAttachments((arr) => arr.map((x, idx) => (idx === i ? { ...x, name: e.target.value } : x)))}
+                  placeholder="Display name"
+                  className="input-base text-sm w-1/3"
+                />
+                <input
+                  value={a.url}
+                  onChange={(e) => setAttachments((arr) => arr.map((x, idx) => (idx === i ? { ...x, url: e.target.value } : x)))}
+                  placeholder="https://… (hosted file URL)"
+                  className="input-base text-sm flex-1 font-mono"
+                />
+                <button
+                  type="button"
+                  onClick={() => setAttachments((arr) => arr.filter((_, idx) => idx !== i))}
+                  className="p-2 text-muted-foreground hover:text-rose-600 hover:bg-rose-50 rounded-md"
+                >
+                  <Trash className="size-3.5" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }
@@ -273,4 +515,20 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       {children}
     </label>
   );
+}
+
+/** Insert `token` at the textarea's caret (or append if no caret). */
+function spliceAtCursor(el: HTMLTextAreaElement | null, value: string, token: string): string {
+  if (!el) return value + token;
+  const start = el.selectionStart ?? value.length;
+  const end = el.selectionEnd ?? value.length;
+  const next = value.slice(0, start) + token + value.slice(end);
+  requestAnimationFrame(() => {
+    try {
+      el.focus();
+      const pos = start + token.length;
+      el.setSelectionRange(pos, pos);
+    } catch {}
+  });
+  return next;
 }

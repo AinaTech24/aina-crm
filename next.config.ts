@@ -2,8 +2,33 @@ import type { NextConfig } from "next";
 
 // Build rev: 2025-12 — trigger middleware reload (public form whitelist).
 const nextConfig: NextConfig = {
+  poweredByHeader: false,
+  compiler: {
+    // Strip console.* (keep warn/error) from production client bundles.
+    removeConsole: process.env.NODE_ENV === "production" ? { exclude: ["error", "warn"] } : false,
+  },
   experimental: {
     serverActions: { bodySizeLimit: "10mb" },
+    // Scale the build's static-analysis workers to available memory instead of
+    // spawning one per CPU — prevents the page-data collection phase from
+    // OOM-killing a worker on memory-constrained machines. Build-time only.
+    memoryBasedWorkersCount: true,
+    // Barrel-import tree-shaking. These libs export hundreds of symbols from a
+    // single entry; without this, importing one icon/util can pull a large
+    // chunk into a route's bundle. lucide-react matters most — the sidebar
+    // alone imports ~45 icons and ships on every page.
+    optimizePackageImports: [
+      "lucide-react",
+      "recharts",
+      "date-fns",
+      "@radix-ui/react-dialog",
+      "@radix-ui/react-dropdown-menu",
+      "@radix-ui/react-popover",
+      "@radix-ui/react-select",
+      "@radix-ui/react-tabs",
+      "@radix-ui/react-tooltip",
+      "@radix-ui/react-toast",
+    ],
   },
   serverExternalPackages: ["pg", "bullmq", "ioredis"],
   images: {

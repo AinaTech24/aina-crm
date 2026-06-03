@@ -1,12 +1,11 @@
 import Link from "next/link";
-import { desc, eq, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { Plus, LifeBuoy, Clock, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { withTenant } from "@/db/client";
-import { serviceRequests, investors, users } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
-import { formatDate } from "@/lib/utils";
-import { RowActions } from "@/components/common/RowActions";
+import { ServiceRequestsTable } from "@/components/service-requests/ServiceRequestsTable";
 import { FilterBar } from "@/components/common/FilterBar";
+import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
 import { CustomViews } from "@/components/common/CustomViews";
 import { ColumnManager } from "@/components/common/ColumnManager";
 
@@ -47,22 +46,6 @@ const TYPE_LABEL: Record<string, string> = {
   transaction_query: "Other",
 };
 
-const STATUS_TONE: Record<string, string> = {
-  open: "bg-blue-50 text-blue-700",
-  in_progress: "bg-amber-50 text-amber-700",
-  waiting_customer: "bg-slate-50 text-slate-700",
-  resolved: "bg-emerald-50 text-emerald-700",
-  closed: "bg-gray-50 text-gray-700",
-  escalated: "bg-rose-50 text-rose-700",
-};
-
-const PRIORITY_TONE: Record<string, string> = {
-  urgent: "text-rose-600",
-  high: "text-amber-600",
-  normal: "text-foreground",
-  low: "text-muted-foreground",
-};
-
 export const dynamic = "force-dynamic";
 
 export default async function ServiceRequestsPage({
@@ -77,9 +60,11 @@ export default async function ServiceRequestsPage({
   const priority = (sp.priority ?? "").split(",").filter(Boolean);
   const srType = (sp.srtype ?? "").split(",").filter(Boolean);
   const breached = sp.breached === "1";
+  const mine = sp.mine === "1";
 
   // Build WHERE conditions
-  const conds: any[] = [];
+  const conds: any[] = [sql`sr.tenant_id = ${session.tenantId}::uuid`];
+  if (mine) conds.push(sql`sr.assigned_to_user_id = ${session.userId}::uuid`);
   if (q) {
     conds.push(
       sql`(sr.ticket_no ILIKE ${`%${q}%`} OR sr.subject ILIKE ${`%${q}%`} OR i.name ILIKE ${`%${q}%`})`
@@ -92,6 +77,8 @@ export default async function ServiceRequestsPage({
   if (srType.length)
     conds.push(sql`sr.type IN (${sql.join(srType.map((v) => sql`${v}`), sql`, `)})`);
   if (breached) conds.push(sql`sr.status NOT IN ('resolved','closed') AND sr.sla_resolution_at < now()`);
+  const dr = dateRangeCond(sp, "created", "sr.created_at");
+  if (dr) conds.push(dr);
   const whereClause =
     conds.length === 0 ? sql`` : sql`WHERE ${sql.join(conds, sql` AND `)}`;
 
@@ -134,11 +121,42 @@ export default async function ServiceRequestsPage({
             FILTER (WHERE status IN ('resolved','closed')
               AND resolved_at >= date_trunc('month', now()))::numeric,
           1
-        ) AS avg_tat_days
+        ) AS avg_tat_days,
+        -- SLA-hit %: response (responded before its SLA) + resolution (resolved before its SLA)
+        COUNT(*) FILTER (WHERE responded_at IS NOT NULL AND sla_response_at IS NOT NULL)::int AS resp_total,
+        COUNT(*) FILTER (WHERE responded_at IS NOT NULL AND sla_response_at IS NOT NULL AND responded_at <= sla_response_at)::int AS resp_met,
+        COUNT(*) FILTER (WHERE resolved_at IS NOT NULL AND sla_resolution_at IS NOT NULL)::int AS reso_total,
+        COUNT(*) FILTER (WHERE resolved_at IS NOT NULL AND sla_resolution_at IS NOT NULL AND resolved_at <= sla_resolution_at)::int AS reso_met,
+        -- Aging buckets among open tickets (by age since raised)
+        COUNT(*) FILTER (WHERE status NOT IN ('resolved','closed') AND (now() - created_at) <= interval '2 days')::int AS age_0_2,
+        COUNT(*) FILTER (WHERE status NOT IN ('resolved','closed') AND (now() - created_at) > interval '2 days' AND (now() - created_at) <= interval '7 days')::int AS age_3_7,
+        COUNT(*) FILTER (WHERE status NOT IN ('resolved','closed') AND (now() - created_at) > interval '7 days')::int AS age_7p,
+        -- CSAT (last 90 days)
+        ROUND(AVG(csat_rating) FILTER (WHERE csat_rating IS NOT NULL AND csat_at >= now() - interval '90 days')::numeric, 1) AS csat_avg,
+        COUNT(*) FILTER (WHERE csat_rating IS NOT NULL AND csat_at >= now() - interval '90 days')::int AS csat_n
       FROM service_requests
+      WHERE tenant_id = ${session.tenantId}::uuid
     `);
-    return { rows: rows.rows as any[], stats: stats.rows[0] as any };
+
+    // Per-assignee open load + breaches (owner accountability cut).
+    const byAssignee = await tx.execute(sql`
+      SELECT COALESCE(u.name, '— Unassigned —') AS assignee_name,
+             COUNT(*)::int AS open_count,
+             COUNT(*) FILTER (WHERE sr.sla_resolution_at < now())::int AS breached_count
+      FROM service_requests sr
+      LEFT JOIN users u ON u.id = sr.assigned_to_user_id
+      WHERE sr.tenant_id = ${session.tenantId}::uuid
+        AND sr.status NOT IN ('resolved','closed')
+      GROUP BY COALESCE(u.name, '— Unassigned —')
+      ORDER BY breached_count DESC, open_count DESC
+      LIMIT 12
+    `);
+    return { rows: rows.rows as any[], stats: stats.rows[0] as any, byAssignee: byAssignee.rows as any[] };
   });
+
+  const s = result.stats;
+  const respPct = Number(s.resp_total) > 0 ? Math.round((Number(s.resp_met) / Number(s.resp_total)) * 100) : null;
+  const resoPct = Number(s.reso_total) > 0 ? Math.round((Number(s.reso_met) / Number(s.reso_total)) * 100) : null;
 
   return (
     <div className="space-y-6 max-w-7xl">
@@ -164,10 +182,60 @@ export default async function ServiceRequestsPage({
         <Stat icon={CheckCircle2} label="Avg TAT (MTD, days)" value={result.stats.avg_tat_days ?? "—"} tone="emerald" />
       </div>
 
+      {/* SLA scorecard · aging · CSAT */}
+      <div className="grid gap-3 md:grid-cols-3">
+        <div className="card-surface p-5">
+          <h3 className="font-semibold text-sm mb-3">SLA scorecard <span className="text-xs font-normal text-muted-foreground">(met %)</span></h3>
+          <div className="space-y-3">
+            <SlaBar label="First response" pct={respPct} />
+            <SlaBar label="Resolution (TAT)" pct={resoPct} />
+          </div>
+        </div>
+        <div className="card-surface p-5">
+          <h3 className="font-semibold text-sm mb-3">Open ticket aging</h3>
+          <div className="grid grid-cols-3 gap-2 text-center">
+            <AgeBucket label="0–2 days" value={Number(s.age_0_2)} tone="emerald" />
+            <AgeBucket label="3–7 days" value={Number(s.age_3_7)} tone="amber" />
+            <AgeBucket label="> 7 days" value={Number(s.age_7p)} tone="rose" />
+          </div>
+        </div>
+        <div className="card-surface p-5">
+          <h3 className="font-semibold text-sm mb-3">Client satisfaction <span className="text-xs font-normal text-muted-foreground">(90d)</span></h3>
+          {Number(s.csat_n) > 0 ? (
+            <div>
+              <div className="text-3xl font-bold text-amber-500">{s.csat_avg}<span className="text-base text-muted-foreground"> / 5</span></div>
+              <div className="text-xs text-muted-foreground mt-1">{s.csat_n} rating{Number(s.csat_n) === 1 ? "" : "s"}</div>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">No ratings yet — captured on resolved tickets.</p>
+          )}
+        </div>
+      </div>
+
+      {result.byAssignee.length > 0 && (
+        <div className="card-surface p-5">
+          <h3 className="font-semibold text-sm mb-3">Open tickets by assignee</h3>
+          <ul className="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-1.5 text-sm">
+            {result.byAssignee.map((r: any) => (
+              <li key={r.assignee_name} className="flex items-center justify-between gap-2">
+                <span className="truncate">{r.assignee_name}</span>
+                <span className="flex items-center gap-1.5 shrink-0">
+                  {Number(r.breached_count) > 0 && (
+                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-700">{r.breached_count} breached</span>
+                  )}
+                  <span className="text-xs font-bold tabular-nums px-1.5 py-0.5 rounded-full bg-secondary text-muted-foreground min-w-[1.6rem] text-center">{r.open_count}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <FilterBar
         totalCount={result.rows.length}
         filters={[
           { type: "search", key: "q", placeholder: "Search ticket #, subject, or client…" },
+          dateRangeFilter("created", "Date"),
           {
             type: "multi",
             key: "status",
@@ -204,6 +272,12 @@ export default async function ServiceRequestsPage({
             label: "Breached?",
             options: [{ value: "1", label: "Yes — past SLA" }],
           },
+          {
+            type: "select",
+            key: "mine",
+            label: "Owner",
+            options: [{ value: "1", label: "My tickets" }],
+          },
         ]}
         rightSlot={
           <div className="flex items-center gap-2">
@@ -212,6 +286,7 @@ export default async function ServiceRequestsPage({
               viewsKey="views:service-requests"
               presets={[
                 { id: "open", name: "Open + In-progress", params: "status=open,in_progress" },
+                { id: "mine", name: "My open tickets", params: "mine=1&status=open,in_progress,waiting_customer" },
                 { id: "breached", name: "Breached", params: "breached=1" },
                 { id: "urgent", name: "Urgent priority", params: "priority=urgent,high" },
               ]}
@@ -220,121 +295,32 @@ export default async function ServiceRequestsPage({
         }
       />
 
-      <div className="card-surface">
-        {result.rows.length === 0 ? (
-          <div className="p-12 text-center text-sm text-muted-foreground">
-            <LifeBuoy className="size-8 mx-auto text-muted-foreground/50" />
-            <div className="mt-2 font-medium">No service requests match these filters.</div>
-            <p className="mt-2 text-xs max-w-md mx-auto">
-              Click <strong>New ticket</strong> to raise a request. Tickets auto-track TAT and
-              escalate to the firm owner if the SLA breaches.
-            </p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm" data-table="service-requests">
-              <thead className="text-xs text-muted-foreground border-b">
-                <tr>
-                  <th data-col="ticket" className="text-left px-4 py-2 font-medium">Ticket</th>
-                  <th data-col="client" className="text-left py-2 font-medium">Client</th>
-                  <th data-col="type" className="text-left py-2 font-medium">Service Type</th>
-                  <th data-col="raised" className="text-left py-2 font-medium">Raised</th>
-                  <th data-col="assignee" className="text-left py-2 font-medium">Assigned to</th>
-                  <th data-col="priority" className="text-left py-2 font-medium">Priority</th>
-                  <th data-col="status" className="text-left py-2 font-medium">Status</th>
-                  <th data-col="expected" className="text-left py-2 font-medium">Expected</th>
-                  <th data-col="closed" className="text-left py-2 font-medium">Closed</th>
-                  <th data-col="tat" className="text-right py-2 font-medium">TAT (d)</th>
-                  <th data-col="remarks" className="text-left py-2 font-medium">Remarks</th>
-                  <th data-col="attachments" className="text-right py-2 font-medium pr-4">Att.</th>
-                  <th data-col="actions" className="px-4 py-2"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {result.rows.map((sr) => (
-                  <tr
-                    key={sr.id}
-                    className={`border-b last:border-0 hover:bg-secondary/40 ${
-                      sr.breached ? "bg-rose-50/30" : ""
-                    }`}
-                  >
-                    <td data-col="ticket" className="px-4 py-3 font-mono text-xs whitespace-nowrap">{sr.ticket_no}</td>
-                    <td data-col="client" className="py-3 whitespace-nowrap">
-                      {sr.investor_id ? (
-                        <Link href={`/dashboard/investors/${sr.investor_id}`} className="hover:underline">
-                          {sr.investor_name}
-                        </Link>
-                      ) : (
-                        sr.investor_name ?? "—"
-                      )}
-                    </td>
-                    <td data-col="type" className="py-3 text-xs">
-                      <div className="font-medium">{TYPE_LABEL[sr.type] ?? sr.type}</div>
-                      {sr.subject && (
-                        <div className="text-[11px] text-muted-foreground max-w-[180px] truncate">
-                          {sr.subject}
-                        </div>
-                      )}
-                    </td>
-                    <td data-col="raised" className="py-3 text-xs text-muted-foreground tabular-nums whitespace-nowrap">
-                      {formatDate(sr.created_at)}
-                    </td>
-                    <td data-col="assignee" className="py-3 text-xs whitespace-nowrap">{sr.assignee_name ?? "—"}</td>
-                    <td data-col="priority" className={`py-3 text-xs capitalize ${PRIORITY_TONE[sr.priority]}`}>
-                      {sr.priority}
-                    </td>
-                    <td data-col="status" className="py-3">
-                      <span className={`chip ${STATUS_TONE[sr.status] ?? ""}`}>
-                        {sr.status.replace(/_/g, " ")}
-                      </span>
-                      {sr.escalated_at && (
-                        <div className="text-[10px] text-rose-600 font-semibold mt-0.5">
-                          escalated
-                        </div>
-                      )}
-                    </td>
-                    <td data-col="expected" className="py-3 text-xs text-muted-foreground tabular-nums whitespace-nowrap">
-                      {sr.sla_resolution_at ? formatDate(sr.sla_resolution_at) : "—"}
-                    </td>
-                    <td data-col="closed" className="py-3 text-xs whitespace-nowrap">
-                      {sr.resolved_at ? (
-                        <span className="text-emerald-600 font-medium tabular-nums">
-                          {formatDate(sr.resolved_at)}
-                        </span>
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                    <td data-col="tat" className="py-3 text-right tabular-nums">
-                      {sr.breached ? (
-                        <span className="text-rose-600 font-bold">{sr.tat_days}</span>
-                      ) : sr.resolved_at ? (
-                        <span className="text-emerald-600 font-medium">{sr.tat_days}</span>
-                      ) : (
-                        <span className="text-muted-foreground">{sr.tat_days}</span>
-                      )}
-                    </td>
-                    <td data-col="remarks" className="py-3 text-xs text-muted-foreground max-w-[160px] truncate">
-                      {sr.remarks ?? "—"}
-                    </td>
-                    <td data-col="attachments" className="py-3 text-right tabular-nums text-muted-foreground">
-                      {sr.attach_count > 0 ? sr.attach_count : "—"}
-                    </td>
-                    <td data-col="actions" className="px-4 py-3 text-right">
-                      <RowActions
-                        deleteUrl={`/api/service-requests/${sr.id}`}
-                        itemLabel="ticket"
-                        itemName={sr.ticket_no}
-                        verb="Close"
-                      />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+      <ServiceRequestsTable rows={result.rows} />
+    </div>
+  );
+}
+
+function SlaBar({ label, pct }: { label: string; pct: number | null }) {
+  const tone = pct === null ? "bg-slate-300" : pct >= 90 ? "bg-emerald-500" : pct >= 70 ? "bg-amber-500" : "bg-rose-500";
+  return (
+    <div>
+      <div className="flex items-center justify-between text-xs mb-1">
+        <span className="text-muted-foreground">{label}</span>
+        <span className="font-bold tabular-nums">{pct === null ? "—" : `${pct}%`}</span>
       </div>
+      <div className="h-2 bg-secondary rounded-full overflow-hidden">
+        <div className={`h-full ${tone} transition-all`} style={{ width: `${pct ?? 0}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function AgeBucket({ label, value, tone }: { label: string; value: number; tone: "emerald" | "amber" | "rose" }) {
+  const color = tone === "emerald" ? "text-emerald-600" : tone === "amber" ? "text-amber-600" : "text-rose-600";
+  return (
+    <div className="rounded-md bg-secondary/40 py-2">
+      <div className={`text-xl font-bold tabular-nums ${value > 0 ? color : "text-muted-foreground"}`}>{value}</div>
+      <div className="text-[11px] text-muted-foreground mt-0.5">{label}</div>
     </div>
   );
 }

@@ -14,6 +14,7 @@
  * ~50k rows should be queued via BullMQ — out of scope for v1.
  */
 
+import { createHash } from "node:crypto";
 import { sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import {
@@ -86,6 +87,9 @@ async function processTransactionFeed(
   let failed = 0;
   let minDate = "9999-12-31";
   let maxDate = "0000-01-01";
+  // Newest processed order_date per investor → bump last_transaction_at so
+  // dormancy / health / churn reflect the freshly-ingested feed.
+  const lastTxByInvestor = new Map<string, string>();
 
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
@@ -98,7 +102,7 @@ async function processTransactionFeed(
 
     // Find the investor by PAN within this tenant. RLS scopes the query.
     const investor = await tx.execute(sql`
-      SELECT id FROM investors WHERE pan = ${r.pan.toUpperCase()} LIMIT 1
+      SELECT id FROM investors WHERE tenant_id = ${args.tenantId}::uuid AND pan = ${r.pan.toUpperCase()} LIMIT 1
     `);
     const investorId = (investor.rows[0] as any)?.id;
     if (!investorId) {
@@ -108,7 +112,7 @@ async function processTransactionFeed(
     }
 
     try {
-      // UPSERT keyed by (tenant_id, order_id) so re-uploads no-op.
+      // UPSERT keyed by (tenant_id, order_id) so re-uploads no-op, but updates status/NAV/units.
       await tx.execute(sql`
         INSERT INTO transactions (
           tenant_id, investor_id, folio_number, amc_code, amc_name, scheme_code, scheme_name,
@@ -120,13 +124,33 @@ async function processTransactionFeed(
           ${r.amount}, ${r.units}, ${r.nav}, ${r.externalRef}, ${r.orderDate}::date,
           ${normaliseStatus(r.status)}, ${r.reasonCode ?? null}, ${r.reasonDescription ?? null}
         )
-        ON CONFLICT DO NOTHING
+        ON CONFLICT (tenant_id, order_id) WHERE order_id IS NOT NULL DO UPDATE SET
+          status = EXCLUDED.status,
+          nav = EXCLUDED.nav,
+          units = EXCLUDED.units,
+          reason_code = EXCLUDED.reason_code,
+          reason_description = EXCLUDED.reason_description,
+          updated_at = now()
       `);
       imported++;
+      if (normaliseStatus(r.status) === "processed") {
+        const prev = lastTxByInvestor.get(investorId);
+        if (!prev || r.orderDate > prev) lastTxByInvestor.set(investorId, r.orderDate);
+      }
     } catch (e: any) {
       failed++;
       if (errors.length < 25) errors.push({ row: i + 1, reason: e.message ?? "insert failed" });
     }
+  }
+
+  // Bump last_transaction_at (forward only) for each affected investor.
+  for (const [investorId, maxOrderDate] of lastTxByInvestor) {
+    await tx.execute(sql`
+      UPDATE investors
+         SET last_transaction_at = GREATEST(COALESCE(last_transaction_at, 'epoch'::timestamptz), ${maxOrderDate}::timestamptz),
+             updated_at = now()
+       WHERE id = ${investorId}::uuid
+    `);
   }
 
   return {
@@ -160,26 +184,62 @@ async function processSipRejectionReport(
     if (r.rejectionDate > maxDate) maxDate = r.rejectionDate;
 
     const investor = await tx.execute(sql`
-      SELECT id FROM investors WHERE pan = ${r.pan.toUpperCase()} LIMIT 1
+      SELECT id, rm_id FROM investors WHERE tenant_id = ${args.tenantId}::uuid AND pan = ${r.pan.toUpperCase()} LIMIT 1
     `);
     const investorId = (investor.rows[0] as any)?.id;
+    const investorRmId = (investor.rows[0] as any)?.rm_id ?? null;
     if (!investorId) {
       skipped++;
       errors.push({ row: i + 1, reason: `PAN ${r.pan} not in client master` });
       continue;
     }
 
+    const reasonCode = classifyRejectionReason(r.reason, r.reasonCode);
+    // 2-day follow-up from the rejection date — mirrors the manual create API so
+    // imported rejections land in the tracker with an RM owner + an SLA clock,
+    // not a blank "RM" column. The `transaction.failed.sip_rejection` event
+    // (emitted below) still drives task/WhatsApp via the recipe — we don't
+    // double-create a task here.
+    const followUp = new Date(new Date(r.rejectionDate).getTime() + 2 * 864e5)
+      .toISOString()
+      .slice(0, 10);
+    const dedupKey = naturalKeyHash([investorId, r.rejectionDate, r.amount, r.schemeName, r.folioNumber]);
     try {
-      await tx.execute(sql`
+      const ins = await tx.execute(sql`
         INSERT INTO sip_rejections (
           tenant_id, investor_id, rejection_date, rejection_amount,
-          rejection_reason, scheme_name, folio_number, amc_name, recovery_status
+          rejection_reason, scheme_name, folio_number, amc_name, recovery_status,
+          assigned_rm_id, follow_up_date, reason_category, dedup_key
         ) VALUES (
           ${args.tenantId}::uuid, ${investorId}::uuid, ${r.rejectionDate}::date,
-          ${r.amount}, ${r.reason}, ${r.schemeName}, ${r.folioNumber}, ${r.amcName}, 'pending'
+          ${r.amount}, ${r.reason}, ${r.schemeName}, ${r.folioNumber}, ${r.amcName}, 'pending',
+          ${investorRmId}, ${followUp}::date, ${reasonCode}, ${dedupKey}
         )
+        ON CONFLICT (tenant_id, dedup_key) DO NOTHING
+        RETURNING id
       `);
-      imported++;
+      if ((ins as any).rows.length > 0) {
+        imported++;
+        // Emit the event the sip_rejection_followup recipe subscribes to — the
+        // canonical rejection report previously produced NO automation event.
+        // Only on a real insert, so re-uploads (ON CONFLICT) never re-fire.
+        await tx.execute(sql`
+          INSERT INTO events_outbox (tenant_id, kind, entity_type, entity_id, after, meta)
+          VALUES (
+            ${args.tenantId}::uuid, 'transaction.failed.sip_rejection', 'investor', ${investorId}::uuid,
+            ${JSON.stringify({
+              reason_code: reasonCode,
+              reason: r.reason,
+              scheme_name: r.schemeName,
+              amount: r.amount,
+              order_date: r.rejectionDate,
+            })}::jsonb,
+            ${JSON.stringify({ source: "rta-import", dedupKey })}::jsonb
+          )
+        `);
+      } else {
+        skipped++; // already imported — idempotent
+      }
     } catch (e: any) {
       failed++;
       if (errors.length < 25) errors.push({ row: i + 1, reason: e.message ?? "insert failed" });
@@ -260,18 +320,32 @@ function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-/** CAMS feed status → our transactions.status enum. */
+/** CAMS feed status → our canonical transactions.status enum. */
 function normaliseStatus(s: string): string {
   switch (s) {
     case "successful":
       return "processed";
     case "rejected":
-      return "rejected";
     case "failed":
-      return "failed";
+      return "rejected"; // canonical (a NACH bounce is a rejection)
     case "pending":
       return "pending";
     default:
       return "pending";
   }
+}
+
+/** Classify a free-text / coded rejection reason into the slugs the
+ *  sip_rejection_followup recipe branches on (insufficient_balance /
+ *  mandate_expired / technical). */
+function classifyRejectionReason(reason: string, reasonCode?: string): string {
+  const r = `${reason ?? ""} ${reasonCode ?? ""}`.toLowerCase();
+  if (/insufficient|balance|funds|nsf|inqufd/.test(r)) return "insufficient_balance";
+  if (/mandate|expired|umrn|nach|debit not|not registered/.test(r)) return "mandate_expired";
+  return "technical";
+}
+
+/** Deterministic idempotency hash of a row's natural key. */
+function naturalKeyHash(parts: Array<string | number | null | undefined>): string {
+  return "nk:" + createHash("sha256").update(parts.map((p) => String(p ?? "")).join("|")).digest("hex").slice(0, 40);
 }

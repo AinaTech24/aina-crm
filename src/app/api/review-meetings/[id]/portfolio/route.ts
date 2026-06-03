@@ -94,7 +94,12 @@ export async function GET(
       const items = await tx
         .select()
         .from(portfolioReviewItems)
-        .where(eq(portfolioReviewItems.meetingId, id));
+        .where(
+          and(
+            eq(portfolioReviewItems.meetingId, id),
+            eq(portfolioReviewItems.tenantId, session.tenantId)
+          )
+        );
 
       // Pull every active folio for this investor so the RM can add
       // items they haven't reviewed yet.
@@ -154,7 +159,12 @@ export async function PUT(
       const existing = await tx
         .select()
         .from(portfolioReviewItems)
-        .where(eq(portfolioReviewItems.meetingId, id));
+        .where(
+          and(
+            eq(portfolioReviewItems.meetingId, id),
+            eq(portfolioReviewItems.tenantId, session.tenantId)
+          )
+        );
       const existingByFolio = new Map(existing.map((e) => [e.folioId, e]));
 
       const out: any[] = [];
@@ -193,7 +203,12 @@ export async function PUT(
           const [next] = await tx
             .update(portfolioReviewItems)
             .set(payload)
-            .where(eq(portfolioReviewItems.id, cur.id))
+            .where(
+              and(
+                eq(portfolioReviewItems.id, cur.id),
+                eq(portfolioReviewItems.tenantId, session.tenantId)
+              )
+            )
             .returning();
           out.push(next);
         } else {

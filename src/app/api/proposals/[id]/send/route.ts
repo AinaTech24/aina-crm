@@ -29,7 +29,8 @@ import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { autoAdvance, resolveLeadIdForInvestor } from "@/lib/blueprints/auto-advance";
-import { proposals, tenants, communications } from "@/db/schema";
+import { proposals, tenants, communications, investors } from "@/db/schema";
+import { checkAlignment } from "@/lib/proposal/risk-alignment";
 import { formatINR } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -213,11 +214,49 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         );
       }
 
-      // ── Compliance gate — block send unless RM has written a suitability
-      //    note. This is the spec's mandatory-before-send check. Owner can
-      //    skip via override (suitability_override_reason set + owner role).
       const hasNote = !!((p as any).suitabilityNote ?? "").toString().trim();
       const hasOverride = !!((p as any).suitabilityOverrideReason ?? "").toString().trim();
+      const isOwner = session.roles.includes("owner");
+
+      // ── HARD suitability gate (server-side, authoritative) ────────────
+      // Don't trust the UI banner: recompute risk-alignment here from the
+      // proposal's MF lines against the client's persisted risk profile. A
+      // `block` verdict (a scheme ≥2 riskometer notches above the client's
+      // appetite) cannot be sent unless an OWNER supplies an override reason.
+      // This closes the gap where any free-text suitability note satisfied
+      // the old check even for a clearly-unsuitable recommendation.
+      const mfLines = ((p.products ?? []) as any[])
+        .filter((it) => it?.kind === "mf")
+        .map((it) => ({ name: it.schemeName ?? "Scheme", riskRating: it.riskRating ?? null }));
+      let clientProfile: any = null;
+      if (p.recipientType === "investor" && p.investorId) {
+        const inv = (
+          await tx
+            .select({ rp: investors.riskProfile })
+            .from(investors)
+            .where(eq(investors.id, p.investorId))
+            .limit(1)
+        )[0];
+        clientProfile = inv?.rp ?? null;
+      }
+      const alignment = mfLines.length ? checkAlignment(clientProfile, mfLines) : null;
+      if (alignment?.overall === "block" && !(isOwner && hasOverride)) {
+        return NextResponse.json(
+          {
+            error: `Suitability block — ${alignment.summary} This recommendation cannot be sent: re-assess the client's risk appetite or pick lower-risk funds. An owner may override with a documented reason.`,
+            field: "suitabilityOverrideReason",
+            alignment: {
+              overall: alignment.overall,
+              summary: alignment.summary,
+              findings: alignment.findings.filter((f) => f.severity !== "ok"),
+            },
+          },
+          { status: 412 }
+        );
+      }
+
+      // ── Suitability note gate — every send needs a documented rationale
+      //    (or an owner override). Kept on top of the hard block above.
       if (!hasNote && !hasOverride) {
         return NextResponse.json(
           {

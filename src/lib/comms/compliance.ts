@@ -6,17 +6,27 @@
  * stops the send and records the reason. `warn` severity surfaces in UI but
  * allows send.
  *
- * Rules implemented:
+ * 7 rule FUNCTIONS (in ALL_RULES) emit 11 distinct rule-IDs/findings — both
+ * counts appear in the docs; they describe the same engine at different
+ * granularities (functions vs. emitted finding codes):
  *   1. AMFI mandatory risk disclaimer on marketing communications
+ *        → amfi.risk_disclaimer
  *   2. SEBI May 2026 ARN + registered name disclosure
+ *        → sebi.arn_disclosure, sebi.registered_name
  *   3. No guaranteed-returns language
- *   4. No scheme-specific marketing without AMC approval
- *   5. No "Wealth Adviser" / "Investment Adviser" terminology unless RIA-registered
- *   6. SMS: DLT template id required
+ *        → amfi.no_guaranteed_returns
+ *   4. No "Wealth Adviser" / "Investment Adviser" terminology unless RIA-registered
+ *        → sebi.no_adviser_term
+ *   5. No scheme-specific marketing without AMC approval
+ *        → amfi.scheme_marketing_4k
+ *   6. SMS: DLT template id required + content match
+ *        → trai.dlt_template_required, trai.dlt_template_mismatch, trai.dlt_template_not_registered
  *   7. WhatsApp marketing: requires session window OR pre-opt-in
+ *        → whatsapp.marketing_outside_session
+ *   (+ _rule_internal_error guard if a rule throws)
  *
  * To add a rule: write a new function that returns ComplianceFinding[], add
- * it to the appropriate channel pipeline.
+ * it to ALL_RULES.
  */
 
 export type ComplianceSeverity = "info" | "warn" | "block";

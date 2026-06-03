@@ -36,7 +36,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ typ
       return tx
         .select()
         .from(masterValues)
-        .where(eq(masterValues.masterType, type as any))
+        .where(and(eq(masterValues.tenantId, session.tenantId), eq(masterValues.masterType, type as any)))
         .orderBy(asc(masterValues.sortOrder), asc(masterValues.label));
     });
     return NextResponse.json({ values: rows });
@@ -97,7 +97,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ty
           isActive: body.isActive,
           updatedAt: new Date(),
         } as any)
-        .where(and(eq(masterValues.masterType, type as any), eq(masterValues.key, key)));
+        .where(
+          and(
+            eq(masterValues.tenantId, session.tenantId),
+            eq(masterValues.masterType, type as any),
+            eq(masterValues.key, key)
+          )
+        );
     });
     return NextResponse.json({ ok: true });
   } catch (err: any) {
@@ -115,21 +121,20 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ t
     requireCap(session.roles, "settings.masters");
     await withTenant(session.tenantId, async (tx) => {
       // System defaults: deactivate. Custom values: hard delete.
-      const existing = await tx
-        .select()
-        .from(masterValues)
-        .where(and(eq(masterValues.masterType, type as any), eq(masterValues.key, key)))
-        .limit(1);
+      const scope = and(
+        eq(masterValues.tenantId, session.tenantId),
+        eq(masterValues.masterType, type as any),
+        eq(masterValues.key, key)
+      );
+      const existing = await tx.select().from(masterValues).where(scope).limit(1);
       if (!existing.length) return;
       if (existing[0].isSystemDefault) {
         await tx
           .update(masterValues)
           .set({ isActive: false, updatedAt: new Date() } as any)
-          .where(and(eq(masterValues.masterType, type as any), eq(masterValues.key, key)));
+          .where(scope);
       } else {
-        await tx
-          .delete(masterValues)
-          .where(and(eq(masterValues.masterType, type as any), eq(masterValues.key, key)));
+        await tx.delete(masterValues).where(scope);
       }
     });
     return NextResponse.json({ ok: true });

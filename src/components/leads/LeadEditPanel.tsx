@@ -38,6 +38,7 @@ export function LeadEditPanel({ lead }: { lead: any }) {
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const isConverted = !!lead.convertedInvestorId;
 
   const [form, setForm] = useState({
     name: lead.name ?? "",
@@ -118,7 +119,11 @@ export function LeadEditPanel({ lead }: { lead: any }) {
         <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
           Lead record
         </h2>
-        {!editing ? (
+        {isConverted ? (
+          <span className="text-xs text-muted-foreground italic bg-secondary/50 px-2 py-1 rounded">
+            ReadOnly · Converted to client
+          </span>
+        ) : !editing ? (
           <button
             onClick={() => setEditing(true)}
             className="rounded-md border px-3 py-1.5 text-sm flex items-center gap-1.5 hover:bg-accent"

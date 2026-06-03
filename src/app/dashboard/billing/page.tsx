@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { CreditCard, Package } from "lucide-react";
-import { db } from "@/db/client";
+import { withTenant } from "@/db/client";
 import { subscriptions, packages, subscriptionEvents } from "@/db/schema";
 import { desc } from "drizzle-orm";
 import { requireSession } from "@/lib/auth/session";
@@ -19,16 +19,19 @@ export const dynamic = "force-dynamic";
 
 export default async function BillingPage() {
   const session = await requireSession();
-  const sub = (await db.select().from(subscriptions).where(eq(subscriptions.tenantId, session.tenantId)).limit(1))[0];
-  const pkg = sub ? (await db.select().from(packages).where(eq(packages.id, sub.packageId)).limit(1))[0] : null;
-  const events = sub
-    ? await db
-        .select()
-        .from(subscriptionEvents)
-        .where(eq(subscriptionEvents.tenantId, session.tenantId))
-        .orderBy(desc(subscriptionEvents.at))
-        .limit(20)
-    : [];
+  const { sub, pkg, events } = await withTenant(session.tenantId, async (tx) => {
+    const s = (await tx.select().from(subscriptions).where(eq(subscriptions.tenantId, session.tenantId)).limit(1))[0] ?? null;
+    const p = s ? (await tx.select().from(packages).where(eq(packages.id, s.packageId)).limit(1))[0] ?? null : null;
+    const ev = s
+      ? await tx
+          .select()
+          .from(subscriptionEvents)
+          .where(eq(subscriptionEvents.tenantId, session.tenantId))
+          .orderBy(desc(subscriptionEvents.at))
+          .limit(20)
+      : [];
+    return { sub: s, pkg: p, events: ev };
+  });
 
   return (
     <div className="space-y-6 max-w-4xl">

@@ -33,11 +33,13 @@ export const communications = pgTable(
 
     status: text("status", {
       enum: [
+        "scheduled", // queued for a future send time (scheduledAt) — drained by the scheduled-comms worker
         "queued",
         "skipped_consent",
         "skipped_session",
         "skipped_compliance",
         "skipped_rate_limit",
+        "skipped_no_contact", // recipient has no email/phone on file (campaign fan-out)
         "sent",
         "delivered",
         "read",
@@ -45,11 +47,17 @@ export const communications = pgTable(
         "failed",
         "bounced",
         "unsubscribed",
+        "cancelled", // a scheduled send the user cancelled before it fired
       ],
     })
       .notNull()
       .default("queued"),
     statusReason: text("status_reason"),
+
+    /** Future send time for status='scheduled'. NULL for immediate sends. */
+    scheduledAt: timestamp("scheduled_at", { withTimezone: true }),
+    /** User-flagged ("starred") row — surfaces in the Flagged filter. */
+    flaggedAt: timestamp("flagged_at", { withTimezone: true }),
 
     /** The rendered content + variables that were sent. */
     payload: jsonb("payload"),
@@ -88,6 +96,10 @@ export const communications = pgTable(
       .where(sql`workflow_run_id IS NOT NULL`),
     timelineIdx: index("comms_timeline_idx").on(t.tenantId, t.createdAt),
     leadIdx: index("comms_lead_idx").on(t.tenantId, t.leadId, t.createdAt),
+    // Monitor delivery rollup: WHERE tenant_id=? AND direction='outbound' AND created_at>=? GROUP BY status.
+    deliveryIdx: index("comms_delivery_idx").on(t.tenantId, t.direction, t.status, t.createdAt),
+    // Drains due scheduled sends cheaply: WHERE status='scheduled' AND scheduled_at <= now().
+    scheduledIdx: index("comms_scheduled_idx").on(t.status, t.scheduledAt),
   })
 );
 

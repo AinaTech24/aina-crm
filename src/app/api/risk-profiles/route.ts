@@ -85,10 +85,10 @@ export async function POST(req: NextRequest) {
       // Map the matched band back to the investor.riskProfile enum.
       // Tenants can name their bands anything — we use the band.id (lowercased)
       // to map, falling back to "moderate" when the id isn't one of the canonical
-      // 3 values. The full band label is stored on the response row for fidelity.
+      // values. The full band label is stored on the response row for fidelity.
       const canonicalCategory = (
-        ["conservative", "moderate", "aggressive"].includes(band.id) ? band.id : "moderate"
-      ) as "conservative" | "moderate" | "aggressive";
+        ["conservative", "moderate", "aggressive", "very_aggressive"].includes(band.id) ? band.id : "moderate"
+      ) as "conservative" | "moderate" | "aggressive" | "very_aggressive";
 
       const reviewDays = template.reviewIntervalDays ?? 365;
       const nextReview = new Date(now);

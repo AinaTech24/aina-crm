@@ -24,6 +24,8 @@
 
 import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
+import { recomputeLeadScore } from "@/lib/leads/recompute";
+import { recordAudit } from "@/lib/audit";
 import {
   blueprintDefinitions,
   blueprintStages,
@@ -36,7 +38,9 @@ import {
   LEAD_TO_CLIENT_BLUEPRINT_NAME,
   LEAD_TO_CLIENT_STAGES,
   LEAD_TO_CLIENT_TRANSITIONS,
+  stageDisposition,
 } from "./lead_to_client";
+import { checkPrerequisites } from "./prerequisites";
 
 const MODULE = "leads";
 
@@ -148,6 +152,11 @@ export async function ensureInstance(tx: Tx, tenantId: string, leadId: string) {
   if (!firstStage) throw new Error("Blueprint has no stages");
 
   const now = new Date();
+  // Race-safe create: two near-simultaneous first-touch events (e.g. the
+  // lead-detail GET racing a call-outcome auto-advance) both pass the SELECT
+  // above. ON CONFLICT on the (tenant, lead) unique index turns the loser into
+  // a no-op insert instead of a thrown duplicate-key (which, swallowed inside a
+  // parent tx by autoAdvance, would otherwise poison the whole transaction).
   const [inst] = await tx
     .insert(leadBlueprintInstances)
     .values({
@@ -159,7 +168,18 @@ export async function ensureInstance(tx: Tx, tenantId: string, leadId: string) {
       startedAt: now,
       stageEnteredAt: now,
     })
+    .onConflictDoNothing({ target: [leadBlueprintInstances.tenantId, leadBlueprintInstances.leadId] })
     .returning();
+
+  if (!inst) {
+    // Lost the create race — the concurrent tx already made it. Re-read.
+    const [existing2] = await tx
+      .select()
+      .from(leadBlueprintInstances)
+      .where(and(eq(leadBlueprintInstances.tenantId, tenantId), eq(leadBlueprintInstances.leadId, leadId)))
+      .limit(1);
+    return existing2;
+  }
 
   await tx.insert(leadStageHistory).values({
     tenantId,
@@ -179,8 +199,25 @@ export interface TransitionOptions {
   actorUserId?: string;
   actorRoles?: string[];
   remarks?: string;
-  /** If set, override role + condition checks (use sparingly — for system events). */
+  /** If set, override role + transition-graph + prerequisite checks (use
+   *  sparingly — for system/auto-advance events and explicit admin overrides). */
   systemBypass?: boolean;
+  /** Suppress on-enter / on-exit automation emission — used for the
+   *  intermediate hops of a multi-stage walk so only the FINAL target fires
+   *  its recipes (a passed-through stage shouldn't trigger sends). */
+  suppressAutomations?: boolean;
+  /** Threaded into the audit_log row for forensics. */
+  ipAddress?: string | null;
+  userAgent?: string | null;
+}
+
+export interface TransitionResult {
+  ok: boolean;
+  reason?: string;
+  /** Machine code so callers can branch (e.g. don't bypass a prereq failure). */
+  code?: "no_transition" | "role" | "prereq" | "terminal" | "stage_not_found";
+  fromStage?: string;
+  toStage?: string;
 }
 
 export async function transitionTo(
@@ -189,9 +226,30 @@ export async function transitionTo(
   leadId: string,
   toStageKey: string,
   opts: TransitionOptions = {}
-): Promise<{ ok: boolean; reason?: string; fromStage?: string; toStage?: string }> {
+): Promise<TransitionResult> {
   const inst = await ensureInstance(tx, tenantId, leadId);
-  if (inst.currentStageKey === toStageKey) return { ok: true, fromStage: toStageKey, toStage: toStageKey };
+
+  // ── P0: serialize concurrent transitions on this instance ──────────────
+  // Lock the instance row FOR UPDATE and re-read the committed current stage.
+  // A double-click / retried POST / auto-advance racing a manual advance now
+  // blocks here until the in-flight transition commits, then re-evaluates
+  // against the TRUE current stage — instead of both reading the stale stage
+  // and double-firing history rows + stage automations.
+  const lockRes = await tx.execute(
+    sql`SELECT current_stage_key, status FROM lead_blueprint_instances WHERE id = ${inst.id}::uuid FOR UPDATE` as any
+  );
+  const lockedRow = (lockRes.rows?.[0] ?? {}) as { current_stage_key?: string; status?: string };
+  const currentStageKey = lockedRow.current_stage_key ?? inst.currentStageKey;
+  const instStatus = lockedRow.status ?? inst.status;
+
+  if (currentStageKey === toStageKey) return { ok: true, fromStage: toStageKey, toStage: toStageKey };
+
+  // ── Terminal guard ─────────────────────────────────────────────────────
+  // A completed journey (Active Client) is frozen — even systemBypass/force
+  // must not silently reopen it and re-fire on-enter automations.
+  if (instStatus === "completed") {
+    return { ok: false, code: "terminal", reason: "This journey is already completed and cannot be advanced." };
+  }
 
   // Look up the transition
   const [tr] = await tx
@@ -200,20 +258,20 @@ export async function transitionTo(
     .where(
       and(
         eq(blueprintTransitions.blueprintId, inst.blueprintId),
-        eq(blueprintTransitions.fromStageKey, inst.currentStageKey),
+        eq(blueprintTransitions.fromStageKey, currentStageKey),
         eq(blueprintTransitions.toStageKey, toStageKey)
       )
     )
     .limit(1);
   if (!tr && !opts.systemBypass) {
-    return { ok: false, reason: `No transition defined from "${inst.currentStageKey}" to "${toStageKey}"` };
+    return { ok: false, code: "no_transition", reason: `No transition defined from "${currentStageKey}" to "${toStageKey}"` };
   }
 
   // Role gate
   if (!opts.systemBypass && tr) {
     const allowed = (tr.allowedRoles as string[]) ?? [];
     if (allowed.length > 0 && opts.actorRoles && !opts.actorRoles.some((r) => allowed.includes(r))) {
-      return { ok: false, reason: `Your role isn't allowed to perform "${tr.transitionName}"` };
+      return { ok: false, code: "role", reason: `Your role isn't allowed to perform "${tr.transitionName}"` };
     }
   }
 
@@ -221,14 +279,28 @@ export async function transitionTo(
   const [fromStage] = await tx
     .select()
     .from(blueprintStages)
-    .where(and(eq(blueprintStages.blueprintId, inst.blueprintId), eq(blueprintStages.stageKey, inst.currentStageKey)))
+    .where(and(eq(blueprintStages.blueprintId, inst.blueprintId), eq(blueprintStages.stageKey, currentStageKey)))
     .limit(1);
   const [toStage] = await tx
     .select()
     .from(blueprintStages)
     .where(and(eq(blueprintStages.blueprintId, inst.blueprintId), eq(blueprintStages.stageKey, toStageKey)))
     .limit(1);
-  if (!toStage) return { ok: false, reason: "Target stage not found" };
+  if (!toStage) return { ok: false, code: "stage_not_found", reason: "Target stage not found" };
+
+  // ── P1: enforce prerequisites server-side ──────────────────────────────
+  // The SAME artefact checklist the UI surfaces via /can-advance is now also a
+  // hard server gate — a direct curl/replay can no longer reach (e.g.)
+  // documents_received with no docs on file. systemBypass (auto-advance from
+  // an action that JUST created the artefact, or an explicit admin override)
+  // intentionally skips it.
+  if (!opts.systemBypass) {
+    const prereq = await checkPrerequisites(tx, tenantId, leadId, toStageKey);
+    if (!prereq.ok) {
+      const missing = prereq.items.filter((i) => !i.satisfied).map((i) => i.label).join("; ");
+      return { ok: false, code: "prereq", reason: `Complete these first: ${missing}` };
+    }
+  }
 
   const now = new Date();
 
@@ -255,17 +327,25 @@ export async function transitionTo(
       .where(eq(leadStageHistory.id, openHistory.id));
   }
 
-  // Open new history row
-  await tx.insert(leadStageHistory).values({
-    tenantId,
-    leadId,
-    instanceId: inst.id,
-    stageKey: toStageKey,
-    enteredAt: now,
-  });
+  // Open new history row — stamp the entering actor (not only the exiting one)
+  // and capture its id for the outbox dedup key.
+  const [newHistory] = await tx
+    .insert(leadStageHistory)
+    .values({
+      tenantId,
+      leadId,
+      instanceId: inst.id,
+      stageKey: toStageKey,
+      enteredAt: now,
+      enteredBy: opts.actorUserId ?? null,
+    })
+    .returning({ id: leadStageHistory.id });
 
-  // Update instance pointer
-  const isTerminal = toStage.stageOrder === LEAD_TO_CLIENT_STAGES.length;
+  // Update instance pointer. Disposition is derived from the stage's flavour
+  // (terminal_success → completed, lead-phase terminal_failure → lost) rather
+  // than a hard-coded "is it stage 30?", so lost leads close out correctly and
+  // retryable failure stages (mandate_reject / transaction_failed) stay open.
+  const disposition = stageDisposition(toStageKey);
   await tx
     .update(leadBlueprintInstances)
     .set({
@@ -273,39 +353,70 @@ export async function transitionTo(
       stageEnteredAt: now,
       isDelayed: false,
       delayedSince: null,
-      status: isTerminal ? "completed" : "in_progress",
-      completedAt: isTerminal ? now : null,
+      status: disposition === "completed" ? "completed" : disposition === "lost" ? "lost" : "in_progress",
+      completedAt: disposition === "completed" ? now : null,
       updatedAt: now,
     })
     .where(eq(leadBlueprintInstances.id, inst.id));
 
-  // Mirror the new stage back onto leads.stage so the Kanban + filters +
-  // any other consumer that still reads the legacy column stays in sync.
-  // The Lead → Client journey blueprint and the legacy stage enum are now
-  // the same vocabulary.
+  // Mirror the new stage back onto leads.stage so the Kanban + filters + any
+  // other consumer that still reads the legacy column stays in sync. Explicit
+  // tenant_id predicate (not RLS-only) for defense-in-depth.
   await tx.execute(
-    sql`UPDATE leads SET stage = ${toStageKey}, stage_changed_at = ${now}, updated_at = ${now} WHERE id = ${leadId}::uuid` as any
+    sql`UPDATE leads SET stage = ${toStageKey}, stage_changed_at = ${now}, updated_at = ${now} WHERE id = ${leadId}::uuid AND tenant_id = ${tenantId}::uuid` as any
   );
 
-  // Emit lifecycle events for any wired automations.
-  const onExit = (fromStage?.automationsOnExit as string[]) ?? [];
-  const onEnter = (toStage.automationsOnEnter as string[]) ?? [];
-  for (const recipe of [...onExit.map((r) => ({ phase: "exit", r })), ...onEnter.map((r) => ({ phase: "enter", r }))]) {
-    await tx.insert(eventsOutbox).values({
-      tenantId,
-      kind: `blueprint.stage.${recipe.phase}`,
-      entityType: "lead",
-      entityId: leadId,
-      after: {
-        instanceId: inst.id,
-        stageKey: recipe.phase === "enter" ? toStageKey : inst.currentStageKey,
-        recipeKey: recipe.r,
-      },
-      meta: { actorUserId: opts.actorUserId ?? null, transition: tr?.transitionName ?? null } as any,
-    } as any);
+  // Re-score the lead off the freshly-mirrored stage. Every blueprint
+  // transition (call-outcome, advance, sync) flows through here, so this is
+  // the single point that keeps leads.lead_score in step with the funnel.
+  await recomputeLeadScore(tx, leadId, now.getTime());
+
+  // Central audit trail — every transition (manual, auto, force) lands in
+  // audit_log alongside the rest of the app's mutations. recordAudit swallows
+  // its own errors, so it never poisons the transition.
+  await recordAudit(tx, {
+    tenantId,
+    actorUserId: opts.actorUserId ?? null,
+    actorType: opts.systemBypass ? "system" : "user",
+    action: "lead.blueprint.advance",
+    entityType: "lead",
+    entityId: leadId,
+    before: { stage: currentStageKey },
+    after: { stage: toStageKey, status: disposition },
+    reason: opts.remarks ?? null,
+    meta: { transition: tr?.transitionName ?? null, forced: !!opts.systemBypass },
+    ipAddress: opts.ipAddress ?? null,
+    userAgent: opts.userAgent ?? null,
+  });
+
+  // Emit lifecycle events for any wired automations — unless suppressed (an
+  // intermediate hop of a multi-stage walk). Each event carries a deterministic
+  // dedup key (the new history row id) so a retried emit is a no-op while a
+  // genuine second entry into a looped stage still fires.
+  if (!opts.suppressAutomations) {
+    const onExit = (fromStage?.automationsOnExit as string[]) ?? [];
+    const onEnter = (toStage.automationsOnEnter as string[]) ?? [];
+    for (const recipe of [...onExit.map((r) => ({ phase: "exit", r })), ...onEnter.map((r) => ({ phase: "enter", r }))]) {
+      await tx
+        .insert(eventsOutbox)
+        .values({
+          tenantId,
+          kind: `blueprint.stage.${recipe.phase}`,
+          entityType: "lead",
+          entityId: leadId,
+          after: {
+            instanceId: inst.id,
+            stageKey: recipe.phase === "enter" ? toStageKey : currentStageKey,
+            recipeKey: recipe.r,
+          },
+          meta: { actorUserId: opts.actorUserId ?? null, transition: tr?.transitionName ?? null } as any,
+          dedupKey: `bp:${newHistory.id}:${recipe.phase}:${recipe.r}`,
+        } as any)
+        .onConflictDoNothing({ target: eventsOutbox.dedupKey, where: sql`dedup_key IS NOT NULL` });
+    }
   }
 
-  return { ok: true, fromStage: inst.currentStageKey, toStage: toStageKey };
+  return { ok: true, fromStage: currentStageKey, toStage: toStageKey };
 }
 
 // ── Read helpers for the UI ─────────────────────────────────────────────

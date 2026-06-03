@@ -135,6 +135,30 @@ export function isPredicate(node: FilterAST): node is Predicate {
   return node.type === "predicate";
 }
 
+/** Max nesting depth allowed for a filter. Bounds compile recursion + SQL size. */
+export const MAX_AST_DEPTH = 12;
+
+/**
+ * Structural depth of an AST — counts group nesting AND relation-predicate
+ * nesting (each `rel` predicate compiles to a correlated subquery). Used to
+ * reject pathologically deep filters before they explode into huge SQL or
+ * deep compiler recursion.
+ */
+export function astDepth(node: FilterAST, depth = 1): number {
+  if (depth > 200) return depth; // hard stop — never recurse unbounded
+  let max = depth;
+  if (isGroup(node)) {
+    for (const c of node.children) {
+      const d = astDepth(c, depth + 1);
+      if (d > max) max = d;
+    }
+  } else if (isPredicate(node) && node.field.kind === "rel") {
+    const d = astDepth(node.field.predicate, depth + 1);
+    if (d > max) max = d;
+  }
+  return max;
+}
+
 /** Build helpers — make tests and recipe authoring nicer. */
 export const and = (...children: FilterAST[]): Group => ({
   type: "group",

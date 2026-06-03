@@ -19,7 +19,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Save, Plus, Trash2, CheckCircle2, X, Sparkles } from "lucide-react";
+import { Loader2, Save, Plus, Trash2, CheckCircle2, X, Sparkles, ListChecks, CalendarPlus, Target, CalendarClock } from "lucide-react";
+import { renderReviewAgendaTemplate } from "@/lib/review-meetings/agenda";
 
 const STATUSES = [
   ["scheduled", "Scheduled"],
@@ -40,6 +41,22 @@ const STATUS_TONE: Record<string, string> = {
   cancelled: "bg-gray-50 text-gray-700",
   no_show: "bg-rose-50 text-rose-700",
 };
+
+const OUTCOMES = [
+  ["", "— Not captured —"],
+  ["ready", "Ready to proceed"],
+  ["more_info", "Wants more info"],
+  ["not_ready", "Not ready right now"],
+  ["not_interested", "Not interested"],
+  ["no_show", "No-show"],
+] as const;
+
+const MODES = [
+  ["office", "Office"],
+  ["client_place", "Client place"],
+  ["online", "Online"],
+  ["phone", "Phone"],
+] as const;
 
 type ActionItem = { title: string; dueAt?: string; taskId?: string };
 type Attachment = { name: string; url: string };
@@ -82,6 +99,15 @@ export function ReviewMeetingDetailEditor({
 }) {
   const router = useRouter();
   const [status, setStatus] = useState<string>(meeting.status);
+  const [subject, setSubject] = useState<string>(meeting.subject ?? "");
+  const [outcome, setOutcome] = useState<string>(meeting.outcome ?? "");
+  const [outcomeNotes, setOutcomeNotes] = useState<string>(meeting.outcomeNotes ?? "");
+  // Reschedule fields — moving the date/time/mode/location after creation.
+  const [meetingDate, setMeetingDate] = useState<string>(toLocalInput(meeting.meetingDate));
+  const [meetingMode, setMeetingMode] = useState<string>(meeting.meetingMode ?? "office");
+  const [location, setLocation] = useState<string>(meeting.locationOrLink ?? "");
+  const [rescheduleReason, setRescheduleReason] = useState<string>("");
+  const originalDate = toLocalInput(meeting.meetingDate);
   const [discussion, setDiscussion] = useState(meeting.discussionPoints ?? "");
   const [notes, setNotes] = useState(meeting.meetingNotes ?? "");
   const [items, setItems] = useState<ActionItem[]>(
@@ -202,14 +228,27 @@ export function ReviewMeetingDetailEditor({
     setErr(null);
     setOk(null);
     try {
+      const dateMoved = meetingDate && meetingDate !== originalDate;
       const payload: any = {
         status: overrideStatus ?? status,
+        subject: subject || undefined,
         discussionPoints: discussion || undefined,
         meetingNotes: notes || undefined,
         actionItems: items.filter((i) => i.title.trim().length > 0),
         attachments: atts.filter((a) => a.url.trim().length > 0),
         attendees: attendees.filter((a) => a.name.trim().length > 0),
         nextReviewDate: nextReview || undefined,
+        outcome: outcome || undefined,
+        outcomeNotes: outcomeNotes || undefined,
+        meetingMode: meetingMode || undefined,
+        locationOrLink: location || undefined,
+        // Only send a (reschedule) date + reason when the date actually changed.
+        ...(dateMoved
+          ? {
+              meetingDate: new Date(meetingDate).toISOString(),
+              rescheduleReason: rescheduleReason || undefined,
+            }
+          : {}),
       };
       const res = await fetch(`/api/review-meetings/${meeting.id}`, {
         method: "PATCH",
@@ -255,6 +294,13 @@ export function ReviewMeetingDetailEditor({
         </div>
         <div className="flex items-center gap-2">
           <a
+            href={`/api/review-meetings/${meeting.id}/calendar.ics`}
+            className="btn-ghost text-xs"
+            title="Download an .ics calendar invite for this meeting"
+          >
+            <CalendarPlus className="size-3.5" /> Add to calendar
+          </a>
+          <a
             href={`/dashboard/review-meetings/${meeting.id}/portfolio`}
             className="btn-ghost text-xs"
             title="Open the per-folio review worksheet"
@@ -288,6 +334,72 @@ export function ReviewMeetingDetailEditor({
           {err}
         </div>
       )}
+
+      {/* Subject */}
+      <div className="card-surface p-5 space-y-2">
+        <h3 className="font-semibold">Subject</h3>
+        <input
+          value={subject}
+          onChange={(e) => setSubject(e.target.value)}
+          placeholder="e.g. Q1 portfolio review + tax-saving + nominee update"
+          className="input-base"
+        />
+      </div>
+
+      {/* Schedule / reschedule */}
+      <div className="card-surface p-5 space-y-3">
+        <div className="flex items-center gap-2">
+          <CalendarClock className="size-4 text-brand-cyan" />
+          <h3 className="font-semibold">Schedule</h3>
+          {Number(meeting.rescheduleCount ?? 0) > 0 && (
+            <span className="chip bg-amber-50 text-amber-700 text-[10px]">
+              rescheduled {meeting.rescheduleCount}×
+            </span>
+          )}
+        </div>
+        <div className="grid sm:grid-cols-3 gap-3">
+          <label className="block">
+            <div className="text-[11px] text-muted-foreground mb-0.5">Date &amp; time</div>
+            <input
+              type="datetime-local"
+              value={meetingDate}
+              onChange={(e) => setMeetingDate(e.target.value)}
+              className="input-base"
+            />
+          </label>
+          <label className="block">
+            <div className="text-[11px] text-muted-foreground mb-0.5">Mode</div>
+            <select value={meetingMode} onChange={(e) => setMeetingMode(e.target.value)} className="input-base">
+              {MODES.map(([k, l]) => (
+                <option key={k} value={k}>{l}</option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <div className="text-[11px] text-muted-foreground mb-0.5">Location / link</div>
+            <input
+              value={location}
+              onChange={(e) => setLocation(e.target.value)}
+              placeholder="Office / address / video link"
+              className="input-base"
+            />
+          </label>
+        </div>
+        {meetingDate !== originalDate && (
+          <label className="block">
+            <div className="text-[11px] text-amber-700 mb-0.5 font-medium">Reschedule reason</div>
+            <input
+              value={rescheduleReason}
+              onChange={(e) => setRescheduleReason(e.target.value)}
+              placeholder="Why is this being moved? (optional)"
+              className="input-base"
+            />
+            <p className="text-[11px] text-amber-600 mt-1">
+              Saving moves the T-1 reminder task to the new date and logs a reschedule.
+            </p>
+          </label>
+        )}
+      </div>
 
       {/* Attendees */}
       <div className="card-surface p-5 space-y-2">
@@ -388,12 +500,29 @@ export function ReviewMeetingDetailEditor({
 
       {/* Discussion points */}
       <div className="card-surface p-5 space-y-2">
-        <h3 className="font-semibold">Discussion points (agenda)</h3>
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="font-semibold">Discussion points (agenda)</h3>
+          {/* Insert the standard Network-FP review agenda (5.1). Appends when
+              the field already has content so we never clobber the RM's notes. */}
+          <button
+            type="button"
+            onClick={() => {
+              const template = renderReviewAgendaTemplate();
+              setDiscussion((cur: string) =>
+                cur && cur.trim().length > 0 ? `${cur.trim()}\n\n${template}` : template
+              );
+            }}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-md border border-brand-cyan/40 bg-brand-cyan-light/50 text-brand-cyan-deep px-2.5 py-1 hover:bg-brand-cyan-light"
+            title="Insert the 7-question standard review agenda"
+          >
+            <ListChecks className="size-3.5" /> Insert standard review agenda
+          </button>
+        </div>
         <textarea
           value={discussion}
           onChange={(e) => setDiscussion(e.target.value)}
           rows={3}
-          placeholder="What you plan to cover with the client…"
+          placeholder="What you plan to cover with the client… or click 'Insert standard review agenda' to start from the proven 7-question script."
           className="input-base"
         />
       </div>
@@ -522,6 +651,37 @@ export function ReviewMeetingDetailEditor({
         )}
       </div>
 
+      {/* Outcome */}
+      <div className="card-surface p-5 space-y-2">
+        <div className="flex items-center gap-2">
+          <Target className="size-4 text-brand-cyan" />
+          <h3 className="font-semibold">Outcome</h3>
+        </div>
+        <div className="grid sm:grid-cols-2 gap-3">
+          <label className="block">
+            <div className="text-[11px] text-muted-foreground mb-0.5">Result</div>
+            <select value={outcome} onChange={(e) => setOutcome(e.target.value)} className="input-base">
+              {OUTCOMES.map(([k, l]) => (
+                <option key={k} value={k}>{l}</option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <div className="text-[11px] text-muted-foreground mb-0.5">Outcome notes</div>
+            <input
+              value={outcomeNotes}
+              onChange={(e) => setOutcomeNotes(e.target.value)}
+              placeholder="Optional context"
+              className="input-base"
+            />
+          </label>
+        </div>
+        <p className="text-[11px] text-muted-foreground">
+          For lead meetings the outcome moves the journey forward — <b>Ready</b> → won, <b>Not interested</b> →
+          closed, <b>Wants more info / Not ready</b> → re-nurture in 7 days.
+        </p>
+      </div>
+
       {/* Action items */}
       <div className="card-surface p-5 space-y-2">
         <div className="flex items-center justify-between">
@@ -633,4 +793,13 @@ function defaultNextReview(): string {
   const d = new Date();
   d.setMonth(d.getMonth() + 6); // 6-month default cadence
   return d.toISOString().slice(0, 10);
+}
+
+/** ISO/Date → "YYYY-MM-DDTHH:mm" in local time for <input type=datetime-local>. */
+function toLocalInput(v: any): string {
+  if (!v) return "";
+  const d = v instanceof Date ? v : new Date(v);
+  if (isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }

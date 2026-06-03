@@ -7,7 +7,10 @@
  *   n        number of months
  *   π        annual inflation, decimal (e.g. 0.06 for 6 % p.a.)
  *
- * Compounding: monthly. SIPs paid at month-end (ordinary annuity).
+ * Compounding: monthly. SIPs paid at month-START — annuity-due / "Begin Mode"
+ * (note the trailing × (1 + m) in FV_sip below). This matches the calculators'
+ * on-screen disclaimer; do NOT drop the (1 + m) factor thinking it's an
+ * ordinary (month-end) annuity. The 0% case is the linear limit (Σ payments).
  *
  * Formulas
  *   Inflation-adjusted (future) target:
@@ -16,7 +19,7 @@
  *   FV of an existing lumpsum:
  *     FV_lump = PV × (1 + m)^n
  *
- *   FV of a constant monthly SIP:
+ *   FV of a constant monthly SIP (annuity-due):
  *     FV_sip = P × ((1 + m)^n − 1) / m × (1 + m)
  *
  *   Constant SIP needed to reach Target (with no PV):
@@ -47,6 +50,10 @@ export function fvLumpsum(pv: number, annualReturnPct: number, months: number): 
 export function fvSip(monthlySip: number, annualReturnPct: number, months: number): number {
   if (monthlySip <= 0 || months <= 0) return 0;
   const m = annualReturnPct / 100 / 12;
+  // 0% return ⇒ the (… )/m term is 0/0. The flat-return limit is just the sum
+  // of the contributions (no growth). Without this guard the calculators
+  // return NaN whenever an RM demos a flat/conservative scenario.
+  if (m === 0) return monthlySip * months;
   return monthlySip * ((Math.pow(1 + m, months) - 1) / m) * (1 + m);
 }
 
@@ -62,6 +69,8 @@ export function requiredSip(
   const lumpFV = fvLumpsum(currentValue, annualReturnPct, months);
   const shortfall = Math.max(0, target - lumpFV);
   if (shortfall === 0) return 0;
+  // 0% return ⇒ flat-return limit: the SIP simply sums to the shortfall.
+  if (m === 0) return shortfall / months;
   return (shortfall * m) / ((Math.pow(1 + m, months) - 1) * (1 + m));
 }
 
@@ -89,6 +98,16 @@ export function fvStepUpSip(
   const s = stepUpPct / 100;
   const fullYears = Math.floor(months / 12);
   const remainderMonths = months - fullYears * 12;
+
+  // 0% return ⇒ flat-return limit: total value is just the sum of every
+  // (stepped-up) contribution, no growth. Guards the 0/0 in fv1yr below.
+  if (m === 0) {
+    let flat = 0;
+    for (let k = 0; k < fullYears; k++) flat += initialMonthly * Math.pow(1 + s, k) * 12;
+    if (remainderMonths > 0) flat += initialMonthly * Math.pow(1 + s, fullYears) * remainderMonths;
+    return flat;
+  }
+
   const fv1yr = ((Math.pow(1 + m, 12) - 1) / m) * (1 + m);
 
   let fv = 0;
@@ -512,4 +531,72 @@ export const CATEGORY_ALIASES: Record<string, string> = {
 export function categoryLabel(slug: string): string {
   const canon = CATEGORY_ALIASES[slug] ?? slug;
   return GOAL_CATEGORIES.find(([k]) => k === canon)?.[1] ?? slug;
+}
+
+/* ───────────────────────── STP & CAGR Calculators ───────────────────────── */
+
+export interface StpResult {
+  invested: number;
+  sourceFinalValue: number;
+  targetFinalValue: number;
+  totalFinalValue: number;
+  gain: number;
+}
+
+export function stpCalculate(params: {
+  lumpsum: number;
+  transferAmount: number;
+  sourceReturnPct: number;
+  targetReturnPct: number;
+  years: number;
+}): StpResult {
+  const { lumpsum, transferAmount, sourceReturnPct, targetReturnPct, years } = params;
+  const months = years * 12;
+  const mSource = sourceReturnPct / 100 / 12;
+  const mTarget = targetReturnPct / 100 / 12;
+
+  let balanceSource = lumpsum;
+  let balanceTarget = 0;
+
+  for (let i = 0; i < months; i++) {
+    if (balanceSource > 0) {
+      const transfer = Math.min(transferAmount, balanceSource);
+      balanceSource -= transfer;
+      balanceTarget += transfer;
+    }
+    balanceSource = balanceSource * (1 + mSource);
+    balanceTarget = balanceTarget * (1 + mTarget);
+  }
+
+  const totalFinalValue = balanceSource + balanceTarget;
+
+  return {
+    invested: lumpsum,
+    sourceFinalValue: balanceSource,
+    targetFinalValue: balanceTarget,
+    totalFinalValue,
+    gain: Math.max(0, totalFinalValue - lumpsum),
+  };
+}
+
+export interface CagrResult {
+  cagrPct: number;
+  absoluteReturnPct: number;
+}
+
+export function cagrCalculate(params: {
+  initialValue: number;
+  finalValue: number;
+  years: number;
+}): CagrResult {
+  const { initialValue, finalValue, years } = params;
+  if (initialValue <= 0 || years <= 0) {
+    return { cagrPct: 0, absoluteReturnPct: 0 };
+  }
+  const absoluteReturnPct = ((finalValue - initialValue) / initialValue) * 100;
+  const cagr = Math.pow(finalValue / initialValue, 1 / years) - 1;
+  return {
+    cagrPct: cagr * 100,
+    absoluteReturnPct,
+  };
 }

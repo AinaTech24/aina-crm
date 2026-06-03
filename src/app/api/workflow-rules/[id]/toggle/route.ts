@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { workflowRules } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
@@ -16,7 +16,9 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     const [r] = await tx
       .update(workflowRules)
       .set({ enabled: sql`NOT enabled`, updatedAt: new Date() })
-      .where(eq(workflowRules.id, id))
+      // Tenant predicate alongside RLS — defense-in-depth + consistent with
+      // the GET/PATCH/DELETE routes.
+      .where(and(eq(workflowRules.id, id), eq(workflowRules.tenantId, session.tenantId)))
       .returning();
     return r;
   });

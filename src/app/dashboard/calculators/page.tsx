@@ -1,9 +1,9 @@
 /**
  * MF Investment Calculators — Network FP "3.5 MF Investment Calculators"
- * parity. All 8 calculators on one page, no DB writes. RM uses these
- * during client meetings to demonstrate scenarios live.
+ * parity (extended). All 10 calculators on one page, no DB writes. RM uses
+ * these during client meetings to demonstrate scenarios live.
  *
- * The 8 calculators:
+ * The 10 calculators:
  *   1. SIP Investment       — monthly → future value
  *   2. Lumpsum               — one-shot → future value
  *   3. Goal                  — target → required monthly SIP
@@ -12,6 +12,8 @@
  *   6. Retirement Planning   — corpus required + monthly savings
  *   7. Step-up SIP           — base + annual step-up % vs flat SIP
  *   8. SWP                   — corpus depletion under monthly withdrawal
+ *   9. STP                   — lumpsum transferred source → target fund
+ *  10. CAGR                  — initial/final value → annualised return
  */
 
 import { Calculator } from "lucide-react";
@@ -32,7 +34,11 @@ export default function CalculatorsPage() {
         </p>
       </div>
       <CalculatorsApp />
-      <div className="text-[11px] text-muted-foreground border-t pt-3 print:hidden">
+      {/* Disclaimer must stay visible in print/PDF — any illustration handed
+          to a client has to carry the market-risk disclaimer (AMFI best
+          practice; mirrors the 3.5 spreadsheet, which keeps it on the
+          printable sheet). Do NOT add print:hidden here. */}
+      <div className="text-[11px] text-muted-foreground border-t pt-3">
         <strong>Disclaimer:</strong> Past performance may or may not be
         sustained in future and is not a guarantee of any future returns.
         These calculators are for illustration only and do not represent

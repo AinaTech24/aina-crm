@@ -11,7 +11,7 @@ export const inactiveReactivationRecipe: RecipeDef = {
   graph: graph({
     start: "trigger",
     nodes: [
-      n("trigger", "trigger", {}),
+      n("trigger", "trigger", { kind: "investor.dormant", subjectType: "investor" }),
       n("d0_email", "send_email", {
         templateKey: "inactive_d0",
         variables: { name: "subject.name" },

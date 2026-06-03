@@ -19,10 +19,11 @@ import { z } from "zod";
 import { sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { autoAdvance } from "@/lib/blueprints/auto-advance";
+import { loadEditableLead } from "@/lib/leads/access";
+import { normalizePan } from "@/lib/leads/normalize";
 import {
   leads,
   investors,
@@ -49,7 +50,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { id: leadId } = await params;
   try {
     const session = await requireSession();
-    requireCap(session.roles, "lead.edit.all");
     await assertActiveLicense(session.tenantId, session.roles);
 
     const clientMeta = clientMetaFromHeaders(req.headers);
@@ -62,12 +62,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const investorId = uuid();
 
     const result = await withTenant(session.tenantId, async (tx) => {
-      const lead = (await tx.select().from(leads).where(eq(leads.id, leadId)).limit(1))[0];
-      if (!lead) throw Object.assign(new Error("lead not found"), { status: 404 });
-      if (lead.stage === "converted" && lead.convertedInvestorId) {
+      const lead = await loadEditableLead(tx, session, leadId);
+      if (lead.convertedInvestorId) {
         // Idempotent — return the existing investor
         return { investorId: lead.convertedInvestorId, alreadyConverted: true };
       }
+
+      const pan = normalizePan(body.pan)!;
 
       // Create investor
       const inserted = await tx
@@ -75,9 +76,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         .values({
           id: investorId,
           tenantId: session.tenantId,
-          branchId: session.branchId,
+          branchId: lead.branchId ?? session.branchId,
           name: lead.name,
-          pan: body.pan.toUpperCase(),
+          pan,
           email: lead.email,
           phone: lead.phone,
           whatsappPhone: lead.phone,
@@ -98,6 +99,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         .set({
           stage: "converted",
           stageChangedAt: new Date(),
+          pan,
           convertedInvestorId: investorId,
           convertedAt: new Date(),
           updatedAt: new Date(),
@@ -166,9 +168,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       await tx.execute(sql`
         UPDATE review_meetings
            SET investor_id = ${investorId}::uuid,
+               lead_id = NULL,
                updated_at = now()
          WHERE tenant_id = ${session.tenantId}::uuid
-           AND investor_id = ${leadId}::uuid
+           AND lead_id = ${leadId}::uuid
       `);
 
       // 6. Open share_tokens (proposal approval, doc collection, risk profile)
@@ -219,6 +222,30 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         after: { investorId, leadName: lead.name },
         ...clientMeta,
       });
+
+      // Referral recognition (closed loop). The lead_welcome recipe already
+      // thanked the referrer when the lead came in; now that it has actually
+      // CONVERTED, task the owning RM to recognise the referrer personally —
+      // genuine recognition is what drives the next referral.
+      if (lead.referredByInvestorId) {
+        await tx.execute(sql`
+          INSERT INTO tasks (
+            id, tenant_id, title, description, status, priority,
+            assignee_id, due_at, kind, created_by, created_at, updated_at
+          )
+          VALUES (
+            gen_random_uuid(), ${session.tenantId}::uuid,
+            ${`Thank ${lead.referredByName ?? "your client"} — their referral just converted`},
+            ${`${lead.name} (referred by ${lead.referredByName ?? "an existing client"}) is now a client. Call the referrer within 2 days to thank them — referral recognition is the cheapest growth you have.`},
+            'open', 'normal',
+            ${lead.ownerId ?? session.userId}::uuid,
+            now() + interval '2 days',
+            'admin',
+            ${session.userId}::uuid,
+            now(), now()
+          )
+        `);
+      }
 
       // Push the shared blueprint instance into the client phase so the
       // freshly-converted client appears in the right column of the

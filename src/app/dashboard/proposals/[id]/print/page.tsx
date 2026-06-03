@@ -316,18 +316,27 @@ export default async function ProposalPrintPage({
                       <th style={{ textAlign: "right" }}>Minimum</th>
                       <th style={{ textAlign: "right" }}>Proposed</th>
                       <th style={{ textAlign: "right" }}>Exp. Return</th>
+                      <th style={{ textAlign: "right" }}>Horizon</th>
+                      <th style={{ textAlign: "right" }}>Projected</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {grouped[kind].map((it: any, i: number) => (
-                      <tr key={i}>
-                        <td style={{ fontWeight: 700 }}>{it.strategyName}</td>
-                        <td>{it.manager ?? "—"}</td>
-                        <td style={{ textAlign: "right" }}>{it.minInvestment ? formatINR(Number(it.minInvestment)) : "—"}</td>
-                        <td style={{ textAlign: "right" }}>{it.proposedAmount ? formatINR(Number(it.proposedAmount)) : "—"}</td>
-                        <td style={{ textAlign: "right" }}>{it.expectedReturn ? `${it.expectedReturn}%` : "—"}</td>
-                      </tr>
-                    ))}
+                    {grouped[kind].map((it: any, i: number) => {
+                      const projectedPMS = Number(it.proposedAmount ?? 0) * Math.pow(1 + Number(it.expectedReturn ?? 0) / 100, Number(it.termYears ?? 0));
+                      return (
+                        <tr key={i}>
+                          <td style={{ fontWeight: 700 }}>{it.strategyName}</td>
+                          <td>{it.manager ?? "—"}</td>
+                          <td style={{ textAlign: "right" }}>{it.minInvestment ? formatINR(Number(it.minInvestment)) : "—"}</td>
+                          <td style={{ textAlign: "right" }}>{it.proposedAmount ? formatINR(Number(it.proposedAmount)) : "—"}</td>
+                          <td style={{ textAlign: "right" }}>{it.expectedReturn ? `${it.expectedReturn}%` : "—"}</td>
+                          <td style={{ textAlign: "right" }}>{it.termYears ? `${it.termYears} yrs` : "—"}</td>
+                          <td style={{ textAlign: "right", color: "#059669", fontWeight: 700 }}>
+                            {projectedPMS ? formatINR(Math.round(projectedPMS)) : "—"}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               )}
@@ -341,26 +350,33 @@ export default async function ProposalPrintPage({
                       <th style={{ textAlign: "right" }}>Proposed</th>
                       <th style={{ textAlign: "right" }}>Lock-in</th>
                       <th style={{ textAlign: "right" }}>Target IRR</th>
+                      <th style={{ textAlign: "right" }}>Projected</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {grouped[kind].map((it: any, i: number) => (
-                      <tr key={i}>
-                        <td style={{ fontWeight: 700 }}>{it.fundName}</td>
-                        <td>
-                          {it.manager ?? "—"}
-                          {it.category && (
-                            <div className="pp-muted" style={{ fontSize: 11 }}>
-                              {String(it.category).toUpperCase()}
-                            </div>
-                          )}
-                        </td>
-                        <td style={{ textAlign: "right" }}>{it.minInvestment ? formatINR(Number(it.minInvestment)) : "—"}</td>
-                        <td style={{ textAlign: "right" }}>{it.proposedAmount ? formatINR(Number(it.proposedAmount)) : "—"}</td>
-                        <td style={{ textAlign: "right" }}>{it.lockInYears ? `${it.lockInYears} yrs` : "—"}</td>
-                        <td style={{ textAlign: "right" }}>{it.targetIrr ? `${it.targetIrr}%` : "—"}</td>
-                      </tr>
-                    ))}
+                    {grouped[kind].map((it: any, i: number) => {
+                      const projectedAIF = Number(it.proposedAmount ?? 0) * Math.pow(1 + Number(it.targetIrr ?? 0) / 100, Number(it.lockInYears ?? 0));
+                      return (
+                        <tr key={i}>
+                          <td style={{ fontWeight: 700 }}>{it.fundName}</td>
+                          <td>
+                            {it.manager ?? "—"}
+                            {it.category && (
+                              <div className="pp-muted" style={{ fontSize: 11 }}>
+                                {String(it.category).toUpperCase()}
+                              </div>
+                            )}
+                          </td>
+                          <td style={{ textAlign: "right" }}>{it.minInvestment ? formatINR(Number(it.minInvestment)) : "—"}</td>
+                          <td style={{ textAlign: "right" }}>{it.proposedAmount ? formatINR(Number(it.proposedAmount)) : "—"}</td>
+                          <td style={{ textAlign: "right" }}>{it.lockInYears ? `${it.lockInYears} yrs` : "—"}</td>
+                          <td style={{ textAlign: "right" }}>{it.targetIrr ? `${it.targetIrr}%` : "—"}</td>
+                          <td style={{ textAlign: "right", color: "#059669", fontWeight: 700 }}>
+                            {projectedAIF ? formatINR(Math.round(projectedAIF)) : "—"}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               )}

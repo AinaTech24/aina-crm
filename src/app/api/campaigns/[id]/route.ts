@@ -8,7 +8,7 @@ import { handleApiError } from "@/lib/api/error-handler";
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
@@ -59,8 +59,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
   try {
     const session = await requireSession();
+    requireCap(session.roles, "campaign.send");
     const row = await withTenant(session.tenantId, async (tx) =>
-      (await tx.select().from(campaigns).where(eq(campaigns.id, id)).limit(1))[0] ?? null
+      (await tx.select().from(campaigns).where(and(eq(campaigns.id, id), eq(campaigns.tenantId, session.tenantId))).limit(1))[0] ?? null
     );
     if (!row) return NextResponse.json({ error: "not found" }, { status: 404 });
     return NextResponse.json(row);
@@ -80,7 +81,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const clientMeta = clientMetaFromHeaders(req.headers);
 
     const result = await withTenant(session.tenantId, async (tx) => {
-      const before = (await tx.select().from(campaigns).where(eq(campaigns.id, id)).limit(1))[0];
+      const before = (await tx.select().from(campaigns).where(and(eq(campaigns.id, id), eq(campaigns.tenantId, session.tenantId))).limit(1))[0];
       if (!before) return null;
       // Block edits to send-mechanics fields once sending — but allow updating
       // ROI metrics (leads_generated, meetings_booked, clients_converted, remarks).
@@ -105,7 +106,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         patch.approvedByUserId = session.userId;
       }
 
-      const r = await tx.update(campaigns).set(patch).where(eq(campaigns.id, id)).returning();
+      const r = await tx.update(campaigns).set(patch).where(and(eq(campaigns.id, id), eq(campaigns.tenantId, session.tenantId))).returning();
       await recordAudit(tx, {
         tenantId: session.tenantId,
         actorUserId: session.userId,
@@ -132,7 +133,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     await assertActiveLicense(session.tenantId, session.roles);
     const clientMeta = clientMetaFromHeaders(req.headers);
     await withTenant(session.tenantId, async (tx) => {
-      const before = (await tx.select().from(campaigns).where(eq(campaigns.id, id)).limit(1))[0];
+      const before = (await tx.select().from(campaigns).where(and(eq(campaigns.id, id), eq(campaigns.tenantId, session.tenantId))).limit(1))[0];
       if (!before) return;
       if (before.status === "sending") {
         throw Object.assign(new Error("cannot delete a campaign already sending"), { status: 409 });
@@ -140,7 +141,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
       await tx
         .update(campaigns)
         .set({ status: "cancelled", updatedAt: new Date() } as any)
-        .where(eq(campaigns.id, id));
+        .where(and(eq(campaigns.id, id), eq(campaigns.tenantId, session.tenantId)));
       await recordAudit(tx, {
         tenantId: session.tenantId,
         actorUserId: session.userId,

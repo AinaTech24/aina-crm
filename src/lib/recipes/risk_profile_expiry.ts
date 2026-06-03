@@ -25,7 +25,7 @@ export const riskProfileExpiryRecipe: RecipeDef = {
   graph: graph({
     start: "trigger",
     nodes: [
-      n("trigger", "trigger", {}),
+      n("trigger", "trigger", { kind: "investor.risk_profile_expired", subjectType: "investor" }),
       n("wa", "send_whatsapp", {
         templateKey: "risk_profile_renew",
         variables: {

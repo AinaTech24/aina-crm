@@ -12,6 +12,7 @@ import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
+import { scoreFields } from "@/lib/leads/score";
 
 export const dynamic = "force-dynamic";
 
@@ -63,23 +64,37 @@ export async function POST(req: NextRequest) {
         const stageRaw = pick(row, reverse.stage).toLowerCase().replace(/\s+/g, "_");
         const stage = VALID_STAGES.has(stageRaw) ? stageRaw : "new";
 
+        const emailVal = pick(row, reverse.email) || null;
+        const phoneVal = pick(row, reverse.phone) || null;
+        const intendedVal = pick(row, reverse.intendedAmount) || null;
+        // Deterministic initial score from the imported signals.
+        const sc = scoreFields({
+          source,
+          stage,
+          intendedAmount: intendedVal,
+          email: emailVal,
+          phone: phoneVal,
+        });
+
         try {
           await tx.execute(sql`
             INSERT INTO leads (
               id, tenant_id, branch_id, name, email, phone, city,
               source, source_campaign, stage, stage_changed_at, score, intended_amount,
+              lead_score, score_band, scored_at,
               owner_id, notes, created_at, updated_at
             )
             VALUES (
               ${uuid()}, ${session.tenantId}, ${session.branchId ?? null},
               ${name},
-              ${pick(row, reverse.email) || null},
-              ${pick(row, reverse.phone) || null},
+              ${emailVal},
+              ${phoneVal},
               ${pick(row, reverse.city) || null},
               ${source}, ${pick(row, reverse.campaignName) || null},
               ${stage}, now(),
               ${pick(row, reverse.score) || "0"},
-              ${pick(row, reverse.intendedAmount) || null},
+              ${intendedVal},
+              ${sc.leadScore}, ${sc.scoreBand}, now(),
               ${session.userId},
               ${pick(row, reverse.notes) || null},
               now(), now()

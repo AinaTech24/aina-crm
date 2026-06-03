@@ -6,16 +6,19 @@
  * needs to hit its target, we alert the RM and send a WA prompt to the
  * investor to discuss a top-up.
  *
- * Trigger:  schedule (daily 07:00 IST)
- * Criteria: goal.status='active' AND progress_pct < expected_progress_pct - 10
- *           (expected_progress_pct is computed daily by a worker job that
- *            updates goals.progress_pct + an `expected_progress_pct` column
- *            from started_on + target_date.)
+ * Trigger:  event `goal.drift` — emitted by the daily-ops scanner (06:30 IST)
+ *           for each investor whose worst goal has fallen >10pp behind its
+ *           time-trajectory (progress_pct < expected_progress_pct - 10). The
+ *           scanner recomputes progress_pct + expected_progress_pct nightly
+ *           (see recomputeAllGoals) and dedupes to one event per investor/day,
+ *           so the client never gets spammed about multiple goals at once.
+ *
+ * Event payload (`event.*`): goal_name, drift_pct, goalId, rmId.
+ * Subject is the investor, so subject.name / subject.rm_id resolve directly.
  *
  * Actions (sequenced):
  *   1. WhatsApp to investor — "Your <goal> is behind. Quick call?"
  *   2. Create RM task — "Goal review with <investor> — discuss top-up"
- *   3. Tag investor with 'goal_drift_alert' so segments can pick them up
  */
 
 import type { RecipeDef } from "./index";
@@ -54,7 +57,7 @@ export const goalDriftAlert: RecipeDef = {
     version: 1,
     startNodeId: "trigger",
     nodes: [
-      { id: "trigger", type: "trigger", config: { kind: "schedule", cron: "0 7 * * *" } },
+      { id: "trigger", type: "trigger", config: { kind: "goal.drift" } },
       {
         id: "send_wa",
         type: "send_whatsapp",

@@ -118,9 +118,22 @@ export const users = pgTable(
     territory: jsonb("territory").$type<{ states?: string[]; cities?: string[]; pincodes?: string[] }>(),
 
     twoFaEnabled: boolean("two_fa_enabled").default(false),
+    /** Base32 TOTP shared secret. Set (with twoFaEnabled=false) during
+     *  enrollment; twoFaEnabled flips true once the first code is verified. */
     twoFaSecret: text("two_fa_secret"),
+    /** bcrypt-hashed one-time recovery codes (login when the authenticator
+     *  device is lost). Each is consumed on use. */
+    twoFaBackupCodes: jsonb("two_fa_backup_codes").$type<string[]>(),
     permissions: jsonb("permissions").$type<string[]>(),
     lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
+    /**
+     * Session revocation epoch. Any session JWT whose `iat` predates this
+     * timestamp is rejected by getSession() (see src/lib/auth/revocation.ts).
+     * Stamped to now() on offboarding and forced password reset so a
+     * terminated user's still-valid token dies on the next request instead of
+     * lingering until its 8h TTL.
+     */
+    sessionsInvalidAfter: timestamp("sessions_invalid_after", { withTimezone: true }),
     status: text("status", { enum: ["invited", "active", "suspended", "offboarding", "offboarded"] })
       .notNull()
       .default("invited"),

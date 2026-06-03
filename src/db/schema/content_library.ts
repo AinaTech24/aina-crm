@@ -1,5 +1,6 @@
 import { boolean, index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { id, timestamps } from "./_shared";
+import { tenants } from "./tenants";
 
 /**
  * AINA-managed content library — assets uploaded by AINA platform admins
@@ -67,14 +68,17 @@ export const contentLibraryAssets = pgTable(
     expireAt: timestamp("expire_at", { withTimezone: true }),
 
     uploadedByUserId: uuid("uploaded_by_user_id"),
+    tenantId: uuid("tenant_id").references(() => tenants.id),
     ...timestamps,
   },
   (t) => ({
     typeIdx: index("cla_type_idx").on(t.type, t.isActive),
     catIdx: index("cla_category_idx").on(t.category, t.isActive),
     activeIdx: index("cla_active_idx").on(t.isActive, t.publishAt),
+    tenantIdx: index("cla_tenant_idx").on(t.tenantId),
   })
 );
 
 export type ContentLibraryAsset = typeof contentLibraryAssets.$inferSelect;
 export type NewContentLibraryAsset = typeof contentLibraryAssets.$inferInsert;
+

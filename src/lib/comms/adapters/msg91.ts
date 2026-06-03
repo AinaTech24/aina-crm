@@ -13,13 +13,15 @@ export interface SendSmsArgs {
   tokens: Record<string, string>;
   rendered: { text: string; tokens: Record<string, string> };
   recipient: string;
+  apiKey?: string;
+  senderId?: string;
 }
 
 export const smsAdapter = {
   async send(args: SendSmsArgs): Promise<{ externalId: string; status: "sent" | "queued" }> {
-    const authKey = process.env.MSG91_AUTH_KEY;
+    const authKey = args.apiKey ?? process.env.MSG91_AUTH_KEY;
     if (!authKey) throw new Error("MSG91_AUTH_KEY not set");
-    const senderId = process.env.MSG91_SENDER_ID ?? "MFDPLT";
+    const senderId = args.senderId ?? process.env.MSG91_SENDER_ID ?? "MFDPLT";
     const body = args.templateVersion.body as any;
     const dltTemplateId = body?.dltTemplateId;
     if (!dltTemplateId) {
@@ -48,6 +50,7 @@ export const smsAdapter = {
       },
       timeout: 15_000,
     });
+
 
     return {
       externalId: res.data?.request_id ?? `msg91-${Date.now()}`,

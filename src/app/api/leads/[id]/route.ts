@@ -12,10 +12,17 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { leads, eventsOutbox } from "@/db/schema";
+import { canEditAllLeads, loadEditableLead, loadViewableLead } from "@/lib/leads/access";
+import {
+  normalizeEmail,
+  normalizeLeadSource,
+  normalizeLeadStage,
+  normalizePan,
+  normalizePhoneLast10,
+} from "@/lib/leads/normalize";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +30,9 @@ const Patch = z.object({
   name: z.string().min(2).max(120).optional(),
   email: z.string().email().optional().or(z.literal("")),
   phone: z.string().optional(),
+  pan: z.string().optional(),
   city: z.string().optional(),
+  pincode: z.string().optional(),
   source: z.string().optional(),
   sourceCampaign: z.string().optional(),
   stage: z.string().optional(),
@@ -31,20 +40,15 @@ const Patch = z.object({
   intendedAmount: z.string().optional(),
   followUpNotes: z.string().optional(),
   nextFollowUpAt: z.string().optional(),
+  lostReason: z.string().optional(),
   notes: z.string().optional(),
 });
-
-function canEdit(roles: string[]) {
-  return roles.some((r) => ["owner", "marketing", "rm", "branch_head"].includes(r));
-}
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   try {
     const session = await requireSession();
-    const row = await withTenant(session.tenantId, async (tx) =>
-      (await tx.select().from(leads).where(eq(leads.id, id)).limit(1))[0] ?? null
-    );
+    const row = await withTenant(session.tenantId, async (tx) => loadViewableLead(tx, session, id));
     if (!row) return NextResponse.json({ error: "not found" }, { status: 404 });
     return NextResponse.json(row);
   } catch (err: any) {
@@ -56,8 +60,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const { id } = await params;
   try {
     const session = await requireSession();
-    requireCap(session.roles, "lead.edit.all");
-    if (!canEdit(session.roles)) return NextResponse.json({ error: "forbidden" }, { status: 403 });
     await assertActiveLicense(session.tenantId, session.roles);
 
     const parse = Patch.safeParse(await req.json().catch(() => ({})));
@@ -65,11 +67,33 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const clientMeta = clientMetaFromHeaders(req.headers);
 
     const result = await withTenant(session.tenantId, async (tx) => {
-      const before = (await tx.select().from(leads).where(eq(leads.id, id)).limit(1))[0];
-      if (!before) return null;
+      const before = await loadEditableLead(tx, session, id);
+      const patch: Record<string, any> = { ...parse.data };
+      if (!canEditAllLeads(session)) delete patch.ownerId;
+      if (Object.prototype.hasOwnProperty.call(patch, "email")) {
+        patch.email = patch.email || null;
+        patch.emailNormalized = normalizeEmail(patch.email);
+      }
+      if (Object.prototype.hasOwnProperty.call(patch, "phone")) {
+        patch.phone = patch.phone || null;
+        patch.phoneNormalized = normalizePhoneLast10(patch.phone);
+      }
+      if (Object.prototype.hasOwnProperty.call(patch, "pan")) {
+        patch.pan = normalizePan(patch.pan);
+      }
+      if (Object.prototype.hasOwnProperty.call(patch, "source")) {
+        patch.source = normalizeLeadSource(patch.source);
+      }
+      if (Object.prototype.hasOwnProperty.call(patch, "stage")) {
+        patch.stage = normalizeLeadStage(patch.stage);
+        patch.stageChangedAt = new Date();
+      }
+      if (Object.prototype.hasOwnProperty.call(patch, "nextFollowUpAt")) {
+        patch.nextFollowUpAt = patch.nextFollowUpAt ? new Date(patch.nextFollowUpAt) : null;
+      }
       const after = await tx
         .update(leads)
-        .set({ ...parse.data, updatedAt: new Date() } as any)
+        .set({ ...patch, updatedAt: new Date() } as any)
         .where(eq(leads.id, id))
         .returning();
       await recordAudit(tx, {
@@ -79,7 +103,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         entityType: "lead",
         entityId: id,
         before: { name: before.name, stage: before.stage } as any,
-        after: parse.data as any,
+        after: patch as any,
         ...clientMeta,
       });
       return after[0];
@@ -95,18 +119,16 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const { id } = await params;
   try {
     const session = await requireSession();
-    requireCap(session.roles, "lead.edit.all");
-    if (!canEdit(session.roles)) return NextResponse.json({ error: "forbidden" }, { status: 403 });
     await assertActiveLicense(session.tenantId, session.roles);
 
     const clientMeta = clientMetaFromHeaders(req.headers);
     await withTenant(session.tenantId, async (tx) => {
-      const before = (await tx.select().from(leads).where(eq(leads.id, id)).limit(1))[0];
-      if (!before) return;
+      const before = await loadEditableLead(tx, session, id);
       await tx
         .update(leads)
         .set({
-          stage: "lost",
+          stage: "not_qualified",
+          stageChangedAt: new Date(),
           lostReason: before.lostReason ?? "deleted",
           lostAt: new Date(),
           updatedAt: new Date(),

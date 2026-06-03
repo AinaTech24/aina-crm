@@ -1,12 +1,13 @@
 import Link from "next/link";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { Target, Plus } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { goals, investors } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
-import { formatINR, formatDate } from "@/lib/utils";
+import { formatINR } from "@/lib/utils";
 import { categoryLabel } from "@/lib/goal-planning/calc";
 import { RowActions } from "@/components/common/RowActions";
+import { Pager } from "@/components/common/Pager";
 
 const STATUS_TONE: Record<string, string> = {
   not_started: "bg-gray-100 text-gray-700",
@@ -21,24 +22,51 @@ const STATUS_TONE: Record<string, string> = {
 
 export const dynamic = "force-dynamic";
 
-export default async function GoalsPage() {
+export default async function GoalsPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | undefined>>;
+}) {
   const session = await requireSession();
-  const rows = await withTenant(session.tenantId, async (tx) => {
-    return tx
+  const sp = await searchParams;
+  const PAGE_SIZE = 50;
+  const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
+
+  const { rows, stats } = await withTenant(session.tenantId, async (tx) => {
+    // KPIs from a single aggregate over ALL goals — not the paginated slice
+    // (the old code derived counts from a LIMIT 200 page, so they capped/lied
+    // once a firm had more than 200 goals).
+    const s = (
+      await tx.execute(sql`
+        SELECT
+          COUNT(*)::int AS total,
+          COUNT(*) FILTER (WHERE status = 'on_track')::int AS on_track,
+          COUNT(*) FILTER (WHERE status = 'behind_track')::int AS behind,
+          COUNT(*) FILTER (WHERE status = 'achieved')::int AS achieved,
+          COUNT(*) FILTER (WHERE status = 'not_started')::int AS not_started
+        FROM goals
+      `)
+    ).rows[0] as any;
+
+    const r = await tx
       .select({ goal: goals, investorName: investors.name })
       .from(goals)
       .leftJoin(investors, eq(investors.id, goals.investorId))
       .orderBy(goals.targetDate)
-      .limit(200);
-  });
+      .limit(PAGE_SIZE)
+      .offset((page - 1) * PAGE_SIZE);
 
-  const stats = {
-    total: rows.length,
-    onTrack: rows.filter((r) => r.goal.status === "on_track").length,
-    behind: rows.filter((r) => r.goal.status === "behind_track").length,
-    achieved: rows.filter((r) => r.goal.status === "achieved").length,
-    notStarted: rows.filter((r) => r.goal.status === "not_started").length,
-  };
+    return {
+      rows: r,
+      stats: {
+        total: Number(s.total),
+        onTrack: Number(s.on_track),
+        behind: Number(s.behind),
+        achieved: Number(s.achieved),
+        notStarted: Number(s.not_started),
+      },
+    };
+  });
 
   return (
     <div className="space-y-6 max-w-7xl">
@@ -144,6 +172,16 @@ export default async function GoalsPage() {
               })}
             </tbody>
           </table>
+        )}
+        {rows.length > 0 && (
+          <div className="px-4 pb-3">
+            <Pager
+              page={page}
+              totalPages={Math.ceil(stats.total / PAGE_SIZE)}
+              total={stats.total}
+              pageSize={PAGE_SIZE}
+            />
+          </div>
         )}
       </div>
     </div>

@@ -84,6 +84,10 @@ export default function NewCampaignPage() {
     setBusy(true);
     setErr(null);
     try {
+      const sendable = launch && isBroadcast && !!templateId && !!segmentId;
+      const immediateSend = sendable && !scheduledAt;
+      const scheduledSend = sendable && !!scheduledAt;
+
       const payload: any = {
         name: name || `${opt.label} campaign`,
         kind,
@@ -93,7 +97,10 @@ export default function NewCampaignPage() {
         targetAudience: targetAudience || undefined,
         contentStatus,
         complianceCheckStatus,
-        approvalStatus,
+        // Clicking "Save & send" / "Schedule" IS the send decision — mark the
+        // campaign-level approval not-required so the launch gate passes.
+        // Plain drafts keep the chosen approval status (default pending).
+        approvalStatus: sendable ? "not_required" : approvalStatus,
         campaignCost: campaignCost ? Number(campaignCost) : undefined,
         remarks: remarks || undefined,
       };
@@ -114,9 +121,19 @@ export default function NewCampaignPage() {
         setErr(j.error ?? "Create failed");
         return;
       }
-      if (launch && isBroadcast && templateId && segmentId) {
-        await fetch(`/api/campaigns/${j.id}/launch`, { method: "POST" }).catch(() => null);
+
+      // Only launch NOW for immediate sends. Scheduled broadcasts are promoted
+      // to 'sending' by the dispatcher when their scheduledAt arrives.
+      if (immediateSend) {
+        const lr = await fetch(`/api/campaigns/${j.id}/launch`, { method: "POST" });
+        if (!lr.ok) {
+          const lj = await lr.json().catch(() => ({}));
+          // Don't silently swallow — the campaign exists but didn't send.
+          setErr(`Saved, but launch failed: ${lj.error ?? `HTTP ${lr.status}`}. Open the campaign to launch it.`);
+          return;
+        }
       }
+      void scheduledSend; // scheduled — nothing to launch now
       router.push(`/dashboard/campaigns`);
     } finally {
       setBusy(false);
@@ -324,10 +341,9 @@ export default function NewCampaignPage() {
               className="input-base"
             >
               <option value="pending">Pending</option>
-              <option value="approved">Approved</option>
-              <option value="rejected">Rejected</option>
               <option value="not_required">Not required</option>
             </select>
+            <p className="text-[10px] text-muted-foreground mt-1">Approve from the campaign page, or use Save &amp; send.</p>
           </label>
         </div>
 

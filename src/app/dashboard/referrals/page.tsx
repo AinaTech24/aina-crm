@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { sql } from "drizzle-orm";
-import { Users, TrendingUp, Heart, CheckCircle2, Clock } from "lucide-react";
+import { Users, TrendingUp, Heart, CheckCircle2, Clock, Sparkles, Phone } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { formatINR, formatDate } from "@/lib/utils";
@@ -35,9 +35,9 @@ export default async function ReferralsPage({
         i.segment_tag,
         i.service_tier,
         COUNT(l.id)::int AS leads_given,
-        COUNT(l.id) FILTER (WHERE l.stage = 'converted')::int AS converted,
+        COUNT(l.id) FILTER (WHERE l.converted_investor_id IS NOT NULL)::int AS converted,
         COUNT(l.id) FILTER (
-          WHERE l.stage NOT IN ('converted','lost','not_interested')
+          WHERE l.converted_investor_id IS NULL AND l.stage NOT IN ('lost','not_interested')
         )::int AS in_pipeline,
         COUNT(l.id) FILTER (
           WHERE l.stage IN ('lost','not_interested')
@@ -57,9 +57,9 @@ export default async function ReferralsPage({
       SELECT
         COUNT(DISTINCT i.id)::int AS active_referrers,
         COUNT(l.id)::int AS total_referrals,
-        COUNT(l.id) FILTER (WHERE l.stage = 'converted')::int AS total_converted,
+        COUNT(l.id) FILTER (WHERE l.converted_investor_id IS NOT NULL)::int AS total_converted,
         ROUND(
-          100.0 * COUNT(l.id) FILTER (WHERE l.stage = 'converted')
+          100.0 * COUNT(l.id) FILTER (WHERE l.converted_investor_id IS NOT NULL)
             / NULLIF(COUNT(l.id), 0), 1
         ) AS conversion_pct,
         COALESCE(SUM(inv.aum::numeric), 0)::numeric AS converted_aum
@@ -67,7 +67,23 @@ export default async function ReferralsPage({
       JOIN leads l ON l.referred_by_investor_id = i.id
       LEFT JOIN investors inv ON inv.id = l.converted_investor_id
     `);
-    return { rows: rows.rows as any[], summary: summary.rows[0] as any };
+    // Advocates to ask — your best clients who have NEVER referred anyone.
+    // High AUM + active + not flagged redemption-risk = happy, sticky, untapped.
+    // This is the proactive growth half of a referral engine: don't just track
+    // who referred, surface who SHOULD be asked.
+    const advocates = await tx.execute(sql`
+      SELECT i.id, i.name, i.phone, COALESCE(i.aum, 0)::numeric AS aum, i.service_tier, i.last_contact_at
+      FROM investors i
+      LEFT JOIN leads l ON l.referred_by_investor_id = i.id
+      WHERE i.status = 'active'
+        AND i.redemption_risk_flagged_at IS NULL
+      GROUP BY i.id, i.name, i.phone, i.aum, i.service_tier, i.last_contact_at
+      HAVING COUNT(l.id) = 0
+      ORDER BY i.aum DESC NULLS LAST
+      LIMIT 8
+    `);
+
+    return { rows: rows.rows as any[], summary: summary.rows[0] as any, advocates: advocates.rows as any[] };
   });
 
   return (
@@ -106,6 +122,44 @@ export default async function ReferralsPage({
           tone="emerald"
         />
       </div>
+
+      {/* Advocates to ask — proactive referral generation */}
+      {data.advocates.length > 0 && (
+        <div className="card-surface p-5">
+          <div className="flex items-center gap-2 mb-1">
+            <Sparkles className="size-5 text-brand-cyan" />
+            <h2 className="font-semibold">Advocates to ask this week</h2>
+          </div>
+          <p className="text-xs text-muted-foreground mb-4 max-w-2xl">
+            Your highest-value, sticky clients who have never referred anyone. They&apos;re happy and
+            engaged — a warm, no-pressure ask is the cheapest growth you have. Aim for one referral
+            conversation a week.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {data.advocates.map((a) => (
+              <div key={a.id} className="flex items-center gap-3 rounded-lg border bg-card p-3">
+                <div className="size-9 rounded-full brand-gradient text-white grid place-items-center text-xs font-bold shrink-0">
+                  {a.name?.split(" ").map((n: string) => n[0]).slice(0, 2).join("").toUpperCase()}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <Link href={`/dashboard/investors/${a.id}`} className="font-medium text-sm hover:underline truncate block">
+                    {a.name}
+                  </Link>
+                  <div className="text-[11px] text-muted-foreground">
+                    {Number(a.aum) > 0 ? formatINR(Number(a.aum)) : "—"}
+                    {a.service_tier ? ` · Tier ${a.service_tier}` : ""}
+                  </div>
+                </div>
+                {a.phone && (
+                  <a href={`tel:${a.phone}`} className="btn-secondary text-xs shrink-0" title="Call to ask for a referral">
+                    <Phone className="size-3.5" /> Ask
+                  </a>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <FilterBar
         totalCount={data.rows.length}

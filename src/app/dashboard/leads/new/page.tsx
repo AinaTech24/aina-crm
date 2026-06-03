@@ -1,15 +1,48 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ChevronLeft, Sparkles, Loader2 } from "lucide-react";
+import { ChevronLeft, Sparkles, Loader2, AlertTriangle, ExternalLink } from "lucide-react";
 import { InvestorLookup } from "@/components/common/InvestorLookup";
 import { RmSelector } from "@/components/common/RmSelector";
 import { SubDistributorLookup } from "@/components/common/SubDistributorLookup";
 
+type DupMatch = {
+  id: string;
+  name: string;
+  stage: string;
+  source: string;
+  phone?: string | null;
+  email?: string | null;
+  createdAt: string;
+  matchedOn: string[];
+};
+
 /** Sources that require / suggest linking an existing client as the referrer. */
 const REFERRAL_SOURCES = new Set(["referral", "existing_client"]);
+
+const PRODUCT_OPTIONS = [
+  "Equity MF", "Debt MF", "Hybrid MF", "ELSS (Tax)", "Index Funds",
+  "SIP", "Lumpsum", "NPS", "Insurance", "PMS", "AIF", "FD / Bonds",
+];
+
+const LEAD_TYPES: [string, string][] = [
+  ["", "—"],
+  ["individual", "Individual"],
+  ["hni", "HNI"],
+  ["nri", "NRI"],
+  ["corporate", "Corporate"],
+  ["minor", "Minor"],
+];
+
+const AUM_BANDS: [string, string][] = [
+  ["", "—"],
+  ["under_10l", "< ₹10 L"],
+  ["10l_50l", "₹10 – 50 L"],
+  ["50l_2cr", "₹50 L – 2 Cr"],
+  ["hni_2cr_plus", "HNI · ₹2 Cr+"],
+];
 
 export default function NewLeadPage() {
   const router = useRouter();
@@ -19,7 +52,15 @@ export default function NewLeadPage() {
     phone: "",
     city: "",
     source: "manual",
-    intendedAmount: "",
+    expectedBusinessAmount: "",
+    leadType: "",
+    aumPotential: "",
+    occupation: "",
+    altPhone: "",
+    altEmail: "",
+    followUpDate: "",
+    interestProducts: [] as string[],
+    currentInvestments: [] as string[],
     notes: "",
     referredByInvestorId: "" as string | null | "",
     referredByName: "" as string | null | "",
@@ -29,29 +70,80 @@ export default function NewLeadPage() {
   });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [duplicates, setDuplicates] = useState<DupMatch[]>([]);
+  const [dupChecking, setDupChecking] = useState(false);
+
+  // Debounced live duplicate scan — fires when phone or email changes,
+  // hits /api/leads/check-duplicate, surfaces matches inline.
+  useEffect(() => {
+    const phoneClean = form.phone.replace(/\D/g, "");
+    const emailClean = form.email.trim();
+    // Wait until the input is plausibly complete before bothering the API.
+    if (phoneClean.length < 10 && emailClean.length < 5) {
+      setDuplicates([]);
+      return;
+    }
+    const ctl = new AbortController();
+    const t = setTimeout(async () => {
+      setDupChecking(true);
+      try {
+        const res = await fetch("/api/leads/check-duplicate", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            phone: phoneClean.length >= 10 ? form.phone : undefined,
+            email: emailClean.length >= 5 ? emailClean : undefined,
+          }),
+          signal: ctl.signal,
+        });
+        if (!res.ok) return;
+        const j = await res.json();
+        setDuplicates(j.matches ?? []);
+      } catch {
+        // ignore — best-effort warning
+      } finally {
+        setDupChecking(false);
+      }
+    }, 450);
+    return () => {
+      ctl.abort();
+      clearTimeout(t);
+    };
+  }, [form.phone, form.email]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setErr(null);
     try {
-      const payload: any = { ...form };
-      // Strip empty referrer fields so we don't send "" to a uuid column
-      if (!form.referredByInvestorId) {
-        delete payload.referredByInvestorId;
-        delete payload.referredByName;
+      // Build a clean payload — coerce numbers/dates, omit empties (an empty
+      // string would fail the API's enum / uuid / number validators).
+      const payload: any = {
+        name: form.name,
+        email: form.email || undefined,
+        phone: form.phone || undefined,
+        city: form.city || undefined,
+        source: form.source,
+        notes: form.notes || undefined,
+        leadType: form.leadType || undefined,
+        aumPotential: form.aumPotential || undefined,
+        occupation: form.occupation || undefined,
+        altPhone: form.altPhone || undefined,
+        altEmail: form.altEmail || undefined,
+        interestProducts: form.interestProducts.length ? form.interestProducts : undefined,
+        currentInvestments: form.currentInvestments.length ? form.currentInvestments : undefined,
+        expectedBusinessAmount: form.expectedBusinessAmount
+          ? Number(form.expectedBusinessAmount)
+          : undefined,
+        // datetime-local is local + tz-naive; send a proper ISO instant.
+        followUpDate: form.followUpDate ? new Date(form.followUpDate).toISOString() : undefined,
+      };
+      if (form.referredByInvestorId) {
+        payload.referredByInvestorId = form.referredByInvestorId;
+        payload.referredByName = form.referredByName;
       }
-      // Same for the RM picker — empty string would fail the uuid check.
-      // When ownerId is unset the API auto-assigns via round-robin.
-      if (!form.ownerId) {
-        delete payload.ownerId;
-      }
-      // Strip the displayName-only field (it's UI helper, not a column);
-      // omit subDistributorId if not picked.
-      delete payload.subDistributorName;
-      if (!form.subDistributorId) {
-        delete payload.subDistributorId;
-      }
+      if (form.ownerId) payload.ownerId = form.ownerId;
+      if (form.subDistributorId) payload.subDistributorId = form.subDistributorId;
       const res = await fetch("/api/leads", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -70,6 +162,12 @@ export default function NewLeadPage() {
 
   function set(k: string, v: string) {
     setForm((s) => ({ ...s, [k]: v }));
+  }
+  function toggleArr(key: "interestProducts" | "currentInvestments", val: string) {
+    setForm((s) => {
+      const arr = s[key];
+      return { ...s, [key]: arr.includes(val) ? arr.filter((x) => x !== val) : [...arr, val] };
+    });
   }
 
   const showReferrerLookup = REFERRAL_SOURCES.has(form.source);
@@ -107,6 +205,51 @@ export default function NewLeadPage() {
           setValue={(v) => set("phone", v)}
           placeholder="+919XXXXXXXXX"
         />
+
+        {/* Live duplicate warning — shown when /check-duplicate returns matches.
+            Doesn't block submission; just nudges the RM to confirm or open the
+            existing lead. */}
+        {duplicates.length > 0 && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3 space-y-2">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="size-4 text-amber-700 flex-shrink-0" />
+              <span className="text-sm font-semibold text-amber-900">
+                {duplicates.length} possible duplicate
+                {duplicates.length === 1 ? "" : "s"} found
+              </span>
+              {dupChecking && <Loader2 className="size-3 animate-spin text-amber-700" />}
+            </div>
+            <p className="text-[11px] text-amber-900/80">
+              These existing leads share a phone or email with what you typed.
+              Open the matching record instead of re-creating to avoid duplicate
+              follow-ups.
+            </p>
+            <ul className="space-y-1">
+              {duplicates.map((m) => (
+                <li
+                  key={m.id}
+                  className="flex items-center justify-between bg-white/70 rounded-md px-2.5 py-1.5 text-xs"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="font-medium truncate">{m.name}</div>
+                    <div className="text-[10px] text-muted-foreground truncate">
+                      stage: {m.stage} · source: {m.source} · matched on{" "}
+                      {m.matchedOn.join(", ")}
+                    </div>
+                  </div>
+                  <Link
+                    href={`/dashboard/leads/${m.id}`}
+                    target="_blank"
+                    className="inline-flex items-center gap-1 text-amber-800 hover:text-amber-900 font-semibold whitespace-nowrap"
+                  >
+                    Open <ExternalLink className="size-3" />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         <Row label="City" value={form.city} setValue={(v) => set("city", v)} />
 
         <div>
@@ -212,12 +355,74 @@ export default function NewLeadPage() {
           />
         </div>
 
-        <Row
-          label="Intended investment (₹)"
-          value={form.intendedAmount}
-          setValue={(v) => set("intendedAmount", v)}
-          placeholder="e.g. 500000"
-        />
+        {/* Qualification — type, products, expected value, first follow-up */}
+        <div className="grid grid-cols-2 gap-3">
+          <label className="block">
+            <div className="text-xs font-medium mb-1">Lead type</div>
+            <select value={form.leadType} onChange={(e) => set("leadType", e.target.value)} className="input-base">
+              {LEAD_TYPES.map(([k, l]) => (
+                <option key={k} value={k}>{l}</option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <div className="text-xs font-medium mb-1">AUM potential</div>
+            <select value={form.aumPotential} onChange={(e) => set("aumPotential", e.target.value)} className="input-base">
+              {AUM_BANDS.map(([k, l]) => (
+                <option key={k} value={k}>{l}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        <div>
+          <div className="text-xs font-medium mb-1">Products of interest</div>
+          <Chips
+            options={PRODUCT_OPTIONS}
+            selected={form.interestProducts}
+            onToggle={(v) => toggleArr("interestProducts", v)}
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <Row
+            label="Expected business (₹)"
+            value={form.expectedBusinessAmount}
+            setValue={(v) => set("expectedBusinessAmount", v)}
+            type="number"
+            placeholder="e.g. 500000"
+          />
+          <label className="block">
+            <div className="text-xs font-medium mb-1">Follow-up date</div>
+            <input
+              type="datetime-local"
+              value={form.followUpDate}
+              onChange={(e) => set("followUpDate", e.target.value)}
+              className="input-base"
+            />
+            <p className="text-[10px] text-muted-foreground mt-1">
+              Sets the next follow-up + creates an RM task.
+            </p>
+          </label>
+        </div>
+
+        <Row label="Occupation" value={form.occupation} setValue={(v) => set("occupation", v)} placeholder="e.g. Salaried · Business owner" />
+        <div className="grid grid-cols-2 gap-3">
+          <Row label="Alternate phone" value={form.altPhone} setValue={(v) => set("altPhone", v)} placeholder="Secondary number" />
+          <Row label="Alternate email" value={form.altEmail} setValue={(v) => set("altEmail", v)} type="email" placeholder="Secondary email" />
+        </div>
+
+        <div>
+          <div className="text-xs font-medium mb-1">
+            Current investments
+            <span className="ml-1 text-[10px] text-muted-foreground font-normal">· what they already hold elsewhere</span>
+          </div>
+          <Chips
+            options={PRODUCT_OPTIONS}
+            selected={form.currentInvestments}
+            onToggle={(v) => toggleArr("currentInvestments", v)}
+          />
+        </div>
 
         <div>
           <div className="text-xs font-medium mb-1">Notes</div>
@@ -288,5 +493,37 @@ function Row({
         className="input-base"
       />
     </label>
+  );
+}
+
+function Chips({
+  options,
+  selected,
+  onToggle,
+}: {
+  options: string[];
+  selected: string[];
+  onToggle: (v: string) => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {options.map((o) => {
+        const on = selected.includes(o);
+        return (
+          <button
+            key={o}
+            type="button"
+            onClick={() => onToggle(o)}
+            className={`text-xs rounded-full px-2.5 py-1 border transition-colors ${
+              on
+                ? "bg-brand-cyan text-white border-brand-cyan"
+                : "bg-secondary/40 text-muted-foreground border-border hover:bg-secondary"
+            }`}
+          >
+            {o}
+          </button>
+        );
+      })}
+    </div>
   );
 }

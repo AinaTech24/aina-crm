@@ -19,6 +19,7 @@ import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { workflows, workflowVersions } from "@/db/schema";
+import { materializeTriggers } from "@/lib/workflow/triggers";
 
 export const dynamic = "force-dynamic";
 
@@ -34,7 +35,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       const draft = await tx
         .select()
         .from(workflowVersions)
-        .where(and(eq(workflowVersions.workflowId, id), eq(workflowVersions.status, "draft")))
+        .where(
+          and(
+            eq(workflowVersions.workflowId, id),
+            eq(workflowVersions.status, "draft"),
+            eq(workflowVersions.tenantId, session.tenantId)
+          )
+        )
         .limit(1);
 
       if (!draft.length) {
@@ -48,7 +55,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         .where(
           and(
             eq(workflowVersions.workflowId, id),
-            eq(workflowVersions.status, "published")
+            eq(workflowVersions.status, "published"),
+            eq(workflowVersions.tenantId, session.tenantId)
           )
         );
 
@@ -60,13 +68,28 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           publishedAt: new Date(),
           publishedBy: session.userId,
         } as any)
-        .where(eq(workflowVersions.id, draft[0].id));
+        .where(
+          and(
+            eq(workflowVersions.id, draft[0].id),
+            eq(workflowVersions.tenantId, session.tenantId)
+          )
+        );
 
       // Point the workflow at it
       await tx
         .update(workflows)
         .set({ currentVersionId: draft[0].id, enabled: true, pausedReason: null, pausedAt: null } as any)
-        .where(eq(workflows.id, id));
+        .where(and(eq(workflows.id, id), eq(workflows.tenantId, session.tenantId)));
+
+      // Materialize the trigger row(s) from the published graph so the outbox
+      // poller / master scheduler actually fire this workflow. Republish
+      // replaces any prior trigger rows.
+      await materializeTriggers(tx, {
+        tenantId: session.tenantId,
+        workflowId: id,
+        graph: draft[0].graph,
+        enabled: true,
+      });
 
       await recordAudit(tx, {
         tenantId: session.tenantId,

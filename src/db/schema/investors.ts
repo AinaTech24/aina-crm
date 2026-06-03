@@ -145,6 +145,21 @@ export const investors = pgTable(
     lifetimeInflow: numeric("lifetime_inflow", { precision: 18, scale: 2 }).default("0"),
     lifetimeOutflow: numeric("lifetime_outflow", { precision: 18, scale: 2 }).default("0"),
 
+    /** Persisted client-health scorecard (src/lib/investors/health.ts) —
+     *  written on create/update + refreshed nightly. Sortable/filterable so
+     *  the worst-health clients surface across the whole book. */
+    healthScore: integer("health_score").notNull().default(100),
+    healthBand: text("health_band", { enum: ["green", "amber", "red"] }).notNull().default("green"),
+    healthScoredAt: timestamp("health_scored_at", { withTimezone: true }),
+
+    /** Client-service preferences */
+    statementCadence: text("statement_cadence", { enum: ["off", "monthly", "quarterly"] })
+      .notNull()
+      .default("off"),
+    lastStatementSentAt: timestamp("last_statement_sent_at", { withTimezone: true }),
+    languagePref: text("language_pref").notNull().default("en"),
+    aumMilestoneBand: integer("aum_milestone_band").notNull().default(0),
+
     /** Relationship */
     rmId: uuid("rm_id").references(() => users.id),
     onboardedAt: timestamp("onboarded_at", { withTimezone: true }),
@@ -173,8 +188,34 @@ export const investors = pgTable(
     redemptionRiskFlaggedAt: timestamp("redemption_risk_flagged_at", { withTimezone: true }),
     redemptionRiskReason: text("redemption_risk_reason"),
 
+    /**
+     * Duplicate-merge bookkeeping (Sanchay "Find Duplicate Records" parity).
+     * When two records for the same person are merged, the loser keeps a
+     * pointer to the survivor + the merge timestamp and is set status=inactive.
+     */
+    mergedIntoId: uuid("merged_into_id"),
+    mergedAt: timestamp("merged_at", { withTimezone: true }),
+
+    /**
+     * Contact-verification stamps (Sanchay "Verified At" parity). Set when an
+     * RM confirms the email / phone is correct — drives a verification-due
+     * worklist + deliverability hygiene.
+     */
+    emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
+    phoneVerifiedAt: timestamp("phone_verified_at", { withTimezone: true }),
+    contactVerifiedBy: uuid("contact_verified_by"),
+
     tags: jsonb("tags").$type<string[]>().default([]),
     notes: text("notes"),
+
+    /**
+     * Cross-sell / product-holdings matrix (Sanchay "Cross Selling" parity).
+     * Map of product key -> status, e.g. { mutual_funds: "held_with_us",
+     * life_insurance: "held_elsewhere", health_insurance: "not_held" }.
+     * "held_elsewhere" / "interested" / "not_held" are wallet-share
+     * opportunities. See src/lib/investors/cross-sell.ts.
+     */
+    crossSell: jsonb("cross_sell").$type<Record<string, string>>(),
     ...timestamps,
   },
   (t) => ({
@@ -183,6 +224,15 @@ export const investors = pgTable(
     segmentIdx: index("investors_segment_idx").on(t.tenantId, t.segmentTag),
     lastReviewIdx: index("investors_last_review_idx").on(t.tenantId, t.lastReviewAt),
     lastTransactionIdx: index("investors_last_tx_idx").on(t.tenantId, t.lastTransactionAt),
+    healthIdx: index("investors_health_idx").on(t.tenantId, t.healthScore),
+    familyIdx: index("investors_family_idx").on(t.tenantId, t.familyId),
+    // Hot list sort/filter columns (migration 0057).
+    aumIdx: index("investors_aum_idx").on(t.tenantId, t.aum),
+    sipIdx: index("investors_sip_idx").on(t.tenantId, t.activeSipAmount),
+    nextReviewIdx: index("investors_next_review_idx").on(t.tenantId, t.nextReviewAt),
+    statusIdx: index("investors_status_idx").on(t.tenantId, t.status),
+    kycIdx: index("investors_kyc_idx").on(t.tenantId, t.kycStatus),
+    tierIdx: index("investors_tier_idx").on(t.tenantId, t.serviceTier),
   })
 );
 

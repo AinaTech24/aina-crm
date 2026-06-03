@@ -17,6 +17,7 @@ import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { goals } from "@/db/schema";
 import { computeGoal, monthsBetween } from "@/lib/goal-planning/calc";
+import { expectedProgressPct } from "@/lib/goal-planning/recompute";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +26,10 @@ const Patch = z.object({
   category: z.string().optional(),
   targetAmount: z.number().positive().optional(),
   targetDate: z.string().optional(),
+  targetMode: z.enum(["today", "future"]).optional(),
+  presentTargetAmount: z.number().positive().optional(),
+  inflationPct: z.number().min(0).max(20).optional(),
+  stepUpPct: z.number().min(0).max(30).optional(),
   currentValue: z.number().nonnegative().optional(),
   existingMonthlySip: z.number().nonnegative().optional(),
   expectedReturnPct: z.number().min(1).max(30).optional(),
@@ -74,10 +79,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const { id } = await params;
   try {
     const session = await requireSession();
-    requireCap(session.roles, "risk_profile.manage");
+    requireCap(session.roles, "goal.manage");
     await assertActiveLicense(session.tenantId, session.roles);
     const parse = Patch.safeParse(await req.json().catch(() => ({})));
-    if (!parse.success) return NextResponse.json({ error: "invalid body" }, { status: 400 });
+    if (!parse.success) return NextResponse.json({ error: "invalid body", issues: parse.error.issues }, { status: 400 });
     const clientMeta = clientMetaFromHeaders(req.headers);
 
     const result = await withTenant(session.tenantId, async (tx) => {
@@ -89,28 +94,77 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       // Recompute derived fields if any calc input changed
       const inputsChanged =
         parse.data.targetAmount !== undefined ||
+        parse.data.presentTargetAmount !== undefined ||
+        parse.data.targetMode !== undefined ||
+        parse.data.inflationPct !== undefined ||
+        parse.data.stepUpPct !== undefined ||
         parse.data.targetDate !== undefined ||
         parse.data.currentValue !== undefined ||
         parse.data.existingMonthlySip !== undefined ||
         parse.data.expectedReturnPct !== undefined;
+
       if (inputsChanged) {
-        const targetAmount = parse.data.targetAmount ?? Number(before.targetAmount);
-        const targetDate = new Date(parse.data.targetDate ?? before.targetDate);
+        const targetMode = parse.data.targetMode ?? before.targetMode ?? "future";
+        const inflationPct = parse.data.inflationPct ?? (before.inflationPct ? Number(before.inflationPct) : 6);
+        const stepUpPct = parse.data.stepUpPct ?? (before.stepUpPct ? Number(before.stepUpPct) : 0);
+        const expectedReturnPct = parse.data.expectedReturnPct ?? Number(before.expectedReturn ?? 12);
         const currentValue = parse.data.currentValue ?? Number(before.currentValue ?? 0);
         const existingSip = parse.data.existingMonthlySip ?? Number(before.existingMonthlySip ?? 0);
-        const ret = parse.data.expectedReturnPct ?? Number(before.expectedReturn ?? 12);
+        const targetDate = new Date(parse.data.targetDate ?? before.targetDate);
+        const monthsLeft = monthsBetween(new Date(), targetDate);
+
+        let presentTarget: number | undefined;
+        let futureTarget: number | undefined;
+
+        if (targetMode === "today") {
+          presentTarget = parse.data.presentTargetAmount ?? (before.presentTargetAmount ? Number(before.presentTargetAmount) : undefined);
+          if (presentTarget === undefined) {
+            const fT = parse.data.targetAmount ?? Number(before.targetAmount);
+            presentTarget = fT / Math.pow(1 + inflationPct / 100, monthsLeft / 12);
+          }
+        } else {
+          futureTarget = parse.data.targetAmount ?? Number(before.targetAmount);
+        }
+
         const calc = computeGoal({
-          targetAmount,
+          presentTarget,
+          futureTarget,
           currentValue,
           existingMonthlySip: existingSip,
-          monthsLeft: monthsBetween(new Date(), targetDate),
-          expectedReturnPct: ret,
+          monthsLeft,
+          expectedReturnPct,
+          inflationPct,
+          stepUpPct,
         });
+
+        patch.targetAmount = Math.round(calc.futureTarget).toString();
+        patch.presentTargetAmount = targetMode === "today" && presentTarget !== undefined ? presentTarget.toString() : null;
+        patch.targetMode = targetMode;
+        patch.inflationPct = inflationPct.toString();
+        patch.stepUpPct = stepUpPct.toString();
+
         patch.requiredMonthlySip = calc.requiredMonthlySipTotal.toFixed(2);
         patch.existingMonthlySip = existingSip.toString();
         patch.gapAmount = calc.gapAmount.toFixed(2);
-        // Don't override explicit status from the body
+        patch.progressPct = (calc.futureTarget > 0 ? Math.min(100, (currentValue / calc.futureTarget) * 100) : 0).toFixed(2);
+        patch.expectedProgressPct = expectedProgressPct(
+          before.startedOn,
+          before.createdAt,
+          (parse.data.targetDate ?? before.targetDate) as any,
+          new Date()
+        ).toFixed(2);
         if (!parse.data.status) patch.status = calc.status;
+      }
+
+      // Map expectedReturnPct to expectedReturn DB column, and delete expectedReturnPct
+      if (patch.expectedReturnPct !== undefined) {
+        patch.expectedReturn = patch.expectedReturnPct.toString();
+        delete patch.expectedReturnPct;
+      }
+
+      // Map existingMonthlySip to monthlyContribution DB column
+      if (patch.existingMonthlySip !== undefined) {
+        patch.monthlyContribution = patch.existingMonthlySip;
       }
 
       await tx.update(goals).set(patch).where(eq(goals.id, id));
@@ -136,7 +190,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const { id } = await params;
   try {
     const session = await requireSession();
-    requireCap(session.roles, "risk_profile.manage");
+    requireCap(session.roles, "goal.manage");
     await assertActiveLicense(session.tenantId, session.roles);
     const clientMeta = clientMetaFromHeaders(req.headers);
     await withTenant(session.tenantId, async (tx) => {

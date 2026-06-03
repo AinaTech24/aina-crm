@@ -1,10 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { ChevronLeft, Send, MessageCircle, Mail, MessageSquare } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { campaigns, segments, templates } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
+import { require as requireCap } from "@/lib/auth/rbac";
+import { isBroadcastCampaign } from "@/lib/campaigns/broadcast";
+import { CampaignActions } from "@/components/campaigns/CampaignActions";
 import { formatDate } from "@/lib/utils";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -22,14 +25,15 @@ export const dynamic = "force-dynamic";
 export default async function CampaignDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const session = await requireSession();
+  requireCap(session.roles, "campaign.send");
   const data = await withTenant(session.tenantId, async (tx) => {
-    const c = (await tx.select().from(campaigns).where(eq(campaigns.id, id)).limit(1))[0];
+    const c = (await tx.select().from(campaigns).where(and(eq(campaigns.id, id), eq(campaigns.tenantId, session.tenantId))).limit(1))[0];
     if (!c) return null;
     const seg = c.segmentId
-      ? (await tx.select().from(segments).where(eq(segments.id, c.segmentId)).limit(1))[0]
+      ? (await tx.select().from(segments).where(and(eq(segments.id, c.segmentId), eq(segments.tenantId, session.tenantId))).limit(1))[0]
       : null;
     const tpl = c.templateId
-      ? (await tx.select().from(templates).where(eq(templates.id, c.templateId)).limit(1))[0]
+      ? (await tx.select().from(templates).where(and(eq(templates.id, c.templateId), eq(templates.tenantId, session.tenantId))).limit(1))[0]
       : null;
     return { c, seg, tpl };
   });
@@ -53,10 +57,19 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
             <div className="flex items-center gap-3 mt-1 text-sm">
               <span className="capitalize">{c.channel}</span>
               <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_COLORS[c.status]}`}>{c.status}</span>
+              <span className={`text-xs px-2 py-0.5 rounded-full ${c.approvalStatus === "approved" || c.approvalStatus === "not_required" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
+                approval: {(c.approvalStatus ?? "pending").replace(/_/g, " ")}
+              </span>
               {c.scheduledAt && <span className="text-muted-foreground">scheduled {formatDate(c.scheduledAt)}</span>}
               {c.startedAt && <span className="text-muted-foreground">sent {formatDate(c.startedAt)}</span>}
             </div>
           </div>
+          <CampaignActions
+            id={c.id}
+            status={c.status}
+            approvalStatus={c.approvalStatus ?? "pending"}
+            isBroadcast={isBroadcastCampaign(c)}
+          />
         </div>
       </div>
 

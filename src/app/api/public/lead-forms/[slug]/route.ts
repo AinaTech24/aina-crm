@@ -18,6 +18,13 @@ import { withSystem, withTenant } from "@/db/client";
 import { leadCaptureForms, leads, tenants } from "@/db/schema";
 import { pickRmForNewLead } from "@/lib/leads/assign";
 import { enforce } from "@/lib/rate-limit";
+import {
+  normalizeEmail,
+  normalizeLeadSource,
+  normalizePan,
+  normalizePhoneLast10,
+} from "@/lib/leads/normalize";
+import { scoreFields } from "@/lib/leads/score";
 
 export const dynamic = "force-dynamic";
 
@@ -97,8 +104,8 @@ export async function POST(
   // 5 submissions per IP per hour — abuse-control, can be overridden per
   // form via rate_limit_per_hour but we ignore that for now and use the
   // global default.
-  const limited = enforce(req, `lead-form.submit.${slug}`, {
-    limit: 5,
+  const limited = enforce(req, `lead-form.submit.lookup.${slug}`, {
+    limit: 60,
     windowSec: 60 * 60,
   });
   if (limited) return limited;
@@ -114,10 +121,18 @@ export async function POST(
   if (!form) return NextResponse.json({ error: "form not found" }, { status: 404 });
   if (!form.enabled) return NextResponse.json({ error: "form retired" }, { status: 410 });
 
+  const perFormLimit = Math.max(1, Number.parseInt(String(form.rateLimitPerHour ?? "5"), 10) || 5);
+  const formLimited = enforce(req, `lead-form.submit.${form.id}`, {
+    limit: perFormLimit,
+    windowSec: 60 * 60,
+  });
+  if (formLimited) return formLimited;
+
   // Validate the four universals — name + at least one of email/phone.
   const name = String(body.name ?? "").trim();
   const email = String(body.email ?? "").trim().toLowerCase();
   const phone = String(body.phone ?? "").trim();
+  const pan = normalizePan(body.pan);
   const notes = String(body.notes ?? "").trim();
   if (!name || (!email && !phone)) {
     return NextResponse.json(
@@ -172,16 +187,29 @@ export async function POST(
       .join("")
       .trim();
 
+    // Deterministic initial score from the captured signals.
+    const initialScore = scoreFields({
+      source: normalizeLeadSource(form.leadSource),
+      stage: "new",
+      email: email || null,
+      phone: phone || null,
+      pan: pan ?? null,
+    });
+
     await tx.execute(sql`
       INSERT INTO leads (
-        id, tenant_id, name, email, phone, source, source_campaign,
-        owner_id, stage, notes, created_at, updated_at
+        id, tenant_id, name, email, email_normalized, phone, phone_normalized,
+        pan, source, source_campaign, owner_id, stage, stage_changed_at,
+        lead_score, score_band, scored_at,
+        notes, created_at, updated_at
       ) VALUES (
         ${leadId}::uuid, ${form.tenantId}::uuid, ${name},
-        ${email || null}, ${phone || null},
-        ${form.leadSource}, ${form.sourceCampaign},
+        ${email || null}, ${normalizeEmail(email)}, ${phone || null},
+        ${normalizePhoneLast10(phone)}, ${pan},
+        ${normalizeLeadSource(form.leadSource)}, ${form.sourceCampaign},
         ${rmId}::uuid,
-        'new',
+        'new', now(),
+        ${initialScore.leadScore}, ${initialScore.scoreBand}, now(),
         ${composedNotes || null},
         now(), now()
       )
@@ -191,20 +219,23 @@ export async function POST(
     // can pick it up exactly like a manually-created lead would.
     await tx.execute(sql`
       INSERT INTO events_outbox (
-        id, tenant_id, event_type, payload, status, created_at
+        tenant_id, kind, entity_type, entity_id, after, meta, occurred_at
       ) VALUES (
-        gen_random_uuid(), ${form.tenantId}::uuid,
+        ${form.tenantId}::uuid,
         'lead.created',
+        'lead',
+        ${leadId}::uuid,
         ${JSON.stringify({
           leadId,
           name,
           email: email || null,
           phone: phone || null,
-          source: form.leadSource,
+          source: normalizeLeadSource(form.leadSource),
           source_campaign: form.sourceCampaign,
           form_slug: slug,
         })}::jsonb,
-        'pending', now()
+        ${JSON.stringify({ source: "public_lead_form", formId: form.id, formSlug: slug })}::jsonb,
+        now()
       )
     `);
   });

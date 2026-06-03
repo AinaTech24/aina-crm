@@ -18,6 +18,8 @@ import { eventsOutbox, workflowRuns, workflowTriggers, workflows } from "@/db/sc
 import { startRun } from "@/lib/workflow/runner";
 import { compileToPredicate } from "@/lib/filter/predicate";
 import { Q, getConnection } from "./queues";
+import { runRulesForEvent, cancelScheduledJobsForSubject } from "@/lib/workflow-rules/runner";
+import { MODULES } from "@/lib/workflow-rules/modules";
 
 const BATCH_SIZE = 200;
 
@@ -25,12 +27,22 @@ export async function pollOutboxOnce(): Promise<{ processed: number; errors: num
   let processed = 0;
   let errors = 0;
 
-  // System-context read with SKIP LOCKED to claim rows across multiple workers
+  // System-context read with SKIP LOCKED to claim rows across multiple workers.
+  //
+  // The `claimed_at` guard prevents DOUBLE-PROCESSING: once a worker claims a
+  // batch it commits (releasing the row lock) and processes each event in
+  // separate transactions. Without the guard, a second poller's next tick
+  // would re-find the same still-unprocessed rows (processed_at IS NULL) and
+  // re-claim them while the first worker is mid-flight. We therefore only
+  // claim rows that are UNCLAIMED or whose claim is STALE (older than the
+  // visibility timeout — the original worker almost certainly died), which
+  // preserves crash-recovery while eliminating the in-flight race.
   const claimed = await withSystem(async (tx) => {
     const rows = await tx.execute(sql`
       WITH cte AS (
         SELECT id FROM events_outbox
         WHERE processed_at IS NULL
+          AND (claimed_at IS NULL OR claimed_at < now() - interval '5 minutes')
         ORDER BY id
         LIMIT ${BATCH_SIZE}
         FOR UPDATE SKIP LOCKED
@@ -129,6 +141,49 @@ async function processEvent(event: any) {
 
   // 2) Resume parked wait_for_event runs
   await resumeWaitingRuns(tenantId, event);
+
+  // 3) Run Zoho-style Workflow Rules
+  const matchedModule = Object.values(MODULES).find(
+    (m) =>
+      m.actionEvents.create === event.kind ||
+      m.actionEvents.edit === event.kind ||
+      m.actionEvents.delete === event.kind
+  );
+  if (matchedModule) {
+    const recordAction =
+      event.kind === matchedModule.actionEvents.create
+        ? "create"
+        : event.kind === matchedModule.actionEvents.edit
+          ? "edit"
+          : "delete";
+
+    if (recordAction === "delete") {
+      try {
+        await cancelScheduledJobsForSubject(tenantId, matchedModule.entityType, event.entity_id, "Subject deleted");
+      } catch (err) {
+        console.error(`[outbox] Cancel scheduled jobs failed for deleted subject ${event.entity_id}:`, (err as Error).message);
+      }
+    } else {
+      try {
+        const results = await runRulesForEvent({
+          tenantId,
+          module: matchedModule.key,
+          recordAction,
+          subjectType: matchedModule.entityType,
+          subjectId: event.entity_id,
+          before: event.before,
+          after: event.after,
+          eventId: event.id,
+        });
+        const matchedCount = results.filter((r) => r.matched).length;
+        if (matchedCount > 0) {
+          console.log(`[outbox] Workflow rules triggered for event ${event.id}: matched=${matchedCount}`);
+        }
+      } catch (err) {
+        console.error(`[outbox] Workflow rules run failed for event ${event.id}:`, (err as Error).message);
+      }
+    }
+  }
 }
 
 async function resumeWaitingRuns(tenantId: string, event: any) {

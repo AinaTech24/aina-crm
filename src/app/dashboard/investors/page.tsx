@@ -1,19 +1,25 @@
 import Link from "next/link";
-import { Plus, Upload, LayoutGrid, List } from "lucide-react";
-import { desc, ilike, or, sql, eq, and, inArray } from "drizzle-orm";
+import { Plus, Upload, Download, LayoutGrid, List } from "lucide-react";
+import { asc, desc, sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { investors } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
-import { formatINR } from "@/lib/utils";
 import { RecomputeTiersButton } from "@/components/investors/RecomputeTiersButton";
-import { RowActions } from "@/components/common/RowActions";
 import { FilterBar } from "@/components/common/FilterBar";
+import { dateRangeFilter } from "@/lib/filters/date-range";
 import { CustomViews } from "@/components/common/CustomViews";
-import { HelpHint } from "@/components/help/HelpHint";
 import { EmptyState } from "@/components/common/EmptyState";
 import { Users } from "lucide-react";
 import { InvestorsKanban, type InvestorRow } from "@/components/investors/InvestorsKanban";
 import { ColumnManager } from "@/components/common/ColumnManager";
+import { loadTenantLicense } from "@/lib/auth/license";
+import { isFieldAllowed } from "@/lib/auth/field-gate";
+import { InvestorKpiStrip } from "@/components/investors/InvestorKpiStrip";
+import { InvestorQuickFilters } from "@/components/investors/InvestorQuickFilters";
+import { dormancyDays, type HealthBand } from "@/lib/investors/health";
+import { InvestorsTable, type InvestorTableRow } from "@/components/investors/InvestorsTable";
+import { buildInvestorWhere } from "@/lib/investors/list-filters";
+import { Pager } from "@/components/common/Pager";
 
 const INVESTORS_COLUMNS = [
   { key: "name", label: "Name", required: true },
@@ -23,23 +29,10 @@ const INVESTORS_COLUMNS = [
   { key: "aum", label: "AUM" },
   { key: "sip", label: "Monthly SIP" },
   { key: "kyc", label: "KYC" },
+  { key: "health", label: "Health" },
   { key: "status", label: "Status" },
   { key: "actions", label: "Actions", required: true },
 ];
-
-const segmentColors: Record<string, string> = {
-  HNI: "bg-violet-50 text-violet-700",
-  Affluent: "bg-emerald-50 text-emerald-700",
-  Retail: "bg-blue-50 text-blue-700",
-  NRI: "bg-pink-50 text-pink-700",
-  Corporate: "bg-amber-50 text-amber-700",
-};
-
-const tierColors: Record<string, string> = {
-  A: "bg-violet-100 text-violet-700",
-  B: "bg-emerald-100 text-emerald-700",
-  C: "bg-blue-100 text-blue-700",
-};
 
 export const dynamic = "force-dynamic";
 
@@ -49,6 +42,27 @@ export default async function InvestorsPage({
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const session = await requireSession();
+  const license = await loadTenantLicense(session.tenantId, session.roles);
+  const showPan = isFieldAllowed(license, "investor", "pan");
+  const showAum = isFieldAllowed(license, "investor", "aum");
+  const showSip = isFieldAllowed(license, "investor", "active_sip_amount") || isFieldAllowed(license, "investor", "sip");
+  const showKyc = isFieldAllowed(license, "investor", "kyc_status") || isFieldAllowed(license, "investor", "kyc");
+  const showStatus = isFieldAllowed(license, "investor", "status");
+  const showTier = isFieldAllowed(license, "investor", "service_tier") || isFieldAllowed(license, "investor", "tier");
+  const showSegment = isFieldAllowed(license, "investor", "segment_tag") || isFieldAllowed(license, "investor", "segment");
+
+  const allowedColumns = INVESTORS_COLUMNS.filter((col) => {
+    if (col.key === "pan") return showPan;
+    if (col.key === "aum") return showAum;
+    if (col.key === "sip") return showSip;
+    if (col.key === "kyc") return showKyc;
+    if (col.key === "status") return showStatus;
+    if (col.key === "tier") return showTier;
+    if (col.key === "segment") return showSegment;
+    // health column is always allowed — it's a derived score, no PII
+    return true;
+  });
+
   const sp = await searchParams;
   const q = (sp.q ?? "").trim();
   const segment = (sp.segment ?? "").split(",").filter(Boolean);
@@ -56,69 +70,52 @@ export default async function InvestorsPage({
   const status = (sp.status ?? "").split(",").filter(Boolean);
   const kyc = (sp.kyc ?? "").split(",").filter(Boolean);
   const view = sp.view === "kanban" ? "kanban" : "table";
-  // `?gaps=field` — deep-link from the Owner Cockpit "Data gaps" tile.
-  // Filters the list to clients missing the named field so the user can
-  // bulk-fix in one place.
-  const gaps = (sp.gaps ?? "").split(",").filter(Boolean);
+  const userId = session.userId;
+
+  // Query string for the Excel export link — carries the current filters so the
+  // download matches exactly what's on screen (the export endpoint reuses the
+  // same buildInvestorWhere helper). Drop view/sort — they don't affect rows.
+  const exportQs = new URLSearchParams(
+    Object.entries(sp).filter(
+      ([k, v]) => v != null && v !== "" && k !== "view" && k !== "sort"
+    ) as [string, string][]
+  ).toString();
+
+  // Sort key drives both the DB ordering and the table header arrows. AUM is
+  // the default (largest books first). "health" is a derived score computed in
+  // JS, so it can't be ordered in SQL — the page sorts the fetched rows
+  // locally (worst health first, to triage at-risk clients on the visible page).
+  const sortKey = ["name", "sip", "review", "health"].includes(sp.sort ?? "")
+    ? (sp.sort as string)
+    : "aum";
+
+  // Table pagination — 50/page. Kanban shows a larger single window (it's a
+  // pipeline board, not a paged list). `page` is 1-based.
+  const PAGE_SIZE = 50;
+  const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
 
   const { rows, total, kanbanRows } = await withTenant(session.tenantId, async (tx) => {
-    const conditions: any[] = [];
-    if (q) {
-      conditions.push(
-        or(
-          ilike(investors.name, `%${q}%`),
-          ilike(investors.pan, `%${q.toUpperCase()}%`),
-          ilike(investors.phone ?? sql`''`, `%${q}%`)
-        )!
-      );
-    }
-    if (segment.length) conditions.push(inArray(investors.segmentTag, segment as any));
-    if (tier.length) conditions.push(inArray(investors.serviceTier, tier as any));
-    if (status.length) conditions.push(inArray(investors.status, status as any));
-    if (kyc.length) conditions.push(inArray(investors.kycStatus, kyc as any));
-    // Data-gap filters from the Owner Cockpit "Data gaps" tile. Each
-    // value targets a NULL/empty column on the investor master so the
-    // user can scroll the filtered list and bulk-fix.
-    for (const gap of gaps) {
-      switch (gap) {
-        case "pan":
-          conditions.push(sql`(${investors.pan} IS NULL OR ${investors.pan} = '')`);
-          break;
-        case "phone":
-          conditions.push(sql`(${investors.phone} IS NULL OR ${investors.phone} = '')`);
-          break;
-        case "email":
-          conditions.push(sql`(${investors.email} IS NULL OR ${investors.email} = '')`);
-          break;
-        case "dob":
-          conditions.push(sql`${investors.dob} IS NULL`);
-          break;
-        case "nominee":
-          conditions.push(sql`(${investors.nomineeName} IS NULL OR ${investors.nomineeName} = '')`);
-          break;
-        case "bank":
-          conditions.push(
-            sql`(${investors.bankAccountNumberMasked} IS NULL OR ${investors.bankAccountNumberMasked} = '')`
-          );
-          break;
-        case "risk_profile":
-          conditions.push(
-            sql`(${investors.riskProfile} IS NULL OR ${investors.riskProfileSignedAt} IS NULL)`
-          );
-          break;
-        case "rm":
-          conditions.push(sql`${investors.rmId} IS NULL`);
-          break;
-      }
-    }
-    const where = conditions.length ? and(...conditions) : undefined;
+    // Filters live in one shared helper so the page and the Excel export apply
+    // identical WHERE logic. Tenant isolation is handled by RLS.
+    const where = buildInvestorWhere(sp, userId);
 
     const r = await tx
       .select()
       .from(investors)
       .where(where as any)
-      .orderBy(desc(investors.aum))
-      .limit(view === "kanban" ? 300 : 50);
+      .orderBy(
+        sortKey === "name"
+          ? asc(investors.name)
+          : sortKey === "sip"
+          ? desc(investors.activeSipAmount)
+          : sortKey === "review"
+          ? sql`${investors.nextReviewAt} asc nulls last`
+          : sortKey === "health"
+          ? asc(investors.healthScore) // worst (lowest) health first, for triage
+          : desc(investors.aum)
+      )
+      .limit(view === "kanban" ? 300 : PAGE_SIZE)
+      .offset(view === "kanban" ? 0 : (page - 1) * PAGE_SIZE);
 
     const c = await tx
       .select({ c: sql<number>`count(*)::int` })
@@ -158,13 +155,13 @@ export default async function InvestorsPage({
           investor: {
             id: i.id,
             name: i.name,
-            pan: i.pan,
-            segmentTag: i.segmentTag,
-            serviceTier: i.serviceTier,
-            aum: i.aum != null ? String(i.aum) : null,
-            activeSipAmount: i.activeSipAmount != null ? String(i.activeSipAmount) : null,
-            kycStatus: i.kycStatus,
-            status: i.status,
+            pan: showPan ? i.pan : "—",
+            segmentTag: showSegment ? i.segmentTag : null,
+            serviceTier: showTier ? i.serviceTier : null,
+            aum: showAum ? (i.aum != null ? String(i.aum) : null) : null,
+            activeSipAmount: showSip ? (i.activeSipAmount != null ? String(i.activeSipAmount) : null) : null,
+            kycStatus: showKyc ? i.kycStatus : null,
+            status: showStatus ? i.status : "—",
             updatedAt: i.updatedAt,
           },
           leadId: linked?.leadId ?? null,
@@ -175,6 +172,24 @@ export default async function InvestorsPage({
 
     return { rows: r, total: Number(c[0]?.c ?? 0), kanbanRows };
   }, { userId: session.userId, branchId: session.branchId, roles: session.roles });
+
+  // Table rows read the PERSISTED health score (written on create/update +
+  // refreshed nightly) so the displayed value matches the DB-level sort and
+  // pagination exactly. `dormDays` stays live (cheap, derived).
+  const tableRows: InvestorTableRow[] = rows.map((i) => ({
+    id: i.id,
+    name: i.name,
+    pan: showPan ? i.pan : null,
+    serviceTier: showTier ? i.serviceTier : null,
+    segmentTag: showSegment ? i.segmentTag : null,
+    aum: showAum ? Number(i.aum ?? 0) : 0,
+    sip: showSip ? Number(i.activeSipAmount ?? 0) : 0,
+    kycStatus: showKyc ? i.kycStatus : null,
+    status: showStatus ? i.status : null,
+    healthScore: i.healthScore ?? 100,
+    healthBand: (i.healthBand as HealthBand) ?? "green",
+    dormDays: dormancyDays(i as any),
+  }));
 
   return (
     <div className="space-y-6 max-w-7xl">
@@ -212,9 +227,16 @@ export default async function InvestorsPage({
             </Link>
           </div>
           {view === "table" && (
-            <ColumnManager moduleKey="investors" columns={INVESTORS_COLUMNS} />
+            <ColumnManager moduleKey="investors" columns={allowedColumns} />
           )}
           <RecomputeTiersButton />
+          <a
+            href={`/api/investors/export${exportQs ? `?${exportQs}` : ""}`}
+            className="rounded-md border px-3 py-1.5 text-sm flex items-center gap-1.5 hover:bg-accent"
+            title="Download the current (filtered) book as an Excel file"
+          >
+            <Download className="size-4" /> Export
+          </a>
           <Link
             href="/dashboard/investors/import"
             className="rounded-md border px-3 py-1.5 text-sm flex items-center gap-1.5"
@@ -228,6 +250,17 @@ export default async function InvestorsPage({
             <Plus className="size-4" /> Add investor
           </Link>
         </div>
+      </div>
+
+      {/* KPI strip — book-wide snapshot */}
+      <InvestorKpiStrip session={session} />
+
+      {/* Quick-filter chips — server-counted, deep-link into the same page */}
+      <div className="card-surface p-3">
+        <InvestorQuickFilters
+          session={session}
+          active={sp as Record<string, string | undefined>}
+        />
       </div>
 
       <FilterBar
@@ -279,6 +312,7 @@ export default async function InvestorsPage({
               { value: "closed", label: "Closed" },
             ],
           },
+          dateRangeFilter("created", "Added"),
         ]}
         rightSlot={
           <CustomViews
@@ -313,12 +347,11 @@ export default async function InvestorsPage({
             <InvestorsKanban initialRows={kanbanRows} />
           )}
         </div>
-      ) : (
-      <div className="card-surface overflow-hidden">
-        {rows.length === 0 ? (
-          // Brand-new tenant with zero investors AND no active filter → big friendly EmptyState.
-          // Otherwise just a short "no matches" line so the filter UI stays in context.
-          total === 0 && !q && !segment.length && !tier.length && !status.length && !kyc.length ? (
+      ) : rows.length === 0 ? (
+        // Brand-new tenant with zero investors AND no active filter → big friendly EmptyState.
+        // Otherwise just a short "no matches" line so the filter UI stays in context.
+        <div className="card-surface overflow-hidden">
+          {total === 0 && !q && !segment.length && !tier.length && !status.length && !kyc.length ? (
             <div className="p-6">
               <EmptyState
                 icon={Users}
@@ -338,91 +371,22 @@ export default async function InvestorsPage({
               </Link>
               .
             </div>
-          )
-        ) : (
-          <table className="w-full text-sm" data-table="investors">
-            <thead className="text-xs text-muted-foreground border-b">
-              <tr>
-                <th data-col="name" className="text-left px-4 py-2 font-medium">Name</th>
-                <th data-col="pan" className="text-left py-2 font-medium">
-                  <span className="inline-flex items-center">PAN<HelpHint term="PAN" /></span>
-                </th>
-                <th data-col="tier" className="text-left py-2 font-medium">Tier</th>
-                <th data-col="segment" className="text-left py-2 font-medium">Segment</th>
-                <th data-col="aum" className="text-right py-2 font-medium">
-                  <span className="inline-flex items-center">AUM<HelpHint term="AUM" /></span>
-                </th>
-                <th data-col="sip" className="text-right py-2 font-medium">
-                  <span className="inline-flex items-center">SIP<HelpHint term="SIP" /></span>
-                </th>
-                <th data-col="kyc" className="text-left py-2 font-medium pl-4">
-                  <span className="inline-flex items-center">KYC<HelpHint term="KYC" /></span>
-                </th>
-                <th data-col="status" className="text-left py-2 font-medium">Status</th>
-                <th data-col="actions" className="px-4 py-2"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((i) => (
-                <tr key={i.id} className="border-b last:border-0 hover:bg-accent/40">
-                  <td data-col="name" className="px-4 py-3 font-medium">
-                    <Link href={`/dashboard/investors/${i.id}`} className="hover:underline">
-                      {i.name}
-                    </Link>
-                  </td>
-                  <td data-col="pan" className="py-3 text-xs font-mono text-muted-foreground">{i.pan}</td>
-                  <td data-col="tier" className="py-3">
-                    {i.serviceTier ? (
-                      <span
-                        className={`text-xs font-bold px-2 py-0.5 rounded-full ${tierColors[i.serviceTier] ?? ""}`}
-                        title={i.serviceTier === "A" ? "Quarterly review" : i.serviceTier === "B" ? "Half-yearly review" : "Annual review"}
-                      >
-                        {i.serviceTier}
-                      </span>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">—</span>
-                    )}
-                  </td>
-                  <td data-col="segment" className="py-3">
-                    {i.segmentTag && (
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${segmentColors[i.segmentTag] ?? ""}`}>
-                        {i.segmentTag}
-                      </span>
-                    )}
-                  </td>
-                  <td data-col="aum" className="py-3 text-right tabular-nums">{formatINR(Number(i.aum ?? 0))}</td>
-                  <td data-col="sip" className="py-3 text-right tabular-nums text-muted-foreground">
-                    {Number(i.activeSipAmount ?? 0) > 0 ? `${formatINR(Number(i.activeSipAmount))}/mo` : "—"}
-                  </td>
-                  <td data-col="kyc" className="py-3 pl-4">
-                    <span
-                      className={`text-xs px-2 py-0.5 rounded-full ${
-                        i.kycStatus === "verified"
-                          ? "bg-emerald-50 text-emerald-700"
-                          : i.kycStatus === "expired"
-                          ? "bg-rose-50 text-rose-700"
-                          : "bg-amber-50 text-amber-700"
-                      }`}
-                    >
-                      {i.kycStatus}
-                    </span>
-                  </td>
-                  <td data-col="status" className="py-3 text-xs">{i.status}</td>
-                  <td data-col="actions" className="px-4 py-3 text-right">
-                    <RowActions
-                      editHref={`/dashboard/investors/${i.id}`}
-                      deleteUrl={`/api/investors/${i.id}`}
-                      itemLabel="investor"
-                      itemName={i.name}
-                      verb="Mark exited"
-                    />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+          )}
+        </div>
+      ) : (
+        <div>
+          <InvestorsTable
+            rows={tableRows}
+            sort={sortKey}
+            flags={{ showPan, showTier, showSegment, showAum, showSip, showKyc, showStatus }}
+          />
+          <Pager
+            page={page}
+            totalPages={Math.ceil(total / PAGE_SIZE)}
+            total={total}
+            pageSize={PAGE_SIZE}
+          />
+        </div>
       )}
     </div>
   );

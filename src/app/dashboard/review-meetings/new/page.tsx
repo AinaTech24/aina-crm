@@ -17,23 +17,34 @@ export default async function NewReviewMeetingPage({
 
   // Load both subject lists in parallel — the form decides which to show
   // based on the Lead | Client toggle.
-  const { investors, leads } = await withTenant(session.tenantId, async (tx) => {
-    const [invRes, leadRes] = await Promise.all([
+  const { investors, leads, families } = await withTenant(session.tenantId, async (tx) => {
+    const [invRes, leadRes, famRes] = await Promise.all([
       tx.execute(sql`
         SELECT id, name, pan, segment_tag, last_review_at, next_review_at
-        FROM investors WHERE status = 'active'
+        FROM investors
+        WHERE tenant_id = ${session.tenantId}::uuid AND status = 'active'
         ORDER BY (next_review_at IS NULL) DESC, next_review_at ASC NULLS FIRST, name
         LIMIT 300
       `),
       tx.execute(sql`
         SELECT id, name, phone, stage
         FROM leads
-        WHERE stage NOT IN ('converted', 'lost', 'cold', 'not_interested')
+        WHERE tenant_id = ${session.tenantId}::uuid AND converted_investor_id IS NULL AND stage NOT IN ('lost', 'cold', 'not_interested')
         ORDER BY updated_at DESC
         LIMIT 300
       `),
+      // Families that have a primary investor — a family meeting attaches to the
+      // primary investor + the familyId (family_review path).
+      tx.execute(sql`
+        SELECT f.id, f.family_name, f.primary_investor_id, i.name AS primary_name
+        FROM families f
+        JOIN investors i ON i.id = f.primary_investor_id
+        WHERE f.tenant_id = ${session.tenantId}::uuid AND f.primary_investor_id IS NOT NULL
+        ORDER BY f.family_name
+        LIMIT 300
+      `),
     ]);
-    return { investors: invRes.rows as any[], leads: leadRes.rows as any[] };
+    return { investors: invRes.rows as any[], leads: leadRes.rows as any[], families: famRes.rows as any[] };
   });
 
   return (
@@ -60,6 +71,7 @@ export default async function NewReviewMeetingPage({
       <ScheduleMeetingForm
         investors={investors}
         leads={leads}
+        families={families}
         preselectedInvestorId={sp.investorId}
         preselectedLeadId={sp.leadId}
       />

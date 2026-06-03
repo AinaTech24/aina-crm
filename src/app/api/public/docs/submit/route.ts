@@ -12,7 +12,7 @@ import { v4 as uuid } from "uuid";
 import { eq } from "drizzle-orm";
 import { withSystem, withTenant } from "@/db/client";
 import { shareTokens, complianceDocuments, leads, eventsOutbox } from "@/db/schema";
-import { markShareTokenUsed } from "@/lib/share-tokens";
+import { claimShareToken, releaseShareToken, finalizeShareToken } from "@/lib/share-tokens";
 import { putObject, vaultKey } from "@/lib/storage/s3";
 import { transitionTo } from "@/lib/blueprints/engine";
 import { enforce } from "@/lib/rate-limit";
@@ -53,10 +53,21 @@ export async function POST(req: NextRequest) {
       return t;
     });
 
+    // Step 1b: atomically CLAIM the single-use token before doing any work so
+    // two concurrent submits can't both index the docs + double-fire the
+    // conversion workflow. The loser aborts here.
+    const claimed = await claimShareToken(tokenId);
+    if (!claimed) {
+      return NextResponse.json({ error: "This link has already been used" }, { status: 409 });
+    }
+
     // Step 2: actual writes happen inside the token's tenant scope so RLS
     // protects every UPDATE/INSERT against cross-tenant write even if the
-    // token-id flow ever leaks.
-    const out = await withTenant(tk.tenantId!, async (tx) => {
+    // token-id flow ever leaks. If the work throws after the claim, release
+    // the token so the client can retry.
+    let out;
+    try {
+      out = await withTenant(tk.tenantId!, async (tx) => {
       // Walk all file_* entries
       const uploaded: Array<{ docId: string; key: string; label: string; size: number; mime: string }> = [];
       for (const [name, value] of formData.entries()) {
@@ -120,17 +131,24 @@ export async function POST(req: NextRequest) {
         meta: { tokenId, ip, userAgent: ua } as any,
       } as any);
 
-      await markShareTokenUsed({
-        id: tokenId,
-        result: { uploaded, signature: signatureName, notes: extraNotes },
-        ipAddress: ip,
-        userAgent: ua,
+      // Token already claimed up front; finalized after the tx commits below.
+      return { uploaded: uploaded.length, uploadedDocs: uploaded };
       });
+    } catch (e) {
+      // Work failed after the claim — release so the client can retry.
+      await releaseShareToken(tokenId).catch(() => {});
+      throw e;
+    }
 
-      return { uploaded: uploaded.length };
+    // Confirm the claim by storing the result payload (used_at already set).
+    await finalizeShareToken({
+      id: tokenId,
+      result: { uploaded: out.uploadedDocs, signature: signatureName, notes: extraNotes },
+      ipAddress: ip,
+      userAgent: ua,
     });
 
-    return NextResponse.json(out, { status: 201 });
+    return NextResponse.json({ uploaded: out.uploaded }, { status: 201 });
   } catch (err: any) {
     return NextResponse.json({ error: err.message ?? "internal" }, { status: 400 });
   }

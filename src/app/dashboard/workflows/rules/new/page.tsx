@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
-import { RuleBuilder } from "@/components/workflow-rules/RuleBuilder";
+import { RuleBuilder } from "@/components/workflow-rules/RuleBuilderLazy";
 import { MODULES } from "@/lib/workflow-rules/modules";
 
 export const dynamic = "force-dynamic";

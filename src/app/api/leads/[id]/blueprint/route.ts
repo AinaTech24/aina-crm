@@ -7,10 +7,10 @@ import { handleApiError } from "@/lib/api/error-handler";
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { getStage } from "@/lib/blueprints/engine";
+import { loadViewableLead } from "@/lib/leads/access";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +18,11 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   try {
     const session = await requireSession();
     const { id } = await params;
-    const data = await withTenant(session.tenantId, async (tx) => getStage(tx, session.tenantId, id));
+    const data = await withTenant(session.tenantId, async (tx) => {
+      const lead = await loadViewableLead(tx, session, id);
+      if (!lead) throw Object.assign(new Error("Lead not found"), { status: 404 });
+      return getStage(tx, session.tenantId, id);
+    });
     return NextResponse.json(data);
   } catch (err: any) {
     return handleApiError(err);

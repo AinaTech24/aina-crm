@@ -4,6 +4,7 @@ import { ShieldCheck, AlertTriangle, Plus, ArrowRight } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { formatDate } from "@/lib/utils";
+import { Pager } from "@/components/common/Pager";
 
 export const dynamic = "force-dynamic";
 
@@ -14,9 +15,57 @@ const CATEGORY_TONE: Record<string, string> = {
   very_aggressive: "bg-rose-50 text-rose-700",
 };
 
-export default async function RiskProfilesPage() {
+type FilterKey = "needs_review" | "current" | "not_profiled" | "expired" | "all";
+
+const FILTERS: Array<{ key: FilterKey; label: string }> = [
+  { key: "needs_review", label: "Needs review" },
+  { key: "current", label: "Current" },
+  { key: "not_profiled", label: "Not profiled" },
+  { key: "expired", label: "Expired" },
+  { key: "all", label: "All active" },
+];
+
+const PAGE_SIZE = 50;
+
+/** Investor-column predicate for each filter (uses the mirror columns on
+ *  investors, kept in sync by the capture routes). */
+function filterPredicate(key: FilterKey) {
+  switch (key) {
+    case "current":
+      return sql`risk_profile_signed_at IS NOT NULL AND risk_profile_signed_at >= now() - interval '11 months'`;
+    case "not_profiled":
+      return sql`risk_profile IS NULL`;
+    case "expired":
+      return sql`risk_profile_signed_at IS NOT NULL AND risk_profile_signed_at < now() - interval '12 months'`;
+    case "all":
+      return sql`TRUE`;
+    case "needs_review":
+    default:
+      return sql`(risk_profile_signed_at IS NULL OR risk_profile_signed_at < now() - interval '11 months')`;
+  }
+}
+
+/** Ordering per filter — most-actionable first. */
+function orderClause(key: FilterKey) {
+  if (key === "current") return sql`risk_profile_signed_at DESC NULLS LAST`;
+  if (key === "not_profiled" || key === "all") return sql`name ASC`;
+  // needs_review / expired — never-profiled first, then most overdue.
+  return sql`risk_profile_signed_at ASC NULLS FIRST`;
+}
+
+export default async function RiskProfilesPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | undefined>>;
+}) {
   const session = await requireSession();
+  const sp = await searchParams;
+  const filter: FilterKey =
+    (FILTERS.find((f) => f.key === sp.filter)?.key as FilterKey) ?? "needs_review";
+  const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
+
   const data = await withTenant(session.tenantId, async (tx) => {
+    // KPI strip — one aggregate over the active book.
     const stats = await tx.execute(sql`
       SELECT
         COUNT(*)::int AS total_clients,
@@ -31,15 +80,34 @@ export default async function RiskProfilesPage() {
     `);
     const s = stats.rows[0] as any;
 
-    // Latest profile per investor — joined with the new responses table
-    const recent = await tx.execute(sql`
-      SELECT DISTINCT ON (i.id)
+    const predicate = filterPredicate(filter);
+
+    // Total matching the active filter (drives the pager) — investor-only, no
+    // join needed since the filter is on the investor mirror columns.
+    const c = await tx.execute(sql`
+      SELECT COUNT(*)::int AS c FROM investors
+      WHERE status = 'active' AND ${predicate}
+    `);
+    const total = Number((c.rows[0] as any)?.c ?? 0);
+
+    // One page of investors + their latest response via a LATERAL join (uses
+    // rpr_investor_signed_idx; fetches exactly one response per page row — no
+    // unbounded DISTINCT ON over the whole book).
+    const rows = await tx.execute(sql`
+      SELECT
         i.id, i.name, i.pan, i.risk_profile, i.risk_profile_signed_at, i.risk_profile_score,
         rp.id AS profile_id, rp.total_score, rp.next_review_at, rp.signed_at AS latest_signed_at
       FROM investors i
-      LEFT JOIN risk_profile_responses rp ON rp.investor_id = i.id
-      WHERE i.status = 'active'
-      ORDER BY i.id, rp.signed_at DESC NULLS LAST
+      LEFT JOIN LATERAL (
+        SELECT id, total_score, next_review_at, signed_at
+        FROM risk_profile_responses r
+        WHERE r.investor_id = i.id
+        ORDER BY r.signed_at DESC NULLS LAST
+        LIMIT 1
+      ) rp ON TRUE
+      WHERE i.status = 'active' AND ${predicate}
+      ORDER BY ${orderClause(filter)}
+      LIMIT ${PAGE_SIZE} OFFSET ${(page - 1) * PAGE_SIZE}
     `);
 
     return {
@@ -48,17 +116,22 @@ export default async function RiskProfilesPage() {
       notProfiled: Number(s.not_profiled),
       expired: Number(s.expired),
       dueSoon: Number(s.due_soon),
-      recent: recent.rows as any[],
+      rows: rows.rows as any[],
+      filterTotal: total,
     };
   });
 
-  // Split for the two tables
-  const needsAttention = data.recent.filter((r) => {
-    if (!r.risk_profile_signed_at) return true;
-    const signed = new Date(r.risk_profile_signed_at);
-    return Date.now() - signed.getTime() > 11 * 30 * 24 * 60 * 60 * 1000;
-  });
-  const current = data.recent.filter((r) => !needsAttention.includes(r));
+  // Tab counts derived from the KPI aggregate (no extra queries).
+  const tabCount: Record<FilterKey, number> = {
+    needs_review: data.notProfiled + data.expired + data.dueSoon,
+    current: Math.max(0, data.profiled - data.expired - data.dueSoon),
+    not_profiled: data.notProfiled,
+    expired: data.expired,
+    all: data.total,
+  };
+
+  const tabHref = (key: FilterKey) =>
+    key === "needs_review" ? "/dashboard/risk-profiles" : `/dashboard/risk-profiles?filter=${key}`;
 
   return (
     <div className="space-y-6 max-w-7xl">
@@ -71,10 +144,7 @@ export default async function RiskProfilesPage() {
             SEBI requires annual review. Tracks Conservative · Moderate · Aggressive bands per investor.
           </p>
         </div>
-        <Link
-          href="/dashboard/risk-profiles/new"
-          className="btn-primary"
-        >
+        <Link href="/dashboard/risk-profiles/new" className="btn-primary">
           <Plus className="size-4" /> New Risk Profile
         </Link>
       </div>
@@ -88,140 +158,128 @@ export default async function RiskProfilesPage() {
         <Stat label="Expired (>12mo)" value={data.expired} tone={data.expired > 0 ? "rose" : "muted"} />
       </div>
 
-      {/* Needs attention */}
-      <div className="card-surface">
-        <div className="border-b border-border px-4 py-2.5 font-semibold flex items-center justify-between">
-          <span>Profiles needing review ({needsAttention.length})</span>
-          <span className="text-xs text-muted-foreground">Un-profiled + expired + due-soon</span>
-        </div>
-        {needsAttention.length === 0 ? (
-          <div className="p-12 text-center text-sm text-muted-foreground">
-            <ShieldCheck className="size-8 mx-auto text-emerald-500" />
-            <div className="mt-2 font-medium">All profiles current ✓</div>
-            <div className="text-xs mt-1">Every active client has a valid risk profile.</div>
-          </div>
-        ) : (
-          <table className="w-full text-sm">
-            <thead className="text-xs text-muted-foreground border-b">
-              <tr>
-                <th className="text-left px-4 py-2 font-medium">Investor</th>
-                <th className="text-left py-2 font-medium">Last category</th>
-                <th className="text-left py-2 font-medium">Score</th>
-                <th className="text-left py-2 font-medium">Last signed</th>
-                <th className="text-left py-2 font-medium">Status</th>
-                <th className="px-4 py-2"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {needsAttention.map((r: any) => {
-                const signed = r.risk_profile_signed_at ? new Date(r.risk_profile_signed_at) : null;
-                const expired = signed && Date.now() - signed.getTime() > 365 * 24 * 60 * 60 * 1000;
-                return (
-                  <tr key={r.id} className="border-b last:border-0 hover:bg-secondary/40">
-                    <td className="px-4 py-3">
-                      <Link href={`/dashboard/investors/${r.id}`} className="font-medium hover:underline">
-                        {r.name}
-                      </Link>
-                      <div className="text-xs text-muted-foreground font-mono">{r.pan}</div>
-                    </td>
-                    <td className="py-3">
-                      {r.risk_profile ? (
-                        <span className={`chip ${CATEGORY_TONE[r.risk_profile] ?? ""} capitalize`}>
-                          {r.risk_profile.replace(/_/g, " ")}
-                        </span>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
-                      )}
-                    </td>
-                    <td className="py-3 tabular-nums">{r.risk_profile_score ?? "—"}</td>
-                    <td className="py-3 text-xs text-muted-foreground">
-                      {signed ? formatDate(signed) : "Never"}
-                    </td>
-                    <td className="py-3">
-                      {!signed ? (
-                        <span className="chip bg-amber-50 text-amber-700">
-                          <AlertTriangle className="size-3" /> Not profiled
-                        </span>
-                      ) : expired ? (
-                        <span className="chip bg-rose-50 text-rose-700">Expired</span>
-                      ) : (
-                        <span className="chip bg-amber-50 text-amber-700">Due soon</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <Link
-                        href={`/dashboard/risk-profiles/new?investorId=${r.id}`}
-                        className="btn-accent text-xs px-3 py-1"
-                      >
-                        Start <ArrowRight className="size-3" />
-                      </Link>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
+      {/* Filter tabs */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        {FILTERS.map((f) => {
+          const active = f.key === filter;
+          return (
+            <Link
+              key={f.key}
+              href={tabHref(f.key)}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm border transition-colors ${
+                active
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "bg-card hover:bg-accent text-muted-foreground"
+              }`}
+            >
+              {f.label}
+              <span className={`tabular-nums text-xs font-semibold ${active ? "opacity-90" : "opacity-70"}`}>
+                {tabCount[f.key]}
+              </span>
+            </Link>
+          );
+        })}
       </div>
 
-      {/* Current profiles */}
-      {current.length > 0 && (
-        <div className="card-surface">
-          <div className="border-b border-border px-4 py-2.5 font-semibold">
-            Current profiles ({current.length})
-          </div>
-          <table className="w-full text-sm">
-            <thead className="text-xs text-muted-foreground border-b">
-              <tr>
-                <th className="text-left px-4 py-2 font-medium">Investor</th>
-                <th className="text-left py-2 font-medium">Category</th>
-                <th className="text-left py-2 font-medium">Score</th>
-                <th className="text-left py-2 font-medium">Signed</th>
-                <th className="text-left py-2 font-medium">Next review</th>
-                <th className="px-4 py-2"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {current.map((r: any) => (
-                <tr key={r.id} className="border-b last:border-0 hover:bg-secondary/40">
-                  <td className="px-4 py-3">
-                    <Link href={`/dashboard/investors/${r.id}`} className="font-medium hover:underline">
-                      {r.name}
-                    </Link>
-                    <div className="text-xs text-muted-foreground font-mono">{r.pan}</div>
-                  </td>
-                  <td className="py-3">
-                    <span className={`chip ${CATEGORY_TONE[r.risk_profile] ?? ""} capitalize`}>
-                      {(r.risk_profile ?? "").replace(/_/g, " ")}
-                    </span>
-                  </td>
-                  <td className="py-3 tabular-nums">
-                    {r.total_score ?? r.risk_profile_score ?? "—"}{r.total_score ? "/40" : ""}
-                  </td>
-                  <td className="py-3 text-xs text-muted-foreground">
-                    {r.latest_signed_at
-                      ? formatDate(r.latest_signed_at)
-                      : r.risk_profile_signed_at
-                      ? formatDate(r.risk_profile_signed_at)
-                      : "—"}
-                  </td>
-                  <td className="py-3 text-xs">
-                    {r.next_review_at ? formatDate(r.next_review_at) : "—"}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <Link
-                      href={`/dashboard/risk-profiles/new?investorId=${r.id}`}
-                      className="text-xs text-muted-foreground hover:text-brand-cyan hover:underline"
-                    >
-                      Re-profile →
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {/* Table */}
+      <div className="card-surface">
+        <div className="border-b border-border px-4 py-2.5 font-semibold flex items-center justify-between">
+          <span>{FILTERS.find((f) => f.key === filter)?.label} ({data.filterTotal})</span>
         </div>
-      )}
+        {data.rows.length === 0 ? (
+          <div className="p-12 text-center text-sm text-muted-foreground">
+            <ShieldCheck className="size-8 mx-auto text-emerald-500" />
+            <div className="mt-2 font-medium">
+              {filter === "needs_review" ? "All profiles current ✓" : "No investors in this view."}
+            </div>
+          </div>
+        ) : (
+          <>
+            <table className="w-full text-sm">
+              <thead className="text-xs text-muted-foreground border-b">
+                <tr>
+                  <th className="text-left px-4 py-2 font-medium">Investor</th>
+                  <th className="text-left py-2 font-medium">Category</th>
+                  <th className="text-left py-2 font-medium">Score</th>
+                  <th className="text-left py-2 font-medium">Last signed</th>
+                  <th className="text-left py-2 font-medium">Next review</th>
+                  <th className="text-left py-2 font-medium">Status</th>
+                  <th className="px-4 py-2"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.rows.map((r: any) => {
+                  const signed = r.risk_profile_signed_at ? new Date(r.risk_profile_signed_at) : null;
+                  const ageMs = signed ? Date.now() - signed.getTime() : null;
+                  const status = !signed
+                    ? "not_profiled"
+                    : ageMs! > 365 * 24 * 60 * 60 * 1000
+                    ? "expired"
+                    : ageMs! > 334 * 24 * 60 * 60 * 1000 // ~11 months
+                    ? "due_soon"
+                    : "current";
+                  const score = r.total_score ?? r.risk_profile_score ?? null;
+                  return (
+                    <tr key={r.id} className="border-b last:border-0 hover:bg-secondary/40">
+                      <td className="px-4 py-3">
+                        <Link href={`/dashboard/investors/${r.id}`} className="font-medium hover:underline">
+                          {r.name}
+                        </Link>
+                        <div className="text-xs text-muted-foreground font-mono">{r.pan}</div>
+                      </td>
+                      <td className="py-3">
+                        {r.risk_profile ? (
+                          <span className={`chip ${CATEGORY_TONE[r.risk_profile] ?? ""} capitalize`}>
+                            {r.risk_profile.replace(/_/g, " ")}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </td>
+                      <td className="py-3 tabular-nums">{score ?? "—"}</td>
+                      <td className="py-3 text-xs text-muted-foreground">
+                        {signed ? formatDate(signed) : "Never"}
+                      </td>
+                      <td className="py-3 text-xs text-muted-foreground">
+                        {r.next_review_at ? formatDate(r.next_review_at) : "—"}
+                      </td>
+                      <td className="py-3">
+                        {status === "not_profiled" ? (
+                          <span className="chip bg-amber-50 text-amber-700">
+                            <AlertTriangle className="size-3" /> Not profiled
+                          </span>
+                        ) : status === "expired" ? (
+                          <span className="chip bg-rose-50 text-rose-700">Expired</span>
+                        ) : status === "due_soon" ? (
+                          <span className="chip bg-amber-50 text-amber-700">Due soon</span>
+                        ) : (
+                          <span className="chip bg-emerald-50 text-emerald-700">Current</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <Link
+                          href={`/dashboard/risk-profiles/new?investorId=${r.id}`}
+                          className="btn-accent text-xs px-3 py-1"
+                        >
+                          {status === "current" ? "Re-profile" : "Start"} <ArrowRight className="size-3" />
+                        </Link>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            <div className="px-4 pb-3">
+              <Pager
+                page={page}
+                totalPages={Math.ceil(data.filterTotal / PAGE_SIZE)}
+                total={data.filterTotal}
+                pageSize={PAGE_SIZE}
+              />
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }

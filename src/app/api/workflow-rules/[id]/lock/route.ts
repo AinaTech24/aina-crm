@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { workflowRules } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
@@ -15,7 +15,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const action = String(body.action ?? "lock"); // "lock" | "unlock"
   const reason = body.reason ? String(body.reason) : null;
 
-  const row = await withTenant(session.tenantId, async (tx) => {
+  const out = await withTenant(session.tenantId, async (tx) => {
+    const [current] = await tx
+      .select()
+      .from(workflowRules)
+      .where(and(eq(workflowRules.id, id), eq(workflowRules.tenantId, session.tenantId)))
+      .limit(1);
+    if (!current) return { kind: "not_found" as const };
+
+    // A rule locked by another admin can only be unlocked/relocked by that
+    // admin (mirrors the PATCH edit guard) — prevents silently stealing a lock.
+    if (current.locked && current.lockedBy && current.lockedBy !== session.userId) {
+      return { kind: "locked_by_other" as const, by: current.lockedBy };
+    }
+
     const [r] = await tx
       .update(workflowRules)
       .set(
@@ -23,10 +36,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           ? { locked: false, lockReason: null, lockedBy: null, lockedAt: null, updatedAt: new Date() }
           : { locked: true, lockReason: reason, lockedBy: session.userId, lockedAt: new Date(), updatedAt: new Date() }
       )
-      .where(eq(workflowRules.id, id))
+      .where(and(eq(workflowRules.id, id), eq(workflowRules.tenantId, session.tenantId)))
       .returning();
-    return r;
+    return { kind: "ok" as const, rule: r };
   });
-  if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  return NextResponse.json({ rule: row });
+
+  if (out.kind === "not_found") return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (out.kind === "locked_by_other")
+    return NextResponse.json({ error: "This rule is locked by another user." }, { status: 423 });
+  return NextResponse.json({ rule: out.rule });
 }

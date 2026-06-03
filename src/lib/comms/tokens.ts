@@ -100,6 +100,33 @@ function formatINR(n: number, asRupeesFromPaise = false): string {
   }).format(rupees);
 }
 
+/** System-provided tokens available to every template (footer + pipeline). */
+const SYSTEM_TOKENS = new Set([
+  "unsubscribe_url", "tenant_name", "tenant_display_name", "tenant_arn", "arn_no", "arn_name",
+  "euin", "firm_phone", "firm_email", "firm_website", "firm_address", "brand_color",
+  "tenant_logo_url", "logo_url",
+]);
+
+/**
+ * Find `{{placeholders}}` in template text that have no matching declared
+ * variable (and aren't system tokens or positional params). Surfaced as a
+ * non-blocking warning so authors catch typo'd merge fields before they
+ * silently render blank at send time.
+ */
+export function findUndeclaredPlaceholders(text: string, declaredKeys: string[]): string[] {
+  const declared = new Set(declaredKeys);
+  const found = new Set<string>();
+  const re = /\{\{\s*([^}]+)\s*\}\}/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text ?? "")) !== null) {
+    const k = m[1].trim();
+    if (!k || declared.has(k) || SYSTEM_TOKENS.has(k)) continue;
+    if (/^\d+$/.test(k) || /^p\d+$/.test(k)) continue; // positional params
+    found.add(k);
+  }
+  return [...found];
+}
+
 /**
  * Render a WhatsApp template body by replacing `{{key}}` mustache placeholders.
  * Also supports `{{1}}, {{2}}` style for raw AiSensy positional params.

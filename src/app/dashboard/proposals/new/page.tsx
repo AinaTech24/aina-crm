@@ -28,6 +28,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { InvestorLookup } from "@/components/common/InvestorLookup";
+import { RiskAlignmentBanner } from "@/components/proposals/RiskAlignmentBanner";
 import { formatINR } from "@/lib/utils";
 
 type Recipient = { type: "investor" | "lead" | "family"; id: string; name: string };
@@ -62,6 +63,8 @@ type PMS = {
   minInvestment?: number;
   proposedAmount?: number;
   expectedReturn?: number;
+  termYears?: number;
+  exitLoad?: string;
   notes?: string;
 };
 type AIF = {
@@ -108,6 +111,7 @@ export default function NewProposalPage() {
   const [items, setItems] = useState<Item[]>([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [clientRiskProfile, setClientRiskProfile] = useState<string | null>(null);
 
   // Search leads when recipient mode is 'lead'
   useEffect(() => {
@@ -136,6 +140,56 @@ export default function NewProposalPage() {
       cancelled = true;
     };
   }, [recipientMode]);
+
+  // Load client or family head risk profile
+  useEffect(() => {
+    if (!recipient) {
+      setClientRiskProfile(null);
+      return;
+    }
+    if (recipient.type === "investor") {
+      fetch(`/api/investors/${recipient.id}`)
+        .then((res) => res.json())
+        .then((data) => {
+          setClientRiskProfile(data?.investor?.riskProfile ?? null);
+        })
+        .catch(() => {
+          setClientRiskProfile(null);
+        });
+    } else if (recipient.type === "family") {
+      const targetId = selectedFamilyMemberId || recipient.id;
+      if (selectedFamilyMemberId) {
+        fetch(`/api/investors/${selectedFamilyMemberId}`)
+          .then((res) => res.json())
+          .then((data) => {
+            setClientRiskProfile(data?.investor?.riskProfile ?? null);
+          })
+          .catch(() => {
+            setClientRiskProfile(null);
+          });
+      } else {
+        fetch(`/api/families/${recipient.id}`)
+          .then((res) => res.json())
+          .then((data) => {
+            const primaryId = data?.primaryInvestorId ?? data?.family?.primaryInvestorId;
+            if (primaryId) {
+              return fetch(`/api/investors/${primaryId}`)
+                .then((res) => res.json())
+                .then((data) => {
+                  setClientRiskProfile(data?.investor?.riskProfile ?? null);
+                });
+            } else {
+              setClientRiskProfile(null);
+            }
+          })
+          .catch(() => {
+            setClientRiskProfile(null);
+          });
+      }
+    } else {
+      setClientRiskProfile(null);
+    }
+  }, [recipient, selectedFamilyMemberId]);
 
   // Filter families client-side by name
   const filteredFamilies = familyOptions.filter((f) => {
@@ -197,9 +251,17 @@ export default function NewProposalPage() {
       } else if (it.kind === "insurance") {
         inv += Number(it.annualPremium ?? 0);
       } else if (it.kind === "pms") {
-        inv += Number(it.proposedAmount ?? 0);
+        const amt = Number(it.proposedAmount ?? 0);
+        inv += amt;
+        if (amt && it.expectedReturn && it.termYears) {
+          corpus += amt * Math.pow(1 + Number(it.expectedReturn) / 100, Number(it.termYears));
+        }
       } else if (it.kind === "aif") {
-        inv += Number(it.proposedAmount ?? 0);
+        const amt = Number(it.proposedAmount ?? 0);
+        inv += amt;
+        if (amt && it.targetIrr && it.lockInYears) {
+          corpus += amt * Math.pow(1 + Number(it.targetIrr) / 100, Number(it.lockInYears));
+        }
       }
     }
     return { inv, corpus };
@@ -724,6 +786,25 @@ export default function NewProposalPage() {
         )}
       </div>
 
+      {/* ─── Risk Suitability check ─── */}
+      {recipient && items.some((it) => it.kind === "mf") && (
+        <div className="card-surface p-5 space-y-3">
+          <div className="flex items-center gap-2">
+            <div className="h-4 w-1 rounded-full bg-amber-500" />
+            <h2 className="section-title">Risk Suitability check</h2>
+          </div>
+          <RiskAlignmentBanner
+            profile={clientRiskProfile as any}
+            schemes={items
+              .filter((it): it is MF => it.kind === "mf")
+              .map((it) => ({
+                name: it.schemeName,
+                riskRating: it.riskRating,
+              }))}
+          />
+        </div>
+      )}
+
       {/* ─── Disclaimer + actions ─── */}
       <div className="card-surface p-5 space-y-3">
         <div className="flex items-center gap-2">
@@ -828,6 +909,24 @@ function TextInput({
 }
 
 function MFRow({ item, onPatch }: { item: MF; onPatch: (p: Partial<MF>) => void }) {
+  // Auto-calculate projected corpus on input changes
+  useEffect(() => {
+    const lumpsum = Number(item.lumpsum ?? 0);
+    const sip = Number(item.monthlyAmount ?? 0);
+    const years = Number(item.sipTermYears ?? 0);
+    const rate = Number(item.expectedReturn ?? 0);
+    if ((lumpsum > 0 || sip > 0) && years > 0 && rate > 0) {
+      const fvLump = lumpsum * Math.pow(1 + rate / 100, years);
+      const m = rate / 100 / 12;
+      const months = years * 12;
+      const fvSip = sip * ((Math.pow(1 + m, months) - 1) / m) * (1 + m);
+      const computed = Math.round(fvLump + fvSip);
+      if (computed !== item.projectedCorpus) {
+        onPatch({ projectedCorpus: computed });
+      }
+    }
+  }, [item.lumpsum, item.monthlyAmount, item.sipTermYears, item.expectedReturn]);
+
   return (
     <div className="grid grid-cols-3 gap-3">
       <div className="col-span-2">
@@ -972,6 +1071,16 @@ function InsRow({ item, onPatch }: { item: Ins; onPatch: (p: Partial<Ins>) => vo
 }
 
 function PMSRow({ item, onPatch }: { item: PMS; onPatch: (p: Partial<PMS>) => void }) {
+  const projectedPMS = useMemo(() => {
+    const amt = Number(item.proposedAmount ?? 0);
+    const ret = Number(item.expectedReturn ?? 0);
+    const yrs = Number(item.termYears ?? 0);
+    if (amt > 0 && ret > 0 && yrs > 0) {
+      return amt * Math.pow(1 + ret / 100, yrs);
+    }
+    return 0;
+  }, [item.proposedAmount, item.expectedReturn, item.termYears]);
+
   return (
     <div className="grid grid-cols-3 gap-3">
       <div className="col-span-2">
@@ -1007,6 +1116,17 @@ function PMSRow({ item, onPatch }: { item: PMS; onPatch: (p: Partial<PMS>) => vo
         value={item.expectedReturn}
         setValue={(n) => onPatch({ expectedReturn: n })}
       />
+      <NumberInput
+        label="Horizon"
+        unit="yrs"
+        value={item.termYears}
+        setValue={(n) => onPatch({ termYears: n })}
+      />
+      {projectedPMS > 0 && (
+        <div className="col-span-3 text-[11px] text-emerald-600 font-semibold px-1 py-0.5 bg-emerald-50/50 rounded-md">
+          Projected value: {formatINR(projectedPMS)} after {item.termYears} years
+        </div>
+      )}
       <div className="col-span-3">
         <TextInput
           label="Notes / rationale"
@@ -1020,6 +1140,16 @@ function PMSRow({ item, onPatch }: { item: PMS; onPatch: (p: Partial<PMS>) => vo
 }
 
 function AIFRow({ item, onPatch }: { item: AIF; onPatch: (p: Partial<AIF>) => void }) {
+  const projectedAIF = useMemo(() => {
+    const amt = Number(item.proposedAmount ?? 0);
+    const irr = Number(item.targetIrr ?? 0);
+    const yrs = Number(item.lockInYears ?? 0);
+    if (amt > 0 && irr > 0 && yrs > 0) {
+      return amt * Math.pow(1 + irr / 100, yrs);
+    }
+    return 0;
+  }, [item.proposedAmount, item.targetIrr, item.lockInYears]);
+
   return (
     <div className="grid grid-cols-3 gap-3">
       <div className="col-span-2">
@@ -1074,6 +1204,11 @@ function AIFRow({ item, onPatch }: { item: AIF; onPatch: (p: Partial<AIF>) => vo
         value={item.targetIrr}
         setValue={(n) => onPatch({ targetIrr: n })}
       />
+      {projectedAIF > 0 && (
+        <div className="col-span-3 text-[11px] text-emerald-600 font-semibold px-1 py-0.5 bg-emerald-50/50 rounded-md">
+          Projected value: {formatINR(projectedAIF)} after {item.lockInYears} years
+        </div>
+      )}
       <div className="col-span-3">
         <TextInput
           label="Notes / rationale"

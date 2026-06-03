@@ -17,6 +17,8 @@ import {
   costOfDelay,
   retirementCorpus,
   swpDeplete,
+  stpCalculate,
+  cagrCalculate,
   DEFAULT_EXPECTED_RETURN_PCT,
   DEFAULT_INFLATION_PCT,
 } from "@/lib/goal-planning/calc";
@@ -29,7 +31,9 @@ type TabKey =
   | "delay"
   | "retirement"
   | "stepup"
-  | "swp";
+  | "swp"
+  | "stp"
+  | "cagr";
 
 const TABS: Array<{ key: TabKey; label: string }> = [
   { key: "sip", label: "1. SIP" },
@@ -40,6 +44,8 @@ const TABS: Array<{ key: TabKey; label: string }> = [
   { key: "retirement", label: "6. Retirement" },
   { key: "stepup", label: "7. Step-up SIP" },
   { key: "swp", label: "8. SWP" },
+  { key: "stp", label: "9. STP" },
+  { key: "cagr", label: "10. CAGR" },
 ];
 
 export function CalculatorsApp() {
@@ -74,6 +80,8 @@ export function CalculatorsApp() {
       {tab === "retirement" && <RetirementCalc />}
       {tab === "stepup" && <StepUpCalc />}
       {tab === "swp" && <SwpCalc />}
+      {tab === "stp" && <StpCalc />}
+      {tab === "cagr" && <CagrCalc />}
     </div>
   );
 }
@@ -517,9 +525,13 @@ function NumberField({
         type="number"
         value={value}
         step={step}
-        onChange={(e) =>
-          setValue(e.target.value === "" ? 0 : Number(e.target.value))
-        }
+        min={0}
+        onChange={(e) => {
+          // Clamp to ≥0 and ignore non-numeric — illustrations never use
+          // negative amounts / rates / durations.
+          const n = e.target.value === "" ? 0 : Number(e.target.value);
+          setValue(Number.isFinite(n) && n >= 0 ? n : 0);
+        }}
         className="input-base text-sm w-full"
       />
     </Field>
@@ -583,4 +595,140 @@ function inr(n: number): string {
     currency: "INR",
     maximumFractionDigits: 0,
   }).format(n);
+}
+
+/* ───────────────────────── 9. STP ───────────────────────── */
+function StpCalc() {
+  const [clientName, setClientName] = useState("");
+  const [lumpsum, setLumpsum] = useState(1000000);
+  const [transfer, setTransfer] = useState(50000);
+  const [sourceReturn, setSourceReturn] = useState(6);
+  const [targetReturn, setTargetReturn] = useState(12);
+  const [years, setYears] = useState(5);
+
+  const res = stpCalculate({
+    lumpsum,
+    transferAmount: transfer,
+    sourceReturnPct: sourceReturn,
+    targetReturnPct: targetReturn,
+    years,
+  });
+
+  // Comparison logic: what if they kept the whole lumpsum in source debt fund?
+  const sourceOnlyFV = fvLumpsum(lumpsum, sourceReturn, years * 12);
+  // What if they put the whole lumpsum in target equity fund immediately?
+  const targetOnlyFV = fvLumpsum(lumpsum, targetReturn, years * 12);
+
+  return (
+    <CalcShell
+      title="Systematic Transfer Plan (STP) Calculator"
+      purpose="Transfer funds systematically from a source debt fund to a target equity fund."
+    >
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Client name">
+          <input
+            value={clientName}
+            onChange={(e) => setClientName(e.target.value)}
+            className="input-base text-sm w-full"
+          />
+        </Field>
+        <NumberField label="Initial lumpsum amount (₹)" value={lumpsum} setValue={setLumpsum} />
+        <NumberField label="Monthly transfer amount (₹)" value={transfer} setValue={setTransfer} />
+        <NumberField label="Source expected return (% p.a.)" value={sourceReturn} setValue={setSourceReturn} step={0.1} />
+        <NumberField label="Target expected return (% p.a.)" value={targetReturn} setValue={setTargetReturn} step={0.1} />
+        <NumberField label="Duration (years)" value={years} setValue={setYears} step={1} />
+      </div>
+
+      <div className="grid grid-cols-3 gap-3 mt-3">
+        <div className="border border-slate-200 rounded-md p-3 space-y-1.5">
+          <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">
+            Debt fund remaining
+          </div>
+          <div className="text-base font-semibold">{inr(res.sourceFinalValue)}</div>
+          <p className="text-[10px] text-muted-foreground">Un-transferred balance earning {sourceReturn}%</p>
+        </div>
+        <div className="border border-slate-200 rounded-md p-3 space-y-1.5">
+          <div className="text-[10px] uppercase tracking-wide text-brand-cyan font-semibold">
+            Equity fund value
+          </div>
+          <div className="text-base font-semibold">{inr(res.targetFinalValue)}</div>
+          <p className="text-[10px] text-muted-foreground">Transferred installments compounding at {targetReturn}%</p>
+        </div>
+        <div className="border border-slate-200 rounded-md p-3 space-y-1.5 bg-emerald-50/20 border-emerald-100">
+          <div className="text-[10px] uppercase tracking-wide text-emerald-700 font-semibold">
+            Total STP value
+          </div>
+          <div className="text-base font-semibold text-emerald-700">{inr(res.totalFinalValue)}</div>
+          <p className="text-[10px] text-emerald-600">Combined maturity corpus</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 mt-3">
+        <div className="border border-slate-100 rounded-md p-3 space-y-1 text-xs">
+          <div className="font-semibold text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
+            STP vs Lumpsum Debt (Low risk)
+          </div>
+          <Row k="Total STP Value" v={inr(res.totalFinalValue)} />
+          <Row k="Lumpsum in Debt Only" v={inr(sourceOnlyFV)} />
+          <div className="border-t pt-1 font-semibold text-emerald-600 flex justify-between">
+            <span>STP Outperformance</span>
+            <span>{inr(res.totalFinalValue - sourceOnlyFV)}</span>
+          </div>
+        </div>
+        <div className="border border-slate-100 rounded-md p-3 space-y-1 text-xs">
+          <div className="font-semibold text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
+            STP vs Lumpsum Equity (High risk)
+          </div>
+          <Row k="Lumpsum in Equity Only" v={inr(targetOnlyFV)} />
+          <Row k="Total STP Value" v={inr(res.totalFinalValue)} />
+          <div className="border-t pt-1 font-semibold text-muted-foreground flex justify-between">
+            <span>STP Risk-Mitigated shortfall</span>
+            <span>{inr(targetOnlyFV - res.totalFinalValue)}</span>
+          </div>
+        </div>
+      </div>
+
+      <ResultRow
+        cells={[
+          { label: "Amount invested", value: inr(lumpsum) },
+          { label: "Total return corpus", value: inr(res.totalFinalValue), tone: "emerald" },
+          { label: "Net wealth gain", value: inr(res.gain), tone: "emerald" },
+        ]}
+      />
+    </CalcShell>
+  );
+}
+
+/* ───────────────────────── 10. CAGR ───────────────────────── */
+function CagrCalc() {
+  const [initialValue, setInitialValue] = useState(100000);
+  const [finalValue, setFinalValue] = useState(250000);
+  const [years, setYears] = useState(5);
+
+  const res = cagrCalculate({
+    initialValue,
+    finalValue,
+    years,
+  });
+
+  return (
+    <CalcShell
+      title="CAGR Return Calculator"
+      purpose="Compound Annual Growth Rate and absolute return of an investment over a period."
+    >
+      <div className="grid grid-cols-3 gap-3">
+        <NumberField label="Initial value (₹)" value={initialValue} setValue={setInitialValue} />
+        <NumberField label="Current/Final value (₹)" value={finalValue} setValue={setFinalValue} />
+        <NumberField label="Duration (years)" value={years} setValue={setYears} step={0.5} />
+      </div>
+
+      <ResultRow
+        cells={[
+          { label: "Absolute return", value: `${res.absoluteReturnPct.toFixed(2)}%`, tone: res.absoluteReturnPct >= 0 ? "emerald" : "rose" },
+          { label: "CAGR return", value: `${res.cagrPct.toFixed(2)}% p.a.`, tone: res.cagrPct >= 0 ? "emerald" : "rose" },
+          { label: "Absolute wealth gain", value: inr(finalValue - initialValue), tone: finalValue >= initialValue ? "emerald" : "rose" },
+        ]}
+      />
+    </CalcShell>
+  );
 }

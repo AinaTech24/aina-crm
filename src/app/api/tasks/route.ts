@@ -41,6 +41,9 @@ const Body = z.object({
   priority: z.enum(["low", "normal", "high", "urgent"]).default("normal"),
   assigneeId: z.string().uuid().optional(),
   dueAt: z.string().optional(),
+  /** Recurrence — null/omitted = one-off. */
+  recurrence: z.enum(["daily", "weekly", "monthly", "quarterly", "yearly"]).optional(),
+  recurrenceUntil: z.string().optional(), // YYYY-MM-DD
 });
 
 export async function GET() {
@@ -102,6 +105,10 @@ export async function POST(req: NextRequest) {
         assigneeId: body.assigneeId ?? session.userId,
         createdById: session.userId,
         dueAt: body.dueAt ? new Date(body.dueAt) : null,
+        recurrence: body.recurrence ?? null,
+        recurrenceUntil: body.recurrenceUntil ?? null,
+        // Chain root = this task itself when recurring.
+        recurrenceParentId: body.recurrence ? id : null,
       } as any);
     });
     return NextResponse.json({ id }, { status: 201 });

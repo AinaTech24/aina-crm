@@ -18,7 +18,7 @@ import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { userInvites } from "@/db/schema";
-import { require as requireCap } from "@/lib/auth/rbac";
+import { require as requireCap, areAssignableRoles } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 
@@ -34,6 +34,8 @@ const Body = z.object({
 export async function GET() {
   try {
     const session = await requireSession();
+    // Pending invites expose invitee emails + roles-to-grant — admin-only.
+    requireCap(session.roles, "settings.users");
     const rows = await withTenant(session.tenantId, async (tx) => {
       return tx
         .select()
@@ -58,6 +60,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "invalid body", issues: parse.error.issues }, { status: 400 });
     }
     const body = parse.data;
+    // Only tenant-assignable roles may be granted — never a platform role.
+    if (!areAssignableRoles(body.roles)) {
+      return NextResponse.json({ error: "one or more roles are not assignable" }, { status: 400 });
+    }
     const token = crypto.randomBytes(32).toString("base64url");
     const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days

@@ -18,6 +18,7 @@ import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { investors, families, eventsOutbox } from "@/db/schema";
+import { recomputeFamilyHealth } from "@/lib/families/health-persist";
 
 export const dynamic = "force-dynamic";
 
@@ -77,6 +78,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         ...clientMeta,
       });
 
+      // Membership changed ⇒ re-score the family (and the prior family, if the
+      // investor was moved from one to another).
+      await recomputeFamilyHealth(tx, familyId);
+      if (inv.familyId && inv.familyId !== familyId) {
+        await recomputeFamilyHealth(tx, inv.familyId);
+      }
+
       return updated[0];
     });
     return NextResponse.json(result);
@@ -112,6 +120,9 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
         before: { investorId, familyId },
         ...clientMeta,
       });
+
+      // Membership shrank ⇒ re-score the family.
+      await recomputeFamilyHealth(tx, familyId);
     });
     return NextResponse.json({ ok: true });
   } catch (err: any) {

@@ -9,7 +9,7 @@
  * server-side (next-stage task, document alert, welcome comm).
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Check, X } from "lucide-react";
 
@@ -38,6 +38,13 @@ export function OnboardingStageActions({
 }) {
   const router = useRouter();
   const [stage, setStage] = useState(currentStage);
+  // After a successful submit we call router.refresh(), which re-runs the
+  // server component and feeds a fresh `currentStage` prop. useState seeds only
+  // once, so without this sync the dropdown would keep showing the
+  // just-completed stage. Re-sync the selection to the server's new truth.
+  useEffect(() => {
+    setStage(currentStage);
+  }, [currentStage]);
   const [remarks, setRemarks] = useState("");
   const [docInput, setDocInput] = useState("");
   const [pendingDocs, setPendingDocs] = useState<string[]>([]);

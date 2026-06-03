@@ -39,12 +39,13 @@ export async function GET() {
           COUNT(*) FILTER (WHERE dob IS NULL)                         AS dob_missing,
           COUNT(*) FILTER (WHERE nominee_name IS NULL
                               OR nominee_name = '')                   AS nominee_missing,
-          COUNT(*) FILTER (WHERE bank_account_number_masked IS NULL
-                              OR bank_account_number_masked = '')     AS bank_missing,
+          COUNT(*) FILTER (WHERE bank_account_masked IS NULL
+                              OR bank_account_masked = '')            AS bank_missing,
           COUNT(*) FILTER (WHERE risk_profile IS NULL
                               OR risk_profile_signed_at IS NULL)      AS risk_missing,
           COUNT(*) FILTER (WHERE kyc_status != 'verified')             AS kyc_unverified,
           COUNT(*) FILTER (WHERE rm_id IS NULL)                       AS rm_missing,
+          COUNT(*) FILTER (WHERE pan_aadhaar_link_status = 'not_linked' OR pan_aadhaar_link_status IS NULL) AS pan_aadhaar_unlinked,
           COUNT(*)                                                    AS total
         FROM investors
         WHERE status IN ('active', 'dormant')
@@ -60,6 +61,13 @@ export async function GET() {
         label: "Missing PAN",
         count: cap(rows.pan_missing),
         href: "/dashboard/investors?gaps=pan",
+        severity: "high",
+      },
+      {
+        key: "pan_aadhaar",
+        label: "PAN-Aadhaar unlinked",
+        count: cap(rows.pan_aadhaar_unlinked),
+        href: "/dashboard/investors?gaps=pan_aadhaar",
         severity: "high",
       },
       {

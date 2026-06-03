@@ -144,9 +144,16 @@ function spawnNext() {
   freePort(PORT);
 
   const nextBin = process.platform === "win32" ? "next.cmd" : "next";
-  log(`starting next dev (heap=${HEAP_MB}MB, port=${PORT}, restart #${restarts.length})`);
+  // Turbopack compiles routes on-demand DRAMATICALLY faster than webpack — the
+  // reason dev navigation felt slow is that webpack recompiled each route on
+  // its first visit (login, then dashboard, then every sidebar page). Turbopack
+  // also uses far less Node heap, which is the very reason this wrapper exists.
+  // Opt out with NO_TURBO=1 if a rare webpack-only loader ever isn't supported.
+  const useTurbo = process.env.NO_TURBO !== "1";
+  const devArgs = useTurbo ? ["dev", "--turbopack", "-p", String(PORT)] : ["dev", "-p", String(PORT)];
+  log(`starting next dev (${useTurbo ? "turbopack" : "webpack"}, heap=${HEAP_MB}MB, port=${PORT}, restart #${restarts.length})`);
 
-  const child = spawn(nextBin, ["dev", "-p", String(PORT)], {
+  const child = spawn(nextBin, devArgs, {
     stdio: "inherit",
     env: {
       ...process.env,

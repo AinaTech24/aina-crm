@@ -14,6 +14,7 @@
 import {
   date,
   index,
+  integer,
   jsonb,
   pgTable,
   text,
@@ -103,6 +104,8 @@ export const reviewMeetings = pgTable(
     parentMeetingId: uuid("parent_meeting_id"),
 
     meetingType: text("meeting_type", { enum: REVIEW_MEETING_TYPES }).notNull(),
+    /** Optional free-text headline (Sanchay-parity). Falls back to type + name. */
+    subject: text("subject"),
     meetingDate: timestamp("meeting_date", { withTimezone: true }).notNull(),
     durationMinutes: text("duration_minutes").default("30"),
     meetingMode: text("meeting_mode", { enum: REVIEW_MEETING_MODES }).notNull(),
@@ -158,6 +161,10 @@ export const reviewMeetings = pgTable(
 
     nextReviewDate: date("next_review_date"),
     actualEndAt: timestamp("actual_end_at", { withTimezone: true }),
+
+    /** Reschedule bookkeeping — how many times moved + the latest reason. */
+    rescheduleCount: integer("reschedule_count").notNull().default(0),
+    rescheduleReason: text("reschedule_reason"),
 
     /** True once action items have been fanned out into the tasks table. */
     followUpTaskCreated: text("follow_up_task_created").default("false"),

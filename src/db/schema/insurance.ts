@@ -106,18 +106,39 @@ export const insurancePolicies = pgTable(
     riders: jsonb("riders").$type<Array<{ name: string; sumAssured?: number; premium?: number }>>().default([]),
     documents: jsonb("documents").$type<Array<{ name: string; url: string; uploadedAt?: string }>>().default([]),
 
+    /**
+     * Category-specific extras the fixed columns don't model — keyed off the
+     * policy type's category (life / health / motor / general). Examples:
+     *   motor   → { vehicleRegNo, makeModel, idv, ncbPercent, coverType }
+     *   health  → { roomRentCapInr, coPayPercent, preExistingWaitingMonths }
+     *   general → { coverageNotes }
+     * Plus cross-category fields: businessType (new|renewal|portability) and
+     * proposerName / proposerPan when the proposer differs from the holder.
+     * Also the landing spot for AI policy-document auto-fill. Kept in JSONB so
+     * adding a category never needs a migration.
+     */
+    details: jsonb("details").$type<Record<string, unknown>>().default({}),
+
     /** Free-form remarks — surrender values, claim notes, etc. */
     remarks: text("remarks"),
     /** When the policy lapses or is surrendered, capture the reason. */
     lapseReason: text("lapse_reason"),
     surrenderValue: numeric("surrender_value", { precision: 14, scale: 2 }),
 
-    /** Commission paid out for this policy (often 1-time + trail). */
+    /**
+     * Commission paid out for this policy (often 1-time + trail). NOTE: despite
+     * the legacy `commission_paisa` column name, this is stored in RUPEES
+     * (numeric, 2dp) — not paisa. Currently not populated by the create route.
+     */
     commissionPaisa: numeric("commission_paisa", { precision: 14, scale: 2 }),
 
     status: text("status", { enum: POLICY_STATUSES }).notNull().default("active"),
     soldByUserId: uuid("sold_by_user_id").references(() => users.id),
     soldAt: timestamp("sold_at", { withTimezone: true }),
+
+    /** Set once when the scanner emits `insurance.lapsed`, so it alerts only
+     *  once per policy instead of every day past grace. */
+    lapseAlertedAt: timestamp("lapse_alerted_at", { withTimezone: true }),
 
     ...timestamps,
   },

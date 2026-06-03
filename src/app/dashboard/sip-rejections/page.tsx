@@ -3,10 +3,10 @@ import { sql } from "drizzle-orm";
 import { XOctagon, AlertTriangle, CheckCircle2, Clock } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { formatINR, formatDate, formatRelative } from "@/lib/utils";
-import { RecoveryStatusUpdater } from "@/components/sip-rejections/RecoveryStatusUpdater";
-import { RemarkEditor } from "@/components/sip-rejections/RemarkEditor";
+import { formatINR } from "@/lib/utils";
+import { SipRejectionsTable } from "@/components/sip-rejections/SipRejectionsTable";
 import { FilterBar } from "@/components/common/FilterBar";
+import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
 import { CustomViews } from "@/components/common/CustomViews";
 import { ColumnManager } from "@/components/common/ColumnManager";
 
@@ -34,6 +34,7 @@ export default async function SipRejectionsPage({
   const sp = await searchParams;
   const q = (sp.q ?? "").trim();
   const recoveryFilter = (sp.recovery ?? "").split(",").filter(Boolean);
+  const reasonCat = (sp.reason_cat ?? "").trim();
   const overdueOnly = sp.overdue === "1";
   const mtdOnly = sp.mtd === "1";
 
@@ -49,6 +50,9 @@ export default async function SipRejectionsPage({
         sql`r.recovery_status IN (${sql.join(recoveryFilter.map((v) => sql`${v}`), sql`, `)})`
       );
     }
+    if (reasonCat) {
+      filters.push(sql`r.reason_category = ${reasonCat}`);
+    }
     if (overdueOnly) {
       filters.push(
         sql`((now() - r.status_changed_at) > interval '2 days' AND r.recovery_status IN ('pending','client_contacted','bank_issue','mandate_issue'))`
@@ -57,11 +61,13 @@ export default async function SipRejectionsPage({
     if (mtdOnly) {
       filters.push(sql`r.rejection_date >= date_trunc('month', now())`);
     }
+    const dr = dateRangeCond(sp, "rej", "r.rejection_date");
+    if (dr) filters.push(dr);
     const whereSql = filters.length ? sql` WHERE ${sql.join(filters, sql` AND `)}` : sql``;
 
     const rows = await tx.execute(sql`
       SELECT r.id, r.investor_id, r.rejection_date, r.rejection_amount,
-             r.rejection_reason, r.scheme_name, r.folio_number, r.amc_name,
+             r.rejection_reason, r.reason_category, r.scheme_name, r.folio_number, r.amc_name,
              r.assigned_rm_id, r.follow_up_date, r.recovery_date,
              r.recovery_status, r.status_changed_at, r.remarks, r.created_at,
              i.name AS investor_name, i.pan AS investor_pan,
@@ -91,10 +97,41 @@ export default async function SipRejectionsPage({
           THEN rejection_amount::numeric ELSE 0 END), 0)::numeric AS rejected_amt_mtd,
         COALESCE(SUM(CASE WHEN recovery_status = 'recovered'
           AND recovery_date >= date_trunc('month', now())
-          THEN rejection_amount::numeric ELSE 0 END), 0)::numeric AS recovered_amt_mtd
+          THEN rejection_amount::numeric ELSE 0 END), 0)::numeric AS recovered_amt_mtd,
+        -- Reason mix (open items only — what's actionable right now)
+        COUNT(*) FILTER (WHERE reason_category = 'insufficient_balance'
+          AND recovery_status IN ('pending','client_contacted','bank_issue','mandate_issue'))::int AS rc_balance,
+        COUNT(*) FILTER (WHERE reason_category = 'mandate_expired'
+          AND recovery_status IN ('pending','client_contacted','bank_issue','mandate_issue'))::int AS rc_mandate,
+        COUNT(*) FILTER (WHERE reason_category = 'technical'
+          AND recovery_status IN ('pending','client_contacted','bank_issue','mandate_issue'))::int AS rc_technical,
+        -- Aging buckets (open items, by how long since the status last moved)
+        COUNT(*) FILTER (WHERE recovery_status IN ('pending','client_contacted','bank_issue','mandate_issue')
+          AND (now() - status_changed_at) <= interval '2 days')::int AS age_0_2,
+        COUNT(*) FILTER (WHERE recovery_status IN ('pending','client_contacted','bank_issue','mandate_issue')
+          AND (now() - status_changed_at) > interval '2 days'
+          AND (now() - status_changed_at) <= interval '7 days')::int AS age_3_7,
+        COUNT(*) FILTER (WHERE recovery_status IN ('pending','client_contacted','bank_issue','mandate_issue')
+          AND (now() - status_changed_at) > interval '7 days')::int AS age_7p
       FROM sip_rejections
+      WHERE tenant_id = ${session.tenantId}::uuid
     `);
     const s = stats.rows[0] as any;
+
+    // Per-RM accountability — who's sitting on open / overdue recoveries.
+    const byRm = await tx.execute(sql`
+      SELECT COALESCE(u.name, '— Unassigned —') AS rm_name,
+             COUNT(*)::int AS open_count,
+             COUNT(*) FILTER (WHERE (now() - r.status_changed_at) > interval '2 days')::int AS overdue_count,
+             COALESCE(SUM(r.rejection_amount::numeric), 0)::numeric AS open_amt
+      FROM sip_rejections r
+      LEFT JOIN users u ON u.id = r.assigned_rm_id
+      WHERE r.tenant_id = ${session.tenantId}::uuid
+        AND r.recovery_status IN ('pending','client_contacted','bank_issue','mandate_issue')
+      GROUP BY COALESCE(u.name, '— Unassigned —')
+      ORDER BY overdue_count DESC, open_count DESC
+      LIMIT 12
+    `);
     const recoveryRate =
       Number(s.rejected_amt_mtd) > 0
         ? (Number(s.recovered_amt_mtd) / Number(s.rejected_amt_mtd)) * 100
@@ -111,6 +148,13 @@ export default async function SipRejectionsPage({
       rejectedAmtMtd: Number(s.rejected_amt_mtd),
       recoveredAmtMtd: Number(s.recovered_amt_mtd),
       recoveryRate,
+      reasonMix: {
+        insufficient_balance: Number(s.rc_balance),
+        mandate_expired: Number(s.rc_mandate),
+        technical: Number(s.rc_technical),
+      },
+      aging: { a0_2: Number(s.age_0_2), a3_7: Number(s.age_3_7), a7p: Number(s.age_7p) },
+      byRm: byRm.rows as any[],
       rows: rows.rows as any[],
     };
   });
@@ -172,6 +216,60 @@ export default async function SipRejectionsPage({
         </div>
       </div>
 
+      {/* Reason mix · aging · per-RM accountability */}
+      <div className="grid gap-3 md:grid-cols-3">
+        <div className="card-surface p-5">
+          <h3 className="font-semibold text-sm mb-3">Why SIPs are bouncing <span className="text-xs font-normal text-muted-foreground">(open)</span></h3>
+          <div className="space-y-1.5">
+            <ReasonRow label="Mandate expired" hint="Re-register NACH" value={data.reasonMix.mandate_expired} cat="mandate_expired" active={reasonCat} tone="orange" />
+            <ReasonRow label="Insufficient balance" hint="Nudge the client" value={data.reasonMix.insufficient_balance} cat="insufficient_balance" active={reasonCat} tone="amber" />
+            <ReasonRow label="Technical" hint="Auto-retry next cycle" value={data.reasonMix.technical} cat="technical" active={reasonCat} tone="slate" />
+          </div>
+          {reasonCat && (
+            <Link href="/dashboard/sip-rejections" className="text-[11px] text-brand-cyan hover:underline mt-2 inline-block">
+              Clear reason filter
+            </Link>
+          )}
+        </div>
+
+        <div className="card-surface p-5">
+          <h3 className="font-semibold text-sm mb-3">Recovery aging <span className="text-xs font-normal text-muted-foreground">(open items)</span></h3>
+          <div className="grid grid-cols-3 gap-2 text-center">
+            <AgeBucket label="0–2 days" value={data.aging.a0_2} tone="emerald" />
+            <AgeBucket label="3–7 days" value={data.aging.a3_7} tone="amber" />
+            <AgeBucket label="> 7 days" value={data.aging.a7p} tone="rose" />
+          </div>
+          <p className="text-[11px] text-muted-foreground mt-3">
+            Past 2 days breaches SLA — the daily scanner pings the RM &amp; branch head and bumps the task to urgent.
+          </p>
+        </div>
+
+        <div className="card-surface p-5">
+          <h3 className="font-semibold text-sm mb-3">Open recoveries by RM</h3>
+          {data.byRm.length === 0 ? (
+            <p className="text-xs text-muted-foreground">No open recoveries. ✓</p>
+          ) : (
+            <ul className="space-y-1.5 text-sm max-h-44 overflow-y-auto pr-1">
+              {data.byRm.map((r: any) => (
+                <li key={r.rm_name} className="flex items-center justify-between gap-2">
+                  <span className="truncate">{r.rm_name}</span>
+                  <span className="flex items-center gap-1.5 shrink-0">
+                    {Number(r.overdue_count) > 0 && (
+                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-700">
+                        {r.overdue_count} overdue
+                      </span>
+                    )}
+                    <span className="text-xs font-bold tabular-nums px-1.5 py-0.5 rounded-full bg-secondary text-muted-foreground min-w-[1.6rem] text-center">
+                      {r.open_count}
+                    </span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+
       <FilterBar
         totalCount={data.rows.length}
         filters={[
@@ -190,6 +288,7 @@ export default async function SipRejectionsPage({
               { value: "not_recoverable", label: "Not recoverable" },
             ],
           },
+          dateRangeFilter("rej", "Rejected"),
         ]}
         rightSlot={
           <div className="flex items-center gap-2">
@@ -207,92 +306,53 @@ export default async function SipRejectionsPage({
         }
       />
 
-      <div className="card-surface">
-        {data.rows.length === 0 ? (
-          <div className="p-12 text-center text-sm text-muted-foreground">
-            <XOctagon className="size-8 mx-auto text-muted-foreground/50" />
-            <div className="mt-2 font-medium">No SIP rejections tracked. ✓</div>
-            <p className="mt-2 text-xs max-w-md mx-auto">
-              When a SIP gets rejected, this list auto-populates and creates a high-priority task for the RM.
-            </p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm" data-table="sip-rejections">
-              <thead className="text-xs text-muted-foreground border-b">
-                <tr>
-                  <th data-col="rejected_on" className="text-left px-4 py-2 font-medium">Rejected on</th>
-                  <th data-col="investor" className="text-left py-2 font-medium">Investor</th>
-                  <th data-col="sip" className="text-left py-2 font-medium">SIP details</th>
-                  <th data-col="amount" className="text-right py-2 font-medium">Amount</th>
-                  <th data-col="reason" className="text-left py-2 font-medium">Reason</th>
-                  <th data-col="rm" className="text-left py-2 font-medium">RM</th>
-                  <th data-col="follow_up" className="text-left py-2 font-medium">Follow-up</th>
-                  <th data-col="recovery_date" className="text-left py-2 font-medium">Recovery</th>
-                  <th data-col="recovery_status" className="text-left py-2 font-medium">Recovery Status</th>
-                  <th data-col="remarks" className="text-left py-2 font-medium pr-4">Remarks</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.rows.map((r) => (
-                  <tr
-                    key={r.id}
-                    className={`border-b last:border-0 hover:bg-secondary/40 ${
-                      r.escalation_overdue ? "bg-rose-50/30" : ""
-                    }`}
-                  >
-                    <td data-col="rejected_on" className="px-4 py-3 text-xs whitespace-nowrap">
-                      <div className="font-medium tabular-nums">{formatDate(r.rejection_date)}</div>
-                      <div className="text-muted-foreground">{formatRelative(r.created_at)}</div>
-                    </td>
-                    <td data-col="investor" className="py-3 whitespace-nowrap">
-                      <Link href={`/dashboard/investors/${r.investor_id}`} className="hover:underline font-medium">
-                        {r.investor_name ?? "—"}
-                      </Link>
-                      <div className="text-xs text-muted-foreground font-mono">{r.investor_pan}</div>
-                    </td>
-                    <td data-col="sip" className="py-3 max-w-[200px]">
-                      <div className="text-sm truncate">{r.scheme_name ?? "—"}</div>
-                      <div className="text-xs text-muted-foreground truncate">
-                        {r.amc_name ?? "—"}
-                        {r.folio_number ? <> · <span className="font-mono">{r.folio_number}</span></> : null}
-                      </div>
-                    </td>
-                    <td data-col="amount" className="py-3 text-right tabular-nums font-medium text-rose-600">
-                      {formatINR(Number(r.rejection_amount))}
-                    </td>
-                    <td data-col="reason" className="py-3 text-xs max-w-[180px]">
-                      <div className="font-mono text-xs">{r.rejection_reason ?? "—"}</div>
-                    </td>
-                    <td data-col="rm" className="py-3 text-xs whitespace-nowrap">{r.rm_name ?? "—"}</td>
-                    <td data-col="follow_up" className="py-3 text-xs whitespace-nowrap">
-                      {r.follow_up_date ? formatDate(r.follow_up_date) : "—"}
-                      {r.escalation_overdue && (
-                        <div className="text-[10px] text-rose-600 font-semibold">SLA breached</div>
-                      )}
-                    </td>
-                    <td data-col="recovery_date" className="py-3 text-xs whitespace-nowrap">
-                      {r.recovery_date ? (
-                        <span className="text-emerald-600 font-medium">
-                          {formatDate(r.recovery_date)}
-                        </span>
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                    <td data-col="recovery_status" className="py-3 whitespace-nowrap">
-                      <RecoveryStatusUpdater rejectionId={r.id} currentStatus={r.recovery_status} />
-                    </td>
-                    <td data-col="remarks" className="py-3 pr-4">
-                      <RemarkEditor rejectionId={r.id} initial={r.remarks ?? null} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+      <SipRejectionsTable rows={data.rows as any} />
+    </div>
+  );
+}
+
+function ReasonRow({
+  label,
+  hint,
+  value,
+  cat,
+  active,
+  tone,
+}: {
+  label: string;
+  hint: string;
+  value: number;
+  cat: string;
+  active: string;
+  tone: "orange" | "amber" | "slate";
+}) {
+  const dot =
+    tone === "orange" ? "bg-orange-500" : tone === "amber" ? "bg-amber-500" : "bg-slate-400";
+  const isActive = active === cat;
+  return (
+    <Link
+      href={`/dashboard/sip-rejections?reason_cat=${cat}`}
+      className={`flex items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-sm transition-colors ${
+        isActive ? "border-brand-cyan bg-brand-cyan-light/40" : "border-transparent hover:bg-secondary/60"
+      }`}
+    >
+      <span className="flex items-center gap-2 min-w-0">
+        <span className={`size-2 rounded-full shrink-0 ${dot}`} />
+        <span className="truncate">{label}</span>
+        <span className="text-[11px] text-muted-foreground truncate hidden sm:inline">· {hint}</span>
+      </span>
+      <span className="text-sm font-bold tabular-nums shrink-0">{value}</span>
+    </Link>
+  );
+}
+
+function AgeBucket({ label, value, tone }: { label: string; value: number; tone: "emerald" | "amber" | "rose" }) {
+  const color =
+    tone === "emerald" ? "text-emerald-600" : tone === "amber" ? "text-amber-600" : "text-rose-600";
+  return (
+    <div className="rounded-md bg-secondary/40 py-2">
+      <div className={`text-xl font-bold tabular-nums ${value > 0 ? color : "text-muted-foreground"}`}>{value}</div>
+      <div className="text-[11px] text-muted-foreground mt-0.5">{label}</div>
     </div>
   );
 }

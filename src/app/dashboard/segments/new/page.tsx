@@ -6,6 +6,7 @@ import Link from "next/link";
 import { ChevronLeft, Plus, X, Loader2 } from "lucide-react";
 import { investorCatalog, leadCatalog, taskCatalog } from "@/lib/filter/catalog";
 import type { FilterAST, Group, Predicate } from "@/lib/filter/ast";
+import { isFieldAllowed } from "@/lib/auth/field-gate";
 
 type Subject = "investor" | "lead" | "task";
 
@@ -33,6 +34,18 @@ export default function NewSegmentPage() {
   const [previewErr, setPreviewErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveErr, setSaveErr] = useState<string | null>(null);
+  const [license, setLicense] = useState<any>(null);
+
+  useEffect(() => {
+    fetch("/api/tenant")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.license) {
+          setLicense(data.license);
+        }
+      })
+      .catch((err) => console.error("failed to fetch license", err));
+  }, []);
 
   // Debounced preview
   useEffect(() => {
@@ -163,7 +176,7 @@ export default function NewSegmentPage() {
 
       <div className="border rounded-lg bg-card p-5">
         <div className="font-medium mb-3">Criteria</div>
-        <GroupEditor subject={subject} group={ast} onChange={(g) => setAst(g)} />
+        <GroupEditor subject={subject} group={ast} onChange={(g) => setAst(g)} license={license} />
       </div>
 
       {preview && preview.sample.length > 0 && (
@@ -197,10 +210,12 @@ function GroupEditor({
   subject,
   group,
   onChange,
+  license,
 }: {
   subject: Subject;
   group: Group;
   onChange: (g: Group) => void;
+  license: any;
 }) {
   return (
     <div className="border rounded-md p-3 bg-muted/30">
@@ -224,6 +239,7 @@ function GroupEditor({
               <PredicateEditor
                 subject={subject}
                 predicate={c}
+                license={license}
                 onChange={(p) => {
                   const next = [...group.children];
                   next[i] = p;
@@ -235,6 +251,7 @@ function GroupEditor({
                 <GroupEditor
                   subject={subject}
                   group={c}
+                  license={license}
                   onChange={(g) => {
                     const next = [...group.children];
                     next[i] = g;
@@ -291,14 +308,17 @@ function PredicateEditor({
   subject,
   predicate,
   onChange,
+  license,
 }: {
   subject: Subject;
   predicate: Predicate;
   onChange: (p: Predicate) => void;
+  license: any;
 }) {
   const catalog = CATALOGS[subject];
   const fieldKey = predicate.field.kind === "attr" ? predicate.field.path : "";
-  const field = catalog.fields.find((f) => f.key === fieldKey);
+  const allowedFields = catalog.fields.filter((f) => isFieldAllowed(license, subject, f.key));
+  const field = allowedFields.find((f) => f.key === fieldKey) || catalog.fields.find((f) => f.key === fieldKey);
   return (
     <div className="flex-1 flex items-center gap-2 bg-background rounded p-2 border">
       <select
@@ -306,7 +326,7 @@ function PredicateEditor({
         onChange={(e) => onChange({ ...predicate, field: { kind: "attr", path: e.target.value } })}
         className="text-sm rounded border-0 bg-transparent max-w-[160px]"
       >
-        {catalog.fields.map((f) => (
+        {allowedFields.map((f) => (
           <option key={f.key} value={f.key}>
             {f.label}
           </option>

@@ -13,6 +13,8 @@ import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
+import { healthFields } from "@/lib/investors/health";
+import { recomputeFamilyHealthForInvestor } from "@/lib/families/health-persist";
 import {
   investors,
   folios,
@@ -35,6 +37,9 @@ const Patch = z.object({
   segmentTag: z.enum(["HNI", "Affluent", "Retail", "NRI", "Corporate"]).optional(),
   investorCategory: z.enum(["individual", "huf", "corporate", "trust", "nri", "minor", "other"]).optional(),
   rmId: z.string().uuid().optional(),
+  // Client-service preferences
+  statementCadence: z.enum(["off", "monthly", "quarterly"]).optional(),
+  languagePref: z.enum(["en", "hi", "gu", "mr", "ta", "te", "kn", "bn", "ml", "pa"]).optional(),
   riskProfile: z.enum(["conservative", "moderate", "aggressive", "very_aggressive"]).optional(),
   nomineeName: z.string().optional(),
   nomineeRelation: z.string().optional(),
@@ -72,6 +77,31 @@ const Patch = z.object({
   kycValidatedAt: z.string().nullable().optional(),
   ckycNumber: z.string().max(40).nullable().optional(),
   ckycExpiryAt: z.string().nullable().optional(),
+  /** Cross-sell / product-holdings matrix: { productKey: statusKey }. */
+  crossSell: z.record(z.string(), z.string()).nullable().optional(),
+  // ── Master-record editable fields (Sanchay parity) ──────────────────
+  dob: z.string().nullable().optional(), // YYYY-MM-DD (date column accepts string)
+  gender: z.enum(["M", "F", "O"]).nullable().optional(),
+  alternatePhone: z.string().max(20).nullable().optional(),
+  occupation: z.string().max(120).nullable().optional(),
+  incomeRange: z.string().max(60).nullable().optional(),
+  employerName: z.string().max(200).nullable().optional(),
+  address: z
+    .object({
+      line1: z.string().max(300).optional(),
+      city: z.string().max(120).optional(),
+      state: z.string().max(120).optional(),
+      pincode: z.string().max(12).optional(),
+      country: z.string().max(80).optional(),
+    })
+    .nullable()
+    .optional(),
+  serviceTier: z.enum(["A", "B", "C"]).nullable().optional(),
+  bseUccCode: z.string().max(40).nullable().optional(),
+  nseCanCode: z.string().max(40).nullable().optional(),
+  mandateStatus: z.enum(["none", "pending", "active", "expired", "rejected", "cancelled"]).nullable().optional(),
+  mandateRefNo: z.string().max(60).nullable().optional(),
+  status: z.enum(["active", "dormant", "inactive", "redemption_risk", "closed", "exited"]).optional(),
 });
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -149,6 +179,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         parse.data.ckycNumber !== undefined ||
         parse.data.ckycExpiryAt !== undefined;
 
+      // Recompute persisted health from the post-patch state — many edited
+      // fields (KYC, nominee, bank, risk profile, review dates) feed the score.
+      const merged = { ...before, ...parse.data };
+      const health = healthFields(merged as any);
+
       const after = await tx
         .update(investors)
         .set({
@@ -157,6 +192,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           ...(touchingKyc
             ? { kycLastUpdatedBy: session.userId }
             : {}),
+          ...health,
         } as any)
         .where(eq(investors.id, id))
         .returning();
@@ -170,6 +206,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         after: after[0] as any,
         meta: { userId: session.userId } as any,
       } as any);
+
+      // A member's KYC/nominee/risk/etc. feeds its family's health too —
+      // re-score the family this investor belongs to (no-op if unlinked).
+      await recomputeFamilyHealthForInvestor(tx, id);
 
       return after[0];
     });

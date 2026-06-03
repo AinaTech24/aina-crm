@@ -49,7 +49,27 @@ const RISK_PROFILES = [
   ["very_aggressive", "Very aggressive"],
 ] as const;
 
-export function InvestorEditPanel({ investor }: { investor: any }) {
+export function InvestorEditPanel({
+  investor,
+  showPan = true,
+  showDob = true,
+  showPhone = true,
+  showEmail = true,
+  showWhatsApp = true,
+  showNominee = true,
+  showBank = true,
+  showRiskProfile = true,
+}: {
+  investor: any;
+  showPan?: boolean;
+  showDob?: boolean;
+  showPhone?: boolean;
+  showEmail?: boolean;
+  showWhatsApp?: boolean;
+  showNominee?: boolean;
+  showBank?: boolean;
+  showRiskProfile?: boolean;
+}) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -96,19 +116,24 @@ export function InvestorEditPanel({ investor }: { investor: any }) {
     try {
       const payload: any = {
         name: form.name,
-        email: form.email || "",
-        phone: form.phone || undefined,
-        whatsappPhone: form.whatsappPhone || undefined,
-        segmentTag: form.segmentTag || undefined,
-        investorCategory: form.investorCategory,
-        riskProfile: form.riskProfile || undefined,
-        nomineeName: form.nomineeName || undefined,
-        nomineeRelation: form.nomineeRelation || undefined,
-        bankName: form.bankName || undefined,
-        bankAccountNumberMasked: form.bankAccountNumberMasked || undefined,
-        bankIfsc: form.bankIfsc || undefined,
-        notes: form.notes || undefined,
       };
+      if (showEmail) payload.email = form.email || "";
+      if (showPhone) {
+        payload.phone = form.phone || undefined;
+        payload.whatsappPhone = form.whatsappPhone || undefined;
+      }
+      if (showRiskProfile) {
+        payload.riskProfile = form.riskProfile || undefined;
+      }
+      if (showNominee) {
+        payload.nomineeName = form.nomineeName || undefined;
+        payload.nomineeRelation = form.nomineeRelation || undefined;
+      }
+      if (showBank) {
+        payload.bankName = form.bankName || undefined;
+        payload.bankAccountNumberMasked = form.bankAccountNumberMasked || undefined;
+        payload.bankIfsc = form.bankIfsc || undefined;
+      }
 
       const res = await fetch(`/api/investors/${investor.id}`, {
         method: "PATCH",
@@ -177,10 +202,12 @@ export function InvestorEditPanel({ investor }: { investor: any }) {
             <span>{investor.name}</span>
           )}
         </KV>
-        <KV label="PAN" mono>{investor.pan}</KV>
-        <KV label="DOB">
-          {investor.dob ? new Date(investor.dob).toLocaleDateString("en-IN") : "—"}
-        </KV>
+        {showPan && <KV label="PAN" mono>{investor.pan}</KV>}
+        {showDob && (
+          <KV label="DOB">
+            {investor.dob ? new Date(investor.dob).toLocaleDateString("en-IN") : "—"}
+          </KV>
+        )}
         <KV label="Gender">
           {editing ? (
             <select value={form.gender} onChange={(e) => set("gender", e.target.value)} className={inputCls}>
@@ -195,32 +222,42 @@ export function InvestorEditPanel({ investor }: { investor: any }) {
         </KV>
       </Group>
 
-      <Group title="Contact">
-        <KV label="Mobile">
-          {editing ? (
-            <input value={form.phone} onChange={(e) => set("phone", e.target.value)} className={inputCls} />
-          ) : (
-            <span>{investor.phone ?? "—"}</span>
+      {(showPhone || showEmail) && (
+        <Group title="Contact">
+          {showPhone && (
+            <KV label="Mobile">
+              {editing ? (
+                <input value={form.phone} onChange={(e) => set("phone", e.target.value)} className={inputCls} />
+              ) : (
+                <span>{investor.phone ?? "—"}</span>
+              )}
+            </KV>
           )}
-        </KV>
-        <KV label="Alt mobile">
-          <span>{investor.alternatePhone ?? "—"}</span>
-        </KV>
-        <KV label="Email">
-          {editing ? (
-            <input type="email" value={form.email} onChange={(e) => set("email", e.target.value)} className={inputCls} />
-          ) : (
-            <span>{investor.email ?? "—"}</span>
+          {showPhone && (
+            <KV label="Alt mobile">
+              <span>{investor.alternatePhone ?? "—"}</span>
+            </KV>
           )}
-        </KV>
-        <KV label="WhatsApp">
-          {editing ? (
-            <input value={form.whatsappPhone} onChange={(e) => set("whatsappPhone", e.target.value)} className={inputCls} />
-          ) : (
-            <span>{investor.whatsappPhone ?? "—"}</span>
+          {showEmail && (
+            <KV label="Email">
+              {editing ? (
+                <input type="email" value={form.email} onChange={(e) => set("email", e.target.value)} className={inputCls} />
+              ) : (
+                <span>{investor.email ?? "—"}</span>
+              )}
+            </KV>
           )}
-        </KV>
-      </Group>
+          {showPhone && (
+            <KV label="WhatsApp">
+              {editing ? (
+                <input value={form.whatsappPhone} onChange={(e) => set("whatsappPhone", e.target.value)} className={inputCls} />
+              ) : (
+                <span>{investor.whatsappPhone ?? "—"}</span>
+              )}
+            </KV>
+          )}
+        </Group>
+      )}
 
       <Group title="Profile">
         <KV label="Client category">
@@ -242,55 +279,69 @@ export function InvestorEditPanel({ investor }: { investor: any }) {
             <span>{investor.segmentTag ?? "—"}</span>
           )}
         </KV>
-        <KV label="Risk profile">
-          {editing ? (
-            <select value={form.riskProfile} onChange={(e) => set("riskProfile", e.target.value)} className={inputCls}>
-              <option value="">Not assessed</option>
-              {RISK_PROFILES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-            </select>
-          ) : (
-            <span className="capitalize">{(investor.riskProfile ?? "not assessed").replace(/_/g, " ")}</span>
-          )}
-        </KV>
+        {showRiskProfile && (
+          <KV label="Risk profile">
+            {editing ? (
+              <select value={form.riskProfile} onChange={(e) => set("riskProfile", e.target.value)} className={inputCls}>
+                <option value="">Not assessed</option>
+                {RISK_PROFILES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+              </select>
+            ) : (
+              <span className="capitalize">{(investor.riskProfile ?? "not assessed").replace(/_/g, " ")}</span>
+            )}
+          </KV>
+        )}
       </Group>
 
-      <Group title="Nominee & bank">
-        <KV label="Nominee name">
-          {editing ? (
-            <input value={form.nomineeName} onChange={(e) => set("nomineeName", e.target.value)} className={inputCls} />
-          ) : (
-            <span>{investor.nomineeName ?? "—"}</span>
+      {(showNominee || showBank) && (
+        <Group title="Nominee & bank">
+          {showNominee && (
+            <KV label="Nominee name">
+              {editing ? (
+                <input value={form.nomineeName} onChange={(e) => set("nomineeName", e.target.value)} className={inputCls} />
+              ) : (
+                <span>{investor.nomineeName ?? "—"}</span>
+              )}
+            </KV>
           )}
-        </KV>
-        <KV label="Nominee relation">
-          {editing ? (
-            <input value={form.nomineeRelation} onChange={(e) => set("nomineeRelation", e.target.value)} className={inputCls} />
-          ) : (
-            <span>{investor.nomineeRelation ?? "—"}</span>
+          {showNominee && (
+            <KV label="Nominee relation">
+              {editing ? (
+                <input value={form.nomineeRelation} onChange={(e) => set("nomineeRelation", e.target.value)} className={inputCls} />
+              ) : (
+                <span>{investor.nomineeRelation ?? "—"}</span>
+              )}
+            </KV>
           )}
-        </KV>
-        <KV label="Bank">
-          {editing ? (
-            <input value={form.bankName} onChange={(e) => set("bankName", e.target.value)} className={inputCls} />
-          ) : (
-            <span>{investor.bankName ?? "—"}</span>
+          {showBank && (
+            <KV label="Bank">
+              {editing ? (
+                <input value={form.bankName} onChange={(e) => set("bankName", e.target.value)} className={inputCls} />
+              ) : (
+                <span>{investor.bankName ?? "—"}</span>
+              )}
+            </KV>
           )}
-        </KV>
-        <KV label="Account (masked)">
-          {editing ? (
-            <input value={form.bankAccountNumberMasked} onChange={(e) => set("bankAccountNumberMasked", e.target.value)} className={inputCls} />
-          ) : (
-            <span className="font-mono">{investor.bankAccountNumberMasked ?? "—"}</span>
+          {showBank && (
+            <KV label="Account (masked)">
+              {editing ? (
+                <input value={form.bankAccountNumberMasked} onChange={(e) => set("bankAccountNumberMasked", e.target.value)} className={inputCls} />
+              ) : (
+                <span className="font-mono">{investor.bankAccountNumberMasked ?? "—"}</span>
+              )}
+            </KV>
           )}
-        </KV>
-        <KV label="IFSC">
-          {editing ? (
-            <input value={form.bankIfsc} onChange={(e) => set("bankIfsc", e.target.value)} className={inputCls} />
-          ) : (
-            <span className="font-mono">{investor.bankIfsc ?? "—"}</span>
+          {showBank && (
+            <KV label="IFSC">
+              {editing ? (
+                <input value={form.bankIfsc} onChange={(e) => set("bankIfsc", e.target.value)} className={inputCls} />
+              ) : (
+                <span className="font-mono">{investor.bankIfsc ?? "—"}</span>
+              )}
+            </KV>
           )}
-        </KV>
-      </Group>
+        </Group>
+      )}
 
       <Group title="Notes">
         {editing ? (

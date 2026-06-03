@@ -11,7 +11,7 @@ export const segments = pgTable(
     name: text("name").notNull(),
     description: text("description"),
     kind: text("kind", { enum: ["static", "dynamic"] }).notNull(),
-    subjectType: text("subject_type", { enum: ["investor", "lead", "task", "folio"] }).notNull(),
+    subjectType: text("subject_type", { enum: ["investor", "lead", "task"] }).notNull(),
 
     /** FilterAST — see lib/filter/ast.ts. Null only for empty static segments. */
     ast: jsonb("ast"),

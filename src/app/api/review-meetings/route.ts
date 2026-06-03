@@ -12,7 +12,7 @@ import { handleApiError } from "@/lib/api/error-handler";
 
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuid } from "uuid";
-import { sql, eq } from "drizzle-orm";
+import { sql, eq, and } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
@@ -39,15 +39,19 @@ const Body = z
     investorId: z.string().uuid().optional(),
     leadId: z.string().uuid().optional(),
     familyId: z.string().uuid().optional(),
-  rmId: z.string().uuid().optional(),
-  category: z.enum(MEETING_CATEGORIES).default("review"),
-  parentMeetingId: z.string().uuid().optional(),
-  meetingType: z.enum(REVIEW_MEETING_TYPES),
-  meetingDate: z.string(), // ISO datetime
-  durationMinutes: z.number().int().positive().default(30),
+    rmId: z.string().uuid().optional(),
+    category: z.enum(MEETING_CATEGORIES).default("review"),
+    parentMeetingId: z.string().uuid().optional(),
+    meetingType: z.enum(REVIEW_MEETING_TYPES),
+    /** Optional free-text headline. */
+    subject: z.string().max(300).optional(),
+    meetingDate: z.string(), // ISO datetime
+    durationMinutes: z.number().int().positive().default(30),
     meetingMode: z.enum(REVIEW_MEETING_MODES),
     locationOrLink: z.string().optional(),
     discussionPoints: z.string().optional(),
+    /** Initial status — defaults to scheduled. */
+    status: z.enum(["scheduled", "confirmed"]).default("scheduled"),
   })
   .refine((b) => Boolean(b.investorId) !== Boolean(b.leadId), {
     message: "Provide exactly one of investorId or leadId",
@@ -64,6 +68,7 @@ export async function GET() {
         FROM review_meetings m
         LEFT JOIN investors i ON i.id = m.investor_id
         LEFT JOIN users u ON u.id = m.rm_id
+        WHERE m.tenant_id = ${session.tenantId}::uuid
         ORDER BY m.meeting_date DESC
         LIMIT 500
       `);
@@ -94,14 +99,14 @@ export async function POST(req: NextRequest) {
       let subjectType: "investor" | "lead" = "investor";
       let subjectId = "";
       if (body.investorId) {
-        const inv = (await tx.select().from(investors).where(eq(investors.id, body.investorId)).limit(1))[0];
+        const inv = (await tx.select().from(investors).where(and(eq(investors.id, body.investorId), eq(investors.tenantId, session.tenantId))).limit(1))[0];
         if (!inv) throw Object.assign(new Error("investor not found"), { status: 404 });
         subjectName = inv.name;
         subjectRmId = inv.rmId ?? null;
         subjectType = "investor";
         subjectId = body.investorId;
       } else {
-        const ld = (await tx.select().from(leads).where(eq(leads.id, body.leadId!)).limit(1))[0];
+        const ld = (await tx.select().from(leads).where(and(eq(leads.id, body.leadId!), eq(leads.tenantId, session.tenantId))).limit(1))[0];
         if (!ld) throw Object.assign(new Error("lead not found"), { status: 404 });
         subjectName = ld.name;
         subjectRmId = (ld as any).ownerId ?? null;
@@ -141,27 +146,36 @@ export async function POST(req: NextRequest) {
         category: body.category,
         parentMeetingId: body.parentMeetingId ?? null,
         meetingType: body.meetingType,
+        subject: body.subject ?? null,
         meetingDate,
         durationMinutes: String(body.durationMinutes),
         meetingMode: body.meetingMode,
         locationOrLink: body.locationOrLink ?? null,
         discussionPoints: body.discussionPoints ?? null,
-        status: "scheduled",
+        status: body.status,
         reminderTaskId,
       } as any);
 
-      // Outbox so subscribed workflows can send WA reminder etc.
+      // Outbox so subscribed workflows can confirm + remind the client. The
+      // entity pointer is the *person* (investor/lead) — not the meeting — so a
+      // subscribed recipe's subject resolves to someone with a phone/email to
+      // message. `reminderAt` (meeting − 1 day, already computed above for the
+      // RM reminder task) lets a recipe wait_until_date and fire a day-before
+      // reminder. Meeting linkage stays in `after`.
       await tx.insert(eventsOutbox).values({
         tenantId: session.tenantId,
         kind: "review_meeting.scheduled",
-        entityType: "review_meeting",
-        entityId: id,
+        entityType: subjectType,
+        entityId: subjectId,
         after: {
+          reviewMeetingId: id,
           investorId: body.investorId ?? null,
           leadId: body.leadId ?? null,
           meetingType: body.meetingType,
           meetingDate: meetingDate.toISOString(),
+          reminderAt: reminderAt.toISOString(),
           mode: body.meetingMode,
+          locationOrLink: body.locationOrLink ?? null,
         },
         meta: { userId: session.userId } as any,
       } as any);

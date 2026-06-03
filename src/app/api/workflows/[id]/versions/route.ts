@@ -41,14 +41,25 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       const existingDraft = await tx
         .select()
         .from(workflowVersions)
-        .where(and(eq(workflowVersions.workflowId, id), eq(workflowVersions.status, "draft")))
+        .where(
+          and(
+            eq(workflowVersions.workflowId, id),
+            eq(workflowVersions.status, "draft"),
+            eq(workflowVersions.tenantId, session.tenantId)
+          )
+        )
         .limit(1);
 
       if (existingDraft.length) {
         const updated = await tx
           .update(workflowVersions)
           .set({ graph: parse.data.graph, validationReport: validation, updatedAt: new Date() } as any)
-          .where(eq(workflowVersions.id, existingDraft[0].id))
+          .where(
+            and(
+              eq(workflowVersions.id, existingDraft[0].id),
+              eq(workflowVersions.tenantId, session.tenantId)
+            )
+          )
           .returning();
         return { versionId: updated[0].id, action: "updated", versionNumber: updated[0].versionNumber };
       }
@@ -57,7 +68,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       const maxRow = await tx
         .select({ v: max(workflowVersions.versionNumber) })
         .from(workflowVersions)
-        .where(eq(workflowVersions.workflowId, id));
+        .where(
+          and(
+            eq(workflowVersions.workflowId, id),
+            eq(workflowVersions.tenantId, session.tenantId)
+          )
+        );
       const nextVersion = (maxRow[0]?.v ?? 0) + 1;
 
       const versionId = uuid();

@@ -11,31 +11,23 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { leads, eventsOutbox } from "@/db/schema";
+import { loadEditableLead } from "@/lib/leads/access";
+import { CANONICAL_LEAD_STAGES, normalizeLeadStage } from "@/lib/leads/normalize";
+import { scoreFields } from "@/lib/leads/score";
 
 export const dynamic = "force-dynamic";
 
 const Body = z.object({
-  stage: z.enum([
-    // Spec-canonical (8)
-    "new", "contacted", "meeting_scheduled", "proposal_shared",
-    "follow_up", "converted", "lost", "not_interested",
-    // Legacy aliases
-    "qualified", "proposal_sent", "cold",
-  ]),
+  stage: z.string().min(2).max(60),
 });
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   try {
     const session = await requireSession();
-    requireCap(session.roles, "lead.edit.all");
-    if (!session.roles.some((r) => ["owner", "marketing", "rm", "branch_head"].includes(r))) {
-      return NextResponse.json({ error: "forbidden" }, { status: 403 });
-    }
     await assertActiveLicense(session.tenantId, session.roles);
 
     const parse = Body.safeParse(await req.json().catch(() => ({})));
@@ -43,20 +35,30 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     const clientMeta = clientMetaFromHeaders(req.headers);
     const result = await withTenant(session.tenantId, async (tx) => {
-      const before = (await tx.select().from(leads).where(eq(leads.id, id)).limit(1))[0];
-      if (!before) return null;
+      const before = await loadEditableLead(tx, session, id);
+      const nextStage = normalizeLeadStage(parse.data.stage);
+      if (!CANONICAL_LEAD_STAGES.includes(nextStage)) {
+        return null;
+      }
+      const stageChangedAt = new Date();
+      // Re-score on every stage change — the stage is the strongest funnel
+      // signal, so the persisted score must move with it.
+      const scored = scoreFields(
+        { ...(before as any), stage: nextStage, stageChangedAt },
+        stageChangedAt.getTime()
+      );
       const after = await tx
         .update(leads)
-        .set({ stage: parse.data.stage, stageChangedAt: new Date(), updatedAt: new Date() } as any)
+        .set({ stage: nextStage, stageChangedAt, updatedAt: new Date(), ...scored } as any)
         .where(eq(leads.id, id))
         .returning();
       await tx.insert(eventsOutbox).values({
         tenantId: session.tenantId,
-        kind: `lead.stage.${parse.data.stage}`,
+        kind: `lead.stage.${nextStage}`,
         entityType: "lead",
         entityId: id,
         before: { stage: before.stage } as any,
-        after: { stage: parse.data.stage } as any,
+        after: { stage: nextStage } as any,
         meta: { userId: session.userId } as any,
       } as any);
 
@@ -67,7 +69,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         entityType: "lead",
         entityId: id,
         before: { stage: before.stage },
-        after: { stage: parse.data.stage },
+        after: { stage: nextStage },
         ...clientMeta,
       });
 

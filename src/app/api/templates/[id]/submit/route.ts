@@ -27,12 +27,12 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     requireCap(session.roles, "template.edit");
 
     const result = await withTenant(session.tenantId, async (tx) => {
-      const tpl = (await tx.select().from(templates).where(eq(templates.id, id)).limit(1))[0];
+      const tpl = (await tx.select().from(templates).where(and(eq(templates.id, id), eq(templates.tenantId, session.tenantId))).limit(1))[0];
       if (!tpl) throw Object.assign(new Error("template not found"), { status: 404 });
       const ver = (await tx
         .select()
         .from(templateVersions)
-        .where(and(eq(templateVersions.templateId, id), eq(templateVersions.approvalStatus, "draft")))
+        .where(and(eq(templateVersions.templateId, id), eq(templateVersions.tenantId, session.tenantId), eq(templateVersions.approvalStatus, "draft")))
         .limit(1))[0];
       if (!ver) throw Object.assign(new Error("no draft version"), { status: 400 });
 
@@ -105,9 +105,9 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
           complianceChecks: compliance,
           complianceScore: String(compliance.score),
         } as any)
-        .where(eq(templateVersions.id, ver.id));
+        .where(and(eq(templateVersions.id, ver.id), eq(templateVersions.tenantId, session.tenantId)));
 
-      await tx.update(templates).set({ status: templateStatus } as any).where(eq(templates.id, id));
+      await tx.update(templates).set({ status: templateStatus } as any).where(and(eq(templates.id, id), eq(templates.tenantId, session.tenantId)));
 
       return { compliance, nextStatus, templateStatus };
     });

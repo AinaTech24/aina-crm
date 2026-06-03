@@ -16,6 +16,7 @@ import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
+import { healthFields } from "@/lib/investors/health";
 
 export const dynamic = "force-dynamic";
 
@@ -76,11 +77,20 @@ export async function POST(req: NextRequest) {
         const state = pick(row, reverse.state);
         const pincode = pick(row, reverse.pincode);
 
+        // Initial health from the imported fields (a freshly-imported client
+        // typically has data gaps — nominee/bank/risk — so this surfaces the
+        // enrichment backlog immediately instead of showing a false 100/green).
+        const h = healthFields({
+          status: "active",
+          kycStatus: "pending",
+        });
+
         try {
           const r = await tx.execute(sql`
             INSERT INTO investors (
               id, tenant_id, branch_id, name, pan, email, phone, whatsapp_phone,
               dob, segment_tag, investor_category, address, rm_id, status, onboarded_at,
+              health_score, health_band, health_scored_at,
               created_at, updated_at
             )
             VALUES (
@@ -89,6 +99,7 @@ export async function POST(req: NextRequest) {
               ${dob ? new Date(dob) : null}, ${segment || null}, ${category},
               ${JSON.stringify({ city, state, pincode, country: "India" })}::jsonb,
               ${session.userId}, 'active', now(),
+              ${h.healthScore}, ${h.healthBand}, now(),
               now(), now()
             )
             ON CONFLICT (tenant_id, pan) DO NOTHING

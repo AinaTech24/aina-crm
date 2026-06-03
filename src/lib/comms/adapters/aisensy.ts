@@ -41,11 +41,13 @@ export interface SendWhatsappArgs {
   templateVersion: TemplateVersion;
   tokens: Record<string, string>;
   recipient: string; // E.164 number — "+91XXXXXXXXXX"
+  apiKey?: string;
 }
 
 export const whatsappAdapter = {
   async send(args: SendWhatsappArgs): Promise<{ externalId: string; status: "sent" | "queued" }> {
     const cfg = await getTenantConfig(args.tenantId);
+    const activeApiKey = args.apiKey ?? cfg.apiKey;
 
     const recipient = normalizeE164(args.recipient);
     const body = args.templateVersion.body as any;
@@ -57,8 +59,9 @@ export const whatsappAdapter = {
     const templateParams = variables.map((v) => args.tokens[v.key] ?? "");
 
     const payload = {
-      apiKey: cfg.apiKey,
+      apiKey: activeApiKey,
       campaignName,
+
       destination: recipient,
       userName: args.tokens.name ?? args.tokens.investor_name ?? "Investor",
       templateParams,

@@ -15,6 +15,7 @@ import { requireSession } from "@/lib/auth/session";
 import { require as requireCap, can } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
+import { healthFields } from "@/lib/investors/health";
 import { investors, eventsOutbox } from "@/db/schema";
 
 export const dynamic = "force-dynamic";
@@ -149,6 +150,13 @@ export async function POST(req: NextRequest) {
           notes: body.notes,
           onboardedAt: new Date(),
           status: "active",
+          // Deterministic initial health from the captured fields.
+          ...healthFields({
+            status: "active",
+            kycStatus: "pending",
+            riskProfile: null,
+            riskProfileSignedAt: null,
+          }),
         } as any)
         .returning();
 

@@ -95,11 +95,37 @@ export default async function TransactionsPage({
   const session = await requireSession();
   const sp = await searchParams;
   const q = (sp.q ?? "").trim();
-  const typeFilter = (sp.txtype ?? "").split(",").filter(Boolean);
-  const statusFilter = (sp.status ?? "").split(",").filter(Boolean);
+  const typeFilterRaw = (sp.txtype ?? "").split(",").filter(Boolean);
+  const statusFilterRaw = (sp.status ?? "").split(",").filter(Boolean);
   const dateFrom = sp.date_from ?? "";
   const dateTo = sp.date_to ?? "";
   const cursor = sp.cursor;
+
+  // Map types to cover both canonical and legacy enums (defense against mismatch)
+  const typeFilter: string[] = [];
+  for (const t of typeFilterRaw) {
+    if (t === "lumpsum" || t === "purchase") {
+      typeFilter.push("lumpsum", "purchase");
+    } else if (t === "dividend" || t === "dividend_payout" || t === "dividend_reinvest") {
+      typeFilter.push("dividend_payout", "dividend_reinvest");
+    } else {
+      typeFilter.push(t);
+    }
+  }
+
+  // Map statuses to cover both canonical and legacy enums
+  const statusFilter: string[] = [];
+  for (const s of statusFilterRaw) {
+    if (s === "pending" || s === "submitted") {
+      statusFilter.push("pending", "submitted");
+    } else if (s === "processed" || s === "successful") {
+      statusFilter.push("processed", "successful");
+    } else if (s === "rejected" || s === "failed") {
+      statusFilter.push("rejected", "failed");
+    } else {
+      statusFilter.push(s);
+    }
+  }
 
   const conds: any[] = [];
   if (q) {
@@ -225,14 +251,15 @@ export default async function TransactionsPage({
             key: "txtype",
             label: "Type",
             options: [
+              { value: "lumpsum", label: "Purchase (Lumpsum)" },
               { value: "sip", label: "SIP" },
-              { value: "lumpsum", label: "Lumpsum" },
               { value: "redemption", label: "Redemption" },
               { value: "switch", label: "Switch" },
-              { value: "swp", label: "SWP" },
+              { value: "sip_pause", label: "SIP Pause" },
+              { value: "sip_stop", label: "SIP Stop" },
               { value: "stp", label: "STP" },
+              { value: "swp", label: "SWP" },
               { value: "dividend", label: "Dividend" },
-              { value: "other", label: "Other" },
             ],
           },
           {
@@ -240,12 +267,10 @@ export default async function TransactionsPage({
             key: "status",
             label: "Status",
             options: [
-              { value: "successful", label: "Successful" },
               { value: "processed", label: "Processed" },
               { value: "pending", label: "Pending" },
               { value: "rejected", label: "Rejected" },
               { value: "cancelled", label: "Cancelled" },
-              { value: "failed", label: "Failed" },
             ],
           },
           { type: "date_range", key: "date", label: "Order date" },

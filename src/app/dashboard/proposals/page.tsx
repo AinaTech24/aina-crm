@@ -14,8 +14,10 @@ import { requireSession } from "@/lib/auth/session";
 import { formatDate, formatINR } from "@/lib/utils";
 import { RowActions } from "@/components/common/RowActions";
 import { FilterBar } from "@/components/common/FilterBar";
+import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
 import { CustomViews } from "@/components/common/CustomViews";
 import { ColumnManager } from "@/components/common/ColumnManager";
+import { Pager } from "@/components/common/Pager";
 
 const PROPOSALS_COLUMNS = [
   { key: "number", label: "Proposal number", required: true },
@@ -72,6 +74,8 @@ export default async function ProposalsPage({
   const statusFilter = (sp.status ?? "").split(",").filter(Boolean);
   const typeFilter = (sp.type ?? "").split(",").filter(Boolean);
   const riskFilter = (sp.risk ?? "").split(",").filter(Boolean);
+  const PAGE_SIZE = 50;
+  const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
 
   const data = await withTenant(session.tenantId, async (tx) => {
     const filters: any[] = [];
@@ -95,6 +99,8 @@ export default async function ProposalsPage({
         sql`p.risk_rating IN (${sql.join(riskFilter.map((v) => sql`${v}`), sql`, `)})`
       );
     }
+    const dr = dateRangeCond(sp, "created", "p.created_at");
+    if (dr) filters.push(dr);
     const whereSql = filters.length ? sql` WHERE ${sql.join(filters, sql` AND `)}` : sql``;
 
     const rows = await tx.execute(sql`
@@ -109,7 +115,11 @@ export default async function ProposalsPage({
       LEFT JOIN users u ON u.id = p.prepared_by_user_id
       ${whereSql}
       ORDER BY p.created_at DESC
-      LIMIT 200
+      LIMIT ${PAGE_SIZE} OFFSET ${(page - 1) * PAGE_SIZE}
+    `);
+    // True count of the filtered set (drives the pager + accurate header count).
+    const filtered = await tx.execute(sql`
+      SELECT COUNT(*)::int AS c FROM proposals p ${whereSql}
     `);
     const stats = await tx.execute(sql`
       SELECT
@@ -130,7 +140,11 @@ export default async function ProposalsPage({
         )::numeric AS outstanding_value
       FROM proposals
     `);
-    return { rows: rows.rows as any[], s: stats.rows[0] as any };
+    return {
+      rows: rows.rows as any[],
+      s: stats.rows[0] as any,
+      filteredTotal: Number((filtered.rows[0] as any)?.c ?? 0),
+    };
   });
 
   return (
@@ -177,7 +191,7 @@ export default async function ProposalsPage({
       </div>
 
       <FilterBar
-        totalCount={data.rows.length}
+        totalCount={data.filteredTotal}
         filters={[
           { type: "search", key: "q", placeholder: "Search by number, title, recipient…" },
           {
@@ -217,6 +231,7 @@ export default async function ProposalsPage({
               { value: "aggressive", label: "Aggressive" },
             ],
           },
+          dateRangeFilter("created", "Created"),
         ]}
         rightSlot={
           <div className="flex items-center gap-2">
@@ -323,6 +338,14 @@ export default async function ProposalsPage({
                 ))}
               </tbody>
             </table>
+            <div className="px-4 pb-3">
+              <Pager
+                page={page}
+                totalPages={Math.ceil(data.filteredTotal / PAGE_SIZE)}
+                total={data.filteredTotal}
+                pageSize={PAGE_SIZE}
+              />
+            </div>
           </div>
         )}
       </div>

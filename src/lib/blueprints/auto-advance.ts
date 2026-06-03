@@ -103,11 +103,20 @@ export async function autoAdvance(
   const targetStage = EVENT_TO_STAGE[event];
   if (!targetStage) return;
   try {
-    await transitionTo(tx, tenantId, leadId, targetStage, {
-      systemBypass: true,
-      remarks:
-        opts.remarks ??
-        `Auto-advanced by CRM after ${event.replace(/\./g, " ")} event.`,
+    // Run inside a SAVEPOINT (Drizzle nested transaction) so a DB-level error
+    // — deadlock, constraint, statement timeout — rolls back ONLY the blueprint
+    // advance, not the parent transaction. Without this, a thrown SQL error
+    // here aborts the whole Postgres tx; the catch below would swallow the JS
+    // error but the parent's COMMIT would then fail and roll back EVERYTHING
+    // (e.g. the entire lead → client conversion). The savepoint keeps the
+    // "additive, never fails the parent" promise true even for DB errors.
+    await tx.transaction(async (sp) => {
+      await transitionTo(sp as unknown as Tx, tenantId, leadId, targetStage, {
+        systemBypass: true,
+        remarks:
+          opts.remarks ??
+          `Auto-advanced by CRM after ${event.replace(/\./g, " ")} event.`,
+      });
     });
   } catch (err) {
     // Blueprint advance is *additive* — never fail the parent transaction

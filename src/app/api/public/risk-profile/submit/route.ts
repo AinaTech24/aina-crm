@@ -18,8 +18,9 @@ import {
   eventsOutbox,
 } from "@/db/schema";
 import {
-  resolveShareToken,
-  markShareTokenUsed,
+  claimShareToken,
+  releaseShareToken,
+  finalizeShareToken,
 } from "@/lib/share-tokens";
 import {
   defaultTemplate,
@@ -65,11 +66,24 @@ export async function POST(req: NextRequest) {
       return t;
     });
 
+    // Step 1b: atomically CLAIM the single-use token before doing any work.
+    // This is the serialization point — two concurrent submits both pass the
+    // read-only validation above, but only the first claim wins. The loser
+    // aborts here, so a double-click / race can never create two responses.
+    const claimed = await claimShareToken(tokenId);
+    if (!claimed) {
+      return NextResponse.json({ error: "This link has already been used" }, { status: 409 });
+    }
+
     // Step 2: everything else runs inside the token's tenant scope so RLS
     // guards every read/write. If a future bug ever leaks a tokenId across
     // tenants, the worst case is "the token resolves" — actual mutation
     // is hard-bounded to the tenant the token belongs to.
-    const result = await withTenant(tk.tenantId!, async (tx) => {
+    // If the work throws after the claim, release the token so the client can
+    // retry (the claim is only "confirmed" by finalizeShareToken on success).
+    let result;
+    try {
+      result = await withTenant(tk.tenantId!, async (tx) => {
       // Load active template (fall back to default)
       const [activeTpl] = await tx
         .select()
@@ -97,8 +111,8 @@ export async function POST(req: NextRequest) {
 
       const { total, band, breakdown } = scoreAnswersAgainst(template, answers);
       const canonicalCategory = (
-        ["conservative", "moderate", "aggressive"].includes(band.id) ? band.id : "moderate"
-      ) as "conservative" | "moderate" | "aggressive";
+        ["conservative", "moderate", "aggressive", "very_aggressive"].includes(band.id) ? band.id : "moderate"
+      ) as "conservative" | "moderate" | "aggressive" | "very_aggressive";
       const now = new Date();
       const next = new Date(now);
       next.setDate(next.getDate() + (template.reviewIntervalDays ?? 365));
@@ -179,21 +193,37 @@ export async function POST(req: NextRequest) {
         meta: { tokenId: tk.id, ip, userAgent: ua } as any,
       } as any);
 
-      // Mark the token used
-      await markShareTokenUsed({
-        id: tk.id,
-        result: { responseId, category: canonicalCategory, bandLabel: band.label, totalScore: total, signature: signatureName },
-        ipAddress: ip,
-        userAgent: ua,
-      });
-
+      // Token already claimed up front; we finalize (store result) after the
+      // transaction commits — see below.
       return {
         responseId,
+        category: canonicalCategory,
         bandLabel: band.label,
         bandColor: band.color ?? null,
         bandDescription: band.description ?? null,
         totalScore: total,
       };
+      });
+    } catch (e) {
+      // Work failed after we claimed the token — release it so the client can
+      // retry with the same link instead of being stuck on "already used".
+      await releaseShareToken(tokenId).catch(() => {});
+      throw e;
+    }
+
+    // Confirm the claim by storing the result payload (the token's used_at was
+    // already set by claimShareToken).
+    await finalizeShareToken({
+      id: tk.id,
+      result: {
+        responseId: result.responseId,
+        category: result.category,
+        bandLabel: result.bandLabel,
+        totalScore: result.totalScore,
+        signature: signatureName,
+      },
+      ipAddress: ip,
+      userAgent: ua,
     });
 
     return NextResponse.json(result, { status: 201 });

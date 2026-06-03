@@ -388,6 +388,27 @@ export const LEAD_TO_CLIENT_STAGES: SeedStage[] = [
 ];
 
 /**
+ * Disposition of an instance once it reaches a given stage.
+ *
+ *   - `completed` — the success terminal (Active Client). Freeze the instance.
+ *   - `lost`      — a lead-phase dead-end (Not Qualified). Closed-lost.
+ *   - `in_progress` — everything else, INCLUDING the client-phase
+ *     "terminal_failure" stages (Mandate Rejected, Transaction Failed) which
+ *     are really *retry* states with forward transitions back into the flow,
+ *     so they must NOT be frozen.
+ *
+ * Replaces the old `stageOrder === LEAD_TO_CLIENT_STAGES.length` check, which
+ * only ever marked stage 30 terminal and left lost leads stuck "in_progress".
+ */
+export function stageDisposition(stageKey: string): "completed" | "lost" | "in_progress" {
+  const s = LEAD_TO_CLIENT_STAGES.find((x) => x.key === stageKey);
+  if (!s) return "in_progress";
+  if (s.flavour === "terminal_success") return "completed";
+  if (s.flavour === "terminal_failure" && s.order <= LEAD_PHASE_LAST_ORDER) return "lost";
+  return "in_progress";
+}
+
+/**
  * Branching transition graph. Each row: from → to.
  * Backwards transitions (reopen, retry) included explicitly so the
  * engine accepts them without systemBypass.

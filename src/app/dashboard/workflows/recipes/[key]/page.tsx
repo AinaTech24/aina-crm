@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ALL_RECIPES } from "@/lib/recipes";
 import { ChevronLeft } from "lucide-react";
-import { WorkflowCanvas } from "@/components/workflow/WorkflowCanvas";
+import { WorkflowCanvas } from "@/components/workflow/WorkflowCanvasLazy";
 
 export default async function RecipeDetailPage({
   params,

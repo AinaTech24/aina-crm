@@ -17,6 +17,7 @@ import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { goals, investors } from "@/db/schema";
 import { computeGoal, monthsBetween } from "@/lib/goal-planning/calc";
+import { expectedProgressPct } from "@/lib/goal-planning/recompute";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +31,10 @@ const Body = z.object({
   ]),
   targetAmount: z.number().positive(),
   targetDate: z.string(), // ISO date
+  targetMode: z.enum(["today", "future"]).default("future"),
+  presentTargetAmount: z.number().positive().optional(),
+  inflationPct: z.number().min(0).max(20).default(6),
+  stepUpPct: z.number().min(0).max(30).default(0),
   currentValue: z.number().nonnegative().default(0),
   existingMonthlySip: z.number().nonnegative().default(0),
   expectedReturnPct: z.number().min(1).max(30).default(12),
@@ -57,7 +62,7 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "risk_profile.manage");
+    requireCap(session.roles, "goal.manage");
     await assertActiveLicense(session.tenantId, session.roles);
     const parse = Body.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) {
@@ -71,11 +76,14 @@ export async function POST(req: NextRequest) {
     const target = new Date(body.targetDate);
     const monthsLeft = monthsBetween(now, target);
     const calc = computeGoal({
-      targetAmount: body.targetAmount,
+      presentTarget: body.targetMode === "today" ? body.presentTargetAmount : undefined,
+      futureTarget: body.targetMode === "future" ? body.targetAmount : undefined,
       currentValue: body.currentValue,
       existingMonthlySip: body.existingMonthlySip,
       monthsLeft,
       expectedReturnPct: body.expectedReturnPct,
+      inflationPct: body.inflationPct,
+      stepUpPct: body.stepUpPct,
     });
 
     await withTenant(session.tenantId, async (tx) => {
@@ -88,16 +96,21 @@ export async function POST(req: NextRequest) {
         investorId: body.investorId,
         name: body.name,
         category: body.category as any,
-        targetAmount: body.targetAmount.toString(),
+        targetAmount: Math.round(calc.futureTarget).toString(),
+        targetMode: body.targetMode,
+        presentTargetAmount: body.presentTargetAmount?.toString() ?? null,
+        inflationPct: body.inflationPct.toString(),
+        stepUpPct: body.stepUpPct.toString(),
         targetDate: body.targetDate.slice(0, 10),
         startedOn: now.toISOString().slice(0, 10),
         monthlyContribution: body.existingMonthlySip.toString(),
         expectedReturn: body.expectedReturnPct.toString(),
         currentValue: body.currentValue.toString(),
-        progressPct: (body.targetAmount > 0
-          ? Math.min(100, (body.currentValue / body.targetAmount) * 100)
+        progressPct: (calc.futureTarget > 0
+          ? Math.min(100, (body.currentValue / calc.futureTarget) * 100)
           : 0
         ).toFixed(2),
+        expectedProgressPct: expectedProgressPct(now, now, body.targetDate.slice(0, 10), now).toFixed(2),
         requiredMonthlySip: calc.requiredMonthlySipTotal.toFixed(2),
         existingMonthlySip: body.existingMonthlySip.toString(),
         gapAmount: calc.gapAmount.toFixed(2),
@@ -115,7 +128,7 @@ export async function POST(req: NextRequest) {
         after: {
           name: body.name,
           category: body.category,
-          targetAmount: body.targetAmount,
+          targetAmount: Math.round(calc.futureTarget),
           status: calc.status,
         } as any,
         ...clientMeta,

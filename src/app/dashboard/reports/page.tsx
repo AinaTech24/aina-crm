@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { BarChart3, TrendingUp, TrendingDown, Users, Filter, AlertTriangle, FileText, Calendar, Briefcase, Shield, ShieldCheck, Clock, CheckCircle2 } from "lucide-react";
+import { BarChart3, TrendingUp, TrendingDown, Users, Filter, AlertTriangle, FileText, Calendar, Briefcase, Shield, ShieldCheck, Clock, CheckCircle2, ListChecks, Megaphone } from "lucide-react";
 
 const REPORTS = [
   { group: "Sales & Business", items: [
@@ -43,6 +43,10 @@ const REPORTS = [
     { key: "high_aum", label: "High-AUM Clients", icon: TrendingUp },
     { key: "dormant", label: "Dormant Clients", icon: AlertTriangle },
   ]},
+  { group: "Retention & Tax", items: [
+    { key: "churn-risk", label: "Churn-risk radar", icon: ShieldCheck },
+    { key: "tax-harvesting", label: "Tax-harvesting", icon: TrendingUp },
+  ]},
   { group: "Complaint Register (SEBI)", items: [
     { key: "open_complaints", label: "Open Complaints", icon: AlertTriangle },
     { key: "resolved_complaints", label: "Resolved Complaints", icon: CheckCircle2 },
@@ -68,6 +72,7 @@ const REPORTS = [
     { key: "campaign_conversion", label: "Campaign-wise Conversion", icon: TrendingUp },
     { key: "marketing_calendar", label: "Monthly Marketing Calendar", icon: Calendar },
     { key: "pending_approval_content", label: "Pending Approval Content", icon: FileText },
+    { key: "marketing-assets", label: "Marketing assets & trust builders", icon: Megaphone },
   ]},
   { group: "Compliance", items: [
     { key: "ddq_readiness", label: "DDQ Readiness", icon: FileText },
@@ -75,6 +80,11 @@ const REPORTS = [
     { key: "kyc-tracker", label: "Client KYC tracker", icon: ShieldCheck },
     { key: "shortlisted-schemes", label: "AMC scheme shortlist (IC)", icon: Briefcase },
     { key: "suitability-matrix", label: "MF suitability matrix (IC)", icon: Filter },
+    { key: "mf-selection-criteria", label: "MF selection criteria (IC)", icon: ListChecks },
+  ]},
+  { group: "Practice & Finances", items: [
+    { key: "business-projections", label: "Business projections (AUM & income)", icon: TrendingUp },
+    { key: "financial-checklist", label: "Finance management checklist", icon: CheckCircle2 },
   ]},
 ];
 
@@ -83,18 +93,26 @@ export const dynamic = "force-dynamic";
 export default function ReportsPage() {
   return (
     <div className="space-y-6 max-w-7xl">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Reports & MIS</h1>
-        <p className="text-muted-foreground text-sm">
-          {REPORTS.reduce((n, g) => n + g.items.length, 0)} canned reports. Click to open with
-          date-range + RM + branch filters.
-        </p>
+      <div className="flex items-start justify-between flex-wrap gap-3">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Reports & MIS</h1>
+          <p className="text-muted-foreground text-sm">
+            {REPORTS.reduce((n, g) => n + g.items.length, 0)} canned reports. Click to open with
+            date-range + RM + branch filters.
+          </p>
+        </div>
+        <Link
+          href="/dashboard/reports/custom"
+          className="btn-primary whitespace-nowrap"
+        >
+          <BarChart3 className="size-4" /> Custom Reports
+        </Link>
       </div>
 
       {REPORTS.map((g) => (
         <section key={g.group}>
           <h2 className="font-semibold text-sm uppercase tracking-wide text-muted-foreground mb-2">{g.group}</h2>
-          <div className="grid grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
             {g.items.map((r) => {
               const Icon = r.icon;
               return (

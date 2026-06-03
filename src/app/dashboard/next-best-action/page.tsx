@@ -1,0 +1,138 @@
+import Link from "next/link";
+import {
+  Sparkles, Target, IndianRupee, Users, AlertTriangle, TrendingDown, XOctagon,
+  ShieldAlert, CalendarClock, Moon, ShieldCheck, TrendingUp, Cake,
+} from "lucide-react";
+import { withTenant } from "@/db/client";
+import { requireSession } from "@/lib/auth/session";
+import { can } from "@/lib/auth/rbac";
+import { buildNextBestActions, NBA_META, type NbaType, type NbaAction } from "@/lib/nba/engine";
+import { ContactQuickActions } from "@/components/common/ContactQuickActions";
+import { LogActivityButton } from "@/components/activities/ActivityLogger";
+
+export const dynamic = "force-dynamic";
+
+const ICONS: Record<string, any> = { TrendingDown, XOctagon, ShieldAlert, Sparkles, CalendarClock, Moon, ShieldCheck, TrendingUp, Cake };
+const TONE: Record<string, string> = {
+  rose: "border-l-rose-500", amber: "border-l-amber-500", sky: "border-l-sky-500", violet: "border-l-violet-500", emerald: "border-l-emerald-500",
+};
+const CHIP_TONE: Record<string, string> = {
+  rose: "bg-rose-50 text-rose-700", amber: "bg-amber-50 text-amber-700", sky: "bg-sky-50 text-sky-700", violet: "bg-violet-50 text-violet-700", emerald: "bg-emerald-50 text-emerald-700",
+};
+const inr = (n: number) => (n >= 1e7 ? `₹${(n / 1e7).toFixed(2)} Cr` : n >= 1e5 ? `₹${(n / 1e5).toFixed(2)} L` : n > 0 ? `₹${Math.round(n).toLocaleString("en-IN")}` : "—");
+
+export default async function NextBestActionPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
+  const session = await requireSession();
+  const canFirm = can(session.roles, "dashboard.view.owner", (session as any).permissions);
+  const sp = await searchParams;
+  const mine = sp.mine === "1" || !canFirm;
+  const typeFilter = (sp.type ?? "") as NbaType | "";
+
+  const actions = await withTenant(
+    session.tenantId,
+    (tx) => buildNextBestActions(tx as any, { userId: session.userId, firmWide: !mine, limit: 150 }),
+    { userId: session.userId, branchId: session.branchId, roles: session.roles }
+  );
+
+  const totalImpact = actions.reduce((a, x) => a + x.impactInr, 0);
+  const nowCount = actions.filter((a) => a.severity === "now").length;
+  const byType = actions.reduce((m, a) => ((m[a.type] = (m[a.type] ?? 0) + 1), m), {} as Record<string, number>);
+  const shown = typeFilter ? actions.filter((a) => a.type === typeFilter) : actions;
+
+  const hrefWith = (patch: Record<string, string | undefined>) => {
+    const u = new URLSearchParams();
+    const merged = { ...sp, ...patch };
+    for (const [k, v] of Object.entries(merged)) if (v) u.set(k, v);
+    const s = u.toString();
+    return s ? `/dashboard/next-best-action?${s}` : "/dashboard/next-best-action";
+  };
+
+  return (
+    <div className="space-y-6 max-w-5xl">
+      <div className="flex items-start justify-between flex-wrap gap-3">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2"><Sparkles className="size-6 text-brand-cyan" /> Next Best Action</h1>
+          <p className="text-muted-foreground text-sm">Your single ranked worklist — every client signal scored by ₹-impact and urgency, highest-value first. {canFirm ? "" : "Your book."}</p>
+        </div>
+        {canFirm && (
+          <div className="inline-flex rounded-lg border bg-secondary/40 p-0.5 gap-0.5 text-xs">
+            <Link href={hrefWith({ mine: undefined })} className={`px-2.5 py-1 rounded-md font-medium ${!mine ? "bg-card shadow-sm" : "text-muted-foreground"}`}>Firm-wide</Link>
+            <Link href={hrefWith({ mine: "1" })} className={`px-2.5 py-1 rounded-md font-medium ${mine ? "bg-card shadow-sm" : "text-muted-foreground"}`}>My book</Link>
+          </div>
+        )}
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <Kpi icon={Target} label="Actions queued" value={String(actions.length)} />
+        <Kpi icon={AlertTriangle} label="Act now" value={String(nowCount)} tone="rose" />
+        <Kpi icon={IndianRupee} label="₹ value at stake" value={inr(totalImpact)} tone="emerald" />
+        <Kpi icon={Users} label="Clients to touch" value={String(actions.length)} tone="sky" />
+      </div>
+
+      {/* Type filter chips */}
+      <div className="flex flex-wrap gap-1.5">
+        <Link href={hrefWith({ type: undefined })} className={`chip ${!typeFilter ? "bg-brand-cyan text-white" : "bg-secondary"}`}>All <strong className="ml-1">{actions.length}</strong></Link>
+        {(Object.keys(byType) as NbaType[]).sort((a, b) => NBA_META[b].weight - NBA_META[a].weight).map((t) => (
+          <Link key={t} href={hrefWith({ type: t })} className={`chip ${typeFilter === t ? "bg-brand-cyan text-white" : CHIP_TONE[NBA_META[t].tone]}`}>
+            {NBA_META[t].label} <strong className="ml-1">{byType[t]}</strong>
+          </Link>
+        ))}
+      </div>
+
+      {shown.length === 0 ? (
+        <div className="card-surface p-12 text-center">
+          <ShieldCheck className="size-10 mx-auto text-emerald-500" />
+          <div className="mt-3 font-medium">You&apos;re all caught up. ✓</div>
+          <p className="text-sm text-muted-foreground mt-1">No high-priority actions {mine ? "in your book" : "across the firm"} right now.</p>
+        </div>
+      ) : (
+        <ol className="space-y-2">
+          {shown.map((a, i) => <Row key={a.key} a={a} rank={i + 1} />)}
+        </ol>
+      )}
+    </div>
+  );
+}
+
+function Row({ a, rank }: { a: NbaAction; rank: number }) {
+  const meta = NBA_META[a.type];
+  const Icon = ICONS[meta.icon] ?? Sparkles;
+  const firstName = a.subjectName?.split(" ")[0] ?? "";
+  const msg = a.type === "birthday_today"
+    ? `Dear ${firstName}, wishing you a very Happy Birthday! 🎂`
+    : `Hi ${firstName}, `;
+  return (
+    <li className={`card-surface border-l-4 ${TONE[meta.tone]} p-3 flex items-center gap-3`}>
+      <div className="text-sm font-bold text-muted-foreground tabular-nums w-6 text-center shrink-0">{rank}</div>
+      <div className={`size-9 rounded-lg grid place-items-center shrink-0 ${CHIP_TONE[meta.tone]}`}><Icon className="size-4" /></div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Link href={a.href} className="font-semibold text-sm hover:underline truncate">{a.subjectName}</Link>
+          <span className={`chip text-[10px] ${CHIP_TONE[meta.tone]}`}>{meta.label}</span>
+          {a.subjectType === "lead" && <span className="chip text-[10px] bg-amber-50 text-amber-700">Lead</span>}
+        </div>
+        <div className="text-xs text-muted-foreground truncate">{a.reason}{a.rmName ? <span className="opacity-60"> · RM {a.rmName}</span> : ""}</div>
+      </div>
+      {a.impactInr > 0 && (
+        <div className="text-right shrink-0 hidden sm:block">
+          <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Impact</div>
+          <div className="text-sm font-bold tabular-nums text-emerald-700">{inr(a.impactInr)}</div>
+        </div>
+      )}
+      <div className="flex items-center gap-1.5 shrink-0">
+        <ContactQuickActions phone={a.phone} email={a.email} message={msg} show={["whatsapp", "call"]} size={15} />
+        <LogActivityButton subject={{ type: a.subjectType, id: a.subjectId, name: a.subjectName, phone: a.phone }} label="Log" variant="secondary" />
+      </div>
+    </li>
+  );
+}
+
+function Kpi({ icon: Icon, label, value, tone }: { icon: any; label: string; value: string; tone?: "rose" | "emerald" | "sky" }) {
+  const color = tone === "rose" ? "text-rose-600" : tone === "emerald" ? "text-emerald-600" : tone === "sky" ? "text-sky-600" : "text-foreground";
+  return (
+    <div className="card-surface p-4">
+      <div className="flex items-center justify-between"><span className="text-xs text-muted-foreground">{label}</span><Icon className="size-3.5 text-muted-foreground" /></div>
+      <div className={`text-2xl font-bold mt-1 tabular-nums ${color}`}>{value}</div>
+    </div>
+  );
+}
