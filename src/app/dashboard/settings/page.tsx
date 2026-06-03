@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Building2, Database, Users, CreditCard, MessageCircle, Mail, Lock, Webhook, ShieldCheck, Workflow, KeyRound } from "lucide-react";
+import { Building2, Database, Users, CreditCard, MessageCircle, Mail, Lock, Webhook, ShieldCheck, Workflow, KeyRound, Palette } from "lucide-react";
 
 const SECTIONS = [
   {
@@ -7,6 +7,12 @@ const SECTIONS = [
     title: "Organisation profile",
     desc: "Branding, contact, AUM range, business profile.",
     href: "/dashboard/settings/organisation",
+  },
+  {
+    icon: Palette,
+    title: "Appearance & theme",
+    desc: "Re-skin the CRM to your brand — preset palettes or custom primary & accent colours.",
+    href: "/dashboard/settings/appearance",
   },
   {
     icon: Database,

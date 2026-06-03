@@ -5,6 +5,7 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { formatINR } from "@/lib/utils";
 import { ReconcileButton } from "@/components/commission/ReconcileButton";
+import { PayoutImport } from "@/components/commission/PayoutImport";
 import { computeSubDistributorPayouts } from "@/lib/commission/sub_distributor_payouts";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -107,6 +108,8 @@ export default async function CommissionReconciliationPage({
         </select>
         <button className="rounded-md border px-3 py-1">Load</button>
       </form>
+
+      <PayoutImport period={period} />
 
       <div className="grid grid-cols-4 gap-3">
         <Kpi label="Expected" value={formatINR(totalExpected)} icon={TrendingUp} />

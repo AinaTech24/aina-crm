@@ -66,6 +66,7 @@ import { SidebarNavLink } from "@/components/layout/SidebarNavLink";
 import { QuickCreateFab } from "@/components/layout/QuickCreateFab";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { ProfileMenu } from "@/components/layout/ProfileMenu";
+import { buildTenantThemeCss } from "@/lib/branding/theme";
 
 export const dynamic = "force-dynamic";
 
@@ -150,6 +151,8 @@ const NAV: NavSection[] = [
         roles: ["owner", "back_office", "ops", "rm", "branch_head", "compliance"] },
       { href: "/dashboard/sip-rejections", label: "SIP Rejections", icon: XOctagon, module: "sip_rejection",
         roles: ["owner", "back_office", "ops", "rm", "branch_head"] },
+      { href: "/dashboard/sips/at-risk", label: "SIP At-Risk", icon: AlertTriangle, module: "sip_tracker",
+        roles: ["owner", "back_office", "ops", "rm", "branch_head"] },
       { href: "/dashboard/review-meetings", label: "Meetings", icon: Calendar, module: "review_meetings",
         roles: ["owner", "rm", "branch_head", "back_office", "ops"] },
       { href: "/dashboard/activities", label: "Activity Log", icon: PhoneCall,
@@ -182,6 +185,7 @@ const NAV: NavSection[] = [
       { href: "/dashboard/compliance/command-center", label: "Compliance Center", icon: ShieldCheck, roles: ["owner", "compliance", "branch_head"] },
       { href: "/dashboard/compliance", label: "DDQ Readiness", icon: ShieldCheck, module: "ddq", roles: ["owner", "compliance"] },
       { href: "/dashboard/compliance/amfi-circulars", label: "Circular Digest", icon: ScrollText, roles: ["owner", "compliance", "back_office", "ops", "rm", "branch_head"] },
+      { href: "/dashboard/reports/nomination-tracker", label: "Nomination Tracker", icon: ShieldCheck, roles: ["owner", "compliance", "branch_head", "back_office"] },
       { href: "/dashboard/documents", label: "Documents", icon: FolderArchive, module: "documents" },
       { href: "/dashboard/sops", label: "SOP Library", icon: ScrollText, roles: ["owner", "compliance"] },
       { href: "/dashboard/announcements", label: "Announcements", icon: Megaphone },
@@ -203,6 +207,7 @@ const NAV: NavSection[] = [
     title: "Insights",
     items: [
       { href: "/dashboard/reports", label: "Reports & MIS", icon: BarChart3, module: "reports", roles: ["owner", "branch_head", "compliance"] },
+      { href: "/dashboard/reports/trail-forecast", label: "Trail Forecast", icon: TrendingUp, roles: ["owner", "branch_head", "compliance"] },
       { href: "/dashboard/portfolio-intelligence", label: "Portfolio Intelligence", icon: PieChart, roles: ["owner", "branch_head", "compliance", "rm", "back_office", "ops"] },
       { href: "/dashboard/reports/churn-risk", label: "Churn-risk Radar", icon: AlertTriangle, roles: ["owner", "branch_head", "compliance", "rm", "back_office", "ops"] },
       { href: "/dashboard/reports/tax-harvesting", label: "Tax-Harvesting", icon: TrendingUp, roles: ["owner", "branch_head", "compliance", "rm", "back_office", "ops"] },
@@ -247,6 +252,14 @@ export default async function DashboardLayout({ children }: { children: React.Re
   );
   const tenant = tenantRow[0];
 
+  // Per-tenant white-label theme: override the brand CSS variables from the
+  // firm's chosen primary/accent colours (Settings → Appearance). Empty string
+  // when the tenant uses the stock AINA palette, so we inject nothing.
+  const themeCss = buildTenantThemeCss(
+    tenant?.primaryColor,
+    (tenant as any)?.secondaryColor
+  );
+
   const visible = NAV.map((section) => ({
     ...section,
     items: section.items.filter((i) => {
@@ -284,16 +297,16 @@ export default async function DashboardLayout({ children }: { children: React.Re
                 className="size-10 rounded-xl shadow-lg ring-2 ring-white/20 object-cover"
               />
             ) : (
-              <div
-                className="size-10 rounded-xl bg-white/95 text-brand-navy grid place-items-center text-lg font-extrabold shadow-lg ring-2 ring-white/20"
-                style={tenant?.primaryColor ? { color: tenant.primaryColor } : {}}
-              >
-                {(tenant?.displayName ?? "M").charAt(0).toUpperCase()}
-              </div>
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src="/aina-mark.svg"
+                alt="Aina CRM"
+                className="size-10 rounded-xl bg-white/95 p-1.5 shadow-lg ring-2 ring-white/20 object-contain"
+              />
             )}
             <div className="min-w-0 text-white">
               <div className="font-semibold tracking-tight truncate text-sm leading-tight">
-                {tenant?.displayName ?? "MFD Growth OS"}
+                {tenant?.displayName ?? "Aina CRM"}
               </div>
               <div className="mt-0.5 inline-flex items-center gap-1 text-[10px] text-white/75 font-mono">
                 <span className="size-1.5 rounded-full bg-brand-cyan shadow-[0_0_6px_hsl(var(--brand-cyan))]" />
@@ -363,10 +376,16 @@ export default async function DashboardLayout({ children }: { children: React.Re
   );
 
   return (
-    // h-screen + overflow-hidden on the outer wrapper means the page itself
-    // never scrolls — the sidebar and the main pane each get their own
-    // scrollbar from the `overflow-y-auto` they already declare. Print mode
-    // reverts to block flow so the whole document prints in one stream.
+    <>
+      {/* Per-tenant theme override — re-declares the brand CSS variables on
+          :root. Rendered after globals.css in document order, so it wins. */}
+      {themeCss && (
+        <style id="tenant-theme" dangerouslySetInnerHTML={{ __html: themeCss }} />
+      )}
+    {/* h-screen + overflow-hidden on the outer wrapper means the page itself
+        never scrolls — the sidebar and the main pane each get their own
+        scrollbar from the `overflow-y-auto` they already declare. Print mode
+        reverts to block flow so the whole document prints in one stream. */}
     <div className="h-screen flex bg-background overflow-hidden print:block print:h-auto print:overflow-visible">
       {/* ───────────── Desktop sidebar (hidden below lg — mobile uses drawer) ───────────── */}
       <aside className="hidden lg:flex w-64 flex-shrink-0 h-full flex-col bg-card border-r border-border/70 shadow-sm print:hidden">
@@ -438,6 +457,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           without hunting through the sidebar. */}
       {!license.isRestricted && <QuickCreateFab />}
     </div>
+    </>
   );
 }
 

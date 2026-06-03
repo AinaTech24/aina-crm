@@ -17,24 +17,7 @@
 
 import { sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
-
-const FALLBACK_TRAIL: Record<string, number> = {
-  equity: 0.0085,
-  hybrid: 0.005,
-  debt: 0.003,
-  liquid: 0.0008,
-  elss: 0.0095,
-  default: 0.0065,
-};
-
-function trailRate(category?: string | null): number {
-  if (!category) return FALLBACK_TRAIL.default;
-  const k = category.toLowerCase();
-  for (const tag of Object.keys(FALLBACK_TRAIL)) {
-    if (k.includes(tag)) return FALLBACK_TRAIL[tag];
-  }
-  return FALLBACK_TRAIL.default;
-}
+import { trailRate } from "@/lib/finance/trail-rates";
 
 export type ReconcilerResult = {
   period: string;
