@@ -17,6 +17,7 @@ import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { withSystem } from "@/db/client";
 import { enforce } from "@/lib/rate-limit";
+import { sendSystemEmail, actionEmailHtml } from "@/lib/comms/system-email";
 
 export const dynamic = "force-dynamic";
 
@@ -33,14 +34,14 @@ export async function POST(req: NextRequest) {
   const email = parse.data.email.toLowerCase();
 
   try {
-    const { resetUrl } = await withSystem(async (tx) => {
+    const { resetUrl, tenantId, name } = await withSystem(async (tx) => {
       const userRows = await tx.execute(sql`
         SELECT id, tenant_id, name FROM users WHERE lower(email) = ${email} LIMIT 1
       `);
       const user = (userRows.rows[0] as any) ?? null;
 
       // Always return 200 to avoid leaking which emails exist
-      if (!user) return { resetUrl: null };
+      if (!user) return { resetUrl: null, tenantId: null, name: null };
 
       const token = crypto.randomBytes(32).toString("base64url");
       const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
@@ -58,10 +59,31 @@ export async function POST(req: NextRequest) {
       const base = process.env.APP_URL ?? "http://localhost:3000";
       const url = `${base}/reset-password?token=${token}`;
 
-      // TODO: send via comms pipeline. For now log it.
-      console.log(`[forgot-password] for ${email}: ${url}`);
-      return { resetUrl: url };
+      return { resetUrl: url, tenantId: user.tenant_id as string, name: (user.name as string) ?? null };
     });
+
+    // Send the reset email (best-effort, never throws / never leaks). Falls
+    // back to a server log when email isn't configured so dev still works.
+    if (resetUrl && tenantId) {
+      const res = await sendSystemEmail({
+        tenantId,
+        to: email,
+        subject: "Reset your password",
+        text:
+          `Hi${name ? " " + name : ""},\n\n` +
+          `We received a request to reset your password. Open this link to set a new one (valid for 1 hour):\n${resetUrl}\n\n` +
+          `If you didn't request this, you can safely ignore this email.`,
+        html: actionEmailHtml({
+          heading: "Reset your password",
+          intro: `Hi${name ? " " + name : ""}, we received a request to reset your password. This link is valid for 1 hour.`,
+          buttonLabel: "Set a new password",
+          buttonUrl: resetUrl,
+          note: "If you didn't request this, you can safely ignore this email.",
+        }),
+        idempotencyKey: `pwreset:${email}:${resetUrl.slice(-16)}`,
+      });
+      if (!res.sent) console.log(`[forgot-password] email not sent (${res.reason}); link for ${email}: ${resetUrl}`);
+    }
 
     // In dev, surface the link for testing. Never in prod.
     if (process.env.NODE_ENV !== "production" && resetUrl) {

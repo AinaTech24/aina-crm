@@ -17,10 +17,11 @@ import { desc, eq, isNull, and } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { userInvites } from "@/db/schema";
+import { userInvites, tenants } from "@/db/schema";
 import { require as requireCap, areAssignableRoles } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
+import { sendSystemEmail, actionEmailHtml } from "@/lib/comms/system-email";
 
 export const dynamic = "force-dynamic";
 
@@ -70,7 +71,7 @@ export async function POST(req: NextRequest) {
 
     const id = uuid();
     const clientMeta = clientMetaFromHeaders(req.headers);
-    await withTenant(session.tenantId, async (tx) => {
+    const firmName = await withTenant(session.tenantId, async (tx) => {
       await tx.insert(userInvites).values({
         id,
         tenantId: session.tenantId,
@@ -92,12 +93,32 @@ export async function POST(req: NextRequest) {
         after: { email: body.email, roles: body.roles, branchId: body.branchId ?? session.branchId },
         ...clientMeta,
       });
+
+      const t = (await tx.select({ displayName: tenants.displayName }).from(tenants).where(eq(tenants.id, session.tenantId)).limit(1))[0];
+      return t?.displayName ?? "your firm";
     });
 
-    // TODO: send the email via the comms pipeline. For now return the link.
     const inviteUrl = `${process.env.APP_URL ?? "http://localhost:3000"}/accept-invite?token=${token}`;
 
-    return NextResponse.json({ id, inviteUrl, expiresAt }, { status: 201 });
+    // Email the invite (best-effort — the link is still returned so the owner
+    // can share it manually if email isn't configured).
+    const emailRes = await sendSystemEmail({
+      tenantId: session.tenantId,
+      to: body.email,
+      subject: `You're invited to join ${firmName} on AINA`,
+      text:
+        `${session.name} has invited you to join ${firmName}'s CRM workspace as ${body.roles.join(", ")}.\n\n` +
+        `Accept your invite (valid for 7 days):\n${inviteUrl}`,
+      html: actionEmailHtml({
+        heading: `Join ${firmName} on AINA`,
+        intro: `${session.name} has invited you to join ${firmName}'s workspace as ${body.roles.join(", ")}. This invite is valid for 7 days.`,
+        buttonLabel: "Accept invite",
+        buttonUrl: inviteUrl,
+      }),
+      idempotencyKey: `invite:${id}`,
+    });
+
+    return NextResponse.json({ id, inviteUrl, expiresAt, emailSent: emailRes.sent }, { status: 201 });
   } catch (err: any) {
     return handleApiError(err);
   }

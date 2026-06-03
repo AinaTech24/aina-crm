@@ -82,8 +82,9 @@ export const createNotificationHandler: ActionHandler<any> = {
 
 /**
  * Resolve an audience config block to a list of user ids in the current tenant.
+ * Exported so `raise_alert` shares the exact same resolution logic.
  */
-async function resolveRecipients(
+export async function resolveRecipients(
   ctx: { tenantId: string; subjectType?: string | null; subjectId?: string | null; variables?: any; subject?: any },
   tx: any,
   audience: {
