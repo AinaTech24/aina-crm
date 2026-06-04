@@ -3,7 +3,7 @@
 import { useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Zap, Loader2, ArrowRight, ShieldCheck } from "lucide-react";
+import { Loader2, ArrowRight, ShieldCheck } from "lucide-react";
 
 function LoginForm() {
   const router = useRouter();
@@ -73,11 +73,9 @@ function LoginForm() {
         <div className="absolute -bottom-32 -right-32 size-96 rounded-full bg-brand-cyan/20 blur-3xl" />
 
         <div className="relative z-10">
-          <Link href="/" className="flex items-center gap-2.5 font-bold text-xl tracking-tight">
-            <div className="size-9 rounded-lg bg-white/15 backdrop-blur grid place-items-center">
-              <Zap className="size-5 text-brand-cyan-light fill-brand-cyan" />
-            </div>
-            <span>MFD Growth OS</span>
+          <Link href="/" className="inline-flex items-center">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/aina-logo.png" alt="Aina CRM" className="h-11 w-auto bg-white rounded-xl px-3 py-2 shadow-lg" />
           </Link>
         </div>
 
@@ -105,18 +103,16 @@ function LoginForm() {
         </div>
 
         <div className="relative z-10 text-xs text-white/60">
-          Built by AINA Technologies · © {new Date().getFullYear()}
+          Built by Aina Tech Services LLP · © {new Date().getFullYear()}
         </div>
       </div>
 
       {/* Right — sign-in card */}
       <div className="flex items-center justify-center p-6 bg-background brand-soft">
         <div className="w-full max-w-sm animate-fade-in">
-          <div className="lg:hidden flex items-center gap-2 font-bold text-xl mb-8">
-            <div className="size-9 rounded-lg brand-gradient grid place-items-center text-white">
-              <Zap className="size-5" />
-            </div>
-            <span>MFD Growth OS</span>
+          <div className="lg:hidden mb-8">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/aina-wordmark.png" alt="Aina CRM" className="h-8 w-auto" />
           </div>
 
           <h1 className="text-3xl font-bold tracking-tight">

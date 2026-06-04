@@ -59,6 +59,7 @@ export const serviceRequests = pgTable(
         "transmission_case",
         "folio_correction",
         "other",
+        "feedback",
         // Legacy
         "complaint",
         "redemption_help",

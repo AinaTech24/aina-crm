@@ -8,17 +8,22 @@ import { handleApiError } from "@/lib/api/error-handler";
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { v4 as uuid } from "uuid";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { require as requireCap } from "@/lib/auth/rbac";
+import { can, requireAny } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
-import { tasks } from "@/db/schema";
+import { tasks, users } from "@/db/schema";
 
 export const dynamic = "force-dynamic";
+
+/** A view.assigned/edit.assigned user may only touch tasks they own. */
+function ownsTask(task: { assigneeId: string | null; createdById: string | null }, userId: string): boolean {
+  return task.assigneeId === userId || task.createdById === userId;
+}
 
 /** Advance a date by one recurrence cadence. */
 function advanceDue(base: Date, freq: string): Date {
@@ -66,10 +71,20 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
   try {
     const session = await requireSession();
+    requireAny(session.roles, ["task.view.all", "task.view.assigned"], session.permissions);
+    const canViewAll = can(session.roles, "task.view.all", session.permissions);
     const row = await withTenant(session.tenantId, async (tx) =>
-      (await tx.select().from(tasks).where(eq(tasks.id, id)).limit(1))[0] ?? null
+      (await tx
+        .select()
+        .from(tasks)
+        .where(and(eq(tasks.id, id), eq(tasks.tenantId, session.tenantId)))
+        .limit(1))[0] ?? null
     );
     if (!row) return NextResponse.json({ error: "not found" }, { status: 404 });
+    // Assigned-only viewers can't read other people's tasks.
+    if (!canViewAll && !ownsTask(row, session.userId)) {
+      return NextResponse.json({ error: "not found" }, { status: 404 });
+    }
     return NextResponse.json(row);
   } catch (err: any) {
     return handleApiError(err);
@@ -80,19 +95,41 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const { id } = await params;
   try {
     const session = await requireSession();
-    requireCap(session.roles, "task.edit.all");
+    requireAny(session.roles, ["task.edit.all", "task.edit.assigned"], session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
     const parse = Patch.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) return NextResponse.json({ error: "invalid body" }, { status: 400 });
     const clientMeta = clientMetaFromHeaders(req.headers);
+    const canEditAll = can(session.roles, "task.edit.all", session.permissions);
 
     const patch: any = { ...parse.data, updatedAt: new Date() };
     if (parse.data.status === "completed" && !patch.completedAt) patch.completedAt = new Date();
 
     const result = await withTenant(session.tenantId, async (tx) => {
-      const before = (await tx.select().from(tasks).where(eq(tasks.id, id)).limit(1))[0];
+      const before = (await tx
+        .select()
+        .from(tasks)
+        .where(and(eq(tasks.id, id), eq(tasks.tenantId, session.tenantId)))
+        .limit(1))[0];
       if (!before) return null;
-      const after = await tx.update(tasks).set(patch).where(eq(tasks.id, id)).returning();
+      // Assigned-only editors may only touch their own tasks.
+      if (!canEditAll && !ownsTask(before, session.userId)) {
+        return { forbidden: true as const };
+      }
+      // A reassignment target must be a user in this tenant.
+      if (parse.data.assigneeId !== undefined) {
+        const [u] = await tx
+          .select({ id: users.id })
+          .from(users)
+          .where(and(eq(users.id, parse.data.assigneeId), eq(users.tenantId, session.tenantId)))
+          .limit(1);
+        if (!u) return { badAssignee: true as const };
+      }
+      const after = await tx
+        .update(tasks)
+        .set(patch)
+        .where(and(eq(tasks.id, id), eq(tasks.tenantId, session.tenantId)))
+        .returning();
       await recordAudit(tx, {
         tenantId: session.tenantId,
         actorUserId: session.userId,
@@ -156,6 +193,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return { ...after[0], spawnedNextId: spawnedId } as any;
     });
     if (!result) return NextResponse.json({ error: "not found" }, { status: 404 });
+    if ("forbidden" in result) return NextResponse.json({ error: "you can only edit tasks assigned to you" }, { status: 403 });
+    if ("badAssignee" in result) return NextResponse.json({ error: "assignee not found in this firm" }, { status: 400 });
     return NextResponse.json(result);
   } catch (err: any) {
     return handleApiError(err);
@@ -166,14 +205,22 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const { id } = await params;
   try {
     const session = await requireSession();
-    requireCap(session.roles, "task.edit.all");
+    requireAny(session.roles, ["task.edit.all", "task.edit.assigned"], session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
+    const canEditAll = can(session.roles, "task.edit.all", session.permissions);
     const clientMeta = clientMetaFromHeaders(req.headers);
-    await withTenant(session.tenantId, async (tx) => {
+    const outcome = await withTenant(session.tenantId, async (tx) => {
+      const before = (await tx
+        .select()
+        .from(tasks)
+        .where(and(eq(tasks.id, id), eq(tasks.tenantId, session.tenantId)))
+        .limit(1))[0];
+      if (!before) return "not_found" as const;
+      if (!canEditAll && !ownsTask(before, session.userId)) return "forbidden" as const;
       await tx
         .update(tasks)
         .set({ status: "cancelled", updatedAt: new Date() } as any)
-        .where(eq(tasks.id, id));
+        .where(and(eq(tasks.id, id), eq(tasks.tenantId, session.tenantId)));
       await recordAudit(tx, {
         tenantId: session.tenantId,
         actorUserId: session.userId,
@@ -182,7 +229,10 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
         entityId: id,
         ...clientMeta,
       });
+      return "ok" as const;
     });
+    if (outcome === "not_found") return NextResponse.json({ error: "not found" }, { status: 404 });
+    if (outcome === "forbidden") return NextResponse.json({ error: "you can only cancel tasks assigned to you" }, { status: 403 });
     return NextResponse.json({ ok: true });
   } catch (err: any) {
     return handleApiError(err);

@@ -20,7 +20,7 @@ export async function MarketingInsightsSection({ session }: { session: SessionUs
     async (tx) => {
       const [commsSplit, consentHealth, templatePipeline, sourceConversion] = await Promise.all([
         // 1. Service vs marketing comm split — last 30 days
-        tx.execute(sql`
+        await tx.execute(sql`
           SELECT
             COUNT(*) FILTER (
               WHERE tv.id IS NOT NULL
@@ -42,7 +42,7 @@ export async function MarketingInsightsSection({ session }: { session: SessionUs
         `),
 
         // 2. Consent health — opt-in % per channel, recent unsubs, bounce rate
-        tx.execute(sql`
+        await tx.execute(sql`
           SELECT
             (SELECT COUNT(*)::int FROM investors WHERE status = 'active') AS total_active,
             (SELECT COUNT(DISTINCT investor_id)::int FROM consents
@@ -68,7 +68,7 @@ export async function MarketingInsightsSection({ session }: { session: SessionUs
         `),
 
         // 3. Template approval pipeline
-        tx.execute(sql`
+        await tx.execute(sql`
           SELECT
             (SELECT COUNT(*)::int FROM templates WHERE status = 'pending_approval') AS pending_internal,
             (SELECT COUNT(*)::int FROM whatsapp_templates WHERE meta_status = 'PENDING') AS meta_pending,
@@ -79,7 +79,7 @@ export async function MarketingInsightsSection({ session }: { session: SessionUs
         `),
 
         // 4. Source-wise conversion MTD
-        tx.execute(sql`
+        await tx.execute(sql`
           SELECT
             source,
             COUNT(*)::int AS leads,

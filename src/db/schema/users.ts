@@ -125,6 +125,7 @@ export const users = pgTable(
      *  device is lost). Each is consumed on use. */
     twoFaBackupCodes: jsonb("two_fa_backup_codes").$type<string[]>(),
     permissions: jsonb("permissions").$type<string[]>(),
+    customLeaveEntitlements: jsonb("custom_leave_entitlements").$type<Record<string, number>>(),
     lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
     /**
      * Session revocation epoch. Any session JWT whose `iat` predates this

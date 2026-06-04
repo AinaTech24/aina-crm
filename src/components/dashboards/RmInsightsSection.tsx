@@ -46,7 +46,7 @@ export async function RmInsightsSection({ session }: { session: SessionUser }) {
         upcomingTouchpoints,
       ] = await Promise.all([
         // 1. Silent clients sorted by tier weight (A=3, B=2, C=1) × days silent
-        tx.execute(sql`
+        await tx.execute(sql`
           SELECT i.id, i.name, i.segment_tag, i.service_tier, i.aum,
             i.last_contact_at,
             EXTRACT(DAY FROM (now() - COALESCE(i.last_contact_at, i.onboarded_at, now() - interval '999 days')))::int AS days_silent
@@ -60,7 +60,7 @@ export async function RmInsightsSection({ session }: { session: SessionUser }) {
         `),
 
         // 2. Goal proximity — goals due within 18 months
-        tx.execute(sql`
+        await tx.execute(sql`
           SELECT g.id, g.name, g.category, g.target_date, g.progress_pct, g.status,
             g.target_amount, g.current_value, g.gap_amount,
             i.id AS investor_id, i.name AS investor_name
@@ -75,7 +75,7 @@ export async function RmInsightsSection({ session }: { session: SessionUser }) {
         `),
 
         // 3. Folio lifecycle — equity folios opened 11+ months ago (exit-load 1y) + ELSS folios near 3yr lock-in
-        tx.execute(sql`
+        await tx.execute(sql`
           SELECT f.id, f.folio_number, f.amc_name, f.opened_at, f.aum,
             i.id AS investor_id, i.name AS investor_name,
             CASE
@@ -99,7 +99,7 @@ export async function RmInsightsSection({ session }: { session: SessionUser }) {
         `),
 
         // 4. Cross-sell: HNI clients with non-zero AUM but no active SIP
-        tx.execute(sql`
+        await tx.execute(sql`
           SELECT i.id, i.name, i.segment_tag, i.aum, i.active_sip_amount
           FROM investors i
           WHERE i.rm_id = ${userId}
@@ -112,7 +112,7 @@ export async function RmInsightsSection({ session }: { session: SessionUser }) {
         `),
 
         // 5. Life-event watch — recent inbound communications with keywords
-        tx.execute(sql`
+        await tx.execute(sql`
           SELECT c.id, c.investor_id, c.channel, c.created_at, c.inbound_content,
             i.name AS investor_name
           FROM communications c
@@ -139,7 +139,7 @@ export async function RmInsightsSection({ session }: { session: SessionUser }) {
         `),
 
         // 6. Next 5 actions — heuristic over open leads (HOT), today tasks, SR breaches
-        tx.execute(sql`
+        await tx.execute(sql`
           (
             SELECT 'lead' AS kind, l.id::text AS id, l.name AS title,
               ('Stage: ' || COALESCE(l.stage, 'new')) AS subtitle,
@@ -188,7 +188,7 @@ export async function RmInsightsSection({ session }: { session: SessionUser }) {
         `),
 
         // 7. Upcoming touchpoints — birthdays + anniversaries in next 30 days
-        tx.execute(sql`
+        await tx.execute(sql`
           (
             SELECT 'birthday' AS kind, id, name, dob AS event_date, segment_tag,
               to_char(dob, 'MM-DD') AS md

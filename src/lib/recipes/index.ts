@@ -47,6 +47,9 @@ import { insurancePremiumReminderRecipe } from "./insurance_premium_reminder";
 import { insuranceLapseRecoveryRecipe } from "./insurance_lapse_recovery";
 import { sipExpiryReminderRecipe } from "./sip_expiry_reminder";
 import { meetingConfirmationRecipe } from "./meeting_confirmation";
+import { aumMilestoneRecipe } from "./aum_milestone";
+import { protectionGapNudgeRecipe } from "./protection_gap_nudge";
+import { taxSavingsNudgeRecipe } from "./tax_savings_nudge";
 
 export interface RecipeDef {
   key: string;
@@ -73,6 +76,9 @@ export const ALL_RECIPES: RecipeDef[] = [
   nismExpiryRecipe,
   arnExpiryRecipe,
   marketVolatilityRecipe,
+  aumMilestoneRecipe,
+  protectionGapNudgeRecipe,
+  taxSavingsNudgeRecipe,
   hniQuarterlyReviewRecipe,
   retailHalfYearlyReviewRecipe,
   redemptionRetentionRecipe,

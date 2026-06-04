@@ -13,16 +13,27 @@
 
 import { sql } from "drizzle-orm";
 import { eq } from "drizzle-orm";
+import { headers } from "next/headers";
 import { withSystem } from "@/db/client";
 import { tenants, investors } from "@/db/schema";
 import { resolveShareToken } from "@/lib/share-tokens";
-import { valueInvestor } from "@/lib/finance/valuation";
+import { valueInvestorCached } from "@/lib/finance/valuation";
+import { checkRateLimit } from "@/lib/rate-limit";
 import { formatINR } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
 export default async function PublicPortfolioPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
+
+  // Rate-limit by IP — this is an anonymous, shareable link; cap abuse / scraping.
+  const h = await headers();
+  const ip = (h.get("x-forwarded-for")?.split(",")[0] ?? h.get("x-real-ip") ?? "anon").trim();
+  const rl = checkRateLimit("public.portfolio", ip, { limit: 60, windowSec: 60 });
+  if (!rl.ok) {
+    return <ErrorScreen message="Too many requests — please wait a moment and refresh." />;
+  }
+
   let info: Awaited<ReturnType<typeof resolveShareToken>>;
   try {
     info = await resolveShareToken(token);
@@ -37,7 +48,7 @@ export default async function PublicPortfolioPage({ params }: { params: Promise<
     const [tenant] = await tx.select().from(tenants).where(eq(tenants.id, info.tenantId));
     const [inv] = await tx.select().from(investors).where(eq(investors.id, info.subjectId));
     if (!inv) return null;
-    const valuation = await valueInvestor(tx, info.subjectId);
+    const valuation = await valueInvestorCached(tx, info.subjectId);
     const goalsRes = await tx.execute(sql`
       SELECT name, COALESCE(progress_pct,0)::numeric AS progress_pct, target_amount, status
       FROM goals WHERE investor_id = ${info.subjectId}::uuid

@@ -32,6 +32,8 @@ declare global {
   var __mfd_pg_pool: Pool | undefined;
   // eslint-disable-next-line no-var
   var __mfd_db: ReturnType<typeof drizzle<typeof schema>> | undefined;
+  // eslint-disable-next-line no-var
+  var __mfd_db_role_checked: boolean | undefined;
 }
 
 export const pool: Pool =
@@ -68,6 +70,56 @@ if (!globalThis.__mfd_db) {
 }
 
 export type DbClient = typeof db;
+
+/**
+ * SECURITY: assert the app is NOT connected as a superuser / BYPASSRLS role.
+ *
+ * Postgres superusers (and roles with BYPASSRLS) ignore Row-Level Security
+ * entirely — even with FORCE ROW LEVEL SECURITY — so every tenant_isolation
+ * policy becomes inert and isolation rests only on explicit `tenant_id`
+ * predicates in app code. The app must connect via APP_DATABASE_URL as the
+ * non-superuser `mfd_app` role (see `npm run db:provision-app-role`).
+ *
+ * Runs once, fire-and-forget. In production it hard-fails (exit) on a
+ * privileged role so the misconfiguration is loud, not a silent data-leak;
+ * in dev it warns. Override (NOT recommended) with ALLOW_SUPERUSER_DB=1.
+ */
+async function assertNonBypassingRole(): Promise<void> {
+  try {
+    const res = await pool.query(
+      `SELECT current_user AS role, r.rolsuper, r.rolbypassrls
+         FROM pg_roles r WHERE r.rolname = current_user`
+    );
+    const row = res.rows[0] as { role: string; rolsuper: boolean; rolbypassrls: boolean } | undefined;
+    if (!row || (!row.rolsuper && !row.rolbypassrls)) return; // safe role
+    if (process.env.ALLOW_SUPERUSER_DB === "1") return; // explicit override
+
+    const why = row.rolsuper ? "is a SUPERUSER" : "has BYPASSRLS";
+    const msg =
+      `[db] SECURITY: connected as '${row.role}' which ${why} — Row-Level Security is NOT enforced; ` +
+      `tenant isolation relies solely on explicit predicates. Provision + use the non-superuser role: ` +
+      `\`npm run db:provision-app-role\` then set APP_DATABASE_URL=postgres://mfd_app:<pw>@host/db.`;
+
+    // `next build` runs with NODE_ENV=production and imports route modules to
+    // collect page data — but it is NOT serving traffic, so the hard-exit must
+    // NOT fire there or it kills the build worker (mis-reported as a confusing
+    // "Cannot find module for page" error). Only refuse at actual server start.
+    const isBuildPhase = process.env.NEXT_PHASE === "phase-production-build";
+    if (process.env.NODE_ENV === "production" && !isBuildPhase) {
+      console.error(msg + " Refusing to start in production (set ALLOW_SUPERUSER_DB=1 to override).");
+      process.exit(1);
+    } else {
+      console.warn(msg);
+    }
+  } catch {
+    // Never let the safety check itself break startup.
+  }
+}
+
+if (!globalThis.__mfd_db_role_checked) {
+  globalThis.__mfd_db_role_checked = true;
+  void assertNonBypassingRole();
+}
 
 /**
  * Run `fn` inside a transaction with the tenant_id (and optional user/branch)

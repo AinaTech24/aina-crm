@@ -108,14 +108,21 @@ export const sopVersions = pgTable("sop_versions", {
   ...timestamps,
 });
 
-export const sopAcknowledgements = pgTable("sop_acknowledgements", {
-  id,
-  tenantId: tenantId.references(() => tenants.id),
-  sopVersionId: uuid("sop_version_id").notNull(),
-  userId: uuid("user_id").notNull(),
-  acknowledgedAt: timestamp("acknowledged_at", { withTimezone: true }).defaultNow().notNull(),
-  evidence: jsonb("evidence"),
-});
+export const sopAcknowledgements = pgTable(
+  "sop_acknowledgements",
+  {
+    id,
+    tenantId: tenantId.references(() => tenants.id),
+    sopVersionId: uuid("sop_version_id").notNull(),
+    userId: uuid("user_id").notNull(),
+    acknowledgedAt: timestamp("acknowledged_at", { withTimezone: true }).defaultNow().notNull(),
+    evidence: jsonb("evidence"),
+  },
+  (t) => ({
+    // One acknowledgement per (version, user) — keeps the DDQ sign-off score honest.
+    versionUserUnique: uniqueIndex("sop_ack_version_user_unique").on(t.sopVersionId, t.userId),
+  })
+);
 
 export type ComplianceDocument = typeof complianceDocuments.$inferSelect;
 export type DdqScore = typeof ddqScores.$inferSelect;

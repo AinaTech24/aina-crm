@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ChevronLeft, Webhook, Check, AlertCircle, ExternalLink } from "lucide-react";
+import WainaConnectCard from "./WainaConnectCard";
 
 const INTEGRATIONS = [
   {
@@ -54,6 +55,9 @@ export default function IntegrationsPage() {
       <p className="text-sm text-muted-foreground">
         Connect external services. Most integrations are configured by AINA on your behalf during onboarding.
       </p>
+
+      {/* Self-serve: the firm connects its own WhatsApp sender once. */}
+      <WainaConnectCard />
 
       <div className="grid grid-cols-1 gap-3">
         {INTEGRATIONS.map((i) => {

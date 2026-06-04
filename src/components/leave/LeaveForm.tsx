@@ -1,16 +1,20 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Save, CalendarDays, AlertTriangle } from "lucide-react";
+import { Loader2, Save, CalendarDays, AlertTriangle, Clock } from "lucide-react";
 import {
   LEAVE_TYPE_LABELS,
   LEAVE_DURATION_LABELS,
-  LEAVE_ENTITLEMENTS,
+  getEntitlement,
   computeDays,
 } from "@/lib/leave/policy";
 
-type Emp = { id: string; name: string };
+type Emp = {
+  id: string;
+  name: string;
+  custom_leave_entitlements?: Record<string, number> | null;
+};
 type Usage = { employee_user_id: string; leave_type: string; used: number };
 
 export function LeaveForm({
@@ -34,6 +38,33 @@ export function LeaveForm({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  const [conflicts, setConflicts] = useState<any[]>([]);
+  const [checkingConflicts, setCheckingConflicts] = useState(false);
+
+  useEffect(() => {
+    if (!employeeId || !fromDate) return;
+    const end = duration === "half_day" ? fromDate : toDate;
+    if (end < fromDate) return;
+
+    let active = true;
+    setCheckingConflicts(true);
+    fetch(`/api/leave-applications/conflicts?employeeId=${employeeId}&fromDate=${fromDate}&toDate=${end}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (active && data.conflicts) {
+          setConflicts(data.conflicts);
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (active) setCheckingConflicts(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [employeeId, fromDate, toDate, duration]);
+
   const usageMap = useMemo(() => {
     const m: Record<string, Record<string, number>> = {};
     for (const u of usage) {
@@ -42,8 +73,10 @@ export function LeaveForm({
     return m;
   }, [usage]);
 
+  const selectedEmployee = useMemo(() => employees.find((e) => e.id === employeeId), [employees, employeeId]);
+
   const days = duration === "half_day" ? 0.5 : computeDays(fromDate, toDate, "full_day");
-  const entitlement = LEAVE_ENTITLEMENTS[leaveType];
+  const entitlement = getEntitlement(leaveType, selectedEmployee?.custom_leave_entitlements);
   const used = usageMap[employeeId]?.[leaveType] ?? 0;
   const remaining = entitlement === null ? null : Math.max(0, entitlement - used);
   const overBalance = remaining !== null && days > remaining;
@@ -131,6 +164,38 @@ export function LeaveForm({
           </span>
         )}
       </div>
+
+      {/* Coverage Conflicts */}
+      {conflicts.length > 0 && (
+        <div className="rounded-md border border-amber-200 bg-amber-50/50 text-amber-900 p-3 text-sm space-y-1">
+          <div className="font-semibold flex items-center gap-1.5 text-amber-800">
+            <AlertTriangle className="size-4 text-amber-600 animate-pulse" />
+            <span>Department Coverage Alert ({conflicts.length} conflict{conflicts.length > 1 ? "s" : ""})</span>
+          </div>
+          <p className="text-xs text-amber-700">
+            Other team members in the same department have scheduled leaves during this period:
+          </p>
+          <ul className="list-disc list-inside text-xs pl-1 space-y-0.5 text-amber-800 mt-1">
+            {conflicts.map((c: any) => {
+              const empName = c.employee_name || c.employeeName;
+              const fDate = c.from_date || c.fromDate;
+              const tDate = c.to_date || c.toDate;
+              const lType = c.leave_type || c.leaveType;
+              const formattedFDate = fDate ? new Date(fDate).toLocaleDateString("en-IN", { day: 'numeric', month: 'short' }) : '';
+              const formattedTDate = tDate ? new Date(tDate).toLocaleDateString("en-IN", { day: 'numeric', month: 'short' }) : '';
+              const dateStr = formattedFDate === formattedTDate ? formattedFDate : `${formattedFDate} - ${formattedTDate}`;
+              const typeLabel = LEAVE_TYPE_LABELS[lType] || lType;
+
+              return (
+                <li key={c.id}>
+                  <span className="font-medium">{empName}</span> ({typeLabel}): {dateStr}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+
 
       <Field label="Reason">
         <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} placeholder="Reason for leave…" className="input-base" />

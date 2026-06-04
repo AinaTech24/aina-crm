@@ -565,6 +565,45 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
         await tx.execute(sql`UPDATE investors SET aum_milestone_band = ${row.band} WHERE id = ${row.id}::uuid`);
       }
 
+      // ── CS6: proactive advice as client moments ───────────────────────
+      // Protection gap — a client with real AUM but NO active life cover. Emit
+      // at most once per ~90 days (self-dedup against the outbox) so the
+      // protection_gap_nudge recipe messages them, not nags daily.
+      const gapRows = await tx.execute(sql`
+        SELECT i.id, i.name, i.rm_id, i.aum FROM investors i
+        WHERE i.status = 'active' AND i.aum >= 2500000
+          AND NOT EXISTS (SELECT 1 FROM insurance_policies p WHERE p.investor_id = i.id AND p.status = 'active')
+          AND NOT EXISTS (SELECT 1 FROM events_outbox e WHERE e.tenant_id = ${tenantId}::uuid AND e.entity_id = i.id AND e.kind = 'insurance.protection_gap' AND e.occurred_at > now() - interval '90 days')
+        LIMIT 500
+      `);
+      for (const row of gapRows.rows as Array<{ id: string; name: string; rm_id: string | null; aum: string }>) {
+        await tx.insert(eventsOutbox).values({
+          tenantId, kind: "insurance.protection_gap", entityType: "investor", entityId: row.id,
+          after: { name: row.name, aum: Number(row.aum), rmId: row.rm_id, suggested_cover: Math.round(Number(row.aum) * 10 / 100000) * 100000 } as any,
+          meta: { scanDate, source: "daily-ops-scanner" } as any,
+        } as any).onConflictDoNothing();
+      }
+
+      // Tax-savings opportunity — only in the Jan–Mar window (FY closing), for
+      // clients with a transaction history (equity holdings likely). Once/year.
+      const month = scanNow.getMonth(); // 0-based; Jan=0..Mar=2
+      if (month <= 2) {
+        const taxRows = await tx.execute(sql`
+          SELECT i.id, i.name, i.rm_id FROM investors i
+          WHERE i.status = 'active' AND i.aum >= 500000
+            AND EXISTS (SELECT 1 FROM transactions t WHERE t.investor_id = i.id AND t.status IN ('processed','successful'))
+            AND NOT EXISTS (SELECT 1 FROM events_outbox e WHERE e.tenant_id = ${tenantId}::uuid AND e.entity_id = i.id AND e.kind = 'tax.harvest_opportunity' AND e.occurred_at > now() - interval '300 days')
+          LIMIT 500
+        `);
+        for (const row of taxRows.rows as Array<{ id: string; name: string; rm_id: string | null }>) {
+          await tx.insert(eventsOutbox).values({
+            tenantId, kind: "tax.harvest_opportunity", entityType: "investor", entityId: row.id,
+            after: { name: row.name, rmId: row.rm_id } as any,
+            meta: { scanDate, source: "daily-ops-scanner" } as any,
+          } as any).onConflictDoNothing();
+        }
+      }
+
       // ── Goal drift — emit a `goal.drift` event for each investor whose goal
       // has fallen >10pp behind its time-trajectory. One event per investor
       // (the worst-drifting goal); the scanner dedup index collapses to one
@@ -928,9 +967,14 @@ export async function runDailyOpsScan(): Promise<{
     srEscalated: 0,
     attendanceSeeded: 0,
   };
-  for (const tenantId of tenants) {
-    try {
-      const r = await scanTenant(tenantId);
+  // Each tenant scan is fully independent (its own withTenant tx, RLS-scoped to
+  // that tenant's rows), so they can run concurrently without lock contention.
+  // A sequential loop over 500 tenants serialises ~5–13s of work each (≈ an hour
+  // wall-clock); a bounded pool keeps the DB busy without exhausting the pg pool
+  // (default 20 conns). Tune with DAILY_OPS_CONCURRENCY; default 5.
+  const concurrency = Math.max(1, Number(process.env.DAILY_OPS_CONCURRENCY ?? 5) || 5);
+  const queue = [...tenants];
+  const accumulate = (r: ScanResult) => {
       totals.birthday += r.birthday;
       totals.anniversary += r.anniversary;
       totals.minorToMajor += r.minorToMajor;
@@ -957,11 +1001,22 @@ export async function runDailyOpsScan(): Promise<{
       totals.mandateExpiring += r.mandateExpiring;
       totals.srEscalated += r.srEscalated;
       totals.attendanceSeeded += r.attendanceSeeded;
-    } catch (err: any) {
-      console.error(`[daily-ops-scanner] tenant ${tenantId} failed:`, err.message);
-      failed.push(tenantId);
+  };
+  const worker = async () => {
+    for (;;) {
+      const tenantId = queue.shift();
+      if (!tenantId) return;
+      try {
+        accumulate(await scanTenant(tenantId));
+      } catch (err: any) {
+        console.error(`[daily-ops-scanner] tenant ${tenantId} failed:`, err.message);
+        failed.push(tenantId);
+      }
     }
-  }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, queue.length) }, () => worker())
+  );
   const durationMs = Date.now() - startedAt;
   console.log(
     `[daily-ops-scanner] scanned ${tenants.length} tenants in ${durationMs}ms`,

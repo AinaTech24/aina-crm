@@ -18,10 +18,13 @@ export async function GrowthRetentionSection({ session }: { session: SessionUser
     withTenant(
       session.tenantId,
       async (tx) => {
-        const [churn, harvest, referrals] = await Promise.all([
-          scanChurn(tx, { minBand: "high" }),
-          scanTaxHarvest(tx, { limit: 500 }),
-          tx.execute(sql`
+        // One pg connection runs one query at a time — these MUST be awaited
+        // sequentially, not Promise.all'd, or pg queues them and warns (hard
+        // error in pg@9). The array literal is a no-op over resolved values.
+        const [churn, harvest, referrals] = [
+          await scanChurn(tx, { minBand: "high" }),
+          await scanTaxHarvest(tx, { limit: 500 }),
+          await tx.execute(sql`
             SELECT
               COUNT(*) FILTER (WHERE referred_by_investor_id IS NOT NULL
                 AND created_at >= date_trunc('month', now()))::int AS referrals_mtd,
@@ -29,7 +32,7 @@ export async function GrowthRetentionSection({ session }: { session: SessionUser
             FROM leads
             WHERE referred_by_investor_id IS NOT NULL
           `),
-        ]);
+        ];
         const churnAum = churn.reduce((s, r) => s + r.aum, 0);
         const harvestable = harvest.reduce((s, r) => s + r.harvestable, 0);
         const ref = referrals.rows[0] as { referrals_mtd: number; total_referrers: number };

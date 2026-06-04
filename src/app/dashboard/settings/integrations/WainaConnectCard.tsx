@@ -1,0 +1,228 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { Check, AlertCircle, Loader2, MessageCircle } from "lucide-react";
+
+type Status = {
+  connected: boolean;
+  keyHint?: string;
+  webhookUrl?: string;
+  defaultLanguage?: string;
+};
+
+export default function WainaConnectCard() {
+  const [status, setStatus] = useState<Status | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+
+  const [apiKey, setApiKey] = useState("");
+  const [webhookUrl, setWebhookUrl] = useState("");
+  const [defaultLanguage, setDefaultLanguage] = useState("en_US");
+
+  async function load() {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/settings/integrations/waina");
+      if (res.ok) {
+        const data = (await res.json()) as Status;
+        setStatus(data);
+        if (data.webhookUrl) setWebhookUrl(data.webhookUrl);
+        if (data.defaultLanguage) setDefaultLanguage(data.defaultLanguage);
+        setEditing(!data.connected);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  async function save() {
+    setSaving(true);
+    setMsg(null);
+    try {
+      const res = await fetch("/api/settings/integrations/waina", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          apiKey: apiKey.trim(),
+          webhookUrl: webhookUrl.trim() || undefined,
+          defaultLanguage: defaultLanguage.trim() || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setMsg({ kind: "err", text: data?.error ?? "Could not save the key" });
+      } else {
+        setStatus(data);
+        setApiKey("");
+        setEditing(false);
+        setMsg({ kind: "ok", text: "WAina connected. WhatsApp sends now use this key." });
+      }
+    } catch {
+      setMsg({ kind: "err", text: "Network error — please try again" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function disconnect() {
+    if (!confirm("Disconnect WAina? WhatsApp sends will stop until you add a key again.")) return;
+    setSaving(true);
+    setMsg(null);
+    try {
+      const res = await fetch("/api/settings/integrations/waina", { method: "DELETE" });
+      if (res.ok) {
+        setStatus({ connected: false });
+        setEditing(true);
+        setMsg({ kind: "ok", text: "Disconnected." });
+      } else {
+        const data = await res.json();
+        setMsg({ kind: "err", text: data?.error ?? "Could not disconnect" });
+      }
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const connected = status?.connected;
+
+  return (
+    <div className="border rounded-lg bg-card p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 className="font-semibold flex items-center gap-2">
+            <MessageCircle className="size-4 text-emerald-600" /> WAina WhatsApp
+          </h3>
+          <p className="text-sm text-muted-foreground mt-1">
+            Connect your WAina account once. After that, every WhatsApp message just
+            needs a template name — the CRM uses this key automatically.
+          </p>
+        </div>
+        <span
+          className={`text-xs px-2 py-1 rounded-full flex items-center gap-1 ${
+            connected ? "bg-emerald-50 text-emerald-700" : "bg-gray-50 text-gray-600"
+          }`}
+        >
+          {loading ? (
+            <Loader2 className="size-3 animate-spin" />
+          ) : connected ? (
+            <>
+              <Check className="size-3" /> Connected
+            </>
+          ) : (
+            <>
+              <AlertCircle className="size-3" /> Not connected
+            </>
+          )}
+        </span>
+      </div>
+
+      <div className="mt-4 pt-4 border-t space-y-3">
+        {connected && !editing ? (
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-sm">
+              <span className="text-muted-foreground">Webhook key:</span>{" "}
+              <span className="font-mono">{status?.keyHint ?? "••••"}</span>
+              <span className="text-muted-foreground ml-3">Language:</span>{" "}
+              <span className="font-mono">{status?.defaultLanguage ?? "en_US"}</span>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setEditing(true)}
+                className="text-sm px-3 py-1.5 rounded-md border hover:bg-accent"
+              >
+                Update key
+              </button>
+              <button
+                onClick={disconnect}
+                disabled={saving}
+                className="text-sm px-3 py-1.5 rounded-md border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-50"
+              >
+                Disconnect
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">
+                WAina webhook key (api_key) <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="password"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                placeholder="e.g. Aina@001"
+                autoComplete="off"
+                className="mt-1 w-full rounded-md border px-3 py-2 text-sm font-mono bg-background"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Find this in WAina → Developer / Webhooks. Stored encrypted; we never show it back.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-medium text-muted-foreground">
+                  Endpoint URL (optional)
+                </label>
+                <input
+                  type="text"
+                  value={webhookUrl}
+                  onChange={(e) => setWebhookUrl(e.target.value)}
+                  placeholder="https://beckend.ainatech.in/api/extension/zoho-workflow"
+                  className="mt-1 w-full rounded-md border px-3 py-2 text-sm bg-background"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground">
+                  Default language
+                </label>
+                <input
+                  type="text"
+                  value={defaultLanguage}
+                  onChange={(e) => setDefaultLanguage(e.target.value)}
+                  placeholder="en_US"
+                  className="mt-1 w-full rounded-md border px-3 py-2 text-sm font-mono bg-background"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={save}
+                disabled={saving || apiKey.trim().length === 0}
+                className="text-sm px-4 py-2 rounded-md bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 flex items-center gap-2"
+              >
+                {saving && <Loader2 className="size-3.5 animate-spin" />}
+                {connected ? "Update key" : "Connect WAina"}
+              </button>
+              {connected && (
+                <button
+                  onClick={() => {
+                    setEditing(false);
+                    setApiKey("");
+                  }}
+                  className="text-sm px-3 py-2 rounded-md border hover:bg-accent"
+                >
+                  Cancel
+                </button>
+              )}
+            </div>
+          </>
+        )}
+
+        {msg && (
+          <p className={`text-sm ${msg.kind === "ok" ? "text-emerald-600" : "text-red-600"}`}>
+            {msg.text}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}

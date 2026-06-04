@@ -17,6 +17,7 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { ANNOUNCEMENT_CATEGORIES, announcements } from "@/db/schema";
+import { audienceRolesSchema, checkBranchTarget } from "@/lib/announcements/validate";
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +27,7 @@ const Body = z.object({
   title: z.string().min(2).max(200),
   body: z.string().min(1).max(8000),
   category: z.enum(ANNOUNCEMENT_CATEGORIES).default("general"),
-  audienceRoles: z.array(z.string()).max(12).default([]),
+  audienceRoles: audienceRolesSchema.default([]),
   branchId: z.string().uuid().nullable().optional(),
   isPinned: z.boolean().default(false),
   publishNow: z.boolean().default(true),
@@ -84,7 +85,15 @@ export async function POST(req: NextRequest) {
     const meta = clientMetaFromHeaders(req.headers);
     const id = uuid();
 
-    await withTenant(session.tenantId, async (tx) => {
+    const out = await withTenant(session.tenantId, async (tx) => {
+      const branchErr = await checkBranchTarget(tx, {
+        branchId: b.branchId,
+        tenantId: session.tenantId,
+        roles: session.roles,
+        ownBranchId: session.branchId ?? null,
+      });
+      if (branchErr) return { error: branchErr };
+
       await tx.insert(announcements).values({
         id,
         tenantId: session.tenantId,
@@ -107,7 +116,9 @@ export async function POST(req: NextRequest) {
         after: { title: b.title, category: b.category } as any,
         ...meta,
       });
+      return { error: null as string | null };
     });
+    if (out?.error) return NextResponse.json({ error: out.error }, { status: 400 });
     return NextResponse.json({ id }, { status: 201 });
   } catch (err: any) {
     return handleApiError(err);

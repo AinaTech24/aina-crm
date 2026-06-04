@@ -81,7 +81,7 @@ export async function composeBrandedImage(
   const H = meta.height ?? 800;
   const stripH = Math.round((H * heightPct) / 100);
 
-  const primary = sanitizeColor(config.background ?? tenant.primaryColor ?? "#0e2557");
+  const primary = sanitizeColor(config.background ?? tenant.primaryColor ?? "#C5202A");
   // Brand-cohesive accent: a lightened tint of the firm's own colour, so the
   // hairline never clashes the way a fixed cyan did on a warm-coloured brand.
   const accent = shadeHex(primary, 34);
@@ -581,7 +581,7 @@ function escapeXml(s: string): string {
 }
 
 function sanitizeColor(c: string): string {
-  return /^#?[0-9a-fA-F]{6}$/.test(c.replace(/^#/, "")) ? (c.startsWith("#") ? c : "#" + c) : "#0e2557";
+  return /^#?[0-9a-fA-F]{6}$/.test(c.replace(/^#/, "")) ? (c.startsWith("#") ? c : "#" + c) : "#C5202A";
 }
 
 function shadeHex(hex: string, pct: number): string {

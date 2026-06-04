@@ -37,7 +37,7 @@ export async function ComplianceCockpit({ session }: { session: SessionUser }) {
         checklistSummary
       ] = await Promise.all([
         // 1. Latest DDQ score
-        tx.execute(sql`
+        await tx.execute(sql`
           SELECT computed_at, overall_score::numeric, breakdown, findings
           FROM ddq_scores
           ORDER BY computed_at DESC
@@ -45,7 +45,7 @@ export async function ComplianceCockpit({ session }: { session: SessionUser }) {
         `),
 
         // 2. Expiries & Gaps
-        tx.execute(sql`
+        await tx.execute(sql`
           SELECT
             COUNT(*) FILTER (WHERE ckyc_expiry_at IS NOT NULL
               AND ckyc_expiry_at BETWEEN current_date AND current_date + interval '30 days')::int AS kyc_30,
@@ -62,7 +62,7 @@ export async function ComplianceCockpit({ session }: { session: SessionUser }) {
         `),
 
         // 3. Marketing & Template approval pipeline
-        tx.execute(sql`
+        await tx.execute(sql`
           SELECT
             (SELECT COUNT(*)::int FROM templates WHERE status = 'pending_approval' AND category = 'marketing') AS pending_marketing,
             (SELECT COUNT(*)::int FROM templates WHERE status = 'pending_approval' AND category = 'transactional') AS pending_tx,
@@ -71,7 +71,7 @@ export async function ComplianceCockpit({ session }: { session: SessionUser }) {
         `),
 
         // 4. Recent Audit Logs
-        tx.execute(sql`
+        await tx.execute(sql`
           SELECT a.id, a.action, a.actor_type, a.at, u.name AS actor_name
           FROM audit_log a
           LEFT JOIN users u ON u.id = a.actor_user_id
@@ -80,7 +80,7 @@ export async function ComplianceCockpit({ session }: { session: SessionUser }) {
         `),
 
         // 5. Active Circulars (AMFI)
-        tx.execute(sql`
+        await tx.execute(sql`
           SELECT id, title, circular_no, issued_at, source_url
           FROM amfi_circulars
           ORDER BY issued_at DESC
@@ -88,7 +88,7 @@ export async function ComplianceCockpit({ session }: { session: SessionUser }) {
         `),
 
         // 6. DDQ Checklist status summary
-        tx.execute(sql`
+        await tx.execute(sql`
           SELECT status, COUNT(*)::int AS count
           FROM ddq_checklist_status
           GROUP BY status

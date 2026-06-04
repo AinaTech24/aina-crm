@@ -26,6 +26,21 @@ type CircularItem = {
   createdAt?: string | Date | null;
 };
 
+/**
+ * Only emit a link for http(s) URLs. Defends the rendered `<a href>` against
+ * stored `javascript:` / `data:` values (covers legacy rows + AINA-curated data,
+ * not just freshly-validated writes).
+ */
+function safeHref(url?: string | null): string | null {
+  if (!url) return null;
+  try {
+    const u = new URL(url, "http://x"); // base lets relative URLs resolve, then we check scheme
+    return /^https?:$/i.test(u.protocol) && /^https?:\/\//i.test(url) ? url : null;
+  } catch {
+    return null;
+  }
+}
+
 const SEVERITY = {
   critical: { icon: AlertOctagon, chip: "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/20 dark:text-rose-400 dark:border-rose-900/50", label: "Critical" },
   action_required: { icon: AlertTriangle, chip: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/20 dark:text-amber-400 dark:border-amber-900/50", label: "Action required" },
@@ -152,9 +167,9 @@ export function CircularsFeed({
                       </ul>
                     </div>
                   )}
-                  {c.sourceUrl && (
+                  {safeHref(c.sourceUrl) && (
                     <div className="mt-3 text-[11px]">
-                      <a href={c.sourceUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-brand-cyan hover:underline">
+                      <a href={safeHref(c.sourceUrl)!} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-brand-cyan hover:underline">
                         Official source <ExternalLink className="size-3" />
                       </a>
                     </div>
@@ -215,8 +230,8 @@ export function CircularsFeed({
                     </div>
                   )}
                   <div className="mt-3 flex items-center gap-3 text-[11px] text-muted-foreground">
-                    {c.sourceUrl && (
-                      <a href={c.sourceUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-brand-cyan hover:underline">
+                    {safeHref(c.sourceUrl) && (
+                      <a href={safeHref(c.sourceUrl)!} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-brand-cyan hover:underline">
                         Official source <ExternalLink className="size-3" />
                       </a>
                     )}

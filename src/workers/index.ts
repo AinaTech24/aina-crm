@@ -25,6 +25,8 @@ import { runMarketScan } from "./market-scanner";
 import { runFeedIngest } from "./feed-ingest";
 import { runStatementScheduler } from "./statement-scheduler";
 import { refreshNav } from "@/lib/finance/nav-feed";
+import { getLastRun, recordRun } from "./scheduler-state";
+import { captureError } from "@/lib/observability/capture";
 
 const groups = (process.env.WORKER_GROUPS ?? "outbox,wf,seg,sched,wa_sync,ops,monthly,nav,recon,market,feed,statements")
   .split(",")
@@ -32,6 +34,66 @@ const groups = (process.env.WORKER_GROUPS ?? "outbox,wf,seg,sched,wa_sync,ops,mo
 // 'sched' covers the scheduled-comms drain too (kept with the other schedulers).
 
 const stops: Array<() => void> = [];
+
+/**
+ * Schedule a once-a-day fixed-time job with MISSED-RUN CATCH-UP + run recording.
+ *
+ * On boot, if today's scheduled time already passed and the job's last recorded
+ * run predates it (process was down at that moment), it runs immediately instead
+ * of silently skipping the day. Every run records a watermark + heartbeat in
+ * `scheduler_state` so a readiness probe can tell automation is alive.
+ */
+function scheduleDaily(
+  group: string,
+  jobName: string,
+  hour: number,
+  minute: number,
+  fn: () => Promise<unknown>,
+  bootEnv?: string
+) {
+  if (!groups.includes(group)) return;
+
+  const run = async (reason: string) => {
+    try {
+      await fn();
+      await recordRun(jobName, "ok", reason);
+    } catch (err) {
+      captureError(`[${jobName}] ${reason} run failed`, err);
+      await recordRun(jobName, "error", (err as Error)?.message);
+    }
+  };
+
+  // Missed-run catch-up.
+  void (async () => {
+    const now = new Date();
+    const scheduledToday = new Date(now);
+    scheduledToday.setHours(hour, minute, 0, 0);
+    if (now >= scheduledToday) {
+      const last = await getLastRun(jobName);
+      if (!last || last < scheduledToday) {
+        console.log(`[${jobName}] missed today's ${hour}:${String(minute).padStart(2, "0")} run — catching up now`);
+        await run("catchup");
+      }
+    }
+    if (bootEnv && process.env[bootEnv] === "1") await run("boot");
+  })();
+
+  const scheduleNext = () => {
+    const now = new Date();
+    const next = new Date(now);
+    next.setHours(hour, minute, 0, 0);
+    if (next <= now) next.setDate(next.getDate() + 1);
+    const delayMs = next.getTime() - now.getTime();
+    const t = setTimeout(async () => {
+      await run("scheduled");
+      scheduleNext();
+    }, delayMs);
+    t.unref?.();
+    stops.push(() => clearTimeout(t));
+    console.log(`[${jobName}] next run at ${next.toISOString()} (in ${Math.round(delayMs / 60000)} min)`);
+  };
+  scheduleNext();
+}
 
 if (groups.includes("outbox")) stops.push(startOutboxPollerWorker());
 if (groups.includes("wf")) stops.push(startWorkflowRunnerWorker());
@@ -56,33 +118,7 @@ if (groups.includes("wa_sync")) stops.push(startAiSensyTemplateSyncWorker());
  * one trigger per tenant. A self-scheduled tick is cheaper and easier
  * to reason about.
  */
-if (groups.includes("ops")) {
-  const scheduleNext = () => {
-    const now = new Date();
-    const next = new Date(now);
-    next.setHours(6, 30, 0, 0);
-    if (next <= now) next.setDate(next.getDate() + 1);
-    const delayMs = next.getTime() - now.getTime();
-    const t = setTimeout(async () => {
-      try {
-        await runDailyOpsScan();
-      } catch (err) {
-        console.error("[daily-ops-scanner] sweep failed:", err);
-      }
-      scheduleNext();
-    }, delayMs);
-    t.unref?.();
-    stops.push(() => clearTimeout(t));
-    console.log(
-      `[daily-ops-scanner] next run at ${next.toISOString()} (in ${Math.round(delayMs / 60000)} min)`
-    );
-  };
-  // Also run on boot if the env var asks for it — useful for testing.
-  if (process.env.DAILY_OPS_ON_BOOT === "1") {
-    void runDailyOpsScan();
-  }
-  scheduleNext();
-}
+scheduleDaily("ops", "daily-ops-scanner", 6, 30, runDailyOpsScan, "DAILY_OPS_ON_BOOT");
 
 /**
  * Monthly compliance checklist — seeds the standard SEBI-flavoured tasks
@@ -121,35 +157,17 @@ if (groups.includes("monthly")) {
  * is what keeps live portfolio valuation + XIRR current. Self-scheduled tick,
  * same rationale as the daily-ops scanner (single sweep, not per-tenant).
  */
-if (groups.includes("nav")) {
-  const scheduleNext = () => {
-    const now = new Date();
-    const next = new Date(now);
-    next.setHours(7, 0, 0, 0);
-    if (next <= now) next.setDate(next.getDate() + 1);
-    const delayMs = next.getTime() - now.getTime();
-    const t = setTimeout(async () => {
-      try {
-        const r = await refreshNav();
-        console.log(`[nav-refresh] upserted ${r.written} schemes (nav date ~${r.navDate})`);
-      } catch (err) {
-        console.error("[nav-refresh] failed:", (err as Error).message);
-      }
-      scheduleNext();
-    }, delayMs);
-    t.unref?.();
-    stops.push(() => clearTimeout(t));
-    console.log(
-      `[nav-refresh] next run at ${next.toISOString()} (in ${Math.round(delayMs / 60000)} min)`
-    );
-  };
-  if (process.env.NAV_REFRESH_ON_BOOT === "1") {
-    void refreshNav().then((r) =>
-      console.log(`[nav-refresh] boot run upserted ${r.written} schemes`)
-    );
-  }
-  scheduleNext();
-}
+scheduleDaily(
+  "nav",
+  "nav-refresh",
+  7,
+  0,
+  async () => {
+    const r = await refreshNav();
+    console.log(`[nav-refresh] upserted ${r.written} schemes (nav date ~${r.navDate})`);
+  },
+  "NAV_REFRESH_ON_BOOT"
+);
 
 /**
  * Reconciliation scanner — fires once a day at 07:30 local (after the 07:00
@@ -157,37 +175,19 @@ if (groups.includes("nav")) {
  * bounces) into automation events so the recipes chase them hands-off, and
  * reports AUM drift. Self-scheduled tick, same rationale as the ops scanner.
  */
-if (groups.includes("recon")) {
-  const scheduleNext = () => {
-    const now = new Date();
-    const next = new Date(now);
-    next.setHours(7, 30, 0, 0);
-    if (next <= now) next.setDate(next.getDate() + 1);
-    const delayMs = next.getTime() - now.getTime();
-    const t = setTimeout(async () => {
-      try {
-        await runReconciliationScan();
-        // Three-way holdings reconciliation right after — reconciles the freshly
-        // ingested feed against the CRM ledger + live NAV and writes exceptions.
-        await runHoldingsReconciliation();
-      } catch (err) {
-        console.error("[reconciliation-scanner] sweep failed:", (err as Error).message);
-      }
-      scheduleNext();
-    }, delayMs);
-    t.unref?.();
-    stops.push(() => clearTimeout(t));
-    console.log(
-      `[reconciliation-scanner] next run at ${next.toISOString()} (in ${Math.round(delayMs / 60000)} min)`
-    );
-  };
-  if (process.env.RECON_ON_BOOT === "1") {
-    void runReconciliationScan().then((r) =>
-      console.log(`[reconciliation-scanner] boot run:`, r.totals)
-    );
-  }
-  scheduleNext();
-}
+scheduleDaily(
+  "recon",
+  "reconciliation-scanner",
+  7,
+  30,
+  async () => {
+    await runReconciliationScan();
+    // Three-way holdings reconciliation right after — reconciles the freshly
+    // ingested feed against the CRM ledger + live NAV and writes exceptions.
+    await runHoldingsReconciliation();
+  },
+  "RECON_ON_BOOT"
+);
 
 /**
  * Market scanner — ticks hourly. Reads the configured index feed and, on a
@@ -244,29 +244,28 @@ if (groups.includes("feed")) {
  * statement to every client whose cadence (monthly/quarterly) is due. The
  * per-period watermark means it sends each client at most once per period.
  */
-if (groups.includes("statements")) {
-  const scheduleNext = () => {
-    const now = new Date();
-    const next = new Date(now);
-    next.setHours(8, 0, 0, 0);
-    if (next <= now) next.setDate(next.getDate() + 1);
-    const delayMs = next.getTime() - now.getTime();
-    const t = setTimeout(async () => {
-      try {
-        const r = await runStatementScheduler();
-        if (r.sent > 0) console.log(`[statement-scheduler] sent ${r.sent} auto-statement(s)`);
-      } catch (err) {
-        console.error("[statement-scheduler] run failed:", (err as Error).message);
-      }
-      scheduleNext();
-    }, delayMs);
-    t.unref?.();
-    stops.push(() => clearTimeout(t));
-    console.log(`[statement-scheduler] next run at ${next.toISOString()} (in ${Math.round(delayMs / 60000)} min)`);
-  };
-  if (process.env.STATEMENTS_ON_BOOT === "1") void runStatementScheduler();
-  scheduleNext();
-}
+scheduleDaily(
+  "statements",
+  "statement-scheduler",
+  8,
+  0,
+  async () => {
+    const r = await runStatementScheduler();
+    if (r.sent > 0) console.log(`[statement-scheduler] sent ${r.sent} auto-statement(s)`);
+  },
+  "STATEMENTS_ON_BOOT"
+);
+
+// Last-resort safety net: a floating rejection or uncaught exception in any
+// tick must NOT silently crash the whole worker (taking down every automation).
+// Log + report; keep the process alive so PM2 doesn't churn-restart and lose a
+// fixed-time window. A truly fatal error still surfaces loudly via captureError.
+process.on("unhandledRejection", (reason) => {
+  captureError("[worker] unhandledRejection", reason);
+});
+process.on("uncaughtException", (err) => {
+  captureError("[worker] uncaughtException", err);
+});
 
 console.log(`✓ Worker process up. Groups: ${groups.join(", ")}`);
 

@@ -121,9 +121,9 @@ function safeEqual(a: string, b: string): boolean {
 
 /**
  * Build the otpauth:// URI an authenticator app scans. `label` is usually the
- * user's email; `issuer` brands the entry (shows as "MFD Growth OS").
+ * user's email; `issuer` brands the entry (shows as "Aina CRM").
  */
-export function otpauthUri(secretBase32: string, label: string, issuer = "MFD Growth OS"): string {
+export function otpauthUri(secretBase32: string, label: string, issuer = "Aina CRM"): string {
   const enc = encodeURIComponent;
   const acct = enc(label);
   const iss = enc(issuer);

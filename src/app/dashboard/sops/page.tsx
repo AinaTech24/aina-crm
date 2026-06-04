@@ -24,6 +24,8 @@ export default async function SopsPage() {
       })
       .from(sops)
       .leftJoin(sopVersions, eq(sopVersions.id, sops.currentVersionId))
+      // Tenant predicate — without it the list shows every tenant's SOPs.
+      .where(eq(sops.tenantId, session.tenantId))
       .orderBy(desc(sops.updatedAt));
     return sopRows;
   });

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { FileDown, Mail, MessageCircle, Loader2, Check, Link2, CalendarClock } from "lucide-react";
+import { FileDown, Mail, MessageCircle, Loader2, Check, Link2, CalendarClock, Receipt } from "lucide-react";
 
 /**
  * Client-360 actions for the live valuation statement + transparency:
@@ -96,6 +96,9 @@ export function StatementActions({
     <div className="flex flex-wrap items-center gap-2">
       <a href={`/api/investors/${investorId}/statement/pdf?download=1`} target="_blank" rel="noopener" className="btn-secondary text-xs">
         <FileDown className="size-3.5" /> Download statement
+      </a>
+      <a href={`/dashboard/investors/${investorId}/capital-gains`} className="btn-secondary text-xs">
+        <Receipt className="size-3.5" /> Capital gains
       </a>
       <button onClick={() => send("email")} disabled={busy !== null} className="btn-secondary text-xs">
         {busy === "email" ? <Loader2 className="size-3.5 animate-spin" /> : <Mail className="size-3.5" />} Email PDF

@@ -8,7 +8,7 @@ import { handleApiError } from "@/lib/api/error-handler";
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
@@ -94,7 +94,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       const after = await tx
         .update(leads)
         .set({ ...patch, updatedAt: new Date() } as any)
-        .where(eq(leads.id, id))
+        .where(and(eq(leads.id, id), eq(leads.tenantId, session.tenantId)))
         .returning();
       await recordAudit(tx, {
         tenantId: session.tenantId,
@@ -133,7 +133,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
           lostAt: new Date(),
           updatedAt: new Date(),
         } as any)
-        .where(eq(leads.id, id));
+        .where(and(eq(leads.id, id), eq(leads.tenantId, session.tenantId)));
       await tx.insert(eventsOutbox).values({
         tenantId: session.tenantId,
         kind: "lead.deleted",

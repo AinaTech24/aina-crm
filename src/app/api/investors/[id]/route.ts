@@ -8,11 +8,11 @@ import { handleApiError } from "@/lib/api/error-handler";
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { require as requireCap } from "@/lib/auth/rbac";
+import { require as requireCap, can } from "@/lib/auth/rbac";
 import { healthFields } from "@/lib/investors/health";
 import { recomputeFamilyHealthForInvestor } from "@/lib/families/health-persist";
 import {
@@ -108,9 +108,20 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
   try {
     const session = await requireSession();
+    const seesAll = can(session.roles, "investor.view.all", session.permissions);
+    const seesAssigned = can(session.roles, "investor.view.assigned", session.permissions);
+    if (!seesAll && !seesAssigned) {
+      return NextResponse.json({ error: "forbidden: missing view capability" }, { status: 403 });
+    }
+
     const result = await withTenant(session.tenantId, async (tx) => {
-      const inv = (await tx.select().from(investors).where(eq(investors.id, id)).limit(1))[0];
+      const inv = (await tx.select().from(investors).where(and(eq(investors.id, id), eq(investors.tenantId, session.tenantId))).limit(1))[0];
       if (!inv) return null;
+
+      // Enforce RM assignment gating
+      if (!seesAll && seesAssigned && inv.rmId !== session.userId) {
+        throw Object.assign(new Error("forbidden: client not assigned to you"), { status: 403 });
+      }
 
       const [foliosRows, sipsRows, goalsRows, commsRows, tasksRows, srRows] = await Promise.all([
         tx.select().from(folios).where(eq(folios.investorId, id)),
@@ -165,7 +176,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (!parse.success) return NextResponse.json({ error: "invalid body" }, { status: 400 });
 
     const result = await withTenant(session.tenantId, async (tx) => {
-      const before = (await tx.select().from(investors).where(eq(investors.id, id)).limit(1))[0];
+      const before = (await tx.select().from(investors).where(and(eq(investors.id, id), eq(investors.tenantId, session.tenantId))).limit(1))[0];
       if (!before) return null;
 
       // Stamp KYC audit fields when any KYC-related column is touched.
@@ -194,7 +205,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             : {}),
           ...health,
         } as any)
-        .where(eq(investors.id, id))
+        .where(and(eq(investors.id, id), eq(investors.tenantId, session.tenantId)))
         .returning();
 
       await tx.insert(eventsOutbox).values({
@@ -230,7 +241,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
       await tx
         .update(investors)
         .set({ status: "exited", exitedAt: new Date(), updatedAt: new Date() } as any)
-        .where(eq(investors.id, id));
+        .where(and(eq(investors.id, id), eq(investors.tenantId, session.tenantId)));
 
       await tx.insert(auditLog).values({
         tenantId: session.tenantId,

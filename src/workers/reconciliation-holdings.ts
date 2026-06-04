@@ -23,16 +23,28 @@ export async function runHoldingsReconciliation(): Promise<{
   let open = 0;
   let high = 0;
   let autoResolved = 0;
-  for (const tenantId of tenants) {
-    try {
-      const r = await withTenant(tenantId, async (tx) => reconcileHoldings(tx, tenantId));
-      open += r.exceptionsOpen;
-      high += r.high;
-      autoResolved += r.autoResolved;
-    } catch (err: any) {
-      console.error(`[reconciliation-holdings] tenant ${tenantId} failed:`, err?.message ?? err);
+  // Bounded-concurrency pool — each tenant reconciles independently (own
+  // RLS-scoped tx), so a sequential loop over 500 tenants needlessly serialises.
+  // Tune with RECON_CONCURRENCY; default 5 (stays well under the pg pool).
+  const concurrency = Math.max(1, Number(process.env.RECON_CONCURRENCY ?? 5) || 5);
+  const queue = [...tenants];
+  const worker = async () => {
+    for (;;) {
+      const tenantId = queue.shift();
+      if (!tenantId) return;
+      try {
+        const r = await withTenant(tenantId, async (tx) => reconcileHoldings(tx, tenantId));
+        open += r.exceptionsOpen;
+        high += r.high;
+        autoResolved += r.autoResolved;
+      } catch (err: any) {
+        console.error(`[reconciliation-holdings] tenant ${tenantId} failed:`, err?.message ?? err);
+      }
     }
-  }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, queue.length) }, () => worker())
+  );
 
   console.log(
     `[reconciliation-holdings] swept ${tenants.length} tenant(s) — ${open} open break(s) ` +

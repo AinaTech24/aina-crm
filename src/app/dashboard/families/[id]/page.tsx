@@ -133,6 +133,14 @@ export default async function FamilyDetailPage({ params }: { params: Promise<{ i
             <div className="text-xs text-muted-foreground mt-1 font-mono">
               Family ID {data.family.id.slice(0, 8)}…
             </div>
+            <a
+              href={`/api/families/${data.family.id}/statement/pdf?download=1`}
+              target="_blank"
+              rel="noopener"
+              className="btn-secondary text-xs mt-2 inline-flex"
+            >
+              Download household statement (PDF)
+            </a>
             {data.family.notes && <p className="text-sm text-muted-foreground mt-2">{data.family.notes}</p>}
           </div>
           <div className="grid grid-cols-2 gap-6 text-right">

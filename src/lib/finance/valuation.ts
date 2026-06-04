@@ -185,3 +185,28 @@ export async function valueInvestor(
     unpricedSchemes,
   };
 }
+
+/**
+ * Short-TTL in-memory cache over valueInvestor. NAV moves once a day, yet the
+ * computation (full transaction scan + Newton-Raphson XIRR) reran on EVERY
+ * call — including every anonymous open of a shared public portfolio link. This
+ * caches by investorId (globally-unique UUID, so no cross-tenant key collision)
+ * for VALUATION_CACHE_TTL_MS (default 10 min), collapsing repeat hits to one
+ * computation. Set VALUATION_CACHE_TTL_MS=0 to disable.
+ */
+const _valuationCache = new Map<string, { at: number; data: InvestorValuation }>();
+const VALUATION_TTL = Number(process.env.VALUATION_CACHE_TTL_MS ?? 600_000);
+
+export async function valueInvestorCached(tx: Tx, investorId: string, now = Date.now()): Promise<InvestorValuation> {
+  if (VALUATION_TTL <= 0) return valueInvestor(tx, investorId);
+  const hit = _valuationCache.get(investorId);
+  if (hit && now - hit.at < VALUATION_TTL) return hit.data;
+  const data = await valueInvestor(tx, investorId);
+  _valuationCache.set(investorId, { at: now, data });
+  // Bound memory: evict the oldest entries if the map grows large.
+  if (_valuationCache.size > 5000) {
+    const cutoff = now - VALUATION_TTL;
+    for (const [k, v] of _valuationCache) if (v.at < cutoff) _valuationCache.delete(k);
+  }
+  return data;
+}

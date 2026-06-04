@@ -81,6 +81,7 @@ const PatchBody = z.object({
   status: z.enum(["invited", "active", "suspended", "offboarding", "offboarded"]).optional(),
   branchId: z.string().uuid().nullable().optional(),
   permissions: z.array(z.string()).nullable().optional(),
+  customLeaveEntitlements: z.record(z.number()).nullable().optional(),
 });
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -180,6 +181,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       if (body.dscExpiryAt !== undefined) patch.dscExpiryAt = body.dscExpiryAt;
       if (body.branchId !== undefined) patch.branchId = body.branchId;
       if (body.permissions !== undefined) patch.permissions = body.permissions;
+      if (body.customLeaveEntitlements !== undefined) patch.customLeaveEntitlements = body.customLeaveEntitlements;
       if (body.status !== undefined) {
         patch.status = body.status;
         if (body.status === "offboarded") patch.offboardedAt = new Date();

@@ -1,4 +1,4 @@
-# Production deployment guide — MFD Growth OS
+# Production deployment guide — Aina CRM
 
 Target: **500+ MFDs × 10 000+ clients each ≈ 5 M clients, ~2.5 B transactions over 5 years.**
 
@@ -19,6 +19,61 @@ This is a real-scale workload. Below is the deployment path I'd take for *this c
 | Background jobs/day | ~500 K | ~5 M | Dedicated worker fleet, not co-located with web |
 
 If you're at 5 MFDs today, **don't deploy for 500**. Phase it (§13).
+
+---
+
+## 0.5. Quick start — the actual commands
+
+Whatever host you choose (§1–2), the platform is **three processes** (web,
+worker, + Postgres/Redis) and this exact bring-up order. The repo already ships
+`ecosystem.config.cjs` (pm2) and `docker-compose.yml`.
+
+```bash
+cp .env.example .env              # fill real values (see §6 + the var table below)
+npm ci
+npm run db:provision-app-role     # 1. creates the NON-SUPERUSER mfd_app role (needs APP_DB_PASSWORD)
+npm run migrate:all               # 2. applies drizzle/migrations/*.sql in order (0001…latest)
+npm run seed                      # 3. installs the pre-built workflow recipes
+npm run recipes:enable            # 4. publishes/enables default recipes (optional)
+npm run refresh:nav               # 5. pulls the AMFI NAV master so valuations price
+# 6. only when importing an existing book:
+npm run backfill:aum && npm run backfill:investor-health && npm run backfill:family-health
+npm run build                     # 7. production build
+pm2 start ecosystem.config.cjs    # 8. start web + worker, supervised
+pm2 save && pm2 startup           # survive reboots (run the printed command)
+```
+
+**The non-superuser DB role is not optional.** The web app connects via
+`APP_DATABASE_URL` as the `mfd_app` role (`LOGIN NOSUPERUSER NOBYPASSRLS`) so
+Postgres RLS is actually enforced — a superuser silently *bypasses* RLS even
+with policies in place. The app **hard-fails on boot in production** if its DB
+role can bypass RLS (override only with `ALLOW_SUPERUSER_DB=1`, which you should
+never set in prod). Keep `DATABASE_URL` (superuser) for migrations/provisioning
+only; the runtime web/worker env should carry `APP_DATABASE_URL`, not the
+superuser URL.
+
+**The worker must be supervised.** It drives *all* time-based automation
+(daily-ops 06:30, NAV refresh, reconciliation 07:30, statements 08:00, market +
+feed scanners, schedulers) on in-process timers. If it dies unsupervised,
+automation silently stops with nothing on screen — that's the #1 ops trap.
+`ecosystem.config.cjs` gives both `mfd-web` and `mfd-worker` `autorestart`.
+
+### Runtime environment variables added during production hardening
+
+These are **in addition** to the `.env.example` keys (DB, Redis, Resend,
+AiSensy, MSG91, Anthropic, S3):
+
+| Var | Where | Purpose |
+|---|---|---|
+| `APP_DATABASE_URL` 🔒 | web + worker | The `mfd_app` non-superuser connection (RLS enforced) |
+| `APP_DB_PASSWORD` 🔒 | provisioning | Password for the role `db:provision-app-role` creates |
+| `DATABASE_URL` 🔒 | migrations only | Superuser — `migrate:all` + `provision-app-role` |
+| `ALLOW_SYSTEM_TX=1` | **worker only** | Legitimate cross-tenant scans. **Never on web** |
+| `HEALTH_TOKEN` 🔒 | web | Guards `GET /api/health/workers` (automation-freshness probe) |
+| `ERROR_WEBHOOK_URL` 🔒 | worker | Pushes uncaught worker errors to Slack/ops |
+| `DAILY_OPS_CONCURRENCY` / `RECON_CONCURRENCY` | worker | Nightly per-tenant fan-out width (default 5) |
+| `VALUATION_CACHE_TTL_MS` | web | Per-investor valuation cache (default 600000) |
+| `WORKER_GROUPS` | worker | Split the worker across processes at scale (§13) |
 
 ---
 
@@ -206,6 +261,36 @@ CREATE INDEX CONCURRENTLY idx_tasks_tenant_assignee_due ON tasks (tenant_id, ass
 | Anthropic (AI) | ✅ | Set `ANTHROPIC_API_KEY` per-environment. Add a per-tenant monthly token cap in code if AI starts costing real money. Claude Sonnet at scale = ~$0.50 per MFD per month for current usage. |
 | BSE Star MF | ⏳ deferred | When you wire it, treat the BSE creds as per-MFD secrets in AWS Secrets Manager, never in DB plaintext. |
 
+### Messaging unit costs (Jan 2026 — verify before pricing; + 18% GST + BSP markup)
+
+There are **two cost buckets that behave differently**:
+
+- **Fixed infra** (§1 table) — what *you* pay to host all 500 firms. Small, shared.
+- **Variable messaging** — WhatsApp/SMS/email/AI. Scales with send volume and is
+  normally **passed through to / paid by each MFD** (every firm runs its own
+  AiSensy WABA + DLT SMS sender). You don't eat this unless you bundle it.
+
+| Channel | Unit rate (Jan 2026) | Notes |
+|---|---|---|
+| WhatsApp **utility** template | **₹0.145 / msg** | Statements, alerts, reminders |
+| WhatsApp **marketing** template | **₹0.8631 / msg** | ~10% Meta hike on 1 Jan 2026 |
+| WhatsApp **service** (reply in 24h window) | **Free** | |
+| AiSensy platform (per WABA, **per MFD**) | **₹999–2,399 / mo** | +₹750/mo per extra agent |
+| SMS (MSG91, DLT) | **₹0.15–0.20 / SMS** | DLT templates mandatory |
+| Email — AWS SES | **≈ ₹8.5 / 1,000** | Cheapest at scale; code uses Resend, swappable to SES |
+| Email — Resend | **~$20 / 50k**, then ~$0.0004/email | Default integration |
+| AI — Anthropic | token-based | Haiku classify / Sonnet compose — ~₹200–500/MFD/mo |
+
+**Illustrative per-firm messaging** (10k-client firm, ~3,000 actively messaged/mo:
+1 statement email + 2 utility + 0.5 marketing WhatsApp + 1 SMS each) ≈ **₹4,300–6,300 /
+firm / month**, dominated by the AiSensy subscription + Meta WhatsApp — and it's
+pass-through, not platform margin.
+
+**Unit economics:** infra to serve one firm ≈ **₹190–650/mo** (under ₹100 on the
+lean tier). At a **₹3,000/firm/mo × 500 = ₹15 L/mo** subscription vs ~₹1 L infra,
+that's **~90%+ gross margin** before support/AI, with messaging metered on top.
+Suggested tiers: **Starter ₹1,499 / Growth ₹3,999 / Enterprise custom.**
+
 **Secrets management.** Put every API key in **AWS Secrets Manager** + rotate quarterly. Don't bake them into images. The ECS task definition references the secret ARN; the container reads it at boot.
 
 ---
@@ -279,7 +364,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - run: npx drizzle-kit migrate    # run before new containers come up
+      - run: npm run migrate:all        # hand-numbered SQL runner; run before new containers come up
   deploy:
     needs: migrate
     runs-on: ubuntu-latest
@@ -327,6 +412,30 @@ The single biggest cost-saver when something breaks at 3 am.
 ---
 
 ## 10. Performance benchmarks (do this BEFORE selling)
+
+### Already measured on this codebase (seeded 10,000-client tenant, 100k transactions)
+
+| Path | Result |
+|---|---|
+| Client-360 valuation (1 client) | **7 ms** |
+| Investor list (50 rows + count over 10k) | **12 ms** |
+| Firm AUM rollup (SUM over 10k) | **8 ms** |
+| Communications timeline (50 + count over 20k) | **11 ms** |
+| Nightly `scanTenant` full sweep (cold) | **~7.5 s / tenant** |
+| 500-tenant nightly sweep @ `DAILY_OPS_CONCURRENCY=5` | **~12–13 min** |
+
+Per-request latency is bounded by **one firm's** data, not the 5M-investor
+platform total, because every query is `tenant_id`-scoped and indexed — adding
+the 500th firm does not slow the 1st. (Three scale fixes are in the code:
+batched folio revaluation, a `transactions(investor_id)` index that turned the
+per-client valuation from a seq-scan into a ~0.1 ms index scan, and the
+bounded-concurrency nightly tenant pool.) The k6 plan below is still worth
+running on your own staging hardware before launch.
+
+**Automation-freshness probe:** `GET /api/health/workers?token=$HEALTH_TOKEN`
+returns 503 if any scheduled job is overdue (>26 h) — wire it to your uptime
+monitor alongside `/api/health`. The worker also records a heartbeat per run in
+`scheduler_state` and catches up missed runs on boot.
 
 You need numbers to know you can serve 500 MFDs. Run these against a staging environment seeded to mid-scale (50 MFDs × 10 K clients each).
 

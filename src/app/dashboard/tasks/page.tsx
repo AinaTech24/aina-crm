@@ -4,6 +4,7 @@ import Link from "next/link";
 import { withTenant } from "@/db/client";
 import { tasks, users, investors, leads } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
+import { can } from "@/lib/auth/rbac";
 import { FilterBar } from "@/components/common/FilterBar";
 import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
 import { CustomViews } from "@/components/common/CustomViews";
@@ -25,9 +26,18 @@ export default async function TasksPage({
   const deptFilter = (sp.department ?? "").split(",").filter(Boolean);
   const due = sp.due; // 'today' | 'overdue' | 'sla_risk'
 
+  // Users with task.view.all see the whole firm; everyone else (RM, team
+  // member) sees only what they're assigned to or created — matching the
+  // matrix (and the subtitle promise).
+  const canViewAll = can(session.roles, "task.view.all", session.permissions);
+
   const result = await withTenant(session.tenantId, async (tx) => {
-    const conds: any[] = [];
-    
+    // Tenant predicate is mandatory under the superuser/RLS-bypass model.
+    const conds: any[] = [eq(tasks.tenantId, session.tenantId)];
+    if (!canViewAll) {
+      conds.push(or(eq(tasks.assigneeId, session.userId), eq(tasks.createdById, session.userId))!);
+    }
+
     // Default to status=open if none specified
     if (statusFilter.length) {
       conds.push(inArray(tasks.status, statusFilter as any));
@@ -71,6 +81,9 @@ export default async function TasksPage({
       .orderBy(desc(tasks.dueAt))
       .limit(100);
 
+    const viewScope = canViewAll
+      ? sql``
+      : sql` AND (assignee_id = ${session.userId}::uuid OR created_by_id = ${session.userId}::uuid)`;
     const stats = await tx.execute(sql`
       SELECT
         COUNT(*) FILTER (WHERE status = 'open')::int AS open,
@@ -78,6 +91,7 @@ export default async function TasksPage({
         COUNT(*) FILTER (WHERE status = 'open' AND due_at < now())::int AS overdue,
         COUNT(*) FILTER (WHERE status = 'open' AND sla_due_at IS NOT NULL AND sla_due_at < now() + interval '24 hours')::int AS sla_at_risk
       FROM tasks
+      WHERE tenant_id = ${session.tenantId}::uuid${viewScope}
     `);
     
     const s = (stats.rows[0] as any) ?? { open: 0, due_today: 0, overdue: 0, sla_at_risk: 0 };

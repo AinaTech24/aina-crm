@@ -44,7 +44,7 @@ export default async function PackagesPage() {
             <Link
               key={p.id}
               href={`/super-admin/packages/${p.id}`}
-              className={`border rounded-lg bg-card p-5 relative block hover:border-primary/40 hover:shadow-sm transition ${
+              className={`border rounded-lg bg-card p-5 relative flex flex-col h-full hover:border-primary/40 hover:shadow-sm transition ${
                 !p.isActive ? "opacity-60" : ""
               }`}
             >
@@ -77,7 +77,7 @@ export default async function PackagesPage() {
                 <Row label="Trial" value={`${p.trialDays} days`} />
                 <Row label="Modules enabled" value={`${(p.enabledModules ?? []).length} of all`} />
               </div>
-              <div className="mt-3 pt-3 border-t text-xs text-primary">Edit →</div>
+              <div className="mt-auto pt-3 border-t text-xs text-primary">Edit →</div>
             </Link>
           ))
         )}

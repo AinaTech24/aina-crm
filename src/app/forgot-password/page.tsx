@@ -29,9 +29,9 @@ export default function ForgotPasswordPage() {
   return (
     <main className="min-h-screen grid place-items-center px-4">
       <div className="w-full max-w-sm">
-        <Link href="/" className="flex items-center gap-2 font-semibold mb-8">
-          <div className="size-7 rounded bg-primary text-primary-foreground grid place-items-center">M</div>
-          <span>MFD Platform</span>
+        <Link href="/" className="inline-flex items-center mb-8">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/aina-wordmark.png" alt="Aina CRM" className="h-7 w-auto" />
         </Link>
         <h1 className="text-2xl font-bold tracking-tight">Forgot password</h1>
         <p className="text-sm text-muted-foreground mt-1">

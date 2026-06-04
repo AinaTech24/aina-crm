@@ -1,6 +1,7 @@
 "use client";
 
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
+import { ChartMount } from "./ChartMount";
 
 type CampaignRoi = {
   name: string;
@@ -19,7 +20,7 @@ export function CampaignRoiChart({ data }: { data: CampaignRoi[] }) {
   }
 
   return (
-    <div className="h-56 w-full">
+    <ChartMount className="h-56 w-full">
       <ResponsiveContainer width="100%" height="100%">
         <BarChart
           data={data}
@@ -41,6 +42,6 @@ export function CampaignRoiChart({ data }: { data: CampaignRoi[] }) {
           <Bar dataKey="replied" fill="hsl(165, 70%, 45%)" name="Replied" radius={[3, 3, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>
-    </div>
+    </ChartMount>
   );
 }

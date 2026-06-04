@@ -14,7 +14,7 @@ export default async function NewLeavePage() {
 
   const { employees, usage } = await withTenant(session.tenantId, async (tx) => {
     const emp = await tx.execute(sql`
-      SELECT id, name FROM users
+      SELECT id, name, custom_leave_entitlements FROM users
       WHERE tenant_id = ${session.tenantId}::uuid AND status = 'active'
       ORDER BY name
     `);

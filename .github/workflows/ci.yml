@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  quality:
+    name: Typecheck · RBAC · Calc · Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Typecheck
+        run: npx tsc --noEmit
+      - name: RBAC guard (mutations gated by require())
+        # Non-blocking for now: surfaces a pre-existing cleanup where some
+        # routes gate via a local isManager() helper instead of the central
+        # require() capability check. Burn the list down, then make blocking.
+        continue-on-error: true
+        run: npm run check:rbac
+      - name: Calculator math assertions
+        run: npm run check:calc
+      - name: Unit tests
+        run: npm test
+
+  db-checks:
+    name: Migrate · RLS coverage
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: mfd
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/mfd
+      ALLOW_SYSTEM_TX: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Apply migrations
+        run: npm run migrate:all
+      - name: RLS coverage guard (every tenant table has a policy)
+        run: npm run check:rls

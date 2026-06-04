@@ -42,6 +42,12 @@ export interface SendWhatsappArgs {
   tokens: Record<string, string>;
   recipient: string; // E.164 number — "+91XXXXXXXXXX"
   apiKey?: string;
+  /** WAina: per-tenant send endpoint override (defaults to env / platform URL). */
+  webhookUrl?: string;
+  /** WAina: per-tenant default WhatsApp language code, e.g. "en_US". */
+  defaultLanguage?: string;
+  /** Stable across step retries; sent as a best-effort dedup header. */
+  idempotencyKey?: string;
 }
 
 export const whatsappAdapter = {
@@ -75,7 +81,10 @@ export const whatsappAdapter = {
     try {
       const res = await axios.post(`${cfg.baseUrl}/campaign/t1/api/v2`, payload, {
         timeout: 15_000,
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(args.idempotencyKey ? { "X-Idempotency-Key": args.idempotencyKey } : {}),
+        },
       });
       const externalId = res.data?.messageId ?? res.data?.data?.messageId ?? `aisensy-${Date.now()}`;
       return { externalId, status: "sent" };

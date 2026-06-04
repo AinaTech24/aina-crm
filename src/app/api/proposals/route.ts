@@ -11,7 +11,7 @@ import { desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { require as requireCap } from "@/lib/auth/rbac";
+import { require as requireCap, can } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { autoAdvance, resolveLeadIdForInvestor } from "@/lib/blueprints/auto-advance";
@@ -171,9 +171,16 @@ async function nextProposalNumber(tx: any, tenantId: string) {
 export async function GET() {
   try {
     const session = await requireSession();
-    const rows = await withTenant(session.tenantId, async (tx) =>
-      tx.select().from(proposals).orderBy(desc(proposals.createdAt))
-    );
+    requireCap(session.roles, "proposal.view");
+    const seesAll = can(session.roles, "investor.view.all") || can(session.roles, "compliance.view");
+
+    const rows = await withTenant(session.tenantId, async (tx) => {
+      if (seesAll) {
+        return tx.select().from(proposals).orderBy(desc(proposals.createdAt));
+      } else {
+        return tx.select().from(proposals).where(eq(proposals.preparedByUserId, session.userId)).orderBy(desc(proposals.createdAt));
+      }
+    });
     return NextResponse.json({ proposals: rows });
   } catch (err: any) {
     return handleApiError(err);

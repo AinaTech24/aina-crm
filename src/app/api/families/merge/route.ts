@@ -40,22 +40,43 @@ export async function POST(req: NextRequest) {
         const both = await tx.execute(sql`SELECT id FROM families WHERE tenant_id = ${session.tenantId}::uuid AND id IN (${survivorId}::uuid, ${loserId}::uuid)`);
         if (both.rows.length !== 2) return { error: "one or both families not found" as const };
 
+        const tcols = await tx.execute(sql`
+          SELECT table_name FROM information_schema.columns
+          WHERE table_schema = 'public' AND column_name = 'tenant_id'
+        `);
+        const hasTenant = new Set((tcols.rows as Array<{ table_name: string }>).map((r) => r.table_name));
+        const tf = (table: string) =>
+          hasTenant.has(table) ? sql` AND tenant_id = ${session.tenantId}::uuid` : sql``;
+
         const cols = await tx.execute(sql`
           SELECT table_name FROM information_schema.columns
           WHERE table_schema = 'public' AND column_name = 'family_id'
         `);
         let reassigned = 0;
+        const skipped: string[] = [];
         for (const row of cols.rows as Array<{ table_name: string }>) {
-          if (DENYLIST.has(row.table_name)) continue;
-          const r = await tx.execute(sql`UPDATE ${sql.raw(`"${row.table_name}"`)} SET family_id = ${survivorId}::uuid WHERE family_id = ${loserId}::uuid`);
-          reassigned += (r as any).rowCount ?? 0;
+          const tbl = row.table_name;
+          if (DENYLIST.has(tbl)) continue;
+          // Per-table SAVEPOINT so a uniqueness collision skips that table
+          // instead of aborting the whole family merge.
+          await tx.execute(sql`SAVEPOINT merge_child`);
+          try {
+            const r = await tx.execute(
+              sql`UPDATE ${sql.raw(`"${tbl}"`)} SET family_id = ${survivorId}::uuid WHERE family_id = ${loserId}::uuid${tf(tbl)}`
+            );
+            reassigned += (r as any).rowCount ?? 0;
+            await tx.execute(sql`RELEASE SAVEPOINT merge_child`);
+          } catch {
+            await tx.execute(sql`ROLLBACK TO SAVEPOINT merge_child`);
+            skipped.push(tbl);
+          }
         }
-        // Survivor adopts the loser's primary if it lacks one.
+        // Survivor adopts the loser's primary if it lacks one (tenant-scoped).
         await tx.execute(sql`
           UPDATE families s SET primary_investor_id = COALESCE(s.primary_investor_id, l.primary_investor_id), updated_at = now()
-          FROM families l WHERE s.id = ${survivorId}::uuid AND l.id = ${loserId}::uuid
+          FROM families l WHERE s.id = ${survivorId}::uuid AND l.id = ${loserId}::uuid AND s.tenant_id = ${session.tenantId}::uuid
         `);
-        await tx.execute(sql`DELETE FROM families WHERE id = ${loserId}::uuid`);
+        await tx.execute(sql`DELETE FROM families WHERE id = ${loserId}::uuid AND tenant_id = ${session.tenantId}::uuid`);
 
         await recordAudit(tx, {
           tenantId: session.tenantId,
@@ -63,10 +84,10 @@ export async function POST(req: NextRequest) {
           action: "family.merge",
           entityType: "family",
           entityId: survivorId,
-          after: { survivorId, loserId, childRowsReassigned: reassigned } as any,
+          after: { survivorId, loserId, childRowsReassigned: reassigned, skippedTables: skipped } as any,
           ...meta,
         });
-        return { ok: true as const, reassigned };
+        return { ok: true as const, reassigned, skipped };
       },
       { userId: session.userId, branchId: session.branchId, roles: session.roles }
     );

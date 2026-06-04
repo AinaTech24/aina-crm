@@ -73,7 +73,7 @@ export async function composeBrandedPdf(
   const helvBold = await out.embedFont(StandardFonts.HelveticaBold);
 
   out.setTitle(ascii(opts.title || "Shared update"));
-  out.setProducer("MFD Growth OS");
+  out.setProducer("Aina CRM");
   if (brand.legalName || brand.displayName) {
     out.setAuthor(ascii(brand.legalName ?? brand.displayName ?? ""));
   }

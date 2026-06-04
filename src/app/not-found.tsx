@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Zap, Compass, ArrowLeft } from "lucide-react";
+import { Compass, ArrowLeft } from "lucide-react";
 
 /**
  * Branded 404. Replaces Next's bare "This page could not be found" with an
@@ -10,11 +10,9 @@ export default function NotFound() {
   return (
     <main className="min-h-screen grid place-items-center brand-soft p-6">
       <div className="text-center max-w-md animate-fade-in">
-        <Link href="/" className="inline-flex items-center gap-2 font-bold text-lg mb-8">
-          <div className="size-9 rounded-lg brand-gradient grid place-items-center text-white">
-            <Zap className="size-5" />
-          </div>
-          <span>MFD Growth OS</span>
+        <Link href="/" className="inline-flex items-center mb-8">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/aina-wordmark.png" alt="Aina CRM" className="h-8 w-auto" />
         </Link>
 
         <div className="size-20 mx-auto rounded-2xl bg-card border shadow-sm grid place-items-center">

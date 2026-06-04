@@ -28,7 +28,7 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
-import { users } from "@/db/schema";
+import { users, complianceDocuments } from "@/db/schema";
 import { ArnEuinTrackerClient } from "@/components/reports/ArnEuinTrackerClient";
 
 export const dynamic = "force-dynamic";
@@ -45,8 +45,8 @@ export default async function ArnEuinTrackerPage({
   const sp = await searchParams;
   const within = sp.within ? Math.max(0, parseInt(sp.within, 10) || 0) : null;
 
-  const rows = await withTenant(session.tenantId, async (tx) => {
-    return tx
+  const data = await withTenant(session.tenantId, async (tx) => {
+    const rows = await tx
       .select({
         id: users.id,
         name: users.name,
@@ -81,25 +81,46 @@ export default async function ArnEuinTrackerPage({
           inArray(users.status, ["active", "offboarding"])
         )
       );
+
+    const userDocs = await tx
+      .select({
+        id: complianceDocuments.id,
+        relatedEntityId: complianceDocuments.relatedEntityId,
+        category: complianceDocuments.category,
+        name: complianceDocuments.name,
+      })
+      .from(complianceDocuments)
+      .where(
+        and(
+          eq(complianceDocuments.tenantId, session.tenantId),
+          eq(complianceDocuments.relatedEntityType, "user")
+        )
+      );
+
+    return { rows, userDocs };
   });
 
   // Serialise dates to strings to avoid client-component issues.
-  const serialised = rows.map((r) => ({
-    ...r,
-    joiningDate: r.joiningDate ? String(r.joiningDate) : null,
-    nismExamDate: r.nismExamDate ? String(r.nismExamDate) : null,
-    nismExpiryAt: r.nismExpiryAt ? String(r.nismExpiryAt) : null,
-    arnRegistrationDate: r.arnRegistrationDate
-      ? String(r.arnRegistrationDate)
-      : null,
-    arnExpiryAt: r.arnExpiryAt ? String(r.arnExpiryAt) : null,
-    euinExpiryAt: r.euinExpiryAt ? String(r.euinExpiryAt) : null,
-    dscLastSubmittedAt: r.dscLastSubmittedAt
-      ? String(r.dscLastSubmittedAt)
-      : null,
-    dscExpiryAt: r.dscExpiryAt ? String(r.dscExpiryAt) : null,
-    distributingAmcs: (r.distributingAmcs ?? []) as string[],
-  }));
+  const serialised = data.rows.map((r) => {
+    const myDocs = data.userDocs.filter((d) => d.relatedEntityId === r.id);
+    return {
+      ...r,
+      joiningDate: r.joiningDate ? String(r.joiningDate) : null,
+      nismExamDate: r.nismExamDate ? String(r.nismExamDate) : null,
+      nismExpiryAt: r.nismExpiryAt ? String(r.nismExpiryAt) : null,
+      arnRegistrationDate: r.arnRegistrationDate
+        ? String(r.arnRegistrationDate)
+        : null,
+      arnExpiryAt: r.arnExpiryAt ? String(r.arnExpiryAt) : null,
+      euinExpiryAt: r.euinExpiryAt ? String(r.euinExpiryAt) : null,
+      dscLastSubmittedAt: r.dscLastSubmittedAt
+        ? String(r.dscLastSubmittedAt)
+        : null,
+      dscExpiryAt: r.dscExpiryAt ? String(r.dscExpiryAt) : null,
+      distributingAmcs: (r.distributingAmcs ?? []) as string[],
+      docs: myDocs,
+    };
+  });
 
   return (
     <div className="space-y-5">

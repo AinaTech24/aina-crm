@@ -59,53 +59,108 @@ const KFIN_TRANSACTION_TYPES = CAMS_TRANSACTION_TYPES;
  * Parse a CAMS distributor feed (pipe-delimited).
  * Spec subset — real file has 40+ fields; we extract the ones we need.
  */
+export const HEADER_ALIASES: Record<string, string[]> = {
+  amcCode: ["AMC", "AMC_CODE", "AMCCOD", "AMC_NAME", "AMC NAME", "FMIM_CODE", "AMC_CD"],
+  folioNumber: ["FOLIO", "FOLIO_NO", "FOLIO_NUM", "FOLIONO", "FOLIO NO", "FOLIO NUM", "FOLIONUM", "FOL_NO"],
+  pan: ["PAN", "INV_PAN", "PAN_NO", "PAN NO", "PAN_NUM", "PAN NUM", "INVPAN", "PAN_NUMBER"],
+  schemeCode: ["SCH_CODE", "SCHEME_CODE", "SCHEME CODE", "PRODUCT_CODE", "PRODUCT CODE", "SCHCOD", "PRODCODE", "SCH_CD"],
+  schemeName: ["SCH_NAME", "SCHEME_NAME", "SCHEME NAME", "PRODUCT_NAME", "PRODUCT NAME", "SCHNAME", "PRODNAME"],
+  type: ["TR_TYPE", "TXN_TYPE", "TRANS_TYPE", "TRTYPE", "TXNTYPE", "TRANSTYPE", "TYPE", "TRANS_DESC", "TRANS DESCRIPTION", "TXN_DESC_CAMS"],
+  orderDate: ["TR_DATE", "TXN_DATE", "TRANS_DATE", "TRDATE", "TXNDATE", "TRANSDATE", "DATE", "POST_DATE", "POST DATE", "TXN_DT"],
+  amount: ["AMOUNT", "AMT", "TXN_AMT", "TXN_AMOUNT", "TRANS_AMT", "PURCHASE_AMOUNT", "RED_AMOUNT"],
+  units: ["UNITS", "UNIT", "QTY", "QUANTITY", "NO_OF_UNITS", "NO OF UNITS"],
+  nav: ["NAV", "RATE", "NAV_PUR", "NAV_RATE", "PUR_NAV", "ALLOT_NAV", "ALLOTNAV"],
+  externalRef: ["ORDER_REF", "REF_NO", "REF NO", "TXN_ID", "TXN ID", "TXN_REF", "TXN REF", "REF_NUM", "REF NUM"],
+  status: ["STATUS", "TR_STATUS", "TXN_STATUS", "STATUS_DESC", "STATUS DESC"],
+  reasonCode: ["REASON_CODE", "REJ_CODE", "REJECT_CODE", "REASON CODE", "REJ CODE", "REJ_REASON", "REJ REASON"],
+};
+
+export const DEFAULT_CAMS_MAP: Record<string, number> = {
+  amcCode: 0,
+  folioNumber: 1,
+  pan: 2,
+  schemeCode: 4,
+  schemeName: 5,
+  type: 6,
+  orderDate: 7,
+  amount: 8,
+  units: 9,
+  nav: 10,
+  externalRef: 11,
+  status: 12,
+  reasonCode: 13,
+};
+
+export function buildHeaderIndexMap(headerRow: string[], aliases = HEADER_ALIASES): Record<string, number> {
+  const map: Record<string, number> = {};
+  const normalizedHeaders = headerRow.map(h => h.trim().toUpperCase().replace(/[^A-Z0-9]/g, ""));
+
+  for (const [field, aliasList] of Object.entries(aliases)) {
+    const aliasSet = new Set(aliasList.map(a => a.toUpperCase().replace(/[^A-Z0-9]/g, "")));
+    const idx = normalizedHeaders.findIndex(h => aliasSet.has(h));
+    if (idx !== -1) {
+      map[field] = idx;
+    }
+  }
+  return map;
+}
+
+/**
+ * Parse a CAMS distributor feed (pipe-delimited).
+ * Spec subset — real file has 40+ fields; we extract the ones we need.
+ */
 export function parseCamsFeed(text: string): CanonicalTransaction[] {
   const rows: CanonicalTransaction[] = [];
   const lines = text.split(/\r?\n/);
-  // Header detection: first line, contains "PAN" + "Folio"
   let dataStart = 0;
-  if (lines[0]?.toUpperCase().includes("PAN") && lines[0]?.toUpperCase().includes("FOLIO")) {
+  let indexMap = DEFAULT_CAMS_MAP;
+
+  // Header detection: first line, contains "PAN" + "Folio"
+  if (lines[0]?.toUpperCase().includes("PAN") && (lines[0]?.toUpperCase().includes("FOLIO") || lines[0]?.toUpperCase().includes("CLIENT"))) {
     dataStart = 1;
+    const headerCols = lines[0].split("|");
+    indexMap = { ...DEFAULT_CAMS_MAP, ...buildHeaderIndexMap(headerCols) };
   }
+
   for (let i = dataStart; i < lines.length; i++) {
     const line = lines[i].trim();
     if (!line) continue;
     const cols = line.split("|");
-    if (cols.length < 14) continue;
+    const maxIdx = Math.max(...Object.values(indexMap));
+    if (cols.length <= maxIdx) continue;
 
-    // Representative CAMS field layout (varies slightly per RTA):
-    // 0:AMCName 1:FolioNo 2:PAN 3:InvestorName 4:SchemeCode 5:SchemeName
-    // 6:TrType 7:TrDate 8:Amount 9:Units 10:NAV 11:OrderRef 12:Status 13:ReasonCode
-    const trType = cols[6]?.toUpperCase();
+    const val = (field: string) => cols[indexMap[field]]?.trim() ?? "";
+
+    const trType = val("type").toUpperCase();
     const ourType = CAMS_TRANSACTION_TYPES[trType] ?? "lumpsum";
-    const amount = parseFloat(cols[8] ?? "0");
+    const amount = parseFloat(val("amount") ?? "0") || 0;
     const direction: "inflow" | "outflow" =
       ourType === "redemption" || ourType === "swp" || ourType === "dividend_payout" || ourType === "stp"
         ? "outflow"
         : "inflow";
 
     rows.push({
-      externalRef: cols[11] ?? `cams_${i}`,
-      pan: cols[2] ?? "",
-      folioNumber: cols[1] ?? "",
-      amcCode: cols[0] ?? "",
-      schemeCode: cols[4] ?? "",
-      schemeName: cols[5] ?? "",
+      externalRef: val("externalRef") || `cams_${i}`,
+      pan: val("pan"),
+      folioNumber: val("folioNumber"),
+      amcCode: val("amcCode"),
+      schemeCode: val("schemeCode"),
+      schemeName: val("schemeName"),
       type: ourType,
       direction,
       amount,
-      units: parseFloat(cols[9] ?? "0"),
-      nav: parseFloat(cols[10] ?? "0"),
-      orderDate: normalizeDate(cols[7]),
+      units: parseFloat(val("units") ?? "0") || 0,
+      nav: parseFloat(val("nav") ?? "0") || 0,
+      orderDate: normalizeDate(val("orderDate")),
       status:
-        cols[12]?.toUpperCase() === "ALLOTTED" || cols[12]?.toUpperCase() === "SUCCESS"
+        val("status").toUpperCase() === "ALLOTTED" || val("status").toUpperCase() === "SUCCESS"
           ? "successful"
-          : cols[12]?.toUpperCase() === "REJECTED"
+          : val("status").toUpperCase() === "REJECTED"
           ? "rejected"
-          : cols[12]?.toUpperCase() === "FAILED"
+          : val("status").toUpperCase() === "FAILED"
           ? "failed"
           : "pending",
-      reasonCode: cols[13] || undefined,
+      reasonCode: val("reasonCode") || undefined,
     });
   }
   return rows;
@@ -115,36 +170,54 @@ export function parseCamsFeed(text: string): CanonicalTransaction[] {
  * KFintech feed — comma-delimited with similar shape. Subset implementation.
  */
 export function parseKfintechFeed(text: string): CanonicalTransaction[] {
-  // For brevity we reuse the CAMS shape with CSV parsing.
   const rows: CanonicalTransaction[] = [];
   const lines = text.split(/\r?\n/);
   let dataStart = 0;
-  if (lines[0]?.toUpperCase().includes("PAN")) dataStart = 1;
+  let indexMap = DEFAULT_CAMS_MAP;
+
+  if (lines[0]?.toUpperCase().includes("PAN") && (lines[0]?.toUpperCase().includes("FOLIO") || lines[0]?.toUpperCase().includes("CLIENT"))) {
+    dataStart = 1;
+    const headerCols = parseCsvRow(lines[0]);
+    indexMap = { ...DEFAULT_CAMS_MAP, ...buildHeaderIndexMap(headerCols) };
+  }
+
   for (let i = dataStart; i < lines.length; i++) {
     const line = lines[i].trim();
     if (!line) continue;
     const cols = parseCsvRow(line);
-    if (cols.length < 14) continue;
-    const trType = cols[6]?.toUpperCase() ?? "";
+    const maxIdx = Math.max(...Object.values(indexMap));
+    if (cols.length <= maxIdx) continue;
+
+    const val = (field: string) => cols[indexMap[field]]?.trim() ?? "";
+
+    const trType = val("type").toUpperCase();
     const ourType = KFIN_TRANSACTION_TYPES[trType] ?? "lumpsum";
+
     rows.push({
-      externalRef: cols[11] ?? `kfin_${i}`,
-      pan: cols[2] ?? "",
-      folioNumber: cols[1] ?? "",
-      amcCode: cols[0] ?? "",
-      schemeCode: cols[4] ?? "",
-      schemeName: cols[5] ?? "",
+      externalRef: val("externalRef") || `kfin_${i}`,
+      pan: val("pan"),
+      folioNumber: val("folioNumber"),
+      amcCode: val("amcCode"),
+      schemeCode: val("schemeCode"),
+      schemeName: val("schemeName"),
       type: ourType,
       direction:
         ourType === "redemption" || ourType === "swp" || ourType === "dividend_payout" || ourType === "stp"
           ? "outflow"
           : "inflow",
-      amount: parseFloat(cols[8] ?? "0"),
-      units: parseFloat(cols[9] ?? "0"),
-      nav: parseFloat(cols[10] ?? "0"),
-      orderDate: normalizeDate(cols[7]),
-      status: (cols[12] ?? "").toUpperCase() === "SUCCESS" ? "successful" : "pending",
-      reasonCode: cols[13] || undefined,
+      amount: parseFloat(val("amount") ?? "0") || 0,
+      units: parseFloat(val("units") ?? "0") || 0,
+      nav: parseFloat(val("nav") ?? "0") || 0,
+      orderDate: normalizeDate(val("orderDate")),
+      status:
+        val("status").toUpperCase() === "SUCCESS" || val("status").toUpperCase() === "ALLOTTED"
+          ? "successful"
+          : val("status").toUpperCase() === "REJECTED"
+          ? "rejected"
+          : val("status").toUpperCase() === "FAILED"
+          ? "failed"
+          : "pending",
+      reasonCode: val("reasonCode") || undefined,
     });
   }
   return rows;
@@ -152,7 +225,6 @@ export function parseKfintechFeed(text: string): CanonicalTransaction[] {
 
 function normalizeDate(d: string | undefined): string {
   if (!d) return new Date().toISOString().slice(0, 10);
-  // CAMS feed uses DD-MM-YYYY or DD/MM/YYYY
   const m = d.match(/^(\d{2})[-\/](\d{2})[-\/](\d{4})/);
   if (m) return `${m[3]}-${m[2]}-${m[1]}`;
   if (/^\d{4}-\d{2}-\d{2}/.test(d)) return d.slice(0, 10);
@@ -160,7 +232,6 @@ function normalizeDate(d: string | undefined): string {
 }
 
 function parseCsvRow(line: string): string[] {
-  // Minimal CSV with quote support.
   const out: string[] = [];
   let cur = "";
   let inQuote = false;

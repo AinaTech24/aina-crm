@@ -53,23 +53,48 @@ export async function POST(req: NextRequest) {
         if (both.rows.length !== 2) return { error: "one or both clients not found" as const };
         if (both.rows.some((r: any) => r.merged_into_id)) return { error: "a selected record is already merged" as const };
 
+        // Tables that carry a tenant_id — used to scope the reassignment for
+        // defense-in-depth (the loser UUID is already tenant-unique, but a
+        // tenant filter is a cheap second line of defence).
+        const tcols = await tx.execute(sql`
+          SELECT table_name FROM information_schema.columns
+          WHERE table_schema = 'public' AND column_name = 'tenant_id'
+        `);
+        const hasTenant = new Set((tcols.rows as Array<{ table_name: string }>).map((r) => r.table_name));
+        const tf = (table: string) =>
+          hasTenant.has(table) ? sql` AND tenant_id = ${session.tenantId}::uuid` : sql``;
+
         // Discover child tables that reference investor_id.
         const cols = await tx.execute(sql`
           SELECT table_name FROM information_schema.columns
           WHERE table_schema = 'public' AND column_name = 'investor_id'
         `);
         let reassigned = 0;
+        const skipped: string[] = [];
         for (const row of cols.rows as Array<{ table_name: string }>) {
-          if (DENYLIST.has(row.table_name)) continue;
-          const r = await tx.execute(sql`UPDATE ${sql.raw(`"${row.table_name}"`)} SET investor_id = ${survivorId}::uuid WHERE investor_id = ${loserId}::uuid`);
-          reassigned += (r as any).rowCount ?? 0;
+          const tbl = row.table_name;
+          if (DENYLIST.has(tbl)) continue;
+          // Per-table SAVEPOINT: if reassigning collides with a uniqueness rule
+          // the survivor already satisfies, skip THAT table (its rows stay on the
+          // inactive loser) instead of aborting the entire merge.
+          await tx.execute(sql`SAVEPOINT merge_child`);
+          try {
+            const r = await tx.execute(
+              sql`UPDATE ${sql.raw(`"${tbl}"`)} SET investor_id = ${survivorId}::uuid WHERE investor_id = ${loserId}::uuid${tf(tbl)}`
+            );
+            reassigned += (r as any).rowCount ?? 0;
+            await tx.execute(sql`RELEASE SAVEPOINT merge_child`);
+          } catch {
+            await tx.execute(sql`ROLLBACK TO SAVEPOINT merge_child`);
+            skipped.push(tbl);
+          }
         }
 
-        // Special columns the generic pass misses.
-        await tx.execute(sql`UPDATE leads SET referred_by_investor_id = ${survivorId}::uuid WHERE referred_by_investor_id = ${loserId}::uuid`);
-        await tx.execute(sql`UPDATE leads SET converted_investor_id = ${survivorId}::uuid WHERE converted_investor_id = ${loserId}::uuid`);
-        await tx.execute(sql`UPDATE families SET primary_investor_id = ${survivorId}::uuid WHERE primary_investor_id = ${loserId}::uuid`);
-        await tx.execute(sql`UPDATE activities SET subject_id = ${survivorId}::uuid WHERE subject_type = 'investor' AND subject_id = ${loserId}::uuid`);
+        // Special columns the generic pass misses (tenant-scoped where possible).
+        await tx.execute(sql`UPDATE leads SET referred_by_investor_id = ${survivorId}::uuid WHERE referred_by_investor_id = ${loserId}::uuid${tf("leads")}`);
+        await tx.execute(sql`UPDATE leads SET converted_investor_id = ${survivorId}::uuid WHERE converted_investor_id = ${loserId}::uuid${tf("leads")}`);
+        await tx.execute(sql`UPDATE families SET primary_investor_id = ${survivorId}::uuid WHERE primary_investor_id = ${loserId}::uuid${tf("families")}`);
+        await tx.execute(sql`UPDATE activities SET subject_id = ${survivorId}::uuid WHERE subject_type = 'investor' AND subject_id = ${loserId}::uuid${tf("activities")}`);
 
         // Fill the survivor's blank contact fields from the loser.
         await tx.execute(sql`
@@ -95,10 +120,10 @@ export async function POST(req: NextRequest) {
           action: "investor.merge",
           entityType: "investor",
           entityId: survivorId,
-          after: { survivorId, loserId, childRowsReassigned: reassigned } as any,
+          after: { survivorId, loserId, childRowsReassigned: reassigned, skippedTables: skipped } as any,
           ...meta,
         });
-        return { ok: true as const, reassigned };
+        return { ok: true as const, reassigned, skipped };
       },
       { userId: session.userId, branchId: session.branchId, roles: session.roles }
     );

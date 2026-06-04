@@ -5,68 +5,76 @@
 @layer base {
   :root {
     /* ═══════════════════════════════════════════════════════════════════════
-       AINA-inspired palette — deep navy primary, electric cyan accent.
-       Tuned for a modern fintech-SaaS feel: high contrast, restrained, glassy.
+       Aina CRM palette — Aina red primary (#C5202A), dark-teal accent (#1F3D3B).
+       Derived from the Aina logo. The brand token names below keep their legacy
+       spelling (`--brand-navy` = red, `--brand-cyan` = teal) so the hundreds of
+       existing `bg-brand-navy` / `text-brand-cyan` consumers re-theme in place.
        ═══════════════════════════════════════════════════════════════════════ */
-    --background: 215 35% 98.5%;             /* paper-white with a faint sky tint */
-    --foreground: 222 47% 11%;               /* near-black charcoal */
+    --background: 195 24% 98.6%;             /* paper-white with a faint teal tint */
+    --foreground: 200 30% 12%;               /* near-black charcoal-teal */
     --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
+    --card-foreground: 200 30% 12%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
+    --popover-foreground: 200 30% 12%;
 
-    --primary: 221 83% 18%;                  /* deep navy #0e2557 */
-    --primary-foreground: 210 40% 99%;
+    --primary: 356 72% 45%;                  /* Aina red #C5202A */
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 215 32% 95.5%;              /* very soft blue-gray for hovers / chips */
-    --secondary-foreground: 222 47% 18%;
+    --secondary: 200 20% 95.5%;              /* soft neutral for hovers / chips */
+    --secondary-foreground: 200 30% 20%;
 
-    --muted: 215 25% 95%;
-    --muted-foreground: 215 14% 46%;
+    --muted: 200 18% 95%;
+    --muted-foreground: 200 12% 44%;
 
-    --accent: 199 89% 48%;                   /* electric cyan #0ea5e9 */
+    --accent: 176 48% 32%;                   /* Aina teal */
     --accent-foreground: 0 0% 100%;
 
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 210 40% 99%;
+    --destructive: 4 80% 52%;                /* warmer red, distinct from brand crimson */
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 214 28% 90%;
-    --input: 214 28% 90%;
-    --ring: 199 89% 48%;                     /* cyan focus ring — bold + on-brand */
+    --border: 200 20% 90%;
+    --input: 200 20% 90%;
+    --ring: 176 48% 34%;                     /* teal focus ring — on-brand */
 
     --radius: 0.75rem;                       /* 12px base; xl utilities give 16/20px */
 
-    /* Extended brand tokens (consumed by gradients, badges, hero strips) */
-    --brand-navy: 221 83% 18%;
-    --brand-navy-deep: 222 86% 12%;
-    --brand-navy-light: 221 75% 96%;
-    --brand-cyan: 199 89% 48%;
-    --brand-cyan-deep: 201 96% 38%;
-    --brand-cyan-light: 199 89% 94%;
-    --brand-violet: 256 70% 60%;
-    --brand-mint: 165 70% 45%;
+    /* Extended brand tokens (consumed by gradients, badges, hero strips).
+       Names are legacy; values are the Aina palette. */
+    --brand-navy: 356 72% 45%;               /* = Aina red */
+    --brand-navy-deep: 356 73% 35%;          /* deep red */
+    --brand-navy-light: 356 75% 96%;         /* red tint */
+    --brand-cyan: 176 48% 32%;               /* = Aina teal */
+    --brand-cyan-deep: 180 52% 19%;          /* deep teal #1F3D3B */
+    --brand-cyan-light: 176 38% 93%;         /* teal tint */
+    --brand-violet: 356 60% 55%;
+    --brand-mint: 168 55% 38%;
   }
 
   .dark {
-    --background: 222 47% 6%;
-    --foreground: 210 40% 98%;
-    --card: 222 47% 9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222 47% 9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 199 89% 48%;
-    --primary-foreground: 222 47% 6%;
-    --secondary: 217 33% 14%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217 33% 14%;
-    --muted-foreground: 215 20% 65%;
-    --accent: 199 89% 48%;
+    --background: 200 30% 7%;
+    --foreground: 200 20% 96%;
+    --card: 200 30% 10%;
+    --card-foreground: 200 20% 96%;
+    --popover: 200 30% 10%;
+    --popover-foreground: 200 20% 96%;
+    --primary: 356 74% 55%;                  /* brighter Aina red for dark bg */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 200 22% 15%;
+    --secondary-foreground: 200 20% 96%;
+    --muted: 200 22% 15%;
+    --muted-foreground: 200 14% 64%;
+    --accent: 176 45% 44%;                   /* brighter teal for dark bg */
     --accent-foreground: 0 0% 100%;
-    --destructive: 0 62% 50%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217 33% 18%;
-    --input: 217 33% 18%;
-    --ring: 199 89% 48%;
+    --destructive: 4 70% 52%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 200 22% 19%;
+    --input: 200 22% 19%;
+    --ring: 176 45% 44%;
+    /* brand aliases for dark mode */
+    --brand-navy: 356 74% 55%;
+    --brand-navy-deep: 356 70% 42%;
+    --brand-cyan: 176 45% 44%;
+    --brand-cyan-deep: 178 45% 30%;
   }
 
   * {
@@ -159,8 +167,8 @@
            focus-visible:ring-2 focus-visible:ring-ring/50;
     background-image: linear-gradient(
       135deg,
-      hsl(var(--brand-navy)) 0%,
-      hsl(221 75% 26%) 100%
+      hsl(var(--brand-navy-deep)) 0%,
+      hsl(var(--brand-navy)) 100%
     );
   }
 
@@ -522,7 +530,7 @@
     background: rgba(255, 255, 255, 0.45);
     backdrop-filter: blur(12px) saturate(160%);
     border: 1px solid rgba(255, 255, 255, 0.4);
-    box-shadow: 0 8px 32px 0 rgba(14, 37, 87, 0.03);
+    box-shadow: 0 8px 32px 0 rgba(31, 61, 59, 0.04);
     transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   }
   .dark .glass-card {
@@ -533,14 +541,14 @@
   }
   .glass-card:hover {
     transform: translateY(-2px);
-    border-color: rgba(14, 165, 233, 0.35);
-    box-shadow: 0 12px 40px 0 rgba(14, 165, 233, 0.08);
+    border-color: rgba(42, 128, 121, 0.35);
+    box-shadow: 0 12px 40px 0 rgba(42, 128, 121, 0.10);
   }
 
   /* Hover glow styling */
   .hover-glow-cyan:hover {
-    box-shadow: 0 0 20px 2px rgba(14, 165, 233, 0.15);
-    border-color: rgba(14, 165, 233, 0.4);
+    box-shadow: 0 0 20px 2px rgba(42, 128, 121, 0.18);
+    border-color: rgba(42, 128, 121, 0.4);
   }
   .hover-glow-emerald:hover {
     box-shadow: 0 0 20px 2px rgba(16, 185, 129, 0.15);

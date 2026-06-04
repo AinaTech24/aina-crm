@@ -19,6 +19,13 @@ import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
 
+// Only http(s) URLs — an unconstrained string here is rendered as an <a href>
+// in the circular feed, so a `javascript:`/`data:` value would be stored XSS.
+const httpUrl = z
+  .string()
+  .max(500)
+  .refine((s) => /^https?:\/\//i.test(s), { message: "sourceUrl must be an http(s) URL" });
+
 const Body = z.object({
   title: z.string().min(1).max(200),
   issuer: z.string().max(40).nullable().optional(),
@@ -26,7 +33,7 @@ const Body = z.object({
   summary: z.string().min(1).max(5000),
   mfdAction: z.string().max(5000).nullable().optional(),
   severity: z.enum(["info", "action_required", "critical"]).default("info"),
-  sourceUrl: z.string().max(500).nullable().optional(),
+  sourceUrl: httpUrl.nullable().optional().or(z.literal("")),
 });
 
 export async function POST(req: NextRequest) {
@@ -49,7 +56,7 @@ export async function POST(req: NextRequest) {
           summary: parse.data.summary,
           mfdAction: parse.data.mfdAction ?? null,
           severity: parse.data.severity,
-          sourceUrl: parse.data.sourceUrl ?? null,
+          sourceUrl: parse.data.sourceUrl || null,
           createdBy: session.userId,
         } as any)
         .returning();

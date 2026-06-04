@@ -41,7 +41,7 @@ export async function TrailIncomeTile({ session }: { session: SessionUser }) {
     async (tx) => {
       const [payoutSummary, commissionSummary, trend] = await Promise.all([
         // Current period payout totals from amc_payouts
-        tx.execute(sql`
+        await tx.execute(sql`
           SELECT
             COALESCE(SUM(gross_amount::numeric), 0)::numeric AS gross_received,
             COALESCE(SUM(tds_amount::numeric), 0)::numeric AS tds_deducted,
@@ -53,7 +53,7 @@ export async function TrailIncomeTile({ session }: { session: SessionUser }) {
         `),
 
         // Expected vs received from commission_records
-        tx.execute(sql`
+        await tx.execute(sql`
           SELECT
             COALESCE(SUM(expected_amount::numeric), 0)::numeric AS total_expected,
             COALESCE(SUM(received_amount::numeric), 0)::numeric AS total_received,
@@ -65,7 +65,7 @@ export async function TrailIncomeTile({ session }: { session: SessionUser }) {
         `),
 
         // 3-month received trend
-        tx.execute(sql`
+        await tx.execute(sql`
           SELECT period,
             COALESCE(SUM(net_amount::numeric), 0)::numeric AS net_received
           FROM amc_payouts

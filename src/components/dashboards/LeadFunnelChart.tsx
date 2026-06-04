@@ -1,6 +1,7 @@
 "use client";
 
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, Cell } from "recharts";
+import { ChartMount } from "./ChartMount";
 
 type FunnelStep = { name: string; value: number; percentage: number };
 
@@ -21,7 +22,7 @@ export function LeadFunnelChart({ data }: { data: FunnelStep[] }) {
   }
 
   return (
-    <div className="h-56 w-full">
+    <ChartMount className="h-56 w-full">
       <ResponsiveContainer width="100%" height="100%">
         <BarChart
           data={data}
@@ -55,6 +56,6 @@ export function LeadFunnelChart({ data }: { data: FunnelStep[] }) {
           </Bar>
         </BarChart>
       </ResponsiveContainer>
-    </div>
+    </ChartMount>
   );
 }

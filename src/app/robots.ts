@@ -1,6 +1,6 @@
 import type { MetadataRoute } from "next";
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://app.mfdgrowthos.in";
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://crm.ainatech.in";
 
 /**
  * robots.txt — let crawlers index the public marketing surface, keep the

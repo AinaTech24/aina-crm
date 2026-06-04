@@ -31,7 +31,7 @@ import {
 } from "@/db/schema";
 import { runComplianceChecks, type ComplianceResult } from "./compliance";
 import { resolveTokens, renderTemplateText, type VariableDef } from "./tokens";
-import { whatsappAdapter } from "./adapters/aisensy";
+import { whatsappAdapter } from "./adapters/whatsapp";
 import { emailAdapter } from "./adapters/resend";
 import { smsAdapter } from "./adapters/msg91";
 import { getTenantIntegration } from "./integrations";
@@ -268,13 +268,24 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
   try {
     let adapterResult: { externalId: string; status: "sent" | "queued" };
     if (input.channel === "whatsapp") {
-      const integration = await getTenantIntegration(tx, input.tenantId, "aisensy");
+      // Provider chosen by env; credentials are per-tenant (saved once in
+      // Settings → Integrations). WAina only needs an api_key; the endpoint
+      // defaults to the platform URL.
+      const waProvider =
+        (process.env.WHATSAPP_PROVIDER ?? "aisensy").trim().toLowerCase() === "waina"
+          ? "waina"
+          : "aisensy";
+      const integration = await getTenantIntegration(tx, input.tenantId, waProvider);
       adapterResult = await whatsappAdapter.send({
         tenantId: input.tenantId,
         templateVersion: version,
         tokens: rendered.tokens,
         recipient: input.recipient,
         apiKey: integration?.config?.apiKey,
+        webhookUrl: integration?.config?.webhookUrl,
+        defaultLanguage: integration?.config?.defaultLanguage,
+        // Stable across step retries → adapter can dedupe a re-fired send.
+        idempotencyKey: input.workflowRunStepId ?? communicationId,
       });
     } else if (input.channel === "email") {
       const integration = await getTenantIntegration(tx, input.tenantId, "resend");
@@ -303,6 +314,7 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
         recipient: input.recipient,
         apiKey: integration?.config?.apiKey,
         senderId: integration?.senderConfig?.senderId,
+        idempotencyKey: input.workflowRunStepId ?? communicationId,
       });
     }
     await tx

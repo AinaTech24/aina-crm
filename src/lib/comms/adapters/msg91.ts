@@ -15,6 +15,8 @@ export interface SendSmsArgs {
   recipient: string;
   apiKey?: string;
   senderId?: string;
+  /** Stable across step retries; sent as a best-effort dedup header. */
+  idempotencyKey?: string;
 }
 
 export const smsAdapter = {
@@ -47,6 +49,7 @@ export const smsAdapter = {
       headers: {
         "Content-Type": "application/json",
         authkey: authKey,
+        ...(args.idempotencyKey ? { "X-Idempotency-Key": args.idempotencyKey } : {}),
       },
       timeout: 15_000,
     });

@@ -5,16 +5,22 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { require as requireCap } from "@/lib/auth/rbac";
+import { require as requireCap, ASSIGNABLE_ROLES } from "@/lib/auth/rbac";
+import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { sops, sopVersions } from "@/db/schema";
 
 export const dynamic = "force-dynamic";
+
+const ASSIGNABLE = new Set<string>(ASSIGNABLE_ROLES);
 
 const Body = z.object({
   key: z.string().min(2).max(80).regex(/^[a-z0-9_]+$/),
   title: z.string().min(2).max(300),
   category: z.string().optional(),
-  requiredRoles: z.array(z.string()).default([]),
+  // Each required role must be a real tenant role (empty = applies to everyone).
+  requiredRoles: z.array(z.string()).default([]).refine((rs) => rs.every((r) => ASSIGNABLE.has(r)), {
+    message: "requiredRoles must be assignable tenant roles",
+  }),
   body: z.string().min(2),
 });
 
@@ -23,7 +29,8 @@ export async function POST(req: NextRequest) {
     const session = await requireSession();
     requireCap(session.roles, "sop.manage");
     const parse = Body.safeParse(await req.json().catch(() => ({})));
-    if (!parse.success) return NextResponse.json({ error: "invalid body" }, { status: 400 });
+    if (!parse.success) return NextResponse.json({ error: "invalid body", issues: parse.error.issues }, { status: 400 });
+    const meta = clientMetaFromHeaders(req.headers);
     const sopId = uuid();
     const versionId = uuid();
     await withTenant(session.tenantId, async (tx) => {
@@ -45,6 +52,15 @@ export async function POST(req: NextRequest) {
         publishedAt: new Date(),
         publishedByUserId: session.userId,
       } as any);
+      await recordAudit(tx, {
+        tenantId: session.tenantId,
+        actorUserId: session.userId,
+        action: "sop.create",
+        entityType: "sop",
+        entityId: sopId,
+        after: { key: parse.data.key, title: parse.data.title, requiredRoles: parse.data.requiredRoles } as any,
+        ...meta,
+      });
     });
     return NextResponse.json({ id: sopId }, { status: 201 });
   } catch (err: any) {

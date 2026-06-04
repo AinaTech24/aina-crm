@@ -1,6 +1,6 @@
 import type { MetadataRoute } from "next";
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://app.mfdgrowthos.in";
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://crm.ainatech.in";
 
 /** Sitemap for the public marketing pages. */
 export default function sitemap(): MetadataRoute.Sitemap {

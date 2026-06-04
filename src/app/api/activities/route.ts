@@ -96,10 +96,10 @@ export async function GET(req: NextRequest) {
 /** Resolve a denormalised name + phone for the polymorphic subject. */
 function subjectLookupSql(subjectType: string, subjectId: string) {
   if (subjectType === "investor")
-    return sql`SELECT name, phone FROM investors WHERE id = ${subjectId}::uuid LIMIT 1`;
+    return sql`SELECT name, phone, rm_id FROM investors WHERE id = ${subjectId}::uuid LIMIT 1`;
   if (subjectType === "lead")
-    return sql`SELECT name, phone FROM leads WHERE id = ${subjectId}::uuid LIMIT 1`;
-  return sql`SELECT COALESCE(family_name, head_name) AS name, NULL::text AS phone FROM families WHERE id = ${subjectId}::uuid LIMIT 1`;
+    return sql`SELECT name, phone, owner_id FROM leads WHERE id = ${subjectId}::uuid LIMIT 1`;
+  return sql`SELECT COALESCE(family_name, head_name) AS name, NULL::text AS phone, NULL::uuid AS owner_id FROM families WHERE id = ${subjectId}::uuid LIMIT 1`;
 }
 
 export async function POST(req: NextRequest) {
@@ -111,6 +111,9 @@ export async function POST(req: NextRequest) {
     const meta = clientMetaFromHeaders(req.headers);
     const id = uuid();
 
+    const seesAllInvestors = can(session.roles, "investor.view.all", session.permissions);
+    const seesAllLeads = can(session.roles, "lead.view.all", session.permissions);
+
     const result = await withTenant(
       session.tenantId,
       async (tx) => {
@@ -118,6 +121,14 @@ export async function POST(req: NextRequest) {
         const subj = await tx.execute(subjectLookupSql(b.subjectType, b.subjectId));
         const sr = subj.rows[0] as any;
         if (!sr) return { notFound: true as const };
+
+        // Enforce RM assignment checking for non-manager RMs
+        if (b.subjectType === "investor" && !seesAllInvestors && sr.rm_id !== session.userId) {
+          return { forbidden: true as const };
+        }
+        if (b.subjectType === "lead" && !seesAllLeads && sr.owner_id !== session.userId) {
+          return { forbidden: true as const };
+        }
 
         await tx.insert(activities).values({
           id,
@@ -156,6 +167,7 @@ export async function POST(req: NextRequest) {
     );
 
     if (result.notFound) return NextResponse.json({ error: "subject not found" }, { status: 404 });
+    if ("forbidden" in result) return NextResponse.json({ error: "forbidden: client or lead not assigned to you" }, { status: 403 });
     return NextResponse.json({ id }, { status: 201 });
   } catch (err: any) {
     return handleApiError(err);

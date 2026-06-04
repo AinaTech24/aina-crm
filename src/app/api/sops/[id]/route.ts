@@ -8,21 +8,28 @@ import { handleApiError } from "@/lib/api/error-handler";
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { require as requireCap } from "@/lib/auth/rbac";
+import { require as requireCap, ASSIGNABLE_ROLES } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { sops } from "@/db/schema";
 
 export const dynamic = "force-dynamic";
 
+const ASSIGNABLE = new Set<string>(ASSIGNABLE_ROLES);
+
 const Patch = z.object({
   title: z.string().min(2).max(200).optional(),
   category: z.string().optional(),
-  requiredRoles: z.array(z.string()).optional(),
+  requiredRoles: z
+    .array(z.string())
+    .optional()
+    .refine((rs) => rs === undefined || rs.every((r) => ASSIGNABLE.has(r)), {
+      message: "requiredRoles must be assignable tenant roles",
+    }),
 });
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -30,7 +37,11 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   try {
     const session = await requireSession();
     const row = await withTenant(session.tenantId, async (tx) =>
-      (await tx.select().from(sops).where(eq(sops.id, id)).limit(1))[0] ?? null
+      (await tx
+        .select()
+        .from(sops)
+        .where(and(eq(sops.id, id), eq(sops.tenantId, session.tenantId)))
+        .limit(1))[0] ?? null
     );
     if (!row) return NextResponse.json({ error: "not found" }, { status: 404 });
     return NextResponse.json(row);
@@ -50,7 +61,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const clientMeta = clientMetaFromHeaders(req.headers);
 
     const result = await withTenant(session.tenantId, async (tx) => {
-      const r = await tx.update(sops).set({ ...parse.data, updatedAt: new Date() } as any).where(eq(sops.id, id)).returning();
+      const r = await tx
+        .update(sops)
+        .set({ ...parse.data, updatedAt: new Date() } as any)
+        .where(and(eq(sops.id, id), eq(sops.tenantId, session.tenantId)))
+        .returning();
       if (!r[0]) return null;
       await recordAudit(tx, {
         tenantId: session.tenantId,
@@ -78,7 +93,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     await assertActiveLicense(session.tenantId, session.roles);
     const clientMeta = clientMetaFromHeaders(req.headers);
     await withTenant(session.tenantId, async (tx) => {
-      await tx.delete(sops).where(eq(sops.id, id));
+      await tx.delete(sops).where(and(eq(sops.id, id), eq(sops.tenantId, session.tenantId)));
       await recordAudit(tx, {
         tenantId: session.tenantId,
         actorUserId: session.userId,

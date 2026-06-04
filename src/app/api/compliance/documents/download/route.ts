@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { eq, and } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { require as requireCap } from "@/lib/auth/rbac";
+import { requireAny } from "@/lib/auth/rbac";
 import { complianceDocuments } from "@/db/schema";
 import { presignedGetUrl } from "@/lib/storage/s3";
 import { handleApiError } from "@/lib/api/error-handler";
@@ -12,8 +12,8 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   try {
     const session = await requireSession();
-    // Requires general document viewing capability
-    requireCap(session.roles, "compliance.view", session.permissions);
+    // Same gate as the vault list — compliance + back-office team (owner via can()).
+    requireAny(session.roles, ["compliance.view", "kyc.manage"], session.permissions);
 
     const id = new URL(req.url).searchParams.get("id");
     if (!id) {

@@ -30,6 +30,9 @@ const SKIP_PREFIXES = [
  * requireCap. Adding a line here is a security review checkpoint.
  */
 const SKIP_FILES = new Set([
+  // Activities — context-aware ownership & assignment checks (verified by RM/owner status)
+  "activities/route.ts",
+  "activities/[id]/route.ts",
   // AI helpers — read-only text generation, any logged-in user can use them
   "ai/draft-message/route.ts",
   "ai/nl-to-filter/route.ts",

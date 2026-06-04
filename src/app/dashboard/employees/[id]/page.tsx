@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { eq, sql } from "drizzle-orm";
+import { eq, sql, and, inArray } from "drizzle-orm";
 import { ChevronLeft, UserCog, Briefcase, Users, IndianRupee, CheckCircle2, AlertTriangle, Calendar } from "lucide-react";
 import { withTenant } from "@/db/client";
-import { users } from "@/db/schema";
+import { users, complianceDocuments, tasks, reviewMeetings } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { formatINR, formatDate } from "@/lib/utils";
 import { EmployeeEditForm } from "@/components/employees/EmployeeEditForm";
@@ -34,6 +34,66 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
         (SELECT COUNT(*)::int FROM review_meetings WHERE rm_id = ${id}::uuid AND status IN ('scheduled','confirmed') AND meeting_date >= now()) AS upcoming_meetings
     `);
 
+    // Fetch compliance documents linked to this employee
+    const docs = await tx
+      .select()
+      .from(complianceDocuments)
+      .where(
+        and(
+          eq(complianceDocuments.tenantId, session.tenantId),
+          eq(complianceDocuments.relatedEntityType, "user"),
+          eq(complianceDocuments.relatedEntityId, id)
+        )
+      );
+
+    // Fetch audit logs for this employee
+    const logs = await tx.execute(sql`
+      SELECT a.id, a.action, a.at, a.before, a.after, u.name AS actor_name
+      FROM audit_log a
+      LEFT JOIN users u ON u.id = a.actor_user_id
+      WHERE a.tenant_id = ${session.tenantId}::uuid
+        AND a.entity_type = 'user'
+        AND a.entity_id = ${id}::uuid
+      ORDER BY a.at DESC LIMIT 50
+    `);
+
+    // Fetch tasks assigned to this employee
+    const assignedTasks = await tx
+      .select({
+        id: tasks.id,
+        title: tasks.title,
+        status: tasks.status,
+        priority: tasks.priority,
+        dueAt: tasks.dueAt,
+      })
+      .from(tasks)
+      .where(
+        and(
+          eq(tasks.tenantId, session.tenantId),
+          eq(tasks.assigneeId, id)
+        )
+      )
+      .orderBy(tasks.dueAt);
+
+    // Fetch review meetings assigned to this employee
+    const assignedMeetings = await tx
+      .select({
+        id: reviewMeetings.id,
+        subject: reviewMeetings.subject,
+        meetingType: reviewMeetings.meetingType,
+        meetingDate: reviewMeetings.meetingDate,
+        status: reviewMeetings.status,
+      })
+      .from(reviewMeetings)
+      .where(
+        and(
+          eq(reviewMeetings.tenantId, session.tenantId),
+          eq(reviewMeetings.rmId, id),
+          inArray(reviewMeetings.status, ["scheduled", "confirmed", "in_progress"])
+        )
+      )
+      .orderBy(reviewMeetings.meetingDate);
+
     // Resolve manager name (if any)
     const managerId = (emp as any).reportingManagerId as string | null;
     let manager: { id: string; name: string } | null = null;
@@ -44,7 +104,7 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
         .where(eq(users.id, managerId));
       manager = m ?? null;
     }
-    return { emp, teammates, stats: stats.rows[0] as any, manager };
+    return { emp, teammates, stats: stats.rows[0] as any, manager, docs, logs: logs.rows as any[], assignedTasks, assignedMeetings };
   });
   if (!data) notFound();
   const { emp, teammates, stats, manager } = data;
@@ -137,8 +197,14 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
           dscExpiryAt: ((emp as any).dscExpiryAt as string | null) ?? null,
           status: emp.status,
           permissions: (emp as any).permissions as string[] | null,
+          customLeaveEntitlements: (emp as any).customLeaveEntitlements as Record<string, number> | null,
         }}
         teammates={teammates.filter((t) => t.id !== id)}
+        docs={data.docs}
+        logs={data.logs}
+        tasks={data.assignedTasks}
+        meetings={data.assignedMeetings}
+        stats={stats}
       />
     </div>
   );

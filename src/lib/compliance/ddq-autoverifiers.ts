@@ -186,9 +186,18 @@ export const AUTO_VERIFIERS: Record<
     };
   },
   onboarding_form: async (tx, tenantId) => {
+    // Evidence-based: an enabled client onboarding / lead-capture form on file.
+    // Never auto-pass without evidence — if none, the officer marks it manually.
+    const [row] = (await tx.execute(sql`
+      SELECT COUNT(*)::int as count FROM lead_capture_forms
+      WHERE tenant_id = ${tenantId}::uuid AND enabled = true
+    `)).rows as any[];
+    const has = (row?.count ?? 0) > 0;
     return {
-      verified: true,
-      reason: "Standard onboarding profiles are configured for client verification.",
+      verified: has,
+      reason: has
+        ? `${row.count} enabled client onboarding/lead-capture form(s) configured.`
+        : "No onboarding/lead-capture form configured yet — set one up, then mark this item.",
     };
   },
   record_keeping: async (tx, tenantId) => {
@@ -214,13 +223,24 @@ export const AUTO_VERIFIERS: Record<
     };
   },
   feedback_grievance_policy: async (tx, tenantId) => {
+    // Evidence-based: a grievance/complaint SOP on file, or at least one logged
+    // complaint. The channel merely existing is not proof of a policy.
     const [row] = (await tx.execute(sql`
-      SELECT COUNT(*)::int as count FROM service_requests 
-      WHERE tenant_id = ${tenantId}::uuid AND type = 'complaint'
+      SELECT
+        (SELECT COUNT(*)::int FROM sops WHERE tenant_id = ${tenantId}::uuid
+           AND (key ILIKE '%grievance%' OR key ILIKE '%complaint%' OR title ILIKE '%grievance%' OR title ILIKE '%complaint%')) AS sop_count,
+        (SELECT COUNT(*)::int FROM service_requests WHERE tenant_id = ${tenantId}::uuid AND type = 'complaint') AS complaint_count
     `)).rows as any[];
+    const sopCount = row?.sop_count ?? 0;
+    const complaintCount = row?.complaint_count ?? 0;
+    const has = sopCount > 0 || complaintCount > 0;
     return {
-      verified: true,
-      reason: `Grievance intake channel is active. Registered complaints total: ${row?.count ?? 0}.`,
+      verified: has,
+      reason: sopCount > 0
+        ? "A grievance/complaint-handling SOP is on file."
+        : complaintCount > 0
+        ? `${complaintCount} complaint(s) logged in the grievance register.`
+        : "No grievance SOP or logged complaints — add a grievance-redressal SOP, then mark this item.",
     };
   },
   feedback_samples: async (tx, tenantId) => {
@@ -257,13 +277,23 @@ export const AUTO_VERIFIERS: Record<
     };
   },
   grievance_redressal: async (tx, tenantId) => {
+    // Evidence-based: a grievance/complaint SOP, or at least one logged complaint.
     const [row] = (await tx.execute(sql`
-      SELECT COUNT(*)::int as count FROM service_requests 
-      WHERE tenant_id = ${tenantId}::uuid AND type = 'complaint'
+      SELECT
+        (SELECT COUNT(*)::int FROM sops WHERE tenant_id = ${tenantId}::uuid
+           AND (key ILIKE '%grievance%' OR key ILIKE '%complaint%' OR title ILIKE '%grievance%' OR title ILIKE '%complaint%')) AS sop_count,
+        (SELECT COUNT(*)::int FROM service_requests WHERE tenant_id = ${tenantId}::uuid AND type = 'complaint') AS complaint_count
     `)).rows as any[];
+    const sopCount = row?.sop_count ?? 0;
+    const complaintCount = row?.complaint_count ?? 0;
+    const has = sopCount > 0 || complaintCount > 0;
     return {
-      verified: true,
-      reason: `Grievance redressal tracker registers ${row?.count ?? 0} customer logs.`,
+      verified: has,
+      reason: sopCount > 0
+        ? "A grievance-redressal SOP is documented."
+        : complaintCount > 0
+        ? `${complaintCount} complaint(s) tracked through redressal.`
+        : "No grievance-redressal SOP or logged complaints found — document the SOP, then mark this item.",
     };
   },
   marketing_samples: async (tx, tenantId) => {

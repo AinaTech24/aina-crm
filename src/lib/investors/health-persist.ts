@@ -12,7 +12,7 @@
  * recompute-all exists in addition to write-time recompute.
  */
 
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import { investors } from "@/db/schema";
 import { clientHealth, type InvestorForHealth } from "./health";
@@ -62,16 +62,30 @@ export async function recomputeAllHealth(
       .offset(offset);
     if (page.length === 0) break;
 
-    // Build one CASE-based UPDATE per batch (a few hundred rows) rather than a
-    // round-trip per investor.
+    // ONE set-based UPDATE ... FROM (VALUES ...) per page instead of a
+    // round-trip per investor (was ~10k UPDATEs/tenant/night). Only rows whose
+    // score/band actually changed are written, so we don't churn dead row
+    // versions for a book that didn't move.
+    const changed: Array<{ id: string; score: number; band: string }> = [];
     for (const row of page) {
       const { score, band } = clientHealth(row as InvestorForHealth, now);
       tally.scored++;
       (tally as any)[band]++;
-      await tx
-        .update(investors)
-        .set({ healthScore: score, healthBand: band, healthScoredAt: now } as any)
-        .where(eq(investors.id, row.id));
+      if ((row as any).healthScore !== score || (row as any).healthBand !== band) {
+        changed.push({ id: row.id, score, band });
+      }
+    }
+    if (changed.length > 0) {
+      const values = sql.join(
+        changed.map((c) => sql`(${c.id}::uuid, ${c.score}::int, ${c.band}::text)`),
+        sql`, `
+      );
+      await tx.execute(sql`
+        UPDATE investors i
+           SET health_score = v.score, health_band = v.band, health_scored_at = ${now}
+          FROM (VALUES ${values}) AS v(id, score, band)
+         WHERE i.id = v.id
+      `);
     }
 
     offset += batchSize;

@@ -9,17 +9,17 @@ const inter = Inter({
   variable: "--font-inter",
 });
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://app.mfdgrowthos.in";
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://crm.ainatech.in";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: "MFD Growth OS — CRM & Automation for Mutual Fund Distributors",
-    template: "%s · MFD Growth OS",
+    default: "Aina CRM — CRM & Automation for Mutual Fund Distributors",
+    template: "%s · Aina CRM",
   },
   description:
-    "The all-in-one CRM and automation platform for Indian Mutual Fund Distributors. SEBI-compliant WhatsApp & email automation, live portfolio XIRR, AI churn prediction, SIP tracking, and a guided lead-to-client pipeline — built for ARN-holding firms.",
-  applicationName: "MFD Growth OS",
+    "Aina CRM — the all-in-one CRM and automation platform for Indian Mutual Fund Distributors. SEBI-compliant WhatsApp & email automation, live portfolio XIRR, AI churn prediction, SIP tracking, and a guided lead-to-client pipeline — built for ARN-holding firms.",
+  applicationName: "Aina CRM",
   authors: [{ name: "AINA Technologies" }],
   creator: "AINA Technologies",
   publisher: "AINA Technologies",
@@ -43,16 +43,16 @@ export const metadata: Metadata = {
   alternates: { canonical: "/" },
   openGraph: {
     type: "website",
-    siteName: "MFD Growth OS",
-    title: "MFD Growth OS — CRM & Automation for Mutual Fund Distributors",
+    siteName: "Aina CRM",
+    title: "Aina CRM — CRM & Automation for Mutual Fund Distributors",
     description:
-      "Run your entire MFD practice on autopilot — compliant WhatsApp/email automation, live XIRR, AI churn prediction, SIP tracking and more. Built for Indian ARN holders.",
+      "Run your entire MFD practice on autopilot with Aina CRM — compliant WhatsApp/email automation, live XIRR, AI churn prediction, SIP tracking and more. Built for Indian ARN holders.",
     url: SITE_URL,
     locale: "en_IN",
   },
   twitter: {
     card: "summary_large_image",
-    title: "MFD Growth OS — CRM & Automation for Mutual Fund Distributors",
+    title: "Aina CRM — CRM & Automation for Mutual Fund Distributors",
     description:
       "The practice operating system for Indian MFDs. SEBI-compliant automation, live XIRR, AI churn prediction, SIP tracking and more.",
   },

@@ -1,13 +1,14 @@
 import { handleApiError } from "@/lib/api/error-handler";
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuid } from "uuid";
-import { desc } from "drizzle-orm";
+import { and, desc, eq, or } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { require as requireCap } from "@/lib/auth/rbac";
+import { can, requireAny } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
-import { tasks } from "@/db/schema";
+import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
+import { tasks, users } from "@/db/schema";
 
 export const dynamic = "force-dynamic";
 
@@ -49,7 +50,17 @@ const Body = z.object({
 export async function GET() {
   try {
     const session = await requireSession();
-    const rows = await withTenant(session.tenantId, async (tx) => tx.select().from(tasks).orderBy(desc(tasks.createdAt)).limit(200));
+    requireAny(session.roles, ["task.view.all", "task.view.assigned"], session.permissions);
+    const canViewAll = can(session.roles, "task.view.all", session.permissions);
+    const rows = await withTenant(session.tenantId, async (tx) => {
+      // Tenant predicate is mandatory (RLS-bypass); view.assigned users see
+      // only their own (assignee/creator) tasks.
+      const conds: any[] = [eq(tasks.tenantId, session.tenantId)];
+      if (!canViewAll) {
+        conds.push(or(eq(tasks.assigneeId, session.userId), eq(tasks.createdById, session.userId))!);
+      }
+      return tx.select().from(tasks).where(and(...conds)).orderBy(desc(tasks.createdAt)).limit(200);
+    });
     return NextResponse.json({ tasks: rows });
   } catch (err: any) {
     return handleApiError(err);
@@ -59,11 +70,20 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "task.edit.all");
+    requireAny(session.roles, ["task.edit.all", "task.edit.assigned"], session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
     const parse = Body.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) return NextResponse.json({ error: "invalid body" }, { status: 400 });
     const body = parse.data;
+    const meta = clientMetaFromHeaders(req.headers);
+
+    // Users without task.edit.all may only create tasks assigned to themselves.
+    const canEditAll = can(session.roles, "task.edit.all", session.permissions);
+    const assigneeId = body.assigneeId ?? session.userId;
+    if (!canEditAll && assigneeId !== session.userId) {
+      return NextResponse.json({ error: "you can only assign tasks to yourself" }, { status: 403 });
+    }
+
     const id = uuid();
     // Derive subjectType/subjectId from the first related entity if the caller
     // didn't set one explicitly — keeps legacy queries working.
@@ -86,6 +106,14 @@ export async function POST(req: NextRequest) {
     }
 
     await withTenant(session.tenantId, async (tx) => {
+      // Assignee must be a user in THIS tenant (the FK allows any tenant's user).
+      const [u] = await tx
+        .select({ id: users.id })
+        .from(users)
+        .where(and(eq(users.id, assigneeId), eq(users.tenantId, session.tenantId)))
+        .limit(1);
+      if (!u) throw Object.assign(new Error("assignee not found in this firm"), { status: 400 });
+
       await tx.insert(tasks).values({
         id,
         tenantId: session.tenantId,
@@ -102,7 +130,7 @@ export async function POST(req: NextRequest) {
         remarks: body.remarks,
         priority: body.priority,
         status: "open",
-        assigneeId: body.assigneeId ?? session.userId,
+        assigneeId,
         createdById: session.userId,
         dueAt: body.dueAt ? new Date(body.dueAt) : null,
         recurrence: body.recurrence ?? null,
@@ -110,6 +138,16 @@ export async function POST(req: NextRequest) {
         // Chain root = this task itself when recurring.
         recurrenceParentId: body.recurrence ? id : null,
       } as any);
+
+      await recordAudit(tx, {
+        tenantId: session.tenantId,
+        actorUserId: session.userId,
+        action: "task.create",
+        entityType: "task",
+        entityId: id,
+        after: { title: body.title, type: body.type, assigneeId, priority: body.priority } as any,
+        ...meta,
+      });
     });
     return NextResponse.json({ id }, { status: 201 });
   } catch (err: any) {

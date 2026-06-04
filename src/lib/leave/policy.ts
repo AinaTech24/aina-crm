@@ -34,10 +34,18 @@ export const LEAVE_ENTITLEMENTS: Record<string, number | null> = {
   casual: 12,
   sick: 6,
   earned: 15,
-  comp_off: null,
+  comp_off: 0, // default is 0, granted individually
   unpaid: null,
   other: null,
 };
+
+export function getEntitlement(leaveType: string, customEntitlements?: Record<string, number> | null): number | null {
+  if (customEntitlements && customEntitlements[leaveType] !== undefined && customEntitlements[leaveType] !== null) {
+    return Number(customEntitlements[leaveType]);
+  }
+  if (leaveType === "comp_off") return 0;
+  return LEAVE_ENTITLEMENTS[leaveType] ?? null;
+}
 
 /** Start of the current Indian financial year (Apr 1) as YYYY-MM-DD. */
 export function currentFyStart(today = new Date()): string {

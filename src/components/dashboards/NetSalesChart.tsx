@@ -1,6 +1,7 @@
 "use client";
 
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { ChartMount } from "./ChartMount";
 
 type Point = { day: string; gross: number; redemption: number; net: number };
 
@@ -13,7 +14,7 @@ export function NetSalesChart({ data }: { data: Point[] }) {
     );
   }
   return (
-    <div className="h-56">
+    <ChartMount className="h-56">
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
           <defs>
@@ -37,6 +38,6 @@ export function NetSalesChart({ data }: { data: Point[] }) {
           <Area type="monotone" dataKey="redemption" stroke="#ef4444" fill="url(#redemption)" strokeWidth={2} name="Redemption" />
         </AreaChart>
       </ResponsiveContainer>
-    </div>
+    </ChartMount>
   );
 }

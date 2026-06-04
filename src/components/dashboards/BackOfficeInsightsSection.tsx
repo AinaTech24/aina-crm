@@ -26,7 +26,7 @@ export async function BackOfficeInsightsSection({ session }: { session: SessionU
         clientImpact,
       ] = await Promise.all([
         // 1. Median time-in-stage — last 90 days of stage exits
-        tx.execute(sql`
+        await tx.execute(sql`
           SELECT stage_key,
             COUNT(*)::int AS exits,
             (PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY duration_seconds))::int AS median_seconds,
@@ -41,7 +41,7 @@ export async function BackOfficeInsightsSection({ session }: { session: SessionU
         `),
 
         // 2. First-90-day playbook — new investors in last 90d with onboarding tasks
-        tx.execute(sql`
+        await tx.execute(sql`
           WITH new_investors AS (
             SELECT id FROM investors
             WHERE onboarded_at >= now() - interval '90 days'
@@ -68,7 +68,7 @@ export async function BackOfficeInsightsSection({ session }: { session: SessionU
         `),
 
         // 3. Risk profile renewal — clients with risk profile signed >11 months ago
-        tx.execute(sql`
+        await tx.execute(sql`
           SELECT
             COUNT(*) FILTER (WHERE risk_profile_signed_at IS NULL)::int AS never_done,
             COUNT(*) FILTER (
@@ -83,7 +83,7 @@ export async function BackOfficeInsightsSection({ session }: { session: SessionU
         `),
 
         // 4. Auto vs manual SR resolution (last 90 days)
-        tx.execute(sql`
+        await tx.execute(sql`
           SELECT
             COUNT(*) FILTER (
               WHERE EXISTS (
@@ -99,7 +99,7 @@ export async function BackOfficeInsightsSection({ session }: { session: SessionU
         `),
 
         // 5. Client impact (₹) per queue
-        tx.execute(sql`
+        await tx.execute(sql`
           SELECT
             (SELECT COALESCE(SUM(i.aum::numeric), 0)::numeric
               FROM investors i WHERE i.kyc_status IN ('pending', 'expired')) AS kyc_aum_at_stake,

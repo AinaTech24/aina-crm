@@ -2,6 +2,7 @@
 
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from "recharts";
 import { formatINR } from "@/lib/utils";
+import { ChartMount } from "./ChartMount";
 
 type SegmentData = { name: string; value: number; count: number };
 
@@ -25,7 +26,7 @@ export function AumSegmentChart({ data }: { data: SegmentData[] }) {
   }
 
   return (
-    <div className="h-56 w-full relative">
+    <ChartMount className="h-56 w-full relative">
       <ResponsiveContainer width="100%" height="100%">
         <PieChart>
           <Pie
@@ -69,6 +70,6 @@ export function AumSegmentChart({ data }: { data: SegmentData[] }) {
           {formatINR(totalAum)}
         </div>
       </div>
-    </div>
+    </ChartMount>
   );
 }

@@ -27,7 +27,7 @@ export async function SipPersistencyTile({ session }: { session: SessionUser }) 
     async (tx) => {
       const [persistency, sipBookTrend, rejectionReasons] = await Promise.all([
         // Cohort persistency: started 12-15mo ago (1yr) and 36-39mo ago (3yr)
-        tx.execute(sql`
+        await tx.execute(sql`
           SELECT
             -- 1-year cohort
             COUNT(*) FILTER (
@@ -69,7 +69,7 @@ export async function SipPersistencyTile({ session }: { session: SessionUser }) 
         `),
 
         // SIP book last 3 months for trend
-        tx.execute(sql`
+        await tx.execute(sql`
           WITH months AS (
             SELECT generate_series(0, 2) AS ago
           )
@@ -86,7 +86,7 @@ export async function SipPersistencyTile({ session }: { session: SessionUser }) 
         `),
 
         // Top rejection reasons MTD (from sip_rejections table)
-        tx.execute(sql`
+        await tx.execute(sql`
           SELECT rejection_reason, COUNT(*)::int AS c
           FROM sip_rejections
           WHERE rejection_date >= date_trunc('month', now())::date

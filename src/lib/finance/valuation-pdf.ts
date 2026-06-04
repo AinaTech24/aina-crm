@@ -44,6 +44,11 @@ const LINE: RGB = rgb(0.89, 0.91, 0.94);
 const DISCLAIMER =
   "Mutual Fund investments are subject to market risks. Read all scheme related documents carefully. " +
   "Valuation is computed from recorded transactions priced at the latest available NAV and is indicative.";
+// Fee transparency (CS8): MFDs earn trail from the AMC, embedded in the scheme
+// expense ratio — clients pay no separate advisory fee. Stating it builds trust.
+const FEE_NOTE =
+  "Fee transparency: you hold Regular-plan units. We are compensated via trail commission paid by the AMC, " +
+  "embedded in the scheme's expense ratio — no separate advisory fee is charged to you.";
 
 export type RenderStatementArgs = {
   valuation: InvestorValuation;
@@ -61,7 +66,7 @@ export async function renderValuationStatementPdf(args: RenderStatementArgs): Pr
   const primary = hexToRgb(brand.primaryColor);
 
   doc.setTitle(ascii(`Portfolio statement — ${investor.name ?? "Client"}`));
-  doc.setProducer("MFD Growth OS");
+  doc.setProducer("Aina CRM");
   if (brand.legalName || brand.displayName) doc.setAuthor(ascii(brand.legalName ?? brand.displayName ?? ""));
 
   const page = doc.addPage([595.28, 841.89]); // A4
@@ -169,6 +174,16 @@ export async function renderValuationStatementPdf(args: RenderStatementArgs): Pr
       { x: margin, y, size: 7.5, font: helv, color: MUTED }
     );
     y -= 14;
+  }
+
+  // ── Fee transparency line (fixed just above the footer band) ──────────
+  {
+    let fy = 74;
+    page.drawText("FEE TRANSPARENCY", { x: margin, y: fy + 12, size: 6.4, font: bold, color: MUTED });
+    for (const line of wrap(FEE_NOTE, helv, 7, W - 2 * margin).slice(0, 2)) {
+      page.drawText(line, { x: margin, y: fy, size: 7, font: helv, color: SLATE });
+      fy -= 9;
+    }
   }
 
   // ── Footer (firm · ARN · disclaimer · generated) ──────────────────────

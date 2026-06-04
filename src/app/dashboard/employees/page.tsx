@@ -196,9 +196,28 @@ export default async function EmployeesPage({
                       </td>
                       <td className="py-3 text-right text-xs">
                         {Number(e.annual_target ?? 0) > 0 ? (
-                          <span className="text-emerald-700 font-medium tabular-nums">
-                            {formatINR(Number(e.annual_target))}
-                          </span>
+                          (() => {
+                            const annualTarget = Number(e.annual_target);
+                            const myAum = Number(e.my_aum ?? 0);
+                            const progress = Math.round((myAum / annualTarget) * 100);
+                            const progressColor = progress >= 100 ? "bg-emerald-500 text-emerald-600" : progress >= 50 ? "bg-amber-500 text-amber-600" : "bg-rose-500 text-rose-600";
+                            return (
+                              <div className="flex flex-col items-end gap-1">
+                                <span className="font-medium tabular-nums text-foreground">
+                                  {formatINR(annualTarget)}
+                                </span>
+                                <div className="w-16 h-1 bg-secondary rounded-full overflow-hidden">
+                                  <div
+                                    className={`h-full rounded-full ${progressColor.split(" ")[0]}`}
+                                    style={{ width: `${Math.min(100, progress)}%` }}
+                                  />
+                                </div>
+                                <span className={`text-[9px] font-bold tabular-nums ${progressColor.split(" ")[1]}`}>
+                                  {progress}%
+                                </span>
+                              </div>
+                            );
+                          })()
                         ) : (
                           <span className="text-muted-foreground">—</span>
                         )}

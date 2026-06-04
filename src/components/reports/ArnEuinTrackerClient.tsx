@@ -17,7 +17,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Download } from "lucide-react";
+import { Download, FileText } from "lucide-react";
 
 type Row = {
   id: string;
@@ -41,6 +41,7 @@ type Row = {
   dscSubmitted: boolean | null;
   dscLastSubmittedAt: string | null;
   dscExpiryAt: string | null;
+  docs?: Array<{ id: string; category: string; name: string }>;
 };
 
 const WITHIN_OPTIONS = [
@@ -275,7 +276,23 @@ export function ArnEuinTrackerClient({
                   </td>
 
                   <td className="px-3 py-2 font-mono text-[11px]">
-                    {r.nismCertificateNo ?? "—"}
+                    <div className="flex items-center gap-1">
+                      <span>{r.nismCertificateNo ?? "—"}</span>
+                      {(() => {
+                        const doc = r.docs?.find((d) => d.category === "nism");
+                        return doc ? (
+                          <a
+                            href={`/api/compliance/documents/download?id=${doc.id}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            title="Download NISM certificate"
+                            className="text-primary hover:text-primary-focus inline-flex items-center shrink-0"
+                          >
+                            <FileText className="size-3" />
+                          </a>
+                        ) : null;
+                      })()}
+                    </div>
                     {r.nismCategory && (
                       <div className="text-[10px] text-muted-foreground font-sans">
                         {r.nismCategory}
@@ -290,7 +307,23 @@ export function ArnEuinTrackerClient({
                   </td>
 
                   <td className="px-3 py-2 font-mono text-[11px]">
-                    {r.personalArn ?? "—"}
+                    <div className="flex items-center gap-1">
+                      <span>{r.personalArn ?? "—"}</span>
+                      {(() => {
+                        const doc = r.docs?.find((d) => d.category === "arn");
+                        return doc ? (
+                          <a
+                            href={`/api/compliance/documents/download?id=${doc.id}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            title="Download Personal ARN"
+                            className="text-primary hover:text-primary-focus inline-flex items-center shrink-0"
+                          >
+                            <FileText className="size-3" />
+                          </a>
+                        ) : null;
+                      })()}
+                    </div>
                   </td>
                   <td className="px-3 py-2 text-slate-600">
                     {fmt(r.arnRegistrationDate)}
@@ -300,22 +333,56 @@ export function ArnEuinTrackerClient({
                   </td>
 
                   <td className="px-3 py-2 font-mono text-[11px]">
-                    {r.euin ?? "—"}
+                    <div className="flex items-center gap-1">
+                      <span>{r.euin ?? "—"}</span>
+                      {(() => {
+                        const doc = r.docs?.find((d) => d.category === "euin");
+                        return doc ? (
+                          <a
+                            href={`/api/compliance/documents/download?id=${doc.id}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            title="Download EUIN Card"
+                            className="text-primary hover:text-primary-focus inline-flex items-center shrink-0"
+                          >
+                            <FileText className="size-3" />
+                          </a>
+                        ) : null;
+                      })()}
+                    </div>
                   </td>
                   <td className="px-3 py-2">
                     <ExpiryCell date={r.euinExpiryAt} />
                   </td>
 
                   <td className="px-3 py-2">
-                    {r.dscSubmitted ? (
-                      <span className="chip bg-emerald-50 text-emerald-700 text-[10px]">
-                        Yes
-                      </span>
-                    ) : (
-                      <span className="chip bg-rose-50 text-rose-700 text-[10px]">
-                        No
-                      </span>
-                    )}
+                    <div className="flex items-center gap-1.5">
+                      {r.dscSubmitted ? (
+                        <span className="chip bg-emerald-50 text-emerald-700 text-[10px]">
+                          Yes
+                        </span>
+                      ) : (
+                        <span className="chip bg-rose-50 text-rose-700 text-[10px]">
+                          No
+                        </span>
+                      )}
+                      {(() => {
+                        const doc = r.docs?.find(
+                          (d) => d.category === "other" && d.name.toLowerCase().includes("dsc")
+                        );
+                        return doc ? (
+                          <a
+                            href={`/api/compliance/documents/download?id=${doc.id}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            title="Download DSC Certificate"
+                            className="text-primary hover:text-primary-focus inline-flex items-center shrink-0"
+                          >
+                            <FileText className="size-3" />
+                          </a>
+                        ) : null;
+                      })()}
+                    </div>
                   </td>
                   <td className="px-3 py-2 text-slate-600">
                     {fmt(r.dscLastSubmittedAt)}

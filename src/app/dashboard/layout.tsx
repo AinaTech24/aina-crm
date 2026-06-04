@@ -93,6 +93,11 @@ const NAV: NavSection[] = [
         roles: ["owner", "rm", "branch_head", "back_office", "ops"] },
       { href: "/dashboard/signals", label: "Sales Signals", icon: Radio,
         roles: ["owner", "rm", "branch_head", "back_office", "ops"] },
+      { href: "/dashboard/tasks", label: "Tasks", icon: ListChecks, module: "tasks" },
+      { href: "/dashboard/review-meetings", label: "Meetings", icon: Calendar, module: "review_meetings",
+        roles: ["owner", "rm", "branch_head", "back_office", "ops"] },
+      { href: "/dashboard/calendar", label: "Calendar", icon: Calendar },
+      { href: "/dashboard/attendance", label: "Attendance", icon: CalendarCheck },
       { href: "/dashboard/team", label: "Team Dashboard", icon: Users2,
         roles: ["owner", "branch_head"] },
     ],
@@ -153,8 +158,6 @@ const NAV: NavSection[] = [
         roles: ["owner", "back_office", "ops", "rm", "branch_head"] },
       { href: "/dashboard/sips/at-risk", label: "SIP At-Risk", icon: AlertTriangle, module: "sip_tracker",
         roles: ["owner", "back_office", "ops", "rm", "branch_head"] },
-      { href: "/dashboard/review-meetings", label: "Meetings", icon: Calendar, module: "review_meetings",
-        roles: ["owner", "rm", "branch_head", "back_office", "ops"] },
       { href: "/dashboard/activities", label: "Activity Log", icon: PhoneCall,
         roles: ["owner", "rm", "branch_head", "back_office", "ops", "compliance"] },
       { href: "/dashboard/service-requests", label: "Service Requests", icon: LifeBuoy, module: "service_requests",
@@ -190,11 +193,8 @@ const NAV: NavSection[] = [
       { href: "/dashboard/sops", label: "SOP Library", icon: ScrollText, roles: ["owner", "compliance"] },
       { href: "/dashboard/announcements", label: "Announcements", icon: Megaphone },
       { href: "/dashboard/duplicates", label: "Find Duplicates", icon: Copy, roles: ["owner", "branch_head"] },
-      { href: "/dashboard/tasks", label: "Tasks", icon: ListChecks, module: "tasks" },
-      { href: "/dashboard/calendar", label: "Calendar", icon: Calendar },
       { href: "/dashboard/employees", label: "Employees", icon: UserCog, module: "employees", roles: ["owner", "branch_head"] },
       { href: "/dashboard/leave-applications", label: "Leave Applications", icon: CalendarOff },
-      { href: "/dashboard/attendance", label: "Attendance", icon: CalendarCheck },
       { href: "/dashboard/sub-distributors", label: "Sub-Distributors", icon: HeartHandshake, roles: ["owner", "compliance"] },
       { href: "/dashboard/legal-registrations", label: "Legal Registrations", icon: ScrollText, roles: ["owner", "compliance"] },
       { href: "/dashboard/amc-empanelments", label: "AMC Empanelments", icon: Briefcase, roles: ["owner", "compliance", "back_office"] },
@@ -289,30 +289,42 @@ export default async function DashboardLayout({ children }: { children: React.Re
           {/* faint cyan glow accent in the corner for depth */}
           <div className="absolute -top-8 -right-8 size-24 rounded-full bg-brand-cyan/20 blur-2xl" />
           <div className="relative px-5 py-[1.15rem] flex items-center gap-3">
-            {tenant?.logoUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={tenant.logoUrl}
-                alt="logo"
-                className="size-10 rounded-xl shadow-lg ring-2 ring-white/20 object-cover"
-              />
+            {tenant ? (
+              <>
+                {tenant.logoUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={tenant.logoUrl}
+                    alt="logo"
+                    className="size-10 rounded-xl shadow-lg ring-2 ring-white/20 object-cover"
+                  />
+                ) : (
+                  <div
+                    className="size-10 rounded-xl bg-white/95 text-brand-navy grid place-items-center text-lg font-extrabold shadow-lg ring-2 ring-white/20"
+                    style={tenant.primaryColor ? { color: tenant.primaryColor } : {}}
+                  >
+                    {(tenant.displayName ?? "A").charAt(0).toUpperCase()}
+                  </div>
+                )}
+                <div className="min-w-0 text-white">
+                  <div className="font-semibold tracking-tight truncate text-sm leading-tight">
+                    {tenant.displayName ?? "Aina CRM"}
+                  </div>
+                  <div className="mt-0.5 inline-flex items-center gap-1 text-[10px] text-white/75 font-mono">
+                    <span className="size-1.5 rounded-full bg-brand-cyan shadow-[0_0_6px_hsl(var(--brand-cyan))]" />
+                    <span className="truncate">{tenant.arn ?? "—"}</span>
+                  </div>
+                </div>
+              </>
             ) : (
+              // No tenant context → product default: the Aina wordmark on a white card.
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                src="/aina-mark.svg"
+                src="/aina-wordmark.png"
                 alt="Aina CRM"
-                className="size-10 rounded-xl bg-white/95 p-1.5 shadow-lg ring-2 ring-white/20 object-contain"
+                className="h-8 w-auto rounded-md bg-white px-2.5 py-1.5 shadow-lg ring-1 ring-white/15"
               />
             )}
-            <div className="min-w-0 text-white">
-              <div className="font-semibold tracking-tight truncate text-sm leading-tight">
-                {tenant?.displayName ?? "Aina CRM"}
-              </div>
-              <div className="mt-0.5 inline-flex items-center gap-1 text-[10px] text-white/75 font-mono">
-                <span className="size-1.5 rounded-full bg-brand-cyan shadow-[0_0_6px_hsl(var(--brand-cyan))]" />
-                <span className="truncate">{tenant?.arn ?? "—"}</span>
-              </div>
-            </div>
           </div>
         </div>
 

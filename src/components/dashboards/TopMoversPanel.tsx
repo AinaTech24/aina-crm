@@ -30,7 +30,7 @@ export async function TopMoversPanel({
     async (tx) => {
       const [inflows, outflows, newSips] = await Promise.all([
         // Biggest net inflows per client
-        tx.execute(sql`
+        await tx.execute(sql`
           SELECT i.id, i.name, i.segment_tag,
             COALESCE(SUM(CASE WHEN t.direction = 'inflow' THEN t.amount::numeric ELSE -t.amount::numeric END), 0)::numeric AS net_flow
           FROM transactions t
@@ -44,7 +44,7 @@ export async function TopMoversPanel({
         `),
 
         // Biggest net outflows per client (redemption watch)
-        tx.execute(sql`
+        await tx.execute(sql`
           SELECT i.id, i.name, i.segment_tag,
             COALESCE(SUM(CASE WHEN t.direction = 'outflow' THEN t.amount::numeric ELSE -t.amount::numeric END), 0)::numeric AS net_out
           FROM transactions t
@@ -58,7 +58,7 @@ export async function TopMoversPanel({
         `),
 
         // Biggest new SIPs registered this period
-        tx.execute(sql`
+        await tx.execute(sql`
           SELECT s.id, s.amount, s.scheme_name, s.frequency,
             i.id AS investor_id, i.name AS investor_name
           FROM sips s

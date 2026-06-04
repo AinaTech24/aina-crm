@@ -52,9 +52,12 @@ export async function OwnerInsightsSection({ session }: { session: SessionUser }
         sipProjection,
         rmActivity,
         reviewCadence,
-      ] = await Promise.all([
+        // Sequential: these share one tx connection — `[await …, await …]`
+        // evaluates left-to-right, so pg never runs two queries at once (which
+        // it can't, and which emits a deprecation that pg@9 turns into an error).
+      ] = [
         // 1. Automation ROI — workflow runs, auto-sent comms, compliance blocks
-        tx.execute(sql`
+        await tx.execute(sql`
           SELECT
             (SELECT COUNT(*)::int FROM workflow_runs
               WHERE status = 'completed' AND completed_at >= ${startOfMonth}) AS runs_mtd,
@@ -70,7 +73,7 @@ export async function OwnerInsightsSection({ session }: { session: SessionUser }
         `),
 
         // 2. Service Promise Adherence — % of clients reviewed on cadence per tier + SLA hit rate
-        tx.execute(sql`
+        await tx.execute(sql`
           SELECT
             COUNT(*) FILTER (WHERE service_tier = 'A')::int AS a_total,
             COUNT(*) FILTER (WHERE service_tier = 'A' AND last_review_at >= ${last90})::int AS a_ok,
@@ -90,44 +93,28 @@ export async function OwnerInsightsSection({ session }: { session: SessionUser }
           FROM investors WHERE status = 'active'
         `),
 
-        // 3. Client Health Bands — composite red/amber/green per active investor
-        tx.execute(sql`
-          WITH scored AS (
-            SELECT
-              i.id,
-              -- start at 100, subtract for each red flag
-              100
-                - CASE WHEN i.last_contact_at IS NULL
-                       OR i.last_contact_at < ${last90} THEN 25 ELSE 0 END
-                - CASE WHEN i.kyc_status IN ('expired', 're_kyc_required', 'rejected')
-                       OR i.ckyc_expiry_at IS NULL
-                       OR i.ckyc_expiry_at < current_date + interval '30 days' THEN 15 ELSE 0 END
-                - CASE WHEN i.nominee_name IS NULL OR i.nominee_name = '' THEN 10 ELSE 0 END
-                - CASE WHEN i.redemption_risk_flagged_at IS NOT NULL THEN 20 ELSE 0 END
-                - CASE WHEN i.service_tier = 'A' AND (i.last_review_at IS NULL OR i.last_review_at < ${last90}) THEN 15
-                       WHEN i.service_tier = 'B' AND (i.last_review_at IS NULL OR i.last_review_at < ${last180}) THEN 15
-                       WHEN i.service_tier = 'C' AND (i.last_review_at IS NULL OR i.last_review_at < ${last365}) THEN 10
-                       ELSE 0 END
-                - CASE WHEN EXISTS (
-                    SELECT 1 FROM service_requests sr
-                    WHERE sr.investor_id = i.id
-                      AND sr.status IN ('open', 'in_progress')
-                      AND sr.sla_resolution_at < now()
-                  ) THEN 15 ELSE 0 END
-              AS score
-            FROM investors i
-            WHERE i.status = 'active'
-          )
+        // 3. Client Health Bands — read the PERSISTED health_band (the canonical
+        // app-wide classification, written on create/update + nightly recompute
+        // by src/lib/investors/health-persist.ts and shown on every investor
+        // row + the health sort). This previously recomputed a *divergent*
+        // inline formula per active investor — including a correlated EXISTS
+        // subquery per row — which (a) disagreed with the canonical band used
+        // everywhere else and omitted half its factors (PAN-Aadhaar, FATCA,
+        // bank, risk-profile, dormancy), and (b) was the heaviest query in this
+        // section at scale (O(active clients) scan + N correlated lookups).
+        // A banded COUNT over the (tenant_id, status) index replaces all of it.
+        await tx.execute(sql`
           SELECT
-            COUNT(*) FILTER (WHERE score >= 80)::int AS green,
-            COUNT(*) FILTER (WHERE score >= 60 AND score < 80)::int AS amber,
-            COUNT(*) FILTER (WHERE score < 60)::int AS red,
+            COUNT(*) FILTER (WHERE health_band = 'green')::int AS green,
+            COUNT(*) FILTER (WHERE health_band = 'amber')::int AS amber,
+            COUNT(*) FILTER (WHERE health_band = 'red')::int AS red,
             COUNT(*)::int AS total
-          FROM scored
+          FROM investors
+          WHERE status = 'active'
         `),
 
         // 4. Compliance Waterfall — KYC, FATCA, risk profile, nominee, PAN-Aadhaar
-        tx.execute(sql`
+        await tx.execute(sql`
           SELECT
             COUNT(*) FILTER (WHERE ckyc_expiry_at IS NOT NULL
               AND ckyc_expiry_at BETWEEN current_date AND current_date + interval '30 days')::int AS kyc_30,
@@ -147,7 +134,7 @@ export async function OwnerInsightsSection({ session }: { session: SessionUser }
         `),
 
         // 5. Recovery list — at-risk top 10 (redemption-risk flag, recent complaint, large recent outflow)
-        tx.execute(sql`
+        await tx.execute(sql`
           WITH recent_complaint AS (
             SELECT investor_id FROM service_requests
             WHERE type IN ('complaint', 'redemption_help')
@@ -177,7 +164,7 @@ export async function OwnerInsightsSection({ session }: { session: SessionUser }
         `),
 
         // 6. Lost AUM watch — full exits in last 30 days
-        tx.execute(sql`
+        await tx.execute(sql`
           SELECT
             COUNT(*)::int AS exit_count,
             COALESCE(SUM(GREATEST(lifetime_inflow::numeric - lifetime_outflow::numeric, 0)), 0)::numeric AS net_lost
@@ -187,7 +174,7 @@ export async function OwnerInsightsSection({ session }: { session: SessionUser }
         `),
 
         // 7. AMC concentration — top 5 AMCs by AUM
-        tx.execute(sql`
+        await tx.execute(sql`
           SELECT amc_name, SUM(aum::numeric)::numeric AS aum, COUNT(*)::int AS folio_count
           FROM folios
           WHERE aum::numeric > 0
@@ -197,7 +184,7 @@ export async function OwnerInsightsSection({ session }: { session: SessionUser }
         `),
 
         // 8. Forward SIP projection — sum of active SIPs (next 30d expected inflow)
-        tx.execute(sql`
+        await tx.execute(sql`
           SELECT
             COALESCE(SUM(amount::numeric), 0)::numeric AS monthly_sip_run,
             COUNT(*)::int AS active_sip_count
@@ -206,7 +193,7 @@ export async function OwnerInsightsSection({ session }: { session: SessionUser }
         `),
 
         // 9. Inactive RM detector — per RM, % of book untouched in 60 days
-        tx.execute(sql`
+        await tx.execute(sql`
           SELECT u.id, u.name AS rm_name,
             COUNT(i.id)::int AS total_clients,
             COUNT(i.id) FILTER (
@@ -225,7 +212,7 @@ export async function OwnerInsightsSection({ session }: { session: SessionUser }
         `),
 
         // 10. Review cadence per tier — already partly covered in #2, here we return per-RM split for the heatmap
-        tx.execute(sql`
+        await tx.execute(sql`
           SELECT
             COALESCE(service_tier, 'Unassigned') AS tier,
             COUNT(*)::int AS total,
@@ -239,7 +226,7 @@ export async function OwnerInsightsSection({ session }: { session: SessionUser }
           GROUP BY service_tier
           ORDER BY tier
         `),
-      ]);
+      ];
 
       const a = automation.rows[0] as any;
       const s = serviceAdherence.rows[0] as any;

@@ -1,3 +1,5 @@
+import { buildHeaderIndexMap } from "../integrations/cams-feed-parser";
+
 /**
  * Parsers for RTA file types beyond the daily transaction feed.
  *
@@ -35,6 +37,58 @@ export type CanonicalBrokerageRow = {
   brokerageAmount: number;
 };
 
+// ── Default mapping layouts & aliases ───────────────────────────────────
+
+const DEFAULT_SIP_REJECT_MAP: Record<string, number> = {
+  amcName: 0,
+  folioNumber: 1,
+  pan: 2,
+  schemeName: 3,
+  rejectionDate: 4,
+  amount: 5,
+  reasonCode: 6,
+  reason: 7,
+};
+
+const SIP_REJECT_ALIASES: Record<string, string[]> = {
+  amcName: ["AMC", "AMC_NAME", "AMC NAME", "FMIM_CODE", "MUTUAL_FUND", "AMC_CD", "AMC_DESC"],
+  folioNumber: ["FOLIO", "FOLIO_NO", "FOLIO_NUM", "FOLIONO", "FOLIO NO", "FOLIO NUM", "FOLIONUM", "FOL_NO"],
+  pan: ["PAN", "INV_PAN", "PAN_NO", "PAN NO", "PAN_NUM", "PAN NUM", "INVPAN", "PAN_NUMBER"],
+  schemeName: ["SCH_NAME", "SCHEME_NAME", "SCHEME NAME", "PRODUCT_NAME", "PRODUCT NAME", "SCHNAME", "PRODNAME"],
+  rejectionDate: ["REJECT_DATE", "REJECTION_DATE", "REJ_DATE", "REJECT DATE", "REJECTION DATE", "DATE", "REJ_DT"],
+  amount: ["AMOUNT", "AMT", "TXN_AMT", "TXN_AMOUNT", "TRANS_AMT", "SIP_AMOUNT"],
+  reasonCode: ["REASON_CODE", "REJ_CODE", "REJECT_CODE", "REASON CODE", "REJ CODE", "REJ_REASON", "REJ REASON", "FAIL_CODE"],
+  reason: ["REASON", "REASON_DESC", "REASON DESCRIPTION", "REMARK", "REMARKS", "REJ_DESC", "REJECT_DESC", "REJECTION_REASON"],
+};
+
+const DEFAULT_BROKERAGE_MAP: Record<string, number> = {
+  amcCode: 0,
+  schemeCode: 1,
+  schemeName: 2,
+  folioNumber: 3,
+  pan: 4,
+  brokerageType: 5,
+  periodStart: 6,
+  periodEnd: 7,
+  aumAmount: 8,
+  brokerageRate: 9,
+  brokerageAmount: 10,
+};
+
+const BROKERAGE_ALIASES: Record<string, string[]> = {
+  amcCode: ["AMC", "AMC_CODE", "AMCCOD", "AMC_CD"],
+  schemeCode: ["SCH_CODE", "SCHEME_CODE", "SCHEME CODE", "PRODUCT_CODE", "PRODUCT CODE", "SCHCOD", "PRODCODE"],
+  schemeName: ["SCH_NAME", "SCHEME_NAME", "SCHEME NAME", "PRODUCT_NAME", "PRODUCT NAME", "SCHNAME", "PRODNAME"],
+  folioNumber: ["FOLIO", "FOLIO_NO", "FOLIO_NUM", "FOLIONO", "FOLIO NO", "FOLIO NUM", "FOLIONUM", "FOL_NO"],
+  pan: ["PAN", "INV_PAN", "PAN_NO", "PAN NO", "PAN_NUM", "PAN NUM", "INVPAN", "PAN_NUMBER"],
+  brokerageType: ["TYPE", "BROKERAGE_TYPE", "COMMISSION_TYPE", "BROK_TYPE", "COMM_TYPE"],
+  periodStart: ["PERIOD_START", "START_DATE", "FROM_DATE", "FROM DATE", "PERIOD START", "START DATE"],
+  periodEnd: ["PERIOD_END", "END_DATE", "TO_DATE", "TO DATE", "PERIOD END", "END DATE"],
+  aumAmount: ["AUM", "AVG_AUM", "AVERAGE_AUM", "AUM_AMOUNT", "AVG AUM", "AVERAGE AUM"],
+  brokerageRate: ["RATE", "BROKERAGE_RATE", "COMMISSION_RATE", "BROK_RATE", "COMM_RATE"],
+  brokerageAmount: ["AMOUNT", "BROKERAGE_AMOUNT", "COMMISSION_AMOUNT", "BROK_AMOUNT", "COMM_AMOUNT", "NET_AMOUNT"],
+};
+
 // ── SIP rejection report ────────────────────────────────────────────────
 
 const REASON_CODE_MAP: Record<string, string> = {
@@ -56,38 +110,42 @@ export function parseSipRejectionReport(
   const lines = text.split(/\r?\n/);
   if (!lines.length) return out;
 
-  // Detect delimiter: CAMS pipes, KFintech commas.
   const delim = source === "kfintech" ? "," : "|";
 
-  // Header detection — skip the first row if it contains "PAN" + "Reject"
   let start = 0;
+  let indexMap = DEFAULT_SIP_REJECT_MAP;
+
+  const firstLineUpper = lines[0]?.toUpperCase() ?? "";
   if (
-    lines[0]?.toUpperCase().includes("PAN") &&
-    (lines[0].toUpperCase().includes("REJECT") || lines[0].toUpperCase().includes("FAIL"))
+    firstLineUpper.includes("PAN") &&
+    (firstLineUpper.includes("REJECT") || firstLineUpper.includes("FAIL") || firstLineUpper.includes("FOLIO"))
   ) {
     start = 1;
+    const headerCols = lines[0].split(delim);
+    indexMap = { ...DEFAULT_SIP_REJECT_MAP, ...buildHeaderIndexMap(headerCols, SIP_REJECT_ALIASES) };
   }
 
-  // Expected column order (typical CAMS SIP-RJ layout):
-  // 0:AMC 1:Folio 2:PAN 3:Scheme 4:RejectDate 5:Amount 6:ReasonCode 7:ReasonDesc
   for (let i = start; i < lines.length; i++) {
     const line = lines[i].trim();
     if (!line) continue;
     const cols = line.split(delim);
-    if (cols.length < 6) continue;
+    const maxIdx = Math.max(...Object.values(indexMap));
+    if (cols.length <= maxIdx) continue;
 
-    const reasonCode = cols[6]?.trim();
+    const val = (field: string) => cols[indexMap[field]]?.trim() ?? "";
+    const reasonCode = val("reasonCode");
+
     out.push({
-      amcName: cols[0]?.trim() ?? "",
-      folioNumber: cols[1]?.trim() ?? "",
-      pan: cols[2]?.trim() ?? "",
-      schemeName: cols[3]?.trim() ?? "",
-      rejectionDate: normaliseDate(cols[4]) ?? today(),
-      amount: parseFloat(cols[5] ?? "0") || 0,
+      amcName: val("amcName"),
+      folioNumber: val("folioNumber"),
+      pan: val("pan"),
+      schemeName: val("schemeName"),
+      rejectionDate: normaliseDate(val("rejectionDate")) ?? today(),
+      amount: parseFloat(val("amount") ?? "0") || 0,
       reasonCode,
       reason:
         (reasonCode && REASON_CODE_MAP[reasonCode]) ??
-        cols[7]?.trim() ??
+        val("reason") ??
         "Unknown",
     });
   }
@@ -105,41 +163,47 @@ export function parseBrokerageStatement(
   if (!lines.length) return out;
   const delim = source === "kfintech" ? "," : "|";
 
-  // Header detection: row contains "Brokerage" or "Commission"
   let start = 0;
+  let indexMap = DEFAULT_BROKERAGE_MAP;
+
+  const firstLineUpper = lines[0]?.toUpperCase() ?? "";
   if (
-    lines[0]?.toUpperCase().includes("BROKERAGE") ||
-    lines[0]?.toUpperCase().includes("COMMISSION")
+    firstLineUpper.includes("BROKERAGE") ||
+    firstLineUpper.includes("COMMISSION") ||
+    (firstLineUpper.includes("PAN") && firstLineUpper.includes("FOLIO"))
   ) {
     start = 1;
+    const headerCols = lines[0].split(delim);
+    indexMap = { ...DEFAULT_BROKERAGE_MAP, ...buildHeaderIndexMap(headerCols, BROKERAGE_ALIASES) };
   }
 
-  // Expected: 0:AMCCode 1:SchemeCode 2:SchemeName 3:Folio 4:PAN
-  //           5:Type 6:PeriodStart 7:PeriodEnd 8:AUM 9:Rate 10:Amount
   for (let i = start; i < lines.length; i++) {
     const line = lines[i].trim();
     if (!line) continue;
     const cols = line.split(delim);
-    if (cols.length < 11) continue;
+    const maxIdx = Math.max(...Object.values(indexMap));
+    if (cols.length <= maxIdx) continue;
 
-    const typeRaw = (cols[5] ?? "").toUpperCase();
+    const val = (field: string) => cols[indexMap[field]]?.trim() ?? "";
+
+    const typeRaw = val("brokerageType").toUpperCase();
     let brokerageType: CanonicalBrokerageRow["brokerageType"] = "other";
     if (typeRaw.includes("UPFRONT")) brokerageType = "upfront";
     else if (typeRaw.includes("TRAIL")) brokerageType = "trail";
     else if (typeRaw.includes("B30") || typeRaw.includes("B-30")) brokerageType = "b30";
 
     out.push({
-      amcCode: cols[0]?.trim() ?? "",
-      schemeCode: cols[1]?.trim() ?? "",
-      schemeName: cols[2]?.trim() ?? "",
-      folioNumber: cols[3]?.trim() ?? "",
-      pan: cols[4]?.trim() ?? "",
+      amcCode: val("amcCode"),
+      schemeCode: val("schemeCode"),
+      schemeName: val("schemeName"),
+      folioNumber: val("folioNumber"),
+      pan: val("pan"),
       brokerageType,
-      periodStart: normaliseDate(cols[6]) ?? today(),
-      periodEnd: normaliseDate(cols[7]) ?? today(),
-      aumAmount: parseFloat(cols[8] ?? "0") || 0,
-      brokerageRate: parseFloat(cols[9] ?? "0") || 0,
-      brokerageAmount: parseFloat(cols[10] ?? "0") || 0,
+      periodStart: normaliseDate(val("periodStart")) ?? today(),
+      periodEnd: normaliseDate(val("periodEnd")) ?? today(),
+      aumAmount: parseFloat(val("aumAmount") ?? "0") || 0,
+      brokerageRate: parseFloat(val("brokerageRate") ?? "0") || 0,
+      brokerageAmount: parseFloat(val("brokerageAmount") ?? "0") || 0,
     });
   }
   return out;

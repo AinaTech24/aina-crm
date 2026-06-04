@@ -16,6 +16,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     const result = await withTenant(session.tenantId, async (tx) => {
       // 1. Fetch SOP and its current version
+      // Tenant predicate — a foreign SOP id must not be acknowledgeable.
       const [sop] = await tx
         .select({
           id: sops.id,
@@ -23,7 +24,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           title: sops.title,
         })
         .from(sops)
-        .where(eq(sops.id, id))
+        .where(and(eq(sops.id, id), eq(sops.tenantId, session.tenantId)))
         .limit(1);
 
       if (!sop) {
@@ -34,31 +35,25 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         throw new Error("No active version published for this SOP");
       }
 
-      // 2. Check if already acknowledged by this user
-      const [existing] = await tx
-        .select()
-        .from(sopAcknowledgements)
-        .where(
-          and(
-            eq(sopAcknowledgements.sopVersionId, sop.currentVersionId),
-            eq(sopAcknowledgements.userId, session.userId)
-          )
-        )
-        .limit(1);
-
-      if (existing) {
-        return { alreadyAcknowledged: true };
-      }
-
-      // 3. Insert new acknowledgement
-      const [ack] = await tx
+      // 2. Insert the acknowledgement idempotently — the (sop_version_id, user_id)
+      //    unique index makes a double-click / race a no-op (an empty `returning`),
+      //    so duplicate acks can't inflate the DDQ sign-off-coverage score.
+      const inserted = await tx
         .insert(sopAcknowledgements)
         .values({
           tenantId: session.tenantId,
           sopVersionId: sop.currentVersionId,
           userId: session.userId,
         } as any)
+        .onConflictDoNothing({
+          target: [sopAcknowledgements.sopVersionId, sopAcknowledgements.userId],
+        })
         .returning();
+
+      if (inserted.length === 0) {
+        return { alreadyAcknowledged: true };
+      }
+      const ack = inserted[0];
 
       // 4. Record audit log
       await recordAudit(tx, {

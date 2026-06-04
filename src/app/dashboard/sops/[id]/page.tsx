@@ -14,12 +14,19 @@ export default async function SopDetailPage({ params }: { params: Promise<{ id: 
   const { id } = await params;
   const session = await requireSession();
   const data = await withTenant(session.tenantId, async (tx) => {
-    const sop = (await tx.select().from(sops).where(eq(sops.id, id)).limit(1))[0];
+    // Tenant predicate — a foreign SOP id must resolve to not-found, not leak content.
+    const sop = (
+      await tx
+        .select()
+        .from(sops)
+        .where(and(eq(sops.id, id), eq(sops.tenantId, session.tenantId)))
+        .limit(1)
+    )[0];
     if (!sop) return null;
     const versions = await tx
       .select()
       .from(sopVersions)
-      .where(eq(sopVersions.sopId, id))
+      .where(and(eq(sopVersions.sopId, id), eq(sopVersions.tenantId, session.tenantId)))
       .orderBy(desc(sopVersions.createdAt));
     const current = versions.find((v) => v.id === sop.currentVersionId);
     

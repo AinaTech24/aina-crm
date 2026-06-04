@@ -40,9 +40,10 @@ export async function runStatementScheduler(): Promise<StatementSchedulerResult>
   let failed = 0;
 
   for (const tenantId of tenants) {
+    let dueIds: string[] = [];
     try {
-      await withTenant(tenantId, async (tx) => {
-        // Clients due for a statement this period.
+      // 1) Read-only: which clients are due this period.
+      dueIds = await withTenant(tenantId, async (tx) => {
         const rows = await tx.execute(sql`
           SELECT id FROM investors
           WHERE tenant_id = ${tenantId}::uuid
@@ -55,28 +56,47 @@ export async function runStatementScheduler(): Promise<StatementSchedulerResult>
               OR (statement_cadence = 'quarterly' AND last_statement_sent_at < date_trunc('quarter', now()))
             )
           ORDER BY id
-          LIMIT 1000
+          LIMIT 5000
         `);
-        due += rows.rows.length;
-        for (const row of rows.rows as Array<{ id: string }>) {
-          const res = await sendInvestorStatement(tx, {
-            tenantId,
-            investorId: row.id,
-            channel: "email",
-            actorUserId: null,
-          });
-          if (res.ok) {
-            sent++;
-            await tx.execute(
-              sql`UPDATE investors SET last_statement_sent_at = now(), updated_at = now() WHERE id = ${row.id}::uuid`
-            );
-          } else {
-            failed++;
-          }
-        }
+        return (rows.rows as Array<{ id: string }>).map((r) => r.id);
       });
     } catch (err: any) {
-      console.error(`[statement-scheduler] tenant ${tenantId} failed:`, err?.message ?? err);
+      console.error(`[statement-scheduler] tenant ${tenantId} list failed:`, err?.message ?? err);
+      continue;
+    }
+    due += dueIds.length;
+
+    // 2) Each client is its OWN transaction: send + watermark commit together,
+    //    re-checking the due-condition under the row to avoid a double-send if
+    //    two ticks race. A crash loses at most the one in-flight client, never
+    //    re-sends a client whose watermark already committed.
+    for (const id of dueIds) {
+      try {
+        const res = await withTenant(tenantId, async (tx) => {
+          const guard = await tx.execute(sql`
+            SELECT 1 FROM investors
+            WHERE id = ${id}::uuid AND status = 'active'
+              AND statement_cadence IN ('monthly','quarterly')
+              AND (
+                last_statement_sent_at IS NULL
+                OR (statement_cadence = 'monthly'   AND last_statement_sent_at < date_trunc('month', now()))
+                OR (statement_cadence = 'quarterly' AND last_statement_sent_at < date_trunc('quarter', now()))
+              )
+            FOR UPDATE
+          `);
+          if (guard.rows.length === 0) return { ok: false as const, skipped: true };
+          const r = await sendInvestorStatement(tx, { tenantId, investorId: id, channel: "email", actorUserId: null });
+          if (r.ok) {
+            await tx.execute(sql`UPDATE investors SET last_statement_sent_at = now(), updated_at = now() WHERE id = ${id}::uuid`);
+          }
+          return { ok: r.ok, skipped: false };
+        });
+        if (res.ok) sent++;
+        else if (!res.skipped) failed++;
+      } catch (err: any) {
+        failed++;
+        console.error(`[statement-scheduler] tenant ${tenantId} investor ${id} failed:`, err?.message ?? err);
+      }
     }
   }
 

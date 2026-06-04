@@ -1,4 +1,4 @@
-import { date, index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { date, index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 
 /**
  * AMFI / SEBI regulatory circular digest — PLATFORM-SHARED reference data, NOT
@@ -35,7 +35,7 @@ export const amfiCirculars = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => ({
-    circularNoIdx: index("amfi_circulars_circular_no_idx").on(t.circularNo),
+    circularNoIdx: uniqueIndex("amfi_circulars_circular_no_idx").on(t.circularNo),
     publishedIdx: index("amfi_circulars_published_idx").on(t.publishedOn),
   })
 );

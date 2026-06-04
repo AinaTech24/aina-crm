@@ -54,35 +54,31 @@ export async function OwnerCockpit({
     session.tenantId,
     async (tx) => {
       // Streamlined main cockpit query: only fetch core KPIs immediately
-      const [
-        headline,
-        business,
-        sipStopped,
-        queues,
-        team,
-        leadFunnel,
-      ] = await Promise.all([
+      // These queries share the single transaction connection, so Promise.all
+      // can't parallelize them — pg runs one query per connection at a time (it
+      // queued them and logged a deprecation warning that pg@9 turns into an
+      // error). Sequential await is correct, warning-free, and connection-efficient.
       // ---------- 1. Headline counts (+ period trajectory deltas) ----------
-      tx.execute(sql`
+      const headline = await tx.execute(sql`
         SELECT
-          (SELECT COUNT(*)::int FROM investors WHERE status = 'active') AS total_clients,
-          (SELECT COUNT(*)::int FROM leads WHERE converted_investor_id IS NULL AND stage NOT IN ('lost', 'cold', 'not_interested')) AS total_leads,
-          (SELECT COALESCE(SUM(active_sip_amount::numeric), 0)::numeric FROM investors WHERE status = 'active') AS sip_book,
-          (SELECT COALESCE(SUM(aum::numeric), 0)::numeric FROM investors WHERE status = 'active') AS total_aum,
+          (SELECT COUNT(*)::int FROM investors WHERE tenant_id = ${session.tenantId}::uuid AND status = 'active') AS total_clients,
+          (SELECT COUNT(*)::int FROM leads WHERE tenant_id = ${session.tenantId}::uuid AND converted_investor_id IS NULL AND stage NOT IN ('lost', 'cold', 'not_interested')) AS total_leads,
+          (SELECT COALESCE(SUM(active_sip_amount::numeric), 0)::numeric FROM investors WHERE tenant_id = ${session.tenantId}::uuid AND status = 'active') AS sip_book,
+          (SELECT COALESCE(SUM(aum::numeric), 0)::numeric FROM investors WHERE tenant_id = ${session.tenantId}::uuid AND status = 'active') AS total_aum,
           -- trajectory: clients onboarded this period
           (SELECT COUNT(*)::int FROM investors
-            WHERE status = 'active' AND onboarded_at >= ${startOfMonthISO}) AS new_clients_period,
+            WHERE tenant_id = ${session.tenantId}::uuid AND status = 'active' AND onboarded_at >= ${startOfMonthISO}) AS new_clients_period,
           -- trajectory: net new SIPs this period (registered minus stopped)
           (SELECT COUNT(*)::int FROM sips
-            WHERE created_at >= ${startOfMonthISO}) AS new_sips_period,
+            WHERE tenant_id = ${session.tenantId}::uuid AND created_at >= ${startOfMonthISO}) AS new_sips_period,
           (SELECT COUNT(*)::int FROM sips
-            WHERE status IN ('stopped','paused','cancelled') AND updated_at >= ${startOfMonthISO}) AS stopped_sips_period,
+            WHERE tenant_id = ${session.tenantId}::uuid AND status IN ('stopped','paused','cancelled') AND updated_at >= ${startOfMonthISO}) AS stopped_sips_period,
           (SELECT COALESCE(SUM(amount::numeric), 0)::numeric FROM sips
-            WHERE created_at >= ${startOfMonthISO})::numeric AS new_sip_amt_period
-      `),
+            WHERE tenant_id = ${session.tenantId}::uuid AND created_at >= ${startOfMonthISO})::numeric AS new_sip_amt_period
+      `);
 
       // ---------- 2. Monthly business breakdown ----------
-      tx.execute(sql`
+      const business = await tx.execute(sql`
         SELECT
           COUNT(*) FILTER (WHERE type = 'sip' AND status IN ('processed', 'successful')
               AND order_date >= ${startOfMonthISO}::date)::int AS sip_added_count,
@@ -97,38 +93,47 @@ export async function OwnerCockpit({
           COUNT(*) FILTER (WHERE type = 'sip' AND status = 'rejected'
               AND created_at >= ${startOfMonthISO})::int AS sip_rejected_count
         FROM transactions
-      `),
+        WHERE tenant_id = ${session.tenantId}::uuid
+          -- Bound the scan to this period's rows so it uses the
+          -- transactions(tenant_id, order_date)/(tenant_id, created_at) indexes
+          -- instead of seq-scanning the tenant's entire transaction history.
+          -- Result-preserving: every FILTER above needs order_date >= start
+          -- (5 aggregates) or created_at >= start (sip_rejected), so a row
+          -- failing BOTH can't contribute to any aggregate.
+          AND (order_date >= ${startOfMonthISO}::date OR created_at >= ${startOfMonthISO})
+      `);
 
-      tx.execute(sql`
+      const sipStopped = await tx.execute(sql`
         SELECT COUNT(*)::int AS c FROM sips
-        WHERE status IN ('stopped', 'paused', 'cancelled')
+        WHERE tenant_id = ${session.tenantId}::uuid
+          AND status IN ('stopped', 'paused', 'cancelled')
           AND updated_at >= ${startOfMonthISO}
-      `),
+      `);
 
       // ---------- 3. Attention queues (fast stats for summary bar) ----------
-      tx.execute(sql`
+      const queues = await tx.execute(sql`
         SELECT
           (SELECT COUNT(*)::int FROM investors
-              WHERE status = 'active' AND next_review_at IS NOT NULL
+              WHERE tenant_id = ${session.tenantId}::uuid AND status = 'active' AND next_review_at IS NOT NULL
                 AND next_review_at <= now()) AS reviews_due,
           (SELECT COUNT(*)::int FROM service_requests
-              WHERE status IN ('open', 'in_progress')) AS sr_pending,
+              WHERE tenant_id = ${session.tenantId}::uuid AND status IN ('open', 'in_progress')) AS sr_pending,
           (SELECT COUNT(*)::int FROM service_requests
-              WHERE status IN ('open', 'in_progress') AND type = 'complaint') AS complaints_open,
+              WHERE tenant_id = ${session.tenantId}::uuid AND status IN ('open', 'in_progress') AND type = 'complaint') AS complaints_open,
           (SELECT COUNT(*)::int FROM investors
-              WHERE status = 'active' AND service_tier = 'A'
+              WHERE tenant_id = ${session.tenantId}::uuid AND status = 'active' AND service_tier = 'A'
                 AND (last_review_at IS NULL OR last_review_at < now() - interval '120 days')) AS hni_not_reviewed,
           (SELECT COUNT(*)::int FROM investors
-              WHERE status = 'active'
+              WHERE tenant_id = ${session.tenantId}::uuid AND status = 'active'
                 AND (last_transaction_at IS NULL OR last_transaction_at < ${dormantCutoff})) AS dormant_clients
-      `),
+      `);
 
       // ---------- 4. Team & health ----------
-      tx.execute(sql`
+      const team = await tx.execute(sql`
         SELECT
-          (SELECT COUNT(*)::int FROM tasks WHERE status = 'open') AS team_tasks,
-          (SELECT COUNT(*)::int FROM campaigns WHERE status IN ('sending', 'scheduled')) AS campaigns_running,
-          (SELECT overall_score::numeric FROM ddq_scores ORDER BY computed_at DESC LIMIT 1) AS ddq_score,
+          (SELECT COUNT(*)::int FROM tasks WHERE tenant_id = ${session.tenantId}::uuid AND status = 'open') AS team_tasks,
+          (SELECT COUNT(*)::int FROM campaigns WHERE tenant_id = ${session.tenantId}::uuid AND status IN ('sending', 'scheduled')) AS campaigns_running,
+          (SELECT overall_score::numeric FROM ddq_scores WHERE tenant_id = ${session.tenantId}::uuid ORDER BY computed_at DESC LIMIT 1) AS ddq_score,
           (SELECT (
               100.0 * COUNT(*) FILTER (WHERE pan IS NOT NULL AND pan <> ''
                 AND email IS NOT NULL AND email <> ''
@@ -137,20 +142,20 @@ export async function OwnerCockpit({
                 AND nominee_name IS NOT NULL AND nominee_name <> ''
                 AND bank_account_masked IS NOT NULL AND bank_account_masked <> '')
               / NULLIF(COUNT(*), 0)
-            )::numeric FROM investors WHERE status = 'active') AS data_quality_score
-      `),
+            )::numeric FROM investors WHERE tenant_id = ${session.tenantId}::uuid AND status = 'active') AS data_quality_score
+      `);
 
       // ---------- 5. Lead conversion (fast stats for KPI delta) ----------
-      tx.execute(sql`
+      const leadFunnel = await tx.execute(sql`
         SELECT
           COUNT(*)::int AS total_leads_mtd,
           COUNT(*) FILTER (WHERE converted_investor_id IS NOT NULL)::int AS converted_mtd
         FROM leads
-        WHERE created_at >= ${startOfMonthISO}
-      `),
-      ]);
+        WHERE tenant_id = ${session.tenantId}::uuid
+          AND created_at >= ${startOfMonthISO}
+      `);
 
-      // Unpack the parallel results back into the shape the JSX expects.
+      // Unpack the results into the shape the JSX expects.
       const h = headline.rows[0] as any;
       const b = business.rows[0] as any;
       const q = queues.rows[0] as any;
