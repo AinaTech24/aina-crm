@@ -1,0 +1,20 @@
+# Caddy = reverse proxy + automatic HTTPS (free Let's Encrypt certs, auto-renew).
+# Replaces a paid AWS load balancer on the cheap single-box path.
+#
+# APP_DOMAIN is injected from the environment (docker-compose.prod.yml).
+# Point an A record (your domain → the EC2 Elastic IP) and Caddy does the rest.
+
+{$APP_DOMAIN} {
+	encode gzip zstd
+	reverse_proxy web:3000 {
+		health_uri /api/health
+		health_interval 30s
+	}
+	# Sensible security headers.
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+}

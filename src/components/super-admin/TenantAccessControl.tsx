@@ -3,35 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ShieldAlert, Save } from "lucide-react";
-
-// The full list of sidebar modules as defined in layout.tsx
-const AVAILABLE_MODULES = [
-  { key: "lead_management", label: "Leads (CRM)" },
-  { key: "client_master", label: "Clients (CRM)" },
-  { key: "family_mapping", label: "Family Mapping (CRM)" },
-  { key: "risk_profile", label: "Risk Profile (CRM)" },
-  { key: "goal_planning", label: "Goal Planning (CRM)" },
-  { key: "proposals", label: "Proposals (CRM)" },
-  { key: "insurance", label: "Insurance Policies (CRM)" },
-  { key: "transactions", label: "MF Transactions (Ops)" },
-  { key: "sip_tracker", label: "SIP Tracker (Ops)" },
-  { key: "sip_rejection", label: "SIP Rejections (Ops)" },
-  { key: "review_meetings", label: "Meetings (Ops)" },
-  { key: "service_requests", label: "Service Requests (Ops)" },
-  { key: "complaints", label: "Complaints (Ops)" },
-  { key: "automation_workflows", label: "Workflows & Segments (Automation)" },
-  { key: "broadcasts", label: "Templates & Communications (Automation)" },
-  { key: "marketing_campaigns", label: "Marketing Campaigns (Automation)" },
-  { key: "content_calendar", label: "Social Media Calendar (Automation)" },
-  { key: "ddq", label: "DDQ Readiness (Compliance)" },
-  { key: "documents", label: "Documents (Compliance)" },
-  { key: "tasks", label: "Tasks (Compliance)" },
-  { key: "employees", label: "Employees (Compliance)" },
-  { key: "cybersecurity", label: "Cybersecurity (Compliance)" },
-  { key: "reports", label: "Reports & MIS (Insights)" },
-  { key: "ai_assistant", label: "AI Assistant (Insights)" },
-  { key: "audit_log", label: "Audit Log (Insights)" },
-];
+import { NAV_ACCESS_GROUPS, ALL_NAV_ITEMS } from "@/config/nav-access";
 
 // All fields from catalog.ts grouped by subject
 const AVAILABLE_FIELDS = {
@@ -83,15 +55,15 @@ const AVAILABLE_FIELDS = {
   ],
 };
 
+const ALL_NAV_KEYS = ALL_NAV_ITEMS.map((i) => i.key);
+
 export function TenantAccessControl({
   tenantId,
-  packageModules,
-  initialModulesOverride,
+  initialAllowedNav,
   initialAllowedFields,
 }: {
   tenantId: string;
-  packageModules: string[];
-  initialModulesOverride: string[] | null;
+  initialAllowedNav: string[] | null;
   initialAllowedFields: string[] | null;
 }) {
   const router = useRouter();
@@ -99,16 +71,17 @@ export function TenantAccessControl({
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // If override is null, we initialize it to package enabled modules
-  const [modules, setModules] = useState<string[]>(initialModulesOverride || packageModules);
-  const [customModulesActive, setCustomModulesActive] = useState(!!initialModulesOverride);
+  // null grant = the firm gets the package default; when customizing we start
+  // from the current grant (or "everything").
+  const [nav, setNav] = useState<string[]>(initialAllowedNav || ALL_NAV_KEYS);
+  const [customNavActive, setCustomNavActive] = useState(!!initialAllowedNav);
 
   // If allowed fields is null, all fields are allowed. We keep track of the selected fields list.
   const [allowedFields, setAllowedFields] = useState<string[]>(initialAllowedFields || []);
   const [customFieldsActive, setCustomFieldsActive] = useState(!!initialAllowedFields);
 
-  const toggleModule = (key: string) => {
-    setModules((prev) => (prev.includes(key) ? prev.filter((m) => m !== key) : [...prev, key]));
+  const toggleNav = (key: string) => {
+    setNav((prev) => (prev.includes(key) ? prev.filter((m) => m !== key) : [...prev, key]));
     setSaved(false);
   };
 
@@ -126,7 +99,7 @@ export function TenantAccessControl({
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          modulesOverride: customModulesActive ? modules : null,
+          allowedNav: customNavActive ? nav : null,
           allowedFields: customFieldsActive ? allowedFields : null,
         }),
       });
@@ -168,42 +141,56 @@ export function TenantAccessControl({
       {saved && <div className="text-xs text-emerald-700 bg-emerald-50 rounded-md p-2">✓ Overrides saved successfully</div>}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Module Access */}
+        {/* Sidebar Access (admin → MFD) */}
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold">Sidebar Modules</h3>
+            <h3 className="text-sm font-semibold">Sidebar Access</h3>
             <label className="flex items-center gap-1.5 text-xs font-medium cursor-pointer">
               <input
                 type="checkbox"
-                checked={customModulesActive}
+                checked={customNavActive}
                 onChange={(e) => {
-                  setCustomModulesActive(e.target.checked);
-                  if (!e.target.checked) setModules(packageModules);
+                  setCustomNavActive(e.target.checked);
+                  if (e.target.checked && nav.length === 0) setNav(ALL_NAV_KEYS);
                   setSaved(false);
                 }}
               />
-              Customize Modules
+              Customize Access
             </label>
           </div>
-          {!customModulesActive ? (
+          {!customNavActive ? (
             <div className="text-xs text-muted-foreground bg-secondary/30 p-3 rounded-md border">
-              Modules are currently managed by the package plan defaults:{" "}
-              <strong className="text-foreground">{packageModules.join(", ")}</strong>. Check "Customize Modules" above to override.
+              This firm can open all sidebar items allowed by its package plan. Check &quot;Customize Access&quot;
+              to pick exactly which sidebar items the MFD can use ({ALL_NAV_KEYS.length} available).
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 border rounded-md p-4 bg-secondary/10">
-              {AVAILABLE_MODULES.map((m) => (
-                <label
-                  key={m.key}
-                  className="flex items-center gap-2 border rounded p-2 bg-card hover:bg-secondary/40 text-xs cursor-pointer"
-                >
-                  <input
-                    type="checkbox"
-                    checked={modules.includes(m.key)}
-                    onChange={() => toggleModule(m.key)}
-                  />
-                  <span>{m.label}</span>
-                </label>
+            <div className="space-y-3 max-h-[440px] overflow-y-auto border rounded-md p-4 bg-secondary/10 scrollbar-thin">
+              <div className="flex gap-3 text-[11px] font-medium">
+                <button type="button" onClick={() => { setNav(ALL_NAV_KEYS); setSaved(false); }} className="text-primary hover:underline">
+                  Select all
+                </button>
+                <button type="button" onClick={() => { setNav([]); setSaved(false); }} className="text-muted-foreground hover:underline">
+                  Clear all
+                </button>
+                <span className="text-muted-foreground ml-auto">{nav.length}/{ALL_NAV_KEYS.length} selected</span>
+              </div>
+              {NAV_ACCESS_GROUPS.map((grp) => (
+                <div key={grp.title} className="space-y-1.5">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground border-b pb-0.5">
+                    {grp.title}
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                    {grp.items.map((m) => (
+                      <label
+                        key={m.key}
+                        className="flex items-center gap-2 border rounded p-1.5 bg-card hover:bg-secondary/40 text-[11px] cursor-pointer"
+                      >
+                        <input type="checkbox" checked={nav.includes(m.key)} onChange={() => toggleNav(m.key)} />
+                        <span>{m.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
               ))}
             </div>
           )}

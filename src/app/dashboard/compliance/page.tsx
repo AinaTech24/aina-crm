@@ -115,22 +115,16 @@ export default async function CompliancePage() {
       LIMIT 3
     `);
 
-    // D. Empanelment renewals (amc_empanelments)
-    const expiringEmpanelments = await tx.execute(sql`
-      SELECT amc_code, expires_at
-      FROM amc_empanelments
-      WHERE tenant_id = ${session.tenantId}::uuid
-        AND status = 'empanelled'
-        AND expires_at IS NOT NULL
-      ORDER BY expires_at ASC
-      LIMIT 2
-    `);
+    // NOTE: AMC empanelments have no expiry date — the relationship runs until
+    // `terminated_at`, there is no renewal deadline (and no `expires_at`
+    // column). So there is nothing real to surface on an *expiry* watchlist for
+    // them; the watchlist is built only from columns that actually carry a
+    // regulatory expiry (ARN, NISM, EUIN, CKYC).
 
     return {
       tenant: tenantRow,
       users: activeUsers,
       investors: expiringInvestors.rows as any[],
-      empanelments: expiringEmpanelments.rows as any[],
     };
   });
 
@@ -188,22 +182,6 @@ export default async function CompliancePage() {
           who: inv.name,
           when: days < 0 ? "Expired" : `${days} days`,
           urgent: days < 30,
-          days: days,
-        });
-      }
-    }
-  }
-
-  // D. Empanelments
-  for (const emp of expiriesData.empanelments) {
-    if (emp.expires_at) {
-      const days = getDaysRemaining(emp.expires_at);
-      if (days !== null) {
-        watchlist.push({
-          type: "AMC Empanelment",
-          who: `${emp.amc_code} AMC`,
-          when: days < 0 ? "Expired" : `${days} days`,
-          urgent: days < 45,
           days: days,
         });
       }

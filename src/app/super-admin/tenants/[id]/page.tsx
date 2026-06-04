@@ -141,8 +141,7 @@ export default async function TenantDetailPage({ params }: { params: Promise<{ i
       {data.subscription && (
         <TenantAccessControl
           tenantId={id}
-          packageModules={(data.package?.enabledModules as string[]) ?? []}
-          initialModulesOverride={data.subscription.modulesOverride as string[] | null}
+          initialAllowedNav={(data.subscription as any).allowedNav as string[] | null}
           initialAllowedFields={data.subscription.allowedFields as string[] | null}
         />
       )}

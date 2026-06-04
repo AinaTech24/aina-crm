@@ -27,6 +27,10 @@ export const tenants = pgTable(
     secondaryColor: text("secondary_color").default("#0ea5e9"),
     logoUrl: text("logo_url"),
     faviconUrl: text("favicon_url"),
+    /** Square app icon — sidebar badge / small square avatars. */
+    logoIconUrl: text("logo_icon_url"),
+    /** Compact monogram / "half" logo — collapsed sidebar / watermarks. */
+    logoMarkUrl: text("logo_mark_url"),
     /** @deprecated — kept for back-compat. Active subscription is the source of truth now. */
     plan: text("plan", { enum: ["starter", "growth", "professional", "enterprise"] })
       .notNull()

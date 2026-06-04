@@ -26,13 +26,19 @@ export type PortfolioIntel = {
   warnings: Array<{ level: "high" | "medium"; text: string }>;
 };
 
+// `category` lives inside each `folios.schemes` jsonb element (shape:
+// { schemeCode, schemeName, category?, units?, nav?, value? }), NOT as a
+// table column — so it must be read as `s->>'category'`. Both call sites
+// below have `jsonb_array_elements(f.schemes) s` in scope. A missing key
+// yields NULL → falls through to 'Other'.
+const CAT = `(s->>'category')`;
 const CLASS_CASE = `CASE
-  WHEN category ILIKE '%equity%' OR category ILIKE '%elss%' OR category ILIKE '%large%' OR category ILIKE '%mid%' OR category ILIKE '%small%' OR category ILIKE '%flexi%' OR category ILIKE '%focus%' OR category ILIKE '%value%' OR category ILIKE '%contra%' OR category ILIKE '%index%' OR category ILIKE '%multi%cap%' THEN 'Equity'
-  WHEN category ILIKE '%debt%' OR category ILIKE '%bond%' OR category ILIKE '%gilt%' OR category ILIKE '%duration%' OR category ILIKE '%income%' OR category ILIKE '%credit%' OR category ILIKE '%psu%' THEN 'Debt'
-  WHEN category ILIKE '%hybrid%' OR category ILIKE '%balanced%' OR category ILIKE '%advantage%' OR category ILIKE '%multi%asset%' OR category ILIKE '%arbitrage%' THEN 'Hybrid'
-  WHEN category ILIKE '%liquid%' OR category ILIKE '%overnight%' OR category ILIKE '%money%' OR category ILIKE '%ultra%' THEN 'Liquid'
-  WHEN category ILIKE '%gold%' OR category ILIKE '%silver%' OR category ILIKE '%commodit%' THEN 'Commodity'
-  WHEN category ILIKE '%internat%' OR category ILIKE '%global%' OR category ILIKE '%us %' OR category ILIKE '%overseas%' THEN 'International'
+  WHEN ${CAT} ILIKE '%equity%' OR ${CAT} ILIKE '%elss%' OR ${CAT} ILIKE '%large%' OR ${CAT} ILIKE '%mid%' OR ${CAT} ILIKE '%small%' OR ${CAT} ILIKE '%flexi%' OR ${CAT} ILIKE '%focus%' OR ${CAT} ILIKE '%value%' OR ${CAT} ILIKE '%contra%' OR ${CAT} ILIKE '%index%' OR ${CAT} ILIKE '%multi%cap%' THEN 'Equity'
+  WHEN ${CAT} ILIKE '%debt%' OR ${CAT} ILIKE '%bond%' OR ${CAT} ILIKE '%gilt%' OR ${CAT} ILIKE '%duration%' OR ${CAT} ILIKE '%income%' OR ${CAT} ILIKE '%credit%' OR ${CAT} ILIKE '%psu%' THEN 'Debt'
+  WHEN ${CAT} ILIKE '%hybrid%' OR ${CAT} ILIKE '%balanced%' OR ${CAT} ILIKE '%advantage%' OR ${CAT} ILIKE '%multi%asset%' OR ${CAT} ILIKE '%arbitrage%' THEN 'Hybrid'
+  WHEN ${CAT} ILIKE '%liquid%' OR ${CAT} ILIKE '%overnight%' OR ${CAT} ILIKE '%money%' OR ${CAT} ILIKE '%ultra%' THEN 'Liquid'
+  WHEN ${CAT} ILIKE '%gold%' OR ${CAT} ILIKE '%silver%' OR ${CAT} ILIKE '%commodit%' THEN 'Commodity'
+  WHEN ${CAT} ILIKE '%internat%' OR ${CAT} ILIKE '%global%' OR ${CAT} ILIKE '%us %' OR ${CAT} ILIKE '%overseas%' THEN 'International'
   ELSE 'Other'
 END`;
 

@@ -57,6 +57,7 @@ export function ProfileMenu({
   };
 
   async function logout() {
+    if (!window.confirm("Are you sure you want to log out?")) return;
     setLoggingOut(true);
     try {
       await fetch("/api/auth/logout", { method: "POST" });

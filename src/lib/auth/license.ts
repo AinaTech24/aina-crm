@@ -22,6 +22,8 @@ export type LicenseState = {
   packageKey: string | null;
   enabledModules: string[];
   allowedFields: string[] | null;
+  /** Admin → MFD sidebar nav grant (hrefs). null = package-module default. */
+  allowedNav: string[] | null;
   featureFlags: Record<string, any>;
   maxUsers: number;
   maxInvestors: number;
@@ -50,6 +52,7 @@ async function loadTenantLicenseImpl(tenantId: string, roles?: string[]): Promis
       packageKey: "platform_admin",
       enabledModules: [],
       allowedFields: null,
+      allowedNav: null,
       featureFlags: {},
       maxUsers: 1e9,
       maxInvestors: 1e9,
@@ -77,6 +80,7 @@ async function loadTenantLicenseImpl(tenantId: string, roles?: string[]): Promis
       packageKey: null,
       enabledModules: [],
       allowedFields: null,
+      allowedNav: null,
       featureFlags: {},
       maxUsers: 1,
       maxInvestors: 100,
@@ -105,12 +109,14 @@ async function loadTenantLicenseImpl(tenantId: string, roles?: string[]): Promis
     ? (sub.modulesOverride as string[])
     : ((pkg?.enabledModules as string[]) ?? []);
   const allowedFields = (sub.allowedFields as string[]) ?? null;
+  const allowedNav = (sub.allowedNav as string[]) ?? null;
 
   return {
     status: effectiveStatus as LicenseState["status"],
     packageKey: sub.packageKey,
     enabledModules,
     allowedFields,
+    allowedNav,
     featureFlags: (pkg?.featureFlags as Record<string, any>) ?? {},
     maxUsers: pkg?.maxUsers ?? 1,
     maxInvestors: pkg?.maxInvestors ?? 100,

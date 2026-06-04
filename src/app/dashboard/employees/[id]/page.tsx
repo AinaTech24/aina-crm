@@ -5,6 +5,8 @@ import { ChevronLeft, UserCog, Briefcase, Users, IndianRupee, CheckCircle2, Aler
 import { withTenant } from "@/db/client";
 import { users, complianceDocuments, tasks, reviewMeetings } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
+import { loadTenantLicense } from "@/lib/auth/license";
+import { tenantAccessibleNavKeys } from "@/config/nav-access";
 import { formatINR, formatDate } from "@/lib/utils";
 import { EmployeeEditForm } from "@/components/employees/EmployeeEditForm";
 
@@ -13,6 +15,8 @@ export const dynamic = "force-dynamic";
 export default async function EmployeeDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await requireSession();
   const { id } = await params;
+  // The modules the tenant has — the pool an owner can grant to a team member.
+  const license = await loadTenantLicense(session.tenantId, session.roles);
 
   const data = await withTenant(session.tenantId, async (tx) => {
     const [emp] = await tx.select().from(users).where(eq(users.id, id));
@@ -197,8 +201,13 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
           dscExpiryAt: ((emp as any).dscExpiryAt as string | null) ?? null,
           status: emp.status,
           permissions: (emp as any).permissions as string[] | null,
+          enabledModules: ((emp as any).enabledModules as string[] | null) ?? null,
           customLeaveEntitlements: (emp as any).customLeaveEntitlements as Record<string, number> | null,
         }}
+        tenantNavKeys={tenantAccessibleNavKeys({
+          allowedNav: license.allowedNav,
+          enabledModules: license.enabledModules,
+        })}
         teammates={teammates.filter((t) => t.id !== id)}
         docs={data.docs}
         logs={data.logs}

@@ -6,12 +6,15 @@ import { withPlatformAdmin } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { requirePlatform } from "@/lib/auth/rbac";
 import { subscriptions, subscriptionEvents } from "@/db/schema";
+import { areKnownNavKeys } from "@/config/nav-access";
 
 export const dynamic = "force-dynamic";
 
 const Body = z.object({
-  modulesOverride: z.array(z.string()).nullable(),
-  allowedFields: z.array(z.string()).nullable(),
+  modulesOverride: z.array(z.string()).nullable().optional(),
+  allowedFields: z.array(z.string()).nullable().optional(),
+  /** Admin → MFD sidebar access — nav hrefs the firm can open. null = default. */
+  allowedNav: z.array(z.string()).nullable().optional(),
 });
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -24,7 +27,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!parse.success) {
       return NextResponse.json({ error: "invalid body", issues: parse.error.issues }, { status: 400 });
     }
-    const { modulesOverride, allowedFields } = parse.data;
+    const { modulesOverride, allowedFields, allowedNav } = parse.data;
+    if (allowedNav != null && !areKnownNavKeys(allowedNav)) {
+      return NextResponse.json({ error: "one or more sidebar items are not recognised" }, { status: 400 });
+    }
 
     const result = await withPlatformAdmin(session.userId, async (tx) => {
       const sub = (
@@ -32,11 +38,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       )[0];
       if (!sub) throw Object.assign(new Error("subscription not found"), { status: 404 });
 
-      const patch = {
-        modulesOverride: modulesOverride,
-        allowedFields: allowedFields,
-        updatedAt: new Date(),
-      };
+      const patch: any = { updatedAt: new Date() };
+      if (modulesOverride !== undefined) patch.modulesOverride = modulesOverride;
+      if (allowedFields !== undefined) patch.allowedFields = allowedFields;
+      if (allowedNav !== undefined) patch.allowedNav = allowedNav;
 
       await tx.update(subscriptions).set(patch).where(eq(subscriptions.id, sub.id));
 

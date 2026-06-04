@@ -111,8 +111,8 @@ export function CustomViews({
       {open && (
         <>
           {/* Click-outside backdrop */}
-          <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-full mt-1 z-30 card-elevated w-72 overflow-hidden">
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 top-full mt-1 z-50 card-elevated w-72 overflow-hidden bg-card">
             {/* Default / presets */}
             <div className="border-b border-border">
               <ViewItem

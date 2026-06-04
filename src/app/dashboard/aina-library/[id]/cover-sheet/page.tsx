@@ -14,6 +14,7 @@ import { contentLibraryAssets, tenants } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { assetVisibleTo } from "@/lib/content/asset-url";
 import { ProposalPrintHelper } from "@/components/proposals/ProposalPrintHelper";
+import { FirmLogo } from "@/components/common/FirmLogo";
 
 export const dynamic = "force-dynamic";
 
@@ -76,30 +77,14 @@ export default async function CoverSheetPage({
       <div className="cs-page">
         {/* Letterhead */}
         <div className="flex items-center gap-4">
-          {(tenant as any)?.logoUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={(tenant as any).logoUrl}
-              alt=""
-              style={{ height: 64, width: 64, borderRadius: 12 }}
-            />
-          ) : (
-            <div
-              style={{
-                background: primary,
-                color: "white",
-                fontSize: 28,
-                fontWeight: 800,
-                height: 64,
-                width: 64,
-                borderRadius: 14,
-                display: "grid",
-                placeItems: "center",
-              }}
-            >
-              {(tenant?.displayName ?? "M").charAt(0).toUpperCase()}
-            </div>
-          )}
+          <FirmLogo
+            src={(tenant as any)?.logoUrl}
+            name={tenant?.displayName ?? tenant?.legalName}
+            color={primary}
+            size={64}
+            radius={14}
+            maxWidth={220}
+          />
           <div>
             <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-0.01em" }}>
               {tenant?.legalName ?? tenant?.displayName}

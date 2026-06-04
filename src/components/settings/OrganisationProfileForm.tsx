@@ -18,6 +18,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Save, Loader2, Upload, CreditCard } from "lucide-react";
 import { HelpHint } from "@/components/help/HelpHint";
+import { LOGO_SLOTS, type LogoField } from "@/lib/branding/logo";
 
 type OwnerLite = { id: string; name: string; email: string } | null;
 
@@ -36,6 +37,8 @@ export function OrganisationProfileForm({
 }) {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
+  // Which logo slot a click on the shared hidden file input targets.
+  const activeField = useRef<LogoField>("logoUrl");
   const [form, setForm] = useState({
     displayName: tenant.displayName ?? "",
     legalName: tenant.legalName ?? "",
@@ -45,6 +48,9 @@ export function OrganisationProfileForm({
     primaryColor: tenant.primaryColor ?? "#1f2937",
     secondaryColor: tenant.secondaryColor ?? "#0ea5e9",
     logoUrl: tenant.logoUrl ?? "",
+    logoIconUrl: (tenant as any).logoIconUrl ?? "",
+    logoMarkUrl: (tenant as any).logoMarkUrl ?? "",
+    faviconUrl: (tenant as any).faviconUrl ?? "",
     aumRange: tenant.aumRange ?? "",
     sipBookRange: tenant.sipBookRange ?? "",
     teamSize: tenant.teamSize ?? "",
@@ -55,7 +61,7 @@ export function OrganisationProfileForm({
     pincode: tenant.address?.pincode ?? "",
   });
   const [busy, setBusy] = useState(false);
-  const [uploading, setUploading] = useState(false);
+  const [uploadingField, setUploadingField] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -91,9 +97,9 @@ export function OrganisationProfileForm({
     }
   }
 
-  async function uploadLogo(file: File) {
+  async function uploadAsset(file: File, field: LogoField) {
     setErr(null);
-    setUploading(true);
+    setUploadingField(field);
     try {
       // 1. Ask server for a presigned PUT URL
       const presign = await fetch("/api/compliance/upload-url", {
@@ -123,17 +129,18 @@ export function OrganisationProfileForm({
         ? `${base}/${presignJson.key}`
         : presignJson.url.split("?")[0]; // fallback: strip query string from PUT URL
 
-      setForm((s) => ({ ...s, logoUrl: publicUrl }));
+      setForm((s) => ({ ...s, [field]: publicUrl }));
     } catch (e: any) {
       setErr(e.message ?? "logo upload failed");
     } finally {
-      setUploading(false);
+      setUploadingField(null);
     }
   }
 
   function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
-    if (f) void uploadLogo(f);
+    if (f) void uploadAsset(f, activeField.current);
+    e.target.value = ""; // allow re-picking the same file
   }
 
   function set(k: string, v: string) {
@@ -182,44 +189,69 @@ export function OrganisationProfileForm({
 
       {/* --------------------------------- Branding ------------------------------- */}
       <Section title="Branding">
-        <div className="grid grid-cols-[120px_1fr] gap-4 items-center">
-          <div className="size-24 rounded-md border bg-muted/30 grid place-items-center overflow-hidden">
-            {form.logoUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={form.logoUrl} alt="logo" className="max-h-full max-w-full object-contain" />
-            ) : (
-              <span className="text-xs text-muted-foreground">No logo</span>
-            )}
-          </div>
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <input ref={fileRef} type="file" accept="image/*" onChange={onPickFile} className="hidden" />
-              <button
-                type="button"
-                onClick={() => fileRef.current?.click()}
-                disabled={uploading}
-                className="rounded-md border px-3 py-1.5 text-sm flex items-center gap-1.5 hover:bg-accent disabled:opacity-50"
-              >
-                {uploading ? <Loader2 className="size-3.5 animate-spin" /> : <Upload className="size-3.5" />}
-                {uploading ? "Uploading…" : "Upload logo"}
-              </button>
-              {form.logoUrl && (
-                <button
-                  type="button"
-                  onClick={() => set("logoUrl", "")}
-                  className="text-xs text-muted-foreground hover:text-rose-700 hover:underline"
+        {/* One shared hidden file input; each slot's "Upload" sets activeField first. */}
+        <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp,.ico,image/x-icon" onChange={onPickFile} className="hidden" />
+        <p className="text-xs text-muted-foreground -mt-1">
+          Upload a logo for each context so your branding looks sharp everywhere. Only the
+          <strong> Full logo</strong> is required — the rest fall back to it automatically. Transparent PNGs work best.
+        </p>
+        <div className="grid sm:grid-cols-2 gap-3">
+          {LOGO_SLOTS.map((slot) => {
+            const url = (form as any)[slot.field] as string;
+            return (
+              <div key={slot.field} className="rounded-lg border p-3 flex gap-3">
+                <div
+                  className={`shrink-0 ${slot.shape === "wide" ? "w-24 h-14" : "size-14"} rounded-md border bg-muted/30 grid place-items-center overflow-hidden`}
                 >
-                  Remove
-                </button>
-              )}
-            </div>
-            <Row
-              label="…or paste logo URL"
-              value={form.logoUrl}
-              onChange={(v) => set("logoUrl", v)}
-              placeholder="https://…/logo.png"
-            />
-          </div>
+                  {url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={url} alt={slot.label} className="max-h-full max-w-full object-contain" />
+                  ) : (
+                    <span className="text-[9px] text-muted-foreground text-center px-1 leading-tight">No image</span>
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium flex items-center gap-1.5">
+                    {slot.label}
+                    {slot.field === "logoUrl" && (
+                      <span className="text-[9px] uppercase tracking-wide bg-brand-cyan-light/60 text-brand-cyan-deep rounded px-1 py-0.5 font-semibold">
+                        Recommended
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-[11px] text-muted-foreground">{slot.hint}</div>
+                  <div className="text-[10px] text-muted-foreground/80 mt-0.5">Used in: {slot.used}</div>
+                  <div className="flex items-center gap-2 mt-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        activeField.current = slot.field;
+                        fileRef.current?.click();
+                      }}
+                      disabled={uploadingField !== null}
+                      className="rounded-md border px-2 py-1 text-xs flex items-center gap-1 hover:bg-accent disabled:opacity-50"
+                    >
+                      {uploadingField === slot.field ? (
+                        <Loader2 className="size-3 animate-spin" />
+                      ) : (
+                        <Upload className="size-3" />
+                      )}
+                      {uploadingField === slot.field ? "Uploading…" : url ? "Replace" : "Upload"}
+                    </button>
+                    {url && (
+                      <button
+                        type="button"
+                        onClick={() => set(slot.field, "")}
+                        className="text-[11px] text-muted-foreground hover:text-rose-700 hover:underline"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
 
         <div className="grid grid-cols-3 gap-3 items-end pt-3 border-t">

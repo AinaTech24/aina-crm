@@ -10,6 +10,7 @@
 
 import { notFound } from "next/navigation";
 import { eq } from "drizzle-orm";
+import { FirmLogo } from "@/components/common/FirmLogo";
 import { withTenant } from "@/db/client";
 import { proposals, tenants, users } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
@@ -106,26 +107,14 @@ export default async function ProposalPrintPage({
         {/* Tenant letterhead */}
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            {tenant?.logoUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={tenant.logoUrl} alt="" style={{ height: 48, width: 48, borderRadius: 8 }} />
-            ) : (
-              <div
-                style={{
-                  background: primary,
-                  color: "white",
-                  fontSize: 20,
-                  fontWeight: 800,
-                  height: 48,
-                  width: 48,
-                  borderRadius: 10,
-                  display: "grid",
-                  placeItems: "center",
-                }}
-              >
-                {(tenant?.displayName ?? "M").charAt(0).toUpperCase()}
-              </div>
-            )}
+            <FirmLogo
+              src={tenant?.logoUrl}
+              name={tenant?.displayName ?? tenant?.legalName}
+              color={primary}
+              size={48}
+              radius={10}
+              maxWidth={170}
+            />
             <div>
               <div style={{ fontSize: 16, fontWeight: 700 }}>
                 {tenant?.legalName ?? tenant?.displayName ?? "—"}

@@ -19,7 +19,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import {
-  Loader2, X, UserCog, CalendarClock, Layers, Tag, ArrowUpDown,
+  Loader2, X, UserCog, CalendarClock, Layers, Tag, ArrowUpDown, Trash2,
 } from "lucide-react";
 import { RowActions } from "@/components/common/RowActions";
 import { RmSelector } from "@/components/common/RmSelector";
@@ -141,6 +141,35 @@ export function InvestorsTable({
     }
   }
 
+  async function deleteSelected() {
+    const ids = [...selected];
+    if (ids.length === 0) return;
+    if (
+      !window.confirm(
+        `Archive ${ids.length} client${ids.length > 1 ? "s" : ""}? They'll be set to "closed" and removed from the active book — financial history is kept and they can be reactivated later.`
+      )
+    )
+      return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const res = await fetch("/api/investors/bulk", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ids, action: "delete" }),
+      });
+      const j = await res.json();
+      if (!res.ok) {
+        setErr(j.error ?? `Failed (${res.status})`);
+        return;
+      }
+      setSelected(new Set());
+      router.refresh();
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const arrow = (key: string) => (sort === key ? "↓" : "");
 
   return (
@@ -153,6 +182,7 @@ export function InvestorsTable({
           <button onClick={() => setBulk("review")} className="btn-ghost text-xs inline-flex items-center gap-1"><CalendarClock className="size-3.5" /> Set next review</button>
           <button onClick={() => setBulk("tier")} className="btn-ghost text-xs inline-flex items-center gap-1"><Layers className="size-3.5" /> Set tier</button>
           <button onClick={() => setBulk("segment")} className="btn-ghost text-xs inline-flex items-center gap-1"><Tag className="size-3.5" /> Set segment</button>
+          <button onClick={deleteSelected} disabled={busy} className="btn-ghost text-xs inline-flex items-center gap-1 text-rose-600 hover:bg-rose-50 disabled:opacity-50"><Trash2 className="size-3.5" /> Delete</button>
           <button onClick={() => setSelected(new Set())} className="text-xs text-muted-foreground hover:underline ml-auto">Clear</button>
         </div>
       )}

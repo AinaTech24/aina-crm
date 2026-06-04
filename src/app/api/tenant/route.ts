@@ -29,6 +29,11 @@ const Body = z.object({
   primaryColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
   secondaryColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
   logoUrl: z.string().url().optional().or(z.literal("")),
+  // Additional brand-logo variants (migration 0083) — each maps to a product
+  // context (square icon, monogram, favicon). All optional; empty string clears.
+  logoIconUrl: z.string().url().optional().or(z.literal("")),
+  logoMarkUrl: z.string().url().optional().or(z.literal("")),
+  faviconUrl: z.string().url().optional().or(z.literal("")),
   aumRange: z.string().optional(),
   sipBookRange: z.string().optional(),
   teamSize: z.string().optional(),

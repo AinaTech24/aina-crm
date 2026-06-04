@@ -55,10 +55,13 @@ import {
 } from "lucide-react";
 import { eq } from "drizzle-orm";
 import { withTenant } from "@/db/client";
-import { tenants } from "@/db/schema";
+import { tenants, users } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { primaryRoleLabel } from "@/lib/auth/rbac";
 import { loadTenantLicense, isPathAllowedWhenRestricted } from "@/lib/auth/license";
+import { tenantAccessibleNavKeys, isGatableNav } from "@/config/nav-access";
+import { pickLogo } from "@/lib/branding/logo";
+import type { Metadata } from "next";
 import { GlobalSearch } from "@/components/layout/GlobalSearch";
 import { NotificationBell } from "@/components/layout/NotificationBell";
 import { BirthdayBell } from "@/components/layout/BirthdayBell";
@@ -234,12 +237,43 @@ const NAV: NavSection[] = [
   },
 ];
 
+export async function generateMetadata(): Promise<Metadata> {
+  // Per-tenant favicon + browser-tab title. Wrapped in try/catch so a metadata
+  // hiccup (e.g. no session) never takes down the dashboard render.
+  try {
+    const session = await requireSession();
+    const branding = await withTenant(session.tenantId, async (tx) => {
+      const [t] = await tx
+        .select({
+          displayName: tenants.displayName,
+          logoUrl: tenants.logoUrl,
+          logoIconUrl: tenants.logoIconUrl,
+          logoMarkUrl: tenants.logoMarkUrl,
+          faviconUrl: tenants.faviconUrl,
+        })
+        .from(tenants)
+        .where(eq(tenants.id, session.tenantId))
+        .limit(1);
+      return t;
+    });
+    const icon = pickLogo(branding, "favicon");
+    return {
+      title: branding?.displayName ? `${branding.displayName} — CRM` : undefined,
+      icons: icon ? { icon } : undefined,
+    };
+  } catch {
+    return {};
+  }
+}
+
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await requireSession();
   const license = await loadTenantLicense(session.tenantId, session.roles);
-  const enabledSet = new Set(license.enabledModules);
-  // If no modules are configured (e.g. demo / dev), allow everything
-  const noGating = enabledSet.size === 0;
+  // Admin → MFD sidebar access: the exact set of nav hrefs the firm can open
+  // (the platform admin's explicit grant, else the package-module default).
+  const tenantAllowedSet = new Set(
+    tenantAccessibleNavKeys({ allowedNav: license.allowedNav, enabledModules: license.enabledModules })
+  );
 
   // Read the current path from the middleware-set header so we can carve out
   // billing + support pages while the rest of the dashboard is restricted.
@@ -247,10 +281,24 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const pathname = reqHeaders.get("x-pathname") ?? "";
   const pathAllowed = isPathAllowedWhenRestricted(pathname);
 
-  const tenantRow = await withTenant(session.tenantId, async (tx) =>
-    tx.select().from(tenants).where(eq(tenants.id, session.tenantId)).limit(1)
-  );
-  const tenant = tenantRow[0];
+  const { tenant, userModules } = await withTenant(session.tenantId, async (tx) => {
+    const [t] = await tx.select().from(tenants).where(eq(tenants.id, session.tenantId)).limit(1);
+    // Per-user sidebar module grant (Module-19). null = inherit all tenant modules.
+    const [u] = await tx
+      .select({ enabledModules: users.enabledModules })
+      .from(users)
+      .where(eq(users.id, session.userId))
+      .limit(1);
+    return { tenant: t, userModules: (u?.enabledModules as string[] | null) ?? null };
+  });
+
+  // Sidebar badge uses the square icon variant, falling back to monogram → full
+  // logo so a firm that only uploaded a wide logo still gets a sensible badge.
+  const sidebarLogo = pickLogo(tenant, "icon");
+
+  // MFD → team sidebar gate. Owners always see the full firm set; everyone else
+  // is limited to the items the owner granted them (a subset of the firm's).
+  const isOwnerUser = session.roles.includes("owner");
 
   // Per-tenant white-label theme: override the brand CSS variables from the
   // firm's chosen primary/accent colours (Settings → Appearance). Empty string
@@ -264,7 +312,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
     ...section,
     items: section.items.filter((i) => {
       if (i.roles && !session.roles.some((r) => i.roles!.includes(r) || r === "owner")) return false;
-      if (i.module && !noGating && !enabledSet.has(i.module)) return false;
+      if (isGatableNav(i.href)) {
+        // Admin → MFD: the firm must have access to this sidebar item.
+        if (!tenantAllowedSet.has(i.href)) return false;
+        // MFD → team: owners see all; others limited to their granted items.
+        if (!isOwnerUser && userModules && !userModules.includes(i.href)) return false;
+      }
       return true;
     }),
   })).filter((s) => s.items.length > 0);
@@ -288,13 +341,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
           <div className="absolute inset-0 brand-mesh opacity-95" />
           {/* faint cyan glow accent in the corner for depth */}
           <div className="absolute -top-8 -right-8 size-24 rounded-full bg-brand-cyan/20 blur-2xl" />
-          <div className="relative px-5 py-[1.15rem] flex items-center gap-3">
+          <div className="relative px-5 h-16 flex items-center gap-3">
             {tenant ? (
               <>
-                {tenant.logoUrl ? (
+                {sidebarLogo ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
-                    src={tenant.logoUrl}
+                    src={sidebarLogo}
                     alt="logo"
                     className="size-10 rounded-xl shadow-lg ring-2 ring-white/20 object-cover"
                   />
@@ -409,19 +462,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
           pinned inside this pane (not at viewport top). */}
       <main className="flex-1 h-full overflow-y-auto print:overflow-visible print:h-auto">
         {/* Topbar — glass, sticky; hidden when printing */}
-        <div className="sticky top-0 z-20 border-b border-border/60 bg-background/80 backdrop-blur-xl backdrop-saturate-150 px-6 py-3 flex items-center justify-between gap-4 print:hidden">
+        <div className="sticky top-0 z-20 border-b border-border/60 bg-background/80 backdrop-blur-xl backdrop-saturate-150 px-6 h-16 flex items-center justify-between gap-4 print:hidden">
           <div className="flex items-center gap-3 min-w-0">
-            {/* Mobile hamburger — opens the nav drawer (shares sidebarInner) */}
+            {/* Mobile hamburger — opens the nav drawer (shares sidebarInner).
+                Firm name + ARN live in the sidebar header only (no duplication). */}
             <MobileNav>{sidebarInner}</MobileNav>
-            <div className="hidden md:flex flex-col">
-              <span className="text-[11px] font-semibold text-foreground truncate max-w-[16rem]">
-                {tenant?.legalName ?? "Acme Wealth"}
-              </span>
-              <span className="text-[10px] text-muted-foreground font-mono">
-                {tenant?.arn ?? "—"}
-              </span>
-            </div>
-            <span className="hidden md:block h-6 w-px bg-border" />
           </div>
           <GlobalSearch />
           <div className="flex items-center gap-3 text-sm">

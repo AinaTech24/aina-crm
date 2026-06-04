@@ -132,8 +132,8 @@ export const AUTO_VERIFIERS: Record<
   },
   aum_per_amc: async (tx, tenantId) => {
     const [row] = (await tx.execute(sql`
-      SELECT COUNT(*)::int as count FROM folios 
-      WHERE tenant_id = ${tenantId}::uuid AND status = 'active'
+      SELECT COUNT(*)::int as count FROM folios
+      WHERE tenant_id = ${tenantId}::uuid AND closed_at IS NULL
     `)).rows as any[];
     const hasFolios = (row?.count ?? 0) > 0;
     return {

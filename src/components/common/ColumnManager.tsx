@@ -172,7 +172,7 @@ export function ColumnManager({
         </button>
         {open && (
           <div
-            className="absolute right-0 mt-1 z-30 w-64 max-h-[420px] overflow-y-auto bg-card border border-border rounded-lg shadow-xl py-1"
+            className="absolute right-0 mt-1 z-50 w-64 max-h-[420px] overflow-y-auto bg-card border border-border rounded-lg shadow-xl py-1"
             role="menu"
           >
             <div className="px-3 py-2 border-b border-border flex items-center justify-between">

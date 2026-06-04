@@ -125,6 +125,15 @@ export const users = pgTable(
      *  device is lost). Each is consumed on use. */
     twoFaBackupCodes: jsonb("two_fa_backup_codes").$type<string[]>(),
     permissions: jsonb("permissions").$type<string[]>(),
+    /**
+     * Per-user sidebar module access (Module-19 access control). NULL = inherit
+     * the full set of modules the tenant has (no restriction). An array =
+     * restrict this team member to exactly these module keys (always ∩ the
+     * tenant's enabled modules). Owners always get the full tenant set
+     * regardless. Set by the MFD owner in the employee form; gated in the
+     * dashboard layout sidebar. See src/lib/platform.ts ALL_MODULES.
+     */
+    enabledModules: jsonb("enabled_modules").$type<string[]>(),
     customLeaveEntitlements: jsonb("custom_leave_entitlements").$type<Record<string, number>>(),
     lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
     /**

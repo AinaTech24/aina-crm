@@ -105,8 +105,12 @@ export function FilterBar({
     | undefined;
   const otherFilters = filters.filter((f) => f.type !== "search");
 
+  // `relative z-30` on the root gives the toolbar its own stacking context that
+  // sits ABOVE the results table below it — otherwise the table (a later sibling
+  // in the DOM) paints over any open filter / "View" dropdown, making the
+  // dropdown look transparent / cut off.
   return (
-    <div className="card-surface p-3 space-y-2">
+    <div className="card-surface p-3 space-y-2 relative z-30">
       <div className="flex items-center gap-2 flex-wrap">
         {searchFilter && (
           <div className="relative flex-1 min-w-[200px] max-w-md">
@@ -246,7 +250,7 @@ function MultiSelectChip({
         <ChevronDown className="size-3 opacity-60" />
       </button>
       {open && (
-        <div className="absolute top-full left-0 mt-1 z-30 card-elevated p-1.5 min-w-[200px] max-h-64 overflow-y-auto scrollbar-thin">
+        <div className="absolute top-full left-0 mt-1 z-50 card-elevated bg-card p-1.5 min-w-[200px] max-h-64 overflow-y-auto scrollbar-thin">
           {options.length === 0 ? (
             <div className="text-[11px] text-muted-foreground p-2">No options</div>
           ) : (

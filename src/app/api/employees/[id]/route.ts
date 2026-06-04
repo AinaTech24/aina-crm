@@ -17,6 +17,7 @@ import { withTenant, type Tx } from "@/db/client";
 import { users } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap, areAssignableRoles, areKnownCapabilities } from "@/lib/auth/rbac";
+import { areKnownNavKeys } from "@/config/nav-access";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { offboardUser, type OffboardSummary } from "@/lib/offboarding";
 
@@ -81,6 +82,8 @@ const PatchBody = z.object({
   status: z.enum(["invited", "active", "suspended", "offboarding", "offboarded"]).optional(),
   branchId: z.string().uuid().nullable().optional(),
   permissions: z.array(z.string()).nullable().optional(),
+  /** Per-user sidebar module access. null = inherit all tenant modules. */
+  enabledModules: z.array(z.string()).nullable().optional(),
   customLeaveEntitlements: z.record(z.number()).nullable().optional(),
 });
 
@@ -130,6 +133,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
     if (body.permissions != null && !areKnownCapabilities(body.permissions)) {
       return NextResponse.json({ error: "one or more permissions are not recognised" }, { status: 400 });
+    }
+    if (body.enabledModules != null && !areKnownNavKeys(body.enabledModules)) {
+      return NextResponse.json({ error: "one or more sidebar items are not recognised" }, { status: 400 });
     }
 
     const meta = clientMetaFromHeaders(req.headers);
@@ -181,6 +187,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       if (body.dscExpiryAt !== undefined) patch.dscExpiryAt = body.dscExpiryAt;
       if (body.branchId !== undefined) patch.branchId = body.branchId;
       if (body.permissions !== undefined) patch.permissions = body.permissions;
+      if (body.enabledModules !== undefined) patch.enabledModules = body.enabledModules;
       if (body.customLeaveEntitlements !== undefined) patch.customLeaveEntitlements = body.customLeaveEntitlements;
       if (body.status !== undefined) {
         patch.status = body.status;

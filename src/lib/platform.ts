@@ -60,6 +60,51 @@ export const ALL_MODULES = [
 
 export type ModuleKey = (typeof ALL_MODULES)[number];
 
+/**
+ * Human-friendly labels for each module key. Single source of truth for the
+ * admin → MFD access control (super-admin) AND the MFD → team-member module
+ * access UI (employee form). Grouped hint in parens mirrors the sidebar.
+ */
+export const MODULE_LABELS: Record<ModuleKey, string> = {
+  crm: "CRM Dashboard",
+  lead_management: "Leads",
+  client_master: "Clients",
+  family_mapping: "Family Mapping",
+  onboarding: "Client Onboarding",
+  risk_profile: "Risk Profiling",
+  goal_planning: "Goal Planning",
+  proposals: "Proposals",
+  insurance: "Insurance",
+  transactions: "MF Transactions",
+  sip_tracker: "SIP Tracker",
+  sip_rejection: "SIP Rejections",
+  review_meetings: "Review Meetings",
+  service_requests: "Service Requests",
+  complaints: "Complaints",
+  ddq: "DDQ Readiness",
+  marketing_campaigns: "Marketing Campaigns",
+  content_calendar: "Social Content Calendar",
+  tasks: "Tasks",
+  employees: "Employees / Team",
+  reports: "Reports & MIS",
+  documents: "Documents",
+  cybersecurity: "Cybersecurity",
+  ai_assistant: "AI Assistant",
+  automation_workflows: "Workflows & Segments",
+  broadcasts: "Templates & Communications",
+  white_label: "White-Label Branding",
+  audit_log: "Audit Log",
+  sub_distributor: "Sub-Distributors",
+};
+
+const MODULE_SET = new Set<string>(ALL_MODULES as readonly string[]);
+
+/** True iff every key in `mods` is a recognised module (or the list is null = "all"). */
+export function areKnownModules(mods: string[] | null | undefined): boolean {
+  if (!mods) return true;
+  return mods.every((m) => MODULE_SET.has(m));
+}
+
 /** Default modules each preset package enables. */
 export const PACKAGE_PRESETS: Record<string, { modules: ModuleKey[]; flags: Record<string, any> }> = {
   starter: {

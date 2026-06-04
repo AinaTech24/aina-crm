@@ -29,6 +29,17 @@ yarn-error.log*
 .env.local
 .env.development.local
 .env.production.local
+# real production / staging secret files (the *.example templates ARE committed)
+.env.production
+.env.staging
+
+# terraform — never commit state or real var values (keep *.example + lock file)
+infra/**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log
 
 # vercel
 .vercel

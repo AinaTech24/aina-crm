@@ -5,6 +5,7 @@ import { financialPlans, tenants, users, investors } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { formatDate, formatINR } from "@/lib/utils";
 import { PlanPrintHelper } from "@/components/financial-plans/PlanPrintHelper";
+import { FirmLogo } from "@/components/common/FirmLogo";
 
 export const dynamic = "force-dynamic";
 
@@ -137,26 +138,14 @@ export default async function FinancialPlanPrintPage({
         {/* Letterhead */}
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            {tenant?.logoUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={tenant.logoUrl} alt="" style={{ height: 42, width: 42, borderRadius: 6 }} />
-            ) : (
-              <div
-                style={{
-                  background: primary,
-                  color: "white",
-                  fontSize: 18,
-                  fontWeight: 800,
-                  height: 42,
-                  width: 42,
-                  borderRadius: 8,
-                  display: "grid",
-                  placeItems: "center",
-                }}
-              >
-                {(tenant?.displayName ?? "M").charAt(0).toUpperCase()}
-              </div>
-            )}
+            <FirmLogo
+              src={tenant?.logoUrl}
+              name={tenant?.displayName ?? tenant?.legalName}
+              color={primary}
+              size={42}
+              radius={8}
+              maxWidth={160}
+            />
             <div>
               <div style={{ fontSize: 14, fontWeight: 700 }}>
                 {tenant?.legalName ?? tenant?.displayName ?? "—"}

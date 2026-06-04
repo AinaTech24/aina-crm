@@ -88,8 +88,7 @@ export function GlobalSearch() {
       {/* Input shell — styled like a search field, focus-within highlights it */}
       <div
         className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 shadow-sm
-                   transition-all duration-150
-                   focus-within:border-brand-cyan/50 focus-within:ring-2 focus-within:ring-brand-cyan/15 focus-within:shadow"
+                   transition-colors duration-150 focus-within:border-brand-cyan/50"
       >
         <Search className="size-3.5 text-brand-cyan shrink-0" />
         <input

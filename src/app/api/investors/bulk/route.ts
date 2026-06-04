@@ -14,7 +14,7 @@ import { handleApiError } from "@/lib/api/error-handler";
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
@@ -27,7 +27,7 @@ export const dynamic = "force-dynamic";
 
 const Body = z.object({
   ids: z.array(z.string().uuid()).min(1).max(1000),
-  action: z.enum(["assign", "review", "tier", "segment"]),
+  action: z.enum(["assign", "review", "tier", "segment", "delete"]),
   value: z.string().nullable().optional(),
 });
 
@@ -70,13 +70,23 @@ export async function POST(req: NextRequest) {
         }
         patch.segmentTag = value;
         break;
+      case "delete":
+        // Soft delete — archive the client (status='closed'). A hard DELETE is
+        // unsafe: transactions / SIPs / folios FK-reference the investor and the
+        // financial history must be retained. Archived clients drop out of the
+        // active book but stay restorable.
+        patch.status = "closed";
+        patch.exitedAt = new Date();
+        break;
     }
 
     const count = await withTenant(session.tenantId, async (tx) => {
       const updated = await tx
         .update(investors)
         .set(patch as any)
-        .where(inArray(investors.id, ids))
+        // Tenant predicate (defense-in-depth) — a destructive bulk op must never
+        // touch another firm's clients even if RLS is bypassed (superuser role).
+        .where(and(eq(investors.tenantId, session.tenantId), inArray(investors.id, ids)))
         .returning({ id: investors.id });
       await recordAudit(tx, {
         tenantId: session.tenantId,

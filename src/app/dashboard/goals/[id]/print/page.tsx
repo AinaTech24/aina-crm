@@ -16,6 +16,7 @@ import { eq } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { goals, investors, tenants } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
+import { FirmLogo } from "@/components/common/FirmLogo";
 import {
   computeGoal,
   monthsBetween,
@@ -96,17 +97,14 @@ export default async function GoalPrintPage({
         {/* Letterhead */}
         <div className="flex items-start justify-between pb-4 border-b-2 border-slate-900">
           <div className="flex items-center gap-3">
-            {data.tenant?.logoUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={data.tenant.logoUrl} alt="logo" className="size-12 rounded" />
-            ) : (
-              <div
-                className="size-12 rounded text-white grid place-items-center text-base font-bold"
-                style={{ backgroundColor: data.tenant?.primaryColor ?? "#0e2557" }}
-              >
-                {(data.tenant?.displayName ?? "M").charAt(0).toUpperCase()}
-              </div>
-            )}
+            <FirmLogo
+              src={data.tenant?.logoUrl}
+              name={data.tenant?.displayName ?? data.tenant?.legalName}
+              color={data.tenant?.primaryColor ?? "#0e2557"}
+              size={48}
+              radius={6}
+              maxWidth={170}
+            />
             <div>
               <div className="text-base font-bold tracking-tight">
                 {data.tenant?.displayName ?? data.tenant?.legalName ?? "MFD Firm"}

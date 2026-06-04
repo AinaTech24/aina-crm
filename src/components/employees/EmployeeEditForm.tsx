@@ -21,6 +21,7 @@ import {
   Briefcase
 } from "lucide-react";
 import { can, type Capability } from "@/lib/auth/rbac";
+import { NAV_ACCESS_GROUPS } from "@/config/nav-access";
 import { formatINR, formatDate } from "@/lib/utils";
 
 const DEPARTMENTS = [
@@ -164,6 +165,8 @@ export type EmployeeFormValues = {
   dscExpiryAt: string | null;
   status: string;
   permissions: string[] | null;
+  /** Per-user sidebar module grant. null = inherit all the firm's modules. */
+  enabledModules: string[] | null;
   customLeaveEntitlements: Partial<Record<string, number>> | null;
 };
 
@@ -175,9 +178,12 @@ export function EmployeeEditForm({
   tasks = [],
   meetings = [],
   stats = {},
+  tenantNavKeys = [],
 }: {
   employee: EmployeeFormValues;
   teammates: { id: string; name: string; email: string | null }[];
+  /** Sidebar item hrefs the firm can open (the pool an owner can grant). */
+  tenantNavKeys?: string[];
   docs?: any[];
   logs?: any[];
   tasks?: any[];
@@ -191,6 +197,8 @@ export function EmployeeEditForm({
 
   const [v, setV] = useState<EmployeeFormValues>({ ...employee, permissions: employee.permissions || [] });
   const [customActive, setCustomActive] = useState(!!employee.permissions);
+  // Per-user module (sidebar) access. null = inherit all the firm's modules.
+  const [moduleAccessActive, setModuleAccessActive] = useState(!!employee.enabledModules);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -208,6 +216,23 @@ export function EmployeeEditForm({
       return { ...p, permissions: next };
     });
   };
+
+  const toggleModule = (mod: string) => {
+    setV((p) => {
+      const prev = p.enabledModules || [];
+      const next = prev.includes(mod) ? prev.filter((x) => x !== mod) : [...prev, mod];
+      return { ...p, enabledModules: next };
+    });
+    setSaved(false);
+  };
+
+  const isOwnerRole = v.roles.includes("owner");
+  // The firm's accessible sidebar items, grouped — the pool the owner grants from.
+  const tenantNavSet = new Set(tenantNavKeys);
+  const accessibleNavGroups = NAV_ACCESS_GROUPS.map((g) => ({
+    title: g.title,
+    items: g.items.filter((i) => tenantNavSet.has(i.key)),
+  })).filter((g) => g.items.length > 0);
 
   function update<K extends keyof EmployeeFormValues>(k: K, val: EmployeeFormValues[K]) {
     setV((p) => ({ ...p, [k]: val }));
@@ -362,6 +387,7 @@ export function EmployeeEditForm({
           phone: v.phone || null,
           roles: v.roles,
           permissions: customActive ? (v.permissions || []) : null,
+          enabledModules: moduleAccessActive && !isOwnerRole ? (v.enabledModules || []) : null,
           department: v.department || null,
           joiningDate: v.joiningDate || null,
           reportingManagerId: v.reportingManagerId || null,
@@ -610,6 +636,94 @@ export function EmployeeEditForm({
               <div className="text-[11px] text-muted-foreground bg-secondary/30 p-2.5 rounded border">
                 Using default permissions determined by selected roles:{" "}
                 <strong className="text-foreground">{v.roles.join(", ")}</strong>. Check "Customize" to set granular access overrides.
+              </div>
+            )}
+          </div>
+
+          {/* Sidebar Access (MFD owner → team member) */}
+          <div className="border rounded-lg p-4 bg-secondary/10 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-xs font-semibold">Sidebar Access</div>
+                <div className="text-[11px] text-muted-foreground mt-0.5">
+                  Choose which sidebar items this team member can open — limited to what your firm has.
+                </div>
+              </div>
+              {!isOwnerRole && (
+                <label className="flex items-center gap-1.5 text-xs font-medium cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={moduleAccessActive}
+                    onChange={(e) => {
+                      setModuleAccessActive(e.target.checked);
+                      if (e.target.checked && (!v.enabledModules || v.enabledModules.length === 0)) {
+                        setV((prev) => ({ ...prev, enabledModules: [...tenantNavKeys] }));
+                      }
+                      setSaved(false);
+                    }}
+                  />
+                  <span>Limit access</span>
+                </label>
+              )}
+            </div>
+
+            {isOwnerRole ? (
+              <div className="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 p-2.5 rounded">
+                Owners always have full access to every sidebar item your firm has — limits don&apos;t apply to owner
+                accounts.
+              </div>
+            ) : !moduleAccessActive ? (
+              <div className="text-[11px] text-muted-foreground bg-secondary/30 p-2.5 rounded border">
+                Full access to all {tenantNavKeys.length} sidebar item{tenantNavKeys.length === 1 ? "" : "s"} your firm
+                has. Check &quot;Limit access&quot; to restrict this team member.
+              </div>
+            ) : accessibleNavGroups.length === 0 ? (
+              <div className="text-[11px] text-muted-foreground bg-secondary/30 p-2.5 rounded border">
+                Your firm has no sidebar items enabled yet.
+              </div>
+            ) : (
+              <div className="space-y-3 max-h-[340px] overflow-y-auto border rounded-md p-3 bg-card scrollbar-thin">
+                <div className="flex gap-3 text-[11px] font-medium">
+                  <button
+                    type="button"
+                    onClick={() => { setV((p) => ({ ...p, enabledModules: [...tenantNavKeys] })); setSaved(false); }}
+                    className="text-primary hover:underline"
+                  >
+                    Select all
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setV((p) => ({ ...p, enabledModules: [] })); setSaved(false); }}
+                    className="text-muted-foreground hover:underline"
+                  >
+                    Clear
+                  </button>
+                  <span className="text-muted-foreground ml-auto">
+                    {v.enabledModules?.length ?? 0}/{tenantNavKeys.length}
+                  </span>
+                </div>
+                {accessibleNavGroups.map((grp) => (
+                  <div key={grp.title} className="space-y-1.5">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground border-b pb-0.5">
+                      {grp.title}
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-1.5">
+                      {grp.items.map((item) => (
+                        <label
+                          key={item.key}
+                          className="flex items-center gap-2 border rounded p-1.5 hover:bg-secondary/40 text-[11px] cursor-pointer"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={v.enabledModules?.includes(item.key) ?? false}
+                            onChange={() => toggleModule(item.key)}
+                          />
+                          <span>{item.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>

@@ -93,6 +93,12 @@ export const subscriptions = pgTable(
     storageOverrideGb: integer("storage_override_gb"),
     modulesOverride: jsonb("modules_override").$type<string[]>(),
     allowedFields: jsonb("allowed_fields").$type<string[]>(),
+    /**
+     * Admin → MFD sidebar access (Module-19). The exact set of sidebar nav
+     * hrefs this firm can open (see src/config/nav-access.ts). NULL = the
+     * package-module default (legacy behaviour). Set by AINA platform admins.
+     */
+    allowedNav: jsonb("allowed_nav").$type<string[]>(),
 
     /** Billing — minimal scaffold; real Razorpay integration extends this */
     razorpayCustomerId: text("razorpay_customer_id"),
