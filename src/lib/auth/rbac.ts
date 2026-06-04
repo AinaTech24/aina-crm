@@ -320,7 +320,8 @@ export type PlatformCapability =
   | "platform.billing.manage"
   | "platform.support.view"
   | "platform.master.manage"
-  | "platform.staff.manage";
+  | "platform.staff.manage"
+  | "platform.settings.manage";
 
 export const PLATFORM_CAPS: PlatformCapability[] = [
   "platform.tenant.create",
@@ -334,6 +335,7 @@ export const PLATFORM_CAPS: PlatformCapability[] = [
   "platform.support.view",
   "platform.master.manage",
   "platform.staff.manage",
+  "platform.settings.manage",
 ];
 
 /** Returns true if the caller has the capability via any of their roles OR a custom permission grant. */

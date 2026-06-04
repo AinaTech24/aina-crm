@@ -1,13 +1,17 @@
+import Link from "next/link";
 import { sql } from "drizzle-orm";
-import { Settings as SettingsIcon, Database, MessageCircle, Mail, Lock, Webhook, Activity } from "lucide-react";
+import { Settings as SettingsIcon, Database, MessageCircle, Mail, Lock, Webhook, Activity, Bot } from "lucide-react";
 import { withPlatformAdmin } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { ALL_MODULES } from "@/lib/platform";
+import { getAiStatusForAdmin, AI_PROVIDERS } from "@/lib/ai/provider";
 
 export const dynamic = "force-dynamic";
 
 export default async function PlatformSettingsPage() {
   const session = await requireSession();
+  const ai = await getAiStatusForAdmin();
+  const aiLabel = AI_PROVIDERS.find((p) => p.value === ai.provider)?.label ?? ai.provider;
 
   // Health snapshot
   const health = await withPlatformAdmin(session.userId, async (tx) => {
@@ -63,7 +67,13 @@ export default async function PlatformSettingsPage() {
           <IntegrationRow icon={Mail} label="Resend (email)" status={env.resend} />
           <IntegrationRow icon={MessageCircle} label="AiSensy (WhatsApp)" status={env.aisensy} />
           <IntegrationRow icon={MessageCircle} label="MSG91 (SMS)" status={env.msg91} />
-          <IntegrationRow icon={SettingsIcon} label="Anthropic (AI assistant)" status={env.anthropic} />
+          <Link href="/super-admin/ai" className="contents">
+            <IntegrationRow
+              icon={Bot}
+              label={`AI · ${aiLabel}${ai.keyConfigured ? "" : " (no key)"}`}
+              status={ai.keyConfigured ? "Configured" : "Stub"}
+            />
+          </Link>
           <IntegrationRow icon={Lock} label="Razorpay (billing)" status={env.razorpay} />
           <IntegrationRow icon={Database} label="AWS S3 (storage)" status={env.s3} />
         </div>

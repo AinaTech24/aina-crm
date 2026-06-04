@@ -9,13 +9,14 @@
  * triaged and routed, the RM gets a one-tap-editable reply, response time collapses.
  *
  * Fail-safe: any error here is swallowed (logged) so it can NEVER break inbound
- * message recording. No-op when ANTHROPIC_API_KEY is absent, or when disabled via
- * WA_AUTORESPONDER=off.
+ * message recording. No-op when no AI provider is configured (Aina Admin → AI &
+ * Models, or env fallback), or when disabled via WA_AUTORESPONDER=off.
  */
 
 import { sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import { triageInboundMessage } from "@/lib/ai/assistant";
+import { isAiConfigured } from "@/lib/ai/provider";
 import { createServiceRequest, detectServiceIntent } from "@/lib/service/create-request";
 
 const URGENCY_TO_KIND: Record<string, string> = {
@@ -72,8 +73,8 @@ export async function autoTriageInbound(params: {
     console.error("[wa-intake] non-fatal:", (err as Error).message);
   }
 
-  // AI triage assist needs a model key; the intake above does not.
-  if (!process.env.ANTHROPIC_API_KEY) return;
+  // AI triage assist needs a configured model provider; the intake above does not.
+  if (!(await isAiConfigured())) return;
 
   try {
     // Who should be notified — the investor's RM, else the tenant owner.

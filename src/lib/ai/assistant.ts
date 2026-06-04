@@ -12,19 +12,21 @@
  *      same compliance gate before showing — model never bypasses rules.
  */
 
-import Anthropic from "@anthropic-ai/sdk";
+import { aiMessagesClient } from "@/lib/ai/provider";
 import { FilterASTSchema, type FilterAST } from "@/lib/filter/ast";
 import { CATALOGS } from "@/lib/filter/catalog";
 import { POLICY_TYPES, PREMIUM_FREQUENCIES } from "@/db/schema/insurance";
 
-const FAST_MODEL = process.env.ANTHROPIC_MODEL_FAST ?? "claude-haiku-4-5-20251001";
-const REASONING_MODEL = process.env.ANTHROPIC_MODEL_REASONING ?? "claude-opus-4-7";
+// Model TIERS, not concrete names — the active provider (Anthropic / Gemini,
+// switchable from Aina Admin) maps each tier to its configured model.
+const FAST_MODEL = "fast";
+const REASONING_MODEL = "reasoning";
 
-function client(): Anthropic {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    throw new Error("ANTHROPIC_API_KEY not set");
-  }
-  return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+// Provider-agnostic client. `.messages.create({ model: FAST_MODEL|REASONING_MODEL, … })`
+// returns the Anthropic-shaped `{ content: [{ type:'text', text }] }`, so every
+// call site below is unchanged regardless of which provider is active.
+function client() {
+  return aiMessagesClient();
 }
 
 /* ============================================================================

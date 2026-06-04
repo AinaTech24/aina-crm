@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Building2, Package, LifeBuoy, BarChart3, Settings, Users as UsersIcon, Activity, Image as ImageIcon } from "lucide-react";
+import { Building2, Package, LifeBuoy, BarChart3, Settings, Users as UsersIcon, Activity, Image as ImageIcon, Bot } from "lucide-react";
 import { requireSession } from "@/lib/auth/session";
 import { SignOutLink } from "@/components/super-admin/SignOutLink";
 
@@ -30,6 +30,7 @@ export default async function SuperAdminLayout({ children }: { children: React.R
           <NavLink href="/super-admin/content-library" icon={ImageIcon} label="Content Library" />
           <NavLink href="/super-admin/support" icon={LifeBuoy} label="Support tickets" />
           <NavLink href="/super-admin/users" icon={UsersIcon} label="Platform staff" />
+          <NavLink href="/super-admin/ai" icon={Bot} label="AI &amp; Models" />
           <NavLink href="/super-admin/settings" icon={Settings} label="Platform settings" />
         </nav>
         <div className="p-3 border-t border-slate-800 text-xs">

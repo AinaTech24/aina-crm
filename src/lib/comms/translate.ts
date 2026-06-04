@@ -12,9 +12,7 @@
  * prompt instructs the model to keep them verbatim.
  */
 
-import Anthropic from "@anthropic-ai/sdk";
-
-const FAST_MODEL = process.env.ANTHROPIC_MODEL_FAST ?? "claude-haiku-4-5-20251001";
+import { aiMessagesClient, isAiConfigured } from "@/lib/ai/provider";
 
 export const SUPPORTED_LANGUAGES: Record<string, string> = {
   en: "English",
@@ -34,15 +32,15 @@ export const SUPPORTED_LANGUAGES: Record<string, string> = {
 export async function translateText(lines: string[], lang: string | null | undefined): Promise<string[]> {
   const code = (lang ?? "en").toLowerCase();
   if (code === "en" || !SUPPORTED_LANGUAGES[code]) return lines;
-  if (!process.env.ANTHROPIC_API_KEY) return lines;
+  if (!(await isAiConfigured())) return lines;
   const nonEmpty = lines.some((l) => l && l.trim());
   if (!nonEmpty) return lines;
 
   try {
-    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const client = aiMessagesClient();
     const target = SUPPORTED_LANGUAGES[code];
     const res = await client.messages.create({
-      model: FAST_MODEL,
+      model: "fast",
       max_tokens: 1024,
       system:
         `You are a translator for an Indian mutual-fund distributor's client messages. ` +

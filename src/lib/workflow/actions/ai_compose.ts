@@ -1,14 +1,6 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { aiMessagesClient } from "@/lib/ai/provider";
 import { resolveExpression } from "../context";
 import type { ActionHandler } from "./index";
-
-let anthropic: Anthropic | null = null;
-function getClient() {
-  if (!anthropic) {
-    anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY ?? "" });
-  }
-  return anthropic;
-}
 
 /**
  * Generate text via Claude, e.g., personalized review meeting scripts,
@@ -46,9 +38,12 @@ export const aiComposeHandler: ActionHandler<any> = {
       "Keep tone professional and warm. Default language: English, but match the requested language.",
     ].join("\n");
 
-    const client = getClient();
+    // Tier-addressed model ("reasoning" for higher-quality compose, else "fast").
+    // The active provider (Anthropic / Gemini) maps the tier to its model.
+    const tier = cfg.model === "reasoning" ? "reasoning" : "fast";
+    const client = aiMessagesClient();
     const response = await client.messages.create({
-      model: cfg.model ?? "claude-haiku-4-5-20251001",
+      model: tier,
       max_tokens: cfg.maxTokens ?? 800,
       system: systemPrompt,
       messages: [{ role: "user", content: fullPrompt }],
@@ -58,7 +53,7 @@ export const aiComposeHandler: ActionHandler<any> = {
 
     return {
       kind: "continue",
-      output: { model: response.model, usage: response.usage },
+      output: { model: (response as any).model ?? tier, usage: (response as any).usage },
       varsPatch: { [cfg.storeAs]: output },
     };
   },
