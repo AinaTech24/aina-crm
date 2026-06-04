@@ -32,7 +32,7 @@ import {
 import { runComplianceChecks, type ComplianceResult } from "./compliance";
 import { resolveTokens, renderTemplateText, type VariableDef } from "./tokens";
 import { whatsappAdapter } from "./adapters/whatsapp";
-import { emailAdapter } from "./adapters/resend";
+import { emailAdapter, type SmtpConfig } from "./adapters/resend";
 import { smsAdapter } from "./adapters/msg91";
 import { getTenantIntegration } from "./integrations";
 import { consumeRateLimit } from "./rate-limit";
@@ -288,7 +288,14 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
         idempotencyKey: input.workflowRunStepId ?? communicationId,
       });
     } else if (input.channel === "email") {
-      const integration = await getTenantIntegration(tx, input.tenantId, "resend");
+      // Prefer the MFD's own mailbox (SMTP) when connected — client email then
+      // originates from their real address. Otherwise fall back to Resend with
+      // the firm's sender identity.
+      const mailbox = await getTenantIntegration(tx, input.tenantId, "mailbox");
+      const smtp = (mailbox?.config as any)?.smtp as SmtpConfig | undefined;
+      const useSmtp = !!(mailbox?.isActive && smtp?.host);
+      const resend = useSmtp ? null : await getTenantIntegration(tx, input.tenantId, "resend");
+      const sender = useSmtp ? mailbox?.senderConfig : resend?.senderConfig;
       adapterResult = await emailAdapter.send({
         tenantId: input.tenantId,
         templateVersion: version,
@@ -298,9 +305,13 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
         category: input.category as any,
         cc: (input.meta?.cc as string[]) ?? [],
         bcc: (input.meta?.bcc as string[]) ?? [],
-        apiKey: integration?.config?.apiKey,
-        fromOverride: integration?.senderConfig?.fromEmail,
-        fromNameOverride: integration?.senderConfig?.fromName,
+        apiKey: resend?.config?.apiKey,
+        smtp: useSmtp ? smtp : undefined,
+        // From: explicit sender email, else the SMTP login address.
+        fromOverride: sender?.fromEmail ?? (useSmtp ? smtp?.user : undefined),
+        fromNameOverride: sender?.fromName,
+        // Client replies route to the MFD's own inbox.
+        replyTo: sender?.replyTo,
         // Stable across step retries → Resend dedupes a re-fired send.
         idempotencyKey: input.workflowRunStepId ?? communicationId,
       });

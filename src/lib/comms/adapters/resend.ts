@@ -11,8 +11,18 @@
  */
 
 import { Resend } from "resend";
+import nodemailer from "nodemailer";
 import { renderEmailTemplate } from "../email_renderer";
 import type { TemplateVersion } from "@/db/schema";
+
+/** Per-MFD SMTP mailbox — send client email straight from the firm's own server. */
+export interface SmtpConfig {
+  host: string;
+  port: number;
+  secure: boolean;
+  user: string;
+  pass: string;
+}
 
 let client: Resend | null = null;
 function getClient(apiKey?: string): Resend {
@@ -42,6 +52,10 @@ export interface SendEmailArgs {
   apiKey?: string;
   fromOverride?: string;
   fromNameOverride?: string;
+  /** Reply-To — routes client replies to the MFD's own inbox. */
+  replyTo?: string;
+  /** When set, send via the MFD's own SMTP server instead of Resend. */
+  smtp?: SmtpConfig;
   /** Stable key so a re-fired send dedupes provider-side (Resend idempotency). */
   idempotencyKey?: string;
 }
@@ -68,11 +82,37 @@ export const emailAdapter = {
       .filter((a) => a?.url)
       .map((a) => ({ filename: a.name || a.url.split("/").pop() || "attachment", path: a.url }));
 
+    // MFD-owned SMTP path: send straight through the firm's mail server so the
+    // message genuinely originates from their mailbox (authentic From; no Resend
+    // domain verification required). `from`, `html`, `attachments` are already
+    // built above and shared with the Resend path.
+    if (args.smtp?.host) {
+      const transporter = nodemailer.createTransport({
+        host: args.smtp.host,
+        port: args.smtp.port,
+        secure: args.smtp.secure,
+        auth: { user: args.smtp.user, pass: args.smtp.pass },
+      });
+      const info = await transporter.sendMail({
+        from,
+        to: args.recipient,
+        replyTo: args.replyTo || undefined,
+        cc: args.cc?.length ? args.cc : undefined,
+        bcc: args.bcc?.length ? args.bcc : undefined,
+        subject: args.rendered.subject ?? "(no subject)",
+        html,
+        text: args.rendered.text,
+        attachments: attachments.length ? attachments : undefined,
+      });
+      return { externalId: info.messageId, status: "sent" };
+    }
+
     const c = getClient(args.apiKey);
     const res = await c.emails.send(
       {
         from,
         to: [args.recipient],
+        replyTo: args.replyTo || undefined,
         cc: args.cc?.length ? args.cc : undefined,
         bcc: args.bcc?.length ? args.bcc : undefined,
         subject: args.rendered.subject ?? "(no subject)",
@@ -105,6 +145,19 @@ export const emailAdapter = {
     return signature.split(",").some((s) => safeEqual(s.trim(), `v1,${expected}`) || safeEqual(s.trim(), expected));
   },
 };
+
+/** Verify an SMTP mailbox can authenticate + accept mail. Throws on failure. */
+export async function verifySmtp(smtp: SmtpConfig): Promise<void> {
+  const transporter = nodemailer.createTransport({
+    host: smtp.host,
+    port: smtp.port,
+    secure: smtp.secure,
+    auth: { user: smtp.user, pass: smtp.pass },
+    connectionTimeout: 10_000,
+    greetingTimeout: 10_000,
+  });
+  await transporter.verify();
+}
 
 function safeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false;

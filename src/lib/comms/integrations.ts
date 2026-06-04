@@ -3,7 +3,7 @@ import type { Tx } from "@/db/client";
 import { tenantIntegrations } from "@/db/schema/tenant_integrations";
 import { decrypt, encrypt } from "@/lib/crypto";
 
-export type IntegrationProvider = "resend" | "aisensy" | "msg91" | "waina";
+export type IntegrationProvider = "resend" | "aisensy" | "msg91" | "waina" | "mailbox";
 
 export interface TenantIntegrationResolved {
   id: string;
@@ -20,6 +20,8 @@ export interface TenantIntegrationResolved {
   senderConfig: {
     fromEmail?: string;
     fromName?: string;
+    /** Where client replies land — the MFD's own inbox. */
+    replyTo?: string;
     senderId?: string;
     whatsappPhoneE164?: string;
   } | null;

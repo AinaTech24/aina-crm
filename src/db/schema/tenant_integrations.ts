@@ -7,7 +7,7 @@ export const tenantIntegrations = pgTable(
   {
     id,
     tenantId: tenantId.references(() => tenants.id),
-    provider: text("provider", { enum: ["resend", "aisensy", "msg91", "waina"] }).notNull(),
+    provider: text("provider", { enum: ["resend", "aisensy", "msg91", "waina", "mailbox"] }).notNull(),
     encryptedConfig: text("encrypted_config").notNull(),
     senderConfig: jsonb("sender_config").$type<{
       fromEmail?: string;
