@@ -7,6 +7,7 @@ import Link from "next/link";
 import { ChevronLeft, Megaphone, ArrowUpRight } from "lucide-react";
 import { requireSession } from "@/lib/auth/session";
 import { PrintReportButton } from "@/components/investors/PrintReportButton";
+import { ChecklistBox } from "@/components/reports/ChecklistBox";
 import { MARKETING_ASSETS } from "@/lib/marketing/assets-catalog";
 
 export const dynamic = "force-dynamic";
@@ -47,7 +48,7 @@ export default async function MarketingAssetsPage() {
               {group.items.map((item, i) => (
                 <li key={i} className="flex items-start justify-between gap-2 text-sm">
                   <div className="flex items-start gap-2">
-                    <span className="mt-0.5 size-4 rounded border border-border flex-shrink-0" aria-hidden />
+                    <ChecklistBox storageKey={`mktg:${group.key}:${i}`} />
                     <span>{item.title}</span>
                   </div>
                   {item.href && (

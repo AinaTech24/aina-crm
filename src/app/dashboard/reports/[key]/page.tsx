@@ -1127,7 +1127,7 @@ const REPORTS: Record<
       LEFT JOIN lead_blueprint_instances lbi ON lbi.lead_id = l.id
       WHERE 'rm' = ANY(u.roles) AND u.status = 'active'
       GROUP BY u.id, u.name
-      ORDER BY new_leads + first_call_pending + meeting_stage + risk_profile_pending + proposal_stage + docs_pending DESC
+      ORDER BY COUNT(lbi.id) DESC
     `,
   },
 
@@ -1180,6 +1180,127 @@ const REPORTS: Record<
         (SELECT COUNT(*) FROM tasks t WHERE t.assignee_id = u.id AND t.status IN ('open','in_progress'))
         + (SELECT COUNT(*) FROM service_requests s WHERE s.assigned_to_user_id = u.id AND s.status IN ('open','in_progress','escalated'))
       ) DESC
+    `,
+  },
+
+  // ───────────────────────────────────────────────────────────────────────
+  // Sales & Business / SIP / Team / Clients — additions
+  // ───────────────────────────────────────────────────────────────────────
+
+  aum_movement: {
+    title: "AUM Movement",
+    desc: "Monthly gross inflow, redemption outflow, and net business — last 12 months.",
+    columns: [
+      { key: "month", label: "Month" },
+      { key: "inflow", label: "Inflow", format: "inr" },
+      { key: "outflow", label: "Outflow", format: "inr" },
+      { key: "net", label: "Net", format: "inr" },
+    ],
+    runSql: (sql) => sql`
+      SELECT to_char(date_trunc('month', order_date), 'Mon YYYY') AS month,
+        COALESCE(SUM(CASE WHEN direction = 'inflow' THEN amount::numeric ELSE 0 END), 0) AS inflow,
+        COALESCE(SUM(CASE WHEN direction = 'outflow' THEN amount::numeric ELSE 0 END), 0) AS outflow,
+        COALESCE(SUM(CASE WHEN direction = 'inflow' THEN amount::numeric ELSE -amount::numeric END), 0) AS net
+      FROM transactions
+      WHERE status IN ('successful', 'processed')
+        AND order_date >= date_trunc('month', now()) - interval '11 months'
+      GROUP BY date_trunc('month', order_date)
+      ORDER BY date_trunc('month', order_date) DESC
+    `,
+  },
+
+  sip_stopped: {
+    title: "SIP Stopped This Month",
+    desc: "SIPs stopped or rejected since the 1st of the current month — recovery candidates.",
+    columns: [
+      { key: "investor_name", label: "Investor" },
+      { key: "scheme_name", label: "Scheme" },
+      { key: "amc_name", label: "AMC" },
+      { key: "amount", label: "Amount", format: "inr" },
+      { key: "status", label: "Status" },
+      { key: "updated_at", label: "When", format: "date" },
+      { key: "rm_name", label: "RM" },
+    ],
+    runSql: (sql) => sql`
+      SELECT i.name AS investor_name, s.scheme_name, s.amc_name, s.amount, s.status,
+        s.updated_at, u.name AS rm_name
+      FROM sips s
+      LEFT JOIN investors i ON i.id = s.investor_id
+      LEFT JOIN users u ON u.id = COALESCE(s.rm_id, i.rm_id)
+      WHERE s.status IN ('stopped', 'rejected')
+        AND s.updated_at >= date_trunc('month', now())
+      ORDER BY s.updated_at DESC LIMIT 500
+    `,
+  },
+
+  branch_business: {
+    title: "Branch-wise Business",
+    desc: "Clients, AUM and SIP book per branch.",
+    columns: [
+      { key: "branch_name", label: "Branch" },
+      { key: "clients", label: "Clients", format: "number" },
+      { key: "aum", label: "AUM", format: "inr" },
+      { key: "sip_book", label: "SIP book", format: "inr" },
+    ],
+    runSql: (sql) => sql`
+      SELECT COALESCE(b.name, '— Unassigned —') AS branch_name,
+        COUNT(i.id)::int AS clients,
+        COALESCE(SUM(i.aum::numeric), 0) AS aum,
+        COALESCE(SUM(i.active_sip_amount::numeric), 0) AS sip_book
+      FROM investors i
+      LEFT JOIN branches b ON b.id = i.branch_id
+      WHERE i.status = 'active'
+      GROUP BY b.id, b.name
+      ORDER BY aum DESC
+    `,
+  },
+
+  team_productivity: {
+    title: "Team Productivity",
+    desc: "Per team member: open tasks, tasks completed (30d), review meetings done (30d), and leads owned.",
+    columns: [
+      { key: "name", label: "Member" },
+      { key: "department", label: "Dept" },
+      { key: "open_tasks", label: "Open tasks", format: "number" },
+      { key: "completed_30d", label: "Completed 30d", format: "number" },
+      { key: "meetings_30d", label: "Meetings 30d", format: "number" },
+      { key: "leads_owned", label: "Leads owned", format: "number" },
+    ],
+    runSql: (sql) => sql`
+      SELECT u.name, COALESCE(u.department, '—') AS department,
+        COUNT(t.id) FILTER (WHERE t.status IN ('open','in_progress'))::int AS open_tasks,
+        COUNT(t.id) FILTER (WHERE t.status = 'completed' AND t.completed_at >= now() - interval '30 days')::int AS completed_30d,
+        (SELECT COUNT(*)::int FROM review_meetings m
+           WHERE m.rm_id = u.id AND m.status = 'completed' AND m.meeting_date >= now() - interval '30 days') AS meetings_30d,
+        (SELECT COUNT(*)::int FROM leads l WHERE l.owner_id = u.id) AS leads_owned
+      FROM users u
+      LEFT JOIN tasks t ON t.assignee_id = u.id
+      WHERE u.status = 'active'
+      GROUP BY u.id, u.name, u.department
+      ORDER BY completed_30d DESC, open_tasks DESC
+    `,
+  },
+
+  segmentation: {
+    title: "Client Segmentation",
+    desc: "Client count, AUM and SIP book by segment (HNI / Affluent / Retail / …).",
+    columns: [
+      { key: "segment", label: "Segment" },
+      { key: "clients", label: "Clients", format: "number" },
+      { key: "aum", label: "AUM", format: "inr" },
+      { key: "avg_aum", label: "Avg AUM", format: "inr" },
+      { key: "sip_book", label: "SIP book", format: "inr" },
+    ],
+    runSql: (sql) => sql`
+      SELECT COALESCE(segment_tag, 'Unclassified') AS segment,
+        COUNT(*)::int AS clients,
+        COALESCE(SUM(aum::numeric), 0) AS aum,
+        COALESCE(AVG(aum::numeric), 0) AS avg_aum,
+        COALESCE(SUM(active_sip_amount::numeric), 0) AS sip_book
+      FROM investors
+      WHERE status = 'active'
+      GROUP BY segment_tag
+      ORDER BY aum DESC
     `,
   },
 };

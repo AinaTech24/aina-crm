@@ -10,6 +10,7 @@ import Link from "next/link";
 import { ChevronLeft, CheckSquare } from "lucide-react";
 import { requireSession } from "@/lib/auth/session";
 import { PrintReportButton } from "@/components/investors/PrintReportButton";
+import { ChecklistBox } from "@/components/reports/ChecklistBox";
 import { FINANCE_CHECKLIST } from "@/lib/finance/checklist";
 
 export const dynamic = "force-dynamic";
@@ -61,7 +62,7 @@ export default async function FinancialChecklistPage() {
             <ul className="p-4 space-y-2">
               {group.items.map((item, i) => (
                 <li key={i} className="flex items-start gap-2 text-sm">
-                  <span className="mt-0.5 size-4 rounded border border-border flex-shrink-0" aria-hidden />
+                  <ChecklistBox storageKey={`finchk:${group.cadence}:${i}`} />
                   <span>{item}</span>
                 </li>
               ))}

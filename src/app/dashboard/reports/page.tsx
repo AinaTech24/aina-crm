@@ -75,7 +75,7 @@ const REPORTS = [
     { key: "marketing-assets", label: "Marketing assets & trust builders", icon: Megaphone },
   ]},
   { group: "Compliance", items: [
-    { key: "ddq_readiness", label: "DDQ Readiness", icon: FileText },
+    { key: "ddq_readiness", label: "DDQ Readiness", icon: FileText, href: "/dashboard/compliance" },
     { key: "arn-euin-tracker", label: "ARN / EUIN / NISM / DSC tracker", icon: Shield },
     { key: "kyc-tracker", label: "Client KYC tracker", icon: ShieldCheck },
     { key: "shortlisted-schemes", label: "AMC scheme shortlist (IC)", icon: Briefcase },
@@ -118,7 +118,7 @@ export default function ReportsPage() {
               return (
                 <Link
                   key={r.key}
-                  href={`/dashboard/reports/${r.key}`}
+                  href={(r as any).href ?? `/dashboard/reports/${r.key}`}
                   className="border rounded-lg p-4 bg-card hover:bg-accent/40 transition-colors"
                 >
                   <Icon className="size-4 text-muted-foreground" />
