@@ -25,10 +25,12 @@ export default async function SubscriptionsPage({
   const sp = await searchParams;
 
   const data = await withPlatformAdmin(session.userId, async (tx) => {
-    const conditions: string[] = [];
-    if (sp.status) conditions.push(`s.status = '${sp.status.replace(/'/g, "")}'`);
-    if (sp.package) conditions.push(`s.package_key = '${sp.package.replace(/'/g, "")}'`);
-    const whereSql = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+    // Parameterized filter fragments — values are bound, never string-interpolated,
+    // so a crafted ?status= / ?package= can't inject SQL.
+    const conditions = [];
+    if (sp.status) conditions.push(sql`s.status = ${sp.status}`);
+    if (sp.package) conditions.push(sql`s.package_key = ${sp.package}`);
+    const whereSql = conditions.length ? sql`WHERE ${sql.join(conditions, sql` AND `)}` : sql``;
 
     const stats = await tx.execute(sql`
       SELECT
@@ -47,7 +49,7 @@ export default async function SubscriptionsPage({
     `);
     const s = stats.rows[0] as any;
 
-    const rows = await tx.execute(sql.raw(`
+    const rows = await tx.execute(sql`
       SELECT s.id, s.tenant_id, s.package_key, s.status, s.billing_cycle,
              s.license_start_at, s.license_end_at, s.next_renewal_at, s.trial_ends_at,
              s.suspended_reason,
@@ -57,7 +59,7 @@ export default async function SubscriptionsPage({
       ${whereSql}
       ORDER BY s.updated_at DESC
       LIMIT 200
-    `));
+    `);
 
     return {
       stats: s,

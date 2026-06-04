@@ -15,7 +15,7 @@ import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
-import { leaveApplications, notifications } from "@/db/schema";
+import { leaveApplications, notifications, users } from "@/db/schema";
 
 export const dynamic = "force-dynamic";
 
@@ -39,7 +39,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       if (!before) return { notFound: true as const };
 
       if (action === "approve" || action === "reject") {
-        if (!isManager) return { forbidden: "Only a manager can approve or reject leave." };
+        // Owner/branch_head can always decide; otherwise the applicant's own
+        // reporting manager may decide (delegated approval).
+        let canDecide = isManager;
+        if (!canDecide) {
+          const [applicant] = await tx
+            .select({ mgr: users.reportingManagerId })
+            .from(users)
+            .where(eq(users.id, before.employeeUserId))
+            .limit(1);
+          canDecide = !!applicant?.mgr && applicant.mgr === session.userId;
+        }
+        if (!canDecide) return { forbidden: "Only a manager or the employee's reporting manager can approve or reject leave." };
         if (before.status !== "requested") return { badState: `Cannot ${action} a ${before.status} request.` };
         const next = action === "approve" ? "approved" : "rejected";
         await tx

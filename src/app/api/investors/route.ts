@@ -13,7 +13,7 @@ import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap, can } from "@/lib/auth/rbac";
-import { assertActiveLicense } from "@/lib/auth/license";
+import { assertActiveLicense, assertModuleEnabled } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { healthFields } from "@/lib/investors/health";
 import { investors, eventsOutbox } from "@/db/schema";
@@ -60,6 +60,9 @@ const CreateBody = z.object({
 export async function GET(req: NextRequest) {
   try {
     const session = await requireSession();
+    // Plan gate: a tenant whose package excludes the client module can't reach
+    // the data by hitting the API directly (the sidebar already hides it).
+    await assertModuleEnabled(session.tenantId, "client_master", session.roles);
     // Block roles with no investor visibility (e.g. marketing per spec § 3)
     const seesAll = can(session.roles, "investor.view.all");
     const seesAssigned = can(session.roles, "investor.view.assigned");

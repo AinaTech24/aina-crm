@@ -17,6 +17,7 @@ import { desc, eq } from "drizzle-orm";
 import * as XLSX from "xlsx";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { requireAny } from "@/lib/auth/rbac";
 import { investors, users } from "@/db/schema";
 import { loadTenantLicense } from "@/lib/auth/license";
 import { isFieldAllowed } from "@/lib/auth/field-gate";
@@ -36,6 +37,14 @@ function ymd(v: unknown): string {
 export async function GET(req: NextRequest) {
   try {
     const session = await requireSession();
+    // Bulk PII export is sensitive — caller must have investor visibility.
+    // (RMs still only export their assigned book; buildInvestorWhere scopes them.
+    //  Marketing & other roles with no investor capability are blocked here.)
+    requireAny(
+      session.roles,
+      ["investor.bulk_export", "investor.view.all", "investor.view.assigned"],
+      session.permissions
+    );
     const license = await loadTenantLicense(session.tenantId, session.roles);
 
     const show = {

@@ -162,3 +162,29 @@ export async function assertActiveLicense(tenantId: string, roles?: string[]): P
     });
   }
 }
+
+/**
+ * Server-side MODULE gate. The sidebar already hides modules a tenant's plan
+ * doesn't include, but that's UI-only — a direct URL/API hit would bypass it.
+ * Call this in module APIs (e.g. leads, investors, campaigns) so a tenant
+ * without the module in their plan can't reach the data through the back door.
+ *
+ * Platform admins always pass. FAIL-OPEN when a plan has NO modules configured
+ * (misconfigured / legacy tenant) so we never accidentally lock a firm out of
+ * their own data — we only block when the plan explicitly lists modules and
+ * this one isn't among them. Throws a 403-shaped error.
+ */
+export async function assertModuleEnabled(
+  tenantId: string,
+  moduleKey: string,
+  roles?: string[]
+): Promise<void> {
+  if (isPlatformAdmin(roles)) return;
+  const license = await loadTenantLicense(tenantId, roles);
+  if (license.enabledModules.length > 0 && !license.enabledModules.includes(moduleKey)) {
+    throw Object.assign(
+      new Error(`module '${moduleKey}' is not included in your plan`),
+      { status: 403 }
+    );
+  }
+}

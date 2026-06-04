@@ -99,6 +99,12 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
   const showBank = isFieldAllowed(license, "investor", "bank_account_number_masked") || isFieldAllowed(license, "investor", "bank");
   const showRm = isFieldAllowed(license, "investor", "rm_id") || isFieldAllowed(license, "investor", "rm");
 
+  // A malformed link (e.g. /dashboard/investors/undefined) must 404 cleanly,
+  // not crash with a uuid cast error. Guard before any DB lookup by id.
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+    notFound();
+  }
+
   const data = await withTenant(session.tenantId, async (tx) => {
     const inv = (await tx.select().from(investors).where(eq(investors.id, id)).limit(1))[0];
     if (!inv) return null;

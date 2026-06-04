@@ -103,12 +103,8 @@ export async function OwnerCockpit({
           AND (order_date >= ${startOfMonthISO}::date OR created_at >= ${startOfMonthISO})
       `);
 
-      const sipStopped = await tx.execute(sql`
-        SELECT COUNT(*)::int AS c FROM sips
-        WHERE tenant_id = ${session.tenantId}::uuid
-          AND status IN ('stopped', 'paused', 'cancelled')
-          AND updated_at >= ${startOfMonthISO}
-      `);
+      // NB: "SIP stopped this period" is already computed as stopped_sips_period
+      // in the headline query above — reuse it instead of a second round-trip.
 
       // ---------- 3. Attention queues (fast stats for summary bar) ----------
       const queues = await tx.execute(sql`
@@ -186,7 +182,7 @@ export async function OwnerCockpit({
         lumpsumAmt: Number(b.lumpsum_amt),
         redemptionAmt: Number(b.redemption_amt),
         sipRejectedCount: Number(b.sip_rejected_count),
-        sipStoppedCount: Number((sipStopped.rows[0] as any)?.c ?? 0),
+        sipStoppedCount: Number(h.stopped_sips_period ?? 0),
         netBusiness,
         // queues
         reviewsDue: Number(q.reviews_due),

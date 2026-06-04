@@ -13,7 +13,7 @@ import { withTenant } from "@/db/client";
 import { pickAssignee } from "@/lib/assignment/engine";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap, requireAny } from "@/lib/auth/rbac";
-import { assertActiveLicense } from "@/lib/auth/license";
+import { assertActiveLicense, assertModuleEnabled } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { pickRmForNewLead } from "@/lib/leads/assign";
 import { canEditAllLeads, leadScopeCondition, requireLeadView } from "@/lib/leads/access";
@@ -69,6 +69,7 @@ const CreateBody = z.object({
 export async function GET() {
   try {
     const session = await requireSession();
+    await assertModuleEnabled(session.tenantId, "lead_management", session.roles);
     requireLeadView(session);
     const rows = await withTenant(session.tenantId, async (tx) => {
       const scope = leadScopeCondition(session);

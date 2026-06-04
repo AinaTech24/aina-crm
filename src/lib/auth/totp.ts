@@ -16,8 +16,33 @@
  */
 
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { encrypt, decrypt } from "@/lib/crypto";
 
 const BASE32_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+
+/**
+ * Encrypt a TOTP secret for storage at rest (AES-256-GCM via ENCRYPTION_KEY).
+ * Store the result in users.two_fa_secret instead of the raw base32 string.
+ */
+export function encryptSecret(secret: string): string {
+  return encrypt(secret);
+}
+
+/**
+ * Decrypt a stored TOTP secret. BACKWARD-COMPATIBLE: the encrypted format is
+ * `iv:tag:cipher` (3 colon-separated hex parts); a legacy plaintext base32
+ * secret has no colons, so it's returned as-is. This lets already-enrolled
+ * users keep working — they get re-encrypted next time they re-enroll.
+ */
+export function decryptSecret(stored: string | null | undefined): string {
+  if (!stored) return "";
+  if (stored.split(":").length !== 3) return stored; // legacy plaintext
+  try {
+    return decrypt(stored);
+  } catch {
+    return stored;
+  }
+}
 
 /** Encode bytes to RFC 4648 base32 (no padding) — the format authenticators expect. */
 export function base32Encode(buf: Buffer): string {

@@ -249,8 +249,8 @@ export default async function FamiliesPage({
         />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 items-start">
-        <div className="lg:col-span-3 border rounded-lg bg-card overflow-hidden">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+        <div className="lg:col-span-2 border rounded-lg bg-card overflow-hidden">
           {rows.length === 0 ? (
             <div className="p-12 text-center text-sm text-muted-foreground">
               <HeartHandshake className="size-8 mx-auto text-muted-foreground/50" />

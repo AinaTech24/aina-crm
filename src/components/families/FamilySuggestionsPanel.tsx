@@ -177,14 +177,14 @@ export function FamilySuggestionsPanel() {
           return (
             <div key={s.investor.id} className="p-4 space-y-3 hover:bg-accent/10 transition-colors">
               <div className="flex items-start justify-between gap-2">
-                <div>
-                  <h3 className="font-semibold text-sm">{s.investor.name}</h3>
-                  <div className="text-[11px] text-muted-foreground font-mono mt-0.5">
+                <div className="min-w-0">
+                  <h3 className="font-semibold text-sm truncate">{s.investor.name}</h3>
+                  <div className="text-[11px] text-muted-foreground font-mono mt-0.5 break-all">
                     PAN: {s.investor.pan} · AUM: {formatINR(s.investor.aum)}
                   </div>
                 </div>
                 <span
-                  className={`text-[9px] uppercase px-1.5 py-0.5 rounded-full font-bold border ${
+                  className={`flex-shrink-0 text-[9px] uppercase px-1.5 py-0.5 rounded-full font-bold border ${
                     s.confidence === "high"
                       ? "bg-emerald-50 text-emerald-700 border-emerald-200"
                       : "bg-amber-50 text-amber-700 border-amber-200"
@@ -199,15 +199,15 @@ export function FamilySuggestionsPanel() {
               </div>
 
               {s.type === "add_to_family" && s.targetFamily && (
-                <div className="flex items-center gap-2 pt-1">
-                  <div className="flex-1 flex items-center gap-1.5">
+                <div className="flex flex-col gap-2 pt-1">
+                  <div className="flex items-center gap-1.5">
                     <span className="text-xs text-muted-foreground whitespace-nowrap">As:</span>
                     <select
                       value={roles[s.investor.id] || "spouse"}
                       onChange={(e) =>
                         setRoles((prev) => ({ ...prev, [s.investor.id]: e.target.value }))
                       }
-                      className="text-xs border rounded px-2 py-1 bg-background flex-1"
+                      className="text-xs border rounded px-2 py-1 bg-background flex-1 min-w-0"
                     >
                       {RELATIONSHIPS.map((r) => (
                         <option key={r.key} value={r.key}>
@@ -219,10 +219,10 @@ export function FamilySuggestionsPanel() {
                   <button
                     disabled={isBusy}
                     onClick={() => handleLinkToFamily(s)}
-                    className="btn-primary text-xs px-3 py-1.5 rounded bg-primary text-primary-foreground font-medium hover:opacity-90 flex items-center gap-1"
+                    className="btn-primary text-xs px-3 py-1.5 rounded bg-primary text-primary-foreground font-medium hover:opacity-90 w-full flex items-center justify-center gap-1"
                   >
-                    {isBusy ? <Loader2 className="size-3 animate-spin" /> : <LinkIcon className="size-3" />}
-                    Link to {s.targetFamily.name}
+                    {isBusy ? <Loader2 className="size-3 animate-spin flex-shrink-0" /> : <LinkIcon className="size-3 flex-shrink-0" />}
+                    <span className="truncate">Link to {s.targetFamily.name}</span>
                   </button>
                 </div>
               )}
@@ -233,8 +233,8 @@ export function FamilySuggestionsPanel() {
                     <div className="text-xs font-medium text-muted-foreground">Potential Family Partners:</div>
                     <ul className="space-y-1">
                       {s.potentialPartners.map((p) => (
-                        <li key={p.id} className="flex items-center justify-between text-xs border rounded p-1.5 bg-background">
-                          <div>
+                        <li key={p.id} className="flex items-center justify-between gap-2 text-xs border rounded p-1.5 bg-background">
+                          <div className="min-w-0">
                             <span className="font-semibold">{p.name}</span>
                             <span className="text-muted-foreground font-mono text-[10px] ml-1.5">({p.pan})</span>
                           </div>
@@ -243,7 +243,7 @@ export function FamilySuggestionsPanel() {
                             onChange={(e) =>
                               setRoles((prev) => ({ ...prev, [p.id]: e.target.value }))
                             }
-                            className="text-[10px] border rounded px-1.5 py-0.5 bg-background"
+                            className="text-[10px] border rounded px-1.5 py-0.5 bg-background flex-shrink-0"
                           >
                             {RELATIONSHIPS.map((r) => (
                               <option key={r.key} value={r.key}>

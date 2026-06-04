@@ -1,7 +1,13 @@
 import Link from "next/link";
-import { Building2, Database, Users, CreditCard, MessageCircle, Mail, Lock, Webhook, ShieldCheck, Workflow, KeyRound, Palette } from "lucide-react";
+import { Building2, Database, Users, CreditCard, MessageCircle, Mail, Lock, Webhook, ShieldCheck, Workflow, KeyRound, Palette, UserCircle } from "lucide-react";
 
 const SECTIONS = [
+  {
+    icon: UserCircle,
+    title: "My profile",
+    desc: "Your details, change password, targets & leave entitlements.",
+    href: "/dashboard/settings/profile",
+  },
   {
     icon: Building2,
     title: "Organisation profile",

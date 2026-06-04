@@ -13,13 +13,13 @@ import { handleApiError } from "@/lib/api/error-handler";
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuid } from "uuid";
 import crypto from "node:crypto";
-import { desc, eq, isNull, and } from "drizzle-orm";
+import { desc, eq, isNull, and, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { userInvites, tenants } from "@/db/schema";
+import { userInvites, tenants, users } from "@/db/schema";
 import { require as requireCap, areAssignableRoles } from "@/lib/auth/rbac";
-import { assertActiveLicense } from "@/lib/auth/license";
+import { assertActiveLicense, loadTenantLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { sendSystemEmail, actionEmailHtml } from "@/lib/comms/system-email";
 
@@ -55,6 +55,23 @@ export async function POST(req: NextRequest) {
     const session = await requireSession();
     requireCap(session.roles, "settings.users");
     await assertActiveLicense(session.tenantId, session.roles);
+
+    // Enforce the plan's seat limit: active users + still-pending invites must
+    // stay within maxUsers. (Platform admins / unlimited plans pass freely.)
+    const license = await loadTenantLicense(session.tenantId, session.roles);
+    if (license.maxUsers && license.maxUsers < 1e9) {
+      const used = await withTenant(session.tenantId, async (tx) => {
+        const u = (await tx.execute(sql`SELECT count(*)::int c FROM users WHERE tenant_id = ${session.tenantId}::uuid AND status <> 'suspended'`)).rows[0] as any;
+        const inv = (await tx.execute(sql`SELECT count(*)::int c FROM user_invites WHERE tenant_id = ${session.tenantId}::uuid AND accepted_at IS NULL AND revoked_at IS NULL`)).rows[0] as any;
+        return Number(u?.c ?? 0) + Number(inv?.c ?? 0);
+      });
+      if (used >= license.maxUsers) {
+        return NextResponse.json(
+          { error: `Your plan includes ${license.maxUsers} seats (${used} in use). Upgrade your plan to add more team members.` },
+          { status: 402 }
+        );
+      }
+    }
 
     const parse = Body.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) {
