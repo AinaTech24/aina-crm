@@ -11,14 +11,20 @@
  *
  * This wrapper:
  *
- *   1. Bounds the heap to 2 GB (`--max-old-space-size=2048`). When Next
+ *   1. Bounds the heap (`--max-old-space-size`, default 3 GB). When Next
  *      crosses that, V8 OOM-crashes the process *cleanly* instead of
- *      living in the swap zone for 30 minutes.
+ *      living in the swap zone for 30 minutes. 3 GB (was 2 GB) gives the
+ *      heavy dashboard route enough headroom to finish its first Turbopack
+ *      compile without OOM-ing mid-build. Override with NEXT_HEAP_MB.
  *
  *   2. Kills any stale process holding port 3000 before starting,
  *      so a half-dead previous instance doesn't block the new one.
  *
- *   3. Polls `/api/health` after start; if no 200 in 90 s, restarts.
+ *   3. Polls `/api/health` after start; if no 200 within the health
+ *      timeout (default 240 s), restarts. The window is generous because a
+ *      cold compile of the largest route can saturate the event loop for
+ *      a minute+ — a tighter timeout was killing valid-but-slow compiles
+ *      and looping. Override with NEXT_HEALTH_TIMEOUT_MS.
  *
  *   4. Auto-restarts on crash up to MAX_RESTARTS within a window. If
  *      the process keeps crashing, gives up with a loud diagnostic so
@@ -40,9 +46,9 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 const PORT = Number(process.env.PORT ?? 3000);
-const HEAP_MB = Number(process.env.NEXT_HEAP_MB ?? 2048);
+const HEAP_MB = Number(process.env.NEXT_HEAP_MB ?? 3072);
 const HEALTH_PATH = "/api/health";
-const HEALTH_TIMEOUT_MS = 90_000;
+const HEALTH_TIMEOUT_MS = Number(process.env.NEXT_HEALTH_TIMEOUT_MS ?? 240_000);
 const HEALTH_INTERVAL_MS = 2_000;
 const MAX_RESTARTS = 5;
 const RESTART_WINDOW_MS = 5 * 60_000; // 5 minutes
@@ -193,13 +199,15 @@ function spawnNext() {
     spawnNext();
   });
 
-  // Background: health-check. If it never goes healthy, kill + restart.
+  // Background: health-check. A slow FIRST compile of a heavy route can blow
+  // past the health window without the server being truly wedged — killing it
+  // there just restarts the compile from scratch and loops forever. So we only
+  // WARN on a slow health check. A process that actually crashed still restarts
+  // via the `exit` handler above; this only stops us from murdering a
+  // valid-but-still-compiling server.
   waitForHealthy().then((ok) => {
     if (!ok && !killing) {
-      err(`unhealthy — killing for restart`);
-      try {
-        child.kill();
-      } catch {}
+      err(`still not healthy after ${HEALTH_TIMEOUT_MS / 1000}s — leaving it to finish compiling (no force-restart)`);
     }
   });
 }

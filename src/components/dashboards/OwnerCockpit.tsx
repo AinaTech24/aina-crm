@@ -26,14 +26,91 @@ import { CardSkeleton, ChartSkeleton, LeaderboardSkeleton } from "./DashboardSke
 /**
  * MFD Owner Cockpit — spec § 6, Module 2.
  *
- * Renders all 20 cards/charts the spec calls out, grouped into:
- *   1. Headline (4) — Total Leads, Total Clients, Active SIP Book, Net Business MTD
- *   2. Monthly business (5) — SIP added, Lumpsum, Redemption, SIP rejected, SIP stopped
- *   3. Attention queues (5) — Reviews due, Pending SR, Open complaints, High-AUM no review, Dormant
- *   4. Team & health (4) — Team tasks, DDQ score, Data quality score, Campaigns running
+ * The hero + period selector render INSTANTLY; the data-heavy body (5 sequential
+ * KPI queries + streamed sections) is wrapped in Suspense so switching the date
+ * filter feels immediate — you get the shell + a skeleton straight away instead
+ * of waiting for every query to resolve before the page paints.
+ *
+ * Body renders all 20 cards/charts the spec calls out:
+ *   1. Headline (4) — Total Leads, Total Clients, Active SIP Book, Net Business
+ *   2. Monthly business (5) — SIP added, Lumpsum, Redemption, SIP rejected, stopped
+ *   3. Attention queues (5) — Reviews due, Pending SR, Open complaints, High-AUM, Dormant
+ *   4. Team & health (4) — Team tasks, DDQ score, Data quality score, Campaigns
  *   5. Trends — Lead conversion %, RM-wise business, 30-day net sales chart
  */
 export async function OwnerCockpit({
+  session,
+  period = "mtd",
+  customStart,
+}: {
+  session: SessionUser;
+  period?: Period;
+  customStart?: string;
+}) {
+  const now = new Date();
+  const { label: periodLabel } = resolvePeriodDates(period, now, customStart);
+  const today = now.toLocaleDateString("en-IN", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+
+  return (
+    <div className="space-y-6 max-w-7xl">
+      {/* Hero — renders immediately so the date filter is responsive even while
+          the body below is still resolving its queries. */}
+      <div className="card-elevated overflow-hidden">
+        <div className="brand-mesh px-6 py-5 text-white">
+          <div className="flex items-end justify-between flex-wrap gap-3">
+            <div>
+              <div className="text-[11px] uppercase tracking-[0.18em] text-white/70 font-semibold">
+                Owner cockpit
+              </div>
+              <h1 className="text-2xl font-bold tracking-tight mt-1">
+                Welcome back, {session.name.split(" ")[0]}
+              </h1>
+              <p className="text-white/80 text-sm mt-1">
+                {today} · Showing data for{" "}
+                <span className="font-semibold">{periodLabel}</span>.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <PeriodSelector current={period} />
+              <span className="chip bg-white/10 text-white backdrop-blur-sm border border-white/20 text-xs">
+                <span className="pulse-dot" /> Live
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <Suspense fallback={<CockpitBodySkeleton />}>
+        <OwnerCockpitBody session={session} period={period} customStart={customStart} />
+      </Suspense>
+    </div>
+  );
+}
+
+function CockpitBodySkeleton() {
+  return (
+    <div className="space-y-6">
+      <div className="h-11 rounded-xl bg-card border border-border/50 animate-pulse" />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="h-28 rounded-xl bg-card border border-border/50 animate-pulse" />
+        ))}
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="h-20 rounded-xl bg-card border border-border/50 animate-pulse" />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+async function OwnerCockpitBody({
   session,
   period = "mtd",
   customStart,
@@ -204,42 +281,8 @@ export async function OwnerCockpit({
     { userId: session.userId, branchId: session.branchId, roles: session.roles }
   );
 
-  const today = now.toLocaleDateString("en-IN", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
-
   return (
-    <div className="space-y-6 max-w-7xl">
-      {/* Hero header — gradient brand strip with welcome line */}
-      <div className="card-elevated overflow-hidden">
-        <div className="brand-mesh px-6 py-5 text-white">
-          <div className="flex items-end justify-between flex-wrap gap-3">
-            <div>
-              <div className="text-[11px] uppercase tracking-[0.18em] text-white/70 font-semibold">
-                Owner cockpit
-              </div>
-              <h1 className="text-2xl font-bold tracking-tight mt-1">
-                Welcome back, {session.name.split(" ")[0]}
-              </h1>
-              <p className="text-white/80 text-sm mt-1">
-                {today} · Showing data for{" "}
-                <span className="font-semibold">{periodLabel}</span>.
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              {/* Period selector — client component; changes the ?period= param */}
-              <PeriodSelector current={period} />
-              <span className="chip bg-white/10 text-white backdrop-blur-sm border border-white/20 text-xs">
-                <span className="pulse-dot" /> Live
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-
+    <div className="space-y-6">
       {/* Getting-started checklist — auto-hides when all steps complete */}
       <GettingStartedChecklist tenantId={session.tenantId} />
 
