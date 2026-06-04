@@ -110,7 +110,7 @@ export const AUTO_VERIFIERS: Record<
   },
   commissions_3fy: async (tx, tenantId) => {
     const [row] = (await tx.execute(sql`
-      SELECT COUNT(*)::int as count FROM commission_reconciliation 
+      SELECT COUNT(*)::int as count FROM commission_records
       WHERE tenant_id = ${tenantId}::uuid
     `)).rows as any[];
     const hasComm = (row?.count ?? 0) > 0;
@@ -121,8 +121,8 @@ export const AUTO_VERIFIERS: Record<
   },
   pnl_3y: async (tx, tenantId) => {
     const [row] = (await tx.execute(sql`
-      SELECT COUNT(*)::int as count FROM business_finance 
-      WHERE tenant_id = ${tenantId}::uuid AND (category = 'pnl' OR type = 'pnl')
+      SELECT COUNT(*)::int as count FROM business_expenses
+      WHERE tenant_id = ${tenantId}::uuid
     `)).rows as any[];
     const hasPnl = (row?.count ?? 0) > 0;
     return {
@@ -154,7 +154,7 @@ export const AUTO_VERIFIERS: Record<
   },
   risk_profiling: async (tx, tenantId) => {
     const [row] = (await tx.execute(sql`
-      SELECT COUNT(*)::int as count FROM risk_profiles 
+      SELECT COUNT(*)::int as count FROM risk_profile_responses
       WHERE tenant_id = ${tenantId}::uuid
     `)).rows as any[];
     const hasProfiles = (row?.count ?? 0) > 0;

@@ -144,8 +144,8 @@ function renderLogo(theme: EmailTheme, ctx: RenderContext): string {
 }
 
 function renderHero(b: any, theme: EmailTheme, ctx: RenderContext): string {
-  const titleHtml = substituteVariables(b.title ?? "", ctx);
-  const subHtml = substituteVariables(b.subtitle ?? "", ctx);
+  const titleHtml = escape(substituteVariables(b.title ?? "", ctx));
+  const subHtml = escape(substituteVariables(b.subtitle ?? "", ctx));
   const img = b.imageUrl ? `<img src="${escape(b.imageUrl)}" alt="${escape(b.imageAlt ?? "")}" style="max-width:100%;border-radius:8px;margin-bottom:18px;display:block;"/>` : "";
   return `<div style="text-align:${b.align};margin-bottom:24px;">${img}<h1 style="font-size:26px;line-height:1.25;color:${theme.accentColor};margin:0 0 8px;font-weight:700;">${titleHtml}</h1>${subHtml ? `<p style="margin:0;color:${theme.mutedColor};font-size:15px;">${subHtml}</p>` : ""}</div>`;
 }
@@ -153,11 +153,11 @@ function renderHero(b: any, theme: EmailTheme, ctx: RenderContext): string {
 function renderHeading(b: any, theme: EmailTheme, ctx: RenderContext): string {
   const tag = b.level;
   const size = b.level === "h1" ? 24 : b.level === "h2" ? 19 : 16;
-  return `<${tag} style="font-size:${size}px;color:${theme.accentColor};margin:18px 0 10px;text-align:${b.align};font-weight:700;line-height:1.3;">${substituteVariables(b.text ?? "", ctx)}</${tag}>`;
+  return `<${tag} style="font-size:${size}px;color:${theme.accentColor};margin:18px 0 10px;text-align:${b.align};font-weight:700;line-height:1.3;">${escape(substituteVariables(b.text ?? "", ctx))}</${tag}>`;
 }
 
 function renderText(b: any, theme: EmailTheme, ctx: RenderContext): string {
-  const html = substituteVariables(b.html ?? "", ctx);
+  const html = substituteVariables(b.html ?? "", ctx, /* htmlEscapeValues */ true);
   return `<div style="margin:0 0 14px;text-align:${b.align};font-size:${theme.baseFontSize}px;line-height:1.6;color:${theme.textColor};">${html}</div>`;
 }
 
@@ -287,15 +287,21 @@ function resolveTheme(theme: EmailTheme | undefined, tenant: RenderContext["tena
 
 const MERGE_FIELD_RE = /\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}/g;
 
-export function substituteVariables(input: string, ctx: RenderContext): string {
+export function substituteVariables(input: string, ctx: RenderContext, htmlEscapeValues = false): string {
   if (!input) return "";
   return input.replace(MERGE_FIELD_RE, (full, path: string) => {
     const v = readPath({ ...ctx.variables, tenant: ctx.tenant }, path);
     if (v === undefined || v === null) return full; // keep unresolved tokens visible
-    if (typeof v === "string") return v;
-    if (typeof v === "number" || typeof v === "boolean") return String(v);
-    if (v instanceof Date) return v.toLocaleDateString("en-IN");
-    return String(v);
+    let out: string;
+    if (typeof v === "string") out = v;
+    else if (typeof v === "number" || typeof v === "boolean") out = String(v);
+    else if (v instanceof Date) out = v.toLocaleDateString("en-IN");
+    else out = String(v);
+    // In rich-text/HTML blocks the author's markup is the TEMPLATE (trusted) but
+    // the resolved merge VALUE is attacker-influenced (e.g. an investor name) —
+    // escape it so a name like `<script>` can't inject. Plain-text contexts pass
+    // htmlEscapeValues=false (escaping the whole output happens at the sink).
+    return htmlEscapeValues ? escape(out) : out;
   });
 }
 

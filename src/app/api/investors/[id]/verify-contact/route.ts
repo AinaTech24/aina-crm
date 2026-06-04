@@ -11,6 +11,7 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { requireAny } from "@/lib/auth/rbac";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { investors } from "@/db/schema";
 
@@ -25,6 +26,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
   try {
     const session = await requireSession();
+    // Marking a client's email/phone as verified mutates KYC-grade contact
+    // state — gate behind client-edit capability, not merely an authenticated
+    // session (audit: tenant-scoped but RBAC-ungated mutation).
+    requireAny(session.roles, ["investor.edit.all", "investor.edit.assigned"], session.permissions);
     const parse = Body.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) return NextResponse.json({ error: "invalid body", issues: parse.error.issues }, { status: 400 });
     const { channel, verified } = parse.data;

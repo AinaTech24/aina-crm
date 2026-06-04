@@ -8,7 +8,7 @@ import { handleApiError } from "@/lib/api/error-handler";
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
@@ -40,7 +40,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   try {
     const session = await requireSession();
     const row = await withTenant(session.tenantId, async (tx) =>
-      (await tx.select().from(families).where(eq(families.id, id)).limit(1))[0] ?? null
+      (await tx.select().from(families).where(and(eq(families.id, id), eq(families.tenantId, session.tenantId))).limit(1))[0] ?? null
     );
     if (!row) return NextResponse.json({ error: "not found" }, { status: 404 });
     return NextResponse.json(row);
@@ -61,7 +61,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const clientMeta = clientMetaFromHeaders(req.headers);
 
     const result = await withTenant(session.tenantId, async (tx) => {
-      const before = (await tx.select().from(families).where(eq(families.id, id)).limit(1))[0];
+      const before = (await tx.select().from(families).where(and(eq(families.id, id), eq(families.tenantId, session.tenantId))).limit(1))[0];
       if (!before) return null;
 
       // Family-level fields (primary, RM, review dates) feed the health score —
@@ -89,7 +89,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           updatedAt: new Date(),
           ...health,
         } as any)
-        .where(eq(families.id, id))
+        .where(and(eq(families.id, id), eq(families.tenantId, session.tenantId)))
         .returning();
       await recordAudit(tx, {
         tenantId: session.tenantId,
@@ -124,10 +124,10 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
       if (c > 0) {
         throw Object.assign(new Error(`cannot delete: ${c} member(s) still linked`), { status: 409 });
       }
-      const before = (await tx.select().from(families).where(eq(families.id, id)).limit(1))[0];
+      const before = (await tx.select().from(families).where(and(eq(families.id, id), eq(families.tenantId, session.tenantId))).limit(1))[0];
       if (!before) return null;
 
-      await tx.delete(families).where(eq(families.id, id));
+      await tx.delete(families).where(and(eq(families.id, id), eq(families.tenantId, session.tenantId)));
       await recordAudit(tx, {
         tenantId: session.tenantId,
         actorUserId: session.userId,

@@ -14,6 +14,7 @@ import { requireSession } from "@/lib/auth/session";
 import { getTenantIntegration } from "@/lib/comms/integrations";
 import { verifySmtp } from "@/lib/comms/adapters/resend";
 import { verifyImap } from "@/lib/comms/imap";
+import { isUnsafeAssetUrl } from "@/lib/content/asset-url";
 import { handleApiError } from "@/lib/api/error-handler";
 
 export const dynamic = "force-dynamic";
@@ -49,6 +50,13 @@ export async function POST(req: NextRequest) {
     }
     if (!pass) {
       return NextResponse.json({ ok: false, error: "Enter the password to test." });
+    }
+
+    // SSRF guard: a tenant owner must not be able to make the server connect to
+    // internal/loopback/link-local hosts (port-scan / metadata-endpoint probe).
+    const unsafeHost = isUnsafeAssetUrl(`https://${config.host}`);
+    if (unsafeHost) {
+      return NextResponse.json({ ok: false, error: `Refusing to connect: ${unsafeHost}` });
     }
 
     const full = { host: config.host, port: config.port, secure: config.secure, user: config.user, pass };

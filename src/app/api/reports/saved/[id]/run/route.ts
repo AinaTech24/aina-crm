@@ -4,7 +4,7 @@ import { handleApiError } from "@/lib/api/error-handler";
  * Supports ?limit & ?offset for detailed reports (paged in the view page).
  */
 import { NextRequest, NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
@@ -23,7 +23,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     const offset = parseInt(url.searchParams.get("offset") ?? "0", 10);
 
     const out = await withTenant(session.tenantId, async (tx) => {
-      const r = (await tx.select().from(savedReports).where(eq(savedReports.id, id)).limit(1))[0];
+      const r = (await tx.select().from(savedReports).where(and(eq(savedReports.id, id), eq(savedReports.tenantId, session.tenantId))).limit(1))[0];
       if (!r) return null;
       if (r.reportType === "matrix") {
         return runMatrix(tx, { subject: r.subject, ast: r.ast as any, matrix: r.matrix as any, tenantId: session.tenantId });

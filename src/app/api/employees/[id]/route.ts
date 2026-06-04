@@ -89,6 +89,10 @@ const PatchBody = z.object({
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireSession();
+  // HR/PII (certificates, permissions, targets) — owner/admin only, matching the
+  // PATCH/DELETE write paths. Without this any authenticated user could read a
+  // colleague's full record by id.
+  requireCap(session.roles, "settings.users");
   const { id } = await params;
   const data = await withTenant(session.tenantId, async (tx) => {
     // Tenant predicate is mandatory under the superuser/RLS-bypass model —

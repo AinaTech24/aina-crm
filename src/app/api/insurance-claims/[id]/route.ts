@@ -6,7 +6,7 @@ import { handleApiError } from "@/lib/api/error-handler";
  *   DELETE /api/insurance-claims/[id]
  */
 import { NextRequest, NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
@@ -50,7 +50,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     const session = await requireSession();
     requireCap(session.roles, "insurance.view");
     const row = await withTenant(session.tenantId, async (tx) => {
-      const c = (await tx.select().from(insuranceClaims).where(eq(insuranceClaims.id, id)).limit(1))[0];
+      const c = (await tx.select().from(insuranceClaims).where(and(eq(insuranceClaims.id, id), eq(insuranceClaims.tenantId, session.tenantId))).limit(1))[0];
       if (!c) return null;
       const inv = c.investorId
         ? (await tx.select({ name: investors.name }).from(investors).where(eq(investors.id, c.investorId)).limit(1))[0]
@@ -75,13 +75,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const clientMeta = clientMetaFromHeaders(req.headers);
 
     const result = await withTenant(session.tenantId, async (tx) => {
-      const before = (await tx.select().from(insuranceClaims).where(eq(insuranceClaims.id, id)).limit(1))[0];
+      const before = (await tx.select().from(insuranceClaims).where(and(eq(insuranceClaims.id, id), eq(insuranceClaims.tenantId, session.tenantId))).limit(1))[0];
       if (!before) return null;
       const patch: any = { ...parse.data, updatedAt: new Date() };
       for (const k of ["claimedAmount", "settledAmount"] as const) {
         if (patch[k] != null) patch[k] = String(patch[k]);
       }
-      const r = await tx.update(insuranceClaims).set(patch).where(eq(insuranceClaims.id, id)).returning();
+      const r = await tx.update(insuranceClaims).set(patch).where(and(eq(insuranceClaims.id, id), eq(insuranceClaims.tenantId, session.tenantId))).returning();
       await recordAudit(tx, {
         tenantId: session.tenantId,
         actorUserId: session.userId,
@@ -109,9 +109,9 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     await assertActiveLicense(session.tenantId, session.roles);
     const clientMeta = clientMetaFromHeaders(req.headers);
     const ok = await withTenant(session.tenantId, async (tx) => {
-      const before = (await tx.select().from(insuranceClaims).where(eq(insuranceClaims.id, id)).limit(1))[0];
+      const before = (await tx.select().from(insuranceClaims).where(and(eq(insuranceClaims.id, id), eq(insuranceClaims.tenantId, session.tenantId))).limit(1))[0];
       if (!before) return false;
-      await tx.delete(insuranceClaims).where(eq(insuranceClaims.id, id));
+      await tx.delete(insuranceClaims).where(and(eq(insuranceClaims.id, id), eq(insuranceClaims.tenantId, session.tenantId)));
       await recordAudit(tx, {
         tenantId: session.tenantId,
         actorUserId: session.userId,

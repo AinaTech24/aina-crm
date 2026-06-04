@@ -11,6 +11,7 @@ import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { requireAny } from "@/lib/auth/rbac";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
@@ -20,6 +21,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
   try {
     const session = await requireSession();
+    // Running a macro creates tasks/activities and can advance a lead's stage —
+    // gate behind task/lead edit capability (audit: RBAC-ungated mutation).
+    requireAny(
+      session.roles,
+      ["task.edit.all", "task.edit.assigned", "lead.edit.all", "lead.edit.assigned"],
+      session.permissions
+    );
     const parse = Body.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) return NextResponse.json({ error: "invalid body" }, { status: 400 });
     const { subjectType, subjectId } = parse.data;

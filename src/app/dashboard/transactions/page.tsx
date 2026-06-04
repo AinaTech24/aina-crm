@@ -162,6 +162,7 @@ export default async function TransactionsPage({
         COUNT(*) FILTER (WHERE status = 'rejected'
           AND created_at >= now() - interval '7 days')::int AS rejected_7d
       FROM transactions
+      WHERE tenant_id = ${session.tenantId}::uuid
     `);
     const s = stats.rows[0] as any;
 

@@ -6,10 +6,23 @@ const IV_LENGTH = 12;
 function getEncryptionKey(): Buffer {
   const keyHex = process.env.ENCRYPTION_KEY;
   if (!keyHex) {
-    // Development fallback (never use in production)
+    // Hard-fail in production — never silently fall back to a hardcoded key,
+    // which would make per-tenant secrets (SMTP/IMAP/API keys) effectively
+    // unencrypted. The dev fallback is allowed only outside production and
+    // during the build phase (no encryption happens at build time).
+    const isBuild = process.env.NEXT_PHASE === "phase-production-build";
+    if (process.env.NODE_ENV === "production" && !isBuild) {
+      throw new Error(
+        "ENCRYPTION_KEY is required in production (a 32-byte hex key). Refusing to use the insecure dev fallback."
+      );
+    }
     return crypto.scryptSync("mfd-platform-dev-secret-key", "salt", 32);
   }
-  return Buffer.from(keyHex, "hex");
+  const key = Buffer.from(keyHex, "hex");
+  if (key.length !== 32) {
+    throw new Error("ENCRYPTION_KEY must be 32 bytes (64 hex characters).");
+  }
+  return key;
 }
 
 export function encrypt(text: string): string {

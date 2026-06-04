@@ -20,7 +20,7 @@ import { handleApiError } from "@/lib/api/error-handler";
 
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuid } from "uuid";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { Resend } from "resend";
 import { withTenant } from "@/db/client";
@@ -205,7 +205,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const publicUrl = `${origin}/dashboard/proposals/${id}/print?autoprint=0`;
 
     return await withTenant(session.tenantId, async (tx) => {
-      const p = (await tx.select().from(proposals).where(eq(proposals.id, id)).limit(1))[0];
+      const p = (await tx.select().from(proposals).where(and(eq(proposals.id, id), eq(proposals.tenantId, session.tenantId))).limit(1))[0];
       if (!p) return NextResponse.json({ error: "not found" }, { status: 404 });
       if (["accepted", "rejected"].includes(p.status as string)) {
         return NextResponse.json(
@@ -234,7 +234,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           await tx
             .select({ rp: investors.riskProfile })
             .from(investors)
-            .where(eq(investors.id, p.investorId))
+            .where(and(eq(investors.id, p.investorId), eq(investors.tenantId, session.tenantId)))
             .limit(1)
         )[0];
         clientProfile = inv?.rp ?? null;
@@ -350,7 +350,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           sentAt: p.sentAt ?? new Date(),
           updatedAt: new Date(),
         } as any)
-        .where(eq(proposals.id, id));
+        .where(and(eq(proposals.id, id), eq(proposals.tenantId, session.tenantId)));
 
       await recordAudit(tx, {
         tenantId: session.tenantId,

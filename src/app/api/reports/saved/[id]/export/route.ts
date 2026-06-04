@@ -4,7 +4,7 @@ import { handleApiError } from "@/lib/api/error-handler";
  * Detailed → a row table; matrix → a cross-tab with a totals column.
  */
 import { NextRequest } from "next/server";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import * as XLSX from "xlsx";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
@@ -25,7 +25,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     requireCap(session.roles, "reports.manage");
 
     const data = await withTenant(session.tenantId, async (tx) => {
-      const r = (await tx.select().from(savedReports).where(eq(savedReports.id, id)).limit(1))[0];
+      const r = (await tx.select().from(savedReports).where(and(eq(savedReports.id, id), eq(savedReports.tenantId, session.tenantId))).limit(1))[0];
       if (!r) return null;
       if (r.reportType === "matrix") {
         const m = await runMatrix(tx, { subject: r.subject, ast: r.ast as any, matrix: r.matrix as any, tenantId: session.tenantId });

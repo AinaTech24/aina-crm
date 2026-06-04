@@ -8,7 +8,7 @@ import { handleApiError } from "@/lib/api/error-handler";
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
@@ -33,7 +33,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   try {
     const session = await requireSession();
     const row = await withTenant(session.tenantId, async (tx) =>
-      (await tx.select().from(onboardingPipelines).where(eq(onboardingPipelines.id, id)).limit(1))[0] ?? null
+      (await tx.select().from(onboardingPipelines).where(and(eq(onboardingPipelines.id, id), eq(onboardingPipelines.tenantId, session.tenantId))).limit(1))[0] ?? null
     );
     if (!row) return NextResponse.json({ error: "not found" }, { status: 404 });
     return NextResponse.json(row);
@@ -56,7 +56,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       const r = await tx
         .update(onboardingPipelines)
         .set({ ...parse.data, updatedAt: new Date() } as any)
-        .where(eq(onboardingPipelines.id, id))
+        .where(and(eq(onboardingPipelines.id, id), eq(onboardingPipelines.tenantId, session.tenantId)))
         .returning();
       if (!r[0]) return null;
       await recordAudit(tx, {
@@ -88,7 +88,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
       await tx
         .update(onboardingPipelines)
         .set({ status: "abandoned", updatedAt: new Date() } as any)
-        .where(eq(onboardingPipelines.id, id));
+        .where(and(eq(onboardingPipelines.id, id), eq(onboardingPipelines.tenantId, session.tenantId)));
       await recordAudit(tx, {
         tenantId: session.tenantId,
         actorUserId: session.userId,

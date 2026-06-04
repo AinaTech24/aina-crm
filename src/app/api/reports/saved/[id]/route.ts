@@ -6,7 +6,7 @@ import { handleApiError } from "@/lib/api/error-handler";
  *   DELETE /api/reports/saved/[id]
  */
 import { NextRequest, NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
@@ -53,7 +53,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     const session = await requireSession();
     requireCap(session.roles, "reports.manage");
     const row = await withTenant(session.tenantId, async (tx) =>
-      (await tx.select().from(savedReports).where(eq(savedReports.id, id)).limit(1))[0]
+      (await tx.select().from(savedReports).where(and(eq(savedReports.id, id), eq(savedReports.tenantId, session.tenantId))).limit(1))[0]
     );
     if (!row) return NextResponse.json({ error: "not found" }, { status: 404 });
     return NextResponse.json(row);
@@ -74,7 +74,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const clientMeta = clientMetaFromHeaders(req.headers);
 
     const result = await withTenant(session.tenantId, async (tx) => {
-      const before = (await tx.select().from(savedReports).where(eq(savedReports.id, id)).limit(1))[0];
+      const before = (await tx.select().from(savedReports).where(and(eq(savedReports.id, id), eq(savedReports.tenantId, session.tenantId))).limit(1))[0];
       if (!before) return null;
 
       // Star toggle — anyone with reports.manage can favourite any visible report.
@@ -85,7 +85,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         await tx
           .update(savedReports)
           .set({ starredBy: [...set] as any, updatedAt: new Date() })
-          .where(eq(savedReports.id, id));
+          .where(and(eq(savedReports.id, id), eq(savedReports.tenantId, session.tenantId)));
         return { ...before, starredBy: [...set] };
       }
 
@@ -113,7 +113,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       for (const k of ["name", "description", "subject", "reportType", "ast", "columns", "sort", "matrix", "chartType", "sharedScope", "schedule"] as const) {
         if (body[k] !== undefined) patch[k] = body[k];
       }
-      const r = await tx.update(savedReports).set(patch).where(eq(savedReports.id, id)).returning();
+      const r = await tx.update(savedReports).set(patch).where(and(eq(savedReports.id, id), eq(savedReports.tenantId, session.tenantId))).returning();
       await recordAudit(tx, {
         tenantId: session.tenantId,
         actorUserId: session.userId,
@@ -138,13 +138,13 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     requireCap(session.roles, "reports.manage");
     const clientMeta = clientMetaFromHeaders(req.headers);
     const ok = await withTenant(session.tenantId, async (tx) => {
-      const before = (await tx.select().from(savedReports).where(eq(savedReports.id, id)).limit(1))[0];
+      const before = (await tx.select().from(savedReports).where(and(eq(savedReports.id, id), eq(savedReports.tenantId, session.tenantId))).limit(1))[0];
       if (!before) return false;
       const isOwnerRole = session.roles.includes("owner");
       if (before.createdById && before.createdById !== session.userId && !isOwnerRole) {
         throw Object.assign(new Error("only the report's creator can delete it"), { status: 403 });
       }
-      await tx.delete(savedReports).where(eq(savedReports.id, id));
+      await tx.delete(savedReports).where(and(eq(savedReports.id, id), eq(savedReports.tenantId, session.tenantId)));
       await recordAudit(tx, {
         tenantId: session.tenantId,
         actorUserId: session.userId,

@@ -15,6 +15,7 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { requireAny } from "@/lib/auth/rbac";
 import { sips, tasks, investors } from "@/db/schema";
 import { formatINR } from "@/lib/utils";
 
@@ -29,6 +30,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
   try {
     const session = await requireSession();
+    // Creating an accountable follow-up task is an ops/sales action — gate it
+    // (audit #40: tenant-scoped but RBAC-ungated mutation).
+    requireAny(
+      session.roles,
+      ["transactions.view", "task.edit.all", "task.edit.assigned"],
+      session.permissions
+    );
     const parsed = Body.safeParse(await req.json().catch(() => ({})));
     const reasons = parsed.success ? parsed.data.reasons ?? [] : [];
     const note = parsed.success ? parsed.data.note : undefined;

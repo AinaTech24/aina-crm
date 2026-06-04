@@ -21,6 +21,7 @@
  */
 
 import sharp from "sharp";
+import { fetchAssetBytes } from "@/lib/content/asset-url";
 
 /** Mandatory mutual-fund risk disclaimer for Indian MFD marketing material. */
 export const MF_DISCLAIMER =
@@ -148,9 +149,11 @@ export async function composeBrandedImage(
 async function prepareLogo(url?: string | null): Promise<PreparedLogo | null> {
   if (!url) return null;
   try {
-    const r = await fetch(url);
-    if (!r.ok) return null;
-    const data = Buffer.from(await r.arrayBuffer());
+    // SSRF-safe fetch: rejects internal/loopback/link-local hosts + enforces a
+    // timeout and size cap (logoUrl is tenant-supplied).
+    const res = await fetchAssetBytes(url);
+    if (!res.ok) return null;
+    const data = res.buf;
     const m = await sharp(data).metadata();
     const w = m.width ?? 1;
     const h = m.height ?? 1;

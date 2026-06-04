@@ -21,7 +21,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       const [inv] = await tx
         .select()
         .from(investors)
-        .where(eq(investors.id, id))
+        .where(and(eq(investors.id, id), eq(investors.tenantId, session.tenantId)))
         .limit(1);
       if (!inv) {
         throw new Error("Investor not found");
@@ -80,7 +80,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       const [inv] = await tx
         .select()
         .from(investors)
-        .where(eq(investors.id, id))
+        .where(and(eq(investors.id, id), eq(investors.tenantId, session.tenantId)))
         .limit(1);
       if (!inv) {
         throw new Error("Investor not found");

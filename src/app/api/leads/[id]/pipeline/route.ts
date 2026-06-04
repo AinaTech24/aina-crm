@@ -5,6 +5,7 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { loadEditableLead } from "@/lib/leads/access";
 import { leads } from "@/db/schema";
 import { PIPELINE_KEYS, PIPELINES } from "@/lib/pipelines/config";
 
@@ -30,9 +31,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (pipeline !== undefined) patch.pipeline = pipeline;
     if (pipelineStage !== undefined) patch.pipelineStage = pipelineStage;
 
-    const row = await withTenant(session.tenantId, async (tx) =>
-      (await tx.update(leads).set(patch).where(and(eq(leads.id, id), eq(leads.tenantId, session.tenantId))).returning())[0],
-      { userId: session.userId, branchId: session.branchId, roles: session.roles });
+    const row = await withTenant(session.tenantId, async (tx) => {
+      // Capability + ownership + tenant gate (throws 403/404), matching the
+      // other /leads/[id]/* mutations (audit: this route was RBAC-ungated).
+      await loadEditableLead(tx, session, id);
+      return (await tx.update(leads).set(patch).where(and(eq(leads.id, id), eq(leads.tenantId, session.tenantId))).returning())[0];
+    }, { userId: session.userId, branchId: session.branchId, roles: session.roles });
     if (!row) return NextResponse.json({ error: "not found" }, { status: 404 });
     return NextResponse.json({ lead: { id: row.id, pipeline: row.pipeline, pipelineStage: row.pipelineStage } });
   } catch (err: any) { return handleApiError(err); }

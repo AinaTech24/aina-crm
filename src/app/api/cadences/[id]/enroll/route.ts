@@ -6,6 +6,7 @@ import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { requireAny } from "@/lib/auth/rbac";
 
 export const dynamic = "force-dynamic";
 const Body = z.object({ subjectType: z.enum(["lead", "investor"]), subjectId: z.string().uuid() });
@@ -14,6 +15,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
   try {
     const session = await requireSession();
+    // Enrolling a lead/client into an outbound cadence is a sales action —
+    // gate behind lead/client edit capability (audit: RBAC-ungated mutation).
+    requireAny(
+      session.roles,
+      ["lead.edit.all", "lead.edit.assigned", "investor.edit.all", "investor.edit.assigned"],
+      session.permissions
+    );
     const parse = Body.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) return NextResponse.json({ error: "invalid body" }, { status: 400 });
     const { subjectType, subjectId } = parse.data;

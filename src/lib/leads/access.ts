@@ -1,4 +1,4 @@
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { leads } from "@/db/schema";
 import type { SessionUser } from "@/lib/auth/session";
 import { can, requireAny } from "@/lib/auth/rbac";
@@ -34,7 +34,7 @@ export function leadScopeSql(session: SessionUser, alias = "leads") {
 
 export async function loadEditableLead(tx: Tx, session: SessionUser, leadId: string) {
   requireLeadEdit(session);
-  const [lead] = await tx.select().from(leads).where(eq(leads.id, leadId)).limit(1);
+  const [lead] = await tx.select().from(leads).where(and(eq(leads.id, leadId), eq(leads.tenantId, session.tenantId))).limit(1);
   if (!lead) throw Object.assign(new Error("lead not found"), { status: 404 });
   if (canEditAllLeads(session)) return lead;
   if (lead.ownerId === session.userId) return lead;
@@ -43,7 +43,7 @@ export async function loadEditableLead(tx: Tx, session: SessionUser, leadId: str
 
 export async function loadViewableLead(tx: Tx, session: SessionUser, leadId: string) {
   requireLeadView(session);
-  const [lead] = await tx.select().from(leads).where(eq(leads.id, leadId)).limit(1);
+  const [lead] = await tx.select().from(leads).where(and(eq(leads.id, leadId), eq(leads.tenantId, session.tenantId))).limit(1);
   if (!lead) return null;
   if (canViewAllLeads(session) || lead.ownerId === session.userId) return lead;
   return null;

@@ -10,7 +10,7 @@ import { handleApiError } from "@/lib/api/error-handler";
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
@@ -40,7 +40,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const clientMeta = clientMetaFromHeaders(req.headers);
 
     const result = await withTenant(session.tenantId, async (tx) => {
-      const before = (await tx.select().from(sipRejections).where(eq(sipRejections.id, id)).limit(1))[0];
+      const before = (await tx.select().from(sipRejections).where(and(eq(sipRejections.id, id), eq(sipRejections.tenantId, session.tenantId))).limit(1))[0];
       if (!before) return null;
 
       const patch: any = { ...parse.data, updatedAt: new Date() };
@@ -58,7 +58,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         patch.recoveryDate = new Date().toISOString().slice(0, 10);
       }
 
-      await tx.update(sipRejections).set(patch).where(eq(sipRejections.id, id));
+      await tx.update(sipRejections).set(patch).where(and(eq(sipRejections.id, id), eq(sipRejections.tenantId, session.tenantId)));
 
       await recordAudit(tx, {
         tenantId: session.tenantId,
@@ -91,7 +91,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
       await tx
         .update(sipRejections)
         .set({ recoveryStatus: "not_recoverable", statusChangedAt: new Date(), updatedAt: new Date() } as any)
-        .where(eq(sipRejections.id, id));
+        .where(and(eq(sipRejections.id, id), eq(sipRejections.tenantId, session.tenantId)));
       await recordAudit(tx, {
         tenantId: session.tenantId,
         actorUserId: session.userId,

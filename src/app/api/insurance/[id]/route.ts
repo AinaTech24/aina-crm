@@ -7,7 +7,7 @@ import { handleApiError } from "@/lib/api/error-handler";
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
@@ -64,7 +64,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     requireCap(session.roles, "insurance.view");
     const row = await withTenant(session.tenantId, async (tx) => {
       const p = (
-        await tx.select().from(insurancePolicies).where(eq(insurancePolicies.id, id)).limit(1)
+        await tx.select().from(insurancePolicies).where(and(eq(insurancePolicies.id, id), eq(insurancePolicies.tenantId, session.tenantId))).limit(1)
       )[0];
       if (!p) return null;
 
@@ -105,7 +105,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     const result = await withTenant(session.tenantId, async (tx) => {
       const before = (
-        await tx.select().from(insurancePolicies).where(eq(insurancePolicies.id, id)).limit(1)
+        await tx.select().from(insurancePolicies).where(and(eq(insurancePolicies.id, id), eq(insurancePolicies.tenantId, session.tenantId))).limit(1)
       )[0];
       if (!before) return null;
 
@@ -123,7 +123,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       const r = await tx
         .update(insurancePolicies)
         .set(patch)
-        .where(eq(insurancePolicies.id, id))
+        .where(and(eq(insurancePolicies.id, id), eq(insurancePolicies.tenantId, session.tenantId)))
         .returning();
 
       await recordAudit(tx, {
@@ -154,7 +154,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     const clientMeta = clientMetaFromHeaders(req.headers);
     await withTenant(session.tenantId, async (tx) => {
       const before = (
-        await tx.select().from(insurancePolicies).where(eq(insurancePolicies.id, id)).limit(1)
+        await tx.select().from(insurancePolicies).where(and(eq(insurancePolicies.id, id), eq(insurancePolicies.tenantId, session.tenantId))).limit(1)
       )[0];
       if (!before) return;
       await tx
@@ -163,7 +163,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
           status: "cancelled",
           updatedAt: new Date(),
         } as any)
-        .where(eq(insurancePolicies.id, id));
+        .where(and(eq(insurancePolicies.id, id), eq(insurancePolicies.tenantId, session.tenantId)));
       await recordAudit(tx, {
         tenantId: session.tenantId,
         actorUserId: session.userId,

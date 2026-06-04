@@ -59,7 +59,7 @@ import { tenants, users } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { primaryRoleLabel } from "@/lib/auth/rbac";
 import { loadTenantLicense, isPathAllowedWhenRestricted } from "@/lib/auth/license";
-import { tenantAccessibleNavKeys, isGatableNav } from "@/config/nav-access";
+import { tenantAccessibleNavKeys, isGatableNav, gatedNavKeyForPath } from "@/config/nav-access";
 import { pickLogo } from "@/lib/branding/logo";
 import type { Metadata } from "next";
 import { GlobalSearch } from "@/components/layout/GlobalSearch";
@@ -237,6 +237,23 @@ const NAV: NavSection[] = [
   },
 ];
 
+function NavBlockedNotice() {
+  return (
+    <div className="max-w-lg mx-auto mt-12 card-elevated p-10 text-center">
+      <div className="size-16 mx-auto rounded-2xl bg-amber-100 grid place-items-center shadow-md">
+        <Lock className="size-8 text-amber-600" />
+      </div>
+      <h1 className="text-2xl font-bold mt-5 tracking-tight">Section not available</h1>
+      <p className="text-muted-foreground mt-2 text-sm leading-relaxed">
+        This module isn&apos;t enabled for your account. Ask your firm owner (or AINA) to grant access.
+      </p>
+      <Link href="/dashboard" className="btn-primary mt-6 inline-flex">
+        Back to dashboard
+      </Link>
+    </div>
+  );
+}
+
 export async function generateMetadata(): Promise<Metadata> {
   // Per-tenant favicon + browser-tab title. Wrapped in try/catch so a metadata
   // hiccup (e.g. no session) never takes down the dashboard render.
@@ -299,6 +316,16 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // MFD → team sidebar gate. Owners always see the full firm set; everyone else
   // is limited to the items the owner granted them (a subset of the firm's).
   const isOwnerUser = session.roles.includes("owner");
+
+  // Enforce nav/module access SERVER-SIDE, not just by hiding the sidebar item:
+  // if the requested page belongs to a module the firm (or this team member)
+  // wasn't granted, block the render. (Audit: UI-only gating was bypassable by
+  // typing the URL directly.)
+  const gatedKey = gatedNavKeyForPath(pathname);
+  const navBlocked =
+    gatedKey !== null &&
+    (!tenantAllowedSet.has(gatedKey) ||
+      (!isOwnerUser && userModules !== null && !userModules.includes(gatedKey)));
 
   // Per-tenant white-label theme: override the brand CSS variables from the
   // firm's chosen primary/accent colours (Settings → Appearance). Empty string
@@ -501,6 +528,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
         <div className="p-6 animate-fade-in print:p-0 print:animate-none">
           {license.isRestricted && !pathAllowed ? (
             <RestrictedNotice license={license} />
+          ) : navBlocked ? (
+            <NavBlockedNotice />
           ) : (
             <>
               {license.isRestricted && pathAllowed && <RestrictedBanner license={license} />}

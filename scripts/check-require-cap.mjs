@@ -48,16 +48,34 @@ const SKIP_FILES = new Set([
   "notifications/mark-read/route.ts",
   // Support tickets — any logged-in user can raise an internal support ticket
   "support/tickets/route.ts",
+  // Self-service — the handler is hard-scoped to session.userId; a user may only
+  // ever touch their own row, so a capability check would be meaningless.
+  "me/password/route.ts",
+  "me/profile/route.ts",
+  // SOP acknowledgement — any user records their OWN read receipt (scoped to
+  // session.userId, idempotent unique). Mirrors notifications/mark-read.
+  "sops/[id]/acknowledge/route.ts",
+  // Read-only AI text generation — any logged-in user can draft a client brief
+  // (parity with ai/draft-message, ai/nl-to-filter). No data is mutated.
+  "ai/client-brief/[id]/route.ts",
+  // Parse/preview only — returns parsed rows; the commit/import path is gated.
+  "insurance/import/parse/route.ts",
 ]);
 
 const MUTATION = /export\s+async\s+function\s+(POST|PUT|PATCH|DELETE)/g;
-// A route is gated if it calls any of these:
+// A route is gated if it uses one of the project's audited gate idioms:
 //   require(roles, cap)          - tenant capability check
 //   requireCap(...)              - alias from rbac.ts
 //   requireAny(roles, [caps])    - pass-if-any caps
 //   requirePlatform(...)         - platform-admin capability
-//   isPlatformAdmin(roles)       - inline boolean check + 403 in route
-const HAS_REQUIRE = /\b(?:require|requireCap|requireAny|requirePlatform|isPlatformAdmin)\s*\(/;
+//   isPlatformAdmin(roles)       - inline platform check + 403 in route
+//   isManager(roles)             - owner/branch_head manager gate (widely used)
+//   loadEditableLead/Viewable…   - lead ownership gate (throws 403/404)
+//   ["owner", …] / .includes("owner") - inline owner/manager role allowlist
+// Keep this in lock-step with the real gating vocabulary so the guard catches
+// genuinely UNGATED mutations, not false-positive on a non-require idiom.
+const HAS_REQUIRE =
+  /\b(?:require|requireCap|requireAny|requirePlatform|isPlatformAdmin|isManager|loadEditableLead|loadViewableLead)\s*\(|\.includes\(\s*["']owner["']\s*\)|\[\s*["']owner["']/;
 
 async function walk(dir) {
   const out = [];

@@ -8,7 +8,7 @@ import { handleApiError } from "@/lib/api/error-handler";
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
@@ -66,7 +66,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   try {
     const session = await requireSession();
     const row = await withTenant(session.tenantId, async (tx) =>
-      (await tx.select().from(goals).where(eq(goals.id, id)).limit(1))[0] ?? null
+      (await tx.select().from(goals).where(and(eq(goals.id, id), eq(goals.tenantId, session.tenantId))).limit(1))[0] ?? null
     );
     if (!row) return NextResponse.json({ error: "not found" }, { status: 404 });
     return NextResponse.json(row);
@@ -86,7 +86,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const clientMeta = clientMetaFromHeaders(req.headers);
 
     const result = await withTenant(session.tenantId, async (tx) => {
-      const before = (await tx.select().from(goals).where(eq(goals.id, id)).limit(1))[0];
+      const before = (await tx.select().from(goals).where(and(eq(goals.id, id), eq(goals.tenantId, session.tenantId))).limit(1))[0];
       if (!before) return null;
 
       const patch: any = { ...parse.data, updatedAt: new Date() };
@@ -167,7 +167,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         patch.monthlyContribution = patch.existingMonthlySip;
       }
 
-      await tx.update(goals).set(patch).where(eq(goals.id, id));
+      await tx.update(goals).set(patch).where(and(eq(goals.id, id), eq(goals.tenantId, session.tenantId)));
       await recordAudit(tx, {
         tenantId: session.tenantId,
         actorUserId: session.userId,
@@ -194,7 +194,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     await assertActiveLicense(session.tenantId, session.roles);
     const clientMeta = clientMetaFromHeaders(req.headers);
     await withTenant(session.tenantId, async (tx) => {
-      await tx.update(goals).set({ status: "abandoned", updatedAt: new Date() } as any).where(eq(goals.id, id));
+      await tx.update(goals).set({ status: "abandoned", updatedAt: new Date() } as any).where(and(eq(goals.id, id), eq(goals.tenantId, session.tenantId)));
       await recordAudit(tx, {
         tenantId: session.tenantId,
         actorUserId: session.userId,

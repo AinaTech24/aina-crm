@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
@@ -96,7 +96,7 @@ export async function GET(
       const p = await tx
         .select()
         .from(financialPlans)
-        .where(eq(financialPlans.id, id))
+        .where(and(eq(financialPlans.id, id), eq(financialPlans.tenantId, session.tenantId)))
         .limit(1);
       
       if (p.length === 0) return null;
@@ -151,7 +151,7 @@ export async function PATCH(
       const existing = await tx
         .select()
         .from(financialPlans)
-        .where(eq(financialPlans.id, id))
+        .where(and(eq(financialPlans.id, id), eq(financialPlans.tenantId, session.tenantId)))
         .limit(1);
 
       if (existing.length === 0) {
@@ -191,7 +191,7 @@ export async function PATCH(
       await tx
         .update(financialPlans)
         .set(updateValues)
-        .where(eq(financialPlans.id, id));
+        .where(and(eq(financialPlans.id, id), eq(financialPlans.tenantId, session.tenantId)));
 
       await recordAudit(tx, {
         tenantId: session.tenantId,
@@ -226,14 +226,14 @@ export async function DELETE(
       const existing = await tx
         .select()
         .from(financialPlans)
-        .where(eq(financialPlans.id, id))
+        .where(and(eq(financialPlans.id, id), eq(financialPlans.tenantId, session.tenantId)))
         .limit(1);
 
       if (existing.length === 0) {
         throw Object.assign(new Error("not found"), { status: 404 });
       }
 
-      await tx.delete(financialPlans).where(eq(financialPlans.id, id));
+      await tx.delete(financialPlans).where(and(eq(financialPlans.id, id), eq(financialPlans.tenantId, session.tenantId)));
 
       await recordAudit(tx, {
         tenantId: session.tenantId,

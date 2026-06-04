@@ -75,8 +75,10 @@ file supports Tier 0 too if you'd rather start there.
    bucket + IAM. (Tear-down-able; this is also the seed for the Tier-2 upgrade.)
 2. **SSH in**, install Docker, pull the repo, drop in `.env.production`.
 3. `docker compose -f docker-compose.prod.yml build`
-4. **RLS app role + migrations** as one-off:
-   `... run --rm web npm run db:provision-app-role` then `... run --rm web npm run migrate:all`
+4. **Create schema, RLS role + migrations** as one-off — order matters on a fresh DB:
+   - `... run --rm web npm run db:push` — creates all tables from the Drizzle schema. **REQUIRED first on a fresh RDS**; the numbered SQL migrations only ALTER existing tables (e.g. `0001_rls_policies.sql` enables RLS on tables that must already exist), so running `migrate:all` against an empty DB would fail.
+   - `... run --rm web npm run db:provision-app-role`
+   - `... run --rm web npm run migrate:all`
 5. (Demo) `... run --rm web npm run seed`; (real) create the first owner.
 6. `docker compose -f docker-compose.prod.yml up -d` → Caddy gets the cert, site is live.
 7. Smoke-test `/api/health`, `/api/health/workers`, a test email/WhatsApp send.

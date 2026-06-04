@@ -159,3 +159,20 @@ export function tenantAccessibleNavKeys(opts: {
   const noGating = modSet.size === 0; // demo/dev with no package = allow all
   return ALL_NAV_ITEMS.filter((i) => !i.module || noGating || modSet.has(i.module)).map((i) => i.key);
 }
+
+/**
+ * The gatable sidebar key that `pathname` belongs to — exact match or as a path
+ * prefix (e.g. /dashboard/investors/123 → /dashboard/investors) — or null for a
+ * core/un-gated route. Lets the dashboard layout ENFORCE nav access on direct
+ * navigation, not merely hide the sidebar item (audit: UI-only gating bypass).
+ */
+export function gatedNavKeyForPath(pathname: string): string | null {
+  if (!pathname || CORE_HREFS.has(pathname)) return null;
+  let best: string | null = null;
+  for (const key of NAV_KEY_SET) {
+    if (pathname === key || pathname.startsWith(key + "/")) {
+      if (!best || key.length > best.length) best = key; // longest (most specific) match
+    }
+  }
+  return best;
+}
