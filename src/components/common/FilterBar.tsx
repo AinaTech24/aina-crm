@@ -19,6 +19,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { Search, X, ChevronDown, Filter as FilterIcon, Loader2 } from "lucide-react";
+import { Select } from "@/components/ui/Select";
+import { DateRangePicker } from "@/components/ui/DateRangePicker";
 
 export type FilterDef =
   | { type: "search"; key: string; placeholder?: string }
@@ -133,15 +135,20 @@ export function FilterBar({
               onChange={(v) => pushParams({ [f.key]: v })}
             />
           ) : f.type === "select" ? (
-            <SingleSelect
-              key={f.key}
-              label={f.label}
-              options={f.options}
-              value={values[f.key] as string}
-              onChange={(v) => pushParams({ [f.key]: v })}
-            />
+            <div key={f.key} className="inline-flex items-center gap-1.5 text-xs">
+              <span className="text-muted-foreground">{f.label}</span>
+              <Select
+                size="sm"
+                value={values[f.key] as string}
+                onChange={(v) => pushParams({ [f.key]: v })}
+                options={[{ value: "", label: "—" }, ...f.options]}
+                placeholder="—"
+                ariaLabel={f.label}
+                className="min-w-[7rem]"
+              />
+            </div>
           ) : f.type === "date_range" ? (
-            <DateRange
+            <DateRangePicker
               key={f.key}
               label={f.label}
               from={values[`${f.key}_from`] as string}
@@ -284,115 +291,4 @@ function MultiSelectChip({
   );
 }
 
-function SingleSelect({
-  label,
-  options,
-  value,
-  onChange,
-}: {
-  label: string;
-  options: { value: string; label: string }[];
-  value: string;
-  onChange: (v: string) => void;
-}) {
-  return (
-    <label className="inline-flex items-center gap-1.5 text-xs">
-      <span className="text-muted-foreground">{label}</span>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className={`rounded-lg border px-2 h-8 text-xs font-medium bg-card focus:outline-none focus:ring-2 focus:ring-brand-cyan/30 ${
-          value ? "border-brand-cyan/40 bg-brand-cyan-light/40 text-brand-cyan-deep" : "border-border"
-        }`}
-      >
-        <option value="">—</option>
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
-}
-
-/** Quick presets → compute [from, to] as yyyy-mm-dd. India FY = Apr–Mar. */
-function rangePreset(key: string): [string, string] {
-  const now = new Date();
-  const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-  const y = now.getFullYear(), m = now.getMonth();
-  const fyStartYear = m >= 3 ? y : y - 1;
-  const qStartMonth = m >= 3 && m <= 5 ? 3 : m >= 6 && m <= 8 ? 6 : m >= 9 && m <= 11 ? 9 : 0;
-  switch (key) {
-    case "today": return [iso(now), iso(now)];
-    case "yesterday": { const d = new Date(now); d.setDate(d.getDate() - 1); return [iso(d), iso(d)]; }
-    case "7d": { const d = new Date(now); d.setDate(d.getDate() - 6); return [iso(d), iso(now)]; }
-    case "30d": { const d = new Date(now); d.setDate(d.getDate() - 29); return [iso(d), iso(now)]; }
-    case "month": return [iso(new Date(y, m, 1)), iso(now)];
-    case "lastmonth": { const s = new Date(y, m - 1, 1); const e = new Date(y, m, 0); return [iso(s), iso(e)]; }
-    case "quarter": return [iso(new Date(qStartMonth === 0 ? y : y, qStartMonth, 1)), iso(now)];
-    case "fy": return [iso(new Date(fyStartYear, 3, 1)), iso(now)];
-    default: return ["", ""];
-  }
-}
-const PRESETS: Array<[string, string]> = [
-  ["today", "Today"], ["yesterday", "Yesterday"], ["7d", "Last 7 days"], ["30d", "Last 30 days"],
-  ["month", "This month"], ["lastmonth", "Last month"], ["quarter", "This quarter"], ["fy", "This FY"],
-];
-
-function DateRange({
-  label,
-  from,
-  to,
-  onChange,
-}: {
-  label: string;
-  from: string;
-  to: string;
-  onChange: (from: string, to: string) => void;
-}) {
-  const active = !!(from || to);
-  return (
-    <div
-      className={`inline-flex items-center gap-1.5 rounded-lg border px-2 h-8 text-xs ${
-        active ? "border-brand-cyan/40 bg-brand-cyan-light/40" : "border-border bg-card"
-      }`}
-    >
-      <span className="text-muted-foreground">{label}</span>
-      <select
-        value=""
-        onChange={(e) => { if (e.target.value) { const [f, t] = rangePreset(e.target.value); onChange(f, t); } }}
-        className="bg-transparent text-xs outline-none cursor-pointer"
-        title="Quick range"
-      >
-        <option value="">Range…</option>
-        {PRESETS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-      </select>
-      <span className="text-muted-foreground/50">|</span>
-      <input
-        type="date"
-        value={from}
-        onChange={(e) => onChange(e.target.value, to)}
-        className="bg-transparent text-xs outline-none"
-        title="From"
-      />
-      <span className="text-muted-foreground">→</span>
-      <input
-        type="date"
-        value={to}
-        onChange={(e) => onChange(from, e.target.value)}
-        className="bg-transparent text-xs outline-none"
-        title="To"
-      />
-      {active && (
-        <button
-          onClick={() => onChange("", "")}
-          className="text-muted-foreground hover:text-rose-600 ml-1"
-          aria-label="Clear date range"
-        >
-          <X className="size-3" />
-        </button>
-      )}
-    </div>
-  );
-}
+/* SingleSelect + DateRange now live in src/components/ui/{Select,DateRangePicker}. */

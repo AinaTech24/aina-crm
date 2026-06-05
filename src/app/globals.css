@@ -140,6 +140,21 @@
     border-color: hsl(var(--brand-cyan) / 0.55);
   }
 
+  /* Native <select> not yet migrated to the custom <Select> component still get
+     a consistent look: our own chevron instead of the OS arrow, and no black
+     outline (handled above). The fully-custom dropdown ships on the filter bar
+     and rolls out to forms over time. */
+  select:not([multiple]) {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.55rem center;
+    background-size: 0.85rem;
+    padding-right: 1.85rem;
+  }
+
   /* Selection — on-brand cyan tint */
   ::selection {
     background: hsl(var(--brand-cyan) / 0.18);
