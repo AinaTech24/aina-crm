@@ -39,6 +39,7 @@ export function Select({
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
   const [alignRight, setAlignRight] = useState(false);
+  const [flipUp, setFlipUp] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   const selected = options.find((o) => o.value === value);
@@ -68,6 +69,10 @@ export function Select({
     if (el && typeof window !== "undefined") {
       const rect = el.getBoundingClientRect();
       setAlignRight(window.innerWidth - rect.left < 256);
+      // Open upward when the trigger sits near the bottom of the viewport (and
+      // there's room above) — so the menu isn't clipped by a scroll container
+      // (e.g. the pipeline board's overflow-x-auto row) or run off-screen.
+      setFlipUp(window.innerHeight - rect.bottom < 280 && rect.top > 280);
     }
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -128,7 +133,7 @@ export function Select({
       {open && (
         <ul
           role="listbox"
-          className={`absolute ${alignRight ? "right-0 origin-top-right" : "left-0 origin-top"} top-full mt-1 z-50 min-w-full w-max max-w-[min(20rem,90vw)] max-h-64 overflow-y-auto scrollbar-thin card-elevated bg-card p-1 animate-scale-in ${menuClassName}`}
+          className={`absolute ${alignRight ? "right-0" : "left-0"} ${flipUp ? "bottom-full mb-1 origin-bottom" : "top-full mt-1 origin-top"} z-50 min-w-full w-max max-w-[min(20rem,90vw)] max-h-64 overflow-y-auto scrollbar-thin card-elevated bg-card p-1 animate-scale-in ${menuClassName}`}
         >
           {options.length === 0 && (
             <li className="px-2.5 py-2 text-xs text-muted-foreground">No options</li>

@@ -6,6 +6,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { PIPELINES, PIPELINE_KEYS, firstStage, type PipelineKey } from "@/lib/pipelines/config";
+import { SelectField } from "@/components/ui/SelectField";
 
 export function StageMover({ leadId, pipeline, stage }: { leadId: string; pipeline: PipelineKey; stage: string }) {
   const router = useRouter();
@@ -21,12 +22,12 @@ export function StageMover({ leadId, pipeline, stage }: { leadId: string; pipeli
 
   return (
     <div className="flex items-center gap-1 mt-1.5">
-      <select value={stage} disabled={busy} onChange={(e) => patch({ pipelineStage: e.target.value })} className="input-base text-[11px] py-0.5 flex-1" title="Move stage">
+      <SelectField value={stage} disabled={busy} onChange={(e) => patch({ pipelineStage: e.target.value })} size="sm" className="flex-1">
         {PIPELINES[pipeline].stages.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
-      </select>
-      <select value={pipeline} disabled={busy} onChange={(e) => { const p = e.target.value as PipelineKey; patch({ pipeline: p, pipelineStage: firstStage(p) }); }} className="input-base text-[11px] py-0.5 w-20" title="Move pipeline">
+      </SelectField>
+      <SelectField value={pipeline} disabled={busy} onChange={(e) => { const p = e.target.value as PipelineKey; patch({ pipeline: p, pipelineStage: firstStage(p) }); }} size="sm" className="w-20">
         {PIPELINE_KEYS.map((p) => <option key={p} value={p}>{PIPELINES[p].label.split(" ")[0]}</option>)}
-      </select>
+      </SelectField>
       {busy && <Loader2 className="size-3 animate-spin text-muted-foreground" />}
     </div>
   );

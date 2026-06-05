@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import { ATTENDANCE_STATUS_LABELS, ATTENDANCE_STATUS_TONE, fmtMinutes } from "@/lib/attendance/policy";
+import { SelectField } from "@/components/ui/SelectField";
+import { useToast } from "@/components/ui/Toast";
 
 const STATUSES = ["present", "absent", "half_day", "week_off", "holiday", "on_leave"] as const;
 
@@ -27,6 +29,7 @@ function hhmm(iso: string | null): string {
 
 export function AttendanceTable({ rows, canManage }: { rows: AttRow[]; canManage: boolean }) {
   const router = useRouter();
+  const toast = useToast();
   const [busy, setBusy] = useState<string | null>(null);
 
   async function setStatus(r: AttRow, status: string) {
@@ -37,7 +40,12 @@ export function AttendanceTable({ rows, canManage }: { rows: AttRow[]; canManage
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ employeeUserId: r.employee_user_id, date: r.attendance_date, status }),
       });
-      if (!res.ok) { const j = await res.json().catch(() => ({})); alert(j.error ?? "Update failed"); return; }
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        toast.error(j.error ?? "Could not update attendance", "Update failed");
+        return;
+      }
+      toast.success(`${r.employee_name ?? "Attendance"} set to ${ATTENDANCE_STATUS_LABELS[status] ?? status}`);
       router.refresh();
     } finally {
       setBusy(null);
@@ -64,30 +72,35 @@ export function AttendanceTable({ rows, canManage }: { rows: AttRow[]; canManage
         </thead>
         <tbody>
           {rows.map((r) => (
-            <tr key={r.id} className="border-b last:border-0 hover:bg-secondary/40">
+            <tr key={r.id} className="border-b last:border-0 hover:bg-brand-cyan-light/25 transition-colors">
               <td className="px-4 py-2.5 font-medium whitespace-nowrap">{r.employee_name ?? "—"}</td>
               <td className="py-2.5 text-xs tabular-nums whitespace-nowrap">{formatDate(r.attendance_date)}</td>
               <td className="py-2.5">
                 {canManage ? (
-                  <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${ATTENDANCE_STATUS_TONE[r.status] ?? ""}`}>
-                    {busy === r.id && <Loader2 className="size-3 animate-spin" />}
-                    <select
+                  <div className="flex items-center gap-1.5">
+                    {busy === r.id && <Loader2 className="size-3 animate-spin text-brand-cyan" />}
+                    <SelectField
                       value={r.status}
                       disabled={busy === r.id}
                       onChange={(e) => setStatus(r, e.target.value)}
-                      className="bg-transparent border-0 outline-none cursor-pointer text-xs font-medium appearance-none pr-1"
+                      size="sm"
+                      className="w-32"
                     >
-                      {STATUSES.map((s) => <option key={s} value={s} className="bg-white text-foreground">{ATTENDANCE_STATUS_LABELS[s]}</option>)}
-                    </select>
-                  </span>
+                      {STATUSES.map((s) => <option key={s} value={s}>{ATTENDANCE_STATUS_LABELS[s]}</option>)}
+                    </SelectField>
+                  </div>
                 ) : (
                   <span className={`chip ${ATTENDANCE_STATUS_TONE[r.status] ?? ""}`}>{ATTENDANCE_STATUS_LABELS[r.status] ?? r.status}</span>
                 )}
               </td>
               <td className="py-2.5 text-xs tabular-nums">{hhmm(r.clock_in_at)}</td>
               <td className="py-2.5 text-xs tabular-nums">{hhmm(r.clock_out_at)}</td>
-              <td className="py-2.5 text-right text-xs tabular-nums">{fmtMinutes(r.total_minutes)}</td>
-              <td className="py-2.5 pr-4 text-xs text-muted-foreground max-w-[200px] truncate">{r.note ?? "—"}</td>
+              <td className="py-2.5 text-right text-xs tabular-nums">
+                {r.total_minutes && r.total_minutes > 0 ? fmtMinutes(r.total_minutes) : <span className="text-muted-foreground/40">—</span>}
+              </td>
+              <td className="py-2.5 pr-4 text-xs text-muted-foreground max-w-[200px] truncate">
+                {r.note ? r.note : <span className="text-muted-foreground/40">—</span>}
+              </td>
             </tr>
           ))}
         </tbody>
