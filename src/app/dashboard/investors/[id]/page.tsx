@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { ChevronLeft, Phone, Mail, MessageCircle, MapPin, AlertTriangle, User2, ShieldCheck } from "lucide-react";
 import { withTenant } from "@/db/client";
@@ -73,8 +73,16 @@ const INVESTOR_DETAIL_SECTIONS: RelatedListDef[] = [
 
 export const dynamic = "force-dynamic";
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export default async function InvestorDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  // Guard against malformed links (e.g. /dashboard/investors/undefined produced
+  // by an empty-state dashboard widget): bounce to the clients list instead of a
+  // dead-end 404 (and avoid the "invalid uuid" DB error a non-uuid id would throw).
+  if (!id || !UUID_RE.test(id)) {
+    redirect("/dashboard/investors");
+  }
   const session = await requireSession();
   const license = await loadTenantLicense(session.tenantId, session.roles);
 

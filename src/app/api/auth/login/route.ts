@@ -26,11 +26,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "email + password required" }, { status: 400 });
   }
 
-  // Rate-limit by IP+email — 10 failed attempts in 15 min triggers 429.
-  // Tight enough to stop credential stuffing, loose enough that a real
-  // user with a sticky-keys typo doesn't get locked out.
-  const limited = enforce(req, "auth.login", { limit: 10, windowSec: 15 * 60 }, email);
-  if (limited) return limited;
+  // We rate-limit only FAILED attempts (below). Successful sign-ins never
+  // consume the budget, so normal use — even repeated clicks or many staff on
+  // one office IP — is never blocked; only password-guessing is.
+  const recordFailure = () => enforce(req, "auth.login", { limit: 15, windowSec: 15 * 60 }, email);
 
   const userRow = await withSystem(async (tx) => {
     const r = await tx.execute(sql`
@@ -44,7 +43,7 @@ export async function POST(req: NextRequest) {
 
   if (!userRow || !userRow.password_hash) {
     // Generic message — don't leak which leg failed.
-    return NextResponse.json({ error: "invalid credentials" }, { status: 401 });
+    return recordFailure() ?? NextResponse.json({ error: "invalid credentials" }, { status: 401 });
   }
   if (userRow.status === "suspended" || userRow.status === "offboarded") {
     return NextResponse.json({ error: "account inactive" }, { status: 403 });
@@ -52,7 +51,7 @@ export async function POST(req: NextRequest) {
 
   const ok = await bcrypt.compare(password, userRow.password_hash);
   if (!ok) {
-    return NextResponse.json({ error: "invalid credentials" }, { status: 401 });
+    return recordFailure() ?? NextResponse.json({ error: "invalid credentials" }, { status: 401 });
   }
 
   // Second factor gate. Password is verified, but if 2FA is on we do NOT issue
