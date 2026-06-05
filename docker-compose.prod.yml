@@ -55,6 +55,11 @@ services:
     env_file:
       - .env.production
     command: ["npm", "run", "worker:prod"]
+    # The image's default HEALTHCHECK curls :3000 — correct for `web`, but the
+    # worker runs no HTTP server, so disable it here (liveness = the process is
+    # up; restart: unless-stopped already covers crash recovery).
+    healthcheck:
+      disable: true
     depends_on:
       - redis
 
