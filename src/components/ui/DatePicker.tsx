@@ -121,11 +121,11 @@ export function DatePicker({
         aria-label={ariaLabel}
         aria-haspopup="dialog"
         aria-expanded={open}
-        className={`w-full inline-flex items-center justify-between gap-2 rounded-lg border bg-card font-medium transition ${sizes}
+        className={`w-full inline-flex items-center justify-between gap-1.5 rounded-lg border bg-card font-medium whitespace-nowrap transition ${sizes}
           ${open ? "border-brand-cyan/60 ring-2 ring-brand-cyan/15" : "border-border hover:bg-secondary/60"}
           disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none`}
       >
-        <span className={selected ? "text-foreground" : "text-muted-foreground"}>
+        <span className={`whitespace-nowrap ${selected ? "text-foreground" : "text-muted-foreground"}`}>
           {selected ? formatDisplayDate(value) : placeholder}
         </span>
         <CalIcon className="size-3.5 shrink-0 text-muted-foreground" />

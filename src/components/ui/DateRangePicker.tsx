@@ -84,7 +84,7 @@ export function DateRangePicker({
         onChange={(f) => onChange(f, to)}
         max={to || undefined}
         ariaLabel="From date"
-        className="w-[6.75rem]"
+        className="w-[7.5rem]"
       />
       <span className="text-muted-foreground">→</span>
       <DatePicker
@@ -93,7 +93,7 @@ export function DateRangePicker({
         onChange={(t) => onChange(from, t)}
         min={from || undefined}
         ariaLabel="To date"
-        className="w-[6.75rem]"
+        className="w-[7.5rem]"
       />
       {active && (
         <button
