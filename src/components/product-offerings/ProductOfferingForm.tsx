@@ -16,6 +16,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Save, Loader2, Trash2, Plus, X, ExternalLink } from "lucide-react";
+import { SelectField } from "@/components/ui/SelectField";
+import { DateField } from "@/components/ui/DateField";
 
 const CATEGORIES = [
   { value: "mutual_funds", label: "Mutual Funds" },
@@ -240,7 +242,7 @@ export function ProductOfferingForm({
           />
         </Field>
         <Field label="Category *">
-          <select
+          <SelectField
             value={v.category}
             onChange={(e) => field("category", e.target.value)}
             className="input-base text-sm w-full"
@@ -250,10 +252,10 @@ export function ProductOfferingForm({
                 {c.label}
               </option>
             ))}
-          </select>
+          </SelectField>
         </Field>
         <Field label="Regulator *">
-          <select
+          <SelectField
             value={v.regulator}
             onChange={(e) => field("regulator", e.target.value)}
             className="input-base text-sm w-full"
@@ -263,10 +265,10 @@ export function ProductOfferingForm({
                 {r.label}
               </option>
             ))}
-          </select>
+          </SelectField>
         </Field>
         <Field label="Status">
-          <select
+          <SelectField
             value={v.status}
             onChange={(e) => field("status", e.target.value)}
             className="input-base text-sm w-full"
@@ -276,11 +278,10 @@ export function ProductOfferingForm({
                 {s.label}
               </option>
             ))}
-          </select>
+          </SelectField>
         </Field>
         <Field label="Launched on">
-          <input
-            type="date"
+          <DateField
             value={v.launchedAt ?? ""}
             onChange={(e) => field("launchedAt", e.target.value || null)}
             className="input-base text-sm w-full"
@@ -288,8 +289,7 @@ export function ProductOfferingForm({
         </Field>
         {v.status === "discontinued" && (
           <Field label="Discontinued on">
-            <input
-              type="date"
+            <DateField
               value={v.discontinuedAt ?? ""}
               onChange={(e) => field("discontinuedAt", e.target.value || null)}
               className="input-base text-sm w-full"

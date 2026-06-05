@@ -12,6 +12,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Save, Loader2, Trash2, Plus, ExternalLink, X } from "lucide-react";
+import { SelectField } from "@/components/ui/SelectField";
+import { DateField } from "@/components/ui/DateField";
 
 const AUTHORITIES = [
   { value: "AMFI", label: "AMFI" },
@@ -222,7 +224,7 @@ export function LegalRegistrationForm({
           />
         </Field>
         <Field label="Status">
-          <select
+          <SelectField
             value={v.status}
             onChange={(e) => field("status", e.target.value)}
             className="input-base text-sm w-full"
@@ -232,14 +234,14 @@ export function LegalRegistrationForm({
                 {s.label}
               </option>
             ))}
-          </select>
+          </SelectField>
         </Field>
       </Grid>
 
       {/* Authority + purpose */}
       <Grid>
         <Field label="Regulatory / government authority *">
-          <select
+          <SelectField
             value={v.authority}
             onChange={(e) => field("authority", e.target.value)}
             className="input-base text-sm w-full"
@@ -249,7 +251,7 @@ export function LegalRegistrationForm({
                 {a.label}
               </option>
             ))}
-          </select>
+          </SelectField>
         </Field>
         {v.authority === "Other" && (
           <Field label="Authority name (free text)">
@@ -284,8 +286,7 @@ export function LegalRegistrationForm({
           />
         </Field>
         <Field label="Registration date">
-          <input
-            type="date"
+          <DateField
             value={v.registrationDate ?? ""}
             onChange={(e) =>
               field("registrationDate", e.target.value || null)
@@ -294,15 +295,14 @@ export function LegalRegistrationForm({
           />
         </Field>
         <Field label="Expiry date (leave blank if perpetual)">
-          <input
-            type="date"
+          <DateField
             value={v.expiryAt ?? ""}
             onChange={(e) => field("expiryAt", e.target.value || null)}
             className="input-base text-sm w-full"
           />
         </Field>
         <Field label="Renewal frequency">
-          <select
+          <SelectField
             value={v.renewalFrequency}
             onChange={(e) => field("renewalFrequency", e.target.value)}
             className="input-base text-sm w-full"
@@ -312,7 +312,7 @@ export function LegalRegistrationForm({
                 {f.label}
               </option>
             ))}
-          </select>
+          </SelectField>
         </Field>
       </Grid>
 

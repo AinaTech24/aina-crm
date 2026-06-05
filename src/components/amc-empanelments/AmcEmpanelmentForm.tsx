@@ -18,6 +18,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Save, Loader2, Trash2, Plus, X, ExternalLink } from "lucide-react";
+import { SelectField } from "@/components/ui/SelectField";
+import { DateField } from "@/components/ui/DateField";
 
 const STATUSES = [
   { value: "empanelled", label: "Empanelled" },
@@ -237,11 +239,12 @@ export function AmcEmpanelmentForm({
         <Grid>
           {mode === "create" ? (
             <Field label="AMC *">
-              <select
+              <SelectField
                 required
                 value={v.amcCode}
                 onChange={(e) => onAmcPick(e.target.value)}
                 className="input-base text-sm w-full"
+                placeholder="Select an AMC…"
               >
                 <option value="">Select an AMC…</option>
                 {amcCatalog.map((a) => (
@@ -249,7 +252,7 @@ export function AmcEmpanelmentForm({
                     {a.name}
                   </option>
                 ))}
-              </select>
+              </SelectField>
             </Field>
           ) : (
             <Field label="AMC (immutable)">
@@ -261,7 +264,7 @@ export function AmcEmpanelmentForm({
             </Field>
           )}
           <Field label="Status">
-            <select
+            <SelectField
               value={v.status}
               onChange={(e) => field("status", e.target.value)}
               className="input-base text-sm w-full"
@@ -271,7 +274,7 @@ export function AmcEmpanelmentForm({
                   {s.label}
                 </option>
               ))}
-            </select>
+            </SelectField>
           </Field>
           <Field label="Distributor code (AMC-issued)">
             <input
@@ -282,8 +285,7 @@ export function AmcEmpanelmentForm({
             />
           </Field>
           <Field label="Empanelment date">
-            <input
-              type="date"
+            <DateField
               value={v.empanelmentDate ?? ""}
               onChange={(e) => field("empanelmentDate", e.target.value || null)}
               className="input-base text-sm w-full"
