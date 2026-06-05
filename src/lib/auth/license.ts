@@ -24,6 +24,8 @@ export type LicenseState = {
   allowedFields: string[] | null;
   /** Admin → MFD sidebar nav grant (hrefs). null = package-module default. */
   allowedNav: string[] | null;
+  /** Admin → MFD dashboard-widget grant (keys). null = all widgets visible. */
+  allowedDashboardWidgets: string[] | null;
   featureFlags: Record<string, any>;
   maxUsers: number;
   maxInvestors: number;
@@ -53,6 +55,7 @@ async function loadTenantLicenseImpl(tenantId: string, roles?: string[]): Promis
       enabledModules: [],
       allowedFields: null,
       allowedNav: null,
+      allowedDashboardWidgets: null,
       featureFlags: {},
       maxUsers: 1e9,
       maxInvestors: 1e9,
@@ -81,6 +84,7 @@ async function loadTenantLicenseImpl(tenantId: string, roles?: string[]): Promis
       enabledModules: [],
       allowedFields: null,
       allowedNav: null,
+      allowedDashboardWidgets: null,
       featureFlags: {},
       maxUsers: 1,
       maxInvestors: 100,
@@ -110,6 +114,7 @@ async function loadTenantLicenseImpl(tenantId: string, roles?: string[]): Promis
     : ((pkg?.enabledModules as string[]) ?? []);
   const allowedFields = (sub.allowedFields as string[]) ?? null;
   const allowedNav = (sub.allowedNav as string[]) ?? null;
+  const allowedDashboardWidgets = (sub.allowedDashboardWidgets as string[]) ?? null;
 
   return {
     status: effectiveStatus as LicenseState["status"],
@@ -117,6 +122,7 @@ async function loadTenantLicenseImpl(tenantId: string, roles?: string[]): Promis
     enabledModules,
     allowedFields,
     allowedNav,
+    allowedDashboardWidgets,
     featureFlags: (pkg?.featureFlags as Record<string, any>) ?? {},
     maxUsers: pkg?.maxUsers ?? 1,
     maxInvestors: pkg?.maxInvestors ?? 100,

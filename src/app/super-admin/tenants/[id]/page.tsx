@@ -143,6 +143,7 @@ export default async function TenantDetailPage({ params }: { params: Promise<{ i
           tenantId={id}
           initialAllowedNav={(data.subscription as any).allowedNav as string[] | null}
           initialAllowedFields={data.subscription.allowedFields as string[] | null}
+          initialAllowedDashboardWidgets={(data.subscription as any).allowedDashboardWidgets as string[] | null}
         />
       )}
     </div>

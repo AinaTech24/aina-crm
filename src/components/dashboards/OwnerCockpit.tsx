@@ -13,6 +13,8 @@ import { SipPersistencyTile } from "./SipPersistencyTile";
 import { TopMoversPanel } from "./TopMoversPanel";
 import { PeriodSelector } from "./PeriodSelector";
 import { resolvePeriodDates, type Period } from "@/lib/dashboard/period";
+import { loadTenantLicense } from "@/lib/auth/license";
+import { isDashboardWidgetVisible } from "@/config/dashboard-widgets";
 
 // Async parts streamed via Suspense
 import { GrowthRetentionSection } from "./GrowthRetentionSection";
@@ -281,17 +283,41 @@ async function OwnerCockpitBody({
     { userId: session.userId, branchId: session.branchId, roles: session.roles }
   );
 
+  // Admin → MFD dashboard-widget access. `allow` is the platform admin's grant
+  // (null = show everything). `show(key)` decides per widget. loadTenantLicense
+  // is request-cached, so this is the same read the layout already did.
+  const license = await loadTenantLicense(session.tenantId, session.roles);
+  const allow = license.allowedDashboardWidgets;
+  const show = (key: string) => isDashboardWidgetVisible(allow, key);
+
+  const anyHeadline =
+    show("kpi.total_clients") ||
+    show("kpi.open_leads") ||
+    show("kpi.active_sip_book") ||
+    show("kpi.net_business");
+  const anyBusiness =
+    show("kpi.sip_added") ||
+    show("kpi.lumpsum") ||
+    show("kpi.redemption") ||
+    show("kpi.sip_rejected") ||
+    show("kpi.sip_stopped");
+  const anyAnalytics =
+    show("section.lead_funnel") ||
+    show("section.aum_segment") ||
+    show("section.rm_leaderboard");
+
   return (
     <div className="space-y-6">
       {/* Getting-started checklist — auto-hides when all steps complete */}
-      <GettingStartedChecklist tenantId={session.tenantId} />
+      {show("section.getting_started") && <GettingStartedChecklist tenantId={session.tenantId} />}
 
       {/* ---------- State of the firm — daily brief strip ---------- */}
-      <FirmBriefStrip data={data} period={period} />
+      {show("section.firm_brief") && <FirmBriefStrip data={data} period={period} />}
 
       {/* ---------- 1. Headline KPIs — hero tiles (with period trajectory) ---------- */}
+      {anyHeadline && (
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Kpi
+        {show("kpi.total_clients") && <Kpi
           href="/dashboard/investors"
           icon={Users}
           label="Total Clients"
@@ -300,16 +326,16 @@ async function OwnerCockpitBody({
           delta={data.newClientsPeriod > 0 ? `+${data.newClientsPeriod} ${period.toUpperCase()}` : undefined}
           deltaTone="up"
           accent="cyan"
-        />
-        <Kpi
+        />}
+        {show("kpi.open_leads") && <Kpi
           href="/dashboard/leads"
           icon={UserPlus}
           label="Open Leads"
           value={String(data.totalLeads)}
           sub={`${data.conversionPct.toFixed(1)}% conversion ${period.toUpperCase()}`}
           accent="violet"
-        />
-        <Kpi
+        />}
+        {show("kpi.active_sip_book") && <Kpi
           href="/dashboard/sips"
           icon={TrendingUp}
           label="Active SIP Book"
@@ -322,8 +348,8 @@ async function OwnerCockpitBody({
           }
           deltaTone={data.newSipsPeriod - data.stoppedSipsPeriod >= 0 ? "up" : "down"}
           accent="emerald"
-        />
-        <Kpi
+        />}
+        {show("kpi.net_business") && <Kpi
           href="/dashboard/reports/net_sales"
           icon={TrendingUp}
           label={`Net Business ${period.toUpperCase()}`}
@@ -331,37 +357,45 @@ async function OwnerCockpitBody({
           sub={`Gross ${formatINR(data.sipAddedAmt + data.lumpsumAmt)}`}
           trend={data.netBusiness >= 0 ? "up" : "down"}
           hero
-        />
+        />}
       </div>
+      )}
 
       {/* ---------- 2. Monthly business breakdown ---------- */}
+      {anyBusiness && (
       <Group title={`Business — ${periodLabel}`} link={{ href: "/dashboard/reports/net_sales", label: "Open report" }}>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-          <Stat href="/dashboard/sips" label="SIP Added" value={String(data.sipAddedCount)} sub={formatINR(data.sipAddedAmt)} />
-          <Stat href="/dashboard/transactions" label="Lumpsum" value={String(data.lumpsumCount)} sub={formatINR(data.lumpsumAmt)} />
-          <Stat href="/dashboard/transactions?type=redemption" label="Redemption" value={formatINR(data.redemptionAmt)} tone={data.redemptionAmt > 0 ? "rose" : "muted"} />
-          <Stat href="/dashboard/sip-rejections" label="SIP Rejected" value={String(data.sipRejectedCount)} tone={data.sipRejectedCount > 0 ? "rose" : "muted"} />
-          <Stat href="/dashboard/sips?status=stopped" label="SIP Stopped" value={String(data.sipStoppedCount)} tone={data.sipStoppedCount > 0 ? "amber" : "muted"} />
+          {show("kpi.sip_added") && <Stat href="/dashboard/sips" label="SIP Added" value={String(data.sipAddedCount)} sub={formatINR(data.sipAddedAmt)} />}
+          {show("kpi.lumpsum") && <Stat href="/dashboard/transactions" label="Lumpsum" value={String(data.lumpsumCount)} sub={formatINR(data.lumpsumAmt)} />}
+          {show("kpi.redemption") && <Stat href="/dashboard/transactions?type=redemption" label="Redemption" value={formatINR(data.redemptionAmt)} tone={data.redemptionAmt > 0 ? "rose" : "muted"} />}
+          {show("kpi.sip_rejected") && <Stat href="/dashboard/sip-rejections" label="SIP Rejected" value={String(data.sipRejectedCount)} tone={data.sipRejectedCount > 0 ? "rose" : "muted"} />}
+          {show("kpi.sip_stopped") && <Stat href="/dashboard/sips?status=stopped" label="SIP Stopped" value={String(data.sipStoppedCount)} tone={data.sipStoppedCount > 0 ? "amber" : "muted"} />}
         </div>
       </Group>
+      )}
 
       {/* ---------- Growth & retention — churn, tax-harvest, referrals, regulatory (streamed) ---------- */}
+      {show("section.growth_retention") && (
       <Suspense fallback={<CardSkeleton />}>
         <GrowthRetentionSection session={session} />
       </Suspense>
+      )}
 
       {/* ---------- 2a. Top movers — the clients behind the period numbers ---------- */}
-      <TopMoversPanel session={session} startISO={startOfPeriodISO} periodLabel={periodLabel} />
+      {show("section.top_movers") && <TopMoversPanel session={session} startISO={startOfPeriodISO} periodLabel={periodLabel} />}
 
       {/* ---------- 2b. Data gaps — fixes from MFD ops checklist ---------- */}
-      <DataGapsTile />
+      {show("section.data_gaps") && <DataGapsTile />}
 
       {/* ---------- 3. Attention queues (streamed via Suspense) ---------- */}
+      {show("section.attention_queues") && (
       <Suspense fallback={<CardSkeleton />}>
         <AttentionQueuesSection session={session} />
       </Suspense>
+      )}
 
       {/* ---------- 4. Team & health ---------- */}
+      {show("section.team_health") && (
       <Group title="Team & health">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <Stat href="/dashboard/tasks" label="Team Pending Tasks" value={String(data.teamTasks)} tone={data.teamTasks > 20 ? "amber" : "muted"} />
@@ -382,35 +416,46 @@ async function OwnerCockpitBody({
           <Stat href="/dashboard/campaigns" label="Marketing Campaigns Running" value={String(data.campaignsRunning)} icon={Megaphone} />
         </div>
       </Group>
+      )}
 
       {/* ---------- 5. Conversion + RM-wise + chart (streamed via Suspense) ---------- */}
+      {anyAnalytics && (
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {show("section.lead_funnel") && (
         <Suspense fallback={<ChartSkeleton />}>
           <LeadFunnelSection session={session} period={period} />
         </Suspense>
+        )}
 
+        {show("section.aum_segment") && (
         <Suspense fallback={<ChartSkeleton />}>
           <AumSegmentSection session={session} />
         </Suspense>
+        )}
 
+        {show("section.rm_leaderboard") && (
         <Suspense fallback={<LeaderboardSkeleton />}>
           <RmLeaderboard session={session} />
         </Suspense>
+        )}
       </div>
+      )}
 
       {/* ---------- Net-sales chart (streamed via Suspense) ---------- */}
+      {show("section.net_sales") && (
       <Suspense fallback={<ChartSkeleton height="h-64" />}>
         <NetSalesSection session={session} />
       </Suspense>
+      )}
 
       {/* ---------- Trail income — the MFD's revenue, finally on the dashboard ---------- */}
-      <TrailIncomeTile session={session} />
+      {show("section.trail_income") && <TrailIncomeTile session={session} />}
 
       {/* ---------- SIP Persistency — franchise health metric ---------- */}
-      <SipPersistencyTile session={session} />
+      {show("section.sip_persistency") && <SipPersistencyTile session={session} />}
 
       {/* ---------- Owner Insights — service-excellence + scaling section ---------- */}
-      <OwnerInsightsSection session={session} />
+      {show("section.owner_insights") && <OwnerInsightsSection session={session} />}
     </div>
   );
 }

@@ -7,6 +7,7 @@ import { requireSession } from "@/lib/auth/session";
 import { requirePlatform } from "@/lib/auth/rbac";
 import { subscriptions, subscriptionEvents } from "@/db/schema";
 import { areKnownNavKeys } from "@/config/nav-access";
+import { areKnownWidgetKeys } from "@/config/dashboard-widgets";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +16,8 @@ const Body = z.object({
   allowedFields: z.array(z.string()).nullable().optional(),
   /** Admin → MFD sidebar access — nav hrefs the firm can open. null = default. */
   allowedNav: z.array(z.string()).nullable().optional(),
+  /** Admin → MFD dashboard widgets — widget keys the firm can see. null = all. */
+  allowedDashboardWidgets: z.array(z.string()).nullable().optional(),
 });
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -27,9 +30,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!parse.success) {
       return NextResponse.json({ error: "invalid body", issues: parse.error.issues }, { status: 400 });
     }
-    const { modulesOverride, allowedFields, allowedNav } = parse.data;
+    const { modulesOverride, allowedFields, allowedNav, allowedDashboardWidgets } = parse.data;
     if (allowedNav != null && !areKnownNavKeys(allowedNav)) {
       return NextResponse.json({ error: "one or more sidebar items are not recognised" }, { status: 400 });
+    }
+    if (allowedDashboardWidgets != null && !areKnownWidgetKeys(allowedDashboardWidgets)) {
+      return NextResponse.json({ error: "one or more dashboard widgets are not recognised" }, { status: 400 });
     }
 
     const result = await withPlatformAdmin(session.userId, async (tx) => {
@@ -42,6 +48,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       if (modulesOverride !== undefined) patch.modulesOverride = modulesOverride;
       if (allowedFields !== undefined) patch.allowedFields = allowedFields;
       if (allowedNav !== undefined) patch.allowedNav = allowedNav;
+      if (allowedDashboardWidgets !== undefined) patch.allowedDashboardWidgets = allowedDashboardWidgets;
 
       await tx.update(subscriptions).set(patch).where(eq(subscriptions.id, sub.id));
 

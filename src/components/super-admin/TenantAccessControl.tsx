@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ShieldAlert, Save } from "lucide-react";
 import { NAV_ACCESS_GROUPS, ALL_NAV_ITEMS } from "@/config/nav-access";
+import { DASHBOARD_WIDGET_GROUPS, ALL_DASHBOARD_WIDGETS } from "@/config/dashboard-widgets";
 
 // All fields from catalog.ts grouped by subject
 const AVAILABLE_FIELDS = {
@@ -56,15 +57,18 @@ const AVAILABLE_FIELDS = {
 };
 
 const ALL_NAV_KEYS = ALL_NAV_ITEMS.map((i) => i.key);
+const ALL_WIDGET_KEYS = ALL_DASHBOARD_WIDGETS.map((w) => w.key);
 
 export function TenantAccessControl({
   tenantId,
   initialAllowedNav,
   initialAllowedFields,
+  initialAllowedDashboardWidgets,
 }: {
   tenantId: string;
   initialAllowedNav: string[] | null;
   initialAllowedFields: string[] | null;
+  initialAllowedDashboardWidgets: string[] | null;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -80,8 +84,17 @@ export function TenantAccessControl({
   const [allowedFields, setAllowedFields] = useState<string[]>(initialAllowedFields || []);
   const [customFieldsActive, setCustomFieldsActive] = useState(!!initialAllowedFields);
 
+  // Dashboard widgets: null grant = all widgets visible; an array = exactly those.
+  const [widgets, setWidgets] = useState<string[]>(initialAllowedDashboardWidgets || ALL_WIDGET_KEYS);
+  const [customWidgetsActive, setCustomWidgetsActive] = useState(!!initialAllowedDashboardWidgets);
+
   const toggleNav = (key: string) => {
     setNav((prev) => (prev.includes(key) ? prev.filter((m) => m !== key) : [...prev, key]));
+    setSaved(false);
+  };
+
+  const toggleWidget = (key: string) => {
+    setWidgets((prev) => (prev.includes(key) ? prev.filter((m) => m !== key) : [...prev, key]));
     setSaved(false);
   };
 
@@ -101,6 +114,7 @@ export function TenantAccessControl({
         body: JSON.stringify({
           allowedNav: customNavActive ? nav : null,
           allowedFields: customFieldsActive ? allowedFields : null,
+          allowedDashboardWidgets: customWidgetsActive ? widgets : null,
         }),
       });
       const j = await res.json();
@@ -246,6 +260,67 @@ export function TenantAccessControl({
             </div>
           )}
         </div>
+      </div>
+
+      {/* Dashboard Widgets (admin → MFD) — full width row */}
+      <div className="space-y-4 border-t pt-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-semibold">Dashboard Widgets</h3>
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              Choose which cards &amp; sections appear on this firm&apos;s Dashboard home (KPIs,
+              business breakdown, charts, insights).
+            </p>
+          </div>
+          <label className="flex items-center gap-1.5 text-xs font-medium cursor-pointer">
+            <input
+              type="checkbox"
+              checked={customWidgetsActive}
+              onChange={(e) => {
+                setCustomWidgetsActive(e.target.checked);
+                if (e.target.checked && widgets.length === 0) setWidgets(ALL_WIDGET_KEYS);
+                setSaved(false);
+              }}
+            />
+            Customize Widgets
+          </label>
+        </div>
+        {!customWidgetsActive ? (
+          <div className="text-xs text-muted-foreground bg-secondary/30 p-3 rounded-md border">
+            This firm sees all dashboard widgets. Check &quot;Customize Widgets&quot; to pick exactly
+            which cards/sections show on their Dashboard home ({ALL_WIDGET_KEYS.length} available).
+          </div>
+        ) : (
+          <div className="space-y-3 max-h-[440px] overflow-y-auto border rounded-md p-4 bg-secondary/10 scrollbar-thin">
+            <div className="flex gap-3 text-[11px] font-medium">
+              <button type="button" onClick={() => { setWidgets(ALL_WIDGET_KEYS); setSaved(false); }} className="text-primary hover:underline">
+                Select all
+              </button>
+              <button type="button" onClick={() => { setWidgets([]); setSaved(false); }} className="text-muted-foreground hover:underline">
+                Clear all
+              </button>
+              <span className="text-muted-foreground ml-auto">{widgets.length}/{ALL_WIDGET_KEYS.length} selected</span>
+            </div>
+            {DASHBOARD_WIDGET_GROUPS.map((grp) => (
+              <div key={grp.title} className="space-y-1.5">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground border-b pb-0.5">
+                  {grp.title}
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                  {grp.items.map((w) => (
+                    <label
+                      key={w.key}
+                      className="flex items-center gap-2 border rounded p-1.5 bg-card hover:bg-secondary/40 text-[11px] cursor-pointer"
+                    >
+                      <input type="checkbox" checked={widgets.includes(w.key)} onChange={() => toggleWidget(w.key)} />
+                      <span>{w.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

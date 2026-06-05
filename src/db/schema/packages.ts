@@ -99,6 +99,13 @@ export const subscriptions = pgTable(
      * package-module default (legacy behaviour). Set by AINA platform admins.
      */
     allowedNav: jsonb("allowed_nav").$type<string[]>(),
+    /**
+     * Admin → MFD dashboard-widget access. The exact set of dashboard home
+     * cards/sections this firm can see (see src/config/dashboard-widgets.ts).
+     * NULL = all widgets visible (default). An array = exactly these widget
+     * keys are shown, everything else hidden. Set by AINA platform admins.
+     */
+    allowedDashboardWidgets: jsonb("allowed_dashboard_widgets").$type<string[]>(),
 
     /** Billing — minimal scaffold; real Razorpay integration extends this */
     razorpayCustomerId: text("razorpay_customer_id"),
