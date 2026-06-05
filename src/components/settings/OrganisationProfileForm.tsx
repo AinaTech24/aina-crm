@@ -123,12 +123,18 @@ export function OrganisationProfileForm({
       });
       if (!put.ok) throw new Error("upload to S3 failed");
 
-      // 3. Derive the public URL — assumes the bucket is public-read or has a
-      //    CDN in front. For private buckets, swap in a presigned GET here.
+      // 3. Derive the URL to store + display.
+      //    - Local storage (no S3 keys): the presign URL is already the
+      //      app-served /api/upload-local/<key> — use it as-is (the public CDN
+      //      base does NOT apply, or logos would 404 against a wrong host).
+      //    - S3: build from the public-read/CDN base, else strip the PUT query.
+      const isLocal = presignJson.url.startsWith("/");
       const base = (process.env.NEXT_PUBLIC_S3_PUBLIC_URL ?? "").replace(/\/+$/, "");
-      const publicUrl = base
-        ? `${base}/${presignJson.key}`
-        : presignJson.url.split("?")[0]; // fallback: strip query string from PUT URL
+      const publicUrl = isLocal
+        ? presignJson.url.split("?")[0]
+        : base
+          ? `${base}/${presignJson.key}`
+          : presignJson.url.split("?")[0];
 
       setForm((s) => ({ ...s, [field]: publicUrl }));
     } catch (e: any) {

@@ -1,38 +1,46 @@
 import { NextRequest, NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
+import { requireSession } from "@/lib/auth/session";
 
 export const dynamic = "force-dynamic";
 
+const ROOT = path.join(process.cwd(), "node-local", "uploads");
+
+/** Resolve the key under ROOT, rejecting path-traversal (`../`) escapes. */
+function safePath(key: string[]): string | null {
+  const full = path.resolve(ROOT, key.join("/"));
+  if (full !== ROOT && !full.startsWith(ROOT + path.sep)) return null;
+  return full;
+}
+
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ key: string[] }> }) {
   try {
+    await requireSession(); // must be signed in to store a file
     const { key } = await params;
-    const keyPath = key.join("/");
-    // Store files under node-local/uploads in the project root
-    const filePath = path.join(process.cwd(), "node-local", "uploads", keyPath);
+    const filePath = safePath(key);
+    if (!filePath) return NextResponse.json({ error: "bad key" }, { status: 400 });
 
-    // Ensure the destination folder exists
-    const dir = path.dirname(filePath);
-    await fs.promises.mkdir(dir, { recursive: true });
+    const buffer = Buffer.from(await req.arrayBuffer());
+    if (buffer.length === 0) return NextResponse.json({ error: "empty body" }, { status: 400 });
+    if (buffer.length > 15 * 1024 * 1024) {
+      return NextResponse.json({ error: "file too large (max 15MB)" }, { status: 413 });
+    }
 
-    // Read payload as ArrayBuffer and write it as Buffer to the local disk
-    const arrayBuffer = await req.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+    await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
     await fs.promises.writeFile(filePath, buffer);
-
     return NextResponse.json({ success: true });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    const status = typeof err?.status === "number" ? err.status : 500;
+    return NextResponse.json({ error: status === 401 ? "unauthorized" : "upload failed" }, { status });
   }
 }
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ key: string[] }> }) {
   try {
     const { key } = await params;
-    const keyPath = key.join("/");
-    const filePath = path.join(process.cwd(), "node-local", "uploads", keyPath);
-
-    if (!fs.existsSync(filePath)) {
+    const filePath = safePath(key);
+    if (!filePath || !fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
       return NextResponse.json({ error: "File not found" }, { status: 404 });
     }
 

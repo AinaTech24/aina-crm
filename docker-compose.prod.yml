@@ -44,6 +44,10 @@ services:
     restart: unless-stopped
     env_file:
       - .env.production
+    volumes:
+      # Persistent local uploads (logos/branding) for the no-S3-keys path — the
+      # /api/upload-local route reads/writes here; survives container recreate.
+      - uploads_data:/app/node-local/uploads
     expose:
       - "3000"
     depends_on:
@@ -55,6 +59,8 @@ services:
     env_file:
       - .env.production
     command: ["npm", "run", "worker:prod"]
+    volumes:
+      - uploads_data:/app/node-local/uploads
     # The image's default HEALTHCHECK curls :3000 — correct for `web`, but the
     # worker runs no HTTP server, so disable it here (liveness = the process is
     # up; restart: unless-stopped already covers crash recovery).
@@ -94,3 +100,4 @@ volumes:
   caddy_config:
   redis_data:
   pg_data:
+  uploads_data:
