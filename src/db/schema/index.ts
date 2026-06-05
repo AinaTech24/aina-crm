@@ -54,6 +54,7 @@ export * from "./firm_directors";
 export * from "./suitability_matrix";
 export * from "./portfolio_review_items";
 export * from "./scheme_nav";
+export * from "./mf_schemes";
 export * from "./amfi_circulars";
 export * from "./business_finance";
 export * from "./ddq_checklist";

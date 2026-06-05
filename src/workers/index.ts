@@ -26,6 +26,7 @@ import { runMarketScan } from "./market-scanner";
 import { runFeedIngest } from "./feed-ingest";
 import { runStatementScheduler } from "./statement-scheduler";
 import { refreshNav } from "@/lib/finance/nav-feed";
+import { syncMfSchemeCatalog, enrichMfSchemes } from "@/lib/finance/mfapi";
 import { getLastRun, recordRun } from "./scheduler-state";
 import { captureError } from "@/lib/observability/capture";
 
@@ -169,6 +170,26 @@ scheduleDaily(
     console.log(`[nav-refresh] upserted ${r.written} schemes (nav date ~${r.navDate})`);
   },
   "NAV_REFRESH_ON_BOOT"
+);
+
+/**
+ * Daily MF scheme catalog sync — pulls the full scheme list from mfapi.in at
+ * 06:30 (before the AMFI NAV refresh) and progressively enriches scheme detail
+ * (fund house / type / category / latest NAV). Platform-shared (mf_schemes),
+ * so every MFD tenant gets the same up-to-date scheme + AMC + NAV catalog,
+ * which powers the scheme/AMC autocomplete. Lives in the "nav" group.
+ */
+scheduleDaily(
+  "nav",
+  "mfapi-catalog",
+  6,
+  30,
+  async () => {
+    const c = await syncMfSchemeCatalog();
+    const e = await enrichMfSchemes(1500);
+    console.log(`[mfapi-catalog] upserted ${c.written}/${c.fetched} schemes; enriched ${e.updated}/${e.scanned}`);
+  },
+  "MFAPI_SYNC_ON_BOOT"
 );
 
 /**
