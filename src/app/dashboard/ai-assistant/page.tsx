@@ -65,7 +65,7 @@ export default function AiAssistantPage() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight">AI Assistant</h1>
         <p className="text-muted-foreground text-sm">
-          Smart search and message drafting. Powered by Claude. All drafts re-pass the compliance
+          Smart search and message drafting. Powered by Aina AI. All drafts re-pass the compliance
           gate before they can be sent.
         </p>
       </div>

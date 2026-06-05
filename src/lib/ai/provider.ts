@@ -195,7 +195,22 @@ export function aiMessagesClient() {
           });
           return res as unknown as AiResponse;
         }
-        return geminiCreate(cfg.apiKey, modelName, params);
+        // Google Gemini. geminiCreate already retries transient 429/5xx with
+        // backoff. If the heavier "reasoning" model stays overloaded, degrade
+        // once to the fast model so the assistant answers instead of failing.
+        try {
+          return await geminiCreate(cfg.apiKey, modelName, params);
+        } catch (e: any) {
+          if (
+            tier === "reasoning" &&
+            e?.retryable &&
+            cfg.fastModel &&
+            cfg.fastModel !== modelName
+          ) {
+            return geminiCreate(cfg.apiKey, cfg.fastModel, params, { retries: 1 });
+          }
+          throw e;
+        }
       },
     },
   };
@@ -213,7 +228,42 @@ function toGeminiParts(content: string | AiContentBlock[]): any[] {
   });
 }
 
-async function geminiCreate(apiKey: string, model: string, params: CreateParams): Promise<AiResponse> {
+// HTTP statuses worth retrying — transient overload / rate-limit / gateway.
+const RETRYABLE_STATUS = new Set([408, 425, 429, 500, 502, 503, 504]);
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Map a provider HTTP failure to a short, user-safe message (never echoes the
+ * key or the raw upstream JSON). Marks transient overload/rate-limit errors as
+ * `retryable` so callers can retry or fall back to a lighter model.
+ */
+function aiHttpError(status: number, raw: string): Error & { status?: number; retryable?: boolean } {
+  const overloaded =
+    status === 503 || /UNAVAILABLE|high demand|overloaded|try again later/i.test(raw);
+  let msg: string;
+  if (overloaded) {
+    msg = "The AI service is busy right now (high demand). Please try again in a few moments.";
+  } else if (status === 429) {
+    msg = "The AI service is rate-limited right now. Please wait a moment and try again.";
+  } else if (status === 401 || status === 403) {
+    msg = "The AI API key was rejected. Check the key in Aina Admin → AI & Models.";
+  } else if (status === 400) {
+    msg = `The AI request was rejected (400). ${raw.slice(0, 160)}`.trim();
+  } else {
+    msg = `The AI service returned an error (${status}). Please try again.`;
+  }
+  const err = new Error(msg) as Error & { status?: number; retryable?: boolean };
+  err.status = status;
+  err.retryable = RETRYABLE_STATUS.has(status);
+  return err;
+}
+
+async function geminiCreate(
+  apiKey: string,
+  model: string,
+  params: CreateParams,
+  opts: { retries?: number } = {}
+): Promise<AiResponse> {
   const contents = params.messages.map((m) => ({
     role: m.role === "assistant" ? "model" : "user",
     parts: toGeminiParts(m.content),
@@ -226,29 +276,53 @@ async function geminiCreate(apiKey: string, model: string, params: CreateParams)
 
   // Fixed Google host — not user-controlled, so no SSRF surface.
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 60_000);
-  try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
-    if (!res.ok) {
-      const t = await res.text().catch(() => "");
-      // Surface Google's message but never echo the key.
-      throw new Error(`Gemini API ${res.status}: ${t.slice(0, 300) || res.statusText}`);
+  const maxAttempts = (opts.retries ?? 2) + 1; // 1 attempt + N retries
+
+  let lastErr: any;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 60_000);
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+      if (!res.ok) {
+        const t = await res.text().catch(() => "");
+        const err = aiHttpError(res.status, t);
+        if (err.retryable && attempt < maxAttempts - 1) {
+          lastErr = err;
+          // Exponential backoff + jitter: ~0.6s, 1.2s, 2.4s …, capped at 8s.
+          await sleep(Math.min(8000, 600 * 2 ** attempt) + Math.floor(Math.random() * 400));
+          continue;
+        }
+        throw err;
+      }
+      const data: any = await res.json();
+      const blocked = data?.promptFeedback?.blockReason;
+      if (blocked) throw new Error(`The AI declined to answer this request (${blocked}).`);
+      const parts = data?.candidates?.[0]?.content?.parts ?? [];
+      const text = parts.map((p: any) => (typeof p?.text === "string" ? p.text : "")).join("");
+      return { content: [{ type: "text", text }] };
+    } catch (e: any) {
+      // Network/timeout (AbortError, connection reset) is also worth retrying.
+      const transient =
+        e?.name === "AbortError" ||
+        e?.code === "UND_ERR_CONNECT_TIMEOUT" ||
+        /fetch failed|network|ECONNRESET|ETIMEDOUT/i.test(e?.message ?? "");
+      if (transient && attempt < maxAttempts - 1) {
+        lastErr = e;
+        await sleep(Math.min(8000, 600 * 2 ** attempt) + Math.floor(Math.random() * 400));
+        continue;
+      }
+      throw e;
+    } finally {
+      clearTimeout(timer);
     }
-    const data: any = await res.json();
-    const blocked = data?.promptFeedback?.blockReason;
-    if (blocked) throw new Error(`Gemini blocked the request: ${blocked}`);
-    const parts = data?.candidates?.[0]?.content?.parts ?? [];
-    const text = parts.map((p: any) => (typeof p?.text === "string" ? p.text : "")).join("");
-    return { content: [{ type: "text", text }] };
-  } finally {
-    clearTimeout(timer);
   }
+  throw lastErr ?? new Error("The AI service is unavailable. Please try again.");
 }
 
 // ── Admin helpers (status for display + save + live test) ─────────────────────
