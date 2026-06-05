@@ -17,10 +17,27 @@
  *   - creates a "write up your notes" task if notes are empty
  */
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Save, Plus, Trash2, CheckCircle2, X, Sparkles, ListChecks, CalendarPlus, Target, CalendarClock } from "lucide-react";
+import { Loader2, Save, Plus, Trash2, CheckCircle2, X, Sparkles, ListChecks, CalendarPlus, Target, CalendarClock, ChevronDown, Download } from "lucide-react";
 import { renderReviewAgendaTemplate } from "@/lib/review-meetings/agenda";
+import { SelectField } from "@/components/ui/SelectField";
+import { DateField } from "@/components/ui/DateField";
+
+/** 15-minute time slots across the day, labelled in 12-hour form. */
+const TIME_SLOTS: Array<{ value: string; label: string }> = (() => {
+  const out: Array<{ value: string; label: string }> = [];
+  for (let h = 0; h < 24; h++) {
+    for (const m of [0, 15, 30, 45]) {
+      const hh = String(h).padStart(2, "0");
+      const mm = String(m).padStart(2, "0");
+      const ampm = h < 12 ? "AM" : "PM";
+      const h12 = h % 12 === 0 ? 12 : h % 12;
+      out.push({ value: `${hh}:${mm}`, label: `${h12}:${mm} ${ampm}` });
+    }
+  }
+  return out;
+})();
 
 const STATUSES = [
   ["scheduled", "Scheduled"],
@@ -103,11 +120,18 @@ export function ReviewMeetingDetailEditor({
   const [outcome, setOutcome] = useState<string>(meeting.outcome ?? "");
   const [outcomeNotes, setOutcomeNotes] = useState<string>(meeting.outcomeNotes ?? "");
   // Reschedule fields — moving the date/time/mode/location after creation.
-  const [meetingDate, setMeetingDate] = useState<string>(toLocalInput(meeting.meetingDate));
+  const initDT = splitLocal(meeting.meetingDate);
+  const [meetingDay, setMeetingDay] = useState<string>(initDT.day);
+  const [meetingTime, setMeetingTime] = useState<string>(initDT.time);
   const [meetingMode, setMeetingMode] = useState<string>(meeting.meetingMode ?? "office");
   const [location, setLocation] = useState<string>(meeting.locationOrLink ?? "");
   const [rescheduleReason, setRescheduleReason] = useState<string>("");
-  const originalDate = toLocalInput(meeting.meetingDate);
+  const originalDay = initDT.day;
+  const originalTime = initDT.time;
+  const dateMoved = !!meetingDay && (meetingDay !== originalDay || meetingTime !== originalTime);
+  // "Add to calendar" menu (Google / Outlook / .ics).
+  const [calOpen, setCalOpen] = useState(false);
+  const calRef = useRef<HTMLDivElement>(null);
   const [discussion, setDiscussion] = useState(meeting.discussionPoints ?? "");
   const [notes, setNotes] = useState(meeting.meetingNotes ?? "");
   const [items, setItems] = useState<ActionItem[]>(
@@ -130,6 +154,49 @@ export function ReviewMeetingDetailEditor({
   const [busy, setBusy] = useState(false);
   const [ok, setOk] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+
+  // Close the "Add to calendar" menu on outside click / Escape.
+  useEffect(() => {
+    if (!calOpen) return;
+    function onDown(e: MouseEvent) {
+      if (calRef.current && !calRef.current.contains(e.target as Node)) setCalOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setCalOpen(false);
+    }
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [calOpen]);
+
+  // Build "add to calendar" deep links from the current meeting data.
+  const calLinks = (() => {
+    const start = new Date(meeting.meetingDate);
+    const dur = Number(meeting.durationMinutes) || 30;
+    const end = new Date(start.getTime() + dur * 60_000);
+    const title = (subject || `Meeting with ${investorName}`).trim();
+    const details = (discussion || meeting.discussionPoints || "").trim();
+    const loc = (location || meeting.locationOrLink || "").trim();
+    const valid = !isNaN(start.getTime());
+    const gfmt = (d: Date) => d.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+    const google =
+      `https://calendar.google.com/calendar/render?action=TEMPLATE` +
+      `&text=${encodeURIComponent(title)}` +
+      `&dates=${gfmt(start)}/${gfmt(end)}` +
+      `&details=${encodeURIComponent(details)}` +
+      `&location=${encodeURIComponent(loc)}`;
+    const outlook =
+      `https://outlook.live.com/calendar/0/deeplink/compose?path=/calendar/action/compose&rru=addevent` +
+      `&subject=${encodeURIComponent(title)}` +
+      `&startdt=${encodeURIComponent(start.toISOString())}` +
+      `&enddt=${encodeURIComponent(end.toISOString())}` +
+      `&body=${encodeURIComponent(details)}` +
+      `&location=${encodeURIComponent(loc)}`;
+    return { valid, google, outlook, ics: `/api/review-meetings/${meeting.id}/calendar.ics` };
+  })();
 
   // AI summary state
   const [aiBusy, setAiBusy] = useState(false);
@@ -228,7 +295,6 @@ export function ReviewMeetingDetailEditor({
     setErr(null);
     setOk(null);
     try {
-      const dateMoved = meetingDate && meetingDate !== originalDate;
       const payload: any = {
         status: overrideStatus ?? status,
         subject: subject || undefined,
@@ -245,7 +311,7 @@ export function ReviewMeetingDetailEditor({
         // Only send a (reschedule) date + reason when the date actually changed.
         ...(dateMoved
           ? {
-              meetingDate: new Date(meetingDate).toISOString(),
+              meetingDate: new Date(`${meetingDay}T${meetingTime || "11:00"}:00`).toISOString(),
               rescheduleReason: rescheduleReason || undefined,
             }
           : {}),
@@ -280,26 +346,55 @@ export function ReviewMeetingDetailEditor({
       <div className="card-surface p-4 flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-2">
           <label className="text-xs font-semibold text-muted-foreground">Status</label>
-          <select
-            value={status}
-            onChange={(e) => setStatus(e.target.value)}
-            className={`chip ${STATUS_TONE[status] ?? ""} font-medium border-0 outline-none cursor-pointer pr-1`}
-          >
+          <SelectField value={status} onChange={(e) => setStatus(e.target.value)} size="sm" className="w-40">
             {STATUSES.map(([k, l]) => (
-              <option key={k} value={k} className="bg-white text-foreground">
-                {l}
-              </option>
+              <option key={k} value={k}>{l}</option>
             ))}
-          </select>
+          </SelectField>
         </div>
         <div className="flex items-center gap-2">
-          <a
-            href={`/api/review-meetings/${meeting.id}/calendar.ics`}
-            className="btn-ghost text-xs"
-            title="Download an .ics calendar invite for this meeting"
-          >
-            <CalendarPlus className="size-3.5" /> Add to calendar
-          </a>
+          {/* Add to calendar — adds the event directly to Google/Outlook (opens
+              the prefilled event), or downloads an .ics for Apple/other apps. */}
+          <div ref={calRef} className="relative">
+            <button
+              type="button"
+              onClick={() => setCalOpen((o) => !o)}
+              className="btn-ghost text-xs"
+              title="Add this meeting to your calendar"
+            >
+              <CalendarPlus className="size-3.5" /> Add to calendar
+              <ChevronDown className={`size-3 transition-transform ${calOpen ? "rotate-180" : ""}`} />
+            </button>
+            {calOpen && (
+              <div className="absolute right-0 top-full mt-1 z-30 w-52 rounded-lg border border-border bg-white shadow-xl p-1 text-left">
+                <a
+                  href={calLinks.valid ? calLinks.google : undefined}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={() => setCalOpen(false)}
+                  className="flex items-center gap-2 rounded-md px-2.5 py-2 text-xs font-medium text-foreground/80 hover:bg-secondary"
+                >
+                  <CalendarPlus className="size-3.5 text-emerald-600" /> Google Calendar
+                </a>
+                <a
+                  href={calLinks.valid ? calLinks.outlook : undefined}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={() => setCalOpen(false)}
+                  className="flex items-center gap-2 rounded-md px-2.5 py-2 text-xs font-medium text-foreground/80 hover:bg-secondary"
+                >
+                  <CalendarPlus className="size-3.5 text-blue-600" /> Outlook Calendar
+                </a>
+                <a
+                  href={calLinks.ics}
+                  onClick={() => setCalOpen(false)}
+                  className="flex items-center gap-2 rounded-md px-2.5 py-2 text-xs font-medium text-foreground/80 hover:bg-secondary border-t border-border mt-1 pt-2"
+                >
+                  <Download className="size-3.5 text-muted-foreground" /> Download .ics (Apple/other)
+                </a>
+              </div>
+            )}
+          </div>
           <a
             href={`/dashboard/review-meetings/${meeting.id}/portfolio`}
             className="btn-ghost text-xs"
@@ -357,23 +452,22 @@ export function ReviewMeetingDetailEditor({
             </span>
           )}
         </div>
-        <div className="grid sm:grid-cols-3 gap-3">
+        <div className="grid sm:grid-cols-2 gap-3">
           <label className="block">
-            <div className="text-[11px] text-muted-foreground mb-0.5">Date &amp; time</div>
-            <input
-              type="datetime-local"
-              value={meetingDate}
-              onChange={(e) => setMeetingDate(e.target.value)}
-              className="input-base"
-            />
+            <div className="text-[11px] text-muted-foreground mb-0.5">Date</div>
+            <DateField value={meetingDay} onChange={(e) => setMeetingDay(e.target.value)} size="sm" className="w-full" />
+          </label>
+          <label className="block">
+            <div className="text-[11px] text-muted-foreground mb-0.5">Time</div>
+            <SelectField value={meetingTime} onChange={(e) => setMeetingTime(e.target.value)} options={TIME_SLOTS} size="sm" className="w-full" />
           </label>
           <label className="block">
             <div className="text-[11px] text-muted-foreground mb-0.5">Mode</div>
-            <select value={meetingMode} onChange={(e) => setMeetingMode(e.target.value)} className="input-base">
+            <SelectField value={meetingMode} onChange={(e) => setMeetingMode(e.target.value)} size="sm" className="w-full">
               {MODES.map(([k, l]) => (
                 <option key={k} value={k}>{l}</option>
               ))}
-            </select>
+            </SelectField>
           </label>
           <label className="block">
             <div className="text-[11px] text-muted-foreground mb-0.5">Location / link</div>
@@ -385,7 +479,7 @@ export function ReviewMeetingDetailEditor({
             />
           </label>
         </div>
-        {meetingDate !== originalDate && (
+        {dateMoved && (
           <label className="block">
             <div className="text-[11px] text-amber-700 mb-0.5 font-medium">Reschedule reason</div>
             <input
@@ -456,25 +550,24 @@ export function ReviewMeetingDetailEditor({
             placeholder="Name"
             className="input-base text-sm col-span-4"
           />
-          <select
+          <SelectField
             value={newAttendee.role}
             onChange={(e) =>
               setNewAttendee((p) => ({
                 ...p,
                 role: e.target.value as Attendee["role"],
-                isExternal: !["rm", "back_office", "compliance"].includes(
-                  e.target.value
-                ),
+                isExternal: !["rm", "back_office", "compliance"].includes(e.target.value),
               }))
             }
-            className="input-base text-sm col-span-3"
+            size="sm"
+            className="text-sm col-span-3"
           >
             {Object.entries(ATTENDEE_ROLE_LABELS).map(([k, v]) => (
               <option key={k} value={k}>
                 {v}
               </option>
             ))}
-          </select>
+          </SelectField>
           <input
             value={newAttendee.notes ?? ""}
             onChange={(e) =>
@@ -660,11 +753,11 @@ export function ReviewMeetingDetailEditor({
         <div className="grid sm:grid-cols-2 gap-3">
           <label className="block">
             <div className="text-[11px] text-muted-foreground mb-0.5">Result</div>
-            <select value={outcome} onChange={(e) => setOutcome(e.target.value)} className="input-base">
+            <SelectField value={outcome} onChange={(e) => setOutcome(e.target.value)} size="sm" className="w-full">
               {OUTCOMES.map(([k, l]) => (
                 <option key={k} value={k}>{l}</option>
               ))}
-            </select>
+            </SelectField>
           </label>
           <label className="block">
             <div className="text-[11px] text-muted-foreground mb-0.5">Outcome notes</div>
@@ -709,11 +802,11 @@ export function ReviewMeetingDetailEditor({
                   placeholder="e.g. Send tax-saving fund recommendation by next Tuesday"
                   className="input-base flex-1"
                 />
-                <input
-                  type="date"
+                <DateField
                   value={it.dueAt ?? ""}
                   onChange={(e) => patchItem(i, "dueAt", e.target.value)}
-                  className="input-base w-40"
+                  size="sm"
+                  className="w-40"
                 />
                 {it.taskId ? (
                   <span className="chip bg-emerald-50 text-emerald-700 text-[10px]">task ✓</span>
@@ -774,11 +867,11 @@ export function ReviewMeetingDetailEditor({
       {/* Next review */}
       <div className="card-surface p-5 space-y-2">
         <h3 className="font-semibold">Next review date</h3>
-        <input
-          type="date"
+        <DateField
           value={nextReview}
           onChange={(e) => setNextReview(e.target.value)}
-          className="input-base w-60"
+          size="sm"
+          className="w-60"
         />
         <p className="text-[11px] text-muted-foreground">
           On completion, the client's <code>nextReviewAt</code> is set to this date and the
@@ -795,11 +888,14 @@ function defaultNextReview(): string {
   return d.toISOString().slice(0, 10);
 }
 
-/** ISO/Date → "YYYY-MM-DDTHH:mm" in local time for <input type=datetime-local>. */
-function toLocalInput(v: any): string {
-  if (!v) return "";
+/** ISO/Date → { day: "yyyy-mm-dd", time: "HH:mm" } in local time. */
+function splitLocal(v: any): { day: string; time: string } {
+  if (!v) return { day: "", time: "11:00" };
   const d = v instanceof Date ? v : new Date(v);
-  if (isNaN(d.getTime())) return "";
+  if (isNaN(d.getTime())) return { day: "", time: "11:00" };
   const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return {
+    day: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
+    time: `${pad(d.getHours())}:${pad(d.getMinutes())}`,
+  };
 }

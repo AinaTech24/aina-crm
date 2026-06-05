@@ -1,9 +1,26 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Calendar, Loader2, Save, Users, Sparkles, Home, ChevronsUpDown } from "lucide-react";
 import { RmSelector } from "@/components/common/RmSelector";
+import { SelectField } from "@/components/ui/SelectField";
+import { DateField } from "@/components/ui/DateField";
+
+/** 15-minute time slots across the day, labelled in 12-hour form. */
+const TIME_SLOTS: Array<{ value: string; label: string }> = (() => {
+  const out: Array<{ value: string; label: string }> = [];
+  for (let h = 0; h < 24; h++) {
+    for (const m of [0, 15, 30, 45]) {
+      const hh = String(h).padStart(2, "0");
+      const mm = String(m).padStart(2, "0");
+      const ampm = h < 12 ? "AM" : "PM";
+      const h12 = h % 12 === 0 ? 12 : h % 12;
+      out.push({ value: `${hh}:${mm}`, label: `${h12}:${mm} ${ampm}` });
+    }
+  }
+  return out;
+})();
 
 const TYPES = [
   ["portfolio_review", "Portfolio Review"],
@@ -47,13 +64,15 @@ export function ScheduleMeetingForm({
 }) {
   const router = useRouter();
   const [subjectKind, setSubjectKind] = useState<Kind>(preselectedLeadId ? "lead" : "client");
+  const def = defaultDateTimeParts();
   const [form, setForm] = useState({
     investorId: preselectedInvestorId ?? "",
     leadId: preselectedLeadId ?? "",
     familyId: "",
     subject: "",
     meetingType: "portfolio_review",
-    meetingDate: defaultIsoDateTime(),
+    meetingDay: def.day,
+    meetingTime: def.time,
     durationMinutes: "30",
     meetingMode: "online",
     locationOrLink: "",
@@ -81,7 +100,7 @@ export function ScheduleMeetingForm({
       const body: Record<string, any> = {
         subject: form.subject || undefined,
         meetingType: form.meetingType,
-        meetingDate: new Date(form.meetingDate).toISOString(),
+        meetingDate: new Date(`${form.meetingDay}T${form.meetingTime || "11:00"}:00`).toISOString(),
         durationMinutes: parseInt(form.durationMinutes, 10) || 30,
         meetingMode: form.meetingMode,
         locationOrLink: form.locationOrLink || undefined,
@@ -116,7 +135,7 @@ export function ScheduleMeetingForm({
   }
 
   const canSave =
-    !!form.meetingDate &&
+    !!form.meetingDay && !!form.meetingTime &&
     (subjectKind === "client" ? !!form.investorId : subjectKind === "lead" ? !!form.leadId : !!form.familyId);
   const subjectLocked = !!(preselectedInvestorId || preselectedLeadId);
 
@@ -208,29 +227,33 @@ export function ScheduleMeetingForm({
 
       <div className="grid grid-cols-2 gap-3">
         <Field label="Meeting type">
-          <select value={form.meetingType} onChange={(e) => set("meetingType", e.target.value)} className="input-base">
+          <SelectField value={form.meetingType} onChange={(e) => set("meetingType", e.target.value)} className="w-full">
             {TYPES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-          </select>
+          </SelectField>
         </Field>
         <Field label="Mode">
-          <select value={form.meetingMode} onChange={(e) => set("meetingMode", e.target.value)} className="input-base">
+          <SelectField value={form.meetingMode} onChange={(e) => set("meetingMode", e.target.value)} className="w-full">
             {MODES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-          </select>
+          </SelectField>
         </Field>
 
-        <Field label="When">
-          <input type="datetime-local" value={form.meetingDate} onChange={(e) => set("meetingDate", e.target.value)} className="input-base" />
+        <Field label="Date">
+          <DateField value={form.meetingDay} onChange={(e) => set("meetingDay", e.target.value)} className="w-full" />
         </Field>
+        <Field label="Time">
+          <SelectField value={form.meetingTime} onChange={(e) => set("meetingTime", e.target.value)} options={TIME_SLOTS} className="w-full" />
+        </Field>
+
         <Field label="Duration (minutes)">
           <input type="number" value={form.durationMinutes} onChange={(e) => set("durationMinutes", e.target.value)} min={5} max={480} className="input-base tabular-nums" />
         </Field>
-
         <Field label="Initial status">
-          <select value={form.status} onChange={(e) => set("status", e.target.value)} className="input-base">
+          <SelectField value={form.status} onChange={(e) => set("status", e.target.value)} className="w-full">
             <option value="scheduled">Scheduled</option>
             <option value="confirmed">Confirmed</option>
-          </select>
+          </SelectField>
         </Field>
+
         <Field label="Assigned RM">
           <RmSelector
             value={form.rmId || null}
@@ -293,13 +316,37 @@ function SearchSelect({
 }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
   const selected = options.find((o) => o.value === value);
   const needle = q.trim().toLowerCase();
   const filtered = (needle ? options.filter((o) => `${o.label} ${o.sub ?? ""}`.toLowerCase().includes(needle)) : options).slice(0, 50);
 
+  // Close on outside click / Escape. (The old version used a full-screen
+  // overlay div, but because this control sits inside a <label>, clicking the
+  // overlay re-fired the label's click onto the trigger button and re-opened
+  // it — so it never closed. A ref + document listener avoids that entirely.)
+  useEffect(() => {
+    if (!open) return;
+    function onDown(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+        setQ("");
+      }
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") { setOpen(false); setQ(""); }
+    }
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
   return (
-    <div className="relative">
-      <button type="button" onClick={() => setOpen((o) => !o)} className="input-base flex items-center justify-between text-left">
+    <div ref={ref} className="relative">
+      <button type="button" onClick={() => setOpen((o) => !o)} className="input-base flex items-center justify-between text-left w-full">
         <span className={selected ? "truncate" : "text-muted-foreground truncate"}>
           {selected ? selected.label : placeholder}
           {selected?.sub && <span className="text-muted-foreground text-xs"> · {selected.sub}</span>}
@@ -307,36 +354,33 @@ function SearchSelect({
         <ChevronsUpDown className="size-3.5 opacity-50 shrink-0" />
       </button>
       {open && (
-        <>
-          <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
-          <div className="absolute z-30 mt-1 w-full rounded-lg border border-border bg-popover shadow-xl">
-            <input
-              autoFocus
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Type to search…"
-              className="w-full px-3 py-2 text-sm border-b border-border bg-transparent outline-none"
-            />
-            <ul className="max-h-60 overflow-y-auto py-1">
-              {filtered.length === 0 && <li className="px-3 py-2 text-xs text-muted-foreground">No matches</li>}
-              {filtered.map((o) => (
-                <li key={o.value}>
-                  <button
-                    type="button"
-                    onClick={() => { onChange(o.value); setOpen(false); setQ(""); }}
-                    className={`w-full text-left px-3 py-1.5 text-sm hover:bg-accent ${o.value === value ? "bg-accent/50 font-medium" : ""}`}
-                  >
-                    {o.label}
-                    {o.sub && <span className="text-muted-foreground text-xs"> · {o.sub}</span>}
-                  </button>
-                </li>
-              ))}
-            </ul>
-            {options.length > 50 && (
-              <div className="px-3 py-1.5 text-[11px] text-muted-foreground border-t border-border">Showing 50 — refine your search.</div>
-            )}
-          </div>
-        </>
+        <div className="absolute z-30 mt-1 w-full rounded-lg border border-border bg-popover shadow-xl">
+          <input
+            autoFocus
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Type to search…"
+            className="w-full px-3 py-2 text-sm border-b border-border bg-transparent outline-none"
+          />
+          <ul className="max-h-60 overflow-y-auto py-1">
+            {filtered.length === 0 && <li className="px-3 py-2 text-xs text-muted-foreground">No matches</li>}
+            {filtered.map((o) => (
+              <li key={o.value}>
+                <button
+                  type="button"
+                  onClick={() => { onChange(o.value); setOpen(false); setQ(""); }}
+                  className={`w-full text-left px-3 py-1.5 text-sm hover:bg-accent ${o.value === value ? "bg-accent/50 font-medium" : ""}`}
+                >
+                  {o.label}
+                  {o.sub && <span className="text-muted-foreground text-xs"> · {o.sub}</span>}
+                </button>
+              </li>
+            ))}
+          </ul>
+          {options.length > 50 && (
+            <div className="px-3 py-1.5 text-[11px] text-muted-foreground border-t border-border">Showing 50 — refine your search.</div>
+          )}
+        </div>
       )}
     </div>
   );
@@ -351,10 +395,13 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-function defaultIsoDateTime(): string {
+/** Tomorrow at 11:00 → { day: "yyyy-mm-dd", time: "HH:mm" }. */
+function defaultDateTimeParts(): { day: string; time: string } {
   const d = new Date();
   d.setDate(d.getDate() + 1);
-  d.setHours(11, 0, 0, 0);
   const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return {
+    day: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
+    time: "11:00",
+  };
 }

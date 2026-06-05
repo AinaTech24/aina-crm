@@ -18,6 +18,8 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Save, Printer } from "lucide-react";
+import { SelectField } from "@/components/ui/SelectField";
+import { DateField } from "@/components/ui/DateField";
 
 type RecommendedAction =
   | "hold"
@@ -298,22 +300,22 @@ export function PortfolioReviewWorksheet({
                     />
                   </td>
                   <td className="px-2 py-2">
-                    <select
+                    <SelectField
                       value={r.investmentType ?? ""}
                       onChange={(e) =>
                         setItem(i, {
                           investmentType:
-                            (e.target.value as ItemRow["investmentType"]) ||
-                            null,
+                            (e.target.value as ItemRow["investmentType"]) || null,
                         })
                       }
-                      className="input-base text-xs w-full"
+                      size="sm"
+                      className="w-full"
                     >
                       <option value="">—</option>
                       <option value="sip">SIP</option>
                       <option value="lumpsum">Lumpsum</option>
                       <option value="mixed">Mixed</option>
-                    </select>
+                    </SelectField>
                   </td>
                   <td className="px-2 py-2 text-right">
                     <input
@@ -346,13 +348,13 @@ export function PortfolioReviewWorksheet({
                     />
                   </td>
                   <td className="px-2 py-2">
-                    <input
-                      type="date"
+                    <DateField
                       value={r.startDate ?? ""}
                       onChange={(e) =>
                         setItem(i, { startDate: e.target.value || null })
                       }
-                      className="input-base text-xs w-full"
+                      size="sm"
+                      className="w-full"
                     />
                   </td>
                   <td className="px-2 py-2 text-right">
@@ -433,24 +435,22 @@ export function PortfolioReviewWorksheet({
                     />
                   </td>
                   <td className="px-2 py-2">
-                    <select
+                    <SelectField
                       value={r.recommendedAction}
                       onChange={(e) =>
                         setItem(i, {
-                          recommendedAction: e.target
-                            .value as RecommendedAction,
+                          recommendedAction: e.target.value as RecommendedAction,
                         })
                       }
-                      className={`input-base text-xs w-full ${
-                        ACTION_TONE[r.recommendedAction] ?? ""
-                      }`}
+                      size="sm"
+                      className="w-full"
                     >
                       {ACTION_OPTIONS.map((o) => (
                         <option key={o.value} value={o.value}>
                           {o.label}
                         </option>
                       ))}
-                    </select>
+                    </SelectField>
                   </td>
                   <td className="px-2 py-2">
                     <textarea
