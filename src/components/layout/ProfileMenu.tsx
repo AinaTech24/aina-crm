@@ -114,8 +114,10 @@ export function ProfileMenu({
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-2 w-64 z-50 origin-top-right animate-scale-in">
-          <div className="card-elevated overflow-hidden">
+        <div className="absolute right-0 top-full mt-2 w-64 z-[60] origin-top-right animate-scale-in">
+          {/* Solid bg-white (not card-elevated, which is backdrop-blur-translucent
+              and lets busy page content bleed through). */}
+          <div className="rounded-2xl bg-white overflow-hidden shadow-xl border border-border/60">
             {/* Identity header — brand background */}
             <div className="px-4 py-4 brand-gradient text-white">
               <div className="flex items-center gap-3 min-w-0">
