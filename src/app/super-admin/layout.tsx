@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { Building2, Package, LifeBuoy, BarChart3, Settings, Users as UsersIcon, Activity, Image as ImageIcon, Bot } from "lucide-react";
 import { requireSession } from "@/lib/auth/session";
 import { SignOutLink } from "@/components/super-admin/SignOutLink";
+import { ToastProvider } from "@/components/ui/Toast";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +14,7 @@ export default async function SuperAdminLayout({ children }: { children: React.R
   }
 
   return (
+    <ToastProvider>
     <div className="min-h-screen flex">
       <aside className="w-60 border-r bg-slate-900 text-slate-100 flex-shrink-0 flex flex-col">
         <div className="p-4 border-b border-slate-800 flex items-center gap-2 font-semibold">
@@ -46,6 +48,7 @@ export default async function SuperAdminLayout({ children }: { children: React.R
         <div className="p-6">{children}</div>
       </main>
     </div>
+    </ToastProvider>
   );
 }
 

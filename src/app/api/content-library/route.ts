@@ -53,7 +53,7 @@ export async function GET() {
     // Platform admins see all assets; normal users see global assets + their tenant assets.
     // Query uses withTenant for normal users to automatically trigger Postgres RLS.
     const rows = platformAdmin
-      ? await withSystem(async (tx) =>
+      ? await withPlatformAdmin(session.userId, async (tx) =>
           tx.select().from(contentLibraryAssets).orderBy(desc(contentLibraryAssets.createdAt))
         )
       : await withTenant(session.tenantId, async (tx) =>

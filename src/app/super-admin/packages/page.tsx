@@ -4,6 +4,7 @@ import { Plus, Package as PackageIcon, Check, X } from "lucide-react";
 import { withPlatformAdmin } from "@/db/client";
 import { packages } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
+import { DeletePackageButton } from "@/components/super-admin/DeletePackageButton";
 
 export const dynamic = "force-dynamic";
 
@@ -41,8 +42,11 @@ export default async function PackagesPage() {
           </div>
         ) : (
           rows.map((p) => (
+            <div key={p.id} className="relative">
+            <div className="absolute bottom-4 right-4 z-10">
+              <DeletePackageButton id={p.id} name={p.name} />
+            </div>
             <Link
-              key={p.id}
               href={`/super-admin/packages/${p.id}`}
               className={`border rounded-lg bg-card p-5 relative flex flex-col h-full hover:border-primary/40 hover:shadow-sm transition ${
                 !p.isActive ? "opacity-60" : ""
@@ -79,6 +83,7 @@ export default async function PackagesPage() {
               </div>
               <div className="mt-auto pt-3 border-t text-xs text-primary">Edit →</div>
             </Link>
+            </div>
           ))
         )}
       </div>

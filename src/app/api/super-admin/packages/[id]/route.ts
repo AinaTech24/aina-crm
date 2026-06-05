@@ -14,12 +14,12 @@ import { handleApiError } from "@/lib/api/error-handler";
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withPlatformAdmin } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { requirePlatform } from "@/lib/auth/rbac";
-import { packages } from "@/db/schema";
+import { packages, subscriptions } from "@/db/schema";
 import { ALL_MODULES } from "@/lib/platform";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { PLATFORM_TENANT_ID } from "@/lib/platform";
@@ -110,6 +110,58 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     });
 
     return NextResponse.json(updated);
+  } catch (err: any) {
+    return handleApiError(err);
+  }
+}
+
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  try {
+    const session = await requireSession();
+    requirePlatform(session.roles, "platform.package.manage");
+
+    const clientMeta = clientMetaFromHeaders(req.headers);
+    const result = await withPlatformAdmin(session.userId, async (tx) => {
+      const before = (await tx.select().from(packages).where(eq(packages.id, id)).limit(1))[0];
+      if (!before) throw Object.assign(new Error("not found"), { status: 404 });
+
+      // Guard: a package on which any tenant is subscribed cannot be deleted —
+      // it would orphan the subscription's denormalized package_key + break
+      // sidebar/module gating. AINA should disable it (isActive=false) instead.
+      const inUse = (
+        await tx
+          .select({ n: sql<number>`count(*)::int` })
+          .from(subscriptions)
+          .where(eq(subscriptions.packageKey, before.key))
+      )[0]?.n ?? 0;
+      if (inUse > 0) {
+        throw Object.assign(
+          new Error(
+            `${inUse} tenant${inUse === 1 ? " is" : "s are"} on this package. Disable it instead of deleting.`
+          ),
+          { status: 409 }
+        );
+      }
+
+      await tx.delete(packages).where(eq(packages.id, id));
+
+      await recordAudit(tx, {
+        // AINA actions are platform-scoped — log them against the platform tenant.
+        tenantId: PLATFORM_TENANT_ID,
+        actorUserId: session.userId,
+        action: "package.delete",
+        entityType: "package",
+        entityId: id,
+        before: { name: before.name, key: before.key, isActive: before.isActive },
+        after: null,
+        ...clientMeta,
+      });
+
+      return { ok: true };
+    });
+
+    return NextResponse.json(result);
   } catch (err: any) {
     return handleApiError(err);
   }

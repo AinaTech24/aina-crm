@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { desc } from "drizzle-orm";
 import { Plus, Image as ImageIcon, FileText, Presentation, Video, Music, File } from "lucide-react";
-import { withSystem } from "@/db/client";
+import { withPlatformAdmin } from "@/db/client";
 import { contentLibraryAssets } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { isPlatformAdmin } from "@/lib/platform";
@@ -39,7 +39,7 @@ export default async function AinaContentLibraryPage() {
     );
   }
 
-  const rows = await withSystem(async (tx) =>
+  const rows = await withPlatformAdmin(session.userId, async (tx) =>
     tx.select().from(contentLibraryAssets).orderBy(desc(contentLibraryAssets.createdAt))
   );
 
