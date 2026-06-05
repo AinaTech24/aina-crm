@@ -61,13 +61,16 @@ export default async function ServiceRequestsPage({
   const srType = (sp.srtype ?? "").split(",").filter(Boolean);
   const breached = sp.breached === "1";
   const mine = sp.mine === "1";
+  const assigneeFilter = (sp.assignee ?? "").split(",").filter(Boolean);
 
   // Build WHERE conditions
   const conds: any[] = [sql`sr.tenant_id = ${session.tenantId}::uuid`];
   if (mine) conds.push(sql`sr.assigned_to_user_id = ${session.userId}::uuid`);
+  if (assigneeFilter.length)
+    conds.push(sql`sr.assigned_to_user_id IN (${sql.join(assigneeFilter.map((v) => sql`${v}::uuid`), sql`, `)})`);
   if (q) {
     conds.push(
-      sql`(sr.ticket_no ILIKE ${`%${q}%`} OR sr.subject ILIKE ${`%${q}%`} OR i.name ILIKE ${`%${q}%`})`
+      sql`(sr.ticket_no ILIKE ${`%${q}%`} OR sr.subject ILIKE ${`%${q}%`} OR i.name ILIKE ${`%${q}%`} OR u.name ILIKE ${`%${q}%`})`
     );
   }
   if (status.length)
@@ -151,10 +154,16 @@ export default async function ServiceRequestsPage({
       ORDER BY breached_count DESC, open_count DESC
       LIMIT 12
     `);
-    return { rows: rows.rows as any[], stats: stats.rows[0] as any, byAssignee: byAssignee.rows as any[] };
+    const rmRows = await tx.execute(sql`
+      SELECT id, name FROM users
+      WHERE tenant_id = ${session.tenantId}::uuid AND status = 'active'
+      ORDER BY name ASC
+    `);
+    return { rows: rows.rows as any[], stats: stats.rows[0] as any, byAssignee: byAssignee.rows as any[], rms: rmRows.rows as any[] };
   });
 
   const s = result.stats;
+  const rmOptions = (result.rms ?? []).map((r: any) => ({ value: String(r.id), label: r.name ?? "—" }));
   const respPct = Number(s.resp_total) > 0 ? Math.round((Number(s.resp_met) / Number(s.resp_total)) * 100) : null;
   const resoPct = Number(s.reso_total) > 0 ? Math.round((Number(s.reso_met) / Number(s.reso_total)) * 100) : null;
 
@@ -278,6 +287,9 @@ export default async function ServiceRequestsPage({
             label: "Owner",
             options: [{ value: "1", label: "My tickets" }],
           },
+          ...(rmOptions.length
+            ? [{ type: "multi" as const, key: "assignee", label: "Assignee", options: rmOptions }]
+            : []),
         ]}
         rightSlot={
           <div className="flex items-center gap-2">

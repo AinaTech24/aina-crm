@@ -94,6 +94,7 @@ export default async function LeadsPage({
   const q = (sp.q ?? "").trim();
   const stageFilter = (sp.stage ?? "").split(",").filter(Boolean);
   const sourceFilter = (sp.source ?? "").split(",").filter(Boolean);
+  const ownerFilter = (sp.owner ?? "").split(",").filter(Boolean);
   const view = sp.view === "table" ? "table" : "kanban";
   // Table sort: "score" (default — hottest first) or "recent".
   const sortKey = sp.sort === "recent" ? "recent" : "score";
@@ -117,7 +118,7 @@ export default async function LeadsPage({
     ];
     if (q) {
       conds.push(
-        sql`(leads.name ILIKE ${`%${q}%`} OR leads.phone ILIKE ${`%${q}%`} OR leads.email ILIKE ${`%${q}%`})`
+        sql`(leads.name ILIKE ${`%${q}%`} OR leads.phone ILIKE ${`%${q}%`} OR leads.email ILIKE ${`%${q}%`} OR users.name ILIKE ${`%${q}%`})`
       );
     }
     if (stageFilter.length) {
@@ -125,6 +126,8 @@ export default async function LeadsPage({
     }
     if (sourceFilter.length)
       conds.push(sql`leads.source IN (${sql.join(sourceFilter.map((v) => sql`${v}`), sql`, `)})`);
+    if (ownerFilter.length)
+      conds.push(sql`leads.owner_id IN (${sql.join(ownerFilter.map((v) => sql`${v}::uuid`), sql`, `)})`);
 
     // Quick-filter conditions — each adds a constraint; AND-combined.
     if (qf.mine) conds.push(sql`leads.owner_id = ${userId}`);
@@ -226,8 +229,17 @@ export default async function LeadsPage({
         ) AS avg_days_to_convert
       FROM leads
     `);
-    return { rows, s: stats.rows[0] as any };
+    // Roster for the "Owner (RM)" filter — so owners/managers can slice the
+    // pipeline by the RM who owns each lead.
+    const rmRows = await tx.execute(sql`
+      SELECT id, name FROM users
+      WHERE tenant_id = ${session.tenantId}::uuid AND status = 'active'
+      ORDER BY name ASC
+    `);
+    return { rows, s: stats.rows[0] as any, rms: rmRows.rows as any[] };
   });
+
+  const rmOptions = (data.rms ?? []).map((r: any) => ({ value: String(r.id), label: r.name ?? "—" }));
 
   // Enrich rows for the table view with a deterministic priority score, and
   // sort hottest-first by default (or most-recent when ?sort=recent).
@@ -409,6 +421,9 @@ export default async function LeadsPage({
               { value: "other", label: "Other" },
             ],
           },
+          ...(rmOptions.length
+            ? [{ type: "multi" as const, key: "owner", label: "Owner (RM)", options: rmOptions }]
+            : []),
           dateRangeFilter("created", "Created"),
         ]}
         rightSlot={
