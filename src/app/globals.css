@@ -121,13 +121,23 @@
   /* No raw browser outline on interactive controls — we render a custom
      focus-visible ring (below) for keyboard users instead, so mouse clicks
      never flash an ugly native outline but keyboard a11y is preserved. */
-  button, a, [role="button"], [role="tab"], summary, [tabindex]:not([tabindex="-1"]) {
+  button, a, [role="button"], [role="tab"], summary, [tabindex]:not([tabindex="-1"]),
+  input, textarea, select {
     @apply outline-none;
   }
 
   /* Smoother focus ring everywhere — keyboard a11y without ugliness */
   :focus-visible {
     @apply outline-none ring-2 ring-ring/40 ring-offset-1 ring-offset-background;
+  }
+
+  /* Form fields NEVER show the native black outline or the dark focus ring —
+     only a soft on-brand cue. Clicking any input on the site no longer flashes
+     a black outline anywhere. */
+  input:focus, textarea:focus, select:focus,
+  input:focus-visible, textarea:focus-visible, select:focus-visible {
+    @apply outline-none ring-2 ring-brand-cyan/25 ring-offset-0;
+    border-color: hsl(var(--brand-cyan) / 0.55);
   }
 
   /* Selection — on-brand cyan tint */

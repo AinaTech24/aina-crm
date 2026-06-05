@@ -77,7 +77,7 @@ function LoginForm() {
   return (
     <main className="min-h-screen grid grid-cols-1 lg:grid-cols-2">
       {/* Left — brand panel */}
-      <div className="hidden lg:flex relative brand-gradient text-white flex-col justify-between p-12 overflow-hidden">
+      <div className="hidden lg:flex relative bg-brand-navy text-white flex-col justify-between p-12 overflow-hidden">
         {/* Decorative orbs */}
         <div className="absolute -top-32 -left-32 size-96 rounded-full bg-white/10 blur-3xl" />
         <div className="absolute -bottom-32 -right-32 size-96 rounded-full bg-brand-cyan/20 blur-3xl" />
@@ -120,9 +120,10 @@ function LoginForm() {
       {/* Right — sign-in card */}
       <div className="flex items-center justify-center p-6 bg-background brand-soft">
         <div className="w-full max-w-sm animate-fade-in">
-          <div className="lg:hidden mb-8">
+          {/* Logo — centered + prominent, shown on every screen size */}
+          <div className="mb-8 flex justify-center">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/aina-wordmark.png" alt="Aina CRM" className="h-8 w-auto" />
+            <img src="/aina-logo.png" alt="Aina CRM" className="h-20 w-auto" />
           </div>
 
           <h1 className="text-3xl font-bold tracking-tight">
@@ -246,8 +247,16 @@ function LoginForm() {
           </div>
 
           <p className="mt-8 text-[11px] text-muted-foreground text-center">
-            Dev mode? Set <code className="bg-secondary px-1.5 py-0.5 rounded">NO_AUTH=1</code> in
-            <code className="bg-secondary px-1.5 py-0.5 rounded ml-1">.env</code> to bypass login.
+            Built by{" "}
+            <a
+              href="https://ainatech.in"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-semibold text-brand-cyan hover:underline"
+            >
+              Aina Tech Services LLP
+            </a>{" "}
+            · © {new Date().getFullYear()}
           </p>
         </div>
       </div>
