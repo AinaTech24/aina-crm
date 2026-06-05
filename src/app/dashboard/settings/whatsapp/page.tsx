@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { sql } from "drizzle-orm";
-import { ChevronLeft, MessageCircle, Check, AlertCircle } from "lucide-react";
+import { ChevronLeft, MessageCircle, Check } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 
@@ -19,7 +19,10 @@ export default async function WhatsAppSettingsPage() {
     return { numbers: numbers.rows as any[], templates: templates.rows[0] as any };
   });
 
-  const configured = !!(process.env.AISENSY_API_KEY && !process.env.AISENSY_API_KEY.includes("xxx"));
+  // WhatsApp delivery is managed by Aina — status reflects whether a number is
+  // wired for this firm, not any third-party API key.
+  const numbersConnected = data.numbers.length;
+  const active = numbersConnected > 0;
 
   return (
     <div className="space-y-4 max-w-3xl">
@@ -30,15 +33,23 @@ export default async function WhatsAppSettingsPage() {
         <MessageCircle className="size-5" /> WhatsApp connection
       </h1>
 
-      <div className={`border rounded-lg p-5 ${configured ? "bg-emerald-50 border-emerald-300" : "bg-amber-50 border-amber-300"}`}>
+      <div className={`border rounded-lg p-5 ${active ? "bg-emerald-50 border-emerald-300" : "bg-card border-border"}`}>
         <div className="flex items-start gap-2">
-          {configured ? <Check className="size-5 text-emerald-600 mt-0.5" /> : <AlertCircle className="size-5 text-amber-600 mt-0.5" />}
+          {active ? (
+            <Check className="size-5 text-emerald-600 mt-0.5" />
+          ) : (
+            <MessageCircle className="size-5 text-brand-cyan mt-0.5" />
+          )}
           <div>
-            <div className="font-medium">{configured ? "AiSensy API key configured" : "AiSensy not configured"}</div>
+            <div className="font-medium">
+              {active ? "Aina WhatsApp is active" : "WhatsApp is delivered through Aina"}
+            </div>
             <p className="text-sm text-muted-foreground mt-1">
-              {configured
-                ? "WhatsApp messages will route through AiSensy."
-                : "Add AISENSY_API_KEY to your .env to start sending. Until then, messages are queued in stub mode."}
+              {active
+                ? `Your messages are delivered through Aina WhatsApp${
+                    numbersConnected > 1 ? ` across ${numbersConnected} numbers` : ""
+                  }. Nothing to configure on your side.`
+                : "Aina manages your WhatsApp Business connection end-to-end. Your number is provisioned and verified during onboarding — there's nothing to set up here."}
             </p>
           </div>
         </div>

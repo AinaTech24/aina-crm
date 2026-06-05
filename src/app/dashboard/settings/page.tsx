@@ -65,7 +65,7 @@ const SECTIONS = [
   {
     icon: MessageCircle,
     title: "WhatsApp connection",
-    desc: "Connect your AiSensy / Gupshup number for client messaging.",
+    desc: "Your Aina WhatsApp number and Meta template approvals.",
     href: "/dashboard/settings/whatsapp",
   },
   {
