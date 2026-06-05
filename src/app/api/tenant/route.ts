@@ -20,6 +20,8 @@ import { tenants } from "@/db/schema";
 
 export const dynamic = "force-dynamic";
 
+const LocalOrAbsoluteUrl = z.string().regex(/^\//).or(z.string().url());
+
 const Body = z.object({
   displayName: z.string().min(1).optional(),
   legalName: z.string().min(1).optional(),
@@ -28,12 +30,12 @@ const Body = z.object({
   website: z.string().url().optional().or(z.literal("")),
   primaryColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
   secondaryColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
-  logoUrl: z.string().url().optional().or(z.literal("")),
+  logoUrl: LocalOrAbsoluteUrl.optional().or(z.literal("")),
   // Additional brand-logo variants (migration 0083) — each maps to a product
   // context (square icon, monogram, favicon). All optional; empty string clears.
-  logoIconUrl: z.string().url().optional().or(z.literal("")),
-  logoMarkUrl: z.string().url().optional().or(z.literal("")),
-  faviconUrl: z.string().url().optional().or(z.literal("")),
+  logoIconUrl: LocalOrAbsoluteUrl.optional().or(z.literal("")),
+  logoMarkUrl: LocalOrAbsoluteUrl.optional().or(z.literal("")),
+  faviconUrl: LocalOrAbsoluteUrl.optional().or(z.literal("")),
   aumRange: z.string().optional(),
   sipBookRange: z.string().optional(),
   teamSize: z.string().optional(),

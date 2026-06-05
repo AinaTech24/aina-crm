@@ -16,7 +16,7 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Save, Loader2, Upload, CreditCard } from "lucide-react";
+import { Save, Loader2, Upload, CreditCard, AlertCircle } from "lucide-react";
 import { HelpHint } from "@/components/help/HelpHint";
 import { LOGO_SLOTS, type LogoField } from "@/lib/branding/logo";
 
@@ -64,6 +64,7 @@ export function OrganisationProfileForm({
   const [uploadingField, setUploadingField] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [uploadErr, setUploadErr] = useState<string | null>(null);
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
@@ -98,7 +99,7 @@ export function OrganisationProfileForm({
   }
 
   async function uploadAsset(file: File, field: LogoField) {
-    setErr(null);
+    setUploadErr(null);
     setUploadingField(field);
     try {
       // 1. Ask server for a presigned PUT URL
@@ -131,7 +132,7 @@ export function OrganisationProfileForm({
 
       setForm((s) => ({ ...s, [field]: publicUrl }));
     } catch (e: any) {
-      setErr(e.message ?? "logo upload failed");
+      setUploadErr(e.message ?? "logo upload failed");
     } finally {
       setUploadingField(null);
     }
@@ -195,6 +196,24 @@ export function OrganisationProfileForm({
           Upload a logo for each context so your branding looks sharp everywhere. Only the
           <strong> Full logo</strong> is required — the rest fall back to it automatically. Transparent PNGs work best.
         </p>
+
+        {uploadErr && (
+          <div className="text-xs text-rose-700 bg-rose-50 border border-rose-100 rounded-lg p-3 flex items-start gap-2.5 my-2">
+            <AlertCircle className="size-4 text-rose-600 shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <div className="font-semibold">Upload failed</div>
+              <div className="text-rose-600/90 mt-0.5">{uploadErr}</div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setUploadErr(null)}
+              className="text-[10px] text-rose-700 font-semibold hover:underline shrink-0"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+
         <div className="grid sm:grid-cols-2 gap-3">
           {LOGO_SLOTS.map((slot) => {
             const url = (form as any)[slot.field] as string;

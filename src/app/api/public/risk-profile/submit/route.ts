@@ -44,6 +44,8 @@ export async function POST(req: NextRequest) {
     const tokenId: string | undefined = body.tokenId;
     const answers: Record<string, string> = body.answers ?? {};
     const signatureName: string = String(body.signatureName ?? "").trim();
+    const verificationMethod: string = body.verificationMethod ?? "client_otp";
+    const otpTransactionId: string | undefined = body.otpTransactionId;
     if (!tokenId) return NextResponse.json({ error: "missing tokenId" }, { status: 400 });
     if (!signatureName) return NextResponse.json({ error: "Signature required" }, { status: 400 });
 
@@ -134,6 +136,10 @@ export async function POST(req: NextRequest) {
         signedAt: now,
         signedByName: signatureName,
         nextReviewAt: next.toISOString().slice(0, 10),
+        verificationMethod,
+        otpTransactionId: otpTransactionId || null,
+        clientIp: ip || null,
+        clientUserAgent: ua || null,
       } as any);
 
       // Mirror to subject row

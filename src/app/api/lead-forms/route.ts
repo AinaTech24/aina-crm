@@ -47,7 +47,7 @@ const PostBody = z.object({
   branding: z
     .object({
       primaryColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
-      logoUrl: z.string().url().optional(),
+      logoUrl: z.string().regex(/^\//).or(z.string().url()).optional(),
       thankYouMessage: z.string().max(500).optional(),
       redirectUrl: z.string().url().optional(),
     })

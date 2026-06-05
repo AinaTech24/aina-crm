@@ -26,6 +26,7 @@
     "worker": "tsx watch src/workers/index.ts",
     "worker:prod": "tsx src/workers/index.ts",
     "seed": "tsx src/db/seed.ts",
+    "seed:prod": "tsx scripts/seed-prod.ts",
     "backfill:default-recipes": "tsx scripts/backfill-default-recipes.ts",
     "backfill:lead-scores": "tsx scripts/backfill-lead-scores.ts",
     "backfill:investor-health": "tsx scripts/backfill-investor-health.ts",

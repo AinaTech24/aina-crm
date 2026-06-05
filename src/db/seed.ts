@@ -160,19 +160,29 @@ async function seedAinaAdmin() {
       ON CONFLICT (id) DO NOTHING
     `);
 
-    const hash = await bcrypt.hash("aina12345", 12);
+    // Production: pass ADMIN_EMAIL + ADMIN_PASSWORD so no known default ships.
+    // Dev: falls back to the documented demo credentials.
+    const email = (process.env.ADMIN_EMAIL || "admin@ainatech.in").toLowerCase();
+    const password = process.env.ADMIN_PASSWORD || "aina12345";
+    const name = process.env.ADMIN_NAME || "AINA Admin";
+    const hash = await bcrypt.hash(password, 12);
     await tx.execute(sql`
       INSERT INTO users (
         id, tenant_id, email, name, password_hash, roles, status, activated_at, created_at, updated_at
       )
       VALUES (
-        gen_random_uuid(), ${PLATFORM_TENANT_ID}::uuid, 'admin@ainatech.in', 'AINA Admin',
+        gen_random_uuid(), ${PLATFORM_TENANT_ID}::uuid, ${email}, ${name},
         ${hash}, ARRAY['platform_admin']::text[], 'active', now(), now(), now()
       )
       ON CONFLICT (tenant_id, email) DO NOTHING
     `);
   });
-  console.log("✓ AINA admin seeded — login: admin@ainatech.in / aina12345");
+  const shownEmail = (process.env.ADMIN_EMAIL || "admin@ainatech.in").toLowerCase();
+  console.log(
+    process.env.ADMIN_PASSWORD
+      ? `✓ AINA admin seeded — login: ${shownEmail} (password from ADMIN_PASSWORD)`
+      : `✓ AINA admin seeded — login: ${shownEmail} / aina12345`
+  );
 }
 
 // Helper: days from now (negative = past)

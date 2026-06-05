@@ -16,7 +16,7 @@ import { z } from "zod";
 import { withSystem } from "@/db/client";
 import { verify2faChallenge } from "@/lib/auth/jwt";
 import { attachSessionCookie } from "@/lib/auth/issue-session";
-import { verifyTotp } from "@/lib/auth/totp";
+import { verifyTotp, decryptSecret } from "@/lib/auth/totp";
 import { enforce } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
     }
 
     const code = parse.data.code.trim();
-    let authed = verifyTotp(user.two_fa_secret, code);
+    let authed = verifyTotp(decryptSecret(user.two_fa_secret), code);
 
     // Fall back to a one-time backup code (consume it on success).
     if (!authed && Array.isArray(user.two_fa_backup_codes)) {

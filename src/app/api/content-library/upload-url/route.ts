@@ -41,7 +41,9 @@ export async function POST(req: NextRequest) {
       : `tenants/${session.tenantId}/library/${Date.now()}-${safe}`;
     const url = await presignedPutUrl(key, parse.data.contentType, 600);
     const region = process.env.S3_REGION ?? "ap-south-1";
-    const publicUrl = `https://${bucket()}.s3.${region}.amazonaws.com/${key}`;
+    const publicUrl = url.startsWith("/api/upload-local")
+      ? url
+      : `https://${bucket()}.s3.${region}.amazonaws.com/${key}`;
     return NextResponse.json({ url, key, publicUrl });
   } catch (err: any) {
     return handleApiError(err);

@@ -64,6 +64,13 @@ export const riskProfileResponses = pgTable(
     /** Annual review — auto-set to signedAt + 365d when missing. */
     nextReviewAt: date("next_review_at"),
 
+    verificationMethod: text("verification_method", {
+      enum: ["rm_entry", "client_otp", "client_physical"],
+    }).notNull().default("rm_entry"),
+    otpTransactionId: text("otp_transaction_id"),
+    clientIp: text("client_ip"),
+    clientUserAgent: text("client_user_agent"),
+
     rmRemarks: text("rm_remarks"),
     createdById: uuid("created_by_id"),
 

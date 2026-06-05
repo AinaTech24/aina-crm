@@ -38,7 +38,11 @@ export async function GET(req: NextRequest) {
       return await presignedGetUrl(doc.storageKey, 600, doc.name);
     });
 
-    return NextResponse.redirect(downloadUrl);
+    const redirectUrl = downloadUrl.startsWith("/")
+      ? new URL(downloadUrl, req.url).toString()
+      : downloadUrl;
+
+    return NextResponse.redirect(redirectUrl);
   } catch (err: any) {
     return handleApiError(err);
   }

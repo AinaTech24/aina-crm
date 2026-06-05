@@ -10,6 +10,12 @@
 
 import { S3Client, GetObjectCommand, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import fs from "fs";
+import path from "path";
+
+export function isS3Configured(): boolean {
+  return !!(process.env.S3_ACCESS_KEY_ID && process.env.S3_SECRET_ACCESS_KEY);
+}
 
 function client(): S3Client {
   return new S3Client({
@@ -35,6 +41,9 @@ export function vaultKey(tenantId: string, kind: "compliance" | "kyc" | "marketi
 }
 
 export async function presignedPutUrl(key: string, contentType: string, ttlSeconds = 600): Promise<string> {
+  if (!isS3Configured()) {
+    return `/api/upload-local/${key}`;
+  }
   const cmd = new PutObjectCommand({
     Bucket: bucket(),
     Key: key,
@@ -45,6 +54,9 @@ export async function presignedPutUrl(key: string, contentType: string, ttlSecon
 }
 
 export async function presignedGetUrl(key: string, ttlSeconds = 600, filename?: string): Promise<string> {
+  if (!isS3Configured()) {
+    return `/api/upload-local/${key}`;
+  }
   const cmd = new GetObjectCommand({
     Bucket: bucket(),
     Key: key,
@@ -54,6 +66,13 @@ export async function presignedGetUrl(key: string, ttlSeconds = 600, filename?: 
 }
 
 export async function deleteObject(key: string): Promise<void> {
+  if (!isS3Configured()) {
+    const filePath = path.join(process.cwd(), "node-local", "uploads", key);
+    if (fs.existsSync(filePath)) {
+      await fs.promises.unlink(filePath).catch(() => {});
+    }
+    return;
+  }
   await client().send(new DeleteObjectCommand({ Bucket: bucket(), Key: key }));
 }
 
@@ -62,9 +81,13 @@ export async function deleteObject(key: string): Promise<void> {
  * etc.). For large files use presignedPutUrl + browser direct upload.
  */
 export async function putObject(key: string, body: Buffer | Uint8Array, contentType: string): Promise<void> {
-  // If S3 isn't configured (local dev), no-op. The compliance_documents row
-  // still gets created with the key — manual re-upload can happen later.
-  if (!process.env.S3_BUCKET && !process.env.S3_ACCESS_KEY_ID) return;
+  if (!isS3Configured()) {
+    const filePath = path.join(process.cwd(), "node-local", "uploads", key);
+    const dir = path.dirname(filePath);
+    await fs.promises.mkdir(dir, { recursive: true });
+    await fs.promises.writeFile(filePath, body);
+    return;
+  }
   await client().send(
     new PutObjectCommand({
       Bucket: bucket(),

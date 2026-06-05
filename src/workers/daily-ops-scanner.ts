@@ -44,13 +44,13 @@
  * Total daily run: ~25 seconds for 500 tenants.
  */
 
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { withSystem, withTenant } from "@/db/client";
 import { recomputeAllHealth } from "@/lib/investors/health-persist";
 import { recomputeAllFamilyHealth } from "@/lib/families/health-persist";
 import { recomputeAllGoals } from "@/lib/goal-planning/recompute";
 import { recomputeAllAum, revalueAllFolios } from "@/lib/finance/aum-persist";
-import { eventsOutbox } from "@/db/schema";
+import { eventsOutbox, investors, folios, suitabilityMatrixEntries } from "@/db/schema";
 
 interface ScanResult {
   tenantId: string;
@@ -94,6 +94,8 @@ interface ScanResult {
   srEscalated: number;
   /** Attendance rows auto-seeded for today (week-off/on-leave/absent). */
   attendanceSeeded: number;
+  /** Active clients whose portfolios drifted from their risk profiles. */
+  portfolioRiskDrift: number;
   durationMs: number;
 }
 
@@ -153,6 +155,7 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
     mandateExpiring: 0,
     srEscalated: 0,
     attendanceSeeded: 0,
+    portfolioRiskDrift: 0,
     durationMs: 0,
   };
 
@@ -817,6 +820,75 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
           .onConflictDoNothing();
       }
 
+      // ── 13. Portfolio Risk-Drift Check ────────────────────────────────
+      // Scans active investors with a registered risk profile and AUM > 0.
+      // Computes actual equity % from folios and flags a drift if it exceeds
+      // the suitability matrix long-term equity target by >15% absolute.
+      const driftInvestors = await tx.execute(sql`
+        SELECT id, name, risk_profile, rm_id, aum FROM investors
+        WHERE status = 'active'
+          AND risk_profile IS NOT NULL
+          AND aum > 0
+      `);
+
+      const matrixRows = await tx.select().from(suitabilityMatrixEntries);
+
+      let driftEmitted = 0;
+      for (const inv of driftInvestors.rows as Array<{ id: string; name: string; risk_profile: string; rm_id: string | null; aum: string }>) {
+        const invFolios = await tx.select().from(folios).where(eq(folios.investorId, inv.id));
+        
+        let totalValue = 0;
+        let equityValue = 0;
+
+        for (const f of invFolios) {
+          const schemes = (f.schemes ?? []) as Array<{ category?: string; value?: number }>;
+          for (const s of schemes) {
+            const val = Number(s.value ?? 0);
+            if (isFinite(val) && val > 0) {
+              totalValue += val;
+              const cat = s.category ?? "";
+              const c = cat.toLowerCase();
+              if (c.includes("equity") || c.includes("growth")) {
+                equityValue += val;
+              }
+            }
+          }
+        }
+
+        if (totalValue > 50000) { // Only scan portfolios with substantial value (> ₹50,000)
+          const actualEquityPct = (equityValue / totalValue) * 100;
+          
+          const mappedRisk = 
+            inv.risk_profile === "conservative" ? "low" : 
+            inv.risk_profile === "moderate" ? "moderate" : "high";
+
+          const cell = matrixRows.find(m => m.riskProfile === mappedRisk && m.timeHorizon === "long");
+          const targetEquityPct = cell?.allocationHints?.["equity"] ?? (mappedRisk === "low" ? 30 : mappedRisk === "moderate" ? 55 : 85);
+
+          const driftPct = actualEquityPct - targetEquityPct;
+
+          if (driftPct >= 15) { // Absolute 15% drift threshold
+            await tx.insert(eventsOutbox).values({
+              tenantId,
+              kind: "investor.portfolio_risk_drift",
+              entityType: "investor",
+              entityId: inv.id,
+              after: {
+                name: inv.name,
+                actualEquityPct: Math.round(actualEquityPct),
+                targetEquityPct: Math.round(targetEquityPct),
+                driftPct: Math.round(driftPct),
+                totalAum: Math.round(totalValue),
+                rmId: inv.rm_id,
+              } as any,
+              meta: { scanDate, source: "daily-ops-scanner" } as any,
+            } as any).onConflictDoNothing();
+            driftEmitted++;
+          }
+        }
+      }
+      result.portfolioRiskDrift = driftEmitted;
+
       // ── Attendance auto-seed — ensure today's row per active employee ────
       // approved leave → on_leave · Sunday → week_off · else absent (until they
       // clock in). ON CONFLICT DO NOTHING so a real clock-in is never clobbered.
@@ -966,6 +1038,7 @@ export async function runDailyOpsScan(): Promise<{
     mandateExpiring: 0,
     srEscalated: 0,
     attendanceSeeded: 0,
+    portfolioRiskDrift: 0,
   };
   // Each tenant scan is fully independent (its own withTenant tx, RLS-scoped to
   // that tenant's rows), so they can run concurrently without lock contention.
@@ -1001,6 +1074,7 @@ export async function runDailyOpsScan(): Promise<{
       totals.mandateExpiring += r.mandateExpiring;
       totals.srEscalated += r.srEscalated;
       totals.attendanceSeeded += r.attendanceSeeded;
+      totals.portfolioRiskDrift += r.portfolioRiskDrift;
   };
   const worker = async () => {
     for (;;) {

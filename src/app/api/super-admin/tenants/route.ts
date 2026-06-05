@@ -103,6 +103,16 @@ export async function POST(req: NextRequest) {
           `);
         }
       }
+
+      // Audit (append-only): who provisioned this tenant + on what plan.
+      await tx.insert(subscriptionEvents).values({
+        subscriptionId: subId,
+        tenantId,
+        eventType: "created" as any,
+        actor: `aina_admin:${session.userId}`,
+        toStatus: "trial",
+        notes: `Provisioned '${body.firmName}' (ARN ${body.arn}) on '${body.packageKey}' — ${body.trialDays}-day trial.`,
+      } as any);
     });
 
     return NextResponse.json({ tenantId, userId, subscriptionId: subId }, { status: 201 });

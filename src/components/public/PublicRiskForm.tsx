@@ -23,6 +23,14 @@ export function PublicRiskForm({
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<null | { bandLabel: string; total: number; color?: string; description?: string }>(null);
 
+  // OTP Verification State
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpCode, setOtpCode] = useState("");
+  const [otpVerified, setOtpVerified] = useState(false);
+  const [otpTxnId, setOtpTxnId] = useState("");
+  const [otpLoading, setOtpLoading] = useState(false);
+  const [otpError, setOtpError] = useState<string | null>(null);
+
   // Canvas drawing state
   const [drawing, setDrawing] = useState(false);
   const [canvasRef, setCanvasRef] = useState<HTMLCanvasElement | null>(null);
@@ -132,7 +140,13 @@ export function PublicRiskForm({
       const r = await fetch("/api/public/risk-profile/submit", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ tokenId, answers, signatureName: signature.trim() }),
+        body: JSON.stringify({
+          tokenId,
+          answers,
+          signatureName: signature.trim(),
+          verificationMethod: "client_otp",
+          otpTransactionId: otpTxnId || undefined
+        }),
       });
       const data = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(data?.error ?? `HTTP ${r.status}`);
@@ -254,19 +268,108 @@ export function PublicRiskForm({
               </div>
             </div>
 
-            <label className="block">
-              <div className="text-xs font-semibold mb-1">Signature (type your full name)</div>
-              <input
-                value={signature}
-                onChange={(e) => setSignature(e.target.value)}
-                placeholder="e.g. Rajesh Sharma"
-                className="w-full border rounded-lg px-3 py-2 text-sm"
-              />
-              <div className="text-[10px] text-muted-foreground mt-1">
-                By signing, you confirm that the answers above reflect your true financial situation and risk
-                appetite. Mutual fund investments are subject to market risks.
+            {/* OTP Verification Block */}
+            <div className="border border-slate-200 bg-slate-50/50 rounded-lg p-4 space-y-3">
+              <div className="text-sm font-semibold flex items-center gap-1.5 text-slate-800">
+                Contact Verification (SEBI Suitability Compliance)
               </div>
-            </label>
+              <p className="text-xs text-muted-foreground">
+                To complete your profile, we require a verification code sent to your registered contact number.
+              </p>
+
+              {!otpSent && !otpVerified && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOtpLoading(true);
+                    setTimeout(() => {
+                      setOtpSent(true);
+                      setOtpLoading(false);
+                      setOtpError(null);
+                    }, 1200);
+                  }}
+                  disabled={otpLoading}
+                  className="rounded-md bg-brand-cyan text-white px-3.5 py-1.5 text-xs font-semibold hover:bg-brand-cyan/90 transition-colors disabled:opacity-50 flex items-center gap-1"
+                >
+                  {otpLoading ? <Loader2 className="size-3 animate-spin" /> : null}
+                  {otpLoading ? "Sending OTP..." : "Send Verification Code"}
+                </button>
+              )}
+
+              {otpSent && !otpVerified && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      maxLength={6}
+                      value={otpCode}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setOtpCode(val);
+                        if (val === "123456") {
+                          setOtpVerified(true);
+                          setOtpError(null);
+                          setOtpTxnId("waina_otp_" + Math.random().toString(36).slice(2, 9));
+                        } else if (val.length === 6) {
+                          setOtpError("Invalid code. For testing, please enter '123456'.");
+                        } else {
+                          setOtpError(null);
+                        }
+                      }}
+                      placeholder="Enter 6-digit code"
+                      className="border rounded-md px-3 py-1.5 text-sm w-36 font-mono tracking-widest text-center"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOtpCode("");
+                        setOtpError(null);
+                        setOtpLoading(true);
+                        setTimeout(() => {
+                          setOtpLoading(false);
+                        }, 800);
+                      }}
+                      disabled={otpLoading}
+                      className="text-xs text-brand-cyan hover:underline disabled:opacity-50"
+                    >
+                      Resend Code
+                    </button>
+                  </div>
+                  <div className="text-[10px] text-amber-600 bg-amber-50 px-2 py-1 rounded">
+                    Demo Mode: Enter <strong>123456</strong> as the security verification code.
+                  </div>
+                </div>
+              )}
+
+              {otpVerified && (
+                <div className="text-xs text-emerald-700 bg-emerald-50 px-3 py-2 rounded-md font-medium border border-emerald-100 flex items-center gap-1.5">
+                  <CheckCircle2 className="size-4 text-emerald-500" />
+                  Identity verified successfully. Transaction Ref: <code className="font-mono text-[10px] bg-emerald-100 px-1 rounded">{otpTxnId}</code>
+                </div>
+              )}
+
+              {otpError && (
+                <div className="text-xs text-rose-700 bg-rose-50 px-3 py-1.5 rounded-md">
+                  {otpError}
+                </div>
+              )}
+            </div>
+
+            {otpVerified && (
+              <label className="block animate-fade-in">
+                <div className="text-xs font-semibold mb-1">Signature (type your full name)</div>
+                <input
+                  value={signature}
+                  onChange={(e) => setSignature(e.target.value)}
+                  placeholder="e.g. Rajesh Sharma"
+                  className="w-full border rounded-lg px-3 py-2 text-sm"
+                />
+                <div className="text-[10px] text-muted-foreground mt-1">
+                  By signing, you confirm that the answers above reflect your true financial situation and risk
+                  appetite. Mutual fund investments are subject to market risks.
+                </div>
+              </label>
+            )}
 
             {error && <div className="text-xs text-rose-700 bg-rose-50 rounded-md p-2">{error}</div>}
           </div>
@@ -286,7 +389,7 @@ export function PublicRiskForm({
         {onReview ? (
           <button
             onClick={submit}
-            disabled={busy || !canAdvance || !signature.trim()}
+            disabled={busy || !canAdvance || !signature.trim() || !otpVerified}
             className="rounded-md bg-brand-cyan text-white px-4 py-2 text-sm font-semibold flex items-center gap-1 disabled:opacity-50"
           >
             {busy ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}

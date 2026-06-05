@@ -12,7 +12,7 @@ import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { withSystem } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { verifyTotp, generateBackupCodes } from "@/lib/auth/totp";
+import { verifyTotp, generateBackupCodes, decryptSecret } from "@/lib/auth/totp";
 import { recordAudit } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
     if (!row?.two_fa_secret) {
       return NextResponse.json({ error: "no pending enrollment — start setup first" }, { status: 409 });
     }
-    if (!verifyTotp(row.two_fa_secret, parse.data.code)) {
+    if (!verifyTotp(decryptSecret(row.two_fa_secret), parse.data.code)) {
       return NextResponse.json({ error: "invalid code" }, { status: 401 });
     }
 
