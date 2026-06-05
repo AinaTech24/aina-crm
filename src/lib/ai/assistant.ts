@@ -29,6 +29,64 @@ function client() {
   return aiMessagesClient();
 }
 
+/**
+ * Robustly parse a JSON object/array out of an LLM response. Tolerates code
+ * fences, leading/trailing prose, and (best-effort) a truncated tail by
+ * balancing open brackets/strings. Throws a clean, user-facing message — never
+ * a raw "Unterminated string in JSON…" / "Unexpected token…" SyntaxError, and
+ * never a cryptic "Cannot read properties of undefined" downstream.
+ *
+ * Pair this with `responseFormat: "json"` on the create() call so the provider
+ * emits a single well-formed JSON value in the first place; this is the safety
+ * net for the rare truncated/garbled response.
+ */
+function parseAiJson<T = any>(raw: string): T {
+  if (!raw || !raw.trim()) {
+    throw new Error("The AI returned an empty response. Please try again.");
+  }
+  // Strip a leading ```json / ``` fence and a trailing ``` fence if present.
+  let s = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
+  // Slice from the first { or [ (drop any preamble the model added).
+  const start = s.search(/[[{]/);
+  if (start > 0) s = s.slice(start);
+  try {
+    return JSON.parse(s) as T;
+  } catch {
+    /* fall through to repair */
+  }
+  try {
+    return JSON.parse(repairTruncatedJson(s)) as T;
+  } catch {
+    throw new Error("The AI returned an incomplete response. Please try again.");
+  }
+}
+
+/** Best-effort close of a JSON value truncated mid-stream (open string + brackets). */
+function repairTruncatedJson(s: string): string {
+  const stack: string[] = [];
+  let inStr = false;
+  let esc = false;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (c === "\\") esc = true;
+      else if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') inStr = true;
+    else if (c === "{" || c === "[") stack.push(c);
+    else if (c === "}" || c === "]") stack.pop();
+  }
+  let out = s;
+  if (inStr) out += '"'; // close a dangling string value
+  out = out.replace(/\\+$/, ""); // drop a trailing escape
+  out = out.replace(/,\s*$/, ""); // drop a dangling comma
+  out = out.replace(/:\s*$/, ": null"); // dangling "key": → give it a value
+  for (let i = stack.length - 1; i >= 0; i--) out += stack[i] === "{" ? "}" : "]";
+  return out;
+}
+
 /* ============================================================================
  * Insurance policy document → structured auto-fill
  * ============================================================================
@@ -288,8 +346,9 @@ Output ONLY the JSON AST — no markdown, no explanation.`;
   try {
     const result = await client().messages.create({
       model: FAST_MODEL,
-      max_tokens: 2048,
+      max_tokens: 3072,
       system: systemPrompt,
+      responseFormat: "json",
       messages: [{ role: "user", content: query }],
     });
     const text = result.content
@@ -298,9 +357,7 @@ Output ONLY the JSON AST — no markdown, no explanation.`;
       .join("\n")
       .trim();
 
-    // Strip code-fence if model added one
-    const json = text.replace(/^```(?:json)?\n?/, "").replace(/```$/, "").trim();
-    const parsed = JSON.parse(json);
+    const parsed = parseAiJson(text);
     const ast = FilterASTSchema.safeParse(parsed);
     if (!ast.success) {
       return { error: `Generated AST failed schema validation: ${ast.error.issues.map((i) => i.message).join("; ")}` };
@@ -989,13 +1046,13 @@ Hard rules (SEBI / AMFI):
   try {
     const res = await client().messages.create({
       model: REASONING_MODEL,
-      max_tokens: 1200,
+      max_tokens: 4096,
       system,
+      responseFormat: "json",
       messages: [{ role: "user", content: ctx }],
     });
     const text = res.content.filter((b) => b.type === "text").map((b: any) => b.text).join("\n").trim();
-    const json = text.replace(/^```(?:json)?\n?/, "").replace(/```$/, "").trim();
-    const p = JSON.parse(json);
+    const p = parseAiJson(text);
     return {
       summary: String(p.summary ?? ""),
       talkingPoints: Array.isArray(p.talkingPoints) ? p.talkingPoints.map(String).slice(0, 6) : [],

@@ -165,6 +165,12 @@ type CreateParams = {
   max_tokens: number;
   system?: string;
   messages: AiMessage[];
+  /**
+   * When "json", ask the provider to emit a single well-formed JSON value (no
+   * prose, no code fences). On Gemini this sets responseMimeType:application/json
+   * which prevents the truncated/fenced output that broke our JSON.parse callers.
+   */
+  responseFormat?: "json";
 };
 
 type AiResponse = { content: Array<{ type: "text"; text: string }> };
@@ -270,7 +276,14 @@ async function geminiCreate(
   }));
   const body: any = {
     contents,
-    generationConfig: { maxOutputTokens: params.max_tokens },
+    generationConfig: {
+      maxOutputTokens: params.max_tokens,
+      // Force a single well-formed JSON value for structured callers. This is
+      // what stops Gemini 2.5 from spending the token budget on "thinking" and
+      // emitting truncated/fenced JSON (the cause of the "Unterminated string"
+      // / parse errors on the AI Brief + Smart-search).
+      ...(params.responseFormat === "json" ? { responseMimeType: "application/json" } : {}),
+    },
   };
   if (params.system) body.system_instruction = { parts: [{ text: params.system }] };
 
@@ -303,12 +316,29 @@ async function geminiCreate(
       const data: any = await res.json();
       const blocked = data?.promptFeedback?.blockReason;
       if (blocked) throw new Error(`The AI declined to answer this request (${blocked}).`);
-      const parts = data?.candidates?.[0]?.content?.parts ?? [];
+      const cand = data?.candidates?.[0];
+      const parts = cand?.content?.parts ?? [];
       const text = parts.map((p: any) => (typeof p?.text === "string" ? p.text : "")).join("");
+      // Gemini 2.5 can return finishReason MAX_TOKENS with the whole budget spent
+      // on hidden "thinking" tokens and no visible text. Surface that as a clean,
+      // retryable error instead of letting callers JSON.parse("") and throw a
+      // cryptic SyntaxError.
+      if (!text.trim()) {
+        const reason = cand?.finishReason;
+        const err = new Error(
+          reason === "MAX_TOKENS"
+            ? "The AI response was cut off. Please try again."
+            : "The AI returned an empty response. Please try again."
+        ) as Error & { retryable?: boolean };
+        err.retryable = true;
+        throw err;
+      }
       return { content: [{ type: "text", text }] };
     } catch (e: any) {
-      // Network/timeout (AbortError, connection reset) is also worth retrying.
+      // Network/timeout (AbortError, connection reset) — and a cut-off/empty
+      // generation (e.retryable, set above) — are worth one more attempt.
       const transient =
+        e?.retryable === true ||
         e?.name === "AbortError" ||
         e?.code === "UND_ERR_CONNECT_TIMEOUT" ||
         /fetch failed|network|ECONNRESET|ETIMEDOUT/i.test(e?.message ?? "");
