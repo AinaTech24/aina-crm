@@ -18,6 +18,7 @@ import { can } from "@/lib/auth/rbac";
 import { withTenant } from "@/db/client";
 import { getTeamDashboard, type Metric } from "@/lib/team/dashboard";
 import { LEAVE_TYPE_LABELS } from "@/lib/leave/policy";
+import { TeamMemberFilter } from "@/components/dashboards/TeamMemberFilter";
 
 export const dynamic = "force-dynamic";
 
@@ -58,6 +59,7 @@ export default async function TeamDashboardPage({
   }
 
   const sp = await searchParams;
+  const member = (sp.member ?? "").trim();
   const now = new Date();
   const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
   const from = sp.from ? new Date(sp.from) : firstOfMonth;
@@ -72,6 +74,7 @@ export default async function TeamDashboardPage({
         fromISO: from.toISOString(),
         toEndISO: toEnd.toISOString(),
         rangeLabel: { from: ymd(from), to: ymd(to) },
+        memberId: member || undefined,
       }),
     { userId: session.userId, branchId: session.branchId, roles: session.roles }
   );
@@ -96,11 +99,26 @@ export default async function TeamDashboardPage({
           (SELECT COUNT(*)::int FROM users WHERE tenant_id = ${session.tenantId}::uuid AND status = 'active') AS active_employees
         FROM attendance WHERE tenant_id = ${session.tenantId}::uuid
       `);
-      return { rows: r.rows as any[], att: att.rows[0] as any };
+      // Roster for the member-scope dropdown.
+      const roster = await tx.execute(sql`
+        SELECT id, name FROM users
+        WHERE tenant_id = ${session.tenantId}::uuid AND status = 'active'
+        ORDER BY name ASC
+      `);
+      return {
+        rows: r.rows as any[],
+        att: att.rows[0] as any,
+        members: (roster.rows as { id: string; name: string }[]).map((m) => ({
+          id: String(m.id),
+          name: m.name ?? "—",
+        })),
+      };
     },
     { userId: session.userId, branchId: session.branchId, roles: session.roles }
   );
   const onLeave = coverage.rows;
+  const members = coverage.members;
+  const selectedMember = member ? members.find((m) => m.id === member) : undefined;
 
   // Range presets
   const fy = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1; // India FY starts Apr
@@ -119,24 +137,34 @@ export default async function TeamDashboardPage({
             <Users2 className="size-6 text-brand-cyan" /> Team Dashboard
           </h1>
           <p className="text-muted-foreground text-sm mt-0.5">
-            Open workload, today's activity, and results — firm-wide, with who's accountable.
+            {selectedMember
+              ? `Open workload, today's activity, and results — scoped to ${selectedMember.name}.`
+              : "Open workload, today's activity, and results — firm-wide, with who's accountable."}
           </p>
         </div>
-        <div className="inline-flex rounded-lg border border-border bg-secondary/40 p-0.5 gap-0.5">
-          {presets.map((pr) => {
-            const active = data.range.from === pr.from && data.range.to === pr.to;
-            return (
-              <Link
-                key={pr.label}
-                href={`/dashboard/team?from=${pr.from}&to=${pr.to}`}
-                className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
-                  active ? "bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {pr.label}
-              </Link>
-            );
-          })}
+        <div className="flex items-center gap-3 flex-wrap">
+          <TeamMemberFilter
+            members={members}
+            selected={selectedMember ? member : ""}
+            from={data.range.from}
+            to={data.range.to}
+          />
+          <div className="inline-flex rounded-lg border border-border bg-secondary/40 p-0.5 gap-0.5">
+            {presets.map((pr) => {
+              const active = data.range.from === pr.from && data.range.to === pr.to;
+              return (
+                <Link
+                  key={pr.label}
+                  href={`/dashboard/team?from=${pr.from}&to=${pr.to}${member ? `&member=${member}` : ""}`}
+                  className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                    active ? "bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {pr.label}
+                </Link>
+              );
+            })}
+          </div>
         </div>
       </div>
 
