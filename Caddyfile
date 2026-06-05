@@ -6,6 +6,12 @@
 
 {$APP_DOMAIN} {
 	encode gzip zstd
+	# Access log to stdout (visible via `docker logs app-caddy-1`) — request
+	# method, path, and status for every hit. Cheap; invaluable for debugging.
+	log {
+		output stdout
+		format console
+	}
 	reverse_proxy web:3000 {
 		health_uri /api/health
 		health_interval 30s
