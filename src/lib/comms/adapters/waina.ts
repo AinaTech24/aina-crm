@@ -1,27 +1,22 @@
 /**
- * WAina (ainatech.in) WhatsApp adapter.
+ * Aina WhatsApp (Wapi) adapter — the operator's OWN WhatsApp Business sender on
+ * https://beckend.ainatech.in (no third-party BSP markup).
  *
- * WAina is the operator's OWN WhatsApp Business sender — no third-party BSP
- * markup. It exposes a single outbound endpoint that accepts a Meta-style
- * template payload:
+ * Implements the documented "Wapi WhatsApp API" (https://beckend.ainatech.in/api/docs):
  *
- *   POST {WAINA_WEBHOOK_URL}?api_key={WAINA_API_KEY}
- *   {
- *     "phone_number": "<wa_id, country code + number, no '+'>",
- *     "contact_name": "<display name>",
- *     "message_type": "template",
- *     "template_name": "<Meta-approved template name>",
- *     "language_code": "en_US",
- *     "template_components": [
- *       { "type": "body", "parameters": [ { "type": "text", "text": "<value>" } ] }
- *     ]
- *   }
+ *   Auth      header  x-api-key: <key>          (long-lived workspace API key)
+ *   Send      POST    {base}/whatsapp/send
+ *               text     → { to, message }
+ *               template → { to, template_name, language, components: [...] }
+ *               (phone_number_id optional → defaults to the primary number)
+ *   Response  { success: bool, data: { message_id, wa_message_id, status: "sent"|"queued"|"failed" } }
+ *   Templates GET     {base}/extension/templates    → { success, data: [...] }
+ *   Numbers   GET     {base}/extension/phone-numbers → { success, data: [...] }
+ *   Status    GET     {base}/extension/status        → { success, data: { workspace_name, phone_numbers } }
  *
- * This is a DROP-IN for the AiSensy adapter on the *send* path; the active
- * provider is chosen in ./whatsapp.ts via WHATSAPP_PROVIDER=waina. It implements
- * the same method surface (send / listTemplates / submitTemplate /
- * verifyWebhookSignature) so every existing importer keeps type-checking, even
- * though WAina manages templates + inbound webhooks in its own console.
+ * Base URL precedence: tenant-saved override (args.webhookUrl) → WAINA_BASE_URL →
+ * WAINA_WEBHOOK_URL (legacy) → the platform default. Any legacy full send URL is
+ * normalised back to the `/api` base.
  *
  * Template-name resolution (first non-empty wins):
  *   templateVersion.body.wainaTemplateName
@@ -30,43 +25,49 @@
  *   templateVersion.body.aisensyCampaignName
  *
  * Body parameters map from the template's ordered `variables[]` → resolved
- * `tokens`. For templates with header media / buttons / multiple components,
- * set `body.wainaTemplateComponents` to the full component array using
- * `${tokenKey}` placeholders — it is sent verbatim after token substitution.
+ * `tokens` into the Meta `components` payload. For header media / buttons /
+ * multiple components, set `body.wainaTemplateComponents` (or `body.components`)
+ * to the full component array using `${tokenKey}` placeholders — it is sent
+ * verbatim after token substitution. With no template name, a plain-text body is
+ * sent as `{ to, message }` (only valid inside the 24-hour customer-care window).
  */
 
 import axios from "axios";
 import type { SendWhatsappArgs } from "./aisensy";
 
-interface WainaConfig {
-  url: string;
+/** Platform default API base (per the Wapi docs `servers` block). */
+const DEFAULT_BASE_URL = "https://beckend.ainatech.in/api";
+
+interface WapiConfig {
+  baseUrl: string;
   apiKey: string;
   defaultLanguage: string;
 }
 
-/** WAina's shared platform send endpoint (the api_key identifies the MFD). */
-const DEFAULT_WAINA_URL = "https://beckend.ainatech.in/api/extension/zoho-workflow";
+/** Normalise any configured URL — a base, or a legacy full send endpoint — back
+ *  to the `/api` base so we can append the documented paths. */
+function toApiBase(raw?: string | null): string {
+  let u = (raw ?? "").trim().replace(/\/+$/, "");
+  if (!u) return DEFAULT_BASE_URL;
+  // Strip a known endpoint suffix if someone configured the full send URL.
+  u = u.replace(/\/(extension\/(zoho-workflow|send-message)|whatsapp\/send)$/i, "");
+  return u || DEFAULT_BASE_URL;
+}
 
-/**
- * Resolve credentials with this precedence:
- *   1. Per-tenant config saved in Settings → Integrations (args.*)
- *   2. Platform env (WAINA_*)
- *   3. Built-in default URL
- * Only the api_key is mandatory; each MFD provides their own once.
- */
-function resolveConfig(args: SendWhatsappArgs): WainaConfig {
-  const url = args.webhookUrl ?? process.env.WAINA_WEBHOOK_URL ?? DEFAULT_WAINA_URL;
+function resolveConfig(args: SendWhatsappArgs): WapiConfig {
+  const baseUrl = toApiBase(
+    args.webhookUrl ?? process.env.WAINA_BASE_URL ?? process.env.WAINA_WEBHOOK_URL ?? DEFAULT_BASE_URL
+  );
   const apiKey = args.apiKey ?? process.env.WAINA_API_KEY;
   if (!apiKey) {
     throw new Error(
-      "WAina: no API key — connect WAina in Settings → Integrations, or set WAINA_API_KEY"
+      "Aina WhatsApp: no API key — connect it in Settings → Integrations, or set WAINA_API_KEY"
     );
   }
   return {
-    url,
+    baseUrl,
     apiKey,
-    defaultLanguage:
-      args.defaultLanguage ?? process.env.WAINA_DEFAULT_LANGUAGE ?? "en_US",
+    defaultLanguage: args.defaultLanguage ?? process.env.WAINA_DEFAULT_LANGUAGE ?? "en_US",
   };
 }
 
@@ -86,115 +87,165 @@ function substituteTokens(value: unknown, tokens: Record<string, string>): unkno
   return value;
 }
 
-/** WAina outbound template payload (mirrors the documented request body). */
-export interface WainaPayload {
-  phone_number: string;
-  contact_name: string;
-  message_type: "template";
-  template_name: string;
-  language_code: string;
-  template_components: any[];
-}
+/** Wapi `POST /whatsapp/send` request body — text or template form. */
+export type WapiSendBody =
+  | { to: string; message: string; phone_number_id?: string }
+  | { to: string; template_name: string; language: string; components: any[]; phone_number_id?: string };
 
 /**
- * Pure mapper: SendWhatsappArgs (+ default language) → WAina request body.
+ * Pure mapper: SendWhatsappArgs (+ default language) → Wapi request body.
  * Separated from the HTTP call so it can be unit-tested without a network send.
  */
-export function buildWainaPayload(
-  args: SendWhatsappArgs,
-  defaultLanguage = "en_US"
-): WainaPayload {
+export function buildWainaPayload(args: SendWhatsappArgs, defaultLanguage = "en_US"): WapiSendBody {
   const body = (args.templateVersion.body ?? {}) as Record<string, any>;
+  const to = normalizeWaId(args.recipient);
+  const phoneNumberId: string | undefined = body.wainaPhoneNumberId ?? body.phoneNumberId ?? undefined;
 
   const templateName =
-    body.wainaTemplateName ??
-    body.metaTemplateName ??
-    args.templateVersion.externalRef ??
-    body.aisensyCampaignName;
+    body.wainaTemplateName ?? body.metaTemplateName ?? args.templateVersion.externalRef ?? body.aisensyCampaignName;
+
+  // No template → plain-text send (only valid inside the 24h customer-care window).
   if (!templateName) {
-    throw new Error(
-      "WAina send: no template name — set templateVersion.body.wainaTemplateName or externalRef"
-    );
+    const raw = body.text ?? body.body?.text ?? body.message ?? "";
+    const message = String(substituteTokens(raw, args.tokens) ?? "");
+    if (!message) {
+      throw new Error(
+        "Aina WhatsApp send: no template name (set templateVersion.body.wainaTemplateName or externalRef) and no plain-text body"
+      );
+    }
+    return { to, message, ...(phoneNumberId ? { phone_number_id: phoneNumberId } : {}) };
   }
 
-  const languageCode = body.languageCode ?? body.wainaLanguage ?? defaultLanguage;
+  const language = body.languageCode ?? body.wainaLanguage ?? defaultLanguage;
 
-  // Build template_components.
-  let templateComponents: any[];
+  // Build the Meta `components` array.
+  let components: any[];
   if (Array.isArray(body.wainaTemplateComponents)) {
-    // Full escape hatch — caller supplied the complete component tree.
-    templateComponents = substituteTokens(body.wainaTemplateComponents, args.tokens) as any[];
+    components = substituteTokens(body.wainaTemplateComponents, args.tokens) as any[];
+  } else if (Array.isArray(body.components)) {
+    components = substituteTokens(body.components, args.tokens) as any[];
   } else {
-    // Common case: positional body params from ordered template variables.
     const variables = (args.templateVersion.variables as Array<{ key: string }>) ?? [];
-    const parameters = variables.map((v) => ({
-      type: "text",
-      text: args.tokens[v.key] ?? "",
-    }));
-    templateComponents = parameters.length ? [{ type: "body", parameters }] : [];
+    const parameters = variables.map((v) => ({ type: "text", text: args.tokens[v.key] ?? "" }));
+    components = parameters.length ? [{ type: "body", parameters }] : [];
   }
 
   return {
-    phone_number: normalizeWaId(args.recipient),
-    contact_name:
-      args.tokens.name ?? args.tokens.investor_name ?? args.tokens.contact_name ?? "Investor",
-    message_type: "template",
+    to,
     template_name: templateName,
-    language_code: languageCode,
-    template_components: templateComponents,
+    language,
+    components,
+    ...(phoneNumberId ? { phone_number_id: phoneNumberId } : {}),
   };
 }
 
 export const wainaWhatsappAdapter = {
-  async send(
-    args: SendWhatsappArgs
-  ): Promise<{ externalId: string; status: "sent" | "queued" }> {
+  async send(args: SendWhatsappArgs): Promise<{ externalId: string; status: "sent" | "queued" }> {
     const cfg = resolveConfig(args);
     const payload = buildWainaPayload(args, cfg.defaultLanguage);
 
     try {
-      const res = await axios.post(cfg.url, payload, {
-        // api_key travels as a query param, per the WAina endpoint contract.
-        params: { api_key: cfg.apiKey },
+      const res = await axios.post(`${cfg.baseUrl}/whatsapp/send`, payload, {
         timeout: 15_000,
         headers: {
           "Content-Type": "application/json",
-          // Best-effort dedup across step retries (ignored if WAina doesn't use it).
+          "x-api-key": cfg.apiKey,
+          // Best-effort dedup across step retries.
           ...(args.idempotencyKey ? { "X-Idempotency-Key": args.idempotencyKey } : {}),
         },
       });
       const data = (res.data ?? {}) as Record<string, any>;
+      if (data.success === false) {
+        throw new Error(String(data.error ?? data.message ?? "send rejected"));
+      }
+      const d = (data.data ?? data) as Record<string, any>;
       const externalId =
-        data.message_id ??
-        data.messageId ??
-        data.data?.message_id ??
-        data.id ??
-        `waina-${args.idempotencyKey ?? Date.now()}`;
-      return { externalId: String(externalId), status: "sent" };
+        d.wa_message_id ?? d.message_id ?? d.id ?? `aina-${args.idempotencyKey ?? Date.now()}`;
+      if (d.status === "failed") {
+        throw new Error(`Aina WhatsApp marked the message failed (${externalId})`);
+      }
+      const status: "sent" | "queued" = d.status === "queued" ? "queued" : "sent";
+      return { externalId: String(externalId), status };
     } catch (err: any) {
       const detail = err.response?.data ?? err.message;
       throw new Error(
-        `WAina send failed: ${typeof detail === "string" ? detail : JSON.stringify(detail)}`
+        `Aina WhatsApp send failed: ${typeof detail === "string" ? detail : JSON.stringify(detail)}`
       );
     }
   },
 
-  // --- Parity stubs (WAina manages these in its own console) -------------
+  /** List approved templates from the Aina WhatsApp workspace. Uses the shared
+   *  env key (the per-tenant key is only threaded on the send path). */
   async listTemplates(): Promise<Array<any>> {
-    // Nothing to sync from here; templates live in the WAina dashboard.
-    return [];
+    const apiKey = process.env.WAINA_API_KEY;
+    if (!apiKey) return [];
+    const base = toApiBase(process.env.WAINA_BASE_URL ?? process.env.WAINA_WEBHOOK_URL);
+    try {
+      const res = await axios.get(`${base}/extension/templates`, {
+        timeout: 30_000,
+        headers: { "x-api-key": apiKey },
+      });
+      return (res.data?.data ?? []) as any[];
+    } catch {
+      return [];
+    }
   },
 
   async submitTemplate(): Promise<{ ok: boolean; metaTemplateId?: string; raw: unknown }> {
-    throw new Error("WAina adapter: create/submit templates in the WAina console, not via this API");
+    throw new Error("Aina WhatsApp adapter: create/submit templates in the Aina WhatsApp console, not via this API");
   },
 
   verifyWebhookSignature(): boolean {
-    // WAina inbound webhooks are configured separately (see the WAina Webhooks
-    // screen). No shared-secret HMAC is wired on this path yet.
+    // Aina WhatsApp inbound webhooks are configured separately. No shared-secret
+    // HMAC is wired on this path yet.
     return false;
   },
 };
+
+/* ── Standalone helpers for the Settings UI (live connection + numbers) ──── */
+
+export interface WapiPhoneNumber {
+  id: string;
+  display_phone_number: string;
+  quality_rating?: string;
+  is_primary?: boolean;
+}
+
+/** GET /extension/phone-numbers — the WABA numbers the key can send from. */
+export async function wapiListPhoneNumbers(
+  apiKey: string,
+  baseUrl?: string | null
+): Promise<WapiPhoneNumber[]> {
+  const base = toApiBase(baseUrl ?? process.env.WAINA_BASE_URL ?? process.env.WAINA_WEBHOOK_URL);
+  const res = await axios.get(`${base}/extension/phone-numbers`, {
+    timeout: 15_000,
+    headers: { "x-api-key": apiKey },
+  });
+  return (res.data?.data ?? []) as WapiPhoneNumber[];
+}
+
+/** GET /extension/status — verify the key + surface the workspace name + numbers. */
+export async function wapiCheckConnection(
+  apiKey: string,
+  baseUrl?: string | null
+): Promise<{ ok: boolean; workspaceName?: string; numbers: WapiPhoneNumber[]; error?: string }> {
+  const base = toApiBase(baseUrl ?? process.env.WAINA_BASE_URL ?? process.env.WAINA_WEBHOOK_URL);
+  try {
+    const res = await axios.get(`${base}/extension/status`, {
+      timeout: 15_000,
+      headers: { "x-api-key": apiKey },
+    });
+    const d = (res.data?.data ?? {}) as Record<string, any>;
+    return {
+      ok: res.data?.success !== false,
+      workspaceName: d.workspace_name,
+      numbers: (d.phone_numbers ?? []) as WapiPhoneNumber[],
+    };
+  } catch (e: any) {
+    const detail = e.response?.data ?? e.message;
+    return { ok: false, numbers: [], error: typeof detail === "string" ? detail : JSON.stringify(detail) };
+  }
+}
 
 /** Country-code + number, no '+', assume India for bare 10-digit numbers. */
 function normalizeWaId(num: string): string {

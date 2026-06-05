@@ -31,7 +31,7 @@ import {
 } from "@/db/schema";
 import { runComplianceChecks, type ComplianceResult } from "./compliance";
 import { resolveTokens, renderTemplateText, type VariableDef } from "./tokens";
-import { whatsappAdapter } from "./adapters/whatsapp";
+import { whatsappAdapter, whatsappProviderId } from "./adapters/whatsapp";
 import { emailAdapter, type SmtpConfig } from "./adapters/resend";
 import { smsAdapter } from "./adapters/msg91";
 import { getTenantIntegration } from "./integrations";
@@ -268,14 +268,10 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
   try {
     let adapterResult: { externalId: string; status: "sent" | "queued" };
     if (input.channel === "whatsapp") {
-      // Provider chosen by env; credentials are per-tenant (saved once in
-      // Settings → Integrations). WAina only needs an api_key; the endpoint
-      // defaults to the platform URL.
-      const waProvider =
-        (process.env.WHATSAPP_PROVIDER ?? "aisensy").trim().toLowerCase() === "waina"
-          ? "waina"
-          : "aisensy";
-      const integration = await getTenantIntegration(tx, input.tenantId, waProvider);
+      // Provider chosen centrally (see adapters/whatsapp.ts); credentials are
+      // per-tenant (saved once in Settings → Integrations). Aina WhatsApp only
+      // needs an api_key; the endpoint defaults to the platform URL.
+      const integration = await getTenantIntegration(tx, input.tenantId, whatsappProviderId);
       adapterResult = await whatsappAdapter.send({
         tenantId: input.tenantId,
         templateVersion: version,

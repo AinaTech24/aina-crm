@@ -3,8 +3,17 @@ import { sql } from "drizzle-orm";
 import { ChevronLeft, MessageCircle, Check } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { getTenantIntegration } from "@/lib/comms/integrations";
+import { wapiCheckConnection, type WapiPhoneNumber } from "@/lib/comms/adapters/waina";
 
 export const dynamic = "force-dynamic";
+
+const QUALITY_TONE: Record<string, string> = {
+  GREEN: "text-emerald-600",
+  YELLOW: "text-amber-600",
+  RED: "text-rose-600",
+  UNKNOWN: "text-muted-foreground",
+};
 
 export default async function WhatsAppSettingsPage() {
   const session = await requireSession();
@@ -16,13 +25,26 @@ export default async function WhatsAppSettingsPage() {
              COUNT(*) FILTER (WHERE meta_status = 'REJECTED')::int AS rejected
       FROM whatsapp_templates
     `);
-    return { numbers: numbers.rows as any[], templates: templates.rows[0] as any };
+    // Resolve the Aina WhatsApp (Wapi) API key for a live status probe.
+    const integ = await getTenantIntegration(tx, session.tenantId, "waina").catch(() => null);
+    return {
+      numbers: numbers.rows as any[],
+      templates: templates.rows[0] as any,
+      apiKey: integ?.config?.apiKey ?? process.env.WAINA_API_KEY ?? null,
+      baseUrl: integ?.config?.webhookUrl ?? process.env.WAINA_BASE_URL ?? null,
+    };
   });
 
-  // WhatsApp delivery is managed by Aina — status reflects whether a number is
-  // wired for this firm, not any third-party API key.
-  const numbersConnected = data.numbers.length;
-  const active = numbersConnected > 0;
+  // Best-effort live probe of the Aina WhatsApp workspace (GET /extension/status).
+  let live: { ok: boolean; workspaceName?: string; numbers: WapiPhoneNumber[] } | null = null;
+  if (data.apiKey) {
+    const r = await wapiCheckConnection(data.apiKey, data.baseUrl);
+    if (r.ok) live = { ok: true, workspaceName: r.workspaceName, numbers: r.numbers };
+  }
+
+  const liveNumbers = live?.numbers ?? [];
+  const numbersConnected = liveNumbers.length || data.numbers.length;
+  const active = !!live?.ok || numbersConnected > 0;
 
   return (
     <div className="space-y-4 max-w-3xl">
@@ -45,7 +67,13 @@ export default async function WhatsAppSettingsPage() {
               {active ? "Aina WhatsApp is active" : "WhatsApp is delivered through Aina"}
             </div>
             <p className="text-sm text-muted-foreground mt-1">
-              {active
+              {live?.ok
+                ? `Connected to Aina WhatsApp${
+                    live.workspaceName ? ` — workspace “${live.workspaceName}”` : ""
+                  }. Your messages send through ${numbersConnected || "your"} number${
+                    numbersConnected === 1 ? "" : "s"
+                  }, no setup needed on your side.`
+                : active
                 ? `Your messages are delivered through Aina WhatsApp${
                     numbersConnected > 1 ? ` across ${numbersConnected} numbers` : ""
                   }. Nothing to configure on your side.`
@@ -57,9 +85,29 @@ export default async function WhatsAppSettingsPage() {
 
       <div className="border rounded-lg bg-card p-5">
         <h2 className="font-semibold">Connected numbers</h2>
-        {data.numbers.length === 0 ? (
+        {liveNumbers.length > 0 ? (
+          <ul className="mt-3 space-y-2">
+            {liveNumbers.map((n) => (
+              <li key={n.id} className="flex items-center justify-between border rounded p-2 text-sm">
+                <span className="font-mono">{n.display_phone_number}</span>
+                <span className="text-xs flex items-center gap-2">
+                  {n.is_primary && (
+                    <span className="rounded-full bg-brand-cyan-light text-brand-cyan-deep px-2 py-0.5 font-semibold">
+                      Primary
+                    </span>
+                  )}
+                  {n.quality_rating && (
+                    <span className={`font-medium ${QUALITY_TONE[n.quality_rating] ?? "text-muted-foreground"}`}>
+                      {n.quality_rating} quality
+                    </span>
+                  )}
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : data.numbers.length === 0 ? (
           <p className="text-sm text-muted-foreground mt-3">
-            No WhatsApp numbers configured. AINA wires the first number for you during onboarding.
+            No WhatsApp numbers configured. Aina wires the first number for you during onboarding.
           </p>
         ) : (
           <ul className="mt-3 space-y-2">
