@@ -60,7 +60,7 @@ export function ProfileMenu({
     if (!window.confirm("Are you sure you want to log out?")) return;
     setLoggingOut(true);
     try {
-      await fetch("/api/auth/logout", { method: "POST" });
+      await fetch("/api/auth/logout?scope=mfd", { method: "POST" });
     } catch {
       /* clear-cookie is best-effort; still navigate away */
     }

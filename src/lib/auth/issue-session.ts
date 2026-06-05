@@ -5,7 +5,7 @@
  */
 
 import { NextResponse } from "next/server";
-import { signSession, SESSION_COOKIE, SESSION_TTL_SECONDS } from "./jwt";
+import { signSession, sessionCookieForRoles, SESSION_TTL_SECONDS } from "./jwt";
 
 export type SessionUserInput = {
   userId: string;
@@ -31,7 +31,9 @@ export async function attachSessionCookie(
     name: user.name,
     permissions: user.permissions ?? [],
   });
-  res.cookies.set(SESSION_COOKIE, token, {
+  // Platform-admin sessions go to a separate cookie so they don't clobber an
+  // MFD session in the same browser (and vice versa).
+  res.cookies.set(sessionCookieForRoles(user.roles), token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",

@@ -15,7 +15,40 @@
 import { SignJWT, jwtVerify } from "jose";
 
 export const SESSION_COOKIE = "mfd_session";
+/**
+ * Platform-admin (AINA) sessions live in a SEPARATE cookie from MFD sessions.
+ * This is the fix for the "logging into Aina in one tab logs me out of the MFD
+ * tab" bug: a single browser shares one cookie jar, so with one cookie name the
+ * second login overwrites the first. Two names let an Aina-admin session and an
+ * MFD session coexist; the URL surface decides which one is read.
+ */
+export const ADMIN_SESSION_COOKIE = "aina_session";
 export const SESSION_TTL_SECONDS = 8 * 60 * 60;
+
+/** True for the AINA platform-admin URL surface (pages + APIs). */
+export function isAdminSurface(pathname: string): boolean {
+  return (
+    pathname === "/super-admin" ||
+    pathname.startsWith("/super-admin/") ||
+    pathname.startsWith("/api/super-admin/")
+  );
+}
+
+/** Which session cookie governs requests to `pathname`. */
+export function sessionCookieForPath(pathname: string): string {
+  return isAdminSurface(pathname) ? ADMIN_SESSION_COOKIE : SESSION_COOKIE;
+}
+
+/** True if these roles belong to AINA platform staff. */
+export function rolesArePlatformAdmin(roles: string[] | null | undefined): boolean {
+  const r = roles ?? [];
+  return r.includes("platform_admin") || r.includes("platform_support");
+}
+
+/** Which cookie a freshly-issued session for `roles` should be written to. */
+export function sessionCookieForRoles(roles: string[] | null | undefined): string {
+  return rolesArePlatformAdmin(roles) ? ADMIN_SESSION_COOKIE : SESSION_COOKIE;
+}
 
 export type SessionUser = {
   userId: string;

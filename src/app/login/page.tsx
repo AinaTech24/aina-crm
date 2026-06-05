@@ -9,6 +9,16 @@ function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
   const next = params.get("next") ?? "/dashboard";
+
+  // Platform-admin (AINA) staff land on the admin console; everyone else goes to
+  // the MFD app. Honour an explicit `next` only when it already points at the
+  // right surface, so an admin who was bounced from /dashboard still ends up home.
+  function destFor(roles: unknown): string {
+    const r = Array.isArray(roles) ? roles.map(String) : [];
+    const isAdmin = r.includes("platform_admin") || r.includes("platform_support");
+    if (isAdmin) return next.startsWith("/super-admin") ? next : "/super-admin";
+    return next.startsWith("/super-admin") ? "/dashboard" : next;
+  }
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [err, setErr] = useState<string | null>(null);
@@ -37,7 +47,7 @@ function LoginForm() {
         setChallenge(j.challenge);
         return;
       }
-      router.push(next);
+      router.push(destFor(j.user?.roles));
     } finally {
       setBusy(false);
     }
@@ -58,7 +68,7 @@ function LoginForm() {
         setErr(j.error ?? "Verification failed");
         return;
       }
-      router.push(next);
+      router.push(destFor(j.user?.roles));
     } finally {
       setBusy(false);
     }

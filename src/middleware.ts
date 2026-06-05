@@ -18,7 +18,13 @@ import { NextRequest, NextResponse } from "next/server";
 // Import from the Edge-safe primitives module — NOT @/lib/auth/session, which
 // pulls in the Node-only DB-backed revocation check (pg) and would break the
 // Edge middleware bundle.
-import { SESSION_COOKIE, verifySession } from "@/lib/auth/jwt";
+import {
+  SESSION_COOKIE,
+  ADMIN_SESSION_COOKIE,
+  verifySession,
+  isAdminSurface,
+  sessionCookieForPath,
+} from "@/lib/auth/jwt";
 
 export const config = {
   /**
@@ -87,28 +93,46 @@ export async function middleware(req: NextRequest) {
     return res;
   }
 
-  const token = req.cookies.get(SESSION_COOKIE)?.value;
+  // Resolve the session from the cookie that governs THIS surface. The admin
+  // console (/super-admin, /api/super-admin) reads `aina_session`; everything
+  // else reads `mfd_session`. Two separate cookies = an Aina-admin login and an
+  // MFD login can coexist in the same browser without overwriting each other.
+  const onAdminSurface = isAdminSurface(pathname);
+  const cookieName = sessionCookieForPath(pathname);
+  const token = req.cookies.get(cookieName)?.value;
   const session = token ? await verifySession(token) : null;
 
   if (!session) {
     if (pathname.startsWith("/api/")) {
       return NextResponse.json({ error: "not authenticated" }, { status: 401 });
     }
+    // Nicety: an Aina admin who lands on an MFD page (no mfd_session) but holds
+    // a valid admin session is sent to their console instead of the login page.
+    if (!onAdminSurface) {
+      const adminToken = req.cookies.get(ADMIN_SESSION_COOKIE)?.value;
+      if (adminToken && (await verifySession(adminToken))?.isPlatformAdmin) {
+        return NextResponse.redirect(new URL("/super-admin", req.url));
+      }
+    }
     const loginUrl = new URL("/login", req.url);
     loginUrl.searchParams.set("next", pathname);
     return NextResponse.redirect(loginUrl);
   }
 
-  // Platform admin trying to access MFD dashboard? Redirect to /super-admin
-  // (and vice versa — MFD users blocked from /super-admin)
-  if (session.isPlatformAdmin) {
-    if (pathname === "/dashboard" || pathname.startsWith("/dashboard/")) {
-      return NextResponse.redirect(new URL("/super-admin", req.url));
+  // Surface ↔ role consistency. With separate cookies this is mostly defensive,
+  // but it keeps a stray/forged token from landing on the wrong console.
+  if (onAdminSurface) {
+    if (!session.isPlatformAdmin) {
+      if (pathname.startsWith("/api/")) {
+        return NextResponse.json({ error: "forbidden" }, { status: 403 });
+      }
+      return NextResponse.redirect(new URL("/dashboard", req.url));
     }
-  } else {
-    if (pathname === "/super-admin" || pathname.startsWith("/super-admin/")) {
-      return NextResponse.json({ error: "forbidden" }, { status: 403 });
-    }
+  } else if (
+    session.isPlatformAdmin &&
+    (pathname === "/dashboard" || pathname.startsWith("/dashboard/"))
+  ) {
+    return NextResponse.redirect(new URL("/super-admin", req.url));
   }
 
   const res = NextResponse.next();

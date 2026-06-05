@@ -19,9 +19,11 @@ import { cache } from "react";
 import { cookies, headers } from "next/headers";
 import {
   SESSION_COOKIE,
+  ADMIN_SESSION_COOKIE,
   SESSION_TTL_SECONDS,
   signSession,
   verifySession,
+  sessionCookieForPath,
   type SessionUser,
 } from "./jwt";
 import { isSessionRevoked } from "./revocation";
@@ -29,7 +31,7 @@ import { isSessionRevoked } from "./revocation";
 // Re-export the Edge-safe surface so existing `@/lib/auth/session` imports
 // (signSession in the auth routes, verifySession/SESSION_COOKIE, the type) are
 // unaffected by the jwt.ts split.
-export { SESSION_COOKIE, SESSION_TTL_SECONDS, signSession, verifySession };
+export { SESSION_COOKIE, ADMIN_SESSION_COOKIE, SESSION_TTL_SECONDS, signSession, verifySession };
 export type { SessionUser };
 
 /**
@@ -71,18 +73,24 @@ export const getSession = cache(async (): Promise<SessionUser | null> => {
  * falls back to verifying the cookie directly.
  */
 async function readSession(): Promise<SessionUser | null> {
+  // Pick the cookie that matches the current surface (admin console vs MFD app)
+  // so the fallback reads the same session the middleware resolved. Defaults to
+  // the MFD cookie when the path is unknown (e.g. outside request context).
+  let cookieName = SESSION_COOKIE;
   try {
     const h = await headers();
     const headerPayload = h.get("x-mfd-session");
     if (headerPayload) {
       return JSON.parse(headerPayload) as SessionUser;
     }
+    const pathname = h.get("x-pathname");
+    if (pathname) cookieName = sessionCookieForPath(pathname);
   } catch {
     // headers() throws outside request context — fall through to cookie path
   }
   try {
     const c = await cookies();
-    const token = c.get(SESSION_COOKIE)?.value;
+    const token = c.get(cookieName)?.value;
     if (!token) return null;
     return await verifySession(token);
   } catch {

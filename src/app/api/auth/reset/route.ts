@@ -11,7 +11,8 @@ import bcrypt from "bcryptjs";
 import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { withSystem } from "@/db/client";
-import { signSession, SESSION_COOKIE, SESSION_TTL_SECONDS } from "@/lib/auth/session";
+import { signSession, SESSION_TTL_SECONDS } from "@/lib/auth/session";
+import { sessionCookieForRoles } from "@/lib/auth/jwt";
 import { clearSessionRevocationCache } from "@/lib/auth/revocation";
 import { enforce } from "@/lib/rate-limit";
 
@@ -83,7 +84,7 @@ export async function POST(req: NextRequest) {
 
     const token = await signSession(session);
     const res = NextResponse.json({ ok: true });
-    res.cookies.set(SESSION_COOKIE, token, {
+    res.cookies.set(sessionCookieForRoles(session.roles), token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
