@@ -29,6 +29,13 @@ ARG NEXT_PUBLIC_S3_PUBLIC_URL
 ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL \
     NEXT_PUBLIC_SITE_URL=$NEXT_PUBLIC_SITE_URL \
     NEXT_PUBLIC_S3_PUBLIC_URL=$NEXT_PUBLIC_S3_PUBLIC_URL
+# Build-time placeholders so module-load guards (db/client, redis, auth) don't
+# throw while `next build` collects page data. NO database/redis is contacted —
+# every data route is force-dynamic — and the REAL values are injected only at
+# runtime via env_file. These never reach the runtime stage (separate FROM).
+ENV DATABASE_URL=postgresql://build:build@127.0.0.1:5432/build \
+    REDIS_URL=redis://127.0.0.1:6379 \
+    NEXTAUTH_SECRET=build-time-placeholder-not-used-at-runtime
 RUN npm run build
 
 # ---- runtime: lean image that runs either role -------------------------------
