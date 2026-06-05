@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Building2, Database, Users, CreditCard, MessageCircle, Mail, Lock, Webhook, ShieldCheck, Workflow, KeyRound, Palette, UserCircle } from "lucide-react";
+import { Building2, Database, Users, CreditCard, MessageCircle, Mail, Lock, Webhook, ShieldCheck, Workflow, KeyRound, Palette, UserCircle, GitBranch } from "lucide-react";
 
 const SECTIONS = [
   {
@@ -49,6 +49,12 @@ const SECTIONS = [
     title: "Team & roles",
     desc: "Invite team members, assign roles, manage seats.",
     href: "/dashboard/employees",
+  },
+  {
+    icon: GitBranch,
+    title: "Auto-assignment rules",
+    desc: "Route new leads & clients to your team automatically — round-robin or load-balanced.",
+    href: "/dashboard/settings/assignment-rules",
   },
   {
     icon: CreditCard,

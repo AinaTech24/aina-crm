@@ -79,9 +79,16 @@ export async function GET(req: NextRequest) {
 
     const result = await withTenant(session.tenantId, async (tx) => {
       const conditions = [];
-      // RMs see only their assigned investors
-      if (!seesAll && seesAssigned) {
-        conditions.push(eq(investors.rmId, session.userId));
+      // Scope: branch heads → their whole branch; RMs → their assigned clients.
+      // (Owner / back-office / compliance with view.all see the full tenant book.)
+      const branchScoped =
+        !session.roles.includes("owner") && session.roles.includes("branch_head") && !!session.branchId;
+      if (!seesAll) {
+        if (branchScoped) {
+          conditions.push(eq(investors.branchId, session.branchId!));
+        } else if (seesAssigned) {
+          conditions.push(eq(investors.rmId, session.userId));
+        }
       }
       if (q) {
         conditions.push(

@@ -118,8 +118,14 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       const inv = (await tx.select().from(investors).where(and(eq(investors.id, id), eq(investors.tenantId, session.tenantId))).limit(1))[0];
       if (!inv) return null;
 
-      // Enforce RM assignment gating
-      if (!seesAll && seesAssigned && inv.rmId !== session.userId) {
+      // Enforce scope gating: branch heads → own branch; RMs → assigned only.
+      const branchScoped =
+        !session.roles.includes("owner") && session.roles.includes("branch_head") && !!session.branchId;
+      if (!seesAll && branchScoped) {
+        if (inv.branchId !== session.branchId) {
+          throw Object.assign(new Error("forbidden: client is in another branch"), { status: 403 });
+        }
+      } else if (!seesAll && seesAssigned && inv.rmId !== session.userId) {
         throw Object.assign(new Error("forbidden: client not assigned to you"), { status: 403 });
       }
 
