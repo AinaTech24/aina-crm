@@ -352,30 +352,30 @@ export function GuidedStageActions({
       {/* Zoho CRM Blueprint Transition Dialog */}
       {transitioningAction && (
         <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-xl max-w-md w-full p-6 space-y-4 shadow-2xl text-slate-100">
-            <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
+          <div className="bg-card border border-border rounded-xl max-w-md w-full p-6 space-y-4 shadow-2xl text-foreground">
+            <div className="flex items-center gap-2 border-b border-border pb-3">
               <Sparkles className="size-5 text-brand-cyan animate-pulse" />
-              <h3 className="font-bold text-base text-white">
+              <h3 className="font-bold text-base text-foreground">
                 Transition: {transitioningAction.label}
               </h3>
             </div>
-            
-            <p className="text-xs text-slate-400">
+
+            <p className="text-xs text-muted-foreground">
               Please complete the required details to transition the lead to{" "}
-              <strong className="text-slate-200">
+              <strong className="text-foreground">
                 {transitioningAction.targetStage.replace(/_/g, " ")}
               </strong>.
             </p>
 
             {/* Dynamic Required Fields */}
             {missingFields.length > 0 && (
-              <div className="space-y-3 border-t border-b border-slate-800/50 py-3">
+              <div className="space-y-3 border-t border-b border-border py-3">
                 <div className="text-[10px] font-bold uppercase tracking-wider text-brand-cyan">
-                  Required Information (Zoho Blueprint Gate)
+                  Required Information
                 </div>
                 {missingFields.map((f) => (
                   <div key={f.key} className="space-y-1">
-                    <label className="text-xs text-slate-300 font-medium">
+                    <label className="text-xs text-foreground font-medium">
                       {f.label} <span className="text-rose-500">*</span>
                     </label>
                     {f.type === "select" ? (
@@ -385,7 +385,7 @@ export function GuidedStageActions({
                         onChange={(e) =>
                           setFieldValues((prev) => ({ ...prev, [f.key]: e.target.value }))
                         }
-                        className="input-base text-xs w-full bg-slate-950/60 border-slate-800 text-white"
+                        className="input-base text-xs w-full"
                       >
                         <option value="">— choose —</option>
                         {f.options?.map((opt) => (
@@ -403,7 +403,7 @@ export function GuidedStageActions({
                           setFieldValues((prev) => ({ ...prev, [f.key]: e.target.value }))
                         }
                         placeholder={`Enter ${f.label.toLowerCase()}`}
-                        className="input-base text-xs w-full bg-slate-950/60 border-slate-800 text-white"
+                        className="input-base text-xs w-full"
                       />
                     )}
                   </div>
@@ -413,7 +413,7 @@ export function GuidedStageActions({
 
             {/* Remarks / Notes */}
             <div className="space-y-1">
-              <label className="text-xs text-slate-300 font-medium">
+              <label className="text-xs text-foreground font-medium">
                 Transition Notes / Remarks (Optional)
               </label>
               <textarea
@@ -421,7 +421,7 @@ export function GuidedStageActions({
                 onChange={(e) => setRemarks(e.target.value)}
                 rows={3}
                 placeholder="Capture notes about this status update..."
-                className="input-base text-xs w-full bg-slate-950/60 border-slate-800 text-white"
+                className="input-base text-xs w-full"
               />
             </div>
 
@@ -435,7 +435,7 @@ export function GuidedStageActions({
               <button
                 type="button"
                 onClick={() => setTransitioningAction(null)}
-                className="btn-secondary text-xs border-slate-800 hover:bg-slate-800 text-slate-300"
+                className="btn-secondary text-xs"
               >
                 Cancel
               </button>
