@@ -4,9 +4,11 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatRelative } from "@/lib/utils";
 import { RowActions } from "@/components/common/RowActions";
+import { SelectField } from "@/components/ui/SelectField";
+import { useToast } from "@/components/ui/Toast";
 import { TaskDetailDrawer } from "./TaskDetailDrawer";
 import type { Task } from "@/db/schema";
-import { CheckSquare, Square, Loader2, Plus, AlertTriangle } from "lucide-react";
+import { CheckSquare, Square, Loader2, Plus } from "lucide-react";
 
 interface TaskRow {
   task: Task;
@@ -20,23 +22,9 @@ interface TaskListProps {
   currentUserId: string;
 }
 
-const priorityColors: Record<string, string> = {
-  urgent: "bg-rose-50 text-rose-700 border-rose-100",
-  high: "bg-amber-50 text-amber-700 border-amber-100",
-  normal: "bg-blue-50 text-blue-700 border-blue-100",
-  low: "bg-gray-50 text-gray-700 border-gray-250",
-};
-
-const statusColors: Record<string, string> = {
-  open: "bg-sky-50 text-sky-700 border-sky-200",
-  in_progress: "bg-indigo-50 text-indigo-700 border-indigo-200",
-  blocked: "bg-rose-50 text-rose-700 border-rose-200",
-  completed: "bg-emerald-50 text-emerald-700 border-emerald-200",
-  cancelled: "bg-slate-50 text-slate-700 border-slate-200",
-};
-
 export function TaskList({ initialRows, currentUserId }: TaskListProps) {
   const router = useRouter();
+  const toast = useToast();
   const [rows, setRows] = useState(initialRows);
   const [selectedRow, setSelectedRow] = useState<TaskRow | null>(null);
   const [completingTaskId, setCompletingTaskId] = useState<string | null>(null);
@@ -72,24 +60,24 @@ export function TaskList({ initialRows, currentUserId }: TaskListProps) {
       });
 
       if (!res.ok) {
-        throw new Error("Failed to update status");
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d?.error ?? "Failed to update status");
       }
-      
+      toast.success(isCompleted ? "Task marked complete" : "Task reopened");
       // Allow some animation feedback, then reload to filter out
       setTimeout(() => {
         router.refresh();
       }, 300);
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
       // Revert on error
       setRows(previousRows);
+      toast.error(err?.message ?? "Could not update the task", "Update failed");
     } finally {
       setCompletingTaskId(null);
     }
   }
 
-  async function handleStatusChange(taskId: string, newStatus: string, e: React.ChangeEvent<HTMLSelectElement>) {
-    e.stopPropagation();
+  async function handleStatusChange(taskId: string, newStatus: string) {
     const previousRows = [...rows];
     setRows(prev =>
       prev.map(r =>
@@ -104,16 +92,19 @@ export function TaskList({ initialRows, currentUserId }: TaskListProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: newStatus }),
       });
-      if (!res.ok) throw new Error("Failed to update status");
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d?.error ?? "Failed to update status");
+      }
+      toast.success(`Status set to ${newStatus.replace(/_/g, " ")}`);
       router.refresh();
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
       setRows(previousRows);
+      toast.error(err?.message ?? "Could not update the status", "Update failed");
     }
   }
 
-  async function handlePriorityChange(taskId: string, newPriority: string, e: React.ChangeEvent<HTMLSelectElement>) {
-    e.stopPropagation();
+  async function handlePriorityChange(taskId: string, newPriority: string) {
     const previousRows = [...rows];
     setRows(prev =>
       prev.map(r =>
@@ -128,11 +119,15 @@ export function TaskList({ initialRows, currentUserId }: TaskListProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ priority: newPriority }),
       });
-      if (!res.ok) throw new Error("Failed to update priority");
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d?.error ?? "Failed to update priority");
+      }
+      toast.success(`Priority set to ${newPriority}`);
       router.refresh();
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
       setRows(previousRows);
+      toast.error(err?.message ?? "Could not update the priority", "Update failed");
     }
   }
 
@@ -150,11 +145,15 @@ export function TaskList({ initialRows, currentUserId }: TaskListProps) {
           priority: "normal",
         }),
       });
-      if (!res.ok) throw new Error("Failed to create task");
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d?.error ?? "Failed to create task");
+      }
       setQuickTitle("");
+      toast.success("Task added");
       router.refresh();
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      toast.error(err?.message ?? "Could not add the task", "Add failed");
     } finally {
       setQuickBusy(false);
     }
@@ -280,36 +279,36 @@ export function TaskList({ initialRows, currentUserId }: TaskListProps) {
                   </span>
                 )}
 
-                {/* Priority Selector */}
-                <select
-                  value={t.priority}
-                  onChange={(e) => handlePriorityChange(t.id, e.target.value, e)}
-                  onClick={(e) => e.stopPropagation()}
-                  className={`text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded border focus:outline-none flex-shrink-0 cursor-pointer ${
-                    priorityColors[t.priority] ?? ""
-                  }`}
-                >
-                  <option value="low">Low</option>
-                  <option value="normal">Normal</option>
-                  <option value="high">High</option>
-                  <option value="urgent">Urgent</option>
-                </select>
+                {/* Priority Selector (branded dropdown) */}
+                <div onClick={(e) => e.stopPropagation()} className="flex-shrink-0">
+                  <SelectField
+                    value={t.priority}
+                    onChange={(e) => handlePriorityChange(t.id, e.target.value)}
+                    size="sm"
+                    className="w-28"
+                  >
+                    <option value="low">Low</option>
+                    <option value="normal">Normal</option>
+                    <option value="high">High</option>
+                    <option value="urgent">Urgent</option>
+                  </SelectField>
+                </div>
 
-                {/* Status Selector */}
-                <select
-                  value={t.status}
-                  onChange={(e) => handleStatusChange(t.id, e.target.value, e)}
-                  onClick={(e) => e.stopPropagation()}
-                  className={`text-[11px] font-medium border px-1.5 py-0.5 rounded capitalize focus:outline-none flex-shrink-0 cursor-pointer ${
-                    statusColors[t.status] ?? ""
-                  }`}
-                >
-                  <option value="open">Open</option>
-                  <option value="in_progress">In Progress</option>
-                  <option value="blocked">Blocked</option>
-                  <option value="completed">Completed</option>
-                  <option value="cancelled">Cancelled</option>
-                </select>
+                {/* Status Selector (branded dropdown) */}
+                <div onClick={(e) => e.stopPropagation()} className="flex-shrink-0">
+                  <SelectField
+                    value={t.status}
+                    onChange={(e) => handleStatusChange(t.id, e.target.value)}
+                    size="sm"
+                    className="w-32"
+                  >
+                    <option value="open">Open</option>
+                    <option value="in_progress">In Progress</option>
+                    <option value="blocked">Blocked</option>
+                    <option value="completed">Completed</option>
+                    <option value="cancelled">Cancelled</option>
+                  </SelectField>
+                </div>
 
                 {t.dueAt && (
                   <span className={`text-xs tabular-nums flex-shrink-0 font-semibold ${

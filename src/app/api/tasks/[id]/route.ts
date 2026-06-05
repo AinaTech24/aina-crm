@@ -64,7 +64,7 @@ const Patch = z.object({
       "other",
     ])
     .optional(),
-  remarks: z.string().max(1000).optional(),
+  remarks: z.string().max(20000).optional(),
 });
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -104,6 +104,21 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     const patch: any = { ...parse.data, updatedAt: new Date() };
     if (parse.data.status === "completed" && !patch.completedAt) patch.completedAt = new Date();
+    // Drizzle timestamp columns require Date objects — coerce the ISO strings
+    // the client sends (passing a raw string makes Drizzle call .toISOString()
+    // on it and throw a 500). An invalid string clears the value.
+    for (const k of ["dueAt", "slaDueAt"] as const) {
+      const v = patch[k];
+      if (typeof v === "string") {
+        const d = new Date(v);
+        if (isNaN(d.getTime())) {
+          if (k === "slaDueAt") patch[k] = null;
+          else delete patch[k];
+        } else {
+          patch[k] = d;
+        }
+      }
+    }
 
     const result = await withTenant(session.tenantId, async (tx) => {
       const before = (await tx

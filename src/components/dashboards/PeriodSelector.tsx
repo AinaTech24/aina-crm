@@ -4,6 +4,7 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useTransition } from "react";
 import { CalendarDays } from "lucide-react";
 import { PERIOD_LABELS, type Period } from "@/lib/dashboard/period";
+import { DatePicker } from "@/components/ui/DatePicker";
 
 // Re-export the type for existing importers of this module.
 export type { Period };
@@ -63,21 +64,26 @@ export function PeriodSelector({ current }: { current: Period }) {
           {PERIOD_LABELS[p]}
         </button>
       ))}
-      <label
-        className={`px-2 py-1 rounded-md text-xs font-medium inline-flex items-center gap-1 cursor-pointer ${
-          current === "custom" ? "bg-white text-slate-900 shadow-sm" : "text-white/75 hover:text-white hover:bg-white/10"
+      {/* Custom "since" date — uses the branded DatePicker (calendar popup), not
+          a native <input type=date>. The native input fired onChange on every
+          partial keystroke, navigating mid-type and resetting the field; the
+          DatePicker only commits a complete date on day-click, so it's stable. */}
+      <div
+        className={`px-2 py-1 rounded-md text-xs font-medium inline-flex items-center gap-1.5 ${
+          current === "custom" ? "bg-white text-slate-900 shadow-sm" : "text-white/75"
         }`}
         title="Custom — show everything since this date"
       >
         <CalendarDays className="size-3" />
         <span>Since</span>
-        <input
-          type="date"
+        <DatePicker
           value={pstart}
-          onChange={(e) => selectCustom(e.target.value)}
-          className="bg-transparent text-xs outline-none w-[7.5rem]"
+          onChange={(iso) => selectCustom(iso)}
+          size="sm"
+          className="w-[8.5rem]"
+          ariaLabel="Custom period start date"
         />
-      </label>
+      </div>
     </div>
   );
 }

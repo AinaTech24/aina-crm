@@ -69,6 +69,7 @@ import { SidebarNavLink } from "@/components/layout/SidebarNavLink";
 import { QuickCreateFab } from "@/components/layout/QuickCreateFab";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { ProfileMenu } from "@/components/layout/ProfileMenu";
+import { ToastProvider } from "@/components/ui/Toast";
 import { buildTenantThemeCss } from "@/lib/branding/theme";
 
 export const dynamic = "force-dynamic";
@@ -206,6 +207,9 @@ const NAV: NavSection[] = [
       { href: "/dashboard/cybersecurity", label: "Cybersecurity", icon: Lock, module: "cybersecurity", roles: ["owner", "compliance"] },
     ],
   },
+  // NB: Billing / Firm Profile / Settings and the Help link intentionally do
+  // NOT appear in the sidebar — Billing + Settings + Firm profile live in the
+  // profile dropdown; the help shortcut is the "?" icon in the top bar.
   {
     title: "Insights",
     items: [
@@ -219,20 +223,6 @@ const NAV: NavSection[] = [
       { href: "/dashboard/finances", label: "Practice Finances", icon: Wallet, module: "reports", roles: ["owner", "compliance", "back_office"] },
       { href: "/dashboard/ai-assistant", label: "AI Assistant", icon: Bot, module: "ai_assistant" },
       { href: "/dashboard/audit-log", label: "Audit Log", icon: ClipboardCheck, module: "audit_log", roles: ["owner", "compliance"] },
-    ],
-  },
-  {
-    title: "Admin",
-    items: [
-      { href: "/dashboard/billing", label: "Billing", icon: CreditCard, roles: ["owner"] },
-      { href: "/dashboard/settings/firm-profile", label: "Firm Profile", icon: ClipboardCheck, roles: ["owner", "compliance"] },
-      { href: "/dashboard/settings", label: "Settings", icon: Settings, roles: ["owner"] },
-    ],
-  },
-  {
-    title: "Help",
-    items: [
-      { href: "/dashboard/help", label: "Help & glossary", icon: BookOpen },
     ],
   },
 ];
@@ -442,7 +432,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   );
 
   return (
-    <>
+    <ToastProvider>
       {/* Per-tenant theme override — re-declares the brand CSS variables on
           :root. Rendered after globals.css in document order, so it wins. */}
       {themeCss && (
@@ -520,7 +510,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           without hunting through the sidebar. */}
       {!license.isRestricted && <QuickCreateFab />}
     </div>
-    </>
+    </ToastProvider>
   );
 }
 

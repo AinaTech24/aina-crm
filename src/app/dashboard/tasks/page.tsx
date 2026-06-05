@@ -152,7 +152,8 @@ export default async function TasksPage({
             options: [
               { value: "open", label: "Open" },
               { value: "in_progress", label: "In progress" },
-              { value: "done", label: "Done" },
+              { value: "blocked", label: "Blocked" },
+              { value: "completed", label: "Completed" },
               { value: "cancelled", label: "Cancelled" },
             ],
           },

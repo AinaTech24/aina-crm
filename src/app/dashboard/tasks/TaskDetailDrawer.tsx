@@ -1,8 +1,12 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { X, Calendar, User, Tag, Sparkles, LifeBuoy, FileText, Plus, AlertCircle, Trash } from "lucide-react";
+import { X, Calendar, User, Sparkles, LifeBuoy, AlertCircle, Trash } from "lucide-react";
 import { RmSelector } from "@/components/common/RmSelector";
+import { SelectField } from "@/components/ui/SelectField";
+import { DateField } from "@/components/ui/DateField";
+import { useToast } from "@/components/ui/Toast";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import type { Task } from "@/db/schema";
 import Link from "next/link";
 
@@ -28,22 +32,9 @@ const DEPARTMENTS: [string, string][] = [
   ["other", "Other"],
 ];
 
-const priorityColors: Record<string, string> = {
-  urgent: "bg-rose-50 text-rose-700 border-rose-200",
-  high: "bg-amber-50 text-amber-700 border-amber-200",
-  normal: "bg-blue-50 text-blue-700 border-blue-200",
-  low: "bg-gray-50 text-gray-700 border-gray-250",
-};
-
-const statusColors: Record<string, string> = {
-  open: "bg-sky-50 text-sky-700 border-sky-200",
-  in_progress: "bg-indigo-50 text-indigo-700 border-indigo-200",
-  blocked: "bg-rose-50 text-rose-700 border-rose-200",
-  completed: "bg-emerald-50 text-emerald-700 border-emerald-200",
-  cancelled: "bg-slate-50 text-slate-700 border-slate-200",
-};
-
 export function TaskDetailDrawer({ task, onClose, onUpdate }: TaskDetailDrawerProps) {
+  const toast = useToast();
+  const [confirmCancelOpen, setConfirmCancelOpen] = useState(false);
   const [title, setTitle] = useState(task.title);
   const [description, setDescription] = useState(task.description ?? "");
   const [status, setStatus] = useState(task.status);
@@ -120,16 +111,18 @@ export function TaskDetailDrawer({ task, onClose, onUpdate }: TaskDetailDrawerPr
       if (data?.remarks) {
         setRemarksHistory(data.remarks);
       }
+      toast.success("Task changes saved");
       onUpdate();
     } catch (error: any) {
-      setErr(error?.message ?? "An unexpected error occurred");
+      const msg = error?.message ?? "An unexpected error occurred";
+      setErr(msg);
+      toast.error(msg, "Couldn't save task");
     } finally {
       setLoading(false);
     }
   }
 
-  async function handleCancelTask() {
-    if (!confirm("Are you sure you want to cancel this task?")) return;
+  async function doCancelTask() {
     setLoading(true);
     setErr(null);
     try {
@@ -138,10 +131,14 @@ export function TaskDetailDrawer({ task, onClose, onUpdate }: TaskDetailDrawerPr
         const data = await res.json().catch(() => ({}));
         throw new Error(data?.error ?? `Failed to cancel task`);
       }
+      setConfirmCancelOpen(false);
+      toast.success("Task cancelled");
       onClose();
       onUpdate();
     } catch (error: any) {
-      setErr(error?.message ?? "Failed to cancel task");
+      const msg = error?.message ?? "Failed to cancel task";
+      setErr(msg);
+      toast.error(msg, "Couldn't cancel task");
       setLoading(false);
     }
   }
@@ -210,65 +207,68 @@ export function TaskDetailDrawer({ task, onClose, onUpdate }: TaskDetailDrawerPr
           <div className="grid grid-cols-2 gap-3 text-xs">
             <div>
               <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Status</label>
-              <select
+              <SelectField
                 value={status}
                 onChange={(e) => setStatus(e.target.value as any)}
-                className={`input-base py-1 px-2.5 font-medium border text-xs capitalize ${statusColors[status]}`}
+                size="sm"
+                className="w-full"
               >
                 <option value="open">Open</option>
                 <option value="in_progress">In Progress</option>
                 <option value="blocked">Blocked</option>
                 <option value="completed">Completed</option>
                 <option value="cancelled">Cancelled</option>
-              </select>
+              </SelectField>
             </div>
 
             <div>
               <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Priority</label>
-              <select
+              <SelectField
                 value={priority}
                 onChange={(e) => setPriority(e.target.value as any)}
-                className={`input-base py-1 px-2.5 font-medium border text-xs capitalize ${priorityColors[priority]}`}
+                size="sm"
+                className="w-full"
               >
                 <option value="low">Low</option>
                 <option value="normal">Normal</option>
                 <option value="high">High</option>
                 <option value="urgent">Urgent</option>
-              </select>
+              </SelectField>
             </div>
 
             <div>
               <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Due Date</label>
-              <input
-                type="date"
+              <DateField
                 value={dueDate}
                 onChange={(e) => setDueDate(e.target.value)}
-                className="input-base text-xs font-mono"
+                size="sm"
+                className="w-full"
               />
             </div>
 
             <div>
               <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1">SLA Due Date</label>
-              <input
-                type="date"
+              <DateField
                 value={slaDate}
                 onChange={(e) => setSlaDate(e.target.value)}
-                className="input-base text-xs font-mono"
+                size="sm"
+                className="w-full"
               />
             </div>
 
             <div className="col-span-2">
               <label className="text-[10px] uppercase font-bold text-slate-500 block mb-1">Department</label>
-              <select
+              <SelectField
                 value={department}
                 onChange={(e) => setDepartment(e.target.value)}
-                className="input-base text-xs"
+                size="sm"
+                className="w-full"
               >
                 <option value="">—</option>
                 {DEPARTMENTS.map(([k, l]) => (
                   <option key={k} value={k}>{l}</option>
                 ))}
-              </select>
+              </SelectField>
             </div>
           </div>
 
@@ -418,7 +418,7 @@ export function TaskDetailDrawer({ task, onClose, onUpdate }: TaskDetailDrawerPr
         <div className="px-5 py-4 border-t border-border bg-slate-50 flex justify-between gap-3 flex-shrink-0">
           <button
             type="button"
-            onClick={handleCancelTask}
+            onClick={() => setConfirmCancelOpen(true)}
             disabled={loading}
             className="px-3 py-1.5 border border-rose-200 text-rose-700 hover:bg-rose-50 text-xs font-semibold rounded-md flex items-center gap-1 bg-white"
           >
@@ -446,6 +446,18 @@ export function TaskDetailDrawer({ task, onClose, onUpdate }: TaskDetailDrawerPr
         </div>
       </div>
       
+      <ConfirmDialog
+        open={confirmCancelOpen}
+        title="Cancel this task?"
+        message="The task will be marked cancelled. This can't be undone from here."
+        confirmLabel="Cancel task"
+        cancelLabel="Keep task"
+        tone="danger"
+        busy={loading}
+        onConfirm={doCancelTask}
+        onCancel={() => setConfirmCancelOpen(false)}
+      />
+
       {/* Slide-in styles keyframe */}
       <style jsx global>{`
         @keyframes slide-in {

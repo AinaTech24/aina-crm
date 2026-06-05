@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Settings, ShieldCheck, Building2, UserCircle, LogOut, ChevronDown, Loader2 } from "lucide-react";
+import { Settings, ShieldCheck, Building2, UserCircle, LogOut, ChevronDown, Loader2, CreditCard } from "lucide-react";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
 /**
  * Header profile control. Opens on hover OR click and exposes account links +
@@ -31,6 +32,7 @@ export function ProfileMenu({
   licenseStatus?: string | null;
 }) {
   const [open, setOpen] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -65,8 +67,12 @@ export function ProfileMenu({
     closeTimer.current = setTimeout(() => setOpen(false), 180);
   };
 
-  async function logout() {
-    if (!window.confirm("Are you sure you want to log out?")) return;
+  function requestLogout() {
+    setOpen(false);
+    setConfirmOpen(true);
+  }
+
+  async function doLogout() {
     setLoggingOut(true);
     try {
       await fetch("/api/auth/logout?scope=mfd", { method: "POST" });
@@ -137,11 +143,12 @@ export function ProfileMenu({
               <MenuLink href="/dashboard/settings/security" icon={ShieldCheck} label="Account & security" onClick={() => setOpen(false)} />
               <MenuLink href="/dashboard/settings" icon={Settings} label="Settings" onClick={() => setOpen(false)} />
               <MenuLink href="/dashboard/settings/firm-profile" icon={Building2} label="Firm profile" onClick={() => setOpen(false)} />
+              <MenuLink href="/dashboard/billing" icon={CreditCard} label="Billing" onClick={() => setOpen(false)} />
             </div>
             <div className="border-t border-border p-1.5">
               <button
                 type="button"
-                onClick={logout}
+                onClick={requestLogout}
                 disabled={loggingOut}
                 className="w-full flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50 transition-colors disabled:opacity-50"
               >
@@ -152,6 +159,18 @@ export function ProfileMenu({
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmOpen}
+        title="Log out?"
+        message="You'll be signed out of this device and returned to the login screen."
+        confirmLabel="Log out"
+        cancelLabel="Stay signed in"
+        tone="danger"
+        busy={loggingOut}
+        onConfirm={doLogout}
+        onCancel={() => setConfirmOpen(false)}
+      />
     </div>
   );
 }
