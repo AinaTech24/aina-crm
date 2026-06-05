@@ -86,12 +86,13 @@ export default async function ReviewMeetingsPage({
   const statusFilter = (sp.status ?? "").split(",").filter(Boolean);
   const modeFilter = (sp.mode ?? "").split(",").filter(Boolean);
   const typeFilter = (sp.type ?? "").split(",").filter(Boolean);
+  const rmFilter = (sp.rm ?? "").split(",").filter(Boolean);
 
   const data = await withTenant(session.tenantId, async (tx) => {
     const filters: any[] = [sql`m.tenant_id = ${session.tenantId}::uuid`];
     if (q) {
       filters.push(
-        sql`(i.name ILIKE ${`%${q}%`} OR l.name ILIKE ${`%${q}%`} OR m.discussion_points ILIKE ${`%${q}%`} OR m.meeting_notes ILIKE ${`%${q}%`})`
+        sql`(i.name ILIKE ${`%${q}%`} OR l.name ILIKE ${`%${q}%`} OR u.name ILIKE ${`%${q}%`} OR m.discussion_points ILIKE ${`%${q}%`} OR m.meeting_notes ILIKE ${`%${q}%`})`
       );
     }
     if (categoryFilter.length) {
@@ -112,6 +113,11 @@ export default async function ReviewMeetingsPage({
     if (typeFilter.length) {
       filters.push(
         sql`m.meeting_type IN (${sql.join(typeFilter.map((v) => sql`${v}`), sql`, `)})`
+      );
+    }
+    if (rmFilter.length) {
+      filters.push(
+        sql`m.rm_id IN (${sql.join(rmFilter.map((v) => sql`${v}::uuid`), sql`, `)})`
       );
     }
     const dr = dateRangeCond(sp, "meeting", "m.meeting_date");
@@ -159,8 +165,16 @@ export default async function ReviewMeetingsPage({
       WHERE tenant_id = ${session.tenantId}::uuid
     `);
     const s = stats.rows[0] as any;
-    return { rows: meetings.rows as any[], stats: s };
+    // RM roster for the "RM" filter dropdown (so the MFD can see meetings by RM).
+    const rmRows = await tx.execute(sql`
+      SELECT id, name FROM users
+      WHERE tenant_id = ${session.tenantId}::uuid AND status = 'active'
+      ORDER BY name ASC
+    `);
+    return { rows: meetings.rows as any[], stats: s, rms: rmRows.rows as any[] };
   });
+
+  const rmOptions = (data.rms ?? []).map((r: any) => ({ value: String(r.id), label: r.name ?? "—" }));
 
   const upcoming = data.rows.filter(
     (r) => ["scheduled", "confirmed"].includes(r.status) && new Date(r.meeting_date) >= new Date()
@@ -287,6 +301,9 @@ export default async function ReviewMeetingsPage({
               { value: "phone", label: "Phone" },
             ],
           },
+          ...(rmOptions.length
+            ? [{ type: "multi" as const, key: "rm", label: "RM", options: rmOptions }]
+            : []),
           dateRangeFilter("meeting", "Meeting date"),
         ]}
         rightSlot={
