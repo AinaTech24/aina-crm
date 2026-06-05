@@ -8,6 +8,7 @@ import { FilterBar } from "@/components/common/FilterBar";
 import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
 import { CustomViews } from "@/components/common/CustomViews";
 import { ColumnManager } from "@/components/common/ColumnManager";
+import { RowLink } from "@/components/common/RowLink";
 
 const MEETINGS_COLUMNS = [
   { key: "date", label: "Date", required: true },
@@ -331,7 +332,7 @@ export default async function ReviewMeetingsPage({
             </thead>
             <tbody>
               {upcoming.map((m) => (
-                <tr key={m.id} className="border-b last:border-0 hover:bg-secondary/40">
+                <RowLink key={m.id} href={`/dashboard/review-meetings/${m.id}`} className="border-b last:border-0 hover:bg-secondary/40">
                   <td data-col="date" className="px-4 py-3 whitespace-nowrap">
                     <Link href={`/dashboard/review-meetings/${m.id}`} className="font-medium tabular-nums hover:underline">
                       {new Date(m.meeting_date).toLocaleString("en-IN", {
@@ -395,7 +396,7 @@ export default async function ReviewMeetingsPage({
                       {m.status.replace(/_/g, " ")}
                     </span>
                   </td>
-                </tr>
+                </RowLink>
               ))}
             </tbody>
           </table>
@@ -421,7 +422,7 @@ export default async function ReviewMeetingsPage({
             </thead>
             <tbody>
               {past.slice(0, 50).map((m) => (
-                <tr key={m.id} className="border-b last:border-0 hover:bg-secondary/40">
+                <RowLink key={m.id} href={`/dashboard/review-meetings/${m.id}`} className="border-b last:border-0 hover:bg-secondary/40">
                   <td className="px-4 py-3 text-xs tabular-nums whitespace-nowrap">
                     <Link href={`/dashboard/review-meetings/${m.id}`} className="font-medium hover:underline">
                       {formatDate(m.meeting_date)}
@@ -467,7 +468,7 @@ export default async function ReviewMeetingsPage({
                   <td className="py-3 pr-4 text-xs text-muted-foreground max-w-[260px] truncate">
                     {m.meeting_notes ?? <span className="italic">No notes yet</span>}
                   </td>
-                </tr>
+                </RowLink>
               ))}
             </tbody>
           </table>
