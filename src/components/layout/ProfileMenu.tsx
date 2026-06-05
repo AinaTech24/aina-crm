@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Settings, ShieldCheck, Building2, HelpCircle, LogOut, ChevronDown, Loader2 } from "lucide-react";
+import { Settings, ShieldCheck, Building2, UserCircle, LogOut, ChevronDown, Loader2 } from "lucide-react";
 
 /**
  * Header profile control. Opens on hover OR click and exposes account links +
@@ -15,11 +15,20 @@ export function ProfileMenu({
   email,
   roleLabel,
   initials,
+  avatarUrl,
+  packageKey,
+  licenseStatus,
 }: {
   name: string;
   email?: string;
   roleLabel: string;
   initials: string;
+  /** Profile photo (uploaded in Settings → My profile). Falls back to initials. */
+  avatarUrl?: string | null;
+  /** License plan key, e.g. "premium" — shown as the "premium" chip. */
+  packageKey?: string | null;
+  /** License status, e.g. "trial" / "active". */
+  licenseStatus?: string | null;
 }) {
   const [open, setOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
@@ -68,6 +77,20 @@ export function ProfileMenu({
     router.refresh();
   }
 
+  const Avatar = ({ size }: { size: string }) =>
+    avatarUrl ? (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={avatarUrl}
+        alt=""
+        className={`${size} rounded-full object-cover shadow-md ring-2 ring-white`}
+      />
+    ) : (
+      <span className={`${size} rounded-full brand-gradient text-white grid place-items-center text-xs font-bold shadow-md ring-2 ring-white`}>
+        {initials}
+      </span>
+    );
+
   return (
     <div ref={ref} className="relative" onMouseEnter={openNow} onMouseLeave={scheduleClose}>
       <button
@@ -78,26 +101,42 @@ export function ProfileMenu({
         aria-expanded={open}
         aria-label="Account menu"
       >
-        <span className="size-9 rounded-full brand-gradient text-white grid place-items-center text-xs font-bold shadow-md ring-2 ring-white">
-          {initials}
-        </span>
+        <Avatar size="size-9" />
         <ChevronDown
           className={`size-3.5 text-muted-foreground transition-transform duration-200 hidden sm:block ${open ? "rotate-180" : ""}`}
         />
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-2 w-60 z-50 origin-top-right animate-scale-in">
+        <div className="absolute right-0 top-full mt-2 w-64 z-50 origin-top-right animate-scale-in">
           <div className="card-elevated overflow-hidden">
-            <div className="px-4 py-3 border-b border-border bg-secondary/30">
-              <div className="text-sm font-semibold truncate">{name}</div>
-              <div className="text-xs text-muted-foreground truncate">{email || roleLabel}</div>
+            {/* Identity header — brand background */}
+            <div className="px-4 py-4 brand-gradient text-white">
+              <div className="flex items-center gap-3 min-w-0">
+                <Avatar size="size-11" />
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold truncate">{name}</div>
+                  {email && <div className="text-[11px] text-white/75 truncate">{email}</div>}
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5 mt-3">
+                <span className="inline-flex items-center rounded-full bg-white/15 border border-white/25 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide">
+                  {roleLabel}
+                </span>
+                {packageKey && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-white/15 border border-white/25 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide">
+                    {packageKey}
+                    {licenseStatus && <span className="text-white/70 normal-case font-medium">· {licenseStatus}</span>}
+                  </span>
+                )}
+              </div>
             </div>
+
             <div className="p-1.5">
+              <MenuLink href="/dashboard/settings/profile" icon={UserCircle} label="My profile" onClick={() => setOpen(false)} />
               <MenuLink href="/dashboard/settings/security" icon={ShieldCheck} label="Account & security" onClick={() => setOpen(false)} />
               <MenuLink href="/dashboard/settings" icon={Settings} label="Settings" onClick={() => setOpen(false)} />
               <MenuLink href="/dashboard/settings/firm-profile" icon={Building2} label="Firm profile" onClick={() => setOpen(false)} />
-              <MenuLink href="/dashboard/help" icon={HelpCircle} label="Help & glossary" onClick={() => setOpen(false)} />
             </div>
             <div className="border-t border-border p-1.5">
               <button

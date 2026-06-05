@@ -19,6 +19,16 @@ export const dynamic = "force-dynamic";
 const Body = z.object({
   name: z.string().trim().min(2).max(120).optional(),
   phone: z.string().trim().max(20).optional().or(z.literal("")),
+  // Profile photo URL. Only a relative app path (/api/upload-local/…) or an
+  // http(s) URL is accepted — never a javascript:/data: URL — so it's safe to
+  // render in an <img src>.
+  avatarUrl: z
+    .string()
+    .trim()
+    .max(2000)
+    .refine((v) => v === "" || v.startsWith("/") || /^https?:\/\//i.test(v), "invalid url")
+    .optional()
+    .or(z.literal("")),
 });
 
 export async function PATCH(req: NextRequest) {
@@ -31,6 +41,7 @@ export async function PATCH(req: NextRequest) {
     const patch: Record<string, any> = { updatedAt: new Date() };
     if (parsed.data.name !== undefined) patch.name = parsed.data.name;
     if (parsed.data.phone !== undefined) patch.phone = parsed.data.phone || null;
+    if (parsed.data.avatarUrl !== undefined) patch.avatarUrl = parsed.data.avatarUrl || null;
 
     await withTenant(session.tenantId, async (tx) => {
       await tx.update(users).set(patch).where(eq(users.id, session.userId));

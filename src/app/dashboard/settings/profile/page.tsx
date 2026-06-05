@@ -19,6 +19,7 @@ export default async function ProfilePage() {
         name: users.name,
         email: users.email,
         phone: users.phone,
+        avatarUrl: users.avatarUrl,
         department: users.department,
         joiningDate: users.joiningDate,
         annualTarget: users.annualTarget,
@@ -59,7 +60,7 @@ export default async function ProfilePage() {
       </div>
 
       {/* Editable details + password */}
-      <ProfileForm initialName={me?.name ?? ""} initialPhone={me?.phone ?? ""} />
+      <ProfileForm initialName={me?.name ?? ""} initialPhone={me?.phone ?? ""} initialAvatarUrl={me?.avatarUrl ?? ""} />
 
       {/* Targets */}
       <div className="border rounded-lg bg-card p-5">

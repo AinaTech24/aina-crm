@@ -298,15 +298,19 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const pathname = reqHeaders.get("x-pathname") ?? "";
   const pathAllowed = isPathAllowedWhenRestricted(pathname);
 
-  const { tenant, userModules } = await withTenant(session.tenantId, async (tx) => {
+  const { tenant, userModules, avatarUrl } = await withTenant(session.tenantId, async (tx) => {
     const [t] = await tx.select().from(tenants).where(eq(tenants.id, session.tenantId)).limit(1);
     // Per-user sidebar module grant (Module-19). null = inherit all tenant modules.
     const [u] = await tx
-      .select({ enabledModules: users.enabledModules })
+      .select({ enabledModules: users.enabledModules, avatarUrl: users.avatarUrl })
       .from(users)
       .where(eq(users.id, session.userId))
       .limit(1);
-    return { tenant: t, userModules: (u?.enabledModules as string[] | null) ?? null };
+    return {
+      tenant: t,
+      userModules: (u?.enabledModules as string[] | null) ?? null,
+      avatarUrl: (u?.avatarUrl as string | null) ?? null,
+    };
   });
 
   // Sidebar badge uses the square icon variant, falling back to monogram → full
@@ -434,36 +438,6 @@ export default async function DashboardLayout({ children }: { children: React.Re
           ))}
         </nav>
 
-        {/* User card at bottom */}
-        <div className="p-3 border-t border-border/70 bg-secondary/30">
-          <div className="rounded-xl bg-card border border-border/60 p-3 flex items-center gap-3 shadow-sm">
-            <div className="size-10 rounded-full brand-gradient text-white grid place-items-center text-xs font-bold flex-shrink-0 shadow-md ring-2 ring-white">
-              {initials}
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="text-xs font-semibold truncate">{session.name}</div>
-              <div className="text-[11px] text-muted-foreground truncate">{roleLabel}</div>
-            </div>
-          </div>
-          {license.packageKey && (
-            <div className="mt-2.5 flex items-center gap-1.5 px-1">
-              <span className="chip bg-brand-navy-light text-brand-navy text-[10px] uppercase tracking-wide">
-                {license.packageKey}
-              </span>
-              <span
-                className={`chip text-[10px] chip-dot ${
-                  license.status === "active"
-                    ? "bg-emerald-50 text-emerald-700"
-                    : license.status === "trial"
-                    ? "bg-brand-cyan-light text-brand-cyan-deep"
-                    : "bg-rose-50 text-rose-700"
-                }`}
-              >
-                {license.status}
-              </span>
-            </div>
-          )}
-        </div>
     </>
   );
 
@@ -522,6 +496,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
               email={session.email}
               roleLabel={roleLabel}
               initials={initials}
+              avatarUrl={avatarUrl}
+              packageKey={license.packageKey}
+              licenseStatus={license.status}
             />
           </div>
         </div>
