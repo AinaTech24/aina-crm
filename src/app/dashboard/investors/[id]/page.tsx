@@ -46,6 +46,7 @@ import { TransactionLedger } from "@/components/investors/TransactionLedger";
 import { SipHealthCard, type SipHealth } from "@/components/investors/SipHealthCard";
 import { CrossSellCard } from "@/components/investors/CrossSellCard";
 import { RelatedModulesRail } from "@/components/investors/RelatedModulesRail";
+import { InvestorDocumentsSection } from "@/components/investors/InvestorDocumentsSection";
 import { MasterRecordEditor } from "@/components/investors/MasterRecordEditor";
 import { crossSellOpportunities } from "@/lib/investors/cross-sell";
 import {
@@ -64,6 +65,7 @@ const INVESTOR_DETAIL_SECTIONS: RelatedListDef[] = [
   { key: "cross_sell", label: "Cross-sell / holdings" },
   { key: "sip_health", label: "SIP health" },
   { key: "transactions", label: "Transaction history" },
+  { key: "documents", label: "Documents & attachments" },
   { key: "blueprint", label: "Onboarding blueprint" },
   { key: "edit_panel", label: "Inline-editable details" },
   { key: "master", label: "Master record (full read-only view)" },
@@ -501,6 +503,13 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
       {/* Transaction ledger — recent purchases / redemptions / SIPs / switches */}
       <RelatedListSection moduleKey="investors-detail" sectionKey="transactions">
         <TransactionLedger transactions={data.recentTransactions as any} total={data.txCount} />
+      </RelatedListSection>
+
+      {/* Documents & attachments — RM-uploaded files + auto-ingested client
+          uploads from the required-documents form (same compliance_documents
+          rows, linked to this investor). Self-fetching island. */}
+      <RelatedListSection moduleKey="investors-detail" sectionKey="documents">
+        <InvestorDocumentsSection investorId={inv.id} investorName={inv.name} />
       </RelatedListSection>
 
       {/* Client-phase onboarding bar — stages 13-15: Operations → Portal
