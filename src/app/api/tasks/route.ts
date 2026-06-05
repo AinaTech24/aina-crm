@@ -8,6 +8,7 @@ import { requireSession } from "@/lib/auth/session";
 import { can, requireAny } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
+import { createNotification } from "@/lib/notifications/create";
 import { tasks, users } from "@/db/schema";
 
 export const dynamic = "force-dynamic";
@@ -148,6 +149,23 @@ export async function POST(req: NextRequest) {
         after: { title: body.title, type: body.type, assigneeId, priority: body.priority } as any,
         ...meta,
       });
+
+      // Notify the assignee when someone *else* assigns them a task (no self-ping).
+      if (assigneeId !== session.userId) {
+        const actor = (
+          await tx.select({ name: users.name }).from(users).where(eq(users.id, session.userId)).limit(1)
+        )[0];
+        await createNotification(tx, {
+          tenantId: session.tenantId,
+          userId: assigneeId,
+          kind: "task.assigned",
+          title: `New task: ${body.title}`,
+          body: actor?.name ? `${actor.name} assigned this task to you` : "A task was assigned to you",
+          linkUrl: "/dashboard/tasks?view=assigned_to_me",
+          severity: body.priority === "urgent" || body.priority === "high" ? "warning" : "info",
+          meta: { task_id: id, assigned_by: session.userId, priority: body.priority },
+        });
+      }
     });
     return NextResponse.json({ id }, { status: 201 });
   } catch (err: any) {

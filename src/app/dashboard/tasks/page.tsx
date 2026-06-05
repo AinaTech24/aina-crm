@@ -9,6 +9,7 @@ import { FilterBar } from "@/components/common/FilterBar";
 import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
 import { CustomViews } from "@/components/common/CustomViews";
 import { TaskList } from "./TaskList";
+import { TaskKanban } from "./TaskKanban";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +27,9 @@ export default async function TasksPage({
   const deptFilter = (sp.department ?? "").split(",").filter(Boolean);
   const assigneeFilter = (sp.assignee ?? "").split(",").filter(Boolean);
   const due = sp.due; // 'today' | 'overdue' | 'sla_risk'
+  // View tabs: "" (all) | "to_me" (assigned to me) | "by_me" (I assigned) | "kanban".
+  const view = sp.view ?? "";
+  const isKanban = view === "kanban";
 
   // Users with task.view.all see the whole firm; everyone else (RM, team
   // member) sees only what they're assigned to or created — matching the
@@ -39,10 +43,15 @@ export default async function TasksPage({
       conds.push(or(eq(tasks.assigneeId, session.userId), eq(tasks.createdById, session.userId))!);
     }
 
-    // Default to status=open if none specified
+    // View-tab scope: tasks assigned TO me, or tasks I assigned (created).
+    if (view === "to_me") conds.push(eq(tasks.assigneeId, session.userId));
+    else if (view === "by_me") conds.push(eq(tasks.createdById, session.userId));
+
+    // Status: an explicit filter always wins. Otherwise default the LIST to open
+    // tasks, but the KANBAN shows every status so each column populates.
     if (statusFilter.length) {
       conds.push(inArray(tasks.status, statusFilter as any));
-    } else {
+    } else if (!isKanban) {
       conds.push(eq(tasks.status, "open"));
     }
     
@@ -81,7 +90,7 @@ export default async function TasksPage({
       .leftJoin(leads, eq(leads.id, tasks.relatedLeadId))
       .where(where as any)
       .orderBy(desc(tasks.dueAt))
-      .limit(100);
+      .limit(isKanban ? 300 : 100);
 
     const viewScope = canViewAll
       ? sql``
@@ -123,6 +132,31 @@ export default async function TasksPage({
         >
           <Plus className="size-4" /> New task
         </Link>
+      </div>
+
+      {/* View tabs — list / mine / assigned-by-me / kanban board */}
+      <div className="flex items-center gap-1 border-b border-border -mb-2 overflow-x-auto">
+        {[
+          { key: "", label: "All tasks" },
+          { key: "to_me", label: "Assigned to me" },
+          { key: "by_me", label: "Assigned by me" },
+          { key: "kanban", label: "Kanban board" },
+        ].map((t) => {
+          const active = view === t.key;
+          return (
+            <Link
+              key={t.key || "all"}
+              href={t.key ? `/dashboard/tasks?view=${t.key}` : "/dashboard/tasks"}
+              className={`px-3.5 py-2 text-sm font-medium border-b-2 -mb-px whitespace-nowrap transition-colors ${
+                active
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {t.label}
+            </Link>
+          );
+        })}
       </div>
 
       {/* Clickable Interactive Stats Ribbon */}
@@ -201,11 +235,12 @@ export default async function TasksPage({
         }
       />
 
-      {/* Interactive Client Task List & Details Drawer */}
-      <TaskList
-        initialRows={result.rows}
-        currentUserId={session.userId}
-      />
+      {/* Status-column board, or the interactive list + detail drawer */}
+      {isKanban ? (
+        <TaskKanban initialRows={result.rows} currentUserId={session.userId} />
+      ) : (
+        <TaskList initialRows={result.rows} currentUserId={session.userId} />
+      )}
     </div>
   );
 }

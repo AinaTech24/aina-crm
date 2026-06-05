@@ -16,6 +16,7 @@ import { requireSession } from "@/lib/auth/session";
 import { can, requireAny } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
+import { createNotification } from "@/lib/notifications/create";
 import { tasks, users } from "@/db/schema";
 
 export const dynamic = "force-dynamic";
@@ -155,6 +156,53 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         after: parse.data as any,
         ...clientMeta,
       });
+
+      // ── Notifications ─────────────────────────────────────────────────
+      // Look up the actor's name once if we'll emit anything.
+      const willReassign =
+        parse.data.assigneeId !== undefined &&
+        parse.data.assigneeId !== before.assigneeId &&
+        parse.data.assigneeId !== session.userId;
+      const willNotifyCreator =
+        parse.data.status !== undefined &&
+        parse.data.status !== before.status &&
+        !!before.createdById &&
+        before.createdById !== session.userId;
+      if (willReassign || willNotifyCreator) {
+        const actor = (
+          await tx.select({ name: users.name }).from(users).where(eq(users.id, session.userId)).limit(1)
+        )[0];
+        const actorName = actor?.name ?? "A teammate";
+
+        // (1) Reassigned → notify the NEW assignee.
+        if (willReassign) {
+          await createNotification(tx, {
+            tenantId: session.tenantId,
+            userId: parse.data.assigneeId!,
+            kind: "task.assigned",
+            title: `Task assigned: ${before.title}`,
+            body: `${actorName} assigned this task to you`,
+            linkUrl: "/dashboard/tasks?view=assigned_to_me",
+            severity: "info",
+            meta: { task_id: id, assigned_by: session.userId, from_assignee: before.assigneeId },
+          });
+        }
+
+        // (2) Status changed by someone other than the creator → notify the creator.
+        if (willNotifyCreator) {
+          const human = (s: string) => s.replace(/_/g, " ");
+          await createNotification(tx, {
+            tenantId: session.tenantId,
+            userId: before.createdById!,
+            kind: "task.status_changed",
+            title: `Task ${human(parse.data.status!)}: ${before.title}`,
+            body: `${actorName} moved it from “${human(before.status)}” to “${human(parse.data.status!)}”`,
+            linkUrl: "/dashboard/tasks?view=assigned_by_me",
+            severity: parse.data.status === "completed" ? "success" : parse.data.status === "blocked" ? "warning" : "info",
+            meta: { task_id: id, changed_by: session.userId, from_status: before.status, to_status: parse.data.status },
+          });
+        }
+      }
 
       // ── Recurring tasks: chain-on-completion ──────────────────────────
       // When a recurring task is marked completed (and wasn't already), spawn
