@@ -24,6 +24,7 @@ export default async function TasksPage({
   const priorityFilter = (sp.priority ?? "").split(",").filter(Boolean);
   const typeFilter = (sp.type ?? "").split(",").filter(Boolean);
   const deptFilter = (sp.department ?? "").split(",").filter(Boolean);
+  const assigneeFilter = (sp.assignee ?? "").split(",").filter(Boolean);
   const due = sp.due; // 'today' | 'overdue' | 'sla_risk'
 
   // Users with task.view.all see the whole firm; everyone else (RM, team
@@ -46,11 +47,12 @@ export default async function TasksPage({
     }
     
     if (q) {
-      conds.push(or(ilike(tasks.title, `%${q}%`), ilike(tasks.description, `%${q}%`))!);
+      conds.push(or(ilike(tasks.title, `%${q}%`), ilike(tasks.description, `%${q}%`), ilike(users.name, `%${q}%`))!);
     }
     if (priorityFilter.length) conds.push(inArray(tasks.priority, priorityFilter as any));
     if (typeFilter.length) conds.push(inArray(tasks.type, typeFilter as any));
     if (deptFilter.length) conds.push(inArray(tasks.department, deptFilter as any));
+    if (assigneeFilter.length) conds.push(inArray(tasks.assigneeId, assigneeFilter as any));
     
     // Apply stats ribbon parameters
     if (due === "today") {
@@ -95,8 +97,16 @@ export default async function TasksPage({
     `);
     
     const s = (stats.rows[0] as any) ?? { open: 0, due_today: 0, overdue: 0, sla_at_risk: 0 };
-    return { rows, stats: s };
+    // Roster for the "Assignee" filter (so owners can see tasks by RM).
+    const rmRows = await tx.execute(sql`
+      SELECT id, name FROM users
+      WHERE tenant_id = ${session.tenantId}::uuid AND status = 'active'
+      ORDER BY name ASC
+    `);
+    return { rows, stats: s, rms: rmRows.rows as any[] };
   });
+
+  const rmOptions = (result.rms ?? []).map((r: any) => ({ value: String(r.id), label: r.name ?? "—" }));
 
   return (
     <div className="space-y-6 max-w-6xl">
@@ -173,6 +183,9 @@ export default async function TasksPage({
               { value: "other", label: "Other" },
             ],
           },
+          ...(canViewAll && rmOptions.length
+            ? [{ type: "multi" as const, key: "assignee", label: "Assignee", options: rmOptions }]
+            : []),
           dateRangeFilter("created", "Created"),
         ]}
         rightSlot={
