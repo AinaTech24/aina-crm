@@ -12,7 +12,7 @@ import {
   File,
   Calendar,
 } from "lucide-react";
-import { withSystem, withTenant } from "@/db/client";
+import { withTenant } from "@/db/client";
 import { contentLibraryAssets, tenants } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { assetVisibleTo } from "@/lib/content/asset-url";
@@ -50,10 +50,11 @@ export default async function AinaLibraryDetailPage({
 }) {
   const { id } = await params;
   const session = await requireSession();
-  // withSystem bypasses RLS, so the visibility predicate is mandatory — it
-  // scopes the lookup to global assets + the caller's own tenant. Without it,
-  // any MFD could open another tenant's private asset by id.
-  const asset = await withSystem(async (tx) =>
+  // Tenant context: the bespoke RLS policy (global OR own tenant) scopes the
+  // lookup; the explicit predicate is belt-and-suspenders. (withSystem would
+  // crash here — it leaves app.tenant_id at the role's empty-string default,
+  // which the policy casts to ''::uuid.)
+  const asset = await withTenant(session.tenantId, async (tx) =>
     (await tx
       .select()
       .from(contentLibraryAssets)

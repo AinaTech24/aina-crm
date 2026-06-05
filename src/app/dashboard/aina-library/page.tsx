@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { desc, or, isNull, eq } from "drizzle-orm";
 import { Sparkles, Plus } from "lucide-react";
-import { withSystem } from "@/db/client";
+import { withTenant } from "@/db/client";
 import { contentLibraryAssets } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { FilterBar } from "@/components/common/FilterBar";
@@ -24,8 +24,12 @@ export default async function AinaLibraryPage({
 
   const canUpload = can(session.roles, "template.edit");
 
-  // Fetch platform-shared assets (tenantId IS NULL) plus current tenant's custom assets
-  const allRows = await withSystem(async (tx) =>
+  // Platform-shared assets (tenant_id IS NULL) PLUS this tenant's own uploads.
+  // Run in tenant context: the bespoke RLS policy on content_library_assets
+  // (tenant_id IS NULL OR tenant_id = app.tenant_id) returns exactly that set.
+  // (withSystem doesn't set app.tenant_id, so its empty-string default crashed
+  // the uuid cast — `invalid input syntax for type uuid: ""`.)
+  const allRows = await withTenant(session.tenantId, async (tx) =>
     tx
       .select()
       .from(contentLibraryAssets)

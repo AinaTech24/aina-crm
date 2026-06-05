@@ -9,7 +9,7 @@
 
 import { notFound } from "next/navigation";
 import { and, eq } from "drizzle-orm";
-import { withSystem, withTenant } from "@/db/client";
+import { withTenant } from "@/db/client";
 import { contentLibraryAssets, tenants } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { assetVisibleTo } from "@/lib/content/asset-url";
@@ -25,9 +25,10 @@ export default async function CoverSheetPage({
 }) {
   const { id } = await params;
   const session = await requireSession();
-  // Tenant-scoped lookup (global OR own tenant) — withSystem bypasses RLS, so
-  // the predicate is what prevents reading another tenant's asset by id.
-  const asset = await withSystem(async (tx) =>
+  // Tenant context: the bespoke RLS policy (global OR own tenant) scopes the
+  // lookup; the predicate is belt-and-suspenders. (withSystem would crash —
+  // its empty-string app.tenant_id default is cast to ''::uuid by the policy.)
+  const asset = await withTenant(session.tenantId, async (tx) =>
     (await tx
       .select()
       .from(contentLibraryAssets)
