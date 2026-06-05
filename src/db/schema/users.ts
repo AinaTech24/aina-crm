@@ -1,4 +1,4 @@
-import { boolean, date, index, jsonb, numeric, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, date, index, integer, jsonb, numeric, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { id, tenantId, timestamps } from "./_shared";
 import { tenants } from "./tenants";
 import { branches } from "./branches";
@@ -66,6 +66,10 @@ export const users = pgTable(
     annualTarget: numeric("annual_target", { precision: 18, scale: 2 }),
     /** Monthly SIP-mobilisation target in ₹ (used by SIP book report). */
     sipMonthlyTarget: numeric("sip_monthly_target", { precision: 18, scale: 2 }),
+    /** Monthly target: # of NEW (prospecting) meetings — review_meetings.category='new'. */
+    newMeetingsMonthlyTarget: integer("new_meetings_monthly_target"),
+    /** Monthly target: # of RENEWAL / review meetings — review_meetings.category='review'. */
+    renewalMeetingsMonthlyTarget: integer("renewal_meetings_monthly_target"),
 
     /** Free-form HR / manager notes. */
     notes: text("notes"),

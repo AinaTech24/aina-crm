@@ -69,6 +69,7 @@ export type AuditAction =
   | "tenant.profile_update"
   | "package.update"
   | "package.delete"
+  | "target.update"
   // Generic
   | (string & {}); // allow free-form keys without losing IDE help
 
