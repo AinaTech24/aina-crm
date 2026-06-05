@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { sql } from "drizzle-orm";
-import { ShieldCheck, AlertTriangle, Plus, ArrowRight } from "lucide-react";
+import { ShieldCheck, AlertTriangle, Plus, ArrowRight, Download } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { formatDate } from "@/lib/utils";
@@ -257,12 +257,23 @@ export default async function RiskProfilesPage({
                         )}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <Link
-                          href={`/dashboard/risk-profiles/new?investorId=${r.id}`}
-                          className="btn-accent text-xs px-3 py-1"
-                        >
-                          {status === "current" ? "Re-profile" : "Start"} <ArrowRight className="size-3" />
-                        </Link>
+                        <div className="inline-flex items-center gap-2">
+                          {r.profile_id && (
+                            <a
+                              href={`/api/risk-profiles/${r.profile_id}/pdf?download=1`}
+                              className="btn-secondary text-xs px-2.5 py-1"
+                              title="Download the completed Risk Profile (Q&A) as PDF"
+                            >
+                              <Download className="size-3" /> PDF
+                            </a>
+                          )}
+                          <Link
+                            href={`/dashboard/risk-profiles/new?investorId=${r.id}`}
+                            className="btn-accent text-xs px-3 py-1"
+                          >
+                            {status === "current" ? "Re-profile" : "Start"} <ArrowRight className="size-3" />
+                          </Link>
+                        </div>
                       </td>
                     </tr>
                   );
