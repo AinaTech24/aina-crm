@@ -11,12 +11,17 @@ import { TemplateActions } from "./TemplateActions";
 export const dynamic = "force-dynamic";
 
 const STATUS_COLORS: Record<string, string> = {
+  // version approval statuses
   draft: "bg-gray-100 text-gray-800 border-gray-200",
   submitted: "bg-amber-100 text-amber-800 border-amber-200",
   approved_internal: "bg-emerald-100 text-emerald-800 border-emerald-200",
   approved_external: "bg-emerald-100 text-emerald-800 border-emerald-200",
   rejected: "bg-rose-100 text-rose-800 border-rose-200",
   paused: "bg-slate-100 text-slate-800 border-slate-200",
+  // template-level statuses (header chip)
+  approved: "bg-emerald-100 text-emerald-800 border-emerald-200",
+  pending_approval: "bg-amber-100 text-amber-800 border-amber-200",
+  archived: "bg-zinc-100 text-zinc-700 border-zinc-200",
 };
 
 const channelIcons = { whatsapp: MessageCircle, email: Mail, sms: MessageSquare, inapp: MessageSquare };
