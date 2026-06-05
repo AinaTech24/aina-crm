@@ -8,6 +8,8 @@
 import { Plus, X } from "lucide-react";
 import { CATALOGS, type FieldDef, type SubjectCatalog } from "@/lib/filter/catalog";
 import type { FilterOperator } from "@/lib/filter/ast";
+import { SelectField } from "@/components/ui/SelectField";
+import { DateField } from "@/components/ui/DateField";
 
 type Group = { type: "group"; op: "AND" | "OR"; not?: boolean; children: Node[] };
 type Predicate = { type: "predicate"; field: { kind: "attr"; path: string }; op: FilterOperator; value?: unknown; duration?: { amount: number; unit: string } };
@@ -107,28 +109,30 @@ function PredicateEditor({ cat, predicate, onChange, onRemove }: { cat: SubjectC
   const field = cat.fields.find((f) => f.key === predicate.field.path) ?? cat.fields[0];
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card px-2 py-1.5">
-      <select
+      <SelectField
         value={field.key}
         onChange={(e) => {
           const nf = cat.fields.find((f) => f.key === e.target.value)!;
           onChange({ type: "predicate", field: { kind: "attr", path: nf.key }, op: nf.ops[0] });
         }}
-        className="text-xs rounded-md border border-border bg-card px-2 py-1 max-w-[180px]"
+        size="sm"
+        className="max-w-[180px] shrink-0"
       >
         {cat.fields.map((f) => (
           <option key={f.key} value={f.key}>{f.label}</option>
         ))}
-      </select>
+      </SelectField>
 
-      <select
+      <SelectField
         value={predicate.op}
         onChange={(e) => onChange({ ...predicate, op: e.target.value as FilterOperator, value: undefined, duration: undefined })}
-        className="text-xs rounded-md border border-border bg-card px-2 py-1"
+        size="sm"
+        className="shrink-0"
       >
         {field.ops.map((op) => (
           <option key={op} value={op}>{OP_LABELS[op] ?? op}</option>
         ))}
-      </select>
+      </SelectField>
 
       <ValueInput field={field} predicate={predicate} onChange={onChange} />
 
@@ -146,21 +150,32 @@ function ValueInput({ field, predicate, onChange }: { field: FieldDef; predicate
   const cls = "text-xs rounded-md border border-border bg-card px-2 py-1";
   const set = (value: unknown) => onChange({ ...predicate, value });
 
+  const isDate = field.type === "date" || field.type === "datetime";
+
   if (DURATION_OPS.has(op)) {
     const d = predicate.duration ?? { amount: 7, unit: "day" };
     return (
       <span className="flex items-center gap-1">
         <input type="number" value={d.amount} onChange={(e) => onChange({ ...predicate, duration: { ...d, amount: Number(e.target.value) || 0 } })} className={`${cls} w-16`} />
-        <select value={d.unit} onChange={(e) => onChange({ ...predicate, duration: { ...d, unit: e.target.value } })} className={cls}>
+        <SelectField value={d.unit} onChange={(e) => onChange({ ...predicate, duration: { ...d, unit: e.target.value } })} size="sm" className="shrink-0">
           {["day", "week", "month", "year"].map((u) => <option key={u} value={u}>{u}s</option>)}
-        </select>
+        </SelectField>
       </span>
     );
   }
 
   if (TWO_VALUE_OPS.has(op)) {
     const arr = Array.isArray(predicate.value) ? predicate.value : ["", ""];
-    const it = field.type === "date" || field.type === "datetime" ? "date" : field.type === "number" || field.type === "integer" || field.type === "currency" ? "number" : "text";
+    if (isDate) {
+      return (
+        <span className="flex items-center gap-1">
+          <DateField value={String(arr[0] ?? "")} onChange={(e) => set([e.target.value, arr[1]])} size="sm" className="w-32" />
+          <span className="text-[11px] text-muted-foreground">and</span>
+          <DateField value={String(arr[1] ?? "")} onChange={(e) => set([arr[0], e.target.value])} size="sm" className="w-32" />
+        </span>
+      );
+    }
+    const it = field.type === "number" || field.type === "integer" || field.type === "currency" ? "number" : "text";
     return (
       <span className="flex items-center gap-1">
         <input type={it} value={String(arr[0] ?? "")} onChange={(e) => set([e.target.value, arr[1]])} className={`${cls} w-28`} />
@@ -177,13 +192,16 @@ function ValueInput({ field, predicate, onChange }: { field: FieldDef; predicate
 
   if (field.type === "enum" && field.enumValues?.length) {
     return (
-      <select value={String(predicate.value ?? "")} onChange={(e) => set(e.target.value)} className={cls}>
+      <SelectField value={String(predicate.value ?? "")} onChange={(e) => set(e.target.value)} size="sm" className="shrink-0">
         <option value="">—</option>
         {field.enumValues.map((v) => <option key={v} value={v}>{v}</option>)}
-      </select>
+      </SelectField>
     );
   }
 
-  const inputType = field.type === "date" || field.type === "datetime" ? "date" : field.type === "number" || field.type === "integer" || field.type === "currency" ? "number" : "text";
+  if (isDate) {
+    return <DateField value={String(predicate.value ?? "")} onChange={(e) => set(e.target.value)} size="sm" className="w-40" />;
+  }
+  const inputType = field.type === "number" || field.type === "integer" || field.type === "currency" ? "number" : "text";
   return <input type={inputType} value={String(predicate.value ?? "")} onChange={(e) => set(e.target.value)} placeholder="value" className={`${cls} min-w-[140px]`} />;
 }

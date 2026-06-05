@@ -23,6 +23,8 @@ import {
 import { can, type Capability } from "@/lib/auth/rbac";
 import { NAV_ACCESS_GROUPS } from "@/config/nav-access";
 import { formatINR, formatDate } from "@/lib/utils";
+import { SelectField } from "@/components/ui/SelectField";
+import { DateField } from "@/components/ui/DateField";
 
 const DEPARTMENTS = [
   { value: "sales", label: "Sales" },
@@ -497,11 +499,11 @@ export function EmployeeEditForm({
               <input value={v.phone} onChange={(e) => update("phone", e.target.value)} className="input-base text-sm w-full" placeholder="+91 9xxxxxxxxx" />
             </Field>
             <Field label="Status">
-              <select value={v.status} onChange={(e) => update("status", e.target.value)} className="input-base text-sm w-full">
+              <SelectField value={v.status} onChange={(e) => update("status", e.target.value)} size="sm" className="w-full">
                 {STATUSES.map((s) => (
                   <option key={s.value} value={s.value}>{s.label}</option>
                 ))}
-              </select>
+              </SelectField>
             </Field>
           </div>
 
@@ -731,36 +733,38 @@ export function EmployeeEditForm({
           {/* HR fields */}
           <div className="grid grid-cols-2 gap-3">
             <Field label="Department">
-              <select
+              <SelectField
                 value={v.department ?? ""}
                 onChange={(e) => update("department", (e.target.value || null) as any)}
-                className="input-base text-sm w-full"
+                size="sm"
+                className="w-full"
               >
                 <option value="">—</option>
                 {DEPARTMENTS.map((d) => (
                   <option key={d.value} value={d.value}>{d.label}</option>
                 ))}
-              </select>
+              </SelectField>
             </Field>
             <Field label="Joining Date">
-              <input
-                type="date"
+              <DateField
                 value={v.joiningDate ?? ""}
                 onChange={(e) => update("joiningDate", e.target.value || null)}
-                className="input-base text-sm w-full"
+                size="sm"
+                className="w-full"
               />
             </Field>
             <Field label="Reporting Manager">
-              <select
+              <SelectField
                 value={v.reportingManagerId ?? ""}
                 onChange={(e) => update("reportingManagerId", e.target.value || null)}
-                className="input-base text-sm w-full"
+                size="sm"
+                className="w-full"
               >
                 <option value="">(none)</option>
                 {teammates.map((t) => (
                   <option key={t.id} value={t.id}>{t.name}</option>
                 ))}
-              </select>
+              </SelectField>
             </Field>
             <Field label="Annual Target (₹)">
               <input
@@ -935,19 +939,19 @@ export function EmployeeEditForm({
                 />
               </Field>
               <Field label="NISM Exam Date">
-                <input
-                  type="date"
+                <DateField
                   value={v.nismExamDate ?? ""}
                   onChange={(e) => update("nismExamDate", e.target.value || null)}
-                  className="input-base text-sm w-full"
+                  size="sm"
+                  className="w-full"
                 />
               </Field>
               <Field label="NISM Expiry Date">
-                <input
-                  type="date"
+                <DateField
                   value={v.nismExpiryAt ?? ""}
                   onChange={(e) => update("nismExpiryAt", e.target.value || null)}
-                  className="input-base text-sm w-full"
+                  size="sm"
+                  className="w-full"
                 />
               </Field>
             </div>
@@ -967,21 +971,21 @@ export function EmployeeEditForm({
                 />
               </Field>
               <Field label="ARN Registration Date">
-                <input
-                  type="date"
+                <DateField
                   value={v.arnRegistrationDate ?? ""}
                   onChange={(e) =>
                     update("arnRegistrationDate", e.target.value || null)
                   }
-                  className="input-base text-sm w-full"
+                  size="sm"
+                  className="w-full"
                 />
               </Field>
               <Field label="ARN Expiry Date">
-                <input
-                  type="date"
+                <DateField
                   value={v.arnExpiryAt ?? ""}
                   onChange={(e) => update("arnExpiryAt", e.target.value || null)}
-                  className="input-base text-sm w-full"
+                  size="sm"
+                  className="w-full"
                 />
               </Field>
             </div>
@@ -1001,11 +1005,11 @@ export function EmployeeEditForm({
                 />
               </Field>
               <Field label="EUIN Expiry Date">
-                <input
-                  type="date"
+                <DateField
                   value={v.euinExpiryAt ?? ""}
                   onChange={(e) => update("euinExpiryAt", e.target.value || null)}
-                  className="input-base text-sm w-full"
+                  size="sm"
+                  className="w-full"
                 />
               </Field>
             </div>
@@ -1030,21 +1034,21 @@ export function EmployeeEditForm({
                 </label>
               </Field>
               <Field label="DSC Last Submitted Date">
-                <input
-                  type="date"
+                <DateField
                   value={v.dscLastSubmittedAt ?? ""}
                   onChange={(e) =>
                     update("dscLastSubmittedAt", e.target.value || null)
                   }
-                  className="input-base text-sm w-full"
+                  size="sm"
+                  className="w-full"
                 />
               </Field>
               <Field label="DSC Expiry Date">
-                <input
-                  type="date"
+                <DateField
                   value={v.dscExpiryAt ?? ""}
                   onChange={(e) => update("dscExpiryAt", e.target.value || null)}
-                  className="input-base text-sm w-full"
+                  size="sm"
+                  className="w-full"
                 />
               </Field>
             </div>

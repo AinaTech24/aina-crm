@@ -4,6 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ChevronLeft, Upload, Loader2 } from "lucide-react";
+import { SelectField } from "@/components/ui/SelectField";
+import { DateField } from "@/components/ui/DateField";
 
 const CATEGORIES = [
   { key: "arn", label: "ARN" },
@@ -117,13 +119,13 @@ export default function UploadDocumentPage() {
         <div className="grid grid-cols-2 gap-3">
           <label className="block">
             <div className="text-xs font-medium mb-1">Category</div>
-            <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className="w-full border rounded-md px-3 py-2 text-sm bg-background">
+            <SelectField value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className="w-full">
               {CATEGORIES.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
-            </select>
+            </SelectField>
           </label>
           <label className="block">
             <div className="text-xs font-medium mb-1">Expires on</div>
-            <input type="date" value={form.expiresOn} onChange={(e) => setForm({ ...form, expiresOn: e.target.value })} className="w-full border rounded-md px-3 py-2 text-sm bg-background" />
+            <DateField value={form.expiresOn} onChange={(e) => setForm({ ...form, expiresOn: e.target.value })} className="w-full" />
           </label>
         </div>
         <label className="block">

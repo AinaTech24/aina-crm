@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { ChevronLeft, Eye, ShieldCheck, AlertCircle, Save, Send } from "lucide-react";
 import { runComplianceChecks } from "@/lib/comms/compliance";
+import { SelectField } from "@/components/ui/SelectField";
 import type { Template, TemplateVersion } from "@/db/schema";
 import type { EmailDesignerBody } from "@/lib/email-designer/types";
 
@@ -296,30 +297,30 @@ export function EditTemplateForm({ initialTemplate, initialVersion }: EditTempla
           />
         </Field>
         <Field label="Category">
-          <select 
-            value={category} 
-            onChange={(e) => setCategory(e.target.value as Category)} 
+          <SelectField
+            value={category}
+            onChange={(e) => setCategory(e.target.value as Category)}
             disabled={!isDraft}
-            className="input-base w-full disabled:bg-slate-100/50 disabled:cursor-not-allowed"
+            className="w-full"
           >
             <option value="transactional">Transactional</option>
             <option value="utility">Utility</option>
             <option value="marketing">Marketing</option>
             <option value="authentication">Authentication</option>
-          </select>
+          </SelectField>
         </Field>
         <Field label="Locale">
-          <select 
-            value={locale} 
-            onChange={(e) => setLocale(e.target.value)} 
+          <SelectField
+            value={locale}
+            onChange={(e) => setLocale(e.target.value)}
             disabled
-            className="input-base w-full bg-slate-100/50 cursor-not-allowed select-none"
+            className="w-full"
           >
             <option value="en-IN">English (India)</option>
             <option value="hi-IN">Hindi</option>
             <option value="gu-IN">Gujarati</option>
             <option value="mr-IN">Marathi</option>
-          </select>
+          </SelectField>
         </Field>
       </div>
 
@@ -368,7 +369,7 @@ export function EditTemplateForm({ initialTemplate, initialVersion }: EditTempla
                 <div className="font-mono font-semibold text-slate-700 truncate">{v.key}</div>
                 <div>
                   <label className="text-[9px] text-muted-foreground block font-medium uppercase tracking-wider mb-0.5">Type</label>
-                  <select
+                  <SelectField
                     value={v.type}
                     onChange={(e) => {
                       const next = [...declaredVars];
@@ -376,7 +377,8 @@ export function EditTemplateForm({ initialTemplate, initialVersion }: EditTempla
                       setDeclaredVars(next);
                     }}
                     disabled={!isDraft}
-                    className="input-base py-1 px-2 text-xs w-full bg-background disabled:bg-slate-50 disabled:cursor-not-allowed"
+                    size="sm"
+                    className="w-full"
                   >
                     <option value="string">String</option>
                     <option value="number">Number</option>
@@ -384,7 +386,7 @@ export function EditTemplateForm({ initialTemplate, initialVersion }: EditTempla
                     <option value="date">Date</option>
                     <option value="boolean">Boolean</option>
                     <option value="url">URL</option>
-                  </select>
+                  </SelectField>
                 </div>
                 <div>
                   <label className="text-[9px] text-muted-foreground block font-medium uppercase tracking-wider mb-0.5">Source path</label>

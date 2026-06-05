@@ -7,6 +7,8 @@ import { ChevronLeft, Plus, X, Loader2 } from "lucide-react";
 import { investorCatalog, leadCatalog, taskCatalog } from "@/lib/filter/catalog";
 import type { FilterAST, Group, Predicate } from "@/lib/filter/ast";
 import { isFieldAllowed } from "@/lib/auth/field-gate";
+import { SelectField } from "@/components/ui/SelectField";
+import { DateField } from "@/components/ui/DateField";
 
 type Subject = "investor" | "lead" | "task";
 
@@ -141,36 +143,37 @@ export default function NewSegmentPage() {
 
       <div className="grid grid-cols-3 gap-3">
         <Field label="Subject">
-          <select
+          <SelectField
             value={subject}
             onChange={(e) => setSubject(e.target.value as Subject)}
-            className="w-full border rounded-md px-2 py-1.5 text-sm bg-background"
+            className="w-full"
           >
             <option value="investor">Investor</option>
             <option value="lead">Lead</option>
             <option value="task">Task</option>
-          </select>
+          </SelectField>
         </Field>
         <Field label="Kind">
-          <select
+          <SelectField
             value={kind}
             onChange={(e) => setKind(e.target.value as any)}
-            className="w-full border rounded-md px-2 py-1.5 text-sm bg-background"
+            className="w-full"
           >
             <option value="dynamic">Dynamic (re-materializes on schedule)</option>
             <option value="static">Static (snapshot)</option>
-          </select>
+          </SelectField>
         </Field>
         <Field label="Refresh">
-          <select
+          <SelectField
+            value="Hourly"
             disabled={kind === "static"}
-            className="w-full border rounded-md px-2 py-1.5 text-sm bg-background disabled:opacity-50"
+            className="w-full"
           >
-            <option>Hourly</option>
-            <option>Every 4 hours</option>
-            <option>Daily</option>
-            <option>Manual</option>
-          </select>
+            <option value="Hourly">Hourly</option>
+            <option value="Every 4 hours">Every 4 hours</option>
+            <option value="Daily">Daily</option>
+            <option value="Manual">Manual</option>
+          </SelectField>
         </Field>
       </div>
 
@@ -221,14 +224,15 @@ function GroupEditor({
     <div className="border rounded-md p-3 bg-muted/30">
       <div className="flex items-center gap-2 text-xs">
         <span className="text-muted-foreground">Match</span>
-        <select
+        <SelectField
           value={group.op}
           onChange={(e) => onChange({ ...group, op: e.target.value as "AND" | "OR" })}
-          className="border rounded px-2 py-0.5 bg-background"
+          size="sm"
+          className="w-24"
         >
           <option value="AND">all</option>
           <option value="OR">any</option>
-        </select>
+        </SelectField>
         <span className="text-muted-foreground">of the following</span>
       </div>
 
@@ -321,28 +325,30 @@ function PredicateEditor({
   const field = allowedFields.find((f) => f.key === fieldKey) || catalog.fields.find((f) => f.key === fieldKey);
   return (
     <div className="flex-1 flex items-center gap-2 bg-background rounded p-2 border">
-      <select
+      <SelectField
         value={fieldKey}
         onChange={(e) => onChange({ ...predicate, field: { kind: "attr", path: e.target.value } })}
-        className="text-sm rounded border-0 bg-transparent max-w-[160px]"
+        size="sm"
+        className="w-40 max-w-[160px]"
       >
         {allowedFields.map((f) => (
           <option key={f.key} value={f.key}>
             {f.label}
           </option>
         ))}
-      </select>
-      <select
+      </SelectField>
+      <SelectField
         value={predicate.op}
         onChange={(e) => onChange({ ...predicate, op: e.target.value as any })}
-        className="text-sm rounded border-0 bg-transparent"
+        size="sm"
+        className="w-32"
       >
         {(field?.ops ?? ["eq"]).map((op) => (
           <option key={op} value={op}>
             {op}
           </option>
         ))}
-      </select>
+      </SelectField>
       {needsValue(predicate.op) && (
         <ValueInput field={field} value={predicate.value} onChange={(v) => onChange({ ...predicate, value: v })} />
       )}
@@ -361,26 +367,27 @@ function ValueInput({
 }) {
   if (field?.type === "enum") {
     return (
-      <select
+      <SelectField
         value={String(value ?? "")}
         onChange={(e) => onChange(e.target.value)}
-        className="flex-1 text-sm rounded border px-2 py-1 bg-background"
+        size="sm"
+        className="flex-1"
       >
         {(field.enumValues ?? []).map((o: string) => (
           <option key={o} value={o}>
             {o}
           </option>
         ))}
-      </select>
+      </SelectField>
     );
   }
   if (field?.type === "date" || field?.type === "datetime") {
     return (
-      <input
-        type="date"
+      <DateField
         value={String(value ?? "")}
         onChange={(e) => onChange(e.target.value)}
-        className="flex-1 text-sm rounded border px-2 py-1 bg-background"
+        size="sm"
+        className="flex-1"
       />
     );
   }

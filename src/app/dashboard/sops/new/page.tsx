@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
+import { SelectField } from "@/components/ui/SelectField";
 
 const ROLES = ["owner", "rm", "back_office", "marketing", "compliance", "branch_head"];
 
@@ -73,14 +74,14 @@ export default function NewSopPage() {
           </label>
           <label className="block">
             <div className="text-xs font-medium mb-1">Category</div>
-            <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className="w-full border rounded-md px-3 py-2 text-sm bg-background">
+            <SelectField value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className="w-full">
               <option value="operations">Operations</option>
               <option value="compliance">Compliance</option>
               <option value="sales">Sales</option>
               <option value="service">Service</option>
               <option value="marketing">Marketing</option>
               <option value="internal">Internal</option>
-            </select>
+            </SelectField>
           </label>
         </div>
         <label className="block">

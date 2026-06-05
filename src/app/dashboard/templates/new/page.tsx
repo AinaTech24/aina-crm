@@ -7,6 +7,7 @@ import dynamic from "next/dynamic";
 import { ChevronLeft, Eye, ShieldCheck, AlertCircle, Save, Send, Plus, Trash, Paperclip } from "lucide-react";
 import { runComplianceChecks } from "@/lib/comms/compliance";
 import { MergeFieldInserter, type VarDecl } from "@/components/templates/MergeFieldInserter";
+import { SelectField } from "@/components/ui/SelectField";
 import type { EmailDesignerBody } from "@/lib/email-designer/types";
 
 // Code-split the block-based email designer (847 lines + its editor deps) so
@@ -277,27 +278,27 @@ export default function NewTemplatePage() {
 
       <div className="grid grid-cols-3 gap-3">
         <Field label="Channel">
-          <select value={channel} onChange={(e) => setChannel(e.target.value as Channel)} className="input-base w-full">
+          <SelectField value={channel} onChange={(e) => setChannel(e.target.value as Channel)} className="w-full">
             <option value="email">Email</option>
             <option value="whatsapp">WhatsApp</option>
             <option value="sms">SMS</option>
-          </select>
+          </SelectField>
         </Field>
         <Field label="Category">
-          <select value={category} onChange={(e) => setCategory(e.target.value as Category)} className="input-base w-full">
+          <SelectField value={category} onChange={(e) => setCategory(e.target.value as Category)} className="w-full">
             <option value="transactional">Transactional</option>
             <option value="utility">Utility</option>
             <option value="marketing">Marketing</option>
             <option value="authentication">Authentication</option>
-          </select>
+          </SelectField>
         </Field>
         <Field label="Locale">
-          <select value={locale} onChange={(e) => setLocale(e.target.value)} className="input-base w-full">
+          <SelectField value={locale} onChange={(e) => setLocale(e.target.value)} className="w-full">
             <option value="en-IN">English (India)</option>
             <option value="hi-IN">Hindi</option>
             <option value="gu-IN">Gujarati</option>
             <option value="mr-IN">Marathi</option>
-          </select>
+          </SelectField>
         </Field>
       </div>
 
@@ -355,14 +356,15 @@ export default function NewTemplatePage() {
                 <div className="font-mono font-semibold text-slate-700 truncate">{v.key}</div>
                 <div>
                   <label className="text-[9px] text-muted-foreground block font-medium uppercase tracking-wider mb-0.5">Type</label>
-                  <select
+                  <SelectField
                     value={v.type}
                     onChange={(e) => {
                       const next = [...declaredVars];
                       next[idx].type = e.target.value as any;
                       setDeclaredVars(next);
                     }}
-                    className="input-base py-1 px-2 text-xs w-full bg-background"
+                    size="sm"
+                    className="w-full"
                   >
                     <option value="string">String</option>
                     <option value="number">Number</option>
@@ -370,7 +372,7 @@ export default function NewTemplatePage() {
                     <option value="date">Date</option>
                     <option value="boolean">Boolean</option>
                     <option value="url">URL</option>
-                  </select>
+                  </SelectField>
                 </div>
                 <div>
                   <label className="text-[9px] text-muted-foreground block font-medium uppercase tracking-wider mb-0.5">Source path</label>
