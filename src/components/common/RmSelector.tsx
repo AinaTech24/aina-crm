@@ -31,6 +31,7 @@
 
 import { useEffect, useState } from "react";
 import { Loader2, Users } from "lucide-react";
+import { SelectField } from "@/components/ui/SelectField";
 
 export type Employee = {
   id: string;
@@ -140,13 +141,14 @@ export function RmSelector({
   }
 
   return (
-    <select
+    <SelectField
       id={id}
       value={value ?? ""}
       onChange={(e) => onChange(e.target.value || null)}
       disabled={disabled}
       required={required}
-      className={`input-base ${className}`}
+      placeholder={placeholder}
+      className={className}
     >
       {allowClear && <option value="">{placeholder}</option>}
       {!allowClear && !value && <option value="" disabled>{placeholder}</option>}
@@ -157,7 +159,7 @@ export function RmSelector({
           {e.department ? ` · ${e.department}` : ""}
         </option>
       ))}
-    </select>
+    </SelectField>
   );
 }
 
