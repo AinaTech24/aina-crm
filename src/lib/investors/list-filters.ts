@@ -37,6 +37,7 @@ export function buildInvestorConditions(
   const tier = csv(sp.tier);
   const status = csv(sp.status);
   const kyc = csv(sp.kyc);
+  const rm = csv(sp.rm);
   const gaps = csv(sp.gaps);
   const qf = {
     mine: sp.mine === "1",
@@ -67,6 +68,13 @@ export function buildInvestorConditions(
   if (tier.length) conditions.push(inArray(investors.serviceTier, tier as any));
   if (status.length) conditions.push(inArray(investors.status, status as any));
   if (kyc.length) conditions.push(inArray(investors.kycStatus, kyc as any));
+  // RM (owning team member) filter — lets an owner slice the book by RM.
+  // Explicit ::uuid casts mirror the meetings/SR/leads filter pattern.
+  if (rm.length) {
+    conditions.push(
+      sql`${investors.rmId} IN (${sql.join(rm.map((v) => sql`${v}::uuid`), sql`, `)})`
+    );
+  }
 
   if (qf.mine) conditions.push(sql`${investors.rmId} = ${userId}`);
   if (qf.tier_a) conditions.push(sql`${investors.serviceTier} = 'A'`);

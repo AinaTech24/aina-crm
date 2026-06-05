@@ -27,8 +27,15 @@ import type { SessionUser } from "@/lib/auth/session";
  *   6. AI-prioritised "next 5 actions" (heuristic scoring)
  *   7. Extended birthday/anniversary horizon (30 days)
  */
-export async function RmInsightsSection({ session }: { session: SessionUser }) {
-  const userId = session.userId;
+export async function RmInsightsSection({
+  session,
+  targetUserId,
+}: {
+  session: SessionUser;
+  /** When an owner views another member's dashboard, scope insights to them. */
+  targetUserId?: string;
+}) {
+  const userId = targetUserId ?? session.userId;
   const last90 = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
   const next18m = new Date(Date.now() + 540 * 24 * 60 * 60 * 1000).toISOString();
   const next30d = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();

@@ -17,11 +17,20 @@ import { RmInsightsSection } from "./RmInsightsSection";
 export async function RmDashboard({
   session,
   limited = false,
+  targetUserId,
+  targetName,
 }: {
   session: SessionUser;
   limited?: boolean;
+  /** When an owner/branch-head views a specific team member's dashboard. */
+  targetUserId?: string;
+  targetName?: string;
 }) {
-  const userId = session.userId;
+  const userId = targetUserId ?? session.userId;
+  const viewingOther = !!targetUserId && targetUserId !== session.userId;
+  // Possessive prefix for "My X" KPI labels — owner viewing a member sees
+  // "Aman's clients" instead of "My clients".
+  const who = viewingOther ? `${(targetName ?? "Member").split(" ")[0]}'s` : "My";
   const today = new Date();
   const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
   const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59);
@@ -196,16 +205,20 @@ export async function RmDashboard({
   return (
     <div className="space-y-6 max-w-7xl">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">My day</h1>
+        <h1 className="text-2xl font-bold tracking-tight">
+          {viewingOther ? `${targetName ?? "Team member"}'s day` : "My day"}
+        </h1>
         <p className="text-muted-foreground text-sm">
-          Hi {session.name.split(" ")[0]} — here's what to focus on today.
+          {viewingOther
+            ? `Read-only view of ${targetName ?? "this team member"}'s book, pipeline and tasks.`
+            : `Hi ${session.name.split(" ")[0]} — here's what to focus on today.`}
         </p>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-        <Kpi label="My clients" value={String(data.myClients)} sub={formatINR(data.myAum) + " AUM"} />
-        <Kpi label="My SIP book" value={formatINR(data.mySipBook)} sub="per month" />
-        <Kpi label="My net sales MTD" value={formatINR(data.netMtd)} sub={`Gross ${formatINR(data.grossMtd)}`} />
+        <Kpi label={`${who} clients`} value={String(data.myClients)} sub={formatINR(data.myAum) + " AUM"} />
+        <Kpi label={`${who} SIP book`} value={formatINR(data.mySipBook)} sub="per month" />
+        <Kpi label={`${who} net sales MTD`} value={formatINR(data.netMtd)} sub={`Gross ${formatINR(data.grossMtd)}`} />
         <Kpi label="Open leads" value={String(data.openLeads)} sub={`${data.convertedMtd} converted MTD`} />
         {/* Sales Quota Ring — driven by users.annual_target / 12 */}
         {data.monthlyTarget > 0 ? (
@@ -429,7 +442,7 @@ export async function RmDashboard({
         </>
       )}
 
-      <Section title="My open tasks" count={data.myTasks.length}>
+      <Section title={`${who} open tasks`} count={data.myTasks.length}>
         {data.myTasks.length === 0 ? (
           <Empty text="No open tasks. ✓" />
         ) : (
@@ -451,7 +464,7 @@ export async function RmDashboard({
       </Section>
 
       {/* ---------- RM Insights — service-first cockpit additions ---------- */}
-      {!limited && <RmInsightsSection session={session} />}
+      {!limited && <RmInsightsSection session={session} targetUserId={targetUserId} />}
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { asc, desc, sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { investors } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
+import { can } from "@/lib/auth/rbac";
 import { RecomputeTiersButton } from "@/components/investors/RecomputeTiersButton";
 import { FilterBar } from "@/components/common/FilterBar";
 import { dateRangeFilter } from "@/lib/filters/date-range";
@@ -71,6 +72,8 @@ export default async function InvestorsPage({
   const kyc = (sp.kyc ?? "").split(",").filter(Boolean);
   const view = sp.view === "kanban" ? "kanban" : "table";
   const userId = session.userId;
+  // Only firm-wide viewers (owner / branch_head) get the "RM" book-slice filter.
+  const canViewAll = can(session.roles, "investor.view.all", session.permissions);
 
   // Query string for the Excel export link — carries the current filters so the
   // download matches exactly what's on screen (the export endpoint reuses the
@@ -94,7 +97,7 @@ export default async function InvestorsPage({
   const PAGE_SIZE = 50;
   const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
 
-  const { rows, total, kanbanRows } = await withTenant(session.tenantId, async (tx) => {
+  const { rows, total, kanbanRows, rms } = await withTenant(session.tenantId, async (tx) => {
     // Filters live in one shared helper so the page and the Excel export apply
     // identical WHERE logic. Tenant isolation is handled by RLS.
     const where = buildInvestorWhere(sp, userId);
@@ -170,8 +173,21 @@ export default async function InvestorsPage({
       });
     }
 
-    return { rows: r, total: Number(c[0]?.c ?? 0), kanbanRows };
+    // Roster for the "RM" book-slice filter (owners/branch-heads only).
+    let rms: any[] = [];
+    if (canViewAll) {
+      const rmRes = await tx.execute(sql`
+        SELECT id, name FROM users
+        WHERE tenant_id = ${session.tenantId}::uuid AND status = 'active'
+        ORDER BY name ASC
+      `);
+      rms = rmRes.rows as any[];
+    }
+
+    return { rows: r, total: Number(c[0]?.c ?? 0), kanbanRows, rms };
   }, { userId: session.userId, branchId: session.branchId, roles: session.roles });
+
+  const rmOptions = (rms ?? []).map((r: any) => ({ value: String(r.id), label: r.name ?? "—" }));
 
   // Table rows read the PERSISTED health score (written on create/update +
   // refreshed nightly) so the displayed value matches the DB-level sort and
@@ -312,6 +328,9 @@ export default async function InvestorsPage({
               { value: "closed", label: "Closed" },
             ],
           },
+          ...(canViewAll && rmOptions.length
+            ? [{ type: "multi" as const, key: "rm", label: "RM", options: rmOptions }]
+            : []),
           dateRangeFilter("created", "Added"),
         ]}
         rightSlot={
