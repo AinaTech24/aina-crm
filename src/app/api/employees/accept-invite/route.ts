@@ -58,13 +58,19 @@ export async function POST(req: NextRequest) {
         throw Object.assign(new Error("invite has no valid roles to grant"), { status: 400 });
       }
 
+      // Build the roles array as ARRAY[$1, $2, …]::text[]. Embedding a JS array
+      // directly (`${safeRoles}`) makes Drizzle EXPAND it into comma-separated
+      // placeholders, which adds an extra value to the VALUES list and 500s when
+      // the invite grants 2+ roles. sql.join keeps each role a single bound param.
+      const rolesSql = sql`ARRAY[${sql.join(safeRoles.map((r) => sql`${r}`), sql`, `)}]::text[]`;
+
       await tx.execute(sql`
         INSERT INTO users (
           id, tenant_id, branch_id, email, name, password_hash, roles, status, activated_at, created_at, updated_at
         )
         VALUES (
           ${userId}, ${inv.tenant_id}, ${inv.branch_id}, ${inv.email}, ${name ?? inv.name ?? inv.email},
-          ${pwHash}, ${safeRoles}::text[], 'active', now(), now(), now()
+          ${pwHash}, ${rolesSql}, 'active', now(), now(), now()
         )
         ON CONFLICT (tenant_id, email) DO UPDATE
         SET password_hash = EXCLUDED.password_hash,

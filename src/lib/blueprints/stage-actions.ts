@@ -104,7 +104,7 @@ export const STAGE_ACTIONS: Record<string, StageAction[]> = {
       tone: "danger",
       targetStage: "not_qualified",
       hint: "Lead isn't a fit — close as lost.",
-      behaviour: { kind: "open_dialog", dialog: "mark_lost" },
+      behaviour: { kind: "advance_only" },
     },
   ],
 
@@ -180,7 +180,7 @@ export const STAGE_ACTIONS: Record<string, StageAction[]> = {
       tone: "danger",
       targetStage: "not_qualified",
       hint: "Permanently close — explicit rejection.",
-      behaviour: { kind: "open_dialog", dialog: "mark_lost" },
+      behaviour: { kind: "advance_only" },
     },
   ],
 
@@ -248,7 +248,7 @@ export const STAGE_ACTIONS: Record<string, StageAction[]> = {
       tone: "danger",
       targetStage: "not_qualified",
       hint: "Close lead as not qualified.",
-      behaviour: { kind: "open_dialog", dialog: "mark_lost" },
+      behaviour: { kind: "advance_only" },
     },
   ],
 
