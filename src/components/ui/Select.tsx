@@ -38,6 +38,7 @@ export function Select({
 }) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
+  const [alignRight, setAlignRight] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   const selected = options.find((o) => o.value === value);
@@ -59,7 +60,15 @@ export function Select({
   }, [open]);
 
   useEffect(() => {
-    if (open) setActive(options.findIndex((o) => o.value === value));
+    if (!open) return;
+    setActive(options.findIndex((o) => o.value === value));
+    // Open the menu leftward when the trigger sits near the right edge, so the
+    // popup never overflows the viewport (which would add a horizontal scroll).
+    const el = ref.current;
+    if (el && typeof window !== "undefined") {
+      const rect = el.getBoundingClientRect();
+      setAlignRight(window.innerWidth - rect.left < 256);
+    }
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function commit(i: number) {
@@ -119,7 +128,7 @@ export function Select({
       {open && (
         <ul
           role="listbox"
-          className={`absolute left-0 top-full mt-1 z-50 min-w-full w-max max-w-[min(20rem,90vw)] max-h-64 overflow-y-auto scrollbar-thin card-elevated bg-card p-1 animate-scale-in origin-top ${menuClassName}`}
+          className={`absolute ${alignRight ? "right-0 origin-top-right" : "left-0 origin-top"} top-full mt-1 z-50 min-w-full w-max max-w-[min(20rem,90vw)] max-h-64 overflow-y-auto scrollbar-thin card-elevated bg-card p-1 animate-scale-in ${menuClassName}`}
         >
           {options.length === 0 && (
             <li className="px-2.5 py-2 text-xs text-muted-foreground">No options</li>

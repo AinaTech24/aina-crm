@@ -31,9 +31,9 @@ export default async function LeaveApplicationsPage({
   const canApprove = session.roles.some((r) => ["owner", "branch_head"].includes(r));
 
   const data = await withTenant(session.tenantId, async (tx) => {
-    await tx.execute(sql`
-      ALTER TABLE users ADD COLUMN IF NOT EXISTS custom_leave_entitlements JSONB;
-    `);
+    // NB: the `custom_leave_entitlements` column is part of the users schema
+    // (created at migration time). Do NOT run DDL here — the app connects as a
+    // non-superuser role that can't ALTER tables, which would crash the page.
 
     // Always load stats
     const stats = await tx.execute(sql`

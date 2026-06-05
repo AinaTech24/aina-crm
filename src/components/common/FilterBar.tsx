@@ -225,9 +225,15 @@ function MultiSelectChip({
   onChange: (v: string[]) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [alignRight, setAlignRight] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
+    const el = ref.current;
+    if (el && typeof window !== "undefined") {
+      const rect = el.getBoundingClientRect();
+      setAlignRight(window.innerWidth - rect.left < 240); // popup ~200px + margin
+    }
     function onClick(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     }
@@ -257,7 +263,7 @@ function MultiSelectChip({
         <ChevronDown className="size-3 opacity-60" />
       </button>
       {open && (
-        <div className="absolute top-full left-0 mt-1 z-50 card-elevated bg-card p-1.5 min-w-[200px] max-h-64 overflow-y-auto scrollbar-thin">
+        <div className={`absolute top-full ${alignRight ? "right-0" : "left-0"} mt-1 z-50 card-elevated bg-card p-1.5 min-w-[200px] max-h-64 overflow-y-auto scrollbar-thin`}>
           {options.length === 0 ? (
             <div className="text-[11px] text-muted-foreground p-2">No options</div>
           ) : (

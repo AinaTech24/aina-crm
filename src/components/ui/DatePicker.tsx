@@ -57,12 +57,19 @@ export function DatePicker({
   clearable?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const [alignRight, setAlignRight] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const selected = useMemo(() => fromISO(value), [value]);
   const [view, setView] = useState<Date>(() => fromISO(value) ?? new Date());
 
   useEffect(() => {
-    if (open) setView(fromISO(value) ?? new Date());
+    if (!open) return;
+    setView(fromISO(value) ?? new Date());
+    const el = ref.current;
+    if (el && typeof window !== "undefined") {
+      const rect = el.getBoundingClientRect();
+      setAlignRight(window.innerWidth - rect.left < 296); // 17rem popup + margin
+    }
   }, [open, value]);
 
   useEffect(() => {
@@ -125,7 +132,7 @@ export function DatePicker({
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full mt-1 z-50 card-elevated bg-card p-3 w-[17rem] animate-scale-in origin-top">
+        <div className={`absolute ${alignRight ? "right-0 origin-top-right" : "left-0 origin-top"} top-full mt-1 z-50 card-elevated bg-card p-3 w-[17rem] animate-scale-in`}>
           <div className="flex items-center justify-between mb-2">
             <button type="button" onClick={() => setView(new Date(y, m - 1, 1))} className="size-7 grid place-items-center rounded-md hover:bg-secondary" aria-label="Previous month">
               <ChevronLeft className="size-4" />

@@ -75,7 +75,7 @@ export function DateRangePicker({
         options={PRESETS}
         onChange={(k) => { const [f, t] = rangePreset(k); onChange(f, t); }}
         ariaLabel="Quick range"
-        className="w-[7.5rem]"
+        className="w-[6.5rem]"
       />
       <span className="text-muted-foreground/50">|</span>
       <DatePicker
@@ -84,7 +84,7 @@ export function DateRangePicker({
         onChange={(f) => onChange(f, to)}
         max={to || undefined}
         ariaLabel="From date"
-        className="w-[8.5rem]"
+        className="w-[6.75rem]"
       />
       <span className="text-muted-foreground">→</span>
       <DatePicker
@@ -93,7 +93,7 @@ export function DateRangePicker({
         onChange={(t) => onChange(from, t)}
         min={from || undefined}
         ariaLabel="To date"
-        className="w-[8.5rem]"
+        className="w-[6.75rem]"
       />
       {active && (
         <button
