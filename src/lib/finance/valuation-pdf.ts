@@ -11,7 +11,7 @@
  * through ascii() (₹ → "Rs ", smart-quotes/dashes normalised) before drawing.
  */
 
-import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage, type RGB } from "pdf-lib";
+import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage, type PDFImage, type RGB } from "pdf-lib";
 import type { InvestorValuation } from "./valuation";
 
 export type StatementInvestor = {
@@ -26,6 +26,9 @@ export type StatementBrand = {
   arn?: string | null;
   euin?: string | null;
   primaryColor?: string | null;
+  secondaryColor?: string | null;
+  logoUrl?: string | null;
+  gstNumber?: string | null;
   phone?: string | null;
   email?: string | null;
   website?: string | null;
@@ -35,7 +38,6 @@ const ACCENT: RGB = rgb(0.055, 0.647, 0.914);
 const INK: RGB = rgb(0.06, 0.09, 0.16);
 const SLATE: RGB = rgb(0.2, 0.255, 0.333);
 const MUTED: RGB = rgb(0.58, 0.64, 0.72);
-const WHITE: RGB = rgb(1, 1, 1);
 const GREEN: RGB = rgb(0.02, 0.6, 0.41);
 const RED: RGB = rgb(0.86, 0.15, 0.15);
 const DEFAULT_PRIMARY: RGB = rgb(0.055, 0.145, 0.341);
@@ -75,25 +77,41 @@ export async function renderValuationStatementPdf(args: RenderStatementArgs): Pr
   const margin = 44;
   let y = H;
 
-  // ── Header band ───────────────────────────────────────────────────────
-  const bandH = 92;
-  page.drawRectangle({ x: 0, y: H - bandH, width: W, height: bandH, color: primary });
-  page.drawRectangle({ x: 0, y: H - bandH, width: W, height: 4, color: ACCENT });
-  page.drawText(ascii(brand.displayName ?? brand.legalName ?? "Your Advisor"), {
-    x: margin, y: H - 40, size: 18, font: bold, color: WHITE,
+  // ── Branded letterhead — white, logo + name + ARN + gradient strip.
+  //    Matches the proposal PDF letterhead. ──────────────────────────────
+  const logo = await embedLogo(doc, brand.logoUrl);
+  const topY = H - margin;
+  let nameX = margin;
+  if (logo) {
+    const maxH = 38, maxW = 150;
+    let dw = (logo.width / logo.height) * maxH;
+    let dh = maxH;
+    if (dw > maxW) { dw = maxW; dh = (logo.height / logo.width) * maxW; }
+    page.drawImage(logo, { x: margin, y: topY - dh, width: dw, height: dh });
+    nameX = margin + dw + 12;
+  }
+  page.drawText(ascii(brand.legalName ?? brand.displayName ?? "Your Advisor"), {
+    x: nameX, y: topY - 15, size: 14, font: bold, color: INK,
   });
   page.drawText(
-    ascii(`ARN ${(brand.arn ?? "—").toString().replace(/^ARN-?/i, "")}${brand.euin ? ` · EUIN ${brand.euin}` : ""}`),
-    { x: margin, y: H - 58, size: 10, font: helv, color: WHITE, opacity: 0.85 }
+    ascii(
+      `ARN ${(brand.arn ?? "—").toString().replace(/^ARN-?/i, "")}` +
+      `${brand.euin ? ` - EUIN ${brand.euin}` : ""}` +
+      `${brand.gstNumber ? ` - GSTIN ${brand.gstNumber}` : ""}`
+    ),
+    { x: nameX, y: topY - 30, size: 9, font: helv, color: SLATE }
   );
   const titleLabel = "PORTFOLIO STATEMENT";
   const tlW = bold.widthOfTextAtSize(titleLabel, 11);
-  page.drawText(titleLabel, { x: W - margin - tlW, y: H - 40, size: 11, font: bold, color: WHITE });
+  page.drawText(titleLabel, { x: W - margin - tlW, y: topY - 13, size: 11, font: bold, color: primary });
   const asOfLabel = ascii(`As of ${fmtDate(v.asOf ?? args.generatedAt)}`);
   const aoW = helv.widthOfTextAtSize(asOfLabel, 9);
-  page.drawText(asOfLabel, { x: W - margin - aoW, y: H - 56, size: 9, font: helv, color: WHITE, opacity: 0.85 });
+  page.drawText(asOfLabel, { x: W - margin - aoW, y: topY - 28, size: 9, font: helv, color: SLATE });
 
-  y = H - bandH - 28;
+  const stripY = topY - 46;
+  drawGradientStrip(page, margin, stripY, W - 2 * margin, 5, primary, ACCENT);
+
+  y = stripY - 24;
 
   // ── Client line ───────────────────────────────────────────────────────
   page.drawText(ascii(investor.name ?? "Client"), { x: margin, y, size: 15, font: bold, color: INK });
@@ -201,11 +219,11 @@ function drawFooter(
 ) {
   const W = page.getWidth();
   const margin = 44;
-  page.drawRectangle({ x: 0, y: 0, width: W, height: 56, color: rgb(0.97, 0.98, 0.99) });
-  page.drawRectangle({ x: 0, y: 56, width: W, height: 1.5, color: a.primary, opacity: 0.85 });
+  // Thin top rule (matches the proposal footer; no filled band).
+  page.drawRectangle({ x: margin, y: 52, width: W - 2 * margin, height: 1, color: LINE });
   const legal = ascii(a.brand.legalName ?? a.brand.displayName ?? "Your Advisor");
-  const arn = ascii(`ARN ${(a.brand.arn ?? "—").toString().replace(/^ARN-?/i, "")}`);
-  page.drawText(`${legal}  ·  ${arn}`, { x: margin, y: 40, size: 8, font: a.bold, color: SLATE });
+  const arn = ascii(`ARN-${(a.brand.arn ?? "—").toString().replace(/^ARN-?/i, "")}`);
+  page.drawText(`${legal}  -  ${arn}`, { x: margin, y: 40, size: 8, font: a.bold, color: SLATE });
   const gen = ascii(`Generated ${fmtDateTime(a.generatedAt)}`);
   const gw = a.helv.widthOfTextAtSize(gen, 7.5);
   page.drawText(gen, { x: W - margin - gw, y: 40, size: 7.5, font: a.helv, color: MUTED });
@@ -219,6 +237,49 @@ function drawFooter(
 function drawRight(page: PDFPage, font: PDFFont, t: string, x: number, y: number, size: number, color: RGB) {
   const w = font.widthOfTextAtSize(t, size);
   page.drawText(t, { x: x - w, y, size, font, color });
+}
+
+/** Resolve a possibly-relative logo URL against the app origin. */
+function absUrl(url: string): string {
+  if (/^(https?:|data:)/i.test(url)) return url;
+  const base = (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || "").replace(/\/+$/, "");
+  if (!base) return url;
+  return `${base}${url.startsWith("/") ? "" : "/"}${url}`;
+}
+
+/** Fetch + embed the firm logo (PNG/JPG). Returns null on any failure so the
+ *  statement still renders (just without the logo). */
+async function embedLogo(doc: PDFDocument, rawUrl?: string | null): Promise<PDFImage | null> {
+  if (!rawUrl) return null;
+  try {
+    const url = absUrl(rawUrl);
+    const res = await fetch(url, { cache: "no-store" });
+    if (!res.ok) return null;
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    const ct = (res.headers.get("content-type") ?? "").toLowerCase();
+    if (ct.includes("png") || /\.png(\?|$)/i.test(url)) return await doc.embedPng(bytes);
+    if (ct.includes("jpeg") || ct.includes("jpg") || /\.jpe?g(\?|$)/i.test(url)) return await doc.embedJpg(bytes);
+    try { return await doc.embedPng(bytes); } catch { /* not png */ }
+    try { return await doc.embedJpg(bytes); } catch { /* not jpg */ }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/** Horizontal gradient bar (primary → accent) — pdf-lib has no native gradient. */
+function drawGradientStrip(page: PDFPage, x: number, y: number, w: number, h: number, c1: RGB, c2: RGB) {
+  const segs = 48;
+  const sw = w / segs;
+  for (let i = 0; i < segs; i++) {
+    const t = i / (segs - 1);
+    const col = rgb(
+      c1.red + (c2.red - c1.red) * t,
+      c1.green + (c2.green - c1.green) * t,
+      c1.blue + (c2.blue - c1.blue) * t
+    );
+    page.drawRectangle({ x: x + i * sw, y, width: sw + 0.6, height: h, color: col });
+  }
 }
 
 function inr(n: number | null | undefined): string {
