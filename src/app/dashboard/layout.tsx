@@ -4,7 +4,6 @@ import {
   LayoutDashboard,
   Users,
   GitBranch,
-  Filter,
   FileText,
   MessageSquare,
   ListChecks,
@@ -175,11 +174,8 @@ const NAV: NavSection[] = [
     title: "Automation",
     items: [
       { href: "/dashboard/workflows/rules", label: "Workflow Rules", icon: GitBranch, module: "automation_workflows" },
-      { href: "/dashboard/sales-ops", label: "Sales-Ops Rules", icon: GitBranch, roles: ["owner", "branch_head", "compliance"] },
-      { href: "/dashboard/workflows", label: "Workflows (advanced)", icon: GitBranch, module: "automation_workflows" },
       { href: "/dashboard/workflows/runs", label: "Automation Monitor", icon: Activity, module: "automation_workflows",
         roles: ["owner", "compliance", "back_office", "ops"] },
-      { href: "/dashboard/segments", label: "Segments & Filters", icon: Filter, module: "automation_workflows" },
       { href: "/dashboard/templates", label: "Templates", icon: FileText, module: "broadcasts" },
       { href: "/dashboard/campaigns", label: "Marketing Campaigns", icon: Megaphone, module: "marketing_campaigns", roles: ["owner", "marketing"] },
       { href: "/dashboard/content-calendar", label: "Social Media Calendar", icon: ImageIcon, module: "content_calendar", roles: ["owner", "marketing"] },
@@ -205,7 +201,6 @@ const NAV: NavSection[] = [
       { href: "/dashboard/amc-empanelments", label: "AMC Empanelments", icon: Briefcase, roles: ["owner", "compliance", "back_office"] },
       { href: "/dashboard/schemes", label: "Scheme Master", icon: Boxes, roles: ["owner", "compliance", "back_office", "branch_head", "rm"] },
       { href: "/dashboard/product-offerings", label: "Products & Services", icon: Megaphone, roles: ["owner", "compliance"] },
-      { href: "/dashboard/cybersecurity", label: "Cybersecurity", icon: Lock, module: "cybersecurity", roles: ["owner", "compliance"] },
     ],
   },
   // NB: Billing / Firm Profile / Settings and the Help link intentionally do
