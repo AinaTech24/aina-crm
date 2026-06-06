@@ -64,6 +64,7 @@ import { GlobalSearch } from "@/components/layout/GlobalSearch";
 import { NotificationBell } from "@/components/layout/NotificationBell";
 import { BirthdayBell } from "@/components/layout/BirthdayBell";
 import { SidebarNavLink } from "@/components/layout/SidebarNavLink";
+import { DesktopSidebar } from "@/components/layout/DesktopSidebar";
 import { QuickCreateFab } from "@/components/layout/QuickCreateFab";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { ProfileMenu } from "@/components/layout/ProfileMenu";
@@ -358,7 +359,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           <div className="absolute inset-0 brand-mesh opacity-95" />
           {/* faint cyan glow accent in the corner for depth */}
           <div className="absolute -top-8 -right-8 size-24 rounded-full bg-brand-cyan/20 blur-2xl" />
-          <div className="relative px-5 h-16 flex items-center gap-3">
+          <div className="sidebar-brand-row relative px-5 h-16 flex items-center gap-3">
             {tenant ? (
               <>
                 {sidebarLogo ? (
@@ -376,7 +377,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
                     {(tenant.displayName ?? "A").charAt(0).toUpperCase()}
                   </div>
                 )}
-                <div className="min-w-0 text-white">
+                <div className="sidebar-brand-text min-w-0 text-white">
                   <div className="font-semibold tracking-tight truncate text-sm leading-tight">
                     {tenant.displayName ?? "Aina CRM"}
                   </div>
@@ -399,11 +400,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
         </div>
 
         {/* Nav — grouped sections with active-state highlighting */}
-        <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-5 scrollbar-thin">
+        <nav className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-4 space-y-5 scrollbar-thin">
           {visible.map((section, i) => (
             <div key={i}>
               {section.title && (
-                <div className="px-2 mb-2 text-[10px] font-bold uppercase tracking-[0.1em] text-muted-foreground/70">
+                <div className="sidebar-section-title px-2 mb-2 text-[10px] font-bold uppercase tracking-[0.1em] text-muted-foreground/70">
                   {section.title}
                 </div>
               )}
@@ -439,10 +440,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
         scrollbar from the `overflow-y-auto` they already declare. Print mode
         reverts to block flow so the whole document prints in one stream. */}
     <div className="h-screen flex bg-background overflow-hidden print:block print:h-auto print:overflow-visible">
-      {/* ───────────── Desktop sidebar (hidden below lg — mobile uses drawer) ───────────── */}
-      <aside className="hidden lg:flex w-64 flex-shrink-0 h-full flex-col bg-card border-r border-border/70 shadow-sm print:hidden">
-        {sidebarInner}
-      </aside>
+      {/* ───────────── Desktop sidebar (hidden below lg — mobile uses drawer) ─────────────
+          Hover-expand + click-to-pin icon rail. State lives in DesktopSidebar. */}
+      <DesktopSidebar>{sidebarInner}</DesktopSidebar>
 
       {/* ────────────────────────── Main ────────────────────────── */}
       {/* h-full + overflow-y-auto = independent scroll, sticky topbar stays
@@ -488,7 +488,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
             />
           </div>
         </div>
-        <div className="p-6 animate-fade-in print:p-0 print:animate-none">
+        <div className="dashboard-content p-6 animate-fade-in print:p-0 print:animate-none">
           {license.isRestricted && !pathAllowed ? (
             <RestrictedNotice license={license} />
           ) : navBlocked ? (

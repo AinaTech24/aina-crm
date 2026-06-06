@@ -8,7 +8,7 @@ import { SelectField } from "@/components/ui/SelectField";
 import { useToast } from "@/components/ui/Toast";
 import { TaskDetailDrawer } from "./TaskDetailDrawer";
 import type { Task } from "@/db/schema";
-import { CheckSquare, Square, Loader2, Plus, ListChecks } from "lucide-react";
+import { CheckSquare, Square, Loader2, Plus } from "lucide-react";
 
 interface TaskRow {
   task: Task;
@@ -239,11 +239,6 @@ export function TaskList({ initialRows, currentUserId }: TaskListProps) {
                     <Square className="size-4.5" />
                   )}
                 </button>
-
-                {/* Task icon (matches the sidebar "Tasks" icon) */}
-                <span className="size-7 rounded-lg bg-brand-cyan-light text-brand-cyan-deep grid place-items-center shrink-0">
-                  <ListChecks className="size-4" />
-                </span>
 
                 <div className="flex-1 min-w-0">
                   <div

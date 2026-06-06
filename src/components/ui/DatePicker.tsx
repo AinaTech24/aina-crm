@@ -144,7 +144,9 @@ export function DatePicker({
     return false;
   }
 
-  const sizes = size === "sm" ? "h-8 text-xs px-2.5" : "h-9 text-sm px-3";
+  // `md` mirrors `.input-base` exactly (px-3 py-2 text-sm → 38px tall) so the
+  // date trigger lines up flush with native <input>s sitting beside it.
+  const sizes = size === "sm" ? "h-8 text-xs px-2.5" : "text-sm px-3 py-2";
 
   return (
     <div ref={ref} className={`relative ${className}`}>
@@ -155,7 +157,7 @@ export function DatePicker({
         aria-label={ariaLabel}
         aria-haspopup="dialog"
         aria-expanded={open}
-        className={`w-full inline-flex items-center justify-between gap-1.5 rounded-lg border bg-card font-medium whitespace-nowrap transition ${sizes}
+        className={`w-full inline-flex items-center justify-between gap-1.5 rounded-lg border bg-card shadow-sm font-medium whitespace-nowrap transition ${sizes}
           ${open ? "border-brand-cyan/60 ring-2 ring-brand-cyan/15" : "border-border hover:bg-secondary/60"}
           disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none`}
       >

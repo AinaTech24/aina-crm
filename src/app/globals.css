@@ -639,3 +639,48 @@
     box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Wide-screen fill — dashboard pages cap their root container at max-w-5xl/6xl/7xl
+   (left-aligned), which leaves a large empty gutter on the right on big monitors.
+   Widen those "wide layout" caps progressively as the viewport grows so the app
+   uses the available space. Narrow form/detail pages (max-w-3xl/4xl) are left
+   untouched — those stay narrow on purpose for readability.
+   ═══════════════════════════════════════════════════════════════════════════ */
+@media (min-width: 1280px) {
+  .dashboard-content .max-w-5xl { max-width: 72rem; }   /* 64 → 72  */
+  .dashboard-content .max-w-6xl { max-width: 82rem; }   /* 72 → 82  */
+  .dashboard-content .max-w-7xl { max-width: 90rem; }   /* 80 → 90  */
+}
+@media (min-width: 1600px) {
+  .dashboard-content .max-w-5xl { max-width: 80rem; }
+  .dashboard-content .max-w-6xl { max-width: 92rem; }
+  .dashboard-content .max-w-7xl { max-width: 104rem; }
+}
+@media (min-width: 1920px) {
+  .dashboard-content .max-w-5xl { max-width: 88rem; }
+  .dashboard-content .max-w-6xl { max-width: 104rem; }
+  .dashboard-content .max-w-7xl { max-width: 120rem; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Collapsed desktop sidebar (icon rail) — see DesktopSidebar.tsx.
+   When the panel is in its slim resting state it carries `.sidebar-collapsed`;
+   hide every text label and centre the icons so only the glyphs show. Hovering
+   removes the class (the panel expands), so labels return automatically.
+   ═══════════════════════════════════════════════════════════════════════════ */
+.sidebar-collapsed nav { padding-left: 0.5rem; padding-right: 0.5rem; }
+.sidebar-collapsed .nav-link {
+  justify-content: center;
+  padding-left: 0;
+  padding-right: 0;
+}
+.sidebar-collapsed .nav-link > span { display: none; }
+.sidebar-collapsed .nav-link-active::before { display: none; }
+.sidebar-collapsed .sidebar-section-title { display: none; }
+.sidebar-collapsed .sidebar-brand-text { display: none; }
+.sidebar-collapsed .sidebar-brand-row {
+  padding-left: 0;
+  padding-right: 0;
+  justify-content: center;
+}

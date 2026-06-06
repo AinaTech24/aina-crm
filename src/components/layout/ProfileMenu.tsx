@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Settings, ShieldCheck, Building2, UserCircle, LogOut, ChevronDown, Loader2, CreditCard } from "lucide-react";
@@ -34,23 +35,43 @@ export function ProfileMenu({
   const [open, setOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  // Anchor the (portalled) menu to the trigger. Fixed-positioned so no
+  // overflow:auto/hidden ancestor — like the scrolling <main> — can clip it.
+  const [coords, setCoords] = useState<{ top: number; right: number }>({ top: 0, right: 0 });
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const router = useRouter();
 
+  /** Recompute the menu's viewport-fixed position from the trigger's rect. */
+  function place() {
+    const r = triggerRef.current?.getBoundingClientRect();
+    if (!r) return;
+    setCoords({ top: Math.round(r.bottom + 8), right: Math.round(Math.max(8, window.innerWidth - r.right)) });
+  }
+
   useEffect(() => {
     if (!open) return;
+    place();
     function onDown(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      if (triggerRef.current?.contains(t) || menuRef.current?.contains(t)) return;
+      setOpen(false);
     }
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") setOpen(false);
     }
+    const reposition = () => place();
     document.addEventListener("mousedown", onDown);
     document.addEventListener("keydown", onKey);
+    window.addEventListener("resize", reposition);
+    // capture-phase so a scroll inside <main> repositions too
+    window.addEventListener("scroll", reposition, true);
     return () => {
       document.removeEventListener("mousedown", onDown);
       document.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", reposition);
+      window.removeEventListener("scroll", reposition, true);
     };
   }, [open]);
 
@@ -98,10 +119,11 @@ export function ProfileMenu({
     );
 
   return (
-    <div ref={ref} className="relative" onMouseEnter={openNow} onMouseLeave={scheduleClose}>
+    <div className="relative" onMouseEnter={openNow} onMouseLeave={scheduleClose}>
       <button
+        ref={triggerRef}
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => { if (!open) place(); setOpen((o) => !o); }}
         className="flex items-center gap-1.5 rounded-full p-0.5 pr-1.5 hover:bg-secondary/70 transition-colors"
         aria-haspopup="menu"
         aria-expanded={open}
@@ -113,8 +135,14 @@ export function ProfileMenu({
         />
       </button>
 
-      {open && (
-        <div className="absolute right-0 top-full mt-2 w-64 z-[60] origin-top-right animate-scale-in">
+      {open && typeof document !== "undefined" && createPortal(
+        <div
+          ref={menuRef}
+          onMouseEnter={openNow}
+          onMouseLeave={scheduleClose}
+          style={{ position: "fixed", top: coords.top, right: coords.right }}
+          className="w-64 z-[100] origin-top-right animate-scale-in"
+        >
           {/* Solid bg-white (not card-elevated, which is backdrop-blur-translucent
               and lets busy page content bleed through). */}
           <div className="rounded-2xl bg-white overflow-hidden shadow-xl border border-border/60">
@@ -159,7 +187,8 @@ export function ProfileMenu({
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       <ConfirmDialog

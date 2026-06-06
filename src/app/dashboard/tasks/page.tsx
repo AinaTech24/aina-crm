@@ -1,5 +1,5 @@
 import { and, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
-import { Plus } from "lucide-react";
+import { Plus, ListChecks } from "lucide-react";
 import Link from "next/link";
 import { withTenant } from "@/db/client";
 import { tasks, users, investors, leads } from "@/db/schema";
@@ -121,7 +121,9 @@ export default async function TasksPage({
     <div className="space-y-6 max-w-6xl">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Tasks</h1>
+          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+            <ListChecks className="size-6 text-brand-cyan" /> Tasks
+          </h1>
           <p className="text-muted-foreground text-sm">
             Most tasks are created by workflows. RMs see only what's assigned to them.
           </p>

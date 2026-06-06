@@ -29,6 +29,8 @@ import {
 } from "lucide-react";
 import { InvestorLookup } from "@/components/common/InvestorLookup";
 import { RmSelector } from "@/components/common/RmSelector";
+import { SelectField } from "@/components/ui/SelectField";
+import { DateField } from "@/components/ui/DateField";
 
 const DEPARTMENTS: [string, string][] = [
   ["sales", "Sales"],
@@ -116,7 +118,7 @@ export default function NewTaskPage() {
   }
 
   return (
-    <div className="space-y-4 max-w-4xl">
+    <div className="space-y-4 max-w-4xl mx-auto">
       <Link
         href="/dashboard/tasks"
         className="text-sm text-muted-foreground hover:underline hover:text-foreground flex items-center gap-1"
@@ -266,10 +268,10 @@ export default function NewTaskPage() {
         <div className="grid grid-cols-4 gap-3">
           <label className="block">
             <div className="text-xs font-medium mb-1">Type</div>
-            <select
+            <SelectField
               value={form.type}
               onChange={(e) => set("type", e.target.value)}
-              className="input-base"
+              className="w-full"
             >
               <option value="follow_up">Follow-up</option>
               <option value="review_meeting">Review meeting</option>
@@ -277,14 +279,14 @@ export default function NewTaskPage() {
               <option value="kyc_renewal">KYC renewal</option>
               <option value="mandate_renewal">Mandate renewal</option>
               <option value="custom">Custom</option>
-            </select>
+            </SelectField>
           </label>
           <label className="block">
             <div className="text-xs font-medium mb-1">Department</div>
-            <select
+            <SelectField
               value={form.department}
               onChange={(e) => set("department", e.target.value)}
-              className="input-base"
+              className="w-full"
             >
               <option value="">—</option>
               {DEPARTMENTS.map(([k, l]) => (
@@ -292,28 +294,27 @@ export default function NewTaskPage() {
                   {l}
                 </option>
               ))}
-            </select>
+            </SelectField>
           </label>
           <label className="block">
             <div className="text-xs font-medium mb-1">Priority</div>
-            <select
+            <SelectField
               value={form.priority}
               onChange={(e) => set("priority", e.target.value)}
-              className="input-base"
+              className="w-full"
             >
               <option value="low">Low</option>
               <option value="normal">Normal</option>
               <option value="high">High</option>
               <option value="urgent">Urgent</option>
-            </select>
+            </SelectField>
           </label>
           <label className="block">
             <div className="text-xs font-medium mb-1">Due date</div>
-            <input
-              type="date"
+            <DateField
               value={form.dueDate}
               onChange={(e) => set("dueDate", e.target.value)}
-              className="input-base"
+              className="w-full"
             />
           </label>
           <label className="block col-span-2">
@@ -346,25 +347,24 @@ export default function NewTaskPage() {
             <div className="grid grid-cols-2 gap-3 mt-3">
               <label className="block">
                 <div className="text-xs font-medium mb-1">Frequency</div>
-                <select
+                <SelectField
                   value={form.recurrence}
                   onChange={(e) => set("recurrence", e.target.value)}
-                  className="input-base"
+                  className="w-full"
                 >
                   <option value="daily">Daily</option>
                   <option value="weekly">Weekly</option>
                   <option value="monthly">Monthly</option>
                   <option value="quarterly">Quarterly</option>
                   <option value="yearly">Yearly</option>
-                </select>
+                </SelectField>
               </label>
               <label className="block">
                 <div className="text-xs font-medium mb-1">Repeat until (optional)</div>
-                <input
-                  type="date"
+                <DateField
                   value={form.recurrenceUntil}
                   onChange={(e) => set("recurrenceUntil", e.target.value)}
-                  className="input-base"
+                  className="w-full"
                 />
               </label>
               <p className="col-span-2 text-[11px] text-muted-foreground">
@@ -542,7 +542,9 @@ function MeetingPicker({
   return (
     <label className="block">
       <div className="text-xs font-medium mb-1">Related meeting</div>
-      <select
+      <SelectField
+        value=""
+        placeholder="— Pick a recent meeting (optional) —"
         onChange={(e) => {
           const id = e.target.value;
           if (!id) return;
@@ -560,8 +562,7 @@ function MeetingPicker({
             )}`
           );
         }}
-        defaultValue=""
-        className="input-base"
+        className="w-full"
       >
         <option value="">— Pick a recent meeting (optional) —</option>
         {meetings.slice(0, 50).map((m) => {
@@ -576,7 +577,7 @@ function MeetingPicker({
             </option>
           );
         })}
-      </select>
+      </SelectField>
     </label>
   );
 }

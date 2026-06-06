@@ -66,7 +66,13 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning className={inter.variable}>
-      <body className="min-h-screen bg-background text-foreground antialiased scrollbar-thin">
+      {/* suppressHydrationWarning: browser extensions (ColorZilla's
+          `cz-shortcut-listen`, Grammarly, etc.) inject attributes onto <body>
+          before React hydrates, which would otherwise log a hydration mismatch. */}
+      <body
+        suppressHydrationWarning
+        className="min-h-screen bg-background text-foreground antialiased scrollbar-thin"
+      >
         <NavProgress />
         {children}
       </body>

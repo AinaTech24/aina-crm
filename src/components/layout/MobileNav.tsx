@@ -12,6 +12,7 @@
  */
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
 
@@ -51,8 +52,12 @@ export function MobileNav({ children }: { children: React.ReactNode }) {
         <Menu className="size-5" />
       </button>
 
-      {open && (
-        <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true">
+      {open && typeof document !== "undefined" && createPortal(
+        // Portalled to <body>: the topbar uses backdrop-blur, which makes it a
+        // containing block for fixed descendants — rendering the overlay there
+        // would trap `inset-0` inside the 64px header. The portal escapes it so
+        // the drawer covers the whole viewport on phones + tablets.
+        <div className="fixed inset-0 z-[90] lg:hidden" role="dialog" aria-modal="true">
           <div
             className="absolute inset-0 bg-black/40 animate-fade-in"
             onClick={() => setOpen(false)}
@@ -68,7 +73,8 @@ export function MobileNav({ children }: { children: React.ReactNode }) {
             </button>
             {children}
           </aside>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );
