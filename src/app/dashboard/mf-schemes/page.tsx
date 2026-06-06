@@ -22,10 +22,9 @@ export default async function MfSchemeCatalogPage({
 
   const { stats, rows } = await withTenant(session.tenantId, async (tx) => {
     const statRes = await tx.execute(sql`
-      SELECT COUNT(*)::int AS total,
-             COUNT(*) FILTER (WHERE fund_house IS NOT NULL)::int AS enriched,
-             MAX(synced_at) AS last_sync
-      FROM mf_schemes
+      SELECT (SELECT COUNT(*)::int FROM scheme_nav) AS total,
+             (SELECT COUNT(*)::int FROM mf_schemes WHERE fund_house IS NOT NULL) AS enriched,
+             (SELECT MAX(synced_at) FROM mf_schemes) AS last_sync
     `);
     const stats = (statRes.rows as any[])[0] ?? { total: 0, enriched: 0, last_sync: null };
 
@@ -33,15 +32,15 @@ export default async function MfSchemeCatalogPage({
     if (q.length >= 2) {
       const pat = `%${q}%`;
       const r = await tx.execute(sql`
-        SELECT m.scheme_code AS code, m.scheme_name AS name,
+        SELECT sn.scheme_code AS code, sn.scheme_name AS name,
                COALESCE(m.fund_house, sn.amc_name) AS amc,
                m.scheme_category AS category,
                COALESCE(m.nav, sn.nav)::numeric AS nav,
                COALESCE(m.nav_date, sn.nav_date) AS nav_date
-        FROM mf_schemes m
-        LEFT JOIN scheme_nav sn ON sn.scheme_code = m.scheme_code
-        WHERE m.is_active AND (m.scheme_name ILIKE ${pat} OR COALESCE(m.fund_house, sn.amc_name) ILIKE ${pat})
-        ORDER BY length(m.scheme_name) ASC, m.scheme_name ASC
+        FROM scheme_nav sn
+        LEFT JOIN mf_schemes m ON m.scheme_code = sn.scheme_code
+        WHERE sn.scheme_name ILIKE ${pat} OR sn.amc_name ILIKE ${pat}
+        ORDER BY length(sn.scheme_name) ASC, sn.scheme_name ASC
         LIMIT 100
       `);
       rows = r.rows as any[];

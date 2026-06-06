@@ -25,18 +25,21 @@ export async function GET(req: NextRequest) {
     const pat = `%${q}%`;
 
     const rows = await withTenant(session.tenantId, async (tx) => {
+      // scheme_nav (AMFI feed) is the always-populated universe of schemes;
+      // mf_schemes (mfapi catalog) enriches it with scheme_category as it syncs.
+      // Querying scheme_nav-primary means the picker works immediately on deploy
+      // even before the daily mfapi sync has run.
       const r = await tx.execute(sql`
-        SELECT m.scheme_code AS code,
-               m.scheme_name AS name,
+        SELECT sn.scheme_code AS code,
+               sn.scheme_name AS name,
                COALESCE(m.fund_house, sn.amc_name) AS amc,
                m.scheme_category AS category,
                COALESCE(m.nav, sn.nav)::numeric AS nav,
                COALESCE(m.nav_date, sn.nav_date) AS nav_date
-        FROM mf_schemes m
-        LEFT JOIN scheme_nav sn ON sn.scheme_code = m.scheme_code
-        WHERE m.is_active
-          AND (m.scheme_name ILIKE ${pat} OR COALESCE(m.fund_house, sn.amc_name) ILIKE ${pat})
-        ORDER BY length(m.scheme_name) ASC, m.scheme_name ASC
+        FROM scheme_nav sn
+        LEFT JOIN mf_schemes m ON m.scheme_code = sn.scheme_code
+        WHERE sn.scheme_name ILIKE ${pat} OR sn.amc_name ILIKE ${pat}
+        ORDER BY length(sn.scheme_name) ASC, sn.scheme_name ASC
         LIMIT ${limit}
       `);
       return r.rows as Array<{
