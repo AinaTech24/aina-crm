@@ -28,6 +28,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { InvestorLookup } from "@/components/common/InvestorLookup";
+import { SchemeAutocomplete } from "@/components/mf/SchemeAutocomplete";
 import { RiskAlignmentBanner } from "@/components/proposals/RiskAlignmentBanner";
 import { formatINR } from "@/lib/utils";
 
@@ -930,12 +931,20 @@ function MFRow({ item, onPatch }: { item: MF; onPatch: (p: Partial<MF>) => void 
   return (
     <div className="grid grid-cols-3 gap-3">
       <div className="col-span-2">
-        <TextInput
-          label="Scheme name"
-          required
-          value={item.schemeName}
-          setValue={(v) => onPatch({ schemeName: v })}
-          placeholder="HDFC ELSS Tax Saver Fund — Direct Growth"
+        <div className="text-[11px] font-medium mb-1 text-muted-foreground">
+          Scheme name <span className="text-rose-500">*</span>
+        </div>
+        <SchemeAutocomplete
+          defaultValue={item.schemeName}
+          onQueryChange={(v) => onPatch({ schemeName: v })}
+          onSelect={(s) =>
+            onPatch({
+              schemeName: s.schemeName,
+              amcName: s.amc ?? item.amcName,
+              category: s.category ?? item.category,
+            })
+          }
+          placeholder="Search live MF catalog — or type a name…"
         />
       </div>
       <TextInput

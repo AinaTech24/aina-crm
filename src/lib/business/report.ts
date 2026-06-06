@@ -95,29 +95,25 @@ export async function getLiquidParkingReport(
   opts: { rmId?: string | null } = {}
 ): Promise<LiquidRow[]> {
   const rows = (await tx.execute(sql`
-    SELECT e.investor_id AS investor_id,
-           MAX(e.client_name) AS name,
-           COALESCE(SUM(l.amount) FILTER (
-             WHERE l.asset_class = 'liquid' AND l.txn_type IN ('lumpsum','additional_purchase','switch','stp')
-           ), 0)::numeric AS liquid_in,
-           COALESCE(SUM(l.amount) FILTER (
-             WHERE (l.asset_class = 'liquid' AND l.txn_type IN ('swp','redemption'))
-                OR (l.from_asset_class = 'liquid' AND l.txn_type IN ('switch','stp'))
-           ), 0)::numeric AS liquid_out,
-           MAX(e.business_date) AS last_date
-    FROM business_entry_lines l
-    JOIN business_entries e ON e.id = l.entry_id
-    WHERE e.tenant_id = ${tenantId}::uuid
-      AND e.status <> 'cancelled'${rmCond(opts.rmId)}
-    GROUP BY e.investor_id
-    HAVING COALESCE(SUM(l.amount) FILTER (
-             WHERE l.asset_class = 'liquid' AND l.txn_type IN ('lumpsum','additional_purchase','switch','stp')
-           ), 0)
-         - COALESCE(SUM(l.amount) FILTER (
-             WHERE (l.asset_class = 'liquid' AND l.txn_type IN ('swp','redemption'))
-                OR (l.from_asset_class = 'liquid' AND l.txn_type IN ('switch','stp'))
-           ), 0) > 0
-    ORDER BY liquid_in - liquid_out DESC
+    SELECT * FROM (
+      SELECT e.investor_id AS investor_id,
+             MAX(e.client_name) AS name,
+             COALESCE(SUM(l.amount) FILTER (
+               WHERE l.asset_class = 'liquid' AND l.txn_type IN ('lumpsum','additional_purchase','switch','stp')
+             ), 0)::numeric AS liquid_in,
+             COALESCE(SUM(l.amount) FILTER (
+               WHERE (l.asset_class = 'liquid' AND l.txn_type IN ('swp','redemption'))
+                  OR (l.from_asset_class = 'liquid' AND l.txn_type IN ('switch','stp'))
+             ), 0)::numeric AS liquid_out,
+             MAX(e.business_date) AS last_date
+      FROM business_entry_lines l
+      JOIN business_entries e ON e.id = l.entry_id
+      WHERE e.tenant_id = ${tenantId}::uuid
+        AND e.status <> 'cancelled'${rmCond(opts.rmId)}
+      GROUP BY e.investor_id
+    ) t
+    WHERE t.liquid_in - t.liquid_out > 0
+    ORDER BY t.liquid_in - t.liquid_out DESC
     LIMIT 500
   `)).rows as any[];
 
