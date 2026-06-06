@@ -204,22 +204,10 @@ export default async function ReviewMeetingsPage({
         </div>
         <div className="flex items-center gap-2">
           <Link
-            href="/dashboard/review-meetings/new?category=new"
-            className="btn-secondary text-xs"
-          >
-            <Plus className="size-3.5" /> New Meeting
-          </Link>
-          <Link
-            href="/dashboard/review-meetings/new?category=follow_up"
-            className="btn-secondary text-xs"
-          >
-            <Plus className="size-3.5" /> Follow-up
-          </Link>
-          <Link
             href="/dashboard/review-meetings/new?category=review"
             className="btn-primary"
           >
-            <Plus className="size-4" /> Schedule Review
+            <Plus className="size-4" /> Add Meeting
           </Link>
         </div>
       </div>
@@ -510,10 +498,10 @@ function Stat({
     tone === "rose"
       ? "text-rose-600"
       : tone === "amber"
-      ? "text-amber-600"
-      : tone === "emerald"
-      ? "text-emerald-600"
-      : "text-foreground";
+        ? "text-amber-600"
+        : tone === "emerald"
+          ? "text-emerald-600"
+          : "text-foreground";
   return (
     <div className="card-surface p-4">
       <div className="flex items-center justify-between">
