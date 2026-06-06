@@ -73,6 +73,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         suppressHydrationWarning
         className="min-h-screen bg-background text-foreground antialiased scrollbar-thin"
       >
+        {/* Apply saved theme before paint — avoids a light→dark flash. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{if(localStorage.getItem('theme')==='dark')document.documentElement.classList.add('dark')}catch(e){}`,
+          }}
+        />
         <NavProgress />
         {children}
       </body>

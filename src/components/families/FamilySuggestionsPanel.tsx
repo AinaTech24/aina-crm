@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Sparkles, Loader2, Check, UserPlus, Link as LinkIcon, HeartHandshake } from "lucide-react";
 import { formatINR } from "@/lib/utils";
+import { useToast } from "@/components/ui/Toast";
 
 type Suggestion = {
   type: "add_to_family" | "create_family";
@@ -42,6 +43,7 @@ const RELATIONSHIPS = [
 
 export function FamilySuggestionsPanel() {
   const router = useRouter();
+  const toast = useToast();
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -76,15 +78,16 @@ export function FamilySuggestionsPanel() {
         body: JSON.stringify({ investorId: s.investor.id, familyRole: role }),
       });
       if (res.ok) {
+        toast.success(`${s.investor.name} linked to ${s.targetFamily.name}`);
         // Remove from list
         setSuggestions((prev) => prev.filter((item) => item.investor.id !== s.investor.id));
         router.refresh();
       } else {
-        const err = await res.json();
-        alert(err.error ?? "Failed to link member");
+        const err = await res.json().catch(() => ({}));
+        toast.error(err.error ?? "Failed to link member", "Link failed");
       }
     } catch (e) {
-      alert("An error occurred while linking");
+      toast.error("An error occurred while linking", "Link failed");
     } finally {
       setBusyId(null);
     }
@@ -102,8 +105,8 @@ export function FamilySuggestionsPanel() {
         body: JSON.stringify({ headName: s.investor.name, familyName }),
       });
       if (!resCreate.ok) {
-        const err = await resCreate.json();
-        alert(err.error ?? "Failed to create family");
+        const err = await resCreate.json().catch(() => ({}));
+        toast.error(err.error ?? "Failed to create family", "Create failed");
         setBusyId(null);
         return;
       }
@@ -128,11 +131,12 @@ export function FamilySuggestionsPanel() {
         }
       }
 
+      toast.success(`Created ${familyName} with ${(s.potentialPartners?.length ?? 0) + 1} members`);
       // Remove from list
       setSuggestions((prev) => prev.filter((item) => item.investor.id !== s.investor.id));
       router.refresh();
     } catch (e) {
-      alert("An error occurred while grouping");
+      toast.error("An error occurred while grouping", "Create failed");
     } finally {
       setBusyId(null);
     }

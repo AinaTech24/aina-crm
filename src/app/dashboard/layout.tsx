@@ -11,7 +11,6 @@ import {
   Settings,
   Sparkles,
   Send,
-  LifeBuoy,
   ClipboardCheck,
   ScrollText,
   HeartHandshake,
@@ -20,7 +19,6 @@ import {
   Repeat,
   XOctagon,
   Calendar,
-  AlertOctagon,
   FileSignature,
   Shield,
   Megaphone,
@@ -43,7 +41,6 @@ import {
   Copy,
   PieChart,
   Radio,
-  Columns3,
   Calculator,
   Wallet,
   Server,
@@ -63,11 +60,12 @@ import type { Metadata } from "next";
 import { GlobalSearch } from "@/components/layout/GlobalSearch";
 import { NotificationBell } from "@/components/layout/NotificationBell";
 import { BirthdayBell } from "@/components/layout/BirthdayBell";
-import { SidebarNavLink } from "@/components/layout/SidebarNavLink";
 import { DesktopSidebar } from "@/components/layout/DesktopSidebar";
+import { CustomizableNav, type NavItemData } from "@/components/layout/CustomizableNav";
 import { QuickCreateFab } from "@/components/layout/QuickCreateFab";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { ProfileMenu } from "@/components/layout/ProfileMenu";
+import { ThemeToggle } from "@/components/layout/ThemeToggle";
 import { ToastProvider } from "@/components/ui/Toast";
 import { buildTenantThemeCss } from "@/lib/branding/theme";
 
@@ -96,7 +94,7 @@ const NAV: NavSection[] = [
         roles: ["owner", "rm", "branch_head", "back_office", "ops"] },
       { href: "/dashboard/signals", label: "Sales Signals", icon: Radio,
         roles: ["owner", "rm", "branch_head", "back_office", "ops"] },
-      { href: "/dashboard/tasks", label: "Tasks", icon: ListChecks, module: "tasks" },
+      { href: "/dashboard/tasks", label: "Tasks & Requests", icon: ListChecks, module: "tasks" },
       { href: "/dashboard/review-meetings", label: "Meetings", icon: Calendar, module: "review_meetings",
         roles: ["owner", "rm", "branch_head", "back_office", "ops"] },
       { href: "/dashboard/calendar", label: "Calendar", icon: Calendar },
@@ -108,9 +106,9 @@ const NAV: NavSection[] = [
   {
     title: "CRM",
     items: [
-      // Leads visible to owner, marketing, rm, branch_head
-      { href: "/dashboard/pipeline-board", label: "Pipeline Board", icon: Columns3, module: "lead_management",
-        roles: ["owner", "rm", "branch_head", "back_office", "ops"] },
+      // Leads visible to owner, marketing, rm, branch_head.
+      // Pipeline Board is now reached via the in-page Module switcher on the
+      // Leads page (Leads ⇄ Pipeline Board), not a separate sidebar item.
       { href: "/dashboard/leads", label: "Leads", icon: Sparkles, module: "lead_management",
         roles: ["owner", "marketing", "rm", "branch_head", "back_office", "ops", "compliance"] },
       // Investor data hidden from marketing per spec section 3
@@ -165,10 +163,10 @@ const NAV: NavSection[] = [
         roles: ["owner", "back_office", "ops", "rm", "branch_head"] },
       { href: "/dashboard/activities", label: "Activity Log", icon: PhoneCall,
         roles: ["owner", "rm", "branch_head", "back_office", "ops", "compliance"] },
-      { href: "/dashboard/service-requests", label: "Service Requests", icon: LifeBuoy, module: "service_requests",
-        roles: ["owner", "back_office", "ops", "rm", "branch_head", "compliance"] },
-      { href: "/dashboard/complaints", label: "Complaints", icon: AlertOctagon, module: "complaints",
-        roles: ["owner", "compliance", "back_office", "ops"] },
+      // Service Requests + Complaints are now reached via the "View" dropdown on
+      // the Tasks & Requests page (one unified work area), so they're no longer
+      // separate sidebar items. The /dashboard/service-requests and
+      // /dashboard/complaints pages still exist and keep their own access gates.
     ],
   },
   {
@@ -340,6 +338,19 @@ export default async function DashboardLayout({ children }: { children: React.Re
     }),
   })).filter((s) => s.items.length > 0);
 
+  // Flatten the role/module-filtered nav into items the client CustomizableNav
+  // can reorder/regroup. Pass the icon by NAME (lucide displayName) — a string —
+  // not a pre-rendered element, so React never tries to serialize a lucide
+  // component across the RSC boundary. The section title is the default group.
+  const flatNavItems: NavItemData[] = visible.flatMap((section) =>
+    section.items.map((item) => ({
+      href: item.href,
+      label: item.label,
+      iconName: (item.icon?.displayName || item.icon?.name || "") as string,
+      defaultGroup: section.title,
+    }))
+  );
+
   const roleLabel = primaryRoleLabel(session.roles);
 
   const initials = session.name
@@ -399,31 +410,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
           </div>
         </div>
 
-        {/* Nav — grouped sections with active-state highlighting */}
-        <nav className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-4 space-y-5 scrollbar-thin">
-          {visible.map((section, i) => (
-            <div key={i}>
-              {section.title && (
-                <div className="sidebar-section-title px-2 mb-2 text-[10px] font-bold uppercase tracking-[0.1em] text-muted-foreground/70">
-                  {section.title}
-                </div>
-              )}
-              <div className="space-y-0.5">
-                {section.items.map((item) => {
-                  const Icon = item.icon;
-                  return (
-                    <SidebarNavLink
-                      key={item.href}
-                      href={item.href}
-                      label={item.label}
-                      iconElement={<Icon className="nav-link-icon" />}
-                    />
-                  );
-                })}
-              </div>
-            </div>
-          ))}
-        </nav>
+        {/* Nav — searchable, user-personalizable (reorder + custom groups) */}
+        <CustomizableNav items={flatNavItems} storageKey={`aina:nav:${session.userId}`} />
 
     </>
   );
@@ -474,6 +462,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
             >
               <HelpCircle className="size-4" />
             </Link>
+            <ThemeToggle />
             <BirthdayBell />
             <NotificationBell />
             <span className="h-6 w-px bg-border mx-0.5" />

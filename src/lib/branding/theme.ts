@@ -158,7 +158,9 @@ export function buildTenantThemeCss(primaryColor?: string | null, secondaryColor
   const body = Object.entries(vars)
     .map(([k, v]) => `${k}: ${v};`)
     .join(" ");
-  return `:root{ ${body} }`;
+  // Scope to light mode only — in dark mode the `.dark` palette wins, so the
+  // per-tenant light tints never bleed onto the dark theme.
+  return `:root:not(.dark){ ${body} }`;
 }
 
 /**

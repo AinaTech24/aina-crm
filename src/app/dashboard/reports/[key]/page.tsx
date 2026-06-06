@@ -6,6 +6,7 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { formatINR, formatDate } from "@/lib/utils";
 import { ReportExportButtons } from "@/components/reports/ReportExportButtons";
+import { TableScroll } from "@/components/common/TableScroll";
 
 /**
  * Generic report viewer. Routes /dashboard/reports/<key> through a registry
@@ -1345,7 +1346,8 @@ export default async function ReportPage({ params }: { params: Promise<{ key: st
         {rows.length === 0 ? (
           <div className="p-12 text-center text-sm text-muted-foreground">No data for this report.</div>
         ) : (
-          <table className="w-full text-sm">
+          <TableScroll>
+            <table className="w-full text-sm">
             <thead className="text-xs text-muted-foreground border-b">
               <tr>
                 {report.columns.map((c) => (
@@ -1371,7 +1373,8 @@ export default async function ReportPage({ params }: { params: Promise<{ key: st
                 </tr>
               ))}
             </tbody>
-          </table>
+            </table>
+          </TableScroll>
         )}
       </div>
     </div>
