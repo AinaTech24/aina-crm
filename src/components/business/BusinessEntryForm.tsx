@@ -1,0 +1,391 @@
+"use client";
+
+/**
+ * BusinessEntryForm — header + Zoho-style scheme sub-form for a Business Closing
+ * Entry. Each line picks a scheme from the shared MF catalog (category + AMC
+ * auto-fill, with a free-text fallback for PMS/AIF), its own amount and
+ * transaction type, plus a "from scheme" for switch / STP / SWP.
+ */
+
+import { useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { Plus, Trash2, Loader2, Search, Save } from "lucide-react";
+import { SelectField } from "@/components/ui/SelectField";
+import { DateField } from "@/components/ui/DateField";
+import { SchemeAutocomplete } from "@/components/mf/SchemeAutocomplete";
+import { useToast } from "@/components/ui/Toast";
+import { classifyAssetClass } from "@/lib/business/asset-class";
+
+const PRODUCT_OPTS: [string, string][] = [
+  ["mutual_fund", "Mutual Fund"], ["pms", "PMS"], ["aif", "AIF"], ["sif", "SIF"], ["bond", "Bond"], ["ncd", "NCD"], ["other", "Other"],
+];
+const TXN_OPTS: [string, string][] = [
+  ["lumpsum", "Lumpsum"], ["additional_purchase", "Additional Purchase"], ["sip", "SIP"],
+  ["switch", "Switch"], ["stp", "STP"], ["swp", "SWP"], ["redemption", "Redemption"],
+];
+const FREQ_OPTS: [string, string][] = [
+  ["one_time", "One-time"], ["weekly", "Weekly"], ["monthly", "Monthly"], ["quarterly", "Quarterly"], ["half_yearly", "Half-yearly"], ["yearly", "Yearly"],
+];
+const CLASS_OPTS: [string, string][] = [
+  ["equity", "Equity"], ["hybrid", "Hybrid"], ["debt", "Debt"], ["liquid", "Liquid"], ["gold", "Gold"], ["other", "Other"],
+];
+const STATUS_OPTS: [string, string][] = [["draft", "Draft"], ["confirmed", "Confirmed"]];
+const NEEDS_FREQ = new Set(["sip", "stp", "swp"]);
+const NEEDS_FROM = new Set(["switch", "stp", "swp"]);
+
+type Line = {
+  key: string;
+  schemeCode: string;
+  schemeName: string;
+  amcName: string;
+  assetCategory: string;
+  assetClass: string;
+  txnType: string;
+  amount: string;
+  frequency: string;
+  fromSchemeCode: string;
+  fromSchemeName: string;
+  fromAssetClass: string;
+  folioNo: string;
+};
+
+let _k = 0;
+const blankLine = (): Line => ({
+  key: `l${++_k}`, schemeCode: "", schemeName: "", amcName: "", assetCategory: "", assetClass: "equity",
+  txnType: "lumpsum", amount: "", frequency: "", fromSchemeCode: "", fromSchemeName: "", fromAssetClass: "", folioNo: "",
+});
+
+function inr(n: number): string {
+  if (!Number.isFinite(n)) return "₹0";
+  return `₹${Math.round(n).toLocaleString("en-IN")}`;
+}
+
+type InitialEntry = {
+  id: string;
+  investorId: string | null;
+  clientName: string;
+  productType: string;
+  businessDate: string;
+  status: string;
+  rmId: string | null;
+  amcName: string | null;
+  folioNo: string | null;
+  notes: string | null;
+};
+type InitialLine = any;
+
+export function BusinessEntryForm({
+  initial,
+  initialLines,
+  members,
+  currentUserId,
+}: {
+  initial?: InitialEntry;
+  initialLines?: InitialLine[];
+  members: { id: string; name: string }[];
+  currentUserId: string;
+}) {
+  const router = useRouter();
+  const toast = useToast();
+  const isEdit = !!initial;
+
+  const [investorId, setInvestorId] = useState(initial?.investorId ?? "");
+  const [clientName, setClientName] = useState(initial?.clientName ?? "");
+  const [productType, setProductType] = useState(initial?.productType ?? "mutual_fund");
+  const [businessDate, setBusinessDate] = useState(initial?.businessDate ?? new Date().toISOString().slice(0, 10));
+  const [status, setStatus] = useState(initial?.status === "draft" || initial?.status === "confirmed" ? initial.status : "draft");
+  const [rmId, setRmId] = useState(initial?.rmId ?? currentUserId);
+  const [amcName, setAmcName] = useState(initial?.amcName ?? "");
+  const [folioNo, setFolioNo] = useState(initial?.folioNo ?? "");
+  const [notes, setNotes] = useState(initial?.notes ?? "");
+  const [busy, setBusy] = useState(false);
+
+  const [lines, setLines] = useState<Line[]>(() =>
+    initialLines && initialLines.length
+      ? initialLines.map((l: any) => ({
+          key: `l${++_k}`,
+          schemeCode: l.schemeCode ?? "", schemeName: l.schemeName ?? "", amcName: l.amcName ?? "",
+          assetCategory: l.assetCategory ?? "", assetClass: l.assetClass ?? "equity",
+          txnType: l.txnType ?? "lumpsum", amount: l.amount != null ? String(l.amount) : "",
+          frequency: l.frequency ?? "", fromSchemeCode: l.fromSchemeCode ?? "", fromSchemeName: l.fromSchemeName ?? "",
+          fromAssetClass: l.fromAssetClass ?? "", folioNo: l.folioNo ?? "",
+        }))
+      : [blankLine()]
+  );
+
+  function patchLine(i: number, p: Partial<Line>) {
+    setLines((ls) => ls.map((l, idx) => (idx === i ? { ...l, ...p } : l)));
+  }
+
+  const total = useMemo(() => lines.reduce((s, l) => s + (Number(l.amount) || 0), 0), [lines]);
+  const liquidNet = useMemo(() => {
+    let inn = 0, out = 0;
+    for (const l of lines) {
+      const a = Number(l.amount) || 0;
+      if (l.assetClass === "liquid" && ["lumpsum", "additional_purchase", "switch", "stp"].includes(l.txnType)) inn += a;
+      if ((l.assetClass === "liquid" && ["swp", "redemption"].includes(l.txnType)) || (l.fromAssetClass === "liquid" && ["switch", "stp"].includes(l.txnType))) out += a;
+    }
+    return inn - out;
+  }, [lines]);
+
+  async function save() {
+    if (!clientName.trim()) { toast.error("Pick or enter a client", "Missing client"); return; }
+    const cleaned = lines.filter((l) => l.schemeName.trim() && Number(l.amount) > 0);
+    if (cleaned.length === 0) { toast.error("Add at least one scheme with an amount", "No schemes"); return; }
+    setBusy(true);
+    try {
+      const body = {
+        investorId: investorId || null,
+        clientName: clientName.trim(),
+        productType, businessDate, status, rmId: rmId || null,
+        amcName: amcName.trim() || null, folioNo: folioNo.trim() || null, notes: notes.trim() || null,
+        lines: cleaned.map((l) => ({
+          schemeCode: l.schemeCode || null, schemeName: l.schemeName.trim(), amcName: l.amcName || null,
+          assetCategory: l.assetCategory || null, assetClass: l.assetClass,
+          txnType: l.txnType, amount: Number(l.amount) || 0,
+          frequency: NEEDS_FREQ.has(l.txnType) ? l.frequency || null : null,
+          fromSchemeCode: NEEDS_FROM.has(l.txnType) ? l.fromSchemeCode || null : null,
+          fromSchemeName: NEEDS_FROM.has(l.txnType) ? l.fromSchemeName || null : null,
+          fromAssetClass: NEEDS_FROM.has(l.txnType) ? l.fromAssetClass || null : null,
+          folioNo: l.folioNo || null,
+        })),
+      };
+      const res = await fetch(isEdit ? `/api/business-entries/${initial!.id}` : "/api/business-entries", {
+        method: isEdit ? "PATCH" : "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) { toast.error(j.error ?? "Could not save entry", "Save failed"); return; }
+      toast.success(isEdit ? "Entry updated" : "Business entry saved");
+      router.push(`/dashboard/business-entries/${isEdit ? initial!.id : j.id}`);
+      router.refresh();
+    } catch {
+      toast.error("Network error — please try again", "Save failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-5">
+      {/* Header */}
+      <div className="card-surface p-5 grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="sm:col-span-2 lg:col-span-1">
+          <Label>Client</Label>
+          <ClientField value={clientName} onPick={(c) => { setInvestorId(c.id); setClientName(c.name); }} onText={(v) => { setClientName(v); setInvestorId(""); }} />
+        </div>
+        <div>
+          <Label>Product type</Label>
+          <SelectField value={productType} onChange={(e) => setProductType(e.target.value)} className="w-full">
+            {PRODUCT_OPTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </SelectField>
+        </div>
+        <div>
+          <Label>Business date</Label>
+          <DateField value={businessDate} onChange={(e) => setBusinessDate(e.target.value)} className="w-full" />
+        </div>
+        <div>
+          <Label>Relationship manager</Label>
+          <SelectField value={rmId} onChange={(e) => setRmId(e.target.value)} className="w-full">
+            {members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+          </SelectField>
+        </div>
+        <div>
+          <Label>Status</Label>
+          <SelectField value={status} onChange={(e) => setStatus(e.target.value)} className="w-full">
+            {STATUS_OPTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </SelectField>
+        </div>
+        <div>
+          <Label>AMC (optional)</Label>
+          <Input value={amcName} onChange={setAmcName} placeholder="e.g. HDFC Mutual Fund" />
+        </div>
+        <div>
+          <Label>Folio no. (optional)</Label>
+          <Input value={folioNo} onChange={setFolioNo} placeholder="Folio / account no." />
+        </div>
+        <div className="sm:col-span-2 lg:col-span-3">
+          <Label>Notes (optional)</Label>
+          <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2}
+            className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm focus:outline-none focus:border-brand-cyan/60 focus:ring-2 focus:ring-brand-cyan/15" />
+        </div>
+      </div>
+
+      {/* Scheme sub-form */}
+      <div className="card-surface p-5">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-semibold text-sm">Schemes</h3>
+          <button type="button" onClick={() => setLines((ls) => [...ls, blankLine()])} className="btn-secondary text-xs inline-flex items-center gap-1.5">
+            <Plus className="size-3.5" /> Add scheme
+          </button>
+        </div>
+
+        <div className="space-y-3">
+          {lines.map((l, i) => (
+            <div key={l.key} className="rounded-lg border border-border p-3 bg-secondary/20">
+              <div className="grid lg:grid-cols-12 gap-2.5">
+                <div className="lg:col-span-5">
+                  <Label sm>Scheme</Label>
+                  <SchemeAutocomplete
+                    size="sm"
+                    defaultValue={l.schemeName}
+                    onQueryChange={(v) => patchLine(i, { schemeName: v, schemeCode: "" })}
+                    onSelect={(s) => patchLine(i, {
+                      schemeName: s.schemeName, schemeCode: s.schemeCode, amcName: s.amc ?? "",
+                      assetCategory: s.category ?? "", assetClass: classifyAssetClass(s.category, s.schemeName),
+                    })}
+                    placeholder="Search catalog or type a name (PMS/AIF)…"
+                  />
+                  {l.assetCategory && <div className="text-[10px] text-muted-foreground mt-1 truncate">{l.amcName ? `${l.amcName} · ` : ""}{l.assetCategory}</div>}
+                </div>
+                <div className="lg:col-span-2">
+                  <Label sm>Type</Label>
+                  <SelectField size="sm" value={l.txnType} onChange={(e) => patchLine(i, { txnType: e.target.value })} className="w-full">
+                    {TXN_OPTS.map(([v, lab]) => <option key={v} value={v}>{lab}</option>)}
+                  </SelectField>
+                </div>
+                <div className="lg:col-span-2">
+                  <Label sm>Asset class</Label>
+                  <SelectField size="sm" value={l.assetClass} onChange={(e) => patchLine(i, { assetClass: e.target.value })} className="w-full">
+                    {CLASS_OPTS.map(([v, lab]) => <option key={v} value={v}>{lab}</option>)}
+                  </SelectField>
+                </div>
+                <div className="lg:col-span-2">
+                  <Label sm>Amount (₹)</Label>
+                  <input type="number" min={0} inputMode="numeric" value={l.amount} onChange={(e) => patchLine(i, { amount: e.target.value })}
+                    className="w-full h-8 rounded-lg border border-border bg-card px-2.5 text-xs tabular-nums focus:outline-none focus:border-brand-cyan/60 focus:ring-2 focus:ring-brand-cyan/15" />
+                </div>
+                <div className="lg:col-span-1 flex items-end">
+                  <button type="button" onClick={() => setLines((ls) => ls.length > 1 ? ls.filter((_, idx) => idx !== i) : ls)}
+                    className="size-8 grid place-items-center rounded-md text-muted-foreground hover:bg-rose-50 hover:text-rose-600 transition-colors" title="Remove">
+                    <Trash2 className="size-4" />
+                  </button>
+                </div>
+
+                {/* Conditional row: frequency + from-scheme */}
+                {(NEEDS_FREQ.has(l.txnType) || NEEDS_FROM.has(l.txnType)) && (
+                  <div className="lg:col-span-12 grid lg:grid-cols-12 gap-2.5 pt-1">
+                    {NEEDS_FREQ.has(l.txnType) && (
+                      <div className="lg:col-span-3">
+                        <Label sm>Frequency</Label>
+                        <SelectField size="sm" value={l.frequency} onChange={(e) => patchLine(i, { frequency: e.target.value })} className="w-full">
+                          <option value="">—</option>
+                          {FREQ_OPTS.map(([v, lab]) => <option key={v} value={v}>{lab}</option>)}
+                        </SelectField>
+                      </div>
+                    )}
+                    {NEEDS_FROM.has(l.txnType) && (
+                      <>
+                        <div className="lg:col-span-6">
+                          <Label sm>From scheme (source)</Label>
+                          <SchemeAutocomplete size="sm" defaultValue={l.fromSchemeName}
+                            onQueryChange={(v) => patchLine(i, { fromSchemeName: v, fromSchemeCode: "" })}
+                            onSelect={(s) => patchLine(i, { fromSchemeName: s.schemeName, fromSchemeCode: s.schemeCode, fromAssetClass: classifyAssetClass(s.category, s.schemeName) })}
+                            placeholder="Source scheme…" />
+                        </div>
+                        <div className="lg:col-span-3">
+                          <Label sm>From class</Label>
+                          <SelectField size="sm" value={l.fromAssetClass} onChange={(e) => patchLine(i, { fromAssetClass: e.target.value })} className="w-full">
+                            <option value="">—</option>
+                            {CLASS_OPTS.map(([v, lab]) => <option key={v} value={v}>{lab}</option>)}
+                          </SelectField>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Totals */}
+        <div className="mt-4 pt-3 border-t flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            {liquidNet !== 0 && (
+              <span className="chip bg-sky-50 text-sky-700">Liquid net {inr(liquidNet)}</span>
+            )}
+          </div>
+          <div className="text-sm">
+            Total business: <span className="font-bold text-lg tabular-nums">{inr(total)}</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex justify-end gap-2">
+        <button type="button" onClick={() => router.back()} className="btn-secondary text-sm">Cancel</button>
+        <button type="button" onClick={save} disabled={busy} className="btn-primary text-sm inline-flex items-center gap-1.5 disabled:opacity-50">
+          {busy ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+          {isEdit ? "Save changes" : "Save entry"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function Label({ children, sm }: { children: React.ReactNode; sm?: boolean }) {
+  return <span className={`block font-medium text-muted-foreground ${sm ? "text-[10px] mb-0.5" : "text-xs mb-1"}`}>{children}</span>;
+}
+function Input({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
+  return (
+    <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder}
+      className="w-full h-9 rounded-lg border border-border bg-card px-3 text-sm focus:outline-none focus:border-brand-cyan/60 focus:ring-2 focus:ring-brand-cyan/15" />
+  );
+}
+
+/** Inline client search over /api/investors (free-text allowed for prospects). */
+function ClientField({ value, onPick, onText }: { value: string; onPick: (c: { id: string; name: string }) => void; onText: (v: string) => void }) {
+  const [q, setQ] = useState(value);
+  const [open, setOpen] = useState(false);
+  const [results, setResults] = useState<Array<{ id: string; name: string; email?: string | null }>>([]);
+  const [busy, setBusy] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const reqId = useRef(0);
+
+  function onChange(v: string) {
+    setQ(v); onText(v); setOpen(true);
+    const query = v.trim();
+    if (query.length < 2) { setResults([]); return; }
+    const id = ++reqId.current; setBusy(true);
+    setTimeout(async () => {
+      try {
+        const j = await fetch(`/api/investors?q=${encodeURIComponent(query)}&limit=8`).then((r) => r.json()).catch(() => ({}));
+        const list = (j.investors ?? j.rows ?? j.data ?? []) as any[];
+        if (id === reqId.current) setResults(list.map((x) => ({ id: x.id, name: x.name, email: x.email })));
+      } finally {
+        if (id === reqId.current) setBusy(false);
+      }
+    }, 200);
+  }
+
+  return (
+    <div ref={ref} className="relative">
+      <div className="relative">
+        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+        <input
+          value={q}
+          onChange={(e) => onChange(e.target.value)}
+          onFocus={() => setOpen(true)}
+          onBlur={() => setTimeout(() => setOpen(false), 150)}
+          placeholder="Search clients or type a name…"
+          className="w-full h-9 rounded-lg border border-border bg-card pl-9 pr-3 text-sm focus:outline-none focus:border-brand-cyan/60 focus:ring-2 focus:ring-brand-cyan/15"
+        />
+        {busy && <Loader2 className="absolute right-2.5 top-1/2 -translate-y-1/2 size-3.5 animate-spin text-brand-cyan" />}
+      </div>
+      {open && results.length > 0 && (
+        <ul className="absolute left-0 right-0 top-full mt-1 z-50 max-h-60 overflow-y-auto card-elevated bg-card p-1 animate-scale-in">
+          {results.map((r) => (
+            <li key={r.id}>
+              <button type="button" onMouseDown={(e) => { e.preventDefault(); onPick({ id: r.id, name: r.name }); setQ(r.name); setOpen(false); }}
+                className="w-full text-left rounded-md px-2.5 py-1.5 text-xs hover:bg-secondary transition">
+                <span className="font-medium">{r.name}</span>
+                {r.email && <span className="text-muted-foreground"> · {r.email}</span>}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}

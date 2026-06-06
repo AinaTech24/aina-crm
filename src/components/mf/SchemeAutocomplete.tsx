@@ -22,12 +22,15 @@ export type SchemePick = {
 
 export function SchemeAutocomplete({
   onSelect,
+  onQueryChange,
   defaultValue = "",
   placeholder = "Search mutual fund schemes…",
   className = "",
   size = "md",
 }: {
   onSelect: (s: SchemePick) => void;
+  /** Fires on free typing — lets callers keep a free-text scheme name (PMS/AIF). */
+  onQueryChange?: (q: string) => void;
   defaultValue?: string;
   placeholder?: string;
   className?: string;
@@ -86,7 +89,7 @@ export function SchemeAutocomplete({
         <Search className={`absolute left-2.5 top-1/2 -translate-y-1/2 ${size === "sm" ? "size-3.5" : "size-4"} text-muted-foreground`} />
         <input
           value={q}
-          onChange={(e) => { setQ(e.target.value); setOpen(true); }}
+          onChange={(e) => { setQ(e.target.value); setOpen(true); onQueryChange?.(e.target.value); }}
           onFocus={() => setOpen(true)}
           onKeyDown={(e) => {
             if (e.key === "ArrowDown") { e.preventDefault(); setActive((a) => Math.min(results.length - 1, a + 1)); }

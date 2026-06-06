@@ -153,6 +153,8 @@ const NAV: NavSection[] = [
       { href: "/dashboard/transactions", label: "MF Transactions", icon: Repeat, module: "transactions",
         roles: ["owner", "back_office", "ops", "rm", "branch_head", "compliance"] },
       { href: "/dashboard/mf-schemes", label: "MF Scheme Catalog", icon: BookOpen },
+      { href: "/dashboard/business-entries", label: "Business Entries", icon: Briefcase,
+        roles: ["owner", "branch_head", "rm", "back_office", "ops"] },
       { href: "/dashboard/rta-imports", label: "RTA File Imports", icon: FolderArchive, module: "transactions",
         roles: ["owner", "back_office", "ops", "compliance"] },
       { href: "/dashboard/reconciliation", label: "Reconciliation", icon: Scale, module: "transactions",

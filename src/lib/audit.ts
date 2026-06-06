@@ -70,6 +70,10 @@ export type AuditAction =
   | "package.update"
   | "package.delete"
   | "target.update"
+  | "business_entry.create"
+  | "business_entry.update"
+  | "business_entry.delete"
+  | "business_entry.email"
   // Generic
   | (string & {}); // allow free-form keys without losing IDE help
 
