@@ -6,6 +6,7 @@ import { tasks, users, investors, leads } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { FilterBar } from "@/components/common/FilterBar";
+import { Pager } from "@/components/common/Pager";
 import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
 import { CustomViews } from "@/components/common/CustomViews";
 import { TaskList } from "./TaskList";
@@ -31,6 +32,10 @@ export default async function TasksPage({
   // View tabs: "" (all) | "to_me" (assigned to me) | "by_me" (I assigned) | "kanban".
   const view = sp.view ?? "";
   const isKanban = view === "kanban";
+  // Sort + pagination (list only; the kanban shows a wide unpaged slice).
+  const sortKey = sp.sort === "priority" || sp.sort === "created" ? sp.sort : "due";
+  const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
+  const PAGE_SIZE = 50;
 
   // Users with task.view.all see the whole firm; everyone else (RM, team
   // member) sees only what they're assigned to or created — matching the
@@ -77,6 +82,25 @@ export default async function TasksPage({
 
     const where = conds.length ? and(...conds) : undefined;
 
+    // Sort: soonest-due first with undated last (the natural "what's next"), or
+    // by priority, or newest-created. Default fixed `due_at DESC` floated undated
+    // tasks to the top (Postgres NULLS FIRST) which read backwards.
+    const orderByExpr =
+      sortKey === "priority"
+        ? sql`case ${tasks.priority} when 'urgent' then 0 when 'high' then 1 when 'normal' then 2 else 3 end asc, ${tasks.dueAt} asc nulls last`
+        : sortKey === "created"
+        ? sql`${tasks.createdAt} desc`
+        : sql`${tasks.dueAt} asc nulls last`;
+
+    // Total matching count (for the pager) — same predicate + join (search hits
+    // the assignee name, so the join must be present).
+    const totalRow = await tx
+      .select({ c: sql<number>`count(*)::int` })
+      .from(tasks)
+      .leftJoin(users, eq(users.id, tasks.assigneeId))
+      .where(where as any);
+    const total = Number(totalRow[0]?.c ?? 0);
+
     // Join related entity profiles (Client/Investor and Lead)
     const rows = await tx
       .select({
@@ -90,8 +114,9 @@ export default async function TasksPage({
       .leftJoin(investors, eq(investors.id, tasks.relatedInvestorId))
       .leftJoin(leads, eq(leads.id, tasks.relatedLeadId))
       .where(where as any)
-      .orderBy(desc(tasks.dueAt))
-      .limit(isKanban ? 300 : 100);
+      .orderBy(orderByExpr)
+      .limit(isKanban ? 300 : PAGE_SIZE)
+      .offset(isKanban ? 0 : (page - 1) * PAGE_SIZE);
 
     const viewScope = canViewAll
       ? sql``
@@ -113,7 +138,7 @@ export default async function TasksPage({
       WHERE tenant_id = ${session.tenantId}::uuid AND status = 'active'
       ORDER BY name ASC
     `);
-    return { rows, stats: s, rms: rmRows.rows as any[] };
+    return { rows, stats: s, rms: rmRows.rows as any[], total };
   });
 
   const rmOptions = (result.rms ?? []).map((r: any) => ({ value: String(r.id), label: r.name ?? "—" }));
@@ -168,7 +193,7 @@ export default async function TasksPage({
       {/* Clickable Interactive Stats Ribbon */}
       <div className="grid grid-cols-4 gap-3">
         <Link href="/dashboard/tasks?status=open" className="block transition-transform hover:scale-[1.01]">
-          <Stat label="Open" value={String(result.stats.open)} active={!due && sp.status !== "done" && sp.status !== "cancelled"} />
+          <Stat label="Open" value={String(result.stats.open)} active={!due && sp.status !== "completed" && sp.status !== "cancelled"} />
         </Link>
         <Link href="/dashboard/tasks?status=open&due=today" className="block transition-transform hover:scale-[1.01]">
           <Stat label="Due today" value={String(result.stats.due_today)} active={due === "today"} />
@@ -182,9 +207,20 @@ export default async function TasksPage({
       </div>
 
       <FilterBar
-        totalCount={result.rows.length}
+        totalCount={result.total}
         filters={[
           { type: "search", key: "q", placeholder: "Search by title or description…" },
+          ...(!isKanban
+            ? [{
+                type: "select" as const,
+                key: "sort",
+                label: "Sort",
+                options: [
+                  { value: "priority", label: "Priority" },
+                  { value: "created", label: "Newest" },
+                ],
+              }]
+            : []),
           {
             type: "multi",
             key: "status",
@@ -212,15 +248,16 @@ export default async function TasksPage({
             type: "multi",
             key: "department",
             label: "Department",
+            // Values MUST match the schema enum, else the filter matches nothing.
             options: [
               { value: "sales", label: "Sales" },
+              { value: "operations", label: "Operations" },
               { value: "back_office", label: "Back Office" },
               { value: "compliance", label: "Compliance" },
               { value: "marketing", label: "Marketing" },
-              { value: "service", label: "Service" },
-              { value: "operations", label: "Operations" },
-              { value: "rm", label: "Relationship Mgmt" },
-              { value: "admin", label: "Admin" },
+              { value: "advisory", label: "Advisory" },
+              { value: "support", label: "Support" },
+              { value: "leadership", label: "Leadership" },
               { value: "other", label: "Other" },
             ],
           },
@@ -235,7 +272,7 @@ export default async function TasksPage({
             presets={[
               { id: "open", name: "Open tasks", params: "status=open" },
               { id: "urgent", name: "Urgent / High", params: "status=open&priority=urgent,high" },
-              { id: "done", name: "Completed", params: "status=done" },
+              { id: "done", name: "Completed", params: "status=completed" },
             ]}
           />
         }
@@ -245,7 +282,10 @@ export default async function TasksPage({
       {isKanban ? (
         <TaskKanban initialRows={result.rows} currentUserId={session.userId} />
       ) : (
-        <TaskList initialRows={result.rows} currentUserId={session.userId} />
+        <div>
+          <TaskList initialRows={result.rows} currentUserId={session.userId} />
+          <Pager page={page} totalPages={Math.ceil(result.total / PAGE_SIZE)} total={result.total} pageSize={PAGE_SIZE} />
+        </div>
       )}
     </div>
   );

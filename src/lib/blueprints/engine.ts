@@ -443,10 +443,10 @@ export interface StageView {
     order: number;
     status: "done" | "current" | "upcoming";
     /**
-     * Which side of the journey owns this stage. Lead-side stages (≤ docs_received,
-     * order ≤ 12) show in the Leads module; once the lead is converted, client-side
-     * stages (order ≥ 13: ops_in_progress, portal_welcome_sent, active_client)
-     * show in the Clients module instead.
+     * Which side of the journey owns this stage. Lead-phase stages (order ≤ 10,
+     * "new" … "not_qualified") show in the Leads module; from "Won Lead" the
+     * client-phase stages (order ≥ 11: request_documents … add_in_review_sheet)
+     * show in the Clients module instead. Boundary = LEAD_PHASE_LAST_ORDER (10).
      */
     phase: "lead" | "client";
   }>;

@@ -16,7 +16,7 @@ import { sql, eq, and } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { require as requireCap } from "@/lib/auth/rbac";
+import { can, requireAny } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { autoAdvance, resolveLeadIdForInvestor } from "@/lib/blueprints/auto-advance";
@@ -61,14 +61,21 @@ const Body = z
 export async function GET() {
   try {
     const session = await requireSession();
+    // Was wide-open to any session. Require the meeting capability, and scope
+    // RMs (manage.assigned, not .all) to their OWN meetings.
+    requireAny(session.roles, ["review_meeting.manage.all", "review_meeting.manage.assigned"], session.permissions);
+    const canAll = can(session.roles, "review_meeting.manage.all", session.permissions);
     const rows = await withTenant(session.tenantId, async (tx) => {
+      const scope = canAll ? sql`` : sql` AND m.rm_id = ${session.userId}::uuid`;
       const r = await tx.execute(sql`
-        SELECT m.*, i.name AS investor_name, i.segment_tag, i.pan AS investor_pan,
+        SELECT m.*, COALESCE(i.name, l.name) AS investor_name,
+               i.segment_tag, i.pan AS investor_pan,
                u.name AS rm_name
         FROM review_meetings m
         LEFT JOIN investors i ON i.id = m.investor_id
+        LEFT JOIN leads l ON l.id = m.lead_id
         LEFT JOIN users u ON u.id = m.rm_id
-        WHERE m.tenant_id = ${session.tenantId}::uuid
+        WHERE m.tenant_id = ${session.tenantId}::uuid${scope}
         ORDER BY m.meeting_date DESC
         LIMIT 500
       `);
@@ -83,7 +90,8 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "review_meeting.manage.all");
+    // RMs (manage.assigned) may schedule meetings too — not just back-office (.all).
+    requireAny(session.roles, ["review_meeting.manage.all", "review_meeting.manage.assigned"], session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
     const parse = Body.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) {

@@ -66,6 +66,18 @@ const Patch = z.object({
     ])
     .optional(),
   remarks: z.string().max(20000).optional(),
+  /** Action points (checklist). Stored under meta.checklist — no schema column. */
+  checklist: z
+    .array(
+      z.object({
+        id: z.string().max(64),
+        text: z.string().min(1).max(500),
+        done: z.boolean(),
+        doneAt: z.string().nullable().optional(),
+      })
+    )
+    .max(100)
+    .optional(),
 });
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -103,7 +115,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const clientMeta = clientMetaFromHeaders(req.headers);
     const canEditAll = can(session.roles, "task.edit.all", session.permissions);
 
-    const patch: any = { ...parse.data, updatedAt: new Date() };
+    // checklist lives in meta.checklist (not a column) — pull it out of the
+    // column patch and merge it into meta inside the tx (preserving other keys).
+    const { checklist, ...rest } = parse.data;
+    const patch: any = { ...rest, updatedAt: new Date() };
     if (parse.data.status === "completed" && !patch.completedAt) patch.completedAt = new Date();
     // Drizzle timestamp columns require Date objects — coerce the ISO strings
     // the client sends (passing a raw string makes Drizzle call .toISOString()
@@ -131,6 +146,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       // Assigned-only editors may only touch their own tasks.
       if (!canEditAll && !ownsTask(before, session.userId)) {
         return { forbidden: true as const };
+      }
+      // Merge the action-point checklist into meta (read-modify-write inside the
+      // tx so we keep any other meta keys the task already carries).
+      if (checklist !== undefined) {
+        patch.meta = { ...((before.meta as Record<string, unknown>) ?? {}), checklist };
       }
       // A reassignment target must be a user in this tenant.
       if (parse.data.assigneeId !== undefined) {

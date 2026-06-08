@@ -14,11 +14,11 @@ import { handleApiError } from "@/lib/api/error-handler";
 
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuid } from "uuid";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { require as requireCap } from "@/lib/auth/rbac";
+import { can, requireAny } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { autoAdvance, resolveLeadIdForInvestor } from "@/lib/blueprints/auto-advance";
@@ -83,7 +83,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const { id } = await params;
   try {
     const session = await requireSession();
-    requireCap(session.roles, "review_meeting.manage.all");
+    requireAny(session.roles, ["review_meeting.manage.all", "review_meeting.manage.assigned"], session.permissions);
+    const canAll = can(session.roles, "review_meeting.manage.all", session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
     const parse = Patch.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) {
@@ -95,6 +96,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const result = await withTenant(session.tenantId, async (tx) => {
       const before = (await tx.select().from(reviewMeetings).where(and(eq(reviewMeetings.id, id), eq(reviewMeetings.tenantId, session.tenantId))).limit(1))[0];
       if (!before) return null;
+      // RMs (manage.assigned) may only touch meetings they own.
+      if (!canAll && before.rmId !== session.userId) return { forbidden: true as const };
 
       const patch: any = { ...body, updatedAt: new Date() };
       if (body.meetingDate) patch.meetingDate = new Date(body.meetingDate);
@@ -157,6 +160,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       // ─── Automation: propagate review dates to investor on completion ──
       if (becomingCompleted) {
         const reviewedAt = patch.meetingDate ?? before.meetingDate;
+        // Link spawned tasks to whichever party this meeting is about — a lead
+        // meeting must NOT create investor-typed tasks with a null subjectId.
+        const taskSubjectType: "investor" | "lead" = before.leadId ? "lead" : "investor";
+        const taskSubjectId = before.leadId ?? before.investorId;
         const nextReviewDate =
           body.nextReviewDate ??
           // Default cadence: 90 days for HNI, 180 days for retail (we just default 180 here;
@@ -214,8 +221,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             id: taskId,
             tenantId: session.tenantId,
             assigneeId: it.assigneeId ?? before.rmId ?? session.userId,
-            subjectType: "investor",
-            subjectId: before.investorId,
+            subjectType: taskSubjectType,
+            subjectId: taskSubjectId,
+            relatedInvestorId: before.investorId ?? null,
+            relatedLeadId: before.leadId ?? null,
+            relatedMeetingId: id,
             type: "review_action_item",
             title: it.title,
             priority: "normal",
@@ -244,10 +254,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             id: notesTaskId,
             tenantId: session.tenantId,
             assigneeId: before.rmId ?? session.userId,
-            subjectType: "investor",
-            subjectId: before.investorId,
+            subjectType: taskSubjectType,
+            subjectId: taskSubjectId,
+            relatedInvestorId: before.investorId ?? null,
+            relatedLeadId: before.leadId ?? null,
+            relatedMeetingId: id,
             type: "review_notes_pending",
-            title: `Write up notes for review meeting with investor`,
+            title: `Write up notes for the review meeting`,
             priority: "high",
             status: "open",
             dueAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
@@ -258,6 +271,89 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             .set({ notesReminderTaskId: notesTaskId } as any)
             .where(and(eq(reviewMeetings.id, id), eq(reviewMeetings.tenantId, session.tenantId)));
         }
+
+        // ─── Auto-schedule the NEXT review (recurring cadence) ─────────
+        // Reviews recur. On completing a review-category INVESTOR meeting,
+        // create the next scheduled review at nextReviewDate so it shows in
+        // Upcoming + fires its own T-1 reminder — unless a future review is
+        // already on this client's calendar. Best-effort (savepoint) so it can
+        // never fail the completion itself.
+        if (before.category === "review" && before.investorId) {
+          try {
+            await tx.transaction(async (sp) => {
+              const existing = await sp.execute(sql`
+                SELECT 1 FROM review_meetings
+                WHERE tenant_id = ${session.tenantId}::uuid
+                  AND investor_id = ${before.investorId}::uuid
+                  AND category = 'review'
+                  AND status IN ('scheduled', 'confirmed')
+                  AND meeting_date >= now()
+                LIMIT 1
+              `);
+              if (existing.rows.length === 0) {
+                const nextId = uuid();
+                const nextReminderId = uuid();
+                const nextMeetingDate = new Date(`${nextReviewDate}T11:00:00`);
+                await sp.insert(tasks).values({
+                  id: nextReminderId,
+                  tenantId: session.tenantId,
+                  assigneeId: before.rmId ?? session.userId,
+                  subjectType: "investor",
+                  subjectId: before.investorId,
+                  relatedInvestorId: before.investorId,
+                  relatedMeetingId: nextId,
+                  type: "review_meeting_reminder",
+                  title: "Reminder: next portfolio review coming up",
+                  priority: "normal",
+                  status: "open",
+                  dueAt: new Date(nextMeetingDate.getTime() - 24 * 60 * 60 * 1000),
+                } as any);
+                await sp.insert(reviewMeetings).values({
+                  id: nextId,
+                  tenantId: session.tenantId,
+                  investorId: before.investorId,
+                  familyId: before.familyId ?? null,
+                  rmId: before.rmId,
+                  category: "review",
+                  parentMeetingId: before.id,
+                  meetingType: before.meetingType,
+                  subject: "Next review (auto-scheduled)",
+                  meetingDate: nextMeetingDate,
+                  durationMinutes: before.durationMinutes ?? "30",
+                  meetingMode: before.meetingMode,
+                  status: "scheduled",
+                  reminderTaskId: nextReminderId,
+                } as any);
+              }
+            });
+          } catch (e) {
+            console.warn("[review_meeting] auto-next-review skipped:", (e as Error)?.message);
+          }
+        }
+      }
+
+      // ─── No-show → re-engage task ──────────────────────────────────────
+      // Marking a meeting no_show should leave a trail of action: task the RM to
+      // re-engage the client within a day instead of letting it drop silently.
+      if (body.status === "no_show" && before.status !== "no_show") {
+        const reSubjectType: "investor" | "lead" = before.leadId ? "lead" : "investor";
+        const reSubjectId = before.leadId ?? before.investorId;
+        await tx.insert(tasks).values({
+          id: uuid(),
+          tenantId: session.tenantId,
+          assigneeId: before.rmId ?? session.userId,
+          subjectType: reSubjectType,
+          subjectId: reSubjectId,
+          relatedInvestorId: before.investorId ?? null,
+          relatedLeadId: before.leadId ?? null,
+          relatedMeetingId: id,
+          type: "follow_up",
+          title: "Re-engage — client missed the scheduled meeting",
+          description: "The client didn't attend. Reach out to understand why and reschedule.",
+          priority: "high",
+          status: "open",
+          dueAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        } as any);
       }
 
       await recordAudit(tx, {
@@ -274,6 +370,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return { ok: true, completed: becomingCompleted };
     });
     if (!result) return NextResponse.json({ error: "not found" }, { status: 404 });
+    if ("forbidden" in result) return NextResponse.json({ error: "you can only manage your own meetings" }, { status: 403 });
     return NextResponse.json(result);
   } catch (err: any) {
     return handleApiError(err);
@@ -284,11 +381,14 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const { id } = await params;
   try {
     const session = await requireSession();
-    requireCap(session.roles, "review_meeting.manage.all");
+    requireAny(session.roles, ["review_meeting.manage.all", "review_meeting.manage.assigned"], session.permissions);
+    const canAll = can(session.roles, "review_meeting.manage.all", session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
     const clientMeta = clientMetaFromHeaders(req.headers);
-    await withTenant(session.tenantId, async (tx) => {
+    const outcome = await withTenant(session.tenantId, async (tx) => {
       const before = (await tx.select().from(reviewMeetings).where(and(eq(reviewMeetings.id, id), eq(reviewMeetings.tenantId, session.tenantId))).limit(1))[0];
+      if (!before) return "not_found" as const;
+      if (!canAll && before.rmId !== session.userId) return "forbidden" as const;
       await tx
         .update(reviewMeetings)
         .set({ status: "cancelled", updatedAt: new Date() } as any)
@@ -310,7 +410,10 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
         entityId: id,
         ...clientMeta,
       });
+      return "ok" as const;
     });
+    if (outcome === "not_found") return NextResponse.json({ error: "not found" }, { status: 404 });
+    if (outcome === "forbidden") return NextResponse.json({ error: "you can only manage your own meetings" }, { status: 403 });
     return NextResponse.json({ ok: true });
   } catch (err: any) {
     return handleApiError(err);

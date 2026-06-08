@@ -1,13 +1,13 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { X, Calendar, User, Sparkles, LifeBuoy, AlertCircle, Trash } from "lucide-react";
+import { X, Calendar, User, Sparkles, LifeBuoy, AlertCircle, Trash, Plus, CheckCircle2, Circle, ListChecks, Loader2 } from "lucide-react";
 import { RmSelector } from "@/components/common/RmSelector";
 import { SelectField } from "@/components/ui/SelectField";
 import { DateField } from "@/components/ui/DateField";
 import { useToast } from "@/components/ui/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
-import type { Task } from "@/db/schema";
+import { taskChecklist, type Task, type TaskChecklistItem } from "@/db/schema";
 import Link from "next/link";
 
 interface TaskDetailDrawerProps {
@@ -56,6 +56,88 @@ export function TaskDetailDrawer({ task, onClose, onUpdate }: TaskDetailDrawerPr
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  // Action points (checklist) — auto-saved on every change, independent of the
+  // main "Save Changes" button so ticking a step persists instantly.
+  const [checklist, setChecklist] = useState<TaskChecklistItem[]>(() => taskChecklist(task.meta));
+  const [newPoint, setNewPoint] = useState("");
+  const [checklistBusy, setChecklistBusy] = useState(false);
+  const doneCount = checklist.filter((c) => c.done).length;
+  const allDone = checklist.length > 0 && doneCount === checklist.length;
+
+  async function persistChecklist(next: TaskChecklistItem[]) {
+    const prev = checklist;
+    setChecklist(next); // optimistic
+    setChecklistBusy(true);
+    try {
+      const res = await fetch(`/api/tasks/${task.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ checklist: next }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d?.error ?? "Failed to save action points");
+      }
+      onUpdate();
+    } catch (e: any) {
+      setChecklist(prev); // revert
+      toast.error(e?.message ?? "Couldn't save action points", "Save failed");
+    } finally {
+      setChecklistBusy(false);
+    }
+  }
+  function addPoint() {
+    const text = newPoint.trim();
+    if (!text) return;
+    const id = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.round(performance.now())}`;
+    setNewPoint("");
+    persistChecklist([...checklist, { id, text, done: false }]);
+  }
+  function togglePoint(id: string) {
+    persistChecklist(
+      checklist.map((c) => (c.id === id ? { ...c, done: !c.done, doneAt: !c.done ? new Date().toISOString() : null } : c))
+    );
+  }
+  function removePoint(id: string) {
+    persistChecklist(checklist.filter((c) => c.id !== id));
+  }
+  async function quickReschedule(days: number) {
+    const base = dueDate ? new Date(dueDate) : new Date();
+    base.setDate(base.getDate() + days);
+    const iso = base.toISOString().split("T")[0];
+    setDueDate(iso); // optimistic
+    try {
+      const res = await fetch(`/api/tasks/${task.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dueAt: new Date(iso).toISOString() }),
+      });
+      if (!res.ok) throw new Error("Failed");
+      toast.success(`Rescheduled to ${new Date(iso).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}`);
+      onUpdate();
+    } catch {
+      toast.error("Couldn't reschedule", "Update failed");
+    }
+  }
+  async function completeTaskNow() {
+    setStatus("completed" as any);
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/tasks/${task.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "completed" }),
+      });
+      if (!res.ok) throw new Error("Failed");
+      toast.success("Task marked complete");
+      onUpdate();
+    } catch {
+      toast.error("Couldn't complete the task", "Update failed");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   useEffect(() => {
     setTitle(task.title);
     setDescription(task.description ?? "");
@@ -66,6 +148,7 @@ export function TaskDetailDrawer({ task, onClose, onUpdate }: TaskDetailDrawerPr
     setDueDate(task.dueAt ? new Date(task.dueAt).toISOString().split("T")[0] : "");
     setSlaDate(task.slaDueAt ? new Date(task.slaDueAt).toISOString().split("T")[0] : "");
     setRemarksHistory(task.remarks ?? "");
+    setChecklist(taskChecklist(task.meta));
   }, [task]);
 
   async function handleSave() {
@@ -244,6 +327,19 @@ export function TaskDetailDrawer({ task, onClose, onUpdate }: TaskDetailDrawerPr
                 size="sm"
                 className="w-full"
               />
+              <div className="mt-1 flex items-center gap-1">
+                <span className="text-[9px] uppercase text-slate-400 font-semibold">Snooze</span>
+                {[["+1d", 1], ["+1w", 7], ["+1m", 30]].map(([label, days]) => (
+                  <button
+                    key={label as string}
+                    type="button"
+                    onClick={() => quickReschedule(days as number)}
+                    className="text-[10px] px-1.5 py-0.5 rounded border border-slate-200 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <div>
@@ -361,6 +457,81 @@ export function TaskDetailDrawer({ task, onClose, onUpdate }: TaskDetailDrawerPr
                 </div>
               )}
             </div>
+          </div>
+
+          <hr className="border-slate-100" />
+
+          {/* Action points (checklist) — the sub-steps to complete this task. */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h4 className="text-[10px] uppercase font-bold text-slate-500 flex items-center gap-1.5">
+                <ListChecks className="size-3.5" /> Action points
+                {checklist.length > 0 && (
+                  <span className="text-slate-400 normal-case font-semibold">· {doneCount}/{checklist.length} done</span>
+                )}
+              </h4>
+              {checklistBusy && <Loader2 className="size-3 animate-spin text-brand-cyan" />}
+            </div>
+
+            {checklist.length > 0 && (
+              <div className="h-1.5 w-full rounded-full bg-slate-100 overflow-hidden">
+                <div
+                  className="h-full bg-emerald-500 transition-all"
+                  style={{ width: `${Math.round((doneCount / checklist.length) * 100)}%` }}
+                />
+              </div>
+            )}
+
+            <div className="space-y-1.5">
+              {checklist.map((c) => (
+                <div key={c.id} className="group flex items-start gap-2 rounded-lg border border-slate-100 bg-slate-50/60 px-2.5 py-2">
+                  <button type="button" onClick={() => togglePoint(c.id)} className="mt-0.5 shrink-0 text-slate-400 hover:text-emerald-600 transition-colors">
+                    {c.done ? <CheckCircle2 className="size-4 text-emerald-600" /> : <Circle className="size-4" />}
+                  </button>
+                  <span className={`flex-1 text-xs leading-relaxed ${c.done ? "line-through text-slate-400" : "text-slate-700"}`}>
+                    {c.text}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => removePoint(c.id)}
+                    className="shrink-0 text-slate-300 hover:text-rose-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                    aria-label="Remove action point"
+                  >
+                    <Trash className="size-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex gap-2">
+              <input
+                value={newPoint}
+                onChange={(e) => setNewPoint(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addPoint(); } }}
+                placeholder="Add an action point and press Enter…"
+                className="input-base text-xs flex-1 bg-white"
+              />
+              <button
+                type="button"
+                onClick={addPoint}
+                disabled={!newPoint.trim() || checklistBusy}
+                className="btn-secondary text-xs px-2.5 disabled:opacity-50"
+                aria-label="Add action point"
+              >
+                <Plus className="size-3.5" />
+              </button>
+            </div>
+
+            {allDone && status !== "completed" && (
+              <button
+                type="button"
+                onClick={completeTaskNow}
+                disabled={loading}
+                className="w-full btn-primary text-xs py-1.5 flex items-center justify-center gap-1.5"
+              >
+                <CheckCircle2 className="size-3.5" /> All points done — mark task complete
+              </button>
+            )}
           </div>
 
           <hr className="border-slate-100" />

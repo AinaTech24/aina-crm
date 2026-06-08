@@ -7,7 +7,7 @@ import { handleApiError } from "@/lib/api/error-handler";
 
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuid } from "uuid";
-import { and, desc, isNull } from "drizzle-orm";
+import { and, desc, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { pickAssignee } from "@/lib/assignment/engine";
@@ -73,9 +73,13 @@ export async function GET() {
     requireLeadView(session);
     const rows = await withTenant(session.tenantId, async (tx) => {
       const scope = leadScopeCondition(session);
-      const where = scope ? and(isNull(leads.convertedInvestorId), scope) : isNull(leads.convertedInvestorId);
+      // Exclude soft-deleted (archived) leads from every consumer of this API.
+      const notArchived = sql`${leads.lostReason} IS DISTINCT FROM '__deleted__'`;
+      const base = and(isNull(leads.convertedInvestorId), notArchived);
+      const where = scope ? and(base, scope) : base;
       // Hottest leads first (persisted deterministic score), newest as tiebreak.
-      return tx.select().from(leads).where(where).orderBy(desc(leads.leadScore), desc(leads.createdAt));
+      // Bounded so a large tenant can't return an unbounded payload.
+      return tx.select().from(leads).where(where).orderBy(desc(leads.leadScore), desc(leads.createdAt)).limit(1000);
     });
     return NextResponse.json({ leads: rows });
   } catch (err: any) {

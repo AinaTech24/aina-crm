@@ -8,7 +8,9 @@
  *   owner > compliance > marketing > back_office/ops > rm/branch_head > team_member
  */
 
+import Link from "next/link";
 import { sql } from "drizzle-orm";
+import { LayoutDashboard, Star } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
@@ -19,6 +21,9 @@ import { MarketingDashboard } from "@/components/dashboards/MarketingDashboard";
 import { ComplianceCockpit } from "@/components/dashboards/ComplianceCockpit";
 import { AnnouncementsStrip } from "@/components/announcements/AnnouncementsStrip";
 import { DashboardMemberFilter } from "@/components/dashboards/DashboardMemberFilter";
+import { getDefaultBoard } from "@/lib/dashboards/service";
+import { DashboardView } from "@/components/dashboards/custom/DashboardView";
+import type { PlacedWidget } from "@/lib/dashboards/widgets";
 
 export const dynamic = "force-dynamic";
 
@@ -34,6 +39,39 @@ export default async function DashboardPage({
   const period = (sp.period ?? "mtd") as "mtd" | "qtd" | "fytd" | "lm" | "custom";
   const pstart = sp.pstart;
   const rmParam = (sp.rm ?? "").trim();
+
+  // ── Custom default board ─────────────────────────────────────────────────
+  // If the user has set one of their "My Dashboards" as default, render it here
+  // instead of the role cockpit (unless ?std=1 forces the standard view).
+  if (sp.std !== "1") {
+    const board = await withTenant(session.tenantId, async (tx) => getDefaultBoard(tx, session.tenantId, session.userId));
+    if (board) {
+      const showMembers = can(roles, "dashboard.view.owner", perms);
+      const members = showMembers
+        ? await withTenant(session.tenantId, async (tx) => {
+            const r = await tx.execute(sql`SELECT id, name FROM users WHERE tenant_id = ${session.tenantId}::uuid AND status = 'active' ORDER BY name`);
+            return (r.rows as { id: string; name: string }[]).map((m) => ({ id: String(m.id), name: m.name ?? "—" }));
+          })
+        : [];
+      return (
+        <>
+          <AnnouncementsStrip session={session} />
+          <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
+            <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
+              <Star className="size-4 text-amber-500" /> {board.name}
+            </h1>
+            <div className="flex items-center gap-2 text-xs">
+              <Link href="/dashboard/boards" className="text-muted-foreground hover:underline inline-flex items-center gap-1">
+                <LayoutDashboard className="size-3.5" /> My Dashboards
+              </Link>
+              <Link href="/dashboard?std=1" className="text-muted-foreground hover:underline">Standard view</Link>
+            </div>
+          </div>
+          <DashboardView layout={(board.layout as PlacedWidget[]) ?? []} members={members} initialRm={(board.filters as any)?.rm ?? ""} />
+        </>
+      );
+    }
+  }
 
   // Owner / Branch Head sees the full cockpit — plus a "Viewing" member
   // selector that scopes the dashboard to a single team member's RmDashboard.

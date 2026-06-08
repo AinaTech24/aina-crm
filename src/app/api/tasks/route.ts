@@ -46,7 +46,20 @@ const Body = z.object({
   /** Recurrence — null/omitted = one-off. */
   recurrence: z.enum(["daily", "weekly", "monthly", "quarterly", "yearly"]).optional(),
   recurrenceUntil: z.string().optional(), // YYYY-MM-DD
+  /** Action points (checklist) — optional at creation; stored in meta.checklist. */
+  checklist: z
+    .array(z.object({ id: z.string().max(64), text: z.string().min(1).max(500), done: z.boolean() }))
+    .max(100)
+    .optional(),
 });
+
+/**
+ * Default SLA window by priority (hours from creation). The SLA stat + badges
+ * were dead because nothing set slaDueAt on manual tasks — this gives every task
+ * an internal response target so "SLA at risk" / breach surfacing actually works.
+ * A workflow or the editor can still override slaDueAt explicitly.
+ */
+const SLA_HOURS_BY_PRIORITY: Record<string, number> = { urgent: 4, high: 24, normal: 72, low: 168 };
 
 export async function GET() {
   try {
@@ -115,6 +128,10 @@ export async function POST(req: NextRequest) {
         .limit(1);
       if (!u) throw Object.assign(new Error("assignee not found in this firm"), { status: 400 });
 
+      // Internal SLA target derived from priority (overridable later in the editor).
+      const slaHours = SLA_HOURS_BY_PRIORITY[body.priority] ?? 72;
+      const slaDueAt = new Date(Date.now() + slaHours * 60 * 60 * 1000);
+
       await tx.insert(tasks).values({
         id,
         tenantId: session.tenantId,
@@ -134,10 +151,12 @@ export async function POST(req: NextRequest) {
         assigneeId,
         createdById: session.userId,
         dueAt: body.dueAt ? new Date(body.dueAt) : null,
+        slaDueAt,
         recurrence: body.recurrence ?? null,
         recurrenceUntil: body.recurrenceUntil ?? null,
         // Chain root = this task itself when recurring.
         recurrenceParentId: body.recurrence ? id : null,
+        meta: body.checklist?.length ? { checklist: body.checklist.map((c) => ({ ...c, done: false })) } : undefined,
       } as any);
 
       await recordAudit(tx, {

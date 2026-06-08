@@ -447,6 +447,9 @@ export const LEAD_TO_CLIENT_TRANSITIONS: Array<{
   { from: "meeting_pending", to: "meeting_scheduled", name: "Confirmed / Rescheduled" },
   { from: "meeting_done", to: "won_lead", name: "Qualified — Win" },
   { from: "meeting_done", to: "not_qualified", name: "Not a Fit" },
+  // MFD sales usually take 2-3 meetings — allow booking a follow-up without
+  // forcing a premature won/lost call.
+  { from: "meeting_done", to: "meeting_scheduled", name: "Schedule Follow-up Meeting" },
 
   // ─── Not Qualified reopen (rare) ───────────────────────────────
   { from: "not_qualified", to: "call_done", name: "Reopen Lead" },

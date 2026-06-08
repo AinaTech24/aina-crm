@@ -1,6 +1,7 @@
 export * from "./tenants";
 export * from "./users";
 export * from "./branches";
+export * from "./dashboards";
 export * from "./investors";
 export * from "./families";
 export * from "./folios";

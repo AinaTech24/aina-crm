@@ -5,10 +5,11 @@ import { useRouter } from "next/navigation";
 import { formatRelative } from "@/lib/utils";
 import { RowActions } from "@/components/common/RowActions";
 import { SelectField } from "@/components/ui/SelectField";
+import { RmSelector } from "@/components/common/RmSelector";
 import { useToast } from "@/components/ui/Toast";
 import { TaskDetailDrawer } from "./TaskDetailDrawer";
-import type { Task } from "@/db/schema";
-import { CheckSquare, Square, Loader2, Plus } from "lucide-react";
+import { taskChecklist, type Task } from "@/db/schema";
+import { CheckSquare, Square, Loader2, Plus, ListChecks } from "lucide-react";
 
 interface TaskRow {
   task: Task;
@@ -33,9 +34,40 @@ export function TaskList({ initialRows, currentUserId }: TaskListProps) {
   const [quickTitle, setQuickTitle] = useState("");
   const [quickBusy, setQuickBusy] = useState(false);
 
+  // Bulk-select states
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+
   // Sync rows from parent when query changes
   if (JSON.stringify(initialRows.map(r => r.task.id)) !== JSON.stringify(rows.map(r => r.task.id))) {
     setRows(initialRows);
+    setSelected(new Set());
+  }
+
+  const allSelected = rows.length > 0 && selected.size === rows.length;
+  function toggleSelect(id: string) {
+    setSelected((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  }
+
+  async function runBulk(action: "status" | "priority" | "assign" | "cancel", value?: string) {
+    if (selected.size === 0 || bulkBusy) return;
+    setBulkBusy(true);
+    try {
+      const res = await fetch("/api/tasks/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: [...selected], action, value }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.error ?? "Bulk action failed");
+      toast.success(`Updated ${j.updated} task${j.updated === 1 ? "" : "s"}`);
+      setSelected(new Set());
+      router.refresh();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Bulk action failed", "Action failed");
+    } finally {
+      setBulkBusy(false);
+    }
   }
 
   async function handleToggleComplete(taskId: string, isCompleted: boolean, e: React.MouseEvent) {
@@ -184,17 +216,54 @@ export function TaskList({ initialRows, currentUserId }: TaskListProps) {
         </button>
       </form>
 
+      {/* Bulk action bar — appears when rows are selected. */}
+      {selected.size > 0 && (
+        <div className="px-3 py-2 border-b bg-brand-cyan-light/20 flex items-center gap-2 flex-wrap text-xs">
+          <span className="font-semibold text-slate-700">{selected.size} selected</span>
+          <button onClick={() => runBulk("status", "completed")} disabled={bulkBusy} className="btn-secondary text-xs py-1 px-2.5">Complete</button>
+          <div onClick={(e) => e.stopPropagation()}>
+            <SelectField value="" onChange={(e) => e.target.value && runBulk("priority", e.target.value)} size="sm" className="w-32">
+              <option value="">Set priority…</option>
+              <option value="low">Low</option>
+              <option value="normal">Normal</option>
+              <option value="high">High</option>
+              <option value="urgent">Urgent</option>
+            </SelectField>
+          </div>
+          <div className="w-44">
+            <RmSelector value={null} onChange={(id) => id && runBulk("assign", id)} placeholder="Reassign to…" />
+          </div>
+          <button onClick={() => runBulk("cancel")} disabled={bulkBusy} className="btn-ghost text-xs py-1 px-2 text-rose-600">Cancel tasks</button>
+          {bulkBusy && <Loader2 className="size-3.5 animate-spin text-brand-cyan" />}
+          <button onClick={() => setSelected(new Set())} className="ml-auto text-muted-foreground hover:underline">Clear</button>
+        </div>
+      )}
+
       {rows.length === 0 ? (
         <div className="p-12 text-center text-sm text-muted-foreground bg-slate-50/20">
           No open tasks found. Workflows will create tasks automatically when SIPs fail, reviews come due, etc.
         </div>
       ) : (
+        <>
+        {/* Select-all header */}
+        <div className="px-4 py-1.5 border-b bg-white flex items-center gap-2.5">
+          <input
+            type="checkbox"
+            checked={allSelected}
+            onChange={() => setSelected(allSelected ? new Set() : new Set(rows.map((r) => r.task.id)))}
+            className="size-3.5 rounded border-slate-300"
+            aria-label="Select all tasks"
+          />
+          <span className="text-[11px] text-muted-foreground">{allSelected ? "Deselect all" : "Select all"}</span>
+        </div>
         <ul className="divide-y divide-slate-100">
           {rows.map((row) => {
             const t = row.task;
             const assigneeName = row.assignee;
             const isDone = t.status === "completed";
             const isOverdue = t.dueAt && new Date(t.dueAt).getTime() < Date.now() && !isDone;
+            const checklist = taskChecklist(t.meta);
+            const checklistDone = checklist.filter((c) => c.done).length;
 
             // SLA warning badges
             const isSlaBreached = t.slaDueAt && new Date(t.slaDueAt).getTime() < Date.now() && !isDone;
@@ -226,6 +295,16 @@ export function TaskList({ initialRows, currentUserId }: TaskListProps) {
                   isDone ? "opacity-60 bg-slate-50/30" : ""
                 }`}
               >
+                {/* Bulk select */}
+                <input
+                  type="checkbox"
+                  checked={selected.has(t.id)}
+                  onClick={(e) => e.stopPropagation()}
+                  onChange={() => toggleSelect(t.id)}
+                  className="size-3.5 rounded border-slate-300 flex-shrink-0"
+                  aria-label="Select task"
+                />
+
                 {/* Complete checkbox */}
                 <button
                   type="button"
@@ -266,6 +345,19 @@ export function TaskList({ initialRows, currentUserId }: TaskListProps) {
                         <span className="text-slate-300">·</span>
                         <span className="text-[11px] text-slate-500 truncate max-w-[150px]">
                           {row.investorName ? `Client: ${row.investorName}` : `Lead: ${row.leadName}`}
+                        </span>
+                      </>
+                    )}
+                    {checklist.length > 0 && (
+                      <>
+                        <span className="text-slate-300">·</span>
+                        <span
+                          className={`inline-flex items-center gap-1 text-[11px] font-medium ${
+                            checklistDone === checklist.length ? "text-emerald-600" : "text-slate-500"
+                          }`}
+                          title={`${checklistDone} of ${checklist.length} action points done`}
+                        >
+                          <ListChecks className="size-3" /> {checklistDone}/{checklist.length}
                         </span>
                       </>
                     )}
@@ -321,7 +413,7 @@ export function TaskList({ initialRows, currentUserId }: TaskListProps) {
 
                 {assigneeName && (
                   <span className="text-xs text-slate-600 font-medium border bg-slate-50 px-2 py-0.5 rounded flex-shrink-0">
-                    {assigneeName === currentUserId ? "Me" : assigneeName}
+                    {t.assigneeId === currentUserId ? "Me" : assigneeName}
                   </span>
                 )}
 
@@ -337,6 +429,7 @@ export function TaskList({ initialRows, currentUserId }: TaskListProps) {
             );
           })}
         </ul>
+        </>
       )}
 
       {selectedRow && (

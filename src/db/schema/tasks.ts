@@ -98,3 +98,21 @@ export const tasks = pgTable(
 
 export type Task = typeof tasks.$inferSelect;
 export type NewTask = typeof tasks.$inferInsert;
+
+/**
+ * Action point (checklist item) for a task — the concrete sub-steps needed to
+ * complete it. Stored under `tasks.meta.checklist` (a JSONB grab-bag we already
+ * have) so the feature needs no schema migration. Read with `taskChecklist()`.
+ */
+export type TaskChecklistItem = {
+  id: string;
+  text: string;
+  done: boolean;
+  doneAt?: string | null;
+};
+
+/** Safely read a task's checklist out of its `meta` JSONB (always an array). */
+export function taskChecklist(meta: unknown): TaskChecklistItem[] {
+  const c = (meta as any)?.checklist;
+  return Array.isArray(c) ? (c as TaskChecklistItem[]) : [];
+}

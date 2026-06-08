@@ -177,9 +177,11 @@ export default async function ReviewMeetingsPage({
 
   const rmOptions = (data.rms ?? []).map((r: any) => ({ value: String(r.id), label: r.name ?? "—" }));
 
-  const upcoming = data.rows.filter(
-    (r) => ["scheduled", "confirmed"].includes(r.status) && new Date(r.meeting_date) >= new Date()
-  );
+  const upcoming = data.rows
+    .filter((r) => ["scheduled", "confirmed"].includes(r.status) && new Date(r.meeting_date) >= new Date())
+    // Soonest first — the query orders DESC (right for "past"), but "upcoming"
+    // must lead with the NEXT meeting, not the furthest-out one.
+    .sort((a, b) => new Date(a.meeting_date).getTime() - new Date(b.meeting_date).getTime());
   const past = data.rows.filter(
     (r) => !["scheduled", "confirmed"].includes(r.status) || new Date(r.meeting_date) < new Date()
   );
@@ -284,6 +286,12 @@ export default async function ReviewMeetingsPage({
               { value: "online", label: "Online" },
               { value: "phone", label: "Phone" },
             ],
+          },
+          {
+            type: "multi",
+            key: "type",
+            label: "Agenda",
+            options: Object.entries(TYPE_LABEL).map(([value, label]) => ({ value, label })),
           },
           ...(rmOptions.length
             ? [{ type: "multi" as const, key: "rm", label: "RM", options: rmOptions }]

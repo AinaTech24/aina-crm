@@ -1038,6 +1038,7 @@ const REPORTS: Record<
       { key: "exited", label: "Advanced", format: "number" },
       { key: "still_here", label: "Stuck", format: "number" },
       { key: "drop_off_pct", label: "Drop-off %", format: "number" },
+      { key: "breach_pct", label: "SLA breach %", format: "number" },
       { key: "avg_hours_in_stage", label: "Avg hrs in stage", format: "number" },
     ],
     runSql: (sql) => sql`
@@ -1052,6 +1053,10 @@ const REPORTS: Record<
             WHERE lsh.exited_at IS NULL AND lbi.status <> 'in_progress'
           ) / NULLIF(COUNT(lsh.id), 0),
         1) AS drop_off_pct,
+        ROUND(
+          100.0 * COUNT(lsh.id) FILTER (WHERE lsh.breached_sla)
+          / NULLIF(COUNT(lsh.id), 0),
+        1) AS breach_pct,
         ROUND(AVG(lsh.duration_seconds) / 3600.0, 1) AS avg_hours_in_stage
       FROM blueprint_stages bs
       LEFT JOIN lead_stage_history lsh ON lsh.stage_key = bs.stage_key
@@ -1100,26 +1105,35 @@ const REPORTS: Record<
   blueprint_pipeline_by_rm: {
     title: "RM-wise blueprint pipeline",
     desc:
-      "For each RM: how many leads are in each major stage. Surfaces who has bandwidth and who's holding the line.",
+      "For each RM: how many leads/clients sit in each phase of the Lead → Client SOP. Surfaces who has bandwidth and who's holding the line.",
     columns: [
       { key: "rm_name", label: "RM" },
       { key: "new_leads", label: "New", format: "number" },
-      { key: "first_call_pending", label: "Call pending", format: "number" },
+      { key: "calling", label: "Calling", format: "number" },
       { key: "meeting_stage", label: "Meeting", format: "number" },
-      { key: "risk_profile_pending", label: "Risk profile", format: "number" },
-      { key: "proposal_stage", label: "Proposal", format: "number" },
-      { key: "docs_pending", label: "Docs pending", format: "number" },
-      { key: "converted_30d", label: "Converted 30d", format: "number" },
+      { key: "won", label: "Won", format: "number" },
+      { key: "onboarding", label: "Docs/KYC", format: "number" },
+      { key: "activation", label: "UCC/Mandate/Txn", format: "number" },
+      { key: "lost", label: "Lost", format: "number" },
+      { key: "converted_30d", label: "Active 30d", format: "number" },
     ],
+    // Stage keys mirror the 30-stage SOP in src/lib/blueprints/lead_to_client.ts.
     runSql: (sql) => sql`
       SELECT
         u.name AS rm_name,
         COUNT(lbi.id) FILTER (WHERE lbi.current_stage_key = 'new')::int AS new_leads,
-        COUNT(lbi.id) FILTER (WHERE lbi.current_stage_key = 'first_call_pending')::int AS first_call_pending,
-        COUNT(lbi.id) FILTER (WHERE lbi.current_stage_key IN ('appointment_scheduled','meeting_done'))::int AS meeting_stage,
-        COUNT(lbi.id) FILTER (WHERE lbi.current_stage_key IN ('risk_profile_sent','risk_profiled'))::int AS risk_profile_pending,
-        COUNT(lbi.id) FILTER (WHERE lbi.current_stage_key IN ('proposal_drafted','proposal_sent','proposal_approved'))::int AS proposal_stage,
-        COUNT(lbi.id) FILTER (WHERE lbi.current_stage_key IN ('docs_requested','docs_received'))::int AS docs_pending,
+        COUNT(lbi.id) FILTER (WHERE lbi.current_stage_key IN
+          ('call_done','call_back_later','call_not_connected','contact_in_future'))::int AS calling,
+        COUNT(lbi.id) FILTER (WHERE lbi.current_stage_key IN
+          ('meeting_scheduled','meeting_pending','meeting_done'))::int AS meeting_stage,
+        COUNT(lbi.id) FILTER (WHERE lbi.current_stage_key = 'won_lead')::int AS won,
+        COUNT(lbi.id) FILTER (WHERE lbi.current_stage_key IN
+          ('request_documents','documents_pending','documents_received',
+           'kyc_validated','kyc_registered','kyc_pending','modify_kyc','physical_kyc','online_kyc'))::int AS onboarding,
+        COUNT(lbi.id) FILTER (WHERE lbi.current_stage_key IN
+          ('ucc_create','ucc_activated','mandate_create','mandate_activated','mandate_reject',
+           'make_transaction','transaction_successful','transaction_failed','family_mapping','update_information'))::int AS activation,
+        COUNT(lbi.id) FILTER (WHERE lbi.status = 'lost')::int AS lost,
         COUNT(lbi.id) FILTER (
           WHERE lbi.status = 'completed' AND lbi.completed_at >= now() - interval '30 days'
         )::int AS converted_30d
@@ -1129,6 +1143,37 @@ const REPORTS: Record<
       WHERE 'rm' = ANY(u.roles) AND u.status = 'active'
       GROUP BY u.id, u.name
       ORDER BY COUNT(lbi.id) DESC
+    `,
+  },
+
+  blueprint_lost_reasons: {
+    title: "Lead loss reasons",
+    desc:
+      "Why leads die — every lost lead grouped by the disposition that closed it, with the average time-to-loss. Answers \"why are we losing leads?\".",
+    columns: [
+      { key: "reason", label: "Disposition / reason" },
+      { key: "leads", label: "Leads lost", format: "number" },
+      { key: "share_pct", label: "Share %", format: "number" },
+      { key: "avg_days_to_lose", label: "Avg days to loss", format: "number" },
+    ],
+    runSql: (sql) => sql`
+      WITH lost AS (
+        SELECT COALESCE(NULLIF(lsh.transition_name, 'system'), 'Unspecified') AS reason,
+               EXTRACT(EPOCH FROM (lsh.entered_at - lbi.started_at)) / 86400.0 AS days_to_lose
+        FROM lead_blueprint_instances lbi
+        JOIN lead_stage_history lsh
+          ON lsh.instance_id = lbi.id
+         AND lsh.stage_key = lbi.current_stage_key
+         AND lsh.exited_at IS NULL
+        WHERE lbi.status = 'lost'
+      )
+      SELECT reason,
+             COUNT(*)::int AS leads,
+             ROUND(100.0 * COUNT(*) / NULLIF(SUM(COUNT(*)) OVER (), 0), 1) AS share_pct,
+             ROUND(AVG(days_to_lose)::numeric, 1) AS avg_days_to_lose
+      FROM lost
+      GROUP BY reason
+      ORDER BY leads DESC
     `,
   },
 

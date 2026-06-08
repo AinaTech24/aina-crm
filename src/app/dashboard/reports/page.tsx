@@ -43,6 +43,7 @@ const REPORTS: { group: string; items: ReportItem[] }[] = [
   ]},
   { group: "Lead Blueprint", items: [
     { key: "blueprint_drop_off", label: "Lead Drop-off Analysis", icon: "TrendingDown" },
+    { key: "blueprint_lost_reasons", label: "Lead Loss Reasons", icon: "Filter" },
     { key: "blueprint_delayed_leads", label: "SLA-overdue Leads", icon: "AlertTriangle" },
     { key: "blueprint_pipeline_by_rm", label: "RM-wise Blueprint Pipeline", icon: "Users" },
   ]},

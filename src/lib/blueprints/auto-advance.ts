@@ -7,17 +7,15 @@
  * fires the existing `transitionTo()` engine with `systemBypass: true` so
  * the user sees the lead/client progress in real-time without extra clicks.
  *
- * Wired into the *create* / *complete* / *send* endpoints across the app:
- *   - POST /api/review-meetings (lead-side)           → appointment_scheduled
+ * Wired into the *create* / *complete* / *send* endpoints across the app
+ * (target stages are the 30-stage SOP keys in lead_to_client.ts):
+ *   - POST /api/review-meetings (lead-side)            → meeting_scheduled
  *   - PATCH /api/review-meetings/[id] status=completed → meeting_done
- *   - POST /api/proposals (new)                       → proposal_drafted
- *   - POST /api/proposals/[id]/send                   → proposal_sent
- *   - POST /api/proposal-approvals/capture            → proposal_approved
- *   - POST /api/risk-profiles (manual capture)        → risk_profiled
- *   - POST /api/share-tokens kind=risk_profile         → risk_profile_sent
- *   - POST /api/share-tokens kind=document_collection  → docs_requested
- *   - POST /api/public/docs/submit                    → docs_received
- *   - POST /api/leads/[id]/call-outcome positive       → post_meeting_qualified
+ *   - POST /api/leads/[id]/call-outcome                → call_done
+ *   - POST /api/leads/[id]/convert                     → request_documents (client phase)
+ *   - POST /api/public/docs/submit                     → documents_received
+ *   - POST /api/investors/[id]/kyc/verify (verified)   → kyc_validated
+ *   - (legacy proposal/risk-profile events remap to won_lead — see EVENT_TO_STAGE)
  *
  * Each event ONLY advances forward, never sideways or backward — the
  * `transitionTo` engine refuses if no transition is defined from current →

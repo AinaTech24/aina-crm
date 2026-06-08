@@ -257,7 +257,12 @@ export function ReviewMeetingDetailEditor({
     ]
       .filter(Boolean)
       .join("");
-    setNotes(formatted.trim());
+    // Append the AI summary BELOW the RM's own notes — never overwrite what they
+    // typed (the summary is derived from it; the verbatim notes still matter).
+    setNotes((prev: string) => {
+      const block = formatted.trim();
+      return prev.trim() ? `${prev.trim()}\n\n— AI summary —\n${block}` : block;
+    });
     // Append action items to the existing list (don't replace — preserves
     // anything the RM already typed).
     if (aiPreview.actionItems.length) {

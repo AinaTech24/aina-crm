@@ -9,10 +9,10 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, GripVertical, CalendarClock, User } from "lucide-react";
+import { Loader2, GripVertical, CalendarClock, User, ListChecks } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 import { TaskDetailDrawer } from "./TaskDetailDrawer";
-import type { Task } from "@/db/schema";
+import { taskChecklist, type Task } from "@/db/schema";
 
 interface TaskRow {
   task: Task;
@@ -116,6 +116,8 @@ export function TaskKanban({ initialRows, currentUserId }: { initialRows: TaskRo
                   const due = fmtDue(t.dueAt);
                   const overdue = t.dueAt && new Date(t.dueAt as any).getTime() < Date.now() && t.status !== "completed" && t.status !== "cancelled";
                   const who = row.investorName || row.leadName;
+                  const checklist = taskChecklist(t.meta);
+                  const checklistDone = checklist.filter((c) => c.done).length;
                   return (
                     <div
                       key={t.id}
@@ -131,6 +133,16 @@ export function TaskKanban({ initialRows, currentUserId }: { initialRows: TaskRo
                           <div className="text-sm font-medium leading-snug line-clamp-2">{t.title}</div>
                           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                             <span className={`chip text-[10px] capitalize ${PRIORITY_TONE[t.priority] ?? ""}`}>{t.priority}</span>
+                            {checklist.length > 0 && (
+                              <span
+                                className={`chip text-[10px] inline-flex items-center gap-1 ${
+                                  checklistDone === checklist.length ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-600"
+                                }`}
+                                title={`${checklistDone}/${checklist.length} action points done`}
+                              >
+                                <ListChecks className="size-2.5" /> {checklistDone}/{checklist.length}
+                              </span>
+                            )}
                             {who && <span className="text-[10px] text-muted-foreground truncate max-w-[8rem]">{who}</span>}
                           </div>
                           <div className="mt-1.5 flex items-center justify-between text-[10px] text-muted-foreground">

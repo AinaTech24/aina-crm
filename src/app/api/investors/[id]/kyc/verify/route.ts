@@ -7,13 +7,22 @@ import { handleApiError } from "@/lib/api/error-handler";
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { requireAny } from "@/lib/auth/rbac";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { investors } from "@/db/schema";
 import { verifyKyc } from "@/lib/kyc/verify";
+import { autoAdvance, resolveLeadIdForInvestor } from "@/lib/blueprints/auto-advance";
+
+/** Client-phase stages BEFORE "KYC Validated" — only from one of these does a
+ *  verified KYC advance the journey, so re-running verify on an already-active
+ *  client never drags the blueprint backward. */
+const PRE_KYC_STAGES = new Set([
+  "request_documents", "documents_pending", "documents_received",
+  "kyc_registered", "kyc_pending", "modify_kyc", "physical_kyc", "online_kyc",
+]);
 
 export const dynamic = "force-dynamic";
 
@@ -57,6 +66,28 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           if (r.panAadhaarLinked != null) patch.panAadhaarLinkStatus = r.panAadhaarLinked ? "linked" : "not_linked";
         }
         await tx.update(investors).set(patch).where(eq(investors.id, id));
+
+        // Auto-advance the Lead → Client journey to "KYC Validated" — but ONLY
+        // when the client is still in a pre-validation onboarding stage, so a
+        // re-KYC on an active client can't pull the blueprint backwards.
+        if (r.status === "verified") {
+          try {
+            const leadId = await resolveLeadIdForInvestor(tx, id);
+            if (leadId) {
+              const cur = await tx.execute(
+                sql`SELECT current_stage_key FROM lead_blueprint_instances WHERE tenant_id = ${session.tenantId}::uuid AND lead_id = ${leadId}::uuid LIMIT 1`
+              );
+              const stage = (cur.rows[0] as any)?.current_stage_key as string | undefined;
+              if (stage && PRE_KYC_STAGES.has(stage)) {
+                await autoAdvance(tx, session.tenantId, leadId, "kyc.validated", {
+                  remarks: "Auto: KYC verified via provider.",
+                });
+              }
+            }
+          } catch {
+            /* best-effort — never block the KYC write on a blueprint hiccup */
+          }
+        }
 
         await recordAudit(tx, {
           tenantId: session.tenantId,

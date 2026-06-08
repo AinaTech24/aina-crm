@@ -88,6 +88,7 @@ const NAV: NavSection[] = [
     title: "",
     items: [
       { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+      { href: "/dashboard/boards", label: "My Dashboards", icon: LayoutDashboard },
       { href: "/dashboard/command-center", label: "Command Center", icon: Inbox,
         roles: ["owner", "rm", "branch_head", "back_office", "ops", "compliance"] },
       { href: "/dashboard/next-best-action", label: "Next Best Action", icon: Sparkles,

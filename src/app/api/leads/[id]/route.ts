@@ -16,6 +16,7 @@ import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { leads, eventsOutbox } from "@/db/schema";
 import { canEditAllLeads, loadEditableLead, loadViewableLead } from "@/lib/leads/access";
+import { scoreFields } from "@/lib/leads/score";
 import {
   normalizeEmail,
   normalizeLeadSource,
@@ -91,9 +92,26 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       if (Object.prototype.hasOwnProperty.call(patch, "nextFollowUpAt")) {
         patch.nextFollowUpAt = patch.nextFollowUpAt ? new Date(patch.nextFollowUpAt) : null;
       }
+      // Re-score on edit. The deterministic score depends on source / stage /
+      // amount / contact fields; recompute from the merged row so an edit moves
+      // the hot/warm/cold band immediately (previously only create + the stage
+      // route re-scored, so editing the intended amount left the score stale).
+      const merged: any = { ...before, ...patch };
+      const scored = scoreFields({
+        source: merged.source,
+        stage: merged.stage,
+        intendedAmount: merged.intendedAmount,
+        lastContactAt: merged.lastContactAt,
+        nextFollowUpAt: merged.nextFollowUpAt,
+        stageChangedAt: merged.stageChangedAt,
+        email: merged.email,
+        phone: merged.phone,
+        pan: merged.pan,
+        interestProducts: merged.interestProducts,
+      });
       const after = await tx
         .update(leads)
-        .set({ ...patch, updatedAt: new Date() } as any)
+        .set({ ...patch, ...scored, updatedAt: new Date() } as any)
         .where(and(eq(leads.id, id), eq(leads.tenantId, session.tenantId)))
         .returning();
       await recordAudit(tx, {
@@ -129,7 +147,11 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
         .set({
           stage: "not_qualified",
           stageChangedAt: new Date(),
-          lostReason: before.lostReason ?? "deleted",
+          // Distinct sentinel so deleted leads are HIDDEN from every lead list /
+          // kanban / KPI (filtered out), instead of polluting the genuine
+          // "Not qualified" bucket. (A real archived_at column is staged for the
+          // next migration; this is the no-migration equivalent.)
+          lostReason: "__deleted__",
           lostAt: new Date(),
           updatedAt: new Date(),
         } as any)

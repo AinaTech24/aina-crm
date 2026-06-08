@@ -20,6 +20,7 @@ import { compileToPredicate } from "@/lib/filter/predicate";
 import { Q, getConnection } from "./queues";
 import { runRulesForEvent, cancelScheduledJobsForSubject } from "@/lib/workflow-rules/runner";
 import { MODULES } from "@/lib/workflow-rules/modules";
+import { handleBlueprintStageEvent } from "@/lib/blueprints/event-consumers";
 
 const BATCH_SIZE = 200;
 
@@ -86,6 +87,15 @@ export async function pollOutboxOnce(): Promise<{ processed: number; errors: num
 
 async function processEvent(event: any) {
   const tenantId: string = event.tenant_id;
+
+  // 0) Blueprint lifecycle events (stage enter/exit → run recipe; stage delayed
+  //    → owner task). These are internal engine events; no generic workflow
+  //    trigger or Zoho rule subscribes to them, so handle + return early.
+  if (typeof event.kind === "string" && event.kind.startsWith("blueprint.stage.")) {
+    await handleBlueprintStageEvent(event);
+    return;
+  }
+
   // 1) Find subscribed workflow triggers
   const triggers = await withTenant(tenantId, async (tx) => {
     return tx
