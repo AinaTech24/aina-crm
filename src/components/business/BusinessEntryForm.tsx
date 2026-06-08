@@ -32,6 +32,10 @@ const CLASS_OPTS: [string, string][] = [
 const STATUS_OPTS: [string, string][] = [["draft", "Draft"], ["confirmed", "Confirmed"]];
 const NEEDS_FREQ = new Set(["sip", "stp", "swp"]);
 const NEEDS_FROM = new Set(["switch", "stp", "swp"]);
+/** Recurring installments (amount is per-installment, not a one-time figure). */
+const RECURRING_TXN = new Set(["sip", "stp", "swp"]);
+/** Money leaving the book — never adds to "business booked". */
+const OUTFLOW_TXN = new Set(["redemption", "swp"]);
 
 type Line = {
   key: string;
@@ -117,7 +121,18 @@ export function BusinessEntryForm({
     setLines((ls) => ls.map((l, idx) => (idx === i ? { ...l, ...p } : l)));
   }
 
-  const total = useMemo(() => lines.reduce((s, l) => s + (Number(l.amount) || 0), 0), [lines]);
+  // Totals are grouped BY TRANSACTION TYPE and never summed across types — a
+  // monthly SIP installment, a one-time Lumpsum, and a Redemption (outflow) are
+  // different units + directions, so a single combined figure is meaningless.
+  const byType = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const l of lines) {
+      const a = Number(l.amount) || 0;
+      if (a <= 0) continue;
+      m.set(l.txnType, (m.get(l.txnType) ?? 0) + a);
+    }
+    return TXN_OPTS.filter(([v]) => m.has(v)).map(([v, lab]) => ({ type: v, label: lab, amount: m.get(v)! }));
+  }, [lines]);
   const liquidNet = useMemo(() => {
     let inn = 0, out = 0;
     for (const l of lines) {
@@ -301,15 +316,34 @@ export function BusinessEntryForm({
         </div>
 
         {/* Totals */}
-        <div className="mt-4 pt-3 border-t flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            {liquidNet !== 0 && (
+        <div className="mt-4 pt-3 border-t space-y-2">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <span className="text-xs font-medium text-muted-foreground">Business by type</span>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {byType.length === 0 ? (
+                <span className="text-xs text-muted-foreground">Add schemes to see totals by type.</span>
+              ) : (
+                byType.map((t) => (
+                  <span
+                    key={t.type}
+                    className={`chip ${OUTFLOW_TXN.has(t.type) ? "bg-rose-50 text-rose-700" : RECURRING_TXN.has(t.type) ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700"}`}
+                    title={OUTFLOW_TXN.has(t.type) ? "Outflow — money leaving the book" : RECURRING_TXN.has(t.type) ? "Recurring — amount is per installment" : "One-time inflow"}
+                  >
+                    {t.label}:{" "}
+                    <span className="font-bold tabular-nums">
+                      {OUTFLOW_TXN.has(t.type) ? "−" : ""}{inr(t.amount)}
+                    </span>
+                    {RECURRING_TXN.has(t.type) ? <span className="opacity-70"> /installment</span> : null}
+                  </span>
+                ))
+              )}
+            </div>
+          </div>
+          {liquidNet !== 0 && (
+            <div className="flex justify-end">
               <span className="chip bg-sky-50 text-sky-700">Liquid net {inr(liquidNet)}</span>
-            )}
-          </div>
-          <div className="text-sm">
-            Total business: <span className="font-bold text-lg tabular-nums">{inr(total)}</span>
-          </div>
+            </div>
+          )}
         </div>
       </div>
 

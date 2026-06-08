@@ -29,6 +29,7 @@ import { LeadsTable } from "@/components/leads/LeadsTable";
 // import { LeadQuickFilters } from "@/components/leads/LeadQuickFilters";
 import { LeadInsightsSection } from "@/components/leads/LeadInsightsSection";
 import { FilterBar } from "@/components/common/FilterBar";
+import { Pager } from "@/components/common/Pager";
 import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
 import { CustomViews } from "@/components/common/CustomViews";
 import { EmptyState } from "@/components/common/EmptyState";
@@ -104,6 +105,10 @@ export default async function LeadsPage({
   const view = sp.view === "table" ? "table" : "kanban";
   // Table sort: "score" (default — hottest first) or "recent".
   const sortKey = sp.sort === "recent" ? "recent" : "score";
+  // Pagination (table view). The kanban shows a bounded top-N slice.
+  const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
+  const PAGE_SIZE = 50;
+  const KANBAN_CAP = 400;
 
   // Quick-filter chip params (from LeadQuickFilters)
   const qf = {
@@ -120,7 +125,9 @@ export default async function LeadsPage({
   const data = await withTenant(session.tenantId, async (tx) => {
     const conds: any[] = [
       inArray(leads.stage, LEAD_PHASE_STAGES as any),
-      isNull(leads.convertedInvestorId)
+      isNull(leads.convertedInvestorId),
+      // Hide soft-deleted (archived) leads — they carry the __deleted__ sentinel.
+      sql`leads.lost_reason IS DISTINCT FROM '__deleted__'`,
     ];
     if (q) {
       conds.push(
@@ -173,7 +180,19 @@ export default async function LeadsPage({
       sortKey === "recent"
         ? sql`leads.updated_at DESC`
         : sql`leads.lead_score DESC, leads.updated_at DESC`;
-    const rows = await baseQuery.where(whereClause as any).orderBy(orderBy as any);
+    const isTable = view === "table";
+    // Total matching count (for the table pager) — same predicate + join.
+    const totalRes = await tx
+      .select({ c: sql<number>`count(*)::int` })
+      .from(leads)
+      .leftJoin(users, eq(users.id, leads.ownerId))
+      .where(whereClause as any);
+    const total = Number(totalRes[0]?.c ?? 0);
+    const rows = await baseQuery
+      .where(whereClause as any)
+      .orderBy(orderBy as any)
+      .limit(isTable ? PAGE_SIZE : KANBAN_CAP)
+      .offset(isTable ? (page - 1) * PAGE_SIZE : 0);
     const stats = await tx.execute(sql`
       SELECT
         COUNT(*) FILTER (
@@ -230,10 +249,13 @@ export default async function LeadsPage({
         (
           SELECT ROUND(AVG(EXTRACT(EPOCH FROM (converted_at - created_at)) / 86400)::numeric, 1)
           FROM leads
-          WHERE converted_investor_id IS NOT NULL
+          WHERE tenant_id = ${session.tenantId}::uuid
+            AND converted_investor_id IS NOT NULL
             AND converted_at >= now() - interval '90 days'
         ) AS avg_days_to_convert
       FROM leads
+      WHERE tenant_id = ${session.tenantId}::uuid
+        AND lost_reason IS DISTINCT FROM '__deleted__'
     `);
     // Roster for the "Owner (RM)" filter — so owners/managers can slice the
     // pipeline by the RM who owns each lead.
@@ -242,7 +264,7 @@ export default async function LeadsPage({
       WHERE tenant_id = ${session.tenantId}::uuid AND status = 'active'
       ORDER BY name ASC
     `);
-    return { rows, s: stats.rows[0] as any, rms: rmRows.rows as any[] };
+    return { rows, s: stats.rows[0] as any, rms: rmRows.rows as any[], total };
   });
 
   const rmOptions = (data.rms ?? []).map((r: any) => ({ value: String(r.id), label: r.name ?? "—" }));
@@ -399,7 +421,7 @@ export default async function LeadsPage({
       </div> */}
 
       <FilterBar
-        totalCount={data.rows.length}
+        totalCount={data.total}
         filters={[
           { type: "search", key: "q", placeholder: "Search lead by name, phone, email…" },
           {
@@ -467,7 +489,9 @@ export default async function LeadsPage({
               <Filter className="size-3.5" />
               <span className="font-medium">Pipeline view</span>
               <span>·</span>
-              <span>{data.rows.length} total leads</span>
+              <span>
+                {data.total} total leads{data.total > data.rows.length ? ` · showing top ${data.rows.length}` : ""}
+              </span>
             </div>
             <span className="text-[11px] text-muted-foreground">
               Drag a card to move it between stages
@@ -515,7 +539,10 @@ export default async function LeadsPage({
           .
         </div>
       ) : (
-        <LeadsTable rows={tableRows} sort={sortKey} />
+        <div>
+          <LeadsTable rows={tableRows} sort={sortKey} />
+          <Pager page={page} totalPages={Math.ceil(data.total / PAGE_SIZE)} total={data.total} pageSize={PAGE_SIZE} />
+        </div>
       )}
 
       {/* ---------- Lead Insights — pipeline analytics ---------- */}

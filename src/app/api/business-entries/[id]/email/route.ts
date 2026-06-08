@@ -12,6 +12,7 @@ import { requireSession } from "@/lib/auth/session";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { businessEntries, businessEntryLines, investors } from "@/db/schema";
 import { emailAdapter } from "@/lib/comms/adapters/resend";
+import { resolveEmailSender } from "@/lib/comms/sender";
 import { renderBusinessEmail } from "@/lib/business/email";
 
 export const dynamic = "force-dynamic";
@@ -44,7 +45,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         email = inv?.email ?? null;
       }
       const firm = (await tx.execute(sql`SELECT name FROM tenants WHERE id = ${session.tenantId}::uuid LIMIT 1`)).rows[0] as any;
-      return { entry, lines, email, firmName: firm?.name ?? "Your advisor" };
+      // Resolve the firm's OWN mailbox (sending RM → firm SMTP/OAuth → Resend)
+      // so the confirmation genuinely leaves from the firm's inbox.
+      const sender = await resolveEmailSender(tx, session.tenantId, session.userId);
+      return { entry, lines, email, firmName: firm?.name ?? "Your advisor", sender };
     });
 
     if ("error" in ctx) return NextResponse.json({ error: "not found" }, { status: 404 });
@@ -52,14 +56,32 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return NextResponse.json({ error: "This client has no email on file. Link a client with an email to send." }, { status: 400 });
     }
 
-    const { subject, text, html } = renderBusinessEmail({
-      clientName: ctx.entry.clientName,
-      firmName: ctx.firmName,
-      productType: ctx.entry.productType,
-      businessDate: String(ctx.entry.businessDate),
-      total: ctx.entry.totalAmount,
-      lines: ctx.lines.map((l) => ({ schemeName: l.schemeName, txnType: l.txnType, amount: l.amount, frequency: l.frequency, fromSchemeName: l.fromSchemeName })),
-    });
+    // Build the email (guarded so a render hiccup can't masquerade as "internal").
+    let subject = "", text = "", html = "";
+    try {
+      const r = renderBusinessEmail({
+        clientName: ctx.entry.clientName,
+        firmName: ctx.firmName,
+        productType: ctx.entry.productType,
+        businessDate: String(ctx.entry.businessDate),
+        total: ctx.entry.totalAmount,
+        lines: ctx.lines.map((l) => ({ schemeName: l.schemeName, txnType: l.txnType, amount: l.amount, frequency: l.frequency, fromSchemeName: l.fromSchemeName })),
+      });
+      subject = r.subject; text = r.text; html = r.html;
+    } catch {
+      return NextResponse.json({ error: "Could not build the email content." }, { status: 500 });
+    }
+
+    // No mailbox connected and no platform Resend key → tell the user how to fix
+    // it, instead of throwing a masked 500.
+    const sender = ctx.sender;
+    const canSend = !!(sender.smtp?.host || sender.apiKey || process.env.RESEND_API_KEY);
+    if (!canSend) {
+      return NextResponse.json(
+        { error: "No email sender connected. Connect your firm's mailbox under Settings → Email (SMTP/IMAP) to send client emails." },
+        { status: 400 }
+      );
+    }
 
     let externalId = "";
     try {
@@ -71,32 +93,47 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         category: "transactional",
         inlineHtml: html,
         idempotencyKey: `business-entry:${id}`,
+        // Route through the firm's own mailbox when present (authentic From +
+        // replies land in their inbox); Resend is the last-resort fallback.
+        smtp: sender.smtp,
+        apiKey: sender.apiKey,
+        fromOverride: sender.fromEmail || undefined,
+        fromNameOverride: sender.fromName || ctx.firmName,
+        replyTo: sender.replyTo || undefined,
       });
       externalId = res.externalId;
     } catch (e: any) {
-      return NextResponse.json(
-        { error: e?.message?.includes("RESEND_API_KEY") ? "Email is not configured yet (no sender). Set it up in Settings → Email." : (e?.message ?? "Could not send email") },
-        { status: 502 }
-      );
+      const m = String(e?.message ?? "");
+      const friendly =
+        /RESEND_API_KEY|no .*sender|EAUTH|invalid login|535|ECONNREFUSED|getaddrinfo|ETIMEDOUT|self.signed|certificate|authentication/i.test(m)
+          ? "Couldn't send — check your firm's email connection under Settings → Email (SMTP/IMAP)."
+          : (m || "Could not send email");
+      return NextResponse.json({ error: friendly }, { status: 502 });
     }
 
-    await withTenant(session.tenantId, async (tx) => {
-      await tx
-        .update(businessEntries)
-        .set({ status: "emailed", emailedAt: new Date(), updatedAt: new Date() } as any)
-        .where(and(eq(businessEntries.id, id), eq(businessEntries.tenantId, session.tenantId)));
-      await recordAudit(tx, {
-        tenantId: session.tenantId,
-        actorUserId: session.userId,
-        action: "business_entry.email",
-        entityType: "business_entry",
-        entityId: id,
-        after: { to: ctx.email, externalId } as any,
-        ...meta,
+    // Email already went out — stamp the entry best-effort; never fail the
+    // request (or surface "internal") just because the status update hiccuped.
+    try {
+      await withTenant(session.tenantId, async (tx) => {
+        await tx
+          .update(businessEntries)
+          .set({ status: "emailed", emailedAt: new Date(), updatedAt: new Date() } as any)
+          .where(and(eq(businessEntries.id, id), eq(businessEntries.tenantId, session.tenantId)));
+        await recordAudit(tx, {
+          tenantId: session.tenantId,
+          actorUserId: session.userId,
+          action: "business_entry.email",
+          entityType: "business_entry",
+          entityId: id,
+          after: { to: ctx.email, externalId, via: sender.source } as any,
+          ...meta,
+        });
       });
-    });
+    } catch (e) {
+      console.warn("[business_entry.email] sent but status stamp failed:", (e as Error)?.message);
+    }
 
-    return NextResponse.json({ ok: true, externalId });
+    return NextResponse.json({ ok: true, externalId, via: sender.source });
   } catch (err: any) {
     return handleApiError(err);
   }

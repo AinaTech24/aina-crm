@@ -74,6 +74,32 @@ export async function POST(req: NextRequest) {
         .set(patch as any)
         .where(inArray(leads.id, ids))
         .returning({ id: leads.id });
+
+      // Re-score affected leads when the action changed a scoring input (stage,
+      // follow-up momentum, or marking lost). Owner reassignment doesn't move
+      // the score, so we skip the recompute there.
+      if (action === "stage" || action === "lost" || action === "follow_up") {
+        const touchedIds = updated.map((u) => u.id);
+        if (touchedIds.length) {
+          const rows = await tx.select().from(leads).where(inArray(leads.id, touchedIds));
+          for (const l of rows) {
+            const sf = scoreFields({
+              source: l.source,
+              stage: l.stage,
+              intendedAmount: l.intendedAmount,
+              lastContactAt: l.lastContactAt,
+              nextFollowUpAt: l.nextFollowUpAt,
+              stageChangedAt: l.stageChangedAt,
+              email: l.email,
+              phone: l.phone,
+              pan: l.pan,
+              interestProducts: l.interestProducts,
+            });
+            await tx.update(leads).set(sf as any).where(eq(leads.id, l.id));
+          }
+        }
+      }
+
       await recordAudit(tx, {
         tenantId: session.tenantId,
         actorUserId: session.userId,
