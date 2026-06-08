@@ -8,7 +8,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { FileText, Upload, Download, Trash2, Loader2, FolderOpen, UserCheck } from "lucide-react";
+import { FileText, Upload, Download, Trash2, Loader2, FolderOpen, UserCheck, Send, Link as LinkIcon, Copy, ExternalLink, CheckCircle2 } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
@@ -37,7 +37,7 @@ function fmtDate(s?: string): string {
   return isNaN(d.getTime()) ? "" : d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
 }
 
-export function InvestorDocumentsSection({ investorId, investorName }: { investorId: string; investorName?: string }) {
+export function InvestorDocumentsSection({ investorId, investorName, investorPhone, investorEmail }: { investorId: string; investorName?: string; investorPhone?: string | null; investorEmail?: string | null }) {
   const toast = useToast();
   const [docs, setDocs] = useState<Doc[]>([]);
   const [loading, setLoading] = useState(true);
@@ -138,6 +138,64 @@ export function InvestorDocumentsSection({ investorId, investorName }: { investo
     }
   }
 
+  // ── Request documents from the client — mints a secure investor doc-collection link ──
+  const [showReq, setShowReq] = useState(false);
+  const [reqType, setReqType] = useState<"individual" | "huf" | "nri" | "minor" | "company" | "trust">("individual");
+  const [reqBusy, setReqBusy] = useState(false);
+  const [reqErr, setReqErr] = useState<string | null>(null);
+  const [reqLink, setReqLink] = useState<{ url: string; expiresAt: string } | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  async function requestDocs() {
+    setReqBusy(true);
+    setReqErr(null);
+    setReqLink(null);
+    try {
+      const { getChecklist } = await import("@/lib/onboarding/doc-checklists");
+      const requiredDocs = getChecklist(reqType);
+      const r = await fetch("/api/share-tokens", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          kind: "document_collection",
+          subjectType: "investor",
+          subjectId: investorId,
+          expiresInDays: 7,
+          payload: { requiredDocs, clientType: reqType },
+        }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data?.error ?? `HTTP ${r.status}`);
+      setReqLink({ url: data.url, expiresAt: new Date(data.expiresAt).toLocaleString("en-IN") });
+    } catch (e: any) {
+      setReqErr(e?.message ?? "Failed to create link");
+    } finally {
+      setReqBusy(false);
+    }
+  }
+
+  async function copyLink() {
+    if (!reqLink) return;
+    await navigator.clipboard.writeText(reqLink.url);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }
+
+  const reqWaUrl =
+    reqLink && investorPhone
+      ? `https://wa.me/${investorPhone.replace(/[^\d]/g, "")}?text=${encodeURIComponent(
+          `Hi ${investorName ?? "there"}, please upload your KYC documents to complete your account setup — secure, single-use link:\n\n${reqLink.url}\n\nYou'll need: PAN, Aadhar, photo, recent bank statement, cancelled cheque.`
+        )}`
+      : null;
+  const reqMailUrl =
+    reqLink && investorEmail
+      ? `mailto:${investorEmail}?subject=${encodeURIComponent(
+          "Documents needed for your investment account"
+        )}&body=${encodeURIComponent(
+          `Hi ${investorName ?? ""},\n\nTo complete your account setup, please upload the following documents using this secure link:\n\n${reqLink.url}\n\nRequired: PAN card, Aadhar card, passport-size photo, recent bank statement, cancelled cheque.\n\nThe link is single-use and expires soon.\n\nRegards`
+        )}`
+      : null;
+
   const clientDocs = docs.filter((d) => d.clientUploaded);
   const teamDocs = docs.filter((d) => !d.clientUploaded);
 
@@ -148,7 +206,7 @@ export function InvestorDocumentsSection({ investorId, investorName }: { investo
           <FolderOpen className="size-4 text-brand-cyan" /> Documents &amp; attachments
           {docs.length > 0 && <span className="chip text-[10px] bg-secondary">{docs.length}</span>}
         </h3>
-        <div>
+        <div className="flex items-center gap-2">
           <input
             ref={fileRef}
             type="file"
@@ -157,6 +215,13 @@ export function InvestorDocumentsSection({ investorId, investorName }: { investo
             onChange={(e) => onFiles(e.target.files)}
             accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx,.csv"
           />
+          <button
+            type="button"
+            onClick={() => setShowReq((v) => !v)}
+            className="btn-secondary text-sm inline-flex items-center gap-1.5"
+          >
+            <Send className="size-4" /> Request from client
+          </button>
           <button
             type="button"
             disabled={uploading}
@@ -168,6 +233,82 @@ export function InvestorDocumentsSection({ investorId, investorName }: { investo
           </button>
         </div>
       </div>
+
+      {showReq && (
+        <div className="mb-4 rounded-lg border border-brand-cyan/30 bg-brand-cyan-light/20 p-3 space-y-2">
+          <div className="text-xs font-semibold uppercase tracking-wider text-brand-cyan-deep flex items-center gap-1.5">
+            <LinkIcon className="size-3.5" /> Send a secure document-collection link
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            Pick the client type — it drives which KYC documents are requested. The client uploads from
+            WhatsApp / email and the files appear here automatically.
+          </p>
+          {!reqLink ? (
+            <>
+              <select
+                value={reqType}
+                onChange={(e) => setReqType(e.target.value as any)}
+                className="input-base text-xs w-full"
+              >
+                <option value="individual">Individual / Resident</option>
+                <option value="huf">HUF (Hindu Undivided Family)</option>
+                <option value="nri">NRI (Non-Resident Indian)</option>
+                <option value="minor">Minor (Below 18)</option>
+                <option value="company">Company / Corporate</option>
+                <option value="trust">Trust</option>
+              </select>
+              {reqErr && <div className="text-xs text-rose-700">{reqErr}</div>}
+              <div className="flex gap-2">
+                <button
+                  onClick={requestDocs}
+                  disabled={reqBusy}
+                  className="btn-primary text-xs inline-flex items-center gap-1 disabled:opacity-50"
+                >
+                  {reqBusy ? <Loader2 className="size-3 animate-spin" /> : <Send className="size-3" />} Generate link
+                </button>
+                <button onClick={() => setShowReq(false)} className="btn-ghost text-xs">
+                  Cancel
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="rounded-md border border-emerald-300 bg-emerald-50/50 p-2.5 space-y-2">
+              <div className="flex items-center gap-2 text-emerald-700 text-xs font-semibold">
+                <CheckCircle2 className="size-4" /> Link ready · expires {reqLink.expiresAt}
+              </div>
+              <div className="flex gap-2">
+                <input
+                  readOnly
+                  value={reqLink.url}
+                  onClick={(e) => (e.target as HTMLInputElement).select()}
+                  className="flex-1 border rounded-md px-2 py-1.5 text-xs font-mono bg-white"
+                />
+                <button onClick={copyLink} className="rounded-md border bg-white px-2 text-xs flex items-center gap-1 hover:bg-secondary">
+                  <Copy className="size-3" /> {copied ? "Copied!" : "Copy"}
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-2 text-xs">
+                {reqWaUrl && (
+                  <a href={reqWaUrl} target="_blank" rel="noreferrer" className="btn-secondary text-xs">
+                    Send via WhatsApp <ExternalLink className="size-3" />
+                  </a>
+                )}
+                {reqMailUrl && (
+                  <a href={reqMailUrl} className="btn-secondary text-xs">
+                    Send via Email <ExternalLink className="size-3" />
+                  </a>
+                )}
+                <a href={reqLink.url} target="_blank" rel="noreferrer" className="btn-ghost text-xs">
+                  Preview <ExternalLink className="size-3" />
+                </a>
+                <button onClick={() => setReqLink(null)} className="btn-ghost text-xs">
+                  New link
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {loading ? (
         <div className="py-10 text-center text-sm text-muted-foreground flex items-center justify-center gap-2">

@@ -17,7 +17,6 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ShieldCheck,
-  FileText,
   FileSignature,
   UserCheck,
   Loader2,
@@ -109,17 +108,6 @@ export function OnboardingActions({
   const isConverted = !!alreadyConvertedInvestorId;
   const canConvert = !isConverted && (leadStage === "docs_received" || leadStage === "proposal_approved");
 
-  const [showDocPicker, setShowDocPicker] = useState(false);
-  const [clientType, setClientType] = useState<"individual" | "huf" | "nri" | "minor" | "company" | "trust">("individual");
-
-  async function startDocLink() {
-    // Lazily load the checklist + send as payload
-    const { getChecklist } = await import("@/lib/onboarding/doc-checklists");
-    const requiredDocs = getChecklist(clientType);
-    await makeLink("document_collection", undefined, { requiredDocs, clientType });
-    setShowDocPicker(false);
-  }
-
   return (
     <div className="card-surface p-4 space-y-3">
       <div className="flex items-center justify-between">
@@ -140,15 +128,6 @@ export function OnboardingActions({
           onClick={() => makeLink("risk_profile")}
           disabled={isConverted}
           busy={busy === "risk_profile"}
-        />
-        <ActionTile
-          icon={FileText}
-          title="Send document collection"
-          subtitle="Ask the client to upload required KYC docs based on their client type."
-          status={leadStage === "docs_received" ? "Already received — sending again will accept replacements" : "Sends after proposal is approved"}
-          onClick={() => setShowDocPicker(true)}
-          disabled={isConverted}
-          busy={busy === "document_collection"}
         />
         <ActionTile
           icon={FileSignature}
@@ -196,34 +175,6 @@ export function OnboardingActions({
       )}
 
       {link && <LinkPanel link={link} leadName={leadName} leadPhone={leadPhone} leadEmail={leadEmail} />}
-
-      {/* Client type picker — appears when starting doc collection */}
-      {showDocPicker && (
-        <div className="rounded-lg border border-brand-cyan/30 bg-brand-cyan-light/20 p-3 space-y-2">
-          <div className="text-xs font-semibold uppercase tracking-wider text-brand-cyan-deep">
-            Pick the client type — drives which docs are required
-          </div>
-          <select
-            value={clientType}
-            onChange={(e) => setClientType(e.target.value as any)}
-            className="input-base text-xs w-full"
-          >
-            <option value="individual">Individual / Resident</option>
-            <option value="huf">HUF (Hindu Undivided Family)</option>
-            <option value="nri">NRI (Non-Resident Indian)</option>
-            <option value="minor">Minor (Below 18)</option>
-            <option value="company">Company / Corporate</option>
-            <option value="trust">Trust</option>
-          </select>
-          <div className="flex gap-2">
-            <button onClick={startDocLink} disabled={busy === "document_collection"} className="btn-primary text-xs">
-              {busy === "document_collection" ? <Loader2 className="size-3 animate-spin" /> : null}
-              Generate link
-            </button>
-            <button onClick={() => setShowDocPicker(false)} className="btn-ghost text-xs">Cancel</button>
-          </div>
-        </div>
-      )}
 
       {/* Call outcome capture — inline form */}
       {!isConverted && (

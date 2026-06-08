@@ -65,24 +65,30 @@ export default async function PublicOnboardingPage({ params }: { params: Promise
     return <ErrorScreen message="Associated records could not be resolved." />;
   }
 
+  // ARN is already stored with the "ARN-" prefix on some tenants — normalise so
+  // we never render "ARN-ARN-…".
+  const arnLabel = data.tenant.arn
+    ? `ARN-${String(data.tenant.arn).replace(/^arn[\s-]*/i, "")}`
+    : null;
+
   return (
-    <div className="min-h-screen bg-slate-950 bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 text-slate-100 relative overflow-hidden flex flex-col font-sans">
-      {/* Background glow effects */}
-      <div className="absolute top-1/4 left-1/4 size-[40rem] bg-cyan-500/5 rounded-full blur-[100px] pointer-events-none" />
-      <div className="absolute bottom-1/4 right-1/4 size-[40rem] bg-indigo-500/5 rounded-full blur-[100px] pointer-events-none" />
+    <div className="min-h-screen bg-slate-50 bg-gradient-to-br from-slate-50 via-white to-cyan-50/50 text-slate-800 relative overflow-hidden flex flex-col font-sans">
+      {/* Soft brand wash */}
+      <div className="absolute -top-20 left-1/4 size-[36rem] bg-cyan-300/20 rounded-full blur-[130px] pointer-events-none" />
+      <div className="absolute bottom-0 right-1/5 size-[34rem] bg-indigo-300/15 rounded-full blur-[130px] pointer-events-none" />
 
       {/* Brand Header */}
-      <header className="bg-slate-900/40 border-b border-white/5 backdrop-blur-md relative z-10">
+      <header className="bg-white/75 border-b border-slate-200 backdrop-blur-md relative z-10">
         <div className="max-w-3xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <ShieldCheck className="size-5 text-brand-cyan" />
-            <span className="font-semibold text-white tracking-tight">
+            <span className="font-semibold text-slate-900 tracking-tight">
               {data.tenant.displayName ?? data.tenant.legalName ?? "Onboarding Progress"}
             </span>
           </div>
-          {data.tenant.arn && (
-            <div className="text-[11px] font-mono text-slate-400 bg-slate-800/40 px-2.5 py-0.5 rounded-full border border-slate-700/30">
-              ARN-{data.tenant.arn}
+          {arnLabel && (
+            <div className="text-[11px] font-mono text-slate-600 bg-slate-100 px-2.5 py-0.5 rounded-full border border-slate-200">
+              {arnLabel}
             </div>
           )}
         </div>
@@ -99,12 +105,12 @@ export default async function PublicOnboardingPage({ params }: { params: Promise
       </main>
 
       {/* Footer */}
-      <footer className="max-w-3xl mx-auto w-full px-4 py-6 text-[10px] text-slate-500 text-center relative z-10 border-t border-white/5">
+      <footer className="max-w-3xl mx-auto w-full px-4 py-6 text-[10px] text-slate-500 text-center relative z-10 border-t border-slate-200">
         Mutual fund investments are subject to market risks. Read all scheme related documents carefully.
-        {data.tenant.arn ? (
+        {arnLabel ? (
           <>
             {" "}
-            · {data.tenant.displayName ?? data.tenant.legalName} · ARN-{data.tenant.arn}
+            · {data.tenant.displayName ?? data.tenant.legalName} · {arnLabel}
           </>
         ) : null}
       </footer>
@@ -114,13 +120,13 @@ export default async function PublicOnboardingPage({ params }: { params: Promise
 
 function ErrorScreen({ message }: { message: string }) {
   return (
-    <div className="min-h-screen bg-slate-950 bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 grid place-items-center p-6 text-slate-100 relative font-sans">
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 size-96 bg-rose-500/5 rounded-full blur-[80px] pointer-events-none" />
-      <div className="max-w-md w-full bg-slate-900/50 backdrop-blur-md rounded-2xl border border-white/10 p-8 text-center shadow-2xl relative z-10">
+    <div className="min-h-screen bg-slate-50 bg-gradient-to-br from-slate-50 via-white to-cyan-50/50 grid place-items-center p-6 text-slate-800 relative font-sans">
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 size-96 bg-rose-300/15 rounded-full blur-[80px] pointer-events-none" />
+      <div className="max-w-md w-full bg-white/90 backdrop-blur-md rounded-2xl border border-slate-200 p-8 text-center shadow-lg relative z-10">
         <AlertCircle className="size-12 text-rose-500 mx-auto animate-pulse" />
-        <h1 className="text-xl font-bold mt-4 text-white">Link Unavailable</h1>
-        <p className="text-sm text-slate-400 mt-2 leading-relaxed">{message}</p>
-        <p className="text-xs text-slate-500 mt-6 leading-relaxed">
+        <h1 className="text-xl font-bold mt-4 text-slate-900">Link Unavailable</h1>
+        <p className="text-sm text-slate-500 mt-2 leading-relaxed">{message}</p>
+        <p className="text-xs text-slate-400 mt-6 leading-relaxed">
           Please reach out to your relationship manager or representative for assistance or a new link.
         </p>
       </div>

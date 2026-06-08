@@ -174,8 +174,8 @@ export function PublicOnboardingVisualizer({
   return (
     <div className="space-y-6">
       {/* Welcome & Progress Card */}
-      <div className="glass-panel p-6 border border-white/10 shadow-2xl relative overflow-hidden bg-gradient-to-r from-slate-900/80 to-indigo-950/80">
-        <div className="absolute top-0 right-0 p-4 opacity-5">
+      <div className="rounded-2xl p-6 border border-slate-200 shadow-sm relative overflow-hidden bg-white">
+        <div className="absolute top-0 right-0 p-4 opacity-[0.04]">
           <Activity className="size-32 text-brand-cyan" />
         </div>
         <div className="relative z-10 space-y-4">
@@ -184,8 +184,8 @@ export function PublicOnboardingVisualizer({
               <span className="text-xs font-semibold tracking-wider text-brand-cyan uppercase">
                 Live Onboarding Tracker
               </span>
-              <h2 className="text-2xl font-bold text-white mt-1">Hello, {recipientName}</h2>
-              <p className="text-sm text-slate-300 mt-1">
+              <h2 className="text-2xl font-bold text-slate-900 mt-1">Hello, {recipientName}</h2>
+              <p className="text-sm text-slate-500 mt-1">
                 We are setting up your mutual fund investment account. Track each step of the journey below.
               </p>
             </div>
@@ -198,13 +198,13 @@ export function PublicOnboardingVisualizer({
           </div>
 
           <div className="space-y-2 pt-2">
-            <div className="flex items-center justify-between text-xs text-slate-300">
+            <div className="flex items-center justify-between text-xs text-slate-600">
               <span className="font-medium">Account Setup Progress</span>
               <span className="font-bold text-brand-cyan">{progressPct}% Complete</span>
             </div>
-            <div className="h-2 w-full bg-slate-800 rounded-full overflow-hidden border border-slate-700">
+            <div className="h-2.5 w-full bg-slate-100 rounded-full overflow-hidden border border-slate-200">
               <div
-                className="h-full bg-gradient-to-r from-cyan-500 to-indigo-500 rounded-full shadow-[0_0_8px_rgba(6,182,212,0.5)] transition-all duration-500 ease-out"
+                className="h-full bg-gradient-to-r from-cyan-500 to-indigo-500 rounded-full transition-all duration-500 ease-out"
                 style={{ width: `${progressPct}%` }}
               />
             </div>
@@ -232,10 +232,10 @@ export function PublicOnboardingVisualizer({
               key={phase.id}
               className={`rounded-xl border transition-all duration-300 ${
                 isCurrent
-                  ? "border-brand-cyan/40 bg-slate-900/50 shadow-[0_0_15px_rgba(6,182,212,0.15)]"
+                  ? "border-brand-cyan/50 bg-cyan-50/50 shadow-sm"
                   : isDone
-                  ? "border-emerald-500/20 bg-slate-900/30"
-                  : "border-slate-800 bg-slate-950/20 opacity-80"
+                  ? "border-emerald-200 bg-emerald-50/40"
+                  : "border-slate-200 bg-white"
               }`}
             >
               {/* Phase Header */}
@@ -248,10 +248,10 @@ export function PublicOnboardingVisualizer({
                   <div
                     className={`size-10 rounded-xl grid place-items-center flex-shrink-0 transition-all duration-300 ${
                       isDone
-                        ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30"
+                        ? "bg-emerald-100 text-emerald-600 border border-emerald-200"
                         : isCurrent
-                        ? "bg-brand-cyan/20 text-brand-cyan border border-brand-cyan/40 animate-pulse"
-                        : "bg-slate-800/50 text-slate-500 border border-slate-700/50"
+                        ? "bg-brand-cyan/10 text-brand-cyan border border-brand-cyan/30"
+                        : "bg-slate-100 text-slate-400 border border-slate-200"
                     }`}
                   >
                     {isDone ? (
@@ -262,7 +262,7 @@ export function PublicOnboardingVisualizer({
                   </div>
 
                   <div>
-                    <h3 className="font-semibold text-white text-base flex items-center gap-2">
+                    <h3 className={`font-semibold text-base flex items-center gap-2 ${isUpcoming ? "text-slate-500" : "text-slate-900"}`}>
                       {phase.name}
                       {isCurrent && (
                         <span className="relative flex h-2 w-2">
@@ -271,7 +271,7 @@ export function PublicOnboardingVisualizer({
                         </span>
                       )}
                     </h3>
-                    <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">{phase.description}</p>
+                    <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">{phase.description}</p>
                   </div>
                 </div>
 
@@ -289,8 +289,8 @@ export function PublicOnboardingVisualizer({
 
               {/* Phase Sub-stages (Collapsible accordion) */}
               {expanded[phase.id] && (
-                <div className="px-5 pb-5 pt-1 border-t border-slate-800/50 bg-slate-950/40 rounded-b-xl">
-                  <div className="relative pl-6 space-y-4 border-l border-slate-800 mt-2">
+                <div className="px-5 pb-5 pt-1 border-t border-slate-100 bg-slate-50/60 rounded-b-xl">
+                  <div className="relative pl-6 space-y-4 border-l border-slate-200 mt-2">
                     {phaseStages.map((stage) => {
                       const log = getStageLog(stage.key);
                       const isStageCurrent = stage.status === "current";
@@ -305,7 +305,7 @@ export function PublicOnboardingVisualizer({
                                 ? "bg-emerald-500 border-emerald-400 text-white grid place-items-center"
                                 : isStageCurrent
                                 ? "bg-brand-cyan border-brand-cyan ring-4 ring-brand-cyan/20 animate-pulse"
-                                : "bg-slate-900 border-slate-700"
+                                : "bg-white border-slate-300"
                             }`}
                           >
                             {isStageDone && <div className="size-1 bg-white rounded-full" />}
@@ -318,14 +318,14 @@ export function PublicOnboardingVisualizer({
                                   isStageCurrent
                                     ? "text-brand-cyan font-bold"
                                     : isStageDone
-                                    ? "text-slate-200"
-                                    : "text-slate-500"
+                                    ? "text-slate-700"
+                                    : "text-slate-400"
                                 }`}
                               >
                                 {stage.name}
                               </div>
                               {isStageCurrent && current.description && (
-                                <p className="text-xs text-slate-300 mt-1 leading-relaxed max-w-xl">
+                                <p className="text-xs text-slate-500 mt-1 leading-relaxed max-w-xl">
                                   {current.description}
                                 </p>
                               )}
@@ -334,11 +334,11 @@ export function PublicOnboardingVisualizer({
                             <div>
                               {log ? (
                                 <span className={`text-[10px] flex items-center gap-1 font-mono ${
-                                  isStageCurrent ? "text-brand-cyan" : "text-slate-400"
+                                  isStageCurrent ? "text-brand-cyan" : "text-slate-500"
                                 }`}>
                                   {isStageDone ? (
                                     <>
-                                      <CheckCircle2 className="size-3 text-emerald-400" />
+                                      <CheckCircle2 className="size-3 text-emerald-500" />
                                       {log.date}
                                     </>
                                   ) : (
@@ -349,7 +349,7 @@ export function PublicOnboardingVisualizer({
                                   )}
                                 </span>
                               ) : (
-                                <span className="text-[10px] text-slate-600 font-mono">Pending</span>
+                                <span className="text-[10px] text-slate-400 font-mono">Pending</span>
                               )}
                             </div>
                           </div>
@@ -366,7 +366,7 @@ export function PublicOnboardingVisualizer({
 
       {/* RM Contact Section */}
       {rm && (
-        <div className="glass-panel p-5 border border-white/5 bg-slate-900/40 rounded-xl flex flex-col sm:flex-row items-center sm:justify-between gap-4">
+        <div className="p-5 border border-slate-200 bg-white shadow-sm rounded-xl flex flex-col sm:flex-row items-center sm:justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="size-12 rounded-full bg-gradient-to-br from-indigo-500 to-cyan-500 text-white font-bold grid place-items-center text-lg shadow-inner flex-shrink-0">
               {rm.name
@@ -376,8 +376,8 @@ export function PublicOnboardingVisualizer({
                 .join("")}
             </div>
             <div className="text-center sm:text-left">
-              <h4 className="text-sm font-semibold text-white">Your Relationship Manager</h4>
-              <p className="text-xs text-slate-300 mt-0.5">{rm.name}</p>
+              <h4 className="text-sm font-semibold text-slate-900">Your Relationship Manager</h4>
+              <p className="text-xs text-slate-500 mt-0.5">{rm.name}</p>
             </div>
           </div>
 
@@ -385,14 +385,14 @@ export function PublicOnboardingVisualizer({
             {rm.phone && (
               <a
                 href={`tel:${rm.phone}`}
-                className="btn-secondary text-xs px-3 py-2 flex items-center gap-1.5 border border-slate-700 bg-slate-800 text-slate-200 hover:bg-slate-700 transition-all rounded-lg"
+                className="text-xs px-3 py-2 flex items-center gap-1.5 border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 transition-all rounded-lg font-medium"
               >
                 <Phone className="size-3.5" /> Call RM
               </a>
             )}
             <a
               href={`mailto:${rm.email}`}
-              className="btn-accent text-xs px-3 py-2 flex items-center gap-1.5 bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 transition-all text-white rounded-lg"
+              className="text-xs px-3 py-2 flex items-center gap-1.5 bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 transition-all text-white rounded-lg font-medium"
             >
               <Mail className="size-3.5" /> Email RM
             </a>

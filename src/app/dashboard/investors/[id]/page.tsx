@@ -516,7 +516,7 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
           uploads from the required-documents form (same compliance_documents
           rows, linked to this investor). Self-fetching island. */}
       <RelatedListSection moduleKey="investors-detail" sectionKey="documents">
-        <InvestorDocumentsSection investorId={inv.id} investorName={inv.name} />
+        <InvestorDocumentsSection investorId={inv.id} investorName={inv.name} investorPhone={inv.phone} investorEmail={inv.email} />
       </RelatedListSection>
 
       <RelatedListSection moduleKey="investors-detail" sectionKey="emails">

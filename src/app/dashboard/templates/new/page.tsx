@@ -4,7 +4,7 @@ import { useMemo, useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
-import { ChevronLeft, Eye, ShieldCheck, AlertCircle, Save, Send, Plus, Trash, Paperclip } from "lucide-react";
+import { ChevronLeft, ChevronDown, Eye, ShieldCheck, AlertCircle, Save, Send, Plus, Trash, Paperclip } from "lucide-react";
 import { runComplianceChecks, missingMandatoryLines } from "@/lib/comms/compliance";
 import { MergeFieldInserter, type VarDecl } from "@/components/templates/MergeFieldInserter";
 import { SelectField } from "@/components/ui/SelectField";
@@ -389,14 +389,17 @@ export default function NewTemplatePage() {
         )}
       </div>
 
-      {/* Variable Configuration Panel */}
+      {/* Variable Configuration Panel — collapsed by default so it doesn't crowd the editor */}
       {declaredVars.length > 0 && (
-        <div className="card-surface p-4 space-y-3 bg-slate-50/50">
-          <div className="flex items-center justify-between">
-            <h3 className="font-semibold text-xs text-slate-800">Auto-Detected Variables ({declaredVars.length})</h3>
+        <details className="card-surface p-4 bg-slate-50/50 group">
+          <summary className="flex items-center justify-between cursor-pointer list-none select-none">
+            <h3 className="font-semibold text-xs text-slate-800 flex items-center gap-1.5">
+              <ChevronDown className="size-3.5 -rotate-90 group-open:rotate-0 transition-transform" />
+              Auto-Detected Variables ({declaredVars.length})
+            </h3>
             <span className="text-[10px] text-muted-foreground font-mono">Use {"{{variable_name}}"} in text to add more</span>
-          </div>
-          <div className="border rounded-md divide-y bg-background overflow-hidden">
+          </summary>
+          <div className="border rounded-md divide-y bg-background overflow-hidden mt-3">
             {declaredVars.map((v, idx) => (
               <div key={v.key} className="p-3 grid grid-cols-1 md:grid-cols-4 gap-3 items-center text-xs">
                 <div className="font-mono font-semibold text-slate-700 truncate">{v.key}</div>
@@ -452,7 +455,7 @@ export default function NewTemplatePage() {
               </div>
             ))}
           </div>
-        </div>
+        </details>
       )}
 
       {/* Merge-field inserter (Sanchay-style target module + field picker) */}
@@ -465,6 +468,14 @@ export default function NewTemplatePage() {
       )}
 
       {/* Body editor — per channel */}
+      {channel === "email" && (
+        <div className="pt-3 mt-1 border-t border-border/60">
+          <h2 className="text-base font-bold tracking-tight">Design your email</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Start from a ready-made template, then customise it in the editor below.
+          </p>
+        </div>
+      )}
       {channel === "email" && (
         <div className="rounded-xl border border-border bg-secondary/30 p-3">
           <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
