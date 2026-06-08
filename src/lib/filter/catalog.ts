@@ -55,7 +55,9 @@ export interface SubjectCatalog {
     | "insurance"
     | "goal"
     | "service_request"
-    | "claim";
+    | "claim"
+    | "review_meeting"
+    | "business_entry";
   /** Primary table + alias used in compiled SQL. */
   table: string;
   alias: string;
@@ -599,6 +601,49 @@ export const claimCatalog: SubjectCatalog = {
   relations: {},
 };
 
+/** Review meetings — Module 12. rm_name is a correlated lookup so charts can
+ *  group by the RM by NAME (not a raw uuid). */
+export const reviewMeetingCatalog: SubjectCatalog = {
+  subject: "review_meeting",
+  table: "review_meetings",
+  alias: "mtg",
+  fields: [
+    { key: "category", label: "Category", type: "enum", sql: "mtg.category", ops: COMMON_ENUM_OPS, enumValues: ["review", "new", "follow_up"] },
+    { key: "meeting_type", label: "Agenda / type", type: "enum", sql: "mtg.meeting_type", ops: COMMON_ENUM_OPS },
+    { key: "meeting_mode", label: "Mode", type: "enum", sql: "mtg.meeting_mode", ops: COMMON_ENUM_OPS, enumValues: ["office", "client_place", "online", "phone"] },
+    { key: "status", label: "Status", type: "enum", sql: "mtg.status", ops: COMMON_ENUM_OPS, enumValues: ["scheduled", "confirmed", "in_progress", "completed", "rescheduled", "cancelled", "no_show"] },
+    { key: "outcome", label: "Outcome", type: "enum", sql: "mtg.outcome", ops: COMMON_ENUM_OPS },
+    { key: "rm_name", label: "RM", type: "string", sql: "(SELECT u.name FROM users u WHERE u.id = mtg.rm_id)", ops: COMMON_STRING_OPS },
+    { key: "rm_id", label: "RM (id)", type: "uuid", sql: "mtg.rm_id", ops: COMMON_ENUM_OPS },
+    { key: "meeting_date", label: "Meeting date", type: "datetime", sql: "mtg.meeting_date", ops: COMMON_DATE_OPS },
+    { key: "created_at", label: "Created", type: "datetime", sql: "mtg.created_at", ops: COMMON_DATE_OPS },
+    { key: "reschedule_count", label: "Reschedules", type: "integer", sql: "mtg.reschedule_count", ops: COMMON_NUMBER_OPS },
+    { key: "duration_minutes", label: "Duration (min)", type: "integer", sql: "NULLIF(regexp_replace(COALESCE(mtg.duration_minutes,''), '[^0-9]', '', 'g'), '')::int", ops: COMMON_NUMBER_OPS },
+  ],
+  relations: {},
+};
+
+/** Business Closing Entries — Module: business booked. total_amount is the headline
+ *  measure (sum business by RM / month / product). */
+export const businessEntryCatalog: SubjectCatalog = {
+  subject: "business_entry",
+  table: "business_entries",
+  alias: "bze",
+  fields: [
+    { key: "product_type", label: "Product", type: "enum", sql: "bze.product_type", ops: COMMON_ENUM_OPS, enumValues: ["mutual_fund", "pms", "aif", "sif", "bond", "ncd", "other"] },
+    { key: "status", label: "Status", type: "enum", sql: "bze.status", ops: COMMON_ENUM_OPS, enumValues: ["draft", "confirmed", "emailed", "cancelled"] },
+    { key: "client_name", label: "Client", type: "string", sql: "bze.client_name", ops: COMMON_STRING_OPS },
+    { key: "amc_name", label: "AMC", type: "string", sql: "bze.amc_name", ops: COMMON_STRING_OPS },
+    { key: "rm_name", label: "RM", type: "string", sql: "(SELECT u.name FROM users u WHERE u.id = bze.rm_id)", ops: COMMON_STRING_OPS },
+    { key: "rm_id", label: "RM (id)", type: "uuid", sql: "bze.rm_id", ops: COMMON_ENUM_OPS },
+    { key: "business_date", label: "Business date", type: "date", sql: "bze.business_date", ops: COMMON_DATE_OPS },
+    { key: "created_at", label: "Created", type: "datetime", sql: "bze.created_at", ops: COMMON_DATE_OPS },
+    { key: "total_amount", label: "Total business (₹)", type: "currency", sql: "bze.total_amount", ops: COMMON_NUMBER_OPS },
+    { key: "liquid_net", label: "Liquid net (₹)", type: "currency", sql: "bze.liquid_net", ops: COMMON_NUMBER_OPS },
+  ],
+  relations: {},
+};
+
 export const CATALOGS: Record<string, SubjectCatalog> = {
   investor: investorCatalog,
   lead: leadCatalog,
@@ -610,6 +655,8 @@ export const CATALOGS: Record<string, SubjectCatalog> = {
   goal: goalCatalog,
   service_request: serviceRequestCatalog,
   claim: claimCatalog,
+  review_meeting: reviewMeetingCatalog,
+  business_entry: businessEntryCatalog,
 };
 
 export function getCatalog(subject: string): SubjectCatalog {

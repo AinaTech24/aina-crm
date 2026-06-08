@@ -49,22 +49,35 @@ function fmt(v: any, format?: string): string {
   return String(v);
 }
 
-export function WidgetView({ widgetKey, rm, titleOverride }: { widgetKey: string; rm?: string; titleOverride?: string }) {
+export function WidgetView({ widgetKey, rm, titleOverride, config }: { widgetKey: string; rm?: string; titleOverride?: string; config?: any }) {
   const meta = WIDGET_META_BY_KEY[widgetKey];
-  const [state, setState] = useState<{ loading: boolean; error?: string; view?: View; rows?: any[] }>({ loading: true });
+  // A custom component carries its own definition (subject + chartType) in config
+  // and is rendered by the custom-chart aggregate API instead of a static widget.
+  const isCustom = !!(config && config.subject && config.chartType);
+  const [state, setState] = useState<{ loading: boolean; error?: string; view?: View; rows?: any[]; chart?: string }>({ loading: true });
 
   useEffect(() => {
     let alive = true;
     setState({ loading: true });
-    const qs = rm ? `?rm=${encodeURIComponent(rm)}` : "";
-    fetch(`/api/dashboard/widgets/${widgetKey}${qs}`)
-      .then((r) => r.json())
-      .then((j) => { if (alive) setState({ loading: false, view: j.view, rows: j.rows ?? [], error: j.error }); })
-      .catch((e) => { if (alive) setState({ loading: false, error: e?.message ?? "Failed" }); });
+    const apply = (j: any, chart?: string) => {
+      if (alive) setState({ loading: false, view: j.view, rows: j.rows ?? [], error: j.error, chart: chart ?? j.chart });
+    };
+    const fail = (e: any) => { if (alive) setState({ loading: false, error: e?.message ?? "Failed" }); };
+    if (isCustom) {
+      fetch(`/api/dashboard/custom-chart`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(config),
+      }).then((r) => r.json()).then((j) => apply(j, j.chart)).catch(fail);
+    } else {
+      const qs = rm ? `?rm=${encodeURIComponent(rm)}` : "";
+      fetch(`/api/dashboard/widgets/${widgetKey}${qs}`).then((r) => r.json()).then((j) => apply(j, meta?.chart)).catch(fail);
+    }
     return () => { alive = false; };
-  }, [widgetKey, rm]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [widgetKey, rm, isCustom, JSON.stringify(config)]);
 
-  const title = titleOverride || meta?.title || widgetKey;
+  const title = titleOverride || config?.title || meta?.title || widgetKey;
 
   return (
     <div className="h-full flex flex-col group/widget">
@@ -87,7 +100,7 @@ export function WidgetView({ widgetKey, rm, titleOverride }: { widgetKey: string
         ) : state.error || !state.view ? (
           <div className="h-full grid place-items-center text-xs text-rose-600"><span className="inline-flex items-center gap-1"><AlertCircle className="size-3.5" /> {state.error ?? "No data"}</span></div>
         ) : (
-          <Body view={state.view} rows={state.rows ?? []} chart={meta?.chart} />
+          <Body view={state.view} rows={state.rows ?? []} chart={state.chart ?? meta?.chart} />
         )}
       </div>
     </div>

@@ -149,7 +149,13 @@ export function TaskDetailDrawer({ task, onClose, onUpdate }: TaskDetailDrawerPr
     setSlaDate(task.slaDueAt ? new Date(task.slaDueAt).toISOString().split("T")[0] : "");
     setRemarksHistory(task.remarks ?? "");
     setChecklist(taskChecklist(task.meta));
-  }, [task]);
+    // Re-initialise ONLY when switching to a different task — keyed on task.id,
+    // not the whole object. A checklist add saves then triggers router.refresh,
+    // which hands us a new (same-id) task object; depending on [task] here would
+    // re-run this effect and overwrite the just-added point with the parent's
+    // stale copy (the "action point disappears" bug). Same for in-progress edits.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [task.id]);
 
   async function handleSave() {
     setLoading(true);

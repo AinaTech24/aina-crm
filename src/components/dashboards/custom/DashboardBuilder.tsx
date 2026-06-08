@@ -13,9 +13,10 @@ import {
   DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, useSensors, type DragEndEvent,
 } from "@dnd-kit/core";
 import { SortableContext, rectSortingStrategy, useSortable, arrayMove, sortableKeyboardCoordinates } from "@dnd-kit/sortable";
-import { GripVertical, X, Plus, Save, Loader2, Check, Maximize2, ChevronDown } from "lucide-react";
+import { GripVertical, X, Plus, Save, Loader2, Check, Maximize2, ChevronDown, BarChart3 } from "lucide-react";
 import { WIDGET_META, WIDGET_CATEGORIES, type PlacedWidget } from "@/lib/dashboards/widgets";
 import { WidgetView } from "./WidgetView";
+import { CustomChartBuilder } from "./CustomChartBuilder";
 
 type Member = { id: string; name: string };
 
@@ -37,6 +38,15 @@ export function DashboardBuilder({ boardId, initialName, initialLayout, initialR
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(true);
+  const [chartBuilder, setChartBuilder] = useState(false);
+
+  function addCustomChart(config: any) {
+    setLayout((l) => [
+      ...l,
+      { id: uid(), widgetKey: "custom_chart", colSpan: 2, rowSpan: 2, title: config.title, config },
+    ]);
+    setChartBuilder(false);
+  }
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -104,6 +114,9 @@ export function DashboardBuilder({ boardId, initialName, initialLayout, initialR
             {members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
           </select>
         )}
+        <button onClick={() => setChartBuilder(true)} className="btn-secondary text-xs inline-flex items-center gap-1">
+          <BarChart3 className="size-4" /> Add component
+        </button>
         <button onClick={() => setPaletteOpen((o) => !o)} className="btn-ghost text-xs inline-flex items-center gap-1">
           <Plus className="size-4" /> Widgets
         </button>
@@ -162,6 +175,8 @@ export function DashboardBuilder({ boardId, initialName, initialLayout, initialR
           )}
         </div>
       </div>
+
+      {chartBuilder && <CustomChartBuilder onClose={() => setChartBuilder(false)} onAdd={addCustomChart} />}
     </div>
   );
 }
@@ -213,7 +228,7 @@ function BuilderCard({ w, rm, members, onRemove, onSize, onRm }: { w: PlacedWidg
         </div>
       </div>
       <div className="flex-1 min-h-0 pointer-events-none">
-        <WidgetView widgetKey={w.widgetKey} rm={(w.config?.rm as string) || rm || undefined} titleOverride={w.title} />
+        <WidgetView widgetKey={w.widgetKey} config={w.config} rm={(w.config?.rm as string) || rm || undefined} titleOverride={w.title} />
       </div>
     </div>
   );

@@ -204,7 +204,9 @@ function renderBlock(block: EmailBlock, tokens: Record<string, string>, primary:
 
 /** The non-removable footer with mandatory disclaimers. */
 function ComplianceFooter({ tokens }: { tokens: Record<string, string> }) {
-  const arn = tokens.arn_no ?? tokens.tenant_arn ?? "";
+  // The ARN may be stored with or without the "ARN-" prefix — strip it so the
+  // footer never reads "ARN-ARN-249212".
+  const arn = (tokens.arn_no ?? tokens.tenant_arn ?? "").replace(/^[Aa][Rr][Nn][\s-]*/, "");
   const legalName = tokens.arn_name ?? tokens.tenant_name ?? "";
   const euin = tokens.euin ?? "";
   const phone = tokens.firm_phone ?? "";

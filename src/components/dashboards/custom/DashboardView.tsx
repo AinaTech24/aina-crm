@@ -42,7 +42,7 @@ export function DashboardView({
         >
           <div className="flex-1 min-h-0">
             {/* per-widget RM override beats the board-level filter */}
-            <WidgetView widgetKey={w.widgetKey} rm={(w.config?.rm as string) || rm || undefined} titleOverride={w.title} />
+            <WidgetView widgetKey={w.widgetKey} config={w.config} rm={(w.config?.rm as string) || rm || undefined} titleOverride={w.title} />
           </div>
         </div>
       ))}

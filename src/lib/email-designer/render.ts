@@ -101,6 +101,12 @@ export function renderEmailText(body: EmailDesignerBody, ctx: RenderContext): st
     const txt = blockToText(b);
     if (txt) parts.push(substituteVariables(txt, ctx));
   }
+  // Append the footer text (ARN + disclaimer + firm) so the plain-text body —
+  // and therefore the compliance gate that reads it — carries the mandatory
+  // ARN/disclaimer the HTML footer adds. Without this, every templated email
+  // fails the SEBI ARN check (the ARN lives only in the HTML footer).
+  const footerTxt = footerToText(body.footer, ctx);
+  if (footerTxt) parts.push(footerTxt);
   return parts.join("\n\n");
 }
 
@@ -245,12 +251,39 @@ function renderSocial(b: any, theme: EmailTheme, ctx: RenderContext): string {
 // Footer
 // ---------------------------------------------------------------------------
 
+/** "ARN-249212" from a value stored either with or without the prefix. */
+function arnDisplay(arn?: string | null): string {
+  if (!arn) return "";
+  return `ARN-${String(arn).replace(/^arn[\s-]*/i, "")}`;
+}
+
+/**
+ * Plain-text version of the footer (firm · ARN · EUIN + the mandatory MF risk
+ * line). Mirrors renderFooter so the TEXT body carries the same ARN/disclaimer
+ * the HTML does — critical because the compliance gate reads the text, and the
+ * SEBI ARN + AMFI disclaimer requirements are satisfied by THIS footer.
+ */
+export function footerToText(footer: EmailFooter | undefined, ctx: RenderContext): string {
+  if (!footer) return "";
+  const t = ctx.tenant ?? {};
+  const lines: string[] = [];
+  if (footer.customText) lines.push(substituteVariables(footer.customText, ctx));
+  if (footer.includeArn && (t.arn || t.principalEuin)) {
+    const arn = arnDisplay(t.arn);
+    const euin = t.principalEuin ? ` · EUIN ${t.principalEuin}` : "";
+    lines.push(`${t.displayName ?? t.legalName ?? ""}${arn ? ` · ${arn}` : ""}${euin}`.trim());
+  }
+  if (footer.includeAddress && t.address) lines.push(String(t.address));
+  lines.push("Mutual fund investments are subject to market risks. Please read the scheme information document carefully before investing.");
+  return lines.filter(Boolean).join("\n");
+}
+
 function renderFooter(footer: EmailFooter, theme: EmailTheme, ctx: RenderContext): string {
   const lines: string[] = [];
   const t = ctx.tenant ?? {};
   if (footer.customText) lines.push(escape(substituteVariables(footer.customText, ctx)));
   if (footer.includeArn && (t.arn || t.principalEuin)) {
-    const arn = t.arn ? `ARN-${t.arn}` : "";
+    const arn = arnDisplay(t.arn);
     const euin = t.principalEuin ? ` · EUIN ${t.principalEuin}` : "";
     lines.push(`${escape(t.displayName ?? t.legalName ?? "")} · ${arn}${euin}`);
   }

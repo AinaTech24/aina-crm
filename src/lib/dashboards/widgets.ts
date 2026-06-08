@@ -80,11 +80,44 @@ const clamp = (n: any, lo: number, hi: number, dflt: number) => {
 
 /** Validate + normalize a layout from the client: drop unknown widgets, clamp
  *  spans, cap count. Used by the save API and the builder. */
+/** Whitelist + clamp a custom-chart component's declarative config. The actual
+ *  SQL safety is enforced server-side (buildCustomChart only references catalog
+ *  field `.sql` fragments), so here we just bound the shape + lengths. */
+function sanitizeChartConfig(c: any): Record<string, unknown> {
+  const aggs = ["count", "count_unique", "sum", "avg", "min", "max"];
+  const grains = ["day", "week", "month", "quarter", "year"];
+  return {
+    subject: String(c.subject).slice(0, 40),
+    chartType: String(c.chartType).slice(0, 20),
+    agg: aggs.includes(c.agg) ? c.agg : "count",
+    field: typeof c.field === "string" ? c.field.slice(0, 80) : undefined,
+    groupBy: typeof c.groupBy === "string" ? c.groupBy.slice(0, 80) : undefined,
+    dateGrain: grains.includes(c.dateGrain) ? c.dateGrain : undefined,
+    limit: Number.isFinite(Number(c.limit)) ? Math.min(50, Math.max(1, Math.round(Number(c.limit)))) : undefined,
+    title: typeof c.title === "string" ? c.title.slice(0, 120) : undefined,
+    ast: c.ast && typeof c.ast === "object" ? c.ast : undefined,
+  };
+}
+
 export function sanitizeLayout(input: unknown): PlacedWidget[] {
   if (!Array.isArray(input)) return [];
   const out: PlacedWidget[] = [];
   for (const raw of input.slice(0, 60)) {
     const r = raw as any;
+    // Custom analytics component — no static meta; keep its declarative config.
+    if (r?.widgetKey === "custom_chart") {
+      const c = r.config && typeof r.config === "object" ? r.config : null;
+      if (!c || typeof c.subject !== "string" || typeof c.chartType !== "string") continue;
+      out.push({
+        id: typeof r.id === "string" && r.id ? r.id : `custom-${out.length}`,
+        widgetKey: "custom_chart",
+        colSpan: clamp(r.colSpan, 1, 4, 2),
+        rowSpan: clamp(r.rowSpan, 1, 3, 2),
+        title: typeof r.title === "string" ? r.title.slice(0, 80) : undefined,
+        config: sanitizeChartConfig(c),
+      });
+      continue;
+    }
     const meta = WIDGET_META_BY_KEY[r?.widgetKey];
     if (!meta) continue;
     out.push({

@@ -153,13 +153,24 @@ function ruleAmfiDisclaimer(ctx: ComplianceContext): ComplianceFinding[] {
 function ruleArnDisclosure(ctx: ComplianceContext): ComplianceFinding[] {
   if (ctx.category === "authentication") return [];
   const findings: ComplianceFinding[] = [];
-  if (ctx.tenant.arn && !ctx.text.includes(`ARN-${ctx.tenant.arn}`) && !ctx.text.includes(`ARN ${ctx.tenant.arn}`)) {
-    findings.push({
-      rule: "sebi.arn_disclosure",
-      severity: ctx.category === "marketing" ? "block" : "warn",
-      message: `ARN-${ctx.tenant.arn} must appear on all communications (SEBI May 2026 directive).`,
-      remediation: `Append "ARN-${ctx.tenant.arn}" to the message footer.`,
-    });
+  if (ctx.tenant.arn) {
+    // The ARN may be stored WITH or WITHOUT the "ARN-" prefix (e.g. "ARN-249212"
+    // or "249212"). Normalise to the bare number, then accept any reasonable
+    // form in the text. The previous check blindly prepended "ARN-", so a
+    // stored "ARN-249212" demanded "ARN-ARN-249212" — which the footer never
+    // contains, blocking EVERY communication.
+    const raw = String(ctx.tenant.arn).trim();
+    const bare = raw.replace(/^arn[\s-]*/i, "");
+    const forms = [`ARN-${bare}`, `ARN ${bare}`, raw];
+    const present = forms.some((f) => f && ctx.text.includes(f));
+    if (!present) {
+      findings.push({
+        rule: "sebi.arn_disclosure",
+        severity: ctx.category === "marketing" ? "block" : "warn",
+        message: `ARN-${bare} must appear on all communications (SEBI May 2026 directive).`,
+        remediation: `Append "ARN-${bare}" to the message footer.`,
+      });
+    }
   }
   if (ctx.tenant.legalName && ctx.category === "marketing" && !ctx.text.toLowerCase().includes(ctx.tenant.legalName.toLowerCase())) {
     findings.push({
