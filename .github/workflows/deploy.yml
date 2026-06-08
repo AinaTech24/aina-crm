@@ -50,4 +50,13 @@ jobs:
           script: |
             set -e
             cd "${{ secrets.DEPLOY_APP_DIR || '/home/ubuntu/MYCRM' }}"
-            bash scripts/redeploy.sh
+            # Pull inline first so the box always has the latest scripts/compose
+            # (self-bootstrapping on the very first run, before redeploy.sh exists).
+            git fetch origin deploy/aws
+            git checkout -f deploy/aws
+            git pull --ff-only origin deploy/aws
+            if [ -f scripts/redeploy.sh ]; then
+              bash scripts/redeploy.sh
+            else
+              docker compose -f docker-compose.prod.yml up -d --build
+            fi
