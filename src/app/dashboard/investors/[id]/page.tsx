@@ -24,6 +24,7 @@ import { formatINR, formatDate, formatRelative } from "@/lib/utils";
 import { InvestorEditPanel } from "@/components/investors/InvestorEditPanel";
 import { CheckInButton, LogActivityButton } from "@/components/activities/ActivityLogger";
 import { ChangeLogButton } from "@/components/common/ChangeLog";
+import { RowActions } from "@/components/common/RowActions";
 import { VerifyContact } from "@/components/investors/VerifyContact";
 import { RecommendedActions } from "@/components/investors/RecommendedActions";
 import { AiClientBrief } from "@/components/investors/AiClientBrief";
@@ -405,6 +406,13 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
               <CheckInButton subject={{ type: "investor", id: inv.id, name: inv.name, phone: inv.phone }} />
               <LogActivityButton subject={{ type: "investor", id: inv.id, name: inv.name, phone: inv.phone }} label="Log call / visit" variant="secondary" />
               <ChangeLogButton entityType="investor" entityId={inv.id} />
+              <RowActions
+                deleteUrl={`/api/investors/${inv.id}`}
+                itemLabel="client"
+                itemName={inv.name}
+                verb="Delete"
+                redirectTo="/dashboard/investors"
+              />
               <VerifyContact
                 investorId={inv.id}
                 hasEmail={!!inv.email}

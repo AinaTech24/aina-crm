@@ -34,6 +34,7 @@ export function RowActions({
   verb = "Delete",
   permanent = false,
   onDeleted,
+  redirectTo,
 }: {
   editHref?: string;
   deleteUrl?: string;
@@ -42,6 +43,9 @@ export function RowActions({
   verb?: string;
   permanent?: boolean;
   onDeleted?: () => void;
+  /** When set, navigate here after a successful delete (e.g. back to the list
+   *  from a detail page) instead of refreshing the current — now gone — record. */
+  redirectTo?: string;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -67,9 +71,10 @@ export function RowActions({
       }
       toast.success(`${past} ${subject}`);
       onDeleted?.();
-      router.refresh();
       setConfirmOpen(false);
       setOpen(false);
+      if (redirectTo) router.push(redirectTo);
+      else router.refresh();
     } catch (e: any) {
       toast.error(e?.message ?? "Network error", `${verb} failed`);
     } finally {

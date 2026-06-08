@@ -22,6 +22,7 @@ import { WhatsAppRelatedList } from "@/components/comms/WhatsAppRelatedList";
 import { SectionNav } from "@/components/common/SectionNav";
 import { CheckInButton, LogActivityButton } from "@/components/activities/ActivityLogger";
 import { ChangeLogButton } from "@/components/common/ChangeLog";
+import { RowActions } from "@/components/common/RowActions";
 import { RecordAutomations } from "@/components/sales-ops/RecordAutomations";
 import { SignalScoreCard } from "@/components/leads/SignalScoreCard";
 import { LeadEditPanel } from "@/components/leads/LeadEditPanel";
@@ -167,10 +168,18 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
               <RecordAutomations subject={{ type: "lead", id: l.id }} />
             </div>
           </div>
-          <div className="text-right text-xs text-muted-foreground">
-            Created {formatRelative(l.createdAt)}
-            <br />
-            Last contact {l.lastContactAt ? formatRelative(l.lastContactAt) : "—"}
+          <div className="flex flex-col items-end gap-2">
+            <RowActions
+              deleteUrl={`/api/leads/${l.id}`}
+              itemLabel="lead"
+              itemName={l.name}
+              redirectTo="/dashboard/leads"
+            />
+            <div className="text-right text-xs text-muted-foreground">
+              Created {formatRelative(l.createdAt)}
+              <br />
+              Last contact {l.lastContactAt ? formatRelative(l.lastContactAt) : "—"}
+            </div>
           </div>
         </div>
 

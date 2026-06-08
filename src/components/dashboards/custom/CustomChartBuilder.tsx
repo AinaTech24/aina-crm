@@ -11,11 +11,14 @@
  * field added to the catalog shows up here automatically.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { X, BarChart3, LineChart, AreaChart, PieChart, Circle, Filter as FunnelIcon, Hash, Table2, Plus } from "lucide-react";
 import { CATALOGS } from "@/lib/filter/catalog";
+import { FilterBuilder } from "@/components/filter/FilterBuilder";
 import { WidgetView } from "./WidgetView";
+
+const EMPTY_AST = { type: "group", op: "AND", children: [] } as any;
 
 const SUBJECTS = [
   { subject: "lead", label: "Leads" },
@@ -83,6 +86,7 @@ export function CustomChartBuilder({
   const [groupBy, setGroupBy] = useState<string>(initial?.groupBy ?? "");
   const [dateGrain, setDateGrain] = useState<string>(initial?.dateGrain ?? "month");
   const [title, setTitle] = useState<string>(initial?.title ?? "");
+  const [ast, setAst] = useState<any>(initial?.ast ?? EMPTY_AST);
 
   const cat = fieldsFor(subject);
   const aggDef = AGGS.find((a) => a.key === agg)!;
@@ -93,15 +97,20 @@ export function CustomChartBuilder({
   const groupField = cat.dims.find((d: any) => d.key === groupBy);
   const isDateGroup = !!groupField && DATE.has(groupField.type);
 
-  // When the module changes, reset field + group-by to that module's defaults.
+  // When the module changes, reset field + group-by to that module's defaults,
+  // and clear the criteria (its fields belong to the previous module).
+  const firstRun = useRef(true);
   useEffect(() => {
     const f = fieldsFor(subject);
     setGroupBy((g) => (f.dims.some((d: any) => d.key === g) ? g : f.dims[0]?.key ?? ""));
     setField((x) => (f.all.some((d: any) => d.key === x) ? x : (f.measures[0]?.key ?? f.all[0]?.key ?? "")));
+    if (firstRun.current) firstRun.current = false;
+    else setAst(EMPTY_AST);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [subject]);
 
   const valid = (!needsField || !!field) && (!needsGroup || !!groupBy);
+  const hasCriteria = !!ast && Array.isArray(ast.children) && ast.children.length > 0;
 
   const config = useMemo(
     () => ({
@@ -111,9 +120,10 @@ export function CustomChartBuilder({
       field: needsField ? field : undefined,
       groupBy: needsGroup ? groupBy : undefined,
       dateGrain: needsGroup && isDateGroup ? dateGrain : undefined,
+      ast: hasCriteria ? ast : undefined,
       title: title || undefined,
     }),
-    [subject, chartType, agg, field, groupBy, dateGrain, title, needsField, needsGroup, isDateGroup]
+    [subject, chartType, agg, field, groupBy, dateGrain, title, needsField, needsGroup, isDateGroup, ast, hasCriteria]
   );
 
   const body = (
@@ -184,6 +194,29 @@ export function CustomChartBuilder({
             <Row label="Title">
               <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Leads by stage" className="input-base" />
             </Row>
+
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <div className="text-xs font-semibold text-muted-foreground">
+                  Criteria <span className="font-normal">(optional)</span>
+                </div>
+                {hasCriteria && (
+                  <button
+                    type="button"
+                    onClick={() => setAst(EMPTY_AST)}
+                    className="text-[11px] text-muted-foreground hover:text-foreground underline"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+              <div className="rounded-lg border border-border bg-secondary/20 p-2">
+                <FilterBuilder subject={subject} value={ast} onChange={setAst} />
+              </div>
+              <p className="text-[11px] text-muted-foreground mt-1">
+                Limit this component to records that match — e.g. only “Status is Won”, or “AUM ≥ 10,00,000”.
+              </p>
+            </div>
           </div>
 
           {/* ── Live preview ── */}
