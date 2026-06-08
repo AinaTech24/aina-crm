@@ -242,6 +242,39 @@ export function LeadsKanban({
     });
   }
 
+  async function handleConfirmConvert(pan: string, segmentTag: string) {
+    if (!pendingTransition) return;
+    const { leadId, currentStage } = pendingTransition;
+    setPendingTransition(null);
+    setSavingIds((s) => new Set(s).add(leadId));
+    try {
+      const res = await fetch(`/api/leads/${leadId}/convert`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ pan, segmentTag }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        // Revert the optimistic move — conversion didn't happen.
+        setRows((prev) => prev.map((r) => (r.lead.id === leadId ? { ...r, lead: { ...r.lead, stage: currentStage } } : r)));
+        setError(j.error ?? "Couldn't convert this lead to a client.");
+        return;
+      }
+      // Converted → it's now a client (stage 'converted', off the pipeline) and
+      // appears in the Clients table. Refresh to reflect it.
+      router.refresh();
+    } catch (e: any) {
+      setRows((prev) => prev.map((r) => (r.lead.id === leadId ? { ...r, lead: { ...r.lead, stage: currentStage } } : r)));
+      setError(e?.message ?? "Network error");
+    } finally {
+      setSavingIds((s) => {
+        const n = new Set(s);
+        n.delete(leadId);
+        return n;
+      });
+    }
+  }
+
   function onDragStart(e: DragStartEvent) {
     setActiveId(String(e.active.id));
     setError(null);
@@ -294,6 +327,22 @@ export function LeadsKanban({
       return;
     }
 
+    // Winning a lead converts it to a client — collect the (mandatory) PAN first.
+    if (dest === "won_lead") {
+      setPendingTransition({
+        leadId,
+        leadName: current.lead.name,
+        dest,
+        currentStage,
+      });
+      setRows((prev) =>
+        prev.map((r) =>
+          r.lead.id === leadId ? { ...r, lead: { ...r.lead, stage: dest } } : r
+        )
+      );
+      return;
+    }
+
     // Optimistic update
     setRows((prev) =>
       prev.map((r) =>
@@ -310,7 +359,15 @@ export function LeadsKanban({
           {error}
         </div>
       )}
-      <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
+      <DndContext
+        sensors={sensors}
+        onDragStart={onDragStart}
+        onDragEnd={onDragEnd}
+        // Gentle edge auto-scroll: a narrow edge zone + low acceleration so the
+        // board doesn't whizz past the middle columns — you can hover and drop on
+        // any stage, not just the first/last few.
+        autoScroll={{ enabled: true, threshold: { x: 0.1, y: 0.1 }, acceleration: 5, interval: 10 }}
+      >
         {/* Trello-style horizontal scroller — each column is a fixed-width
            card. The page scrolls horizontally to reach the right-hand stages
            rather than squeezing 8 columns into the viewport. */}
@@ -386,6 +443,15 @@ export function LeadsKanban({
             setPendingTransition(null);
             router.refresh();
           }}
+        />
+      )}
+
+      {/* Winning a lead → convert to client (PAN required) */}
+      {pendingTransition?.dest === "won_lead" && (
+        <ConvertDialog
+          leadName={pendingTransition.leadName}
+          onClose={handleCancelTransition}
+          onConfirm={handleConfirmConvert}
         />
       )}
     </>
@@ -740,6 +806,67 @@ function LostReasonDialog({
             className="rounded-md bg-rose-600 text-white px-4 py-2 text-sm font-medium hover:bg-rose-700 disabled:opacity-50"
           >
             Mark Lost
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const PAN_RE = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
+const SEGMENTS = ["Retail", "Affluent", "HNI", "NRI", "Corporate"] as const;
+
+function ConvertDialog({
+  leadName,
+  onClose,
+  onConfirm,
+}: {
+  leadName: string;
+  onClose: () => void;
+  onConfirm: (pan: string, segmentTag: string) => void;
+}) {
+  const [pan, setPan] = useState("");
+  const [segment, setSegment] = useState<string>("Retail");
+  const valid = PAN_RE.test(pan);
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 grid place-items-center p-4" onClick={onClose}>
+      <div className="bg-card rounded-lg shadow-lg max-w-md w-full flex flex-col p-5 space-y-4" onClick={(e) => e.stopPropagation()}>
+        <div>
+          <h3 className="text-base font-semibold text-foreground">Convert to client · {leadName}</h3>
+          <p className="text-xs text-muted-foreground mt-1">
+            Winning a lead onboards it as a client. PAN is mandatory (KYC). All the
+            lead&apos;s data — risk profile, proposals, documents, messages — carries over.
+          </p>
+        </div>
+
+        <label className="block">
+          <div className="text-xs font-medium mb-1">PAN <span className="text-rose-600">*</span></div>
+          <input
+            value={pan}
+            onChange={(e) => setPan(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 10))}
+            placeholder="ABCDE1234F"
+            className="w-full border rounded-md px-3 py-2 text-sm bg-background font-mono tracking-wider"
+            autoFocus
+          />
+          {pan.length > 0 && !valid && <p className="text-[11px] text-rose-600 mt-1">PAN must look like ABCDE1234F.</p>}
+        </label>
+
+        <label className="block">
+          <div className="text-xs font-medium mb-1">Segment</div>
+          <select value={segment} onChange={(e) => setSegment(e.target.value)} className="w-full border rounded-md px-3 py-2 text-sm bg-background">
+            {SEGMENTS.map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </label>
+
+        <div className="flex justify-end gap-2 pt-2 border-t">
+          <button onClick={onClose} className="rounded-md border px-4 py-2 text-sm hover:bg-accent">Cancel</button>
+          <button
+            onClick={() => onConfirm(pan, segment)}
+            disabled={!valid}
+            className="rounded-md bg-emerald-600 text-white px-4 py-2 text-sm font-medium hover:bg-emerald-700 disabled:opacity-50"
+          >
+            Convert to client
           </button>
         </div>
       </div>

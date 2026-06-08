@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
   CheckCircle2,
@@ -882,8 +883,18 @@ function Modal({
   onClose: () => void;
   children: React.ReactNode;
 }) {
-  return (
-    <div className="fixed inset-0 z-50 bg-black/40 grid place-items-center p-4" onClick={onClose}>
+  // Portal to <body> so the overlay escapes any sticky/blurred ancestor
+  // stacking context (e.g. the SectionNav's `backdrop-blur` bar at the top of
+  // the page). Rendered inline, a `fixed` overlay can get trapped beneath that
+  // bar — leaving an un-dimmed white strip across the top of the modal. The
+  // portal + z-[120] guarantees the backdrop covers the whole viewport.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const overlay = (
+    <div className="fixed inset-0 z-[120] bg-black/40 grid place-items-center p-4" onClick={onClose}>
       <div
         className="bg-card rounded-lg shadow-lg max-w-lg w-full max-h-[85vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
@@ -898,6 +909,9 @@ function Modal({
       </div>
     </div>
   );
+
+  if (!mounted) return null;
+  return createPortal(overlay, document.body);
 }
 
 function ModalFooter({ onClose, submit }: { onClose: () => void; submit: React.ReactNode }) {

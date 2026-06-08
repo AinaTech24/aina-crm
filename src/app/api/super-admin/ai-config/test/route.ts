@@ -14,7 +14,7 @@ import { testAiConnection } from "@/lib/ai/provider";
 export const dynamic = "force-dynamic";
 
 const Body = z.object({
-  provider: z.enum(["anthropic", "google"]),
+  provider: z.enum(["anthropic", "google", "openai"]),
   apiKey: z.string().max(400).optional(),
   model: z.string().trim().max(120).optional(),
 });

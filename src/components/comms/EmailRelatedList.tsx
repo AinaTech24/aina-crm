@@ -35,6 +35,21 @@ type EmailRow = {
 type TemplateVar = { key: string; type?: string; required?: boolean };
 type TemplateInfo = { key: string; name: string; description: string | null; category: string; variables: TemplateVar[] | null };
 
+// Any NAMESPACED merge field (investor.* / tenant.* / transaction.* / folio.* /
+// system.* …) is resolved automatically at send time — investor & firm fields
+// from the client record, and transaction.* auto-fetched from the client's
+// latest SIP-rejection / transaction / SIP by the comms pipeline. So we never
+// ask the RM for those. Only a bare custom var (no namespace, e.g. {{promo_code}})
+// has no data source — that's the only thing worth prompting for.
+function needsInput(v: TemplateVar): boolean {
+  return !v.key.includes(".");
+}
+/** "promo_code" → "promo code". */
+function prettyVarLabel(key: string): string {
+  const tail = key.includes(".") ? key.split(".").slice(1).join(" ") : key;
+  return tail.replace(/_/g, " ");
+}
+
 /** A reply seed carries the parent thread + message so the send threads correctly. */
 type ReplySeed = { subject: string; threadId: string | null; inReplyTo: string | null };
 
@@ -351,10 +366,12 @@ function ComposeModal({
 
   useEffect(() => {
     if (!selected) { setVars({}); return; }
-    // Namespaced fields (investor.*, tenant.*, transaction.*, system.*) auto-resolve
-    // from the client record + firm at send time — only ask for truly custom vars.
+    // investor.* / tenant.* / lead.* / system.* auto-resolve from the client
+    // record + firm at send time. transaction.* / folio.* / goal.* / custom vars
+    // are template-specific — prompt the RM for them (each template has its own
+    // set). Blanks are auto-filled from the client's latest transaction/SIP.
     const init: Record<string, string> = {};
-    (selected.variables ?? []).filter((v) => !v.key.includes(".")).forEach((v) => { init[v.key] = ""; });
+    (selected.variables ?? []).filter(needsInput).forEach((v) => { init[v.key] = ""; });
     setVars(init);
     setErr(null);
   }, [selected]);
@@ -364,10 +381,17 @@ function ComposeModal({
     setBusy(true);
     setErr(null);
     try {
+      // Only send fields the RM actually filled. An empty override would WIN over
+      // the resolver + the pipeline's transaction auto-fill (override always wins)
+      // and blank out a field that would otherwise resolve — so drop blanks and
+      // let the resolver / auto-fill populate what the RM left empty.
+      const filledVars = Object.fromEntries(
+        Object.entries(vars).filter(([, val]) => String(val ?? "").trim() !== "")
+      );
       const res = await fetch("/api/comms/email-thread", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ mode: "template", type: entityType, id: entityId, templateKey: selectedKey, variables: vars }),
+        body: JSON.stringify({ mode: "template", type: entityType, id: entityId, templateKey: selectedKey, variables: filledVars }),
       });
       const j = await res.json();
       if (!res.ok) { setErr(j.error ?? "Failed to send"); return; }
@@ -400,12 +424,21 @@ function ComposeModal({
             )}
             {selected?.description && <p className="text-[11px] text-muted-foreground mt-1.5">{selected.description}</p>}
           </div>
-          {selected && (selected.variables ?? []).filter((v) => !v.key.includes(".")).length > 0 && (
+          {selected && (selected.variables ?? []).filter(needsInput).length > 0 && (
             <div className="space-y-2">
-              <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Fill in</div>
-              {(selected.variables ?? []).filter((v) => !v.key.includes(".")).map((v) => (
+              <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Custom fields</div>
+              <p className="text-[11px] text-muted-foreground -mt-1">
+                Client, firm and transaction details fill in automatically from the record.
+                Only these custom fields need a value.
+              </p>
+              {(selected.variables ?? []).filter(needsInput).map((v) => (
                 <label key={v.key} className="block">
-                  <div className="text-xs font-medium mb-1">{v.key.replace(/_/g, " ")}{v.required && <span className="text-rose-600"> *</span>}</div>
+                  <div className="text-xs font-medium mb-1 capitalize">
+                    {prettyVarLabel(v.key)}{v.required && <span className="text-rose-600"> *</span>}
+                    {v.key.includes(".") && (
+                      <span className="ml-1.5 text-[10px] font-normal text-muted-foreground lowercase">· {v.key.split(".")[0]}</span>
+                    )}
+                  </div>
                   <input value={vars[v.key] ?? ""} onChange={(e) => setVars((s) => ({ ...s, [v.key]: e.target.value }))} placeholder={v.type ? `(${v.type})` : ""} className="input-base" />
                 </label>
               ))}

@@ -19,6 +19,7 @@ import { formatDate, formatRelative } from "@/lib/utils";
 import { LeadActions } from "@/components/leads/LeadActions";
 import { EmailRelatedList } from "@/components/comms/EmailRelatedList";
 import { WhatsAppRelatedList } from "@/components/comms/WhatsAppRelatedList";
+import { SectionNav } from "@/components/common/SectionNav";
 import { CheckInButton, LogActivityButton } from "@/components/activities/ActivityLogger";
 import { ChangeLogButton } from "@/components/common/ChangeLog";
 import { RecordAutomations } from "@/components/sales-ops/RecordAutomations";
@@ -115,6 +116,8 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
         </Link>
         <RelatedListsManager moduleKey="leads-detail" sections={LEAD_DETAIL_SECTIONS} />
       </div>
+
+      <SectionNav moduleKey="leads-detail" sections={LEAD_DETAIL_SECTIONS} />
 
       <RelatedListsContainer>
       <RelatedListSection moduleKey="leads-detail" sectionKey="header">
@@ -304,7 +307,14 @@ function ActivityTimeline({
       kind: "comm",
       title: `${c.direction === "outbound" ? "Sent" : "Received"} ${c.channel}`,
       meta: c.templateKey ?? c.status,
-      sub: ((c.payload as any)?.rendered ?? (c.inboundContent as any)?.text ?? "").slice(0, 120),
+      sub: String(
+        (() => {
+          const r = (c.payload as any)?.rendered;
+          // `rendered` is now an object { subject, text, tokens } (older rows may
+          // have stored a plain string) — extract the text either way.
+          return (typeof r === "string" ? r : r?.text) ?? (c.inboundContent as any)?.text ?? "";
+        })()
+      ).slice(0, 120),
     });
   }
   // Notes are a single text blob with [timestamp · type · author] headers — split it

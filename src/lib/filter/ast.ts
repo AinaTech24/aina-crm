@@ -122,8 +122,15 @@ export type Group = {
   children: FilterAST[];
 };
 
+// NOTE: must be z.union, NOT z.discriminatedUnion. The two members are z.lazy()
+// wrappers (required for the recursive forward-reference — Group.children and a
+// rel-predicate's field both contain FilterASTs). z.discriminatedUnion reads the
+// discriminator literal off each option's ZodObject shape, which a ZodLazy does
+// not expose — so it throws "Cannot read properties of undefined (reading 'type')"
+// at parse time (this broke the AI smart-search for every provider). z.union
+// tries each member in order and handles lazy schemas correctly.
 export const FilterASTSchema: z.ZodType<FilterAST> = z.lazy(() =>
-  z.discriminatedUnion("type", [GroupSchema as any, PredicateSchema as any])
+  z.union([GroupSchema, PredicateSchema])
 );
 
 export type FilterAST = Group | Predicate;

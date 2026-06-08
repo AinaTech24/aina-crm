@@ -28,7 +28,7 @@ export async function GET() {
 }
 
 const Body = z.object({
-  provider: z.enum(["anthropic", "google"]),
+  provider: z.enum(["anthropic", "google", "openai"]),
   apiKey: z.string().max(400).optional(), // blank → keep existing
   fastModel: z.string().trim().max(120).optional(),
   reasoningModel: z.string().trim().max(120).optional(),

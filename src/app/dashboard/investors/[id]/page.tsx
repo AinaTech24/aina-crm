@@ -49,6 +49,7 @@ import { RelatedModulesRail } from "@/components/investors/RelatedModulesRail";
 import { InvestorDocumentsSection } from "@/components/investors/InvestorDocumentsSection";
 import { EmailRelatedList } from "@/components/comms/EmailRelatedList";
 import { WhatsAppRelatedList } from "@/components/comms/WhatsAppRelatedList";
+import { SectionNav } from "@/components/common/SectionNav";
 import { MasterRecordEditor } from "@/components/investors/MasterRecordEditor";
 import { crossSellOpportunities } from "@/lib/investors/cross-sell";
 import {
@@ -324,6 +325,8 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
           </Link>
         </div>
       )}
+
+      <SectionNav moduleKey="investors-detail" sections={INVESTOR_DETAIL_SECTIONS} />
 
       <RelatedListsContainer>
       {/* Header */}

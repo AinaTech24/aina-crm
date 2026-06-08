@@ -16,18 +16,23 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Star, X, Plus, Pencil, ClipboardList, Save } from "lucide-react";
+import { Select } from "@/components/ui/Select";
 
 const COARSE = [
   ["equity", "Equity"], ["hybrid", "Hybrid"], ["debt", "Debt"], ["liquid", "Liquid"],
   ["commodity", "Commodity"], ["international", "International"], ["other", "Other"],
 ] as const;
+const cap = (v: string) => v.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+// Option lists for the custom dropdowns (value + themed label).
+const PLAN_OPTS = [{ value: "", label: "—" }, ...["regular", "direct"].map((v) => ({ value: v, label: cap(v) }))];
+const OPTION_OPTS = [{ value: "", label: "—" }, ...["growth", "idcw_payout", "idcw_reinvest"].map((v) => ({ value: v, label: cap(v) }))];
+const RISK_OPTS = [{ value: "", label: "—" }, ...["very_low", "low", "moderate", "high", "very_high"].map((v) => ({ value: v, label: cap(v) }))];
+const SCHEME_RISK_OPTS = [{ value: "", label: "—" }, ...["low", "moderate", "high", "very_high"].map((v) => ({ value: v, label: cap(v) }))];
+const COARSE_OPTS = [{ value: "", label: "—" }, ...COARSE.map(([k, l]) => ({ value: k, label: l }))];
 const COARSE_TONE: Record<string, string> = {
   equity: "bg-emerald-50 text-emerald-700", hybrid: "bg-blue-50 text-blue-700", debt: "bg-amber-50 text-amber-700",
   liquid: "bg-cyan-50 text-cyan-700", commodity: "bg-orange-50 text-orange-700", international: "bg-violet-50 text-violet-700", other: "bg-slate-50 text-slate-600",
 };
-const PLANS = ["regular", "direct"];
-const OPTIONS = ["growth", "idcw_payout", "idcw_reinvest"];
-const RISKS = ["very_low", "low", "moderate", "high", "very_high"];
 const VERDICT_TONE: Record<string, string> = { pass: "bg-emerald-100 text-emerald-700", watch: "bg-amber-100 text-amber-700", reject: "bg-rose-100 text-rose-700" };
 
 type Scheme = Record<string, any>;
@@ -41,6 +46,7 @@ export function SchemesCatalog({ rows, amcs, canManage }: { rows: Scheme[]; amcs
   const [bulkBusy, setBulkBusy] = useState(false);
   const [edit, setEdit] = useState<{ mode: "new" | "edit"; scheme: Scheme | null } | null>(null);
   const [evalFor, setEvalFor] = useState<Scheme | null>(null);
+  const [detail, setDetail] = useState<Scheme | null>(null);
 
   const allSel = rows.length > 0 && selected.size === rows.length;
   function toggle(id: string) { setSelected((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; }); }
@@ -92,21 +98,18 @@ export function SchemesCatalog({ rows, amcs, canManage }: { rows: Scheme[]; amcs
       {bulkOpen && selected.size > 0 && (
         <div className="card-surface p-3 flex items-center gap-3 flex-wrap text-sm bg-secondary/30">
           <span className="text-xs font-semibold">Apply to {selected.size}:</span>
-          <select value={bulkCoarse} onChange={(e) => setBulkCoarse(e.target.value)} className="input-base text-xs w-44">
-            <option value="">— coarse category (optional) —</option>
-            {COARSE.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-          </select>
+          <Select size="sm" value={bulkCoarse} onChange={setBulkCoarse} options={COARSE_OPTS} placeholder="— coarse category (optional) —" ariaLabel="Coarse category" className="w-56" />
           <button onClick={() => runBulk(true)} disabled={bulkBusy} className="btn-primary text-xs inline-flex items-center gap-1">{bulkBusy && <Loader2 className="size-3 animate-spin" />} Shortlist</button>
           <button onClick={() => runBulk(false)} disabled={bulkBusy} className="btn-ghost text-xs text-rose-600">Remove from shortlist</button>
         </div>
       )}
 
-      <div className="card-surface overflow-x-auto">
+      <div className="card-surface overflow-x-auto overflow-y-auto max-h-[calc(100vh-22rem)] min-h-[16rem]">
         {rows.length === 0 ? (
           <div className="p-12 text-center text-sm text-muted-foreground">No schemes yet. {canManage && "Click “Sync from AMFI” (top-right) to pull the full AMFI scheme universe, or add one manually with “New scheme”."}</div>
         ) : (
           <table className="w-full text-sm">
-            <thead className="text-xs text-muted-foreground border-b">
+            <thead className="text-xs text-muted-foreground border-b sticky top-0 bg-card z-10">
               <tr>
                 {canManage && <th className="px-3 py-2 w-8"><input type="checkbox" checked={allSel} onChange={() => setSelected(allSel ? new Set() : new Set(rows.map((r) => r.id)))} className="size-3.5 rounded" /></th>}
                 <th className="px-2 py-2 w-8"></th>
@@ -131,17 +134,17 @@ export function SchemesCatalog({ rows, amcs, canManage }: { rows: Scheme[]; amcs
                       </button>
                     </td>
                     <td className="py-2.5">
-                      <div className="font-medium max-w-[280px] truncate">{s.scheme_name}</div>
+                      <button onClick={() => setDetail(s)} className="font-medium max-w-[280px] truncate text-left hover:text-brand-cyan hover:underline" title="View scheme details">{s.scheme_name}</button>
                       <div className="text-[11px] text-muted-foreground font-mono">{s.scheme_code}{s.is_closed ? " · closed" : !s.is_active ? " · inactive" : ""}</div>
                     </td>
                     <td className="py-2.5 text-xs whitespace-nowrap">{s.amc_name ?? s.amc_code}</td>
                     <td className="py-2.5 text-xs">
                       {s.coarse_category && <span className={`chip text-[10px] ${COARSE_TONE[s.coarse_category] ?? ""}`}>{s.coarse_category}</span>}
-                      <div className="text-[11px] text-muted-foreground max-w-[160px] truncate">{s.category ?? "—"}</div>
+                      <div className="text-[11px] text-muted-foreground max-w-[160px] truncate">{s.category ?? ""}</div>
                     </td>
-                    <td className="py-2.5 text-xs capitalize">{s.plan ?? "—"}</td>
-                    <td className="py-2.5 text-xs capitalize">{(s.risk_category ?? "—").replace(/_/g, " ")}</td>
-                    <td className="py-2.5">{v ? <span className={`chip capitalize text-[10px] ${VERDICT_TONE[v] ?? ""}`}>{v}</span> : <span className="text-xs text-muted-foreground">—</span>}</td>
+                    <td className="py-2.5 text-xs capitalize">{s.plan ?? ""}</td>
+                    <td className="py-2.5 text-xs capitalize">{s.risk_category ? String(s.risk_category).replace(/_/g, " ") : ""}</td>
+                    <td className="py-2.5">{v ? <span className={`chip capitalize text-[10px] ${VERDICT_TONE[v] ?? ""}`}>{v}</span> : null}</td>
                     <td className="py-2.5 pr-4 text-right whitespace-nowrap">
                       {canManage && (
                         <div className="inline-flex items-center gap-1">
@@ -160,6 +163,92 @@ export function SchemesCatalog({ rows, amcs, canManage }: { rows: Scheme[]; amcs
 
       {edit && <SchemeFormDrawer mode={edit.mode} scheme={edit.scheme} amcs={amcs} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); router.refresh(); }} />}
       {evalFor && <EvaluationDrawer scheme={evalFor} onClose={() => setEvalFor(null)} onSaved={() => { setEvalFor(null); router.refresh(); }} />}
+      {detail && (
+        <SchemeDetailDrawer
+          scheme={detail}
+          onClose={() => setDetail(null)}
+          onEvaluate={canManage ? () => { const s = detail; setDetail(null); setEvalFor(s); } : undefined}
+          onEdit={canManage ? () => { const s = detail; setDetail(null); setEdit({ mode: "edit", scheme: s }); } : undefined}
+        />
+      )}
+    </div>
+  );
+}
+
+function SchemeDetailDrawer({
+  scheme: s,
+  onClose,
+  onEvaluate,
+  onEdit,
+}: {
+  scheme: Scheme;
+  onClose: () => void;
+  onEvaluate?: () => void;
+  onEdit?: () => void;
+}) {
+  const v = s.evaluation?.verdict as string | undefined;
+  const Row = ({ label, value }: { label: string; value: any }) => (
+    <div className="flex justify-between gap-4 py-1.5 border-b border-border/50 last:border-0">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className="text-xs font-medium text-right">{value === undefined || value === null || value === "" ? "" : value}</span>
+    </div>
+  );
+  return (
+    <div className="fixed inset-0 z-[100] bg-black/40 grid place-items-end sm:place-items-center p-0 sm:p-4 animate-fade-in" onClick={onClose}>
+      <div className="bg-card w-full sm:max-w-lg sm:rounded-xl shadow-xl border border-border/60 max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="border-b px-5 py-3 flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="font-semibold flex items-center gap-2">
+              {s.is_shortlisted && <Star className="size-4 fill-amber-400 text-amber-400 shrink-0" />}
+              <span className="truncate">{s.scheme_name}</span>
+            </div>
+            <div className="text-[11px] text-muted-foreground font-mono mt-0.5">{s.scheme_code}</div>
+          </div>
+          <button onClick={onClose} className="rounded p-1 hover:bg-secondary text-muted-foreground" aria-label="Close"><X className="size-4" /></button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-5 space-y-4 scrollbar-thin">
+          <div className="flex flex-wrap gap-1.5">
+            {s.coarse_category && <span className={`chip text-[10px] ${COARSE_TONE[s.coarse_category] ?? ""}`}>{s.coarse_category}</span>}
+            {v && <span className={`chip capitalize text-[10px] ${VERDICT_TONE[v] ?? ""}`}>IC: {v}</span>}
+            <span className={`chip text-[10px] ${s.is_closed ? "bg-rose-50 text-rose-700" : s.is_active ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>
+              {s.is_closed ? "Closed" : s.is_active ? "Active / open" : "Inactive"}
+            </span>
+          </div>
+          <div className="rounded-lg border border-border px-3">
+            <Row label="AMC" value={s.amc_name ?? s.amc_code} />
+            <Row label="Category" value={s.category} />
+            <Row label="Sub-category" value={s.sub_category} />
+            <Row label="Plan" value={s.plan ? <span className="capitalize">{s.plan}</span> : undefined} />
+            <Row label="Option" value={s.option ? <span className="capitalize">{String(s.option).replace(/_/g, " ")}</span> : undefined} />
+            <Row label="Risk" value={s.risk_category ? <span className="capitalize">{String(s.risk_category).replace(/_/g, " ")}</span> : undefined} />
+            <Row label="Exit load" value={s.exit_load} />
+            <Row label="Min SIP" value={s.min_sip ? `₹${Number(s.min_sip).toLocaleString("en-IN")}` : undefined} />
+            <Row label="Min investment" value={s.min_investment ? `₹${Number(s.min_investment).toLocaleString("en-IN")}` : undefined} />
+          </div>
+          {s.shortlist_rationale && (
+            <div>
+              <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Shortlist rationale</div>
+              <p className="text-xs text-foreground/80 whitespace-pre-wrap">{s.shortlist_rationale}</p>
+            </div>
+          )}
+          {s.evaluation && (
+            <div>
+              <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">IC evaluation</div>
+              <div className="rounded-lg border border-border px-3 py-1">
+                {v && <Row label="Verdict" value={<span className="capitalize font-semibold">{v}</span>} />}
+                {typeof s.evaluation.score === "number" && <Row label="Score" value={`${s.evaluation.score}/100`} />}
+                {s.evaluation.notes && <p className="text-xs text-foreground/80 whitespace-pre-wrap pt-2">{s.evaluation.notes}</p>}
+              </div>
+            </div>
+          )}
+        </div>
+        {(onEvaluate || onEdit) && (
+          <div className="border-t px-5 py-3 flex justify-end gap-2">
+            {onEvaluate && <button onClick={onEvaluate} className="btn-secondary text-sm inline-flex items-center gap-1"><ClipboardList className="size-4" /> Evaluate</button>}
+            {onEdit && <button onClick={onEdit} className="btn-primary text-sm inline-flex items-center gap-1"><Pencil className="size-4" /> Edit</button>}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -209,14 +298,14 @@ function SchemeFormDrawer({ mode, scheme, amcs, onClose, onSaved }: { mode: "new
   return (
     <Drawer title={mode === "new" ? "New scheme" : "Edit scheme"} onClose={onClose}>
       <div className="grid sm:grid-cols-2 gap-3">
-        <Field label="AMC"><select value={f.amcCode} onChange={(e) => set("amcCode", e.target.value)} disabled={mode === "edit"} className="input-base">{amcs.map((a) => <option key={a.code} value={a.code}>{a.name} ({a.code})</option>)}</select></Field>
+        <Field label="AMC"><Select value={f.amcCode} onChange={(v) => set("amcCode", v)} disabled={mode === "edit"} options={amcs.map((a) => ({ value: a.code, label: `${a.name} (${a.code})` }))} placeholder="Select AMC…" ariaLabel="AMC" /></Field>
         <Field label="Scheme code"><input value={f.schemeCode} onChange={(e) => set("schemeCode", e.target.value)} disabled={mode === "edit"} placeholder="e.g. 119551" className="input-base font-mono" /></Field>
         <div className="sm:col-span-2"><Field label="Scheme name"><input value={f.schemeName} onChange={(e) => set("schemeName", e.target.value)} className="input-base" /></Field></div>
-        <Field label="Coarse category"><select value={f.coarseCategory} onChange={(e) => set("coarseCategory", e.target.value)} className="input-base"><option value="">—</option>{COARSE.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></Field>
+        <Field label="Coarse category"><Select value={f.coarseCategory} onChange={(v) => set("coarseCategory", v)} options={COARSE_OPTS} placeholder="—" ariaLabel="Coarse category" /></Field>
         <Field label="Category (fine)"><input value={f.category} onChange={(e) => set("category", e.target.value)} placeholder="Equity - Large Cap" className="input-base" /></Field>
-        <Field label="Plan"><select value={f.plan} onChange={(e) => set("plan", e.target.value)} className="input-base"><option value="">—</option>{PLANS.map((p) => <option key={p} value={p} className="capitalize">{p}</option>)}</select></Field>
-        <Field label="Option"><select value={f.option} onChange={(e) => set("option", e.target.value)} className="input-base"><option value="">—</option>{OPTIONS.map((p) => <option key={p} value={p}>{p.replace(/_/g, " ")}</option>)}</select></Field>
-        <Field label="Risk"><select value={f.riskCategory} onChange={(e) => set("riskCategory", e.target.value)} className="input-base"><option value="">—</option>{RISKS.map((p) => <option key={p} value={p}>{p.replace(/_/g, " ")}</option>)}</select></Field>
+        <Field label="Plan"><Select value={f.plan} onChange={(v) => set("plan", v)} options={PLAN_OPTS} placeholder="—" ariaLabel="Plan" /></Field>
+        <Field label="Option"><Select value={f.option} onChange={(v) => set("option", v)} options={OPTION_OPTS} placeholder="—" ariaLabel="Option" /></Field>
+        <Field label="Risk"><Select value={f.riskCategory} onChange={(v) => set("riskCategory", v)} options={RISK_OPTS} placeholder="—" ariaLabel="Risk" /></Field>
         <Field label="Exit load"><input value={f.exitLoad} onChange={(e) => set("exitLoad", e.target.value)} placeholder="1% if < 1yr" className="input-base" /></Field>
         <Field label="Min SIP"><input value={f.minSip} onChange={(e) => set("minSip", e.target.value)} placeholder="500" className="input-base" /></Field>
         <Field label="Min investment"><input value={f.minInvestment} onChange={(e) => set("minInvestment", e.target.value)} placeholder="5000" className="input-base" /></Field>
@@ -296,7 +385,7 @@ function EvaluationDrawer({ scheme, onClose, onSaved }: { scheme: Scheme; onClos
         <Field label="AUM (₹ Cr)"><input type="number" value={f.aumCrore} onChange={(e) => set("aumCrore", e.target.value)} className="input-base" /></Field>
         <Field label="Fund manager"><input value={f.fmName} onChange={(e) => set("fmName", e.target.value)} className="input-base" /></Field>
         <Field label="FM experience (yrs)"><input type="number" value={f.fmExperienceYears} onChange={(e) => set("fmExperienceYears", e.target.value)} className="input-base" /></Field>
-        <Field label="Scheme risk"><select value={f.schemeRiskProfile} onChange={(e) => set("schemeRiskProfile", e.target.value)} className="input-base"><option value="">—</option>{["low", "moderate", "high", "very_high"].map((r) => <option key={r} value={r}>{r.replace(/_/g, " ")}</option>)}</select></Field>
+        <Field label="Scheme risk"><Select value={f.schemeRiskProfile} onChange={(v) => set("schemeRiskProfile", v)} options={SCHEME_RISK_OPTS} placeholder="—" ariaLabel="Scheme risk" /></Field>
       </div>
       <Field label="Fund objective"><textarea value={f.fundObjective} onChange={(e) => set("fundObjective", e.target.value)} rows={2} className="input-base" /></Field>
       <Field label="Portfolio composition note"><textarea value={f.portfolioCompositionNote} onChange={(e) => set("portfolioCompositionNote", e.target.value)} rows={2} className="input-base" /></Field>

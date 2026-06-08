@@ -22,12 +22,21 @@ export function AiSettingsForm({ initial, providers }: { initial: Status; provid
   const [keyConfigured, setKeyConfigured] = useState(initial.keyConfigured);
   const [keyLast4, setKeyLast4] = useState(initial.keyLast4);
   const [source, setSource] = useState(initial.source);
+  // The provider currently PERSISTED (vs. the one selected in the UI). Only this
+  // provider has a saved key — each provider needs its own. Updated after save.
+  const [savedProvider, setSavedProvider] = useState<Provider>(initial.provider);
 
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
 
   const def = providers.find((p) => p.value === provider)!;
+  // A saved key only applies to the saved provider. If the operator picks a
+  // DIFFERENT provider, there is no key for it yet — they must paste one. This
+  // is the fix for "switched to OpenAI but it kept using Gemini": leaving the
+  // key blank on a provider switch nulls the key and silently falls back.
+  const keyAppliesToSelected = keyConfigured && provider === savedProvider;
+  const needsKey = !keyAppliesToSelected && !apiKey.trim();
 
   function switchProvider(next: Provider) {
     setProvider(next);
@@ -58,6 +67,12 @@ export function AiSettingsForm({ initial, providers }: { initial: Status; provid
   }
 
   async function save() {
+    // Guard: switching to a provider with no saved key, and no key entered, would
+    // persist a keyless config and silently fall back to env (the Gemini bug).
+    if (needsKey) {
+      setMsg({ kind: "err", text: `Paste your ${def.label} API key — each provider needs its own key.` });
+      return;
+    }
     setSaving(true);
     setMsg(null);
     try {
@@ -74,8 +89,20 @@ export function AiSettingsForm({ initial, providers }: { initial: Status; provid
         setKeyConfigured(s.keyConfigured);
         setKeyLast4(s.keyLast4);
         setSource(s.source);
+        setSavedProvider(s.provider);
         setApiKey("");
-        setMsg({ kind: "ok", text: "Saved. New requests use this provider within ~30s." });
+        // If the saved status doesn't reflect the provider we asked for, the key
+        // didn't stick (fell back to env) — warn instead of a false success.
+        if (s.provider !== provider || !s.keyConfigured) {
+          setMsg({
+            kind: "err",
+            text: `Saved, but ${def.label} has no working key — it fell back to ${
+              providers.find((p) => p.value === s.provider)?.label ?? s.provider
+            }. Paste a valid ${def.label} key and save again.`,
+          });
+        } else {
+          setMsg({ kind: "ok", text: `Saved — ${def.label} is now active. New requests use it within ~30s.` });
+        }
       }
     } catch (e: any) {
       setMsg({ kind: "err", text: e?.message || "Network error." });
@@ -98,10 +125,10 @@ export function AiSettingsForm({ initial, providers }: { initial: Status; provid
         </div>
       </div>
 
-      {/* Current status */}
+      {/* Current status — reflects what's actually persisted (updates after save). */}
       <div className="flex flex-wrap items-center gap-2 text-xs">
         <span className="px-2 py-1 rounded-full bg-muted">
-          Active: <strong>{providers.find((p) => p.value === initial.provider)?.label ?? initial.provider}</strong>
+          Active: <strong>{providers.find((p) => p.value === savedProvider)?.label ?? savedProvider}</strong>
         </span>
         <span
           className={`px-2 py-1 rounded-full ${
@@ -145,9 +172,15 @@ export function AiSettingsForm({ initial, providers }: { initial: Status; provid
           autoComplete="off"
           value={apiKey}
           onChange={(e) => setApiKey(e.target.value)}
-          placeholder={keyConfigured ? `•••• saved (leave blank to keep ••••${keyLast4 ?? ""})` : `Paste your ${def.label} key`}
-          className="w-full rounded-md border px-3 py-2 text-sm font-mono"
+          placeholder={keyAppliesToSelected ? `•••• saved (leave blank to keep ••••${keyLast4 ?? ""})` : `Paste your ${def.label} key (starts with…)`}
+          className={`w-full rounded-md border px-3 py-2 text-sm font-mono ${needsKey ? "border-rose-300 focus:ring-rose-300" : ""}`}
         />
+        {provider !== savedProvider && (
+          <p className="text-[11px] text-amber-600 font-medium">
+            You&apos;re switching to {def.label} — paste its own API key. The saved key belongs to{" "}
+            {providers.find((p) => p.value === savedProvider)?.label ?? savedProvider} and won&apos;t work here.
+          </p>
+        )}
         <p className="text-[11px] text-muted-foreground">
           Get one from{" "}
           <a href={def.docsUrl} target="_blank" rel="noreferrer" className="underline">
@@ -196,7 +229,8 @@ export function AiSettingsForm({ initial, providers }: { initial: Status; provid
         <button
           type="button"
           onClick={save}
-          disabled={busy}
+          disabled={busy || needsKey}
+          title={needsKey ? `Paste your ${def.label} API key first` : undefined}
           className="inline-flex items-center gap-1.5 rounded-md bg-primary text-primary-foreground px-3.5 py-2 text-sm font-medium disabled:opacity-60"
         >
           {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}

@@ -26,7 +26,7 @@ const PIPELINE_VIEWS = [
 ];
 import { LeadsKanban } from "@/components/leads/LeadsKanban";
 import { LeadsTable } from "@/components/leads/LeadsTable";
-import { LeadQuickFilters } from "@/components/leads/LeadQuickFilters";
+// import { LeadQuickFilters } from "@/components/leads/LeadQuickFilters";
 import { LeadInsightsSection } from "@/components/leads/LeadInsightsSection";
 import { FilterBar } from "@/components/common/FilterBar";
 import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
@@ -295,21 +295,19 @@ export default async function LeadsPage({
           <div className="inline-flex rounded-lg border border-border bg-secondary/40 p-0.5 gap-0.5 mr-1">
             <Link
               href="/dashboard/leads"
-              className={`px-2.5 py-1 rounded-md text-xs font-medium inline-flex items-center gap-1.5 transition-colors ${
-                view === "kanban"
-                  ? "bg-card shadow-sm text-foreground"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
+              className={`px-2.5 py-1 rounded-md text-xs font-medium inline-flex items-center gap-1.5 transition-colors ${view === "kanban"
+                ? "bg-card shadow-sm text-foreground"
+                : "text-muted-foreground hover:text-foreground"
+                }`}
             >
               <LayoutGrid className="size-3.5" /> Kanban
             </Link>
             <Link
               href="/dashboard/leads?view=table"
-              className={`px-2.5 py-1 rounded-md text-xs font-medium inline-flex items-center gap-1.5 transition-colors ${
-                view === "table"
-                  ? "bg-card shadow-sm text-foreground"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
+              className={`px-2.5 py-1 rounded-md text-xs font-medium inline-flex items-center gap-1.5 transition-colors ${view === "table"
+                ? "bg-card shadow-sm text-foreground"
+                : "text-muted-foreground hover:text-foreground"
+                }`}
             >
               <List className="size-3.5" /> List
             </Link>
@@ -396,9 +394,9 @@ export default async function LeadsPage({
       </div>
 
       {/* Quick-filter chip strip — server-side counts, deep links into same page */}
-      <div className="card-surface p-3">
+      {/* <div className="card-surface p-3">
         <LeadQuickFilters session={session} active={sp as Record<string, string | undefined>} />
-      </div>
+      </div> */}
 
       <FilterBar
         totalCount={data.rows.length}

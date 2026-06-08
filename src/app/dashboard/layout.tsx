@@ -437,7 +437,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           pinned inside this pane (not at viewport top). */}
       <main className="flex-1 h-full overflow-y-auto print:overflow-visible print:h-auto">
         {/* Topbar — glass, sticky; hidden when printing */}
-        <div className="sticky top-0 z-20 border-b border-border/60 bg-background/80 backdrop-blur-xl backdrop-saturate-150 px-6 h-16 flex items-center justify-between gap-4 print:hidden">
+        <div className="sticky top-0 z-40 border-b border-border/60 bg-background/80 backdrop-blur-xl backdrop-saturate-150 px-6 h-16 flex items-center justify-between gap-4 print:hidden">
           <div className="flex items-center gap-3 min-w-0">
             {/* Mobile hamburger — opens the nav drawer (shares sidebarInner).
                 Firm name + ARN live in the sidebar header only (no duplication). */}

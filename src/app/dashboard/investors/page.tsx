@@ -16,7 +16,7 @@ import { ColumnManager } from "@/components/common/ColumnManager";
 import { loadTenantLicense } from "@/lib/auth/license";
 import { isFieldAllowed } from "@/lib/auth/field-gate";
 import { InvestorKpiStrip } from "@/components/investors/InvestorKpiStrip";
-import { InvestorQuickFilters } from "@/components/investors/InvestorQuickFilters";
+// import { InvestorQuickFilters } from "@/components/investors/InvestorQuickFilters"; // hidden for now
 import { dormancyDays, type HealthBand } from "@/lib/investors/health";
 import { InvestorsTable, type InvestorTableRow } from "@/components/investors/InvestorsTable";
 import { buildInvestorWhere } from "@/lib/investors/list-filters";
@@ -273,13 +273,13 @@ export default async function InvestorsPage({
       {/* KPI strip — book-wide snapshot */}
       <InvestorKpiStrip session={session} />
 
-      {/* Quick-filter chips — server-counted, deep-link into the same page */}
-      <div className="card-surface p-3">
+      {/* Quick-filter chips — hidden for now (re-enable later). */}
+      {/* <div className="card-surface p-3">
         <InvestorQuickFilters
           session={session}
           active={sp as Record<string, string | undefined>}
         />
-      </div>
+      </div> */}
 
       <FilterBar
         totalCount={total}

@@ -24,6 +24,7 @@ import { handleApiError } from "@/lib/api/error-handler";
 import { communications, templates, templateVersions, investors, leads, users } from "@/db/schema";
 import { dispatch } from "@/lib/comms/pipeline";
 import { composeAndSendEmail } from "@/lib/comms/compose";
+import { findUndeclaredPlaceholders } from "@/lib/comms/tokens";
 
 export const dynamic = "force-dynamic";
 
@@ -78,6 +79,7 @@ export async function GET(req: NextRequest) {
           category: templates.category,
           status: templates.status,
           variables: templateVersions.variables,
+          body: templateVersions.body,
         })
         .from(templates)
         .innerJoin(templateVersions, eq(templateVersions.id, templates.currentVersionId))
@@ -134,7 +136,28 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    return NextResponse.json({ emails, templates: data.tmplRows });
+    // Surface EVERY merge field the template body actually uses — not just the
+    // declared `variables` array. The designer's auto-extraction can miss fields
+    // tucked inside data_table / button blocks, which then never get prompted in
+    // the compose modal. Scanning the body JSON catches them; each template thus
+    // prompts for its OWN fields. findUndeclaredPlaceholders drops system/footer
+    // tokens (logo, ARN, address) and positional params for us.
+    const templatesOut = data.tmplRows.map((t) => {
+      const declared = Array.isArray(t.variables) ? (t.variables as any[]) : [];
+      const declaredKeys = declared.map((v) => v.key);
+      const extraKeys = findUndeclaredPlaceholders(JSON.stringify(t.body ?? {}), declaredKeys);
+      const extra = extraKeys.map((key) => ({ key, type: "string", required: false }));
+      return {
+        key: t.key,
+        name: t.name,
+        description: t.description,
+        category: t.category,
+        status: t.status,
+        variables: [...declared, ...extra],
+      };
+    });
+
+    return NextResponse.json({ emails, templates: templatesOut });
   } catch (err) {
     return handleApiError(err);
   }

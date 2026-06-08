@@ -137,7 +137,15 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
       throw new Error(`Template '${input.templateKey}' (${input.channel}) not found`);
     }
     if (tmpl.status !== "approved") {
-      return await skip(tx, communicationId, input, "template_not_approved");
+      // Email transactional/utility templates have no external approval body
+      // (unlike WhatsApp→Meta or SMS→DLT), and the 11-rule compliance gate runs
+      // on every send regardless — so let the firm's own non-marketing email go
+      // out even as a draft. Marketing email + all WhatsApp/SMS still require an
+      // approved template.
+      const needsApproval = input.channel !== "email" || input.category === "marketing";
+      if (needsApproval) {
+        return await skip(tx, communicationId, input, "template_not_approved");
+      }
     }
     if (!tmpl.currentVersionId) {
       throw new Error(`Template '${input.templateKey}' has no current version`);
@@ -182,6 +190,44 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
           ? [addr.line1, addr.line2, addr.city, addr.state, addr.pincode].filter(Boolean).join(", ")
           : "",
       });
+
+      // Apply caller-supplied variable values (the compose-modal "Fill in the
+      // details" form) for EVERY provided key — including merge fields that live
+      // only in the body (e.g. {{transaction.amount}} inside a data_table) and so
+      // are NOT in the declared `variables` array. resolveTokens above only loops
+      // declared variables, so without this an undeclared field the RM typed would
+      // be silently dropped and render blank. The RM typed these → highest
+      // priority (they also pre-empt the auto-fill below).
+      if (input.variables && typeof input.variables === "object") {
+        for (const [k, val] of Object.entries(input.variables as Record<string, unknown>)) {
+          if (val != null && String(val).trim() !== "") (tokens as any)[k] = String(val);
+        }
+      }
+
+      // Auto-fill transaction.* from the investor's MOST RECENT transaction so
+      // transaction templates (SIP Confirmed, redemption, etc.) carry real
+      // scheme / amount / folio / date on a manual ad-hoc send — where no
+      // workflow supplied a transaction context. A caller-provided transaction
+      // (input.meta.transaction, e.g. from the transaction.successful workflow)
+      // and any already-resolved value WIN; this only fills the blanks. Wrapped
+      // so a query hiccup never blocks the send.
+      try {
+        const bodyStr = JSON.stringify((version as any).body ?? {});
+        const wantsTxn = bodyStr.includes("transaction.");
+        // A template that references a rejection reason should pull from the
+        // sip_rejections table, not a generic transaction.
+        const preferRejection = bodyStr.includes("rejection_reason") || bodyStr.includes("transaction.reason");
+        const callerTxn = (input.meta as any)?.transaction;
+        if (wantsTxn && input.investorId && !callerTxn) {
+          const auto = await loadTransactionTokens(tx, input.tenantId, input.investorId, preferRejection);
+          for (const [k, val] of Object.entries(auto)) {
+            if (val && !(tokens as any)[k]) (tokens as any)[k] = val;
+          }
+        }
+      } catch (e) {
+        console.warn("[comms] transaction auto-fill skipped:", (e as Error)?.message);
+      }
+
       rendered = renderBody(input.channel, version, tokens);
     } catch (err) {
       return await skip(
@@ -559,6 +605,114 @@ async function loadInvestor(tx: Tx, id: string) {
   }
   return enriched;
 }
+// Format a numeric amount the Indian way (no ₹ — templates add it). Blank if null.
+function fmtAmount(a: unknown): string {
+  return a != null && String(a).trim() !== "" ? Number(a).toLocaleString("en-IN") : "";
+}
+// Format a `date`-column value ("YYYY-MM-DD") to "08 Jun 2026". Blank if null.
+function fmtDate(d: unknown): string {
+  if (!d) return "";
+  const dd = new Date(`${String(d)}T00:00:00`);
+  return isNaN(dd.getTime())
+    ? String(d)
+    : dd.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+/**
+ * Pre-formatted `transaction.*` merge tokens auto-loaded from the investor's
+ * REAL data, so transaction templates (SIP rejection, SIP confirmed, redemption,
+ * statement…) send with actual scheme / amount / folio / date / reason on a
+ * manual send — no manual typing. Returns ready-to-substitute strings keyed by
+ * dotted token (they drop straight into the renderer).
+ *
+ * Source priority:
+ *   1. When the template needs a rejection reason → the latest `sip_rejections`
+ *      row (its own table — scheme/amount/folio/reason/date).
+ *   2. Else the most recent executed `transactions` row.
+ *   3. Else the latest `sips` registration (natural source for "SIP Confirmed").
+ * Empty object when the client has no such record (rows render blank — the
+ * honest result; nothing to invent).
+ */
+async function loadTransactionTokens(
+  tx: Tx,
+  tenantId: string,
+  investorId: string,
+  preferRejection: boolean
+): Promise<Record<string, string>> {
+  const { transactions, sips, sipRejections } = await import("@/db/schema");
+
+  const pack = (v: {
+    schemeName?: string | null;
+    amount?: unknown;
+    folioNumber?: string | null;
+    date?: unknown;
+    reason?: string | null;
+    amcName?: string | null;
+  }): Record<string, string> => {
+    const reason = v.reason ?? "";
+    return {
+      "transaction.scheme_name": v.schemeName ?? "",
+      "transaction.amount": fmtAmount(v.amount),
+      "transaction.folio_number": v.folioNumber ?? "",
+      "transaction.transaction_date": fmtDate(v.date),
+      "transaction.rejection_reason": reason,
+      "transaction.reason": reason,
+      "transaction.amc_name": v.amcName ?? "",
+    };
+  };
+
+  // 1. SIP rejection — its own table, carries the rejection reason.
+  if (preferRejection) {
+    const [r] = await tx
+      .select({
+        schemeName: sipRejections.schemeName,
+        amount: sipRejections.rejectionAmount,
+        folioNumber: sipRejections.folioNumber,
+        date: sipRejections.rejectionDate,
+        reason: sipRejections.rejectionReason,
+        amcName: sipRejections.amcName,
+      })
+      .from(sipRejections)
+      .where(and(eq(sipRejections.tenantId, tenantId), eq(sipRejections.investorId, investorId)))
+      .orderBy(desc(sipRejections.rejectionDate))
+      .limit(1);
+    if (r) return pack(r);
+  }
+
+  // 2. Most recent executed transaction.
+  const [txn] = await tx
+    .select({
+      schemeName: transactions.schemeName,
+      amount: transactions.amount,
+      folioNumber: transactions.folioNumber,
+      date: transactions.orderDate,
+      reason: transactions.reasonDescription,
+      amcName: transactions.amcName,
+    })
+    .from(transactions)
+    .where(and(eq(transactions.tenantId, tenantId), eq(transactions.investorId, investorId)))
+    .orderBy(desc(transactions.orderDate))
+    .limit(1);
+  if (txn) return pack(txn);
+
+  // 3. Latest SIP registration.
+  const [sip] = await tx
+    .select({
+      schemeName: sips.schemeName,
+      amount: sips.amount,
+      folioNumber: sips.folioNumber,
+      date: sips.startDate,
+      amcName: sips.amcName,
+    })
+    .from(sips)
+    .where(and(eq(sips.tenantId, tenantId), eq(sips.investorId, investorId)))
+    .orderBy(desc(sips.startDate))
+    .limit(1);
+  if (sip) return pack(sip);
+
+  return {};
+}
+
 export async function getConsent(
   tx: Tx,
   tenantId: string,
