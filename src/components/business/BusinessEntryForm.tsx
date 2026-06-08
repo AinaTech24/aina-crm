@@ -19,6 +19,40 @@ import { classifyAssetClass } from "@/lib/business/asset-class";
 const PRODUCT_OPTS: [string, string][] = [
   ["mutual_fund", "Mutual Fund"], ["pms", "PMS"], ["aif", "AIF"], ["sif", "SIF"], ["bond", "Bond"], ["ncd", "NCD"], ["other", "Other"],
 ];
+
+/**
+ * Per-product-type behaviour for each Schemes line. Only Mutual Fund uses the
+ * AMFI scheme catalog + the full SIP/Switch/STP/SWP transaction set; PMS / AIF /
+ * SIF / Bond / NCD are free-typed instruments with the transaction types that
+ * actually apply to them.
+ */
+interface ProductConfig {
+  schemeLabel: string;
+  schemePlaceholder: string;
+  /** Use the MF catalog autocomplete (true) or a plain text input (false). */
+  catalog: boolean;
+  /** Transaction types allowed for this product (subset of TXN_OPTS keys). */
+  txnTypes: string[];
+  /** Default asset class for new/converted lines. */
+  defaultAssetClass?: string;
+}
+const PRODUCT_CONFIG: Record<string, ProductConfig> = {
+  mutual_fund: { schemeLabel: "Scheme", schemePlaceholder: "Search catalog or type a name…", catalog: true,
+    txnTypes: ["lumpsum", "additional_purchase", "sip", "switch", "stp", "swp", "redemption"] },
+  pms: { schemeLabel: "Strategy", schemePlaceholder: "PMS strategy name…", catalog: false,
+    txnTypes: ["lumpsum", "additional_purchase", "redemption"], defaultAssetClass: "equity" },
+  aif: { schemeLabel: "Scheme / fund", schemePlaceholder: "AIF scheme name…", catalog: false,
+    txnTypes: ["lumpsum", "additional_purchase", "redemption"], defaultAssetClass: "other" },
+  sif: { schemeLabel: "Strategy", schemePlaceholder: "SIF strategy name…", catalog: false,
+    txnTypes: ["lumpsum", "additional_purchase", "sip", "redemption"], defaultAssetClass: "equity" },
+  bond: { schemeLabel: "Bond / instrument", schemePlaceholder: "Bond name / ISIN…", catalog: false,
+    txnTypes: ["lumpsum", "redemption"], defaultAssetClass: "debt" },
+  ncd: { schemeLabel: "NCD / instrument", schemePlaceholder: "NCD name / ISIN…", catalog: false,
+    txnTypes: ["lumpsum", "redemption"], defaultAssetClass: "debt" },
+  other: { schemeLabel: "Item", schemePlaceholder: "Product / item name…", catalog: false,
+    txnTypes: ["lumpsum", "additional_purchase", "sip", "redemption"] },
+};
+const productCfg = (pt: string): ProductConfig => PRODUCT_CONFIG[pt] ?? PRODUCT_CONFIG.mutual_fund;
 const TXN_OPTS: [string, string][] = [
   ["lumpsum", "Lumpsum"], ["additional_purchase", "Additional Purchase"], ["sip", "SIP"],
   ["switch", "Switch"], ["stp", "STP"], ["swp", "SWP"], ["redemption", "Redemption"],
@@ -117,8 +151,34 @@ export function BusinessEntryForm({
       : [blankLine()]
   );
 
+  const cfg = productCfg(productType);
+
   function patchLine(i: number, p: Partial<Line>) {
     setLines((ls) => ls.map((l, idx) => (idx === i ? { ...l, ...p } : l)));
+  }
+
+  /** Switch product type + re-normalize every line to the new product's rules:
+   *  coerce an out-of-range transaction type, apply the default asset class, and
+   *  drop the catalog code when leaving catalog mode. */
+  function changeProduct(pt: string) {
+    setProductType(pt);
+    const c = productCfg(pt);
+    setLines((ls) =>
+      ls.map((l) => ({
+        ...l,
+        txnType: c.txnTypes.includes(l.txnType) ? l.txnType : c.txnTypes[0],
+        assetClass: !c.catalog && c.defaultAssetClass && (!l.assetClass || l.assetClass === "equity") ? c.defaultAssetClass : l.assetClass,
+        schemeCode: c.catalog ? l.schemeCode : "",
+      }))
+    );
+  }
+
+  function addLine() {
+    const c = productCfg(productType);
+    const l = blankLine();
+    l.txnType = c.txnTypes[0];
+    if (c.defaultAssetClass) l.assetClass = c.defaultAssetClass;
+    setLines((ls) => [...ls, l]);
   }
 
   // Totals are grouped BY TRANSACTION TYPE and never summed across types — a
@@ -192,7 +252,7 @@ export function BusinessEntryForm({
         </div>
         <div>
           <Label>Product type</Label>
-          <SelectField value={productType} onChange={(e) => setProductType(e.target.value)} className="w-full">
+          <SelectField value={productType} onChange={(e) => changeProduct(e.target.value)} className="w-full">
             {PRODUCT_OPTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </SelectField>
         </div>
@@ -230,9 +290,9 @@ export function BusinessEntryForm({
       {/* Scheme sub-form */}
       <div className="card-surface p-5">
         <div className="flex items-center justify-between mb-3">
-          <h3 className="font-semibold text-sm">Schemes</h3>
-          <button type="button" onClick={() => setLines((ls) => [...ls, blankLine()])} className="btn-secondary text-xs inline-flex items-center gap-1.5">
-            <Plus className="size-3.5" /> Add scheme
+          <h3 className="font-semibold text-sm">{productType === "mutual_fund" ? "Schemes" : cfg.schemeLabel + "s"}</h3>
+          <button type="button" onClick={addLine} className="btn-secondary text-xs inline-flex items-center gap-1.5">
+            <Plus className="size-3.5" /> Add {cfg.schemeLabel.toLowerCase()}
           </button>
         </div>
 
@@ -241,23 +301,32 @@ export function BusinessEntryForm({
             <div key={l.key} className="rounded-lg border border-border p-3 bg-secondary/20">
               <div className="grid lg:grid-cols-12 gap-2.5">
                 <div className="lg:col-span-5">
-                  <Label sm>Scheme</Label>
-                  <SchemeAutocomplete
-                    size="sm"
-                    defaultValue={l.schemeName}
-                    onQueryChange={(v) => patchLine(i, { schemeName: v, schemeCode: "" })}
-                    onSelect={(s) => patchLine(i, {
-                      schemeName: s.schemeName, schemeCode: s.schemeCode, amcName: s.amc ?? "",
-                      assetCategory: s.category ?? "", assetClass: classifyAssetClass(s.category, s.schemeName),
-                    })}
-                    placeholder="Search catalog or type a name (PMS/AIF)…"
-                  />
-                  {l.assetCategory && <div className="text-[10px] text-muted-foreground mt-1 truncate">{l.amcName ? `${l.amcName} · ` : ""}{l.assetCategory}</div>}
+                  <Label sm>{cfg.schemeLabel}</Label>
+                  {cfg.catalog ? (
+                    <SchemeAutocomplete
+                      size="sm"
+                      defaultValue={l.schemeName}
+                      onQueryChange={(v) => patchLine(i, { schemeName: v, schemeCode: "" })}
+                      onSelect={(s) => patchLine(i, {
+                        schemeName: s.schemeName, schemeCode: s.schemeCode, amcName: s.amc ?? "",
+                        assetCategory: s.category ?? "", assetClass: classifyAssetClass(s.category, s.schemeName),
+                      })}
+                      placeholder={cfg.schemePlaceholder}
+                    />
+                  ) : (
+                    <input
+                      value={l.schemeName}
+                      onChange={(e) => patchLine(i, { schemeName: e.target.value, schemeCode: "" })}
+                      placeholder={cfg.schemePlaceholder}
+                      className="w-full h-8 rounded-lg border border-border bg-card px-2.5 text-xs focus:outline-none focus:border-brand-cyan/60 focus:ring-2 focus:ring-brand-cyan/15"
+                    />
+                  )}
+                  {cfg.catalog && l.assetCategory && <div className="text-[10px] text-muted-foreground mt-1 truncate">{l.amcName ? `${l.amcName} · ` : ""}{l.assetCategory}</div>}
                 </div>
                 <div className="lg:col-span-2">
                   <Label sm>Type</Label>
                   <SelectField size="sm" value={l.txnType} onChange={(e) => patchLine(i, { txnType: e.target.value })} className="w-full">
-                    {TXN_OPTS.map(([v, lab]) => <option key={v} value={v}>{lab}</option>)}
+                    {TXN_OPTS.filter(([v]) => cfg.txnTypes.includes(v)).map(([v, lab]) => <option key={v} value={v}>{lab}</option>)}
                   </SelectField>
                 </div>
                 <div className="lg:col-span-2">
