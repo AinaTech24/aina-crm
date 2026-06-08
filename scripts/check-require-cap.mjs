@@ -60,6 +60,10 @@ const SKIP_FILES = new Set([
   "ai/client-brief/[id]/route.ts",
   // Parse/preview only — returns parsed rows; the commit/import path is gated.
   "insurance/import/parse/route.ts",
+  // Local-disk storage primitive (S3 fallback). Protected by requireSession +
+  // a tenant-prefix match (a user may only read/write within their own tenant's
+  // key namespace); callers that mint keys are themselves capability-gated.
+  "upload-local/[...key]/route.ts",
 ]);
 
 const MUTATION = /export\s+async\s+function\s+(POST|PUT|PATCH|DELETE)/g;

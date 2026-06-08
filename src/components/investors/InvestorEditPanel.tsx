@@ -34,6 +34,14 @@ const SEGMENTS = [
   ["Corporate", "Corporate"],
 ] as const;
 
+/** A/B/C/D client grade — manually assigned. */
+const CLIENT_CATEGORIES = [
+  ["A", "A"],
+  ["B", "B"],
+  ["C", "C"],
+  ["D", "D"],
+] as const;
+
 const STATUSES = [
   ["active", "Active"],
   ["dormant", "Dormant"],
@@ -77,6 +85,8 @@ export function InvestorEditPanel({
 
   const initial = () => ({
     name: investor.name ?? "",
+    pan: investor.pan ?? "",
+    dob: investor.dob ? String(investor.dob).slice(0, 10) : "",
     email: investor.email ?? "",
     phone: investor.phone ?? "",
     alternatePhone: investor.alternatePhone ?? "",
@@ -86,6 +96,7 @@ export function InvestorEditPanel({
     incomeRange: investor.incomeRange ?? "",
     segmentTag: investor.segmentTag ?? "",
     investorCategory: investor.investorCategory ?? "individual",
+    clientCategory: investor.clientCategory ?? "",
     riskProfile: investor.riskProfile ?? "",
     nomineeName: investor.nomineeName ?? "",
     nomineeRelation: investor.nomineeRelation ?? "",
@@ -116,6 +127,24 @@ export function InvestorEditPanel({
     try {
       const payload: any = {
         name: form.name,
+        // Master identity — now editable (correct typos in PAN / DOB / alt mobile).
+        pan: form.pan ? form.pan.toUpperCase() : null,
+        dob: form.dob || null,
+        alternatePhone: form.alternatePhone || undefined,
+        // Client Category (A/B/C/D) + Segment are assigned here. Empty → cleared.
+        clientCategory: form.clientCategory || null,
+        segmentTag: form.segmentTag || undefined,
+        // Previously dropped on save (silent data loss): entity type, gender,
+        // notes and address are all rendered editable, so persist them too.
+        investorCategory: form.investorCategory || undefined,
+        gender: form.gender || null,
+        notes: form.notes,
+        address: {
+          line1: form.addressLine1 || undefined,
+          city: form.city || undefined,
+          state: form.state || undefined,
+          pincode: form.pincode || undefined,
+        },
       };
       if (showEmail) payload.email = form.email || "";
       if (showPhone) {
@@ -202,10 +231,28 @@ export function InvestorEditPanel({
             <span>{investor.name}</span>
           )}
         </KV>
-        {showPan && <KV label="PAN" mono>{investor.pan}</KV>}
+        {showPan && (
+          <KV label="PAN" mono>
+            {editing ? (
+              <input
+                value={form.pan}
+                onChange={(e) => set("pan", e.target.value.toUpperCase())}
+                maxLength={10}
+                placeholder="ABCDE1234F"
+                className={`${inputCls} uppercase`}
+              />
+            ) : (
+              <span>{investor.pan ?? "—"}</span>
+            )}
+          </KV>
+        )}
         {showDob && (
           <KV label="DOB">
-            {investor.dob ? new Date(investor.dob).toLocaleDateString("en-IN") : "—"}
+            {editing ? (
+              <input type="date" value={form.dob} onChange={(e) => set("dob", e.target.value)} className={inputCls} />
+            ) : (
+              <span>{investor.dob ? new Date(investor.dob).toLocaleDateString("en-IN") : "—"}</span>
+            )}
           </KV>
         )}
         <KV label="Gender">
@@ -235,7 +282,11 @@ export function InvestorEditPanel({
           )}
           {showPhone && (
             <KV label="Alt mobile">
-              <span>{investor.alternatePhone ?? "—"}</span>
+              {editing ? (
+                <input value={form.alternatePhone} onChange={(e) => set("alternatePhone", e.target.value)} className={inputCls} />
+              ) : (
+                <span>{investor.alternatePhone ?? "—"}</span>
+              )}
             </KV>
           )}
           {showEmail && (
@@ -260,7 +311,17 @@ export function InvestorEditPanel({
       )}
 
       <Group title="Profile">
-        <KV label="Client category">
+        <KV label="Client Category (A–D)">
+          {editing ? (
+            <select value={form.clientCategory} onChange={(e) => set("clientCategory", e.target.value)} className={inputCls}>
+              <option value="">— Not categorised —</option>
+              {CLIENT_CATEGORIES.map(([k, l]) => <option key={k} value={k}>{`Category ${l}`}</option>)}
+            </select>
+          ) : (
+            <span>{investor.clientCategory ? `Category ${investor.clientCategory}` : "—"}</span>
+          )}
+        </KV>
+        <KV label="Entity type">
           {editing ? (
             <select value={form.investorCategory} onChange={(e) => set("investorCategory", e.target.value)} className={inputCls}>
               {CATEGORIES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}

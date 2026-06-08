@@ -2,32 +2,47 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Save, Loader2, Check, X, Plug, ServerCog, Inbox } from "lucide-react";
+import { Save, Loader2, Check, X, Plug, ServerCog, Inbox, Mail } from "lucide-react";
 
 type Server = { host: string; port: number; secure: boolean; user: string; pass: string };
 
-const PRESETS: Record<string, { label: string; smtp: Partial<Server>; imap: Partial<Server>; note?: string }> = {
+const PRESETS: Record<string, { label: string; smtp: Partial<Server>; imap: Partial<Server>; note?: string; appPwUrl?: string }> = {
   custom: { label: "Custom / other", smtp: {}, imap: {} },
   gmail: {
     label: "Gmail / Google Workspace",
     smtp: { host: "smtp.gmail.com", port: 465, secure: true },
     imap: { host: "imap.gmail.com", port: 993, secure: true },
-    note: "Use a Google App Password (not your login password).",
+    note: "Turn on 2-Step Verification, then create an App Password and paste it below — your normal Gmail password will NOT work.",
+    appPwUrl: "https://myaccount.google.com/apppasswords",
   },
   microsoft: {
     label: "Outlook / Microsoft 365",
     smtp: { host: "smtp.office365.com", port: 587, secure: false },
     imap: { host: "outlook.office365.com", port: 993, secure: true },
+    note: "If 2-factor auth is on, create an App Password and make sure authenticated SMTP/IMAP is enabled for this mailbox.",
+    appPwUrl: "https://account.microsoft.com/security",
   },
-  zoho: {
-    label: "Zoho Mail",
+  zoho_in: {
+    label: "Zoho Mail (India · .in)",
     smtp: { host: "smtp.zoho.in", port: 465, secure: true },
     imap: { host: "imap.zoho.in", port: 993, secure: true },
+    note: "1) Enable IMAP in Zoho Mail (Settings → Mail Accounts → IMAP Access). 2) Create an App Password and paste it below — your normal Zoho password will NOT work.",
+    appPwUrl: "https://accounts.zoho.in/home#security/app_password",
+  },
+  zoho_com: {
+    label: "Zoho Mail (Global · .com)",
+    smtp: { host: "smtp.zoho.com", port: 465, secure: true },
+    imap: { host: "imap.zoho.com", port: 993, secure: true },
+    note: "1) Enable IMAP in Zoho Mail (Settings → Mail Accounts → IMAP Access). 2) Create an App Password and paste it below — your normal Zoho password will NOT work.",
+    appPwUrl: "https://accounts.zoho.com/home#security/app_password",
   },
 };
 
 export function MailboxForm({
   initial,
+  scope = "tenant",
+  oauth = null,
+  oauthAvailable = { google: false, microsoft: false },
 }: {
   initial: {
     connected: boolean;
@@ -39,8 +54,16 @@ export function MailboxForm({
     firmName: string;
     firmEmail: string;
   };
+  /** "tenant" = firm-wide mailbox (owner). "user" = the RM's personal mailbox. */
+  scope?: "tenant" | "user";
+  /** Current OAuth binding, if the mailbox was connected via Google/Microsoft. */
+  oauth?: { provider: string; email: string | null } | null;
+  /** Which OAuth providers the server has credentials for (buttons enabled). */
+  oauthAvailable?: { google: boolean; microsoft: boolean };
 }) {
   const router = useRouter();
+  const qs = scope === "user" ? "?scope=user" : "";
+  const isUser = scope === "user";
   const [preset, setPreset] = useState("custom");
   const [smtp, setSmtp] = useState<Server>({
     host: initial.smtp?.host ?? "",
@@ -80,7 +103,7 @@ export function MailboxForm({
       const res = await fetch("/api/settings/integrations/mailbox/test", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ kind, config }),
+        body: JSON.stringify({ kind, config, scope }),
       });
       const j = await res.json().catch(() => ({}));
       setTest((t) => ({ ...t, busy: undefined, [kind]: { ok: !!j.ok, msg: j.ok ? "Connected" : j.error ?? "Failed" } }));
@@ -94,7 +117,7 @@ export function MailboxForm({
     setBusy(true);
     setErr(null);
     try {
-      const res = await fetch("/api/settings/integrations/mailbox", {
+      const res = await fetch(`/api/settings/integrations/mailbox${qs}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ smtp, imap: imap.host ? imap : undefined, fromName, fromEmail, replyTo }),
@@ -117,10 +140,10 @@ export function MailboxForm({
   }
 
   async function disconnect() {
-    if (!window.confirm("Disconnect your mailbox? Client emails will go through the platform sender again.")) return;
+    if (!window.confirm("Disconnect this mailbox? Client emails will fall back to the firm mailbox / platform sender.")) return;
     setBusy(true);
     try {
-      await fetch("/api/settings/integrations/mailbox", { method: "DELETE" });
+      await fetch(`/api/settings/integrations/mailbox${qs}`, { method: "DELETE" });
       router.refresh();
     } finally {
       setBusy(false);
@@ -132,18 +155,60 @@ export function MailboxForm({
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="font-semibold flex items-center gap-1.5">
-            <Plug className="size-4 text-brand-cyan" /> Connect your own mailbox (SMTP / IMAP)
+            <Plug className="size-4 text-brand-cyan" />{" "}
+            {isUser ? "Connect my mailbox (SMTP / IMAP)" : "Connect the firm mailbox (SMTP / IMAP)"}
           </div>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Send client email straight from your inbox — it goes out as your real address, no domain verification needed.
+            {isUser
+              ? "Your client emails go out from your own address, and replies land back in your inbox."
+              : "The firm-wide default — used when an RM hasn't connected their own mailbox. Goes out as your real address, no domain verification needed."}
           </p>
         </div>
-        {initial.connected && (
+        {(initial.connected || oauth) && (
           <span className="text-[11px] rounded-full bg-emerald-100 text-emerald-700 px-2 py-0.5 font-semibold whitespace-nowrap">
             ● Connected
           </span>
         )}
       </div>
+
+      {/* OAuth quick-connect (Gmail / Microsoft 365) */}
+      {oauth ? (
+        <div className="rounded-md border bg-emerald-50 border-emerald-200 p-3 text-sm flex items-center justify-between gap-3">
+          <span className="flex items-center gap-2 text-emerald-800">
+            <Check className="size-4" />
+            Connected via {oauth.provider === "google" ? "Google" : "Microsoft 365"}
+            {oauth.email ? <span className="font-medium">· {oauth.email}</span> : null}
+          </span>
+          <button type="button" onClick={disconnect} disabled={busy} className="text-xs text-rose-600 hover:underline disabled:opacity-50">
+            Disconnect
+          </button>
+        </div>
+      ) : (
+        (oauthAvailable.google || oauthAvailable.microsoft) && (
+          <div className="rounded-md border p-3 space-y-2">
+            <div className="text-xs font-medium text-muted-foreground">Quick connect — no password, no app-password</div>
+            <div className="flex flex-wrap gap-2">
+              {oauthAvailable.google && (
+                <a
+                  href={`/api/settings/integrations/mailbox/oauth/google/start${qs}`}
+                  className="rounded-md border px-3 py-1.5 text-sm inline-flex items-center gap-1.5 hover:bg-accent"
+                >
+                  <Mail className="size-4 text-rose-500" /> Connect Gmail
+                </a>
+              )}
+              {oauthAvailable.microsoft && (
+                <a
+                  href={`/api/settings/integrations/mailbox/oauth/microsoft/start${qs}`}
+                  className="rounded-md border px-3 py-1.5 text-sm inline-flex items-center gap-1.5 hover:bg-accent"
+                >
+                  <Mail className="size-4 text-sky-600" /> Connect Outlook / Microsoft 365
+                </a>
+              )}
+            </div>
+            <p className="text-[11px] text-muted-foreground">Or set up SMTP / IMAP manually below.</p>
+          </div>
+        )
+      )}
 
       <div>
         <label className="text-xs font-medium text-muted-foreground">Provider preset</label>
@@ -156,7 +221,19 @@ export function MailboxForm({
             <option key={k} value={k}>{p.label}</option>
           ))}
         </select>
-        {PRESETS[preset].note && <p className="text-[11px] text-amber-700 mt-1">{PRESETS[preset].note}</p>}
+        {PRESETS[preset].note && (
+          <div className="mt-1.5 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800 leading-relaxed">
+            {PRESETS[preset].note}
+            {PRESETS[preset].appPwUrl && (
+              <>
+                {" "}
+                <a href={PRESETS[preset].appPwUrl} target="_blank" rel="noopener noreferrer" className="font-semibold underline">
+                  Create app password →
+                </a>
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       {/* SMTP — sending */}
@@ -259,14 +336,14 @@ function ServerBlock({
           <input value={server.pass} onChange={(e) => set("pass", e.target.value)} type="password" autoComplete="new-password" placeholder={hasSavedPass ? "•••• (unchanged)" : "••••••••"} className="w-full border rounded-md px-3 py-2 text-sm bg-background" />
         </Field>
       </div>
-      <div className="flex items-center gap-2">
-        <button type="button" onClick={onTest} disabled={testing || !server.host} className="rounded-md border px-2.5 py-1 text-xs inline-flex items-center gap-1 hover:bg-accent disabled:opacity-50">
+      <div className="flex items-start gap-2 flex-wrap">
+        <button type="button" onClick={onTest} disabled={testing || !server.host} className="rounded-md border px-2.5 py-1 text-xs inline-flex items-center gap-1 hover:bg-accent disabled:opacity-50 shrink-0">
           {testing ? <Loader2 className="size-3 animate-spin" /> : <Plug className="size-3" />} Test connection
         </button>
         {test && (
-          <span className={`text-xs inline-flex items-center gap-1 ${test.ok ? "text-emerald-600" : "text-rose-600"}`}>
-            {test.ok ? <Check className="size-3.5" /> : <X className="size-3.5" />}
-            {test.msg}
+          <span className={`text-xs inline-flex items-start gap-1 leading-snug max-w-prose ${test.ok ? "text-emerald-600" : "text-rose-600"}`}>
+            {test.ok ? <Check className="size-3.5 shrink-0 mt-px" /> : <X className="size-3.5 shrink-0 mt-px" />}
+            <span>{test.msg}</span>
           </span>
         )}
       </div>

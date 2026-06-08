@@ -82,7 +82,15 @@ export async function POST(req: NextRequest) {
         }),
         idempotencyKey: `pwreset:${email}:${resetUrl.slice(-16)}`,
       });
-      if (!res.sent) console.log(`[forgot-password] email not sent (${res.reason}); link for ${email}: ${resetUrl}`);
+      if (!res.sent) {
+        // Never log the reset link (a live credential) in production. In dev the
+        // link is already returned in the response below for testing.
+        if (process.env.NODE_ENV !== "production") {
+          console.log(`[forgot-password] email not sent (${res.reason}); dev link for ${email}: ${resetUrl}`);
+        } else {
+          console.warn(`[forgot-password] email send failed (${res.reason}) for a reset request`);
+        }
+      }
     }
 
     // In dev, surface the link for testing. Never in prod.

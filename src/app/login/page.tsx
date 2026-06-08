@@ -102,7 +102,7 @@ function LoginForm() {
               "23 modules out of the box",
               "25 pre-built automations",
               "AMFI + SEBI compliant",
-              "AiSensy · Resend · MSG91",
+              "WhatsApp · Resend · MSG91",
             ].map((t) => (
               <div key={t} className="flex items-center gap-2 text-sm text-white/90">
                 <div className="size-1.5 rounded-full bg-brand-cyan-light" />

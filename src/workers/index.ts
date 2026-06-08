@@ -15,7 +15,7 @@ import { startWorkflowRulesSchedulerWorker } from "./workflow-rules-scheduler";
 import { startBlueprintSLAWorker } from "./blueprint-sla-worker";
 import { startScheduledCommsWorker } from "./scheduled-comms";
 import { startReportSchedulerWorker } from "./report-scheduler";
-import { startAiSensyTemplateSyncWorker } from "./aisensy-template-sync";
+import { startWapiTemplateSyncWorker } from "./wapi-template-sync";
 import { startCampaignDispatcherWorker } from "./campaign-dispatcher";
 import { startImapPollerWorker } from "./imap-poller";
 import { runDailyOpsScan } from "./daily-ops-scanner";
@@ -108,7 +108,7 @@ if (groups.includes("sched")) {
   stops.push(startCampaignDispatcherWorker());
   stops.push(startReportSchedulerWorker());
 }
-if (groups.includes("wa_sync")) stops.push(startAiSensyTemplateSyncWorker());
+if (groups.includes("wa_sync")) stops.push(startWapiTemplateSyncWorker());
 if (groups.includes("mail")) stops.push(startImapPollerWorker());
 
 /**

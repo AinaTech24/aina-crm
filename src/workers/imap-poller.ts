@@ -12,15 +12,23 @@
  * Postgres connection.
  */
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, desc, inArray } from "drizzle-orm";
+import { v4 as uuid } from "uuid";
 import { withSystem, withTenant } from "@/db/client";
 import { decrypt, encrypt } from "@/lib/crypto";
-import { imapFetchSince, type InboundEmail } from "@/lib/comms/imap";
+import { imapFetchSince, type InboundEmail, type ImapConfig } from "@/lib/comms/imap";
+import { describeMailError } from "@/lib/comms/connection-error";
 import { tenantIntegrations } from "@/db/schema/tenant_integrations";
 import { communications, investors, leads } from "@/db/schema";
+import { maybeRouteEmailToTicket } from "@/lib/comms/email-to-ticket";
+import { refreshAccessToken, getProviderDef, type OAuthProvider } from "@/lib/comms/oauth";
 import { sql } from "drizzle-orm";
 
-async function ingest(tenantId: string, msgs: InboundEmail[]): Promise<{ ingested: number; maxUid: number }> {
+async function ingest(
+  tenantId: string,
+  msgs: InboundEmail[],
+  ownerUserId: string | null
+): Promise<{ ingested: number; maxUid: number }> {
   let ingested = 0;
   let maxUid = 0;
   await withTenant(tenantId, async (tx) => {
@@ -57,14 +65,53 @@ async function ingest(tenantId: string, msgs: InboundEmail[]): Promise<{ ingeste
         }
       }
 
+      // ── Threading + reply detection ───────────────────────────────────
+      // (a) Header match: link to the outbound whose Message-ID this reply
+      //     references (works when we sent via SMTP, where messageId is real).
+      const refIds = [m.inReplyTo, ...(m.references?.split(/\s+/) ?? [])]
+        .map((r) => r?.trim())
+        .filter(Boolean) as string[];
+      let threadId: string | null = null;
+      let replyToOutboundId: string | null = null;
+      if (refIds.length) {
+        const [parent] = await tx
+          .select({ id: communications.id, threadId: communications.threadId })
+          .from(communications)
+          .where(and(eq(communications.tenantId, tenantId), eq(communications.channel, "email"), eq(communications.direction, "outbound"), inArray(communications.messageId, refIds)))
+          .limit(1);
+        if (parent) {
+          threadId = parent.threadId ?? null;
+          replyToOutboundId = parent.id;
+        }
+      }
+      // (b) Record fallback: thread onto the record's most recent email; if that
+      //     latest message was an outbound, it's the one this reply answers.
+      if (!threadId && (investorId || leadId)) {
+        const [recent] = await tx
+          .select({ id: communications.id, threadId: communications.threadId, direction: communications.direction })
+          .from(communications)
+          .where(and(eq(communications.tenantId, tenantId), eq(communications.channel, "email"), investorId ? eq(communications.investorId, investorId) : eq(communications.leadId, leadId!)))
+          .orderBy(desc(communications.createdAt))
+          .limit(1);
+        if (recent?.threadId) threadId = recent.threadId;
+        if (!replyToOutboundId && recent?.direction === "outbound") replyToOutboundId = recent.id;
+      }
+      if (!threadId) threadId = uuid();
+
       await tx.insert(communications).values({
         tenantId,
+        // Attribute mail received on an RM's personal mailbox to that RM.
+        userId: ownerUserId,
         channel: "email",
         direction: "inbound",
         investorId,
         leadId,
         externalId: ext,
         status: "delivered",
+        threadId,
+        messageId: m.messageId ?? null,
+        inReplyTo: m.inReplyTo ?? null,
+        emailReferences: m.references ?? null,
         inboundContent: {
           from: m.from ?? null,
           fromName: m.fromName ?? null,
@@ -76,6 +123,23 @@ async function ingest(tenantId: string, msgs: InboundEmail[]): Promise<{ ingeste
         },
       } as any);
       ingested++;
+
+      // Mark the answered outbound 'replied' (don't regress a terminal state).
+      if (replyToOutboundId) {
+        await tx
+          .update(communications)
+          .set({ status: "replied", repliedAt: new Date() })
+          .where(and(eq(communications.id, replyToOutboundId), inArray(communications.status, ["sent", "delivered", "read"])));
+      }
+
+      // Email → Service Request auto-routing (parity with WhatsApp intake).
+      await maybeRouteEmailToTicket(tx, {
+        tenantId,
+        investorId,
+        subject: m.subject ?? null,
+        text: m.text ?? null,
+        messageId: ext,
+      });
     }
   });
   return { ingested, maxUid };
@@ -89,15 +153,18 @@ export function startImapPollerWorker() {
     if (running) return;
     running = true;
     try {
+      // Every mailbox row — firm-wide (user_id NULL) AND each RM's personal one.
       const rows = await withSystem(async (tx) =>
         tx
           .select({
+            id: tenantIntegrations.id,
             tenantId: tenantIntegrations.tenantId,
+            userId: tenantIntegrations.userId,
             encryptedConfig: tenantIntegrations.encryptedConfig,
           })
           .from(tenantIntegrations)
           .where(and(eq(tenantIntegrations.provider, "mailbox"), eq(tenantIntegrations.isActive, true)))
-          .limit(200)
+          .limit(500)
       );
 
       for (const row of rows) {
@@ -107,37 +174,66 @@ export function startImapPollerWorker() {
         } catch {
           continue; // can't decrypt (key rotated?) — skip, not fatal
         }
-        const imap = config?.imap;
-        if (!imap?.host || !imap?.user || !imap?.pass) continue;
+
+        const oauth = config?.oauth as { provider?: OAuthProvider; refreshToken?: string; email?: string } | undefined;
+        const imap = config?.imap ?? {};
         const lastUid = Number(imap.lastUid ?? 0);
+
+        // Build the IMAP connection — password mailbox or OAuth (XOAUTH2).
+        let cfg: ImapConfig | null = null;
+        let rotatedRefresh: string | undefined;
+        if (oauth?.provider && oauth.refreshToken) {
+          try {
+            const t = await refreshAccessToken(oauth.provider, oauth.refreshToken);
+            rotatedRefresh = t.refreshToken;
+            const def = getProviderDef(oauth.provider);
+            cfg = {
+              host: imap.host || def.imap.host,
+              port: Number(imap.port ?? def.imap.port),
+              secure: imap.secure ?? def.imap.secure,
+              user: oauth.email || imap.user || "",
+              pass: "",
+              accessToken: t.accessToken,
+            };
+          } catch (e) {
+            console.error(`[imap] ${row.tenantId} OAuth refresh failed:`, (e as Error).message);
+            continue;
+          }
+        } else if (imap.host && imap.user && imap.pass) {
+          cfg = { host: imap.host, port: Number(imap.port), secure: !!imap.secure, user: imap.user, pass: imap.pass };
+        }
+        if (!cfg) continue; // no IMAP configured on this mailbox
 
         let msgs: InboundEmail[];
         try {
-          msgs = await imapFetchSince(
-            { host: imap.host, port: Number(imap.port), secure: !!imap.secure, user: imap.user, pass: imap.pass },
-            lastUid
-          );
+          msgs = await imapFetchSince(cfg, lastUid);
         } catch (e) {
-          console.error(`[imap] ${row.tenantId} fetch failed:`, (e as Error).message);
+          // Log the actionable reason (imapflow's bare "Command failed" is almost
+          // always a rejected login — provider needs an app-specific password +
+          // IMAP enabled), not the cryptic raw message.
+          console.error(`[imap] ${row.tenantId}/${row.userId ?? "firm"} fetch failed: ${describeMailError(e, "imap")} (raw: ${(e as Error).message})`);
           continue;
         }
-        if (!msgs.length) continue;
 
-        const { ingested, maxUid } = await ingest(row.tenantId, msgs);
+        const { ingested, maxUid } = msgs.length
+          ? await ingest(row.tenantId, msgs, row.userId ?? null)
+          : { ingested: 0, maxUid: 0 };
 
-        // Persist the new high-water UID (only touch encrypted_config; leave
-        // sender_config / is_active untouched).
-        if (maxUid > lastUid) {
-          config.imap.lastUid = maxUid;
+        // Persist new high-water UID + any rotated OAuth refresh token, scoped to
+        // THIS row's id (a tenant can now have several mailbox rows).
+        const advanced = maxUid > lastUid;
+        if (advanced || rotatedRefresh) {
+          if (advanced) config.imap = { ...imap, lastUid: maxUid };
+          if (rotatedRefresh && oauth) config.oauth = { ...oauth, refreshToken: rotatedRefresh };
           const enc = encrypt(JSON.stringify(config));
           await withTenant(row.tenantId, async (tx) => {
             await tx
               .update(tenantIntegrations)
               .set({ encryptedConfig: enc, updatedAt: new Date() })
-              .where(and(eq(tenantIntegrations.tenantId, row.tenantId), eq(tenantIntegrations.provider, "mailbox")));
+              .where(eq(tenantIntegrations.id, row.id));
           });
         }
-        if (ingested) console.log(`[imap] ${row.tenantId}: ingested ${ingested} message(s), uid→${maxUid}`);
+        if (ingested) console.log(`[imap] ${row.tenantId}/${row.userId ?? "firm"}: ingested ${ingested}, uid→${maxUid}`);
       }
     } finally {
       running = false;

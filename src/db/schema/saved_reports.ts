@@ -28,8 +28,11 @@ export const REPORT_SUBJECTS = [
   "service_request",
   "claim",
 ] as const;
-export const REPORT_TYPES = ["detailed", "matrix"] as const;
+export const REPORT_TYPES = ["detailed", "summary", "matrix"] as const;
 export const REPORT_SHARE_SCOPES = ["private", "team", "tenant"] as const;
+/** Aggregate functions available on matrix + summary reports. */
+export const REPORT_AGGREGATES = ["count", "sum", "avg", "min", "max"] as const;
+export type ReportAggregate = (typeof REPORT_AGGREGATES)[number];
 
 export const savedReports = pgTable(
   "saved_reports",
@@ -57,18 +60,37 @@ export const savedReports = pgTable(
      * Matrix reports: how to pivot.
      *   groupBy  — catalog field key for the rows
      *   pivot    — optional catalog field key for the columns (cross-tab)
-     *   aggregate— 'count' | 'sum'
-     *   measure  — field key to SUM when aggregate='sum'
+     *   aggregate— 'count' | 'sum' | 'avg' | 'min' | 'max'
+     *   measure  — field key the aggregate acts on (required for all but count)
      */
     matrix: jsonb("matrix").$type<{
       groupBy: string;
       pivot?: string;
-      aggregate: "count" | "sum";
+      aggregate: ReportAggregate;
       measure?: string;
     } | null>(),
 
+    /**
+     * Summary reports: row grouping with detail rows + sub/grand totals.
+     *   groupBy     — 1..3 catalog field keys; nested groups in order
+     *   columns     — detail-row columns (shown when showDetailRows=true)
+     *   aggregates  — per-group aggregate columns ({ field, fn, label? })
+     *   showDetailRows — show the underlying rows beneath each group header
+     *   sort        — sort within each group's detail rows
+     */
+    summary: jsonb("summary").$type<{
+      groupBy: string[];
+      columns: string[];
+      aggregates: { field: string; fn: ReportAggregate; label?: string }[];
+      showDetailRows: boolean;
+      sort?: { field: string; dir: "asc" | "desc" } | null;
+    } | null>(),
+
+    /** Optional folder to organise the report under (Zoho-style). */
+    folder: text("folder"),
+
     /** Optional chart on the result (rendered on the view page). */
-    chartType: text("chart_type", { enum: ["none", "bar", "pie", "line"] }).default("none"),
+    chartType: text("chart_type", { enum: ["none", "bar", "pie", "line", "area", "donut"] }).default("none"),
 
     /** Who can see it. private = creator only; team = same branch; tenant = all. */
     sharedScope: text("shared_scope", { enum: REPORT_SHARE_SCOPES }).notNull().default("private"),

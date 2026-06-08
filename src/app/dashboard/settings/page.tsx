@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Building2, Database, Users, CreditCard, MessageCircle, Mail, Lock, Webhook, ShieldCheck, Workflow, KeyRound, Palette, UserCircle, GitBranch, Target } from "lucide-react";
+import { Building2, Database, Users, CreditCard, MessageCircle, Mail, Webhook, ShieldCheck, Workflow, KeyRound, Palette, UserCircle, GitBranch, Target } from "lucide-react";
 
 const SECTIONS = [
   {
@@ -85,12 +85,6 @@ const SECTIONS = [
     title: "Two-factor authentication",
     desc: "Add a TOTP authenticator code on top of your password. Self-service for your own account.",
     href: "/dashboard/settings/security",
-  },
-  {
-    icon: Lock,
-    title: "Security & access log",
-    desc: "Access tracking, PII audit, IP allow-list.",
-    href: "/dashboard/cybersecurity",
   },
   {
     icon: Webhook,

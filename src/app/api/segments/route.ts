@@ -47,7 +47,14 @@ export async function GET() {
       return tx
         .select()
         .from(segments)
-        .where(eq(segments.tenantId, session.tenantId))
+        // Hide throwaway campaign audiences (created by the broadcast audience
+        // builder) — they'd otherwise clutter the saved-segment list.
+        .where(
+          and(
+            eq(segments.tenantId, session.tenantId),
+            sql`${segments.description} IS DISTINCT FROM 'Ad-hoc campaign audience'`
+          )
+        )
         .orderBy(desc(segments.updatedAt));
     });
     return NextResponse.json({ segments: rows });

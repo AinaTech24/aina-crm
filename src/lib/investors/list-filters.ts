@@ -34,6 +34,7 @@ export function buildInvestorConditions(
 
   const q = (sp.q ?? "").trim();
   const segment = csv(sp.segment);
+  const category = csv(sp.category);
   const tier = csv(sp.tier);
   const status = csv(sp.status);
   const kyc = csv(sp.kyc);
@@ -65,6 +66,7 @@ export function buildInvestorConditions(
   // NB: use inArray (not `= ANY(${jsArray})`) — Drizzle expands a JS array
   // passed to sql`` into a `($1,$2,…)` tuple, which is invalid for ANY().
   if (segment.length) conditions.push(inArray(investors.segmentTag, segment as any));
+  if (category.length) conditions.push(inArray(investors.clientCategory, category as any));
   if (tier.length) conditions.push(inArray(investors.serviceTier, tier as any));
   if (status.length) conditions.push(inArray(investors.status, status as any));
   if (kyc.length) conditions.push(inArray(investors.kycStatus, kyc as any));

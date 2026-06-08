@@ -153,6 +153,16 @@ export const investorCatalog: SubjectCatalog = {
       writable: true,
     },
     {
+      key: "client_category",
+      label: "Client Category",
+      type: "enum",
+      sql: "inv.client_category",
+      ops: COMMON_ENUM_OPS,
+      enumValues: ["A", "B", "C", "D"],
+      writable: true,
+      help: "Manually-assigned A/B/C/D client grade.",
+    },
+    {
       key: "status",
       label: "Status",
       type: "enum",

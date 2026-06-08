@@ -6,6 +6,7 @@ import { can } from "@/lib/auth/rbac";
 import { FilterBar } from "@/components/common/FilterBar";
 import { CustomViews } from "@/components/common/CustomViews";
 import { SchemesCatalog } from "@/components/schemes/SchemesCatalog";
+import { SyncSchemesButton } from "@/components/schemes/SyncSchemesButton";
 
 export const dynamic = "force-dynamic";
 
@@ -67,14 +68,17 @@ export default async function SchemesPage({
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-          <Boxes className="size-6 text-brand-cyan" /> Scheme Master
-        </h1>
-        <p className="text-muted-foreground text-sm">
-          The firm's mutual-fund catalog — browse, shortlist (IC buy-list), and score schemes.
-          {!canManage && " Managing the shortlist + evaluation is for the investment committee (owner / compliance)."}
-        </p>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+            <Boxes className="size-6 text-brand-cyan" /> Scheme Master
+          </h1>
+          <p className="text-muted-foreground text-sm">
+            The firm's mutual-fund catalog — browse, shortlist (IC buy-list), and score schemes.
+            {!canManage && " Managing the shortlist + evaluation is for the investment committee (owner / compliance)."}
+          </p>
+        </div>
+        {canManage && <SyncSchemesButton />}
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

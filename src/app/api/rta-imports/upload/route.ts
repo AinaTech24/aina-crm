@@ -9,6 +9,7 @@ import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { RTA_FILE_KINDS, RTA_SOURCES } from "@/db/schema/rta_imports";
 import { processRtaFile } from "@/lib/rta/process";
+import { decodeRtaToText } from "@/lib/rta/decode";
 
 /**
  * POST /api/rta-imports/upload
@@ -70,7 +71,11 @@ export async function POST(req: NextRequest) {
   }
 
   const buf = Buffer.from(await file.arrayBuffer());
-  const text = buf.toString("utf8");
+  // Decode the upload to canonical pipe-delimited text. Real RTA files arrive
+  // as .xls / .xlsx / .dbf (binary) — reading them as UTF-8 produced garbage and
+  // silently imported zero rows. The decoder handles every spreadsheet + CSV.
+  const text = decodeRtaToText(buf, file.name);
+  // Checksum the ORIGINAL bytes so re-uploading the identical file dedupes.
   const checksum = createHash("sha256").update(buf).digest("hex");
 
   const result = await withTenant(

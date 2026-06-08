@@ -29,6 +29,10 @@ export interface RenderContext {
   };
   /** Optional unsubscribe URL — when set, replaces `{{unsubscribe_url}}`. */
   unsubscribeUrl?: string;
+  /** When true (actual send), unresolved `{{fields}}` render as blank instead of
+   *  staying visible. The designer PREVIEW leaves this false so the author can see
+   *  which fields are still unfilled. */
+  blankUnresolved?: boolean;
 }
 
 const FONT_STACKS: Record<string, string> = {
@@ -291,7 +295,7 @@ export function substituteVariables(input: string, ctx: RenderContext, htmlEscap
   if (!input) return "";
   return input.replace(MERGE_FIELD_RE, (full, path: string) => {
     const v = readPath({ ...ctx.variables, tenant: ctx.tenant }, path);
-    if (v === undefined || v === null) return full; // keep unresolved tokens visible
+    if (v === undefined || v === null) return ctx.blankUnresolved ? "" : full; // blank on send, visible in preview
     let out: string;
     if (typeof v === "string") out = v;
     else if (typeof v === "number" || typeof v === "boolean") out = String(v);

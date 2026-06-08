@@ -13,11 +13,22 @@ import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
-import { savedReports, REPORT_SUBJECTS, REPORT_TYPES, REPORT_SHARE_SCOPES } from "@/db/schema";
+import { savedReports, REPORT_SUBJECTS, REPORT_TYPES, REPORT_SHARE_SCOPES, REPORT_AGGREGATES } from "@/db/schema";
 import { FilterASTSchema } from "@/lib/filter/ast";
 import { assertValidReport } from "@/lib/reports/run";
 
 export const dynamic = "force-dynamic";
+
+const SummarySchema = z.object({
+  groupBy: z.array(z.string().max(60)).min(1).max(3),
+  columns: z.array(z.string().max(60)).max(40).optional(),
+  aggregates: z
+    .array(z.object({ field: z.string().max(60).optional().default(""), fn: z.enum(REPORT_AGGREGATES), label: z.string().max(60).optional() }))
+    .max(8)
+    .optional(),
+  showDetailRows: z.boolean().optional(),
+  sort: z.object({ field: z.string(), dir: z.enum(["asc", "desc"]) }).nullable().optional(),
+});
 
 const ReportBody = z.object({
   name: z.string().min(1).max(160),
@@ -31,12 +42,14 @@ const ReportBody = z.object({
     .object({
       groupBy: z.string(),
       pivot: z.string().optional(),
-      aggregate: z.enum(["count", "sum"]),
+      aggregate: z.enum(REPORT_AGGREGATES),
       measure: z.string().optional(),
     })
     .nullable()
     .optional(),
-  chartType: z.enum(["none", "bar", "pie", "line"]).optional(),
+  summary: SummarySchema.nullable().optional(),
+  folder: z.string().max(80).nullable().optional(),
+  chartType: z.enum(["none", "bar", "pie", "line", "area", "donut"]).optional(),
   sharedScope: z.enum(REPORT_SHARE_SCOPES).optional(),
   schedule: z
     .object({
@@ -117,6 +130,8 @@ export async function POST(req: NextRequest) {
         columns: body.columns ?? [],
         sort: body.sort ?? null,
         matrix: body.matrix ?? null,
+        summary: body.summary ?? null,
+        folder: body.folder ?? null,
         chartType: body.chartType ?? "none",
         sharedScope: body.sharedScope ?? "private",
         schedule: body.schedule ?? null,

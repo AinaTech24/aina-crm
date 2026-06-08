@@ -5,6 +5,7 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { formatINR } from "@/lib/utils";
 import { SipRejectionsTable } from "@/components/sip-rejections/SipRejectionsTable";
+import { NewSipRejectionButton } from "@/components/sip-rejections/NewSipRejectionButton";
 import { FilterBar } from "@/components/common/FilterBar";
 import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
 import { CustomViews } from "@/components/common/CustomViews";
@@ -170,9 +171,12 @@ export default async function SipRejectionsPage({
             Recovery pipeline · 2-day SLA · auto-task on every new rejection.
           </p>
         </div>
-        <Link href="/dashboard/reports/sip_recovery_monthly" className="btn-secondary text-xs">
-          Monthly recovery report →
-        </Link>
+        <div className="flex items-center gap-2">
+          <NewSipRejectionButton />
+          <Link href="/dashboard/reports/sip_recovery_monthly" className="btn-secondary text-xs">
+            Monthly recovery report →
+          </Link>
+        </div>
       </div>
 
       <div className="grid grid-cols-6 gap-3">

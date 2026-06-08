@@ -15,15 +15,15 @@
  * template-driven through dispatch().
  */
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { v4 as uuid } from "uuid";
 import type { Tx } from "@/db/client";
-import { communications } from "@/db/schema";
+import { communications, emailSuppressions } from "@/db/schema";
 import { runComplianceChecks, type ComplianceResult } from "./compliance";
 import { emailAdapter } from "./adapters/resend";
 import { renderTemplateText } from "./tokens";
 import { getConsent, loadTenant } from "./pipeline";
-import { getTenantIntegration } from "./integrations";
+import { resolveEmailSender } from "./sender";
 
 
 const MF_DISCLAIMER =
@@ -40,6 +40,11 @@ export interface ComposeEmailInput {
   investorId?: string | null;
   leadId?: string | null;
   actorUserId?: string | null;
+  /** Threading: reuse an existing conversation thread + parent message. */
+  threadId?: string | null;
+  inReplyTo?: string | null;
+  /** Reply-To override — routes the client's reply to the sending RM's inbox. */
+  replyTo?: string | null;
 }
 
 export interface ComposeResult {
@@ -105,19 +110,34 @@ async function performEmailSend(
     category: "transactional" | "marketing";
     investorId?: string | null;
     rendered: RenderedEmail;
+    replyTo?: string | null;
+    /** The sending RM — picks their personal mailbox over the firm default. */
+    actorUserId?: string | null;
   }
 ): Promise<ComposeResult> {
+  // 0. Suppression — never send to a hard-bounced / unsubscribed address.
+  const [supp] = await tx
+    .select({ reason: emailSuppressions.reason })
+    .from(emailSuppressions)
+    .where(and(eq(emailSuppressions.tenantId, args.tenantId), sql`lower(${emailSuppressions.email}) = ${args.recipient.toLowerCase()}`))
+    .limit(1);
+  if (supp) {
+    await tx
+      .update(communications)
+      .set({ status: "skipped_no_contact", statusReason: `address suppressed (${supp.reason})` })
+      .where(eq(communications.id, args.commId));
+    return { communicationId: args.commId, status: "skipped", reason: `suppressed_${supp.reason}` };
+  }
+
   // 1. Consent (only when we know the client; raw-address sends skip it).
+  //    Marketing needs an explicit opt-in; transactional/utility service email to
+  //    an existing client is allowed unless they've explicitly opted out (revoked).
   let consentSnapshot: any = null;
   if (args.investorId) {
-    const c = await getConsent(
-      tx,
-      args.tenantId,
-      args.investorId,
-      "email",
-      args.category === "marketing" ? "marketing" : "transactional"
-    );
-    if (!c || c.status !== "granted") {
+    const scope = args.category === "marketing" ? "marketing" : "transactional";
+    const c = await getConsent(tx, args.tenantId, args.investorId, "email", scope);
+    const blocked = args.category === "marketing" ? !c || c.status !== "granted" : c?.status === "revoked";
+    if (blocked) {
       await tx
         .update(communications)
         .set({ status: "skipped_consent", statusReason: `no email ${args.category} consent` })
@@ -167,9 +187,9 @@ async function performEmailSend(
     })
     .where(eq(communications.id, args.commId));
 
-  // 3. Adapter (Resend), then stamp the outcome.
+  // 3. Adapter — prefer the sending RM's own mailbox → the firm mailbox → Resend.
   try {
-    const integration = await getTenantIntegration(tx, args.tenantId, "resend");
+    const sender = await resolveEmailSender(tx, args.tenantId, args.actorUserId);
     const r = await emailAdapter.send({
       tenantId: args.tenantId,
       tokens: args.rendered.tokens,
@@ -177,16 +197,22 @@ async function performEmailSend(
       recipient: args.recipient,
       category: args.category,
       inlineHtml: args.rendered.html,
-      apiKey: integration?.config?.apiKey,
-      fromOverride: integration?.senderConfig?.fromEmail,
-      fromNameOverride: integration?.senderConfig?.fromName,
+      apiKey: sender.apiKey,
+      smtp: sender.smtp,
+      // From: explicit sender identity, else the mailbox login address.
+      fromOverride: sender.fromEmail ?? (sender.smtp ? sender.smtp.user : undefined),
+      fromNameOverride: sender.fromName,
+      // Reply-To routes the client's reply to the sending RM's own inbox.
+      replyTo: args.replyTo ?? sender.replyTo ?? undefined,
       // Stable per-row key → Resend dedupes a re-fired send (retry / scheduled
       // race) provider-side instead of delivering a duplicate.
       idempotencyKey: args.commId,
     });
     await tx
       .update(communications)
-      .set({ externalId: r.externalId, status: r.status, sentAt: new Date() })
+      // messageId = provider id (the real RFC Message-ID when sent via SMTP) so
+      // an inbound reply can thread back to this message.
+      .set({ externalId: r.externalId, messageId: r.externalId, status: r.status, sentAt: new Date() })
       .where(eq(communications.id, args.commId));
     return { communicationId: args.commId, status: r.status };
   } catch (err) {
@@ -203,6 +229,7 @@ export async function composeAndSendEmail(tx: Tx, input: ComposeEmailInput): Pro
   const tenantRow = await loadTenant(tx, input.tenantId);
   const rendered = buildEmailContent(tenantRow, input.recipientName, input.subject, input.body);
   const commId = uuid();
+  const threadId = input.threadId ?? uuid(); // reuse the conversation, or start one
 
   await tx.insert(communications).values({
     id: commId,
@@ -213,6 +240,8 @@ export async function composeAndSendEmail(tx: Tx, input: ComposeEmailInput): Pro
     channel: "email",
     direction: "outbound",
     status: "queued",
+    threadId,
+    inReplyTo: input.inReplyTo ?? null,
     payload: { rendered, recipient: input.recipient, category: input.category, compose: true } as any,
     queuedAt: new Date(),
   } as any);
@@ -224,6 +253,8 @@ export async function composeAndSendEmail(tx: Tx, input: ComposeEmailInput): Pro
     category: input.category,
     investorId: input.investorId,
     rendered,
+    replyTo: input.replyTo,
+    actorUserId: input.actorUserId,
   });
 }
 
@@ -305,6 +336,7 @@ export async function retryEmail(tx: Tx, commId: string, tenantId?: string): Pro
     category: (payload.category as "transactional" | "marketing") ?? "transactional",
     investorId: row.investorId,
     rendered,
+    actorUserId: row.userId,
   });
 }
 
@@ -341,5 +373,6 @@ export async function sendScheduledEmail(tx: Tx, commId: string): Promise<Compos
     category: (payload.category as "transactional" | "marketing") ?? "transactional",
     investorId: row.investorId,
     rendered,
+    actorUserId: row.userId,
   });
 }

@@ -242,6 +242,9 @@ export function renderEmailTemplate(body: EmailTemplateBody, tokens: Record<stri
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { renderEmailHtml } = require("@/lib/email-designer/render") as typeof import("@/lib/email-designer/render");
     return renderEmailHtml(body as any, {
+      // Actual send: any field still unfilled (e.g. transaction.* on a manual
+      // send with no transaction context) renders blank, never raw "{{…}}".
+      blankUnresolved: true,
       variables,
       tenant: {
         legalName: tokens.tenant_name ?? tokens.arn_name ?? "",
@@ -302,19 +305,27 @@ export function renderEmailTemplate(body: EmailTemplateBody, tokens: Record<stri
  */
 function unflattenTokens(tokens: Record<string, string>): Record<string, unknown> {
   const out: Record<string, any> = {};
-  for (const [k, v] of Object.entries(tokens ?? {})) {
-    if (!k.includes("_")) {
-      out[k] = v;
-      continue;
+  const setPath = (parts: string[], v: string) => {
+    let node = out;
+    for (let i = 0; i < parts.length - 1; i++) {
+      const p = parts[i];
+      if (typeof node[p] !== "object" || node[p] === null) node[p] = {};
+      node = node[p];
     }
-    // Heuristic: take the first underscore as the namespace split point.
-    const idx = k.indexOf("_");
-    const ns = k.slice(0, idx);
-    const rest = k.slice(idx + 1);
-    out[ns] ??= {};
-    out[ns][rest] = v;
-    // Also keep the flat alias for backwards-compatibility templates.
+    node[parts[parts.length - 1]] = v;
+  };
+  for (const [k, v] of Object.entries(tokens ?? {})) {
+    // Designer merge fields are DOTTED paths — "investor.name" → { investor: { name } }
+    // — and readPath() splits on ".". The previous version split on "_", so dotted
+    // keys never nested and every {{field}} rendered raw. Handle dot first, fall
+    // back to the legacy underscore namespace, and keep a flat alias.
     out[k] = v;
+    if (k.includes(".")) {
+      setPath(k.split("."), v);
+    } else if (k.includes("_")) {
+      const idx = k.indexOf("_");
+      setPath([k.slice(0, idx), k.slice(idx + 1)], v);
+    }
   }
   return out;
 }

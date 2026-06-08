@@ -93,6 +93,44 @@ const SCHEME_NAME_PATTERNS = [
   /\b(SBI|HDFC|ICICI|Kotak|Axis|Aditya Birla|UTI|Nippon|Franklin|DSP|Mirae|Quant|Edelweiss|Motilal|Tata|Sundaram|IDFC|L&T|JM|PGIM|Invesco|Bandhan|Canara|Union|Baroda|Mahindra|360 ONE|Bank of India|HSBC|Navi|White Oak|Helios|Old Bridge|Samco|Trust|Zerodha|WhiteOak|NJ)\s+(Mutual\s+Fund|MF)?\s*[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,5}\s+(Fund|Scheme|Plan)/,
 ];
 
+/** The exact AMFI-mandated market-risk disclaimer (what the rule looks for). */
+export const MANDATORY_RISK_DISCLAIMER =
+  "Mutual fund investments are subject to market risks. Read all scheme related documents carefully.";
+
+/**
+ * Given a plain-text message + its category + the firm's identity, return the
+ * mandatory footer lines that are MISSING and would otherwise BLOCK the send:
+ *   - the AMFI market-risk disclaimer (marketing)
+ *   - the SEBI ARN disclosure
+ *   - the registered firm name (marketing)
+ * Appending these clears the block-severity findings WITHOUT bypassing the gate.
+ * Lines already present in the text are not returned (idempotent).
+ */
+export function missingMandatoryLines(params: {
+  category: ComplianceContext["category"];
+  text: string;
+  tenant: { legalName?: string | null; arn?: string | null };
+}): string[] {
+  const text = params.text ?? "";
+  const lines: string[] = [];
+
+  if (params.category === "marketing" && !AMFI_RISK_DISCLAIMER_PATTERNS.some((p) => p.test(text))) {
+    lines.push(MANDATORY_RISK_DISCLAIMER);
+  }
+
+  const arn = params.tenant.arn?.trim();
+  if (arn && params.category !== "authentication" && !text.includes(`ARN-${arn}`) && !text.includes(`ARN ${arn}`)) {
+    lines.push(`ARN-${arn}`);
+  }
+
+  const legalName = params.tenant.legalName?.trim();
+  if (legalName && params.category === "marketing" && !text.toLowerCase().includes(legalName.toLowerCase())) {
+    lines.push(legalName);
+  }
+
+  return lines;
+}
+
 /** ============== Deterministic rule functions ============== */
 
 function ruleAmfiDisclaimer(ctx: ComplianceContext): ComplianceFinding[] {
@@ -292,9 +330,12 @@ export function runComplianceChecks(ctx: ComplianceContext): ComplianceResult {
     try {
       all.push(...rule(ctx));
     } catch (err) {
+      // Fail CLOSED for marketing: a crashing rule must not silently let a
+      // marketing message bypass that protection. Transactional/utility stay
+      // warn so a rule bug can't block the client's own service messages.
       all.push({
         rule: "_rule_internal_error",
-        severity: "warn",
+        severity: ctx.category === "marketing" ? "block" : "warn",
         message: `Compliance rule failed: ${(err as Error).message}`,
       });
     }

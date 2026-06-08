@@ -31,11 +31,14 @@ export const dynamic = "force-dynamic";
 
 const Patch = z.object({
   name: z.string().optional(),
+  // Master identity — editable so RMs can fix typos. PAN is uppercased + length-
+  // capped; empty string clears it. (DOB is below.)
+  pan: z.string().max(10).nullable().optional().or(z.literal("")),
   email: z.string().email().optional().or(z.literal("")),
   phone: z.string().optional(),
   whatsappPhone: z.string().optional(),
   segmentTag: z.enum(["HNI", "Affluent", "Retail", "NRI", "Corporate"]).optional(),
-  investorCategory: z.enum(["individual", "huf", "corporate", "trust", "nri", "minor", "other"]).optional(),
+  investorCategory: z.enum(["individual", "huf", "corporate", "company", "trust", "nri", "minor", "other"]).optional(),
   rmId: z.string().uuid().optional(),
   // Client-service preferences
   statementCadence: z.enum(["off", "monthly", "quarterly"]).optional(),
@@ -97,6 +100,7 @@ const Patch = z.object({
     .nullable()
     .optional(),
   serviceTier: z.enum(["A", "B", "C"]).nullable().optional(),
+  clientCategory: z.enum(["A", "B", "C", "D"]).nullable().optional(),
   bseUccCode: z.string().max(40).nullable().optional(),
   nseCanCode: z.string().max(40).nullable().optional(),
   mandateStatus: z.enum(["none", "pending", "active", "expired", "rejected", "cancelled"]).nullable().optional(),

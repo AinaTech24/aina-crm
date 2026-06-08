@@ -684,3 +684,7 @@
   padding-right: 0;
   justify-content: center;
 }
+/* Search box + Customize toolbar make no sense in the icon rail — hide them
+   when collapsed (the nav itself still shows icons). */
+.sidebar-collapsed .sidebar-when-expanded { display: none; }
+.sidebar-collapsed nav { padding-top: 0.5rem; }

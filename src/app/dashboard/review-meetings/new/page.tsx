@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 export default async function NewReviewMeetingPage({
   searchParams,
 }: {
-  searchParams: Promise<{ investorId?: string; leadId?: string }>;
+  searchParams: Promise<{ investorId?: string; leadId?: string; category?: string }>;
 }) {
   const sp = await searchParams;
   const session = await requireSession();
@@ -74,6 +74,7 @@ export default async function NewReviewMeetingPage({
         families={families}
         preselectedInvestorId={sp.investorId}
         preselectedLeadId={sp.leadId}
+        preselectedCategory={sp.category}
       />
     </div>
   );

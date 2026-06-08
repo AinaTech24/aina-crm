@@ -18,15 +18,13 @@ jobs:
       - run: npm ci
       - name: Typecheck
         run: npx tsc --noEmit
-      - name: RBAC guard (mutations gated by require())
-        # Non-blocking for now: surfaces a pre-existing cleanup where some
-        # routes gate via a local isManager() helper instead of the central
-        # require() capability check. Burn the list down, then make blocking.
-        continue-on-error: true
+      - name: RBAC guard (every mutation route is capability/session gated)
         run: npm run check:rbac
+      - name: Migration numbering guard (no new duplicate prefixes)
+        run: npm run check:migrations
       - name: Calculator math assertions
         run: npm run check:calc
-      - name: Unit tests
+      - name: Unit tests (money math + central spine)
         run: npm test
 
   db-checks:

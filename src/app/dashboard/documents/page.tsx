@@ -1,8 +1,8 @@
 import Link from "next/link";
-import { desc, eq, sql } from "drizzle-orm";
+import { desc, eq, inArray, sql } from "drizzle-orm";
 import { Upload } from "lucide-react";
 import { withTenant } from "@/db/client";
-import { complianceDocuments } from "@/db/schema";
+import { complianceDocuments, investors } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { DocumentsFeed } from "@/components/compliance/DocumentsFeed";
@@ -46,11 +46,31 @@ export default async function DocumentsPage() {
       .where(eq(complianceDocuments.tenantId, session.tenantId))
       .orderBy(desc(complianceDocuments.createdAt))
       .limit(100);
+
+    // Resolve the linked client (investor) name for any doc tagged to one, so
+    // the vault shows "which document for which client".
+    const investorIds = Array.from(
+      new Set(
+        rows
+          .filter((r) => r.relatedEntityType === "investor" && r.relatedEntityId)
+          .map((r) => r.relatedEntityId as string)
+      )
+    );
+    const clientNames: Record<string, string> = {};
+    if (investorIds.length) {
+      const names = await tx
+        .select({ id: investors.id, name: investors.name })
+        .from(investors)
+        .where(inArray(investors.id, investorIds));
+      for (const n of names) clientNames[n.id] = n.name;
+    }
+
     return {
       total: Number(s.total),
       expiringSoon: Number(s.expiring_soon),
       expired: Number(s.expired),
       rows,
+      clientNames,
     };
   });
 
@@ -71,6 +91,10 @@ export default async function DocumentsPage() {
     issuedOn: row.issuedOn,
     expiresOn: row.expiresOn,
     createdAt: row.createdAt,
+    clientName:
+      row.relatedEntityType === "investor" && row.relatedEntityId
+        ? data.clientNames[row.relatedEntityId] ?? null
+        : null,
   }));
 
   return (

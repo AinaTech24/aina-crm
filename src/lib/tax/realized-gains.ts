@@ -98,8 +98,14 @@ export function fifoRealizedGains(rows: TxRow[], fyStartYear: number): RealizedG
     const units = num(r.units);
     if (units <= 0) continue;
     const nav = navOf(r);
-    const isSell = r.direction === "outflow" || SELL_TYPES.has(r.type ?? "");
-    const isBuy = r.direction === "inflow" && !SELL_TYPES.has(r.type ?? "");
+    // Classify by DIRECTION first — a `switch` has two legs (switch-out =
+    // outflow = sell in the source scheme; switch-in = inflow = BUY in the
+    // destination scheme). Keying off the type alone wrongly treated the
+    // switch-in leg as a sell, corrupting FIFO cost basis. Type is only a
+    // fallback when direction is absent.
+    const dir = (r.direction ?? "").toLowerCase();
+    const isSell = dir === "outflow" || (!dir && SELL_TYPES.has(r.type ?? ""));
+    const isBuy = dir === "inflow" || (!dir && !SELL_TYPES.has(r.type ?? ""));
 
     if (isBuy) {
       const q = lots.get(key) ?? [];

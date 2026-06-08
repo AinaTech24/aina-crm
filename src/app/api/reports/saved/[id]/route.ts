@@ -13,11 +13,22 @@ import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
-import { savedReports, REPORT_SUBJECTS, REPORT_TYPES, REPORT_SHARE_SCOPES } from "@/db/schema";
+import { savedReports, REPORT_SUBJECTS, REPORT_TYPES, REPORT_SHARE_SCOPES, REPORT_AGGREGATES } from "@/db/schema";
 import { FilterASTSchema } from "@/lib/filter/ast";
 import { assertValidReport } from "@/lib/reports/run";
 
 export const dynamic = "force-dynamic";
+
+const SummarySchema = z.object({
+  groupBy: z.array(z.string().max(60)).min(1).max(3),
+  columns: z.array(z.string().max(60)).max(40).optional(),
+  aggregates: z
+    .array(z.object({ field: z.string().max(60).optional().default(""), fn: z.enum(REPORT_AGGREGATES), label: z.string().max(60).optional() }))
+    .max(8)
+    .optional(),
+  showDetailRows: z.boolean().optional(),
+  sort: z.object({ field: z.string(), dir: z.enum(["asc", "desc"]) }).nullable().optional(),
+});
 
 const UpdateBody = z.object({
   name: z.string().min(1).max(160).optional(),
@@ -28,10 +39,12 @@ const UpdateBody = z.object({
   columns: z.array(z.string().max(60)).max(40).optional(),
   sort: z.object({ field: z.string(), dir: z.enum(["asc", "desc"]) }).nullable().optional(),
   matrix: z
-    .object({ groupBy: z.string(), pivot: z.string().optional(), aggregate: z.enum(["count", "sum"]), measure: z.string().optional() })
+    .object({ groupBy: z.string(), pivot: z.string().optional(), aggregate: z.enum(REPORT_AGGREGATES), measure: z.string().optional() })
     .nullable()
     .optional(),
-  chartType: z.enum(["none", "bar", "pie", "line"]).optional(),
+  summary: SummarySchema.nullable().optional(),
+  folder: z.string().max(80).nullable().optional(),
+  chartType: z.enum(["none", "bar", "pie", "line", "area", "donut"]).optional(),
   sharedScope: z.enum(REPORT_SHARE_SCOPES).optional(),
   schedule: z
     .object({
@@ -102,6 +115,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         columns: body.columns ?? (before.columns as string[] | null),
         sort: body.sort !== undefined ? body.sort : (before.sort as any),
         matrix: body.matrix !== undefined ? body.matrix : (before.matrix as any),
+        summary: body.summary !== undefined ? body.summary : (before.summary as any),
       };
       try {
         assertValidReport(merged as any);
@@ -110,7 +124,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       }
 
       const patch: any = { updatedAt: new Date() };
-      for (const k of ["name", "description", "subject", "reportType", "ast", "columns", "sort", "matrix", "chartType", "sharedScope", "schedule"] as const) {
+      for (const k of ["name", "description", "subject", "reportType", "ast", "columns", "sort", "matrix", "summary", "folder", "chartType", "sharedScope", "schedule"] as const) {
         if (body[k] !== undefined) patch[k] = body[k];
       }
       const r = await tx.update(savedReports).set(patch).where(and(eq(savedReports.id, id), eq(savedReports.tenantId, session.tenantId))).returning();

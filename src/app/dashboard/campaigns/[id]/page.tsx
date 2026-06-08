@@ -8,6 +8,7 @@ import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { isBroadcastCampaign } from "@/lib/campaigns/broadcast";
 import { CampaignActions } from "@/components/campaigns/CampaignActions";
+import { CampaignRecipients } from "@/components/campaigns/CampaignRecipients";
 import { formatDate } from "@/lib/utils";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -96,15 +97,17 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
         <div className="border rounded-lg bg-card p-5">
           <h2 className="font-semibold mb-3">Audience</h2>
           {seg ? (
-            <Link href={`/dashboard/segments/${seg.id}`} className="block">
-              <div className="font-medium hover:underline">{seg.name}</div>
+            <div className="block">
+              <div className="font-medium">{seg.name}</div>
               <div className="text-xs text-muted-foreground mt-1">{seg.memberCount ?? 0} members at last refresh</div>
-            </Link>
+            </div>
           ) : (
             <p className="text-sm text-muted-foreground">No segment attached.</p>
           )}
         </div>
       </div>
+
+      <CampaignRecipients campaignId={c.id} />
     </div>
   );
 }

@@ -7,19 +7,46 @@ export const dynamic = "force-dynamic";
 
 const ROOT = path.join(process.cwd(), "node-local", "uploads");
 
-/** Resolve the key under ROOT, rejecting path-traversal (`../`) escapes. */
+/**
+ * Local-disk fallback for the S3 document store (used when S3 isn't configured).
+ * Keys are `tenants/<tenantId>/<kind>/<ts>-<file>` (see lib/storage/s3.ts vaultKey)
+ * or non-tenant admin paths like `library/...`.
+ *
+ * Access policy (fail-closed): a file is publicly readable ONLY if it's an
+ * explicitly public asset class — tenant logos (`general`) and shared marketing
+ * assets (`marketing`), which legitimately render on public lead-capture forms
+ * and PDFs, plus non-tenant admin `library/` content. Everything else
+ * (compliance vault, KYC documents, and any future kind) requires an
+ * authenticated session **belonging to the owning tenant**. Writes always
+ * require a session and may only target the caller's own tenant namespace.
+ */
 function safePath(key: string[]): string | null {
   const full = path.resolve(ROOT, key.join("/"));
   if (full !== ROOT && !full.startsWith(ROOT + path.sep)) return null;
   return full;
 }
 
+/** Public-readable asset classes (logos + shared marketing material). */
+const PUBLIC_KINDS = new Set(["general", "marketing"]);
+
+function keyMeta(key: string[]): { tenantId?: string; kind?: string } {
+  if (key[0] === "tenants" && key.length >= 3) return { tenantId: key[1], kind: key[2] };
+  return {};
+}
+
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ key: string[] }> }) {
   try {
-    await requireSession(); // must be signed in to store a file
+    const session = await requireSession(); // must be signed in to store a file
     const { key } = await params;
     const filePath = safePath(key);
     if (!filePath) return NextResponse.json({ error: "bad key" }, { status: 400 });
+
+    // A signed-in user may only write within their OWN tenant's namespace —
+    // prevents planting/overwriting files in another firm's key path.
+    const { tenantId } = keyMeta(key);
+    if (tenantId && tenantId !== session.tenantId) {
+      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    }
 
     const buffer = Buffer.from(await req.arrayBuffer());
     if (buffer.length === 0) return NextResponse.json({ error: "empty body" }, { status: 400 });
@@ -40,13 +67,29 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ key:
   try {
     const { key } = await params;
     const filePath = safePath(key);
+    const { tenantId, kind } = keyMeta(key);
+
+    // Fail-closed: only the explicit public asset classes are served without
+    // auth. Tenant docs of any other kind require a same-tenant session.
+    const isPublic = !tenantId || (!!kind && PUBLIC_KINDS.has(kind));
+    if (!isPublic) {
+      let session: Awaited<ReturnType<typeof requireSession>> | null = null;
+      try {
+        session = await requireSession();
+      } catch {
+        // Don't reveal existence of protected files to anonymous callers.
+        return NextResponse.json({ error: "File not found" }, { status: 404 });
+      }
+      if (tenantId && session.tenantId !== tenantId) {
+        return NextResponse.json({ error: "File not found" }, { status: 404 });
+      }
+    }
+
     if (!filePath || !fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
       return NextResponse.json({ error: "File not found" }, { status: 404 });
     }
 
     const data = await fs.promises.readFile(filePath);
-
-    // Map file extension to standard MIME types
     const ext = path.extname(filePath).toLowerCase();
     let contentType = "application/octet-stream";
     if (ext === ".png") contentType = "image/png";
@@ -60,7 +103,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ key:
     return new NextResponse(data, {
       headers: {
         "Content-Type": contentType,
-        "Cache-Control": "public, max-age=31536000, immutable",
+        // Public assets cache hard; protected docs must never be cached by shared caches.
+        "Cache-Control": isPublic
+          ? "public, max-age=31536000, immutable"
+          : "private, no-store",
       },
     });
   } catch (err: any) {

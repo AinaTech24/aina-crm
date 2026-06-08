@@ -17,6 +17,8 @@ import { leads, users, tasks, communications, riskProfileResponses, proposals } 
 import { requireSession } from "@/lib/auth/session";
 import { formatDate, formatRelative } from "@/lib/utils";
 import { LeadActions } from "@/components/leads/LeadActions";
+import { EmailRelatedList } from "@/components/comms/EmailRelatedList";
+import { WhatsAppRelatedList } from "@/components/comms/WhatsAppRelatedList";
 import { CheckInButton, LogActivityButton } from "@/components/activities/ActivityLogger";
 import { ChangeLogButton } from "@/components/common/ChangeLog";
 import { RecordAutomations } from "@/components/sales-ops/RecordAutomations";
@@ -44,6 +46,8 @@ const LEAD_DETAIL_SECTIONS: RelatedListDef[] = [
   { key: "onboarding", label: "Onboarding actions (risk profile / docs / approval)" },
   { key: "converted_banner", label: "Converted-to-client banner" },
   { key: "edit_panel", label: "Editable details" },
+  { key: "emails", label: "Emails" },
+  { key: "whatsapp", label: "WhatsApp" },
   { key: "activity", label: "Activity timeline" },
 ];
 
@@ -247,6 +251,14 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
       {/* Editable record — every spec field, inline edit */}
       <RelatedListSection moduleKey="leads-detail" sectionKey="edit_panel">
         <LeadEditPanel lead={JSON.parse(JSON.stringify(l))} />
+      </RelatedListSection>
+
+      <RelatedListSection moduleKey="leads-detail" sectionKey="whatsapp">
+        <WhatsAppRelatedList entityType="lead" entityId={l.id} entityName={l.name} entityPhone={l.phone} />
+      </RelatedListSection>
+
+      <RelatedListSection moduleKey="leads-detail" sectionKey="emails">
+        <EmailRelatedList entityType="lead" entityId={l.id} entityName={l.name} entityEmail={l.email} />
       </RelatedListSection>
 
       {/* Activity timeline */}

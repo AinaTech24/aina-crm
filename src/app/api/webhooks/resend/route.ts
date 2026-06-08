@@ -4,9 +4,11 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { and, eq, sql } from "drizzle-orm";
 import { withSystem } from "@/db/client";
 import { emailAdapter } from "@/lib/comms/adapters/resend";
 import { applyMonotonicStatus } from "@/lib/comms/webhook-status";
+import { communications, emailSuppressions } from "@/db/schema";
 
 export const dynamic = "force-dynamic";
 
@@ -50,6 +52,31 @@ export async function POST(req: NextRequest) {
   // and a late "sent" can't resurrect a terminal "bounced"/"failed".
   await withSystem(async (tx) => {
     await applyMonotonicStatus(tx, { externalId: emailId, channel: "email", newStatus });
+
+    // Hard bounce / spam complaint → suppress the address so the pipeline
+    // stops sending to it (deliverability + consent). Resolve the tenant from
+    // the originating communication; take the recipient from the event payload.
+    if (type === "email.bounced" || type === "email.complained") {
+      const to = Array.isArray(data.to) ? data.to[0] : data.to;
+      if (to) {
+        const [comm] = await tx
+          .select({ tenantId: communications.tenantId })
+          .from(communications)
+          .where(and(eq(communications.externalId, emailId), eq(communications.channel, "email")))
+          .limit(1);
+        if (comm?.tenantId) {
+          await tx
+            .insert(emailSuppressions)
+            .values({
+              tenantId: comm.tenantId,
+              email: String(to),
+              reason: type === "email.complained" ? "complained" : "bounced",
+              source: "webhook",
+            } as any)
+            .onConflictDoNothing();
+        }
+      }
+    }
   });
 
   return NextResponse.json({ ok: true });

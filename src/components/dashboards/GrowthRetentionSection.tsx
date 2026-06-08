@@ -1,46 +1,29 @@
 import Link from "next/link";
 import { sql } from "drizzle-orm";
-import { ShieldAlert, Sprout, HeartHandshake, ScrollText } from "lucide-react";
+import { HeartHandshake, ScrollText } from "lucide-react";
 import { db, withTenant } from "@/db/client";
-import { formatINR } from "@/lib/utils";
 import type { SessionUser } from "@/lib/auth/session";
-import { scanChurn } from "@/lib/churn/scan";
-import { scanTaxHarvest } from "@/lib/tax/harvesting";
 
 /**
- * Growth & Retention — surfaces the session's flagship features on the owner's
- * home screen: who's about to leave (churn), tax-free gains to harvest, referral
- * momentum, and regulatory actions outstanding. Streamed via Suspense from the
- * cockpit so the heavier scans never block the first paint.
+ * Growth & Retention — surfaces referral momentum and regulatory actions
+ * outstanding on the owner's home screen. Streamed via Suspense from the
+ * cockpit so the scans never block the first paint.
  */
 export async function GrowthRetentionSection({ session }: { session: SessionUser }) {
   const [tenantData, regulatory] = await Promise.all([
     withTenant(
       session.tenantId,
       async (tx) => {
-        // One pg connection runs one query at a time — these MUST be awaited
-        // sequentially, not Promise.all'd, or pg queues them and warns (hard
-        // error in pg@9). The array literal is a no-op over resolved values.
-        const [churn, harvest, referrals] = [
-          await scanChurn(tx, { minBand: "high" }),
-          await scanTaxHarvest(tx, { limit: 500 }),
-          await tx.execute(sql`
-            SELECT
-              COUNT(*) FILTER (WHERE referred_by_investor_id IS NOT NULL
-                AND created_at >= date_trunc('month', now()))::int AS referrals_mtd,
-              COUNT(DISTINCT referred_by_investor_id)::int AS total_referrers
-            FROM leads
-            WHERE referred_by_investor_id IS NOT NULL
-          `),
-        ];
-        const churnAum = churn.reduce((s, r) => s + r.aum, 0);
-        const harvestable = harvest.reduce((s, r) => s + r.harvestable, 0);
+        const referrals = await tx.execute(sql`
+          SELECT
+            COUNT(*) FILTER (WHERE referred_by_investor_id IS NOT NULL
+              AND created_at >= date_trunc('month', now()))::int AS referrals_mtd,
+            COUNT(DISTINCT referred_by_investor_id)::int AS total_referrers
+          FROM leads
+          WHERE referred_by_investor_id IS NOT NULL
+        `);
         const ref = referrals.rows[0] as { referrals_mtd: number; total_referrers: number };
         return {
-          churnCount: churn.length,
-          churnAum,
-          harvestClients: harvest.length,
-          harvestable,
           referralsMtd: Number(ref?.referrals_mtd ?? 0),
           totalReferrers: Number(ref?.total_referrers ?? 0),
         };
@@ -65,23 +48,7 @@ export async function GrowthRetentionSection({ session }: { session: SessionUser
           Growth &amp; retention
         </h2>
       </div>
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Tile
-          href="/dashboard/reports/churn-risk"
-          icon={ShieldAlert}
-          tone={tenantData.churnCount > 0 ? "rose" : "emerald"}
-          label="Clients at churn risk"
-          value={String(tenantData.churnCount)}
-          sub={tenantData.churnCount > 0 ? `${formatINR(tenantData.churnAum)} AUM at risk` : "Book is sticky"}
-        />
-        <Tile
-          href="/dashboard/reports/tax-harvesting"
-          icon={Sprout}
-          tone={tenantData.harvestable > 0 ? "emerald" : "muted"}
-          label="Tax-free LTCG to harvest"
-          value={tenantData.harvestable > 0 ? formatINR(tenantData.harvestable) : "—"}
-          sub={tenantData.harvestClients > 0 ? `Across ${tenantData.harvestClients} client${tenantData.harvestClients > 1 ? "s" : ""}` : "No opportunities now"}
-        />
+      <div className="grid grid-cols-2 gap-3">
         <Tile
           href="/dashboard/referrals"
           icon={HeartHandshake}

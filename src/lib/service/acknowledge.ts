@@ -17,6 +17,7 @@ import { Resend } from "resend";
 import type { Tx } from "@/db/client";
 import { investors, tenants, communications } from "@/db/schema";
 import { translateText } from "@/lib/comms/translate";
+import { gateClientSend } from "@/lib/comms/guarded-send";
 
 let resendClient: Resend | null = null;
 function getResend(): Resend | null {
@@ -59,9 +60,34 @@ export async function acknowledgeServiceRequest(
       inv.lang
     );
     const signoff = `— ${tenant?.displayName ?? ""}, ARN ${tenant?.arn ?? "—"}`;
+    const ackText = [...lines, signoff].join("\n");
+
+    // Compliance + consent gate (transactional service message).
+    const gate = await gateClientSend(tx, {
+      tenantId: args.tenantId,
+      channel: inv.email ? "email" : "whatsapp",
+      category: "transactional",
+      text: ackText,
+      subject: `We've received your request — ${args.ticketNo}`,
+      investorId: args.investorId,
+    });
 
     let externalId: string | null = null;
     let status = "queued";
+    if (!gate.allowed) {
+      // Record an audited skip row instead of sending — never silently drop.
+      await tx.insert(communications).values({
+        tenantId: args.tenantId,
+        investorId: args.investorId,
+        channel: inv.email ? "email" : "whatsapp",
+        direction: "outbound",
+        status: gate.reason === "compliance_blocked" ? "skipped_compliance" : "skipped_consent",
+        statusReason: gate.detail,
+        complianceSnapshot: (gate as any).findings ?? null,
+        payload: { kind: "service_request_ack", serviceRequestId: args.srId, ticketNo: args.ticketNo } as any,
+      } as any);
+      return { sent: false };
+    }
     if (inv.email) {
       const client = getResend();
       if (client) {
@@ -90,13 +116,16 @@ export async function acknowledgeServiceRequest(
       direction: "outbound",
       status,
       externalId,
+      consentSnapshot: gate.consentSnapshot as any,
+      complianceSnapshot: gate.complianceFindings as any,
+      complianceScore: String(gate.complianceScore) as any,
       payload: {
         kind: "service_request_ack",
         serviceRequestId: args.srId,
         ticketNo: args.ticketNo,
         type: args.type,
         eta,
-        text: [...lines, signoff].join("\n"),
+        text: ackText,
       } as any,
       sentAt: status === "sent" ? new Date() : null,
     } as any);

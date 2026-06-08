@@ -9,7 +9,7 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { savedReports } from "@/db/schema";
-import { runDetailed, runMatrix } from "@/lib/reports/run";
+import { runDetailed, runMatrix, runSummary } from "@/lib/reports/run";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +27,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       if (!r) return null;
       if (r.reportType === "matrix") {
         return runMatrix(tx, { subject: r.subject, ast: r.ast as any, matrix: r.matrix as any, tenantId: session.tenantId });
+      }
+      if (r.reportType === "summary") {
+        return runSummary(tx, { subject: r.subject, ast: r.ast as any, summary: r.summary as any, tenantId: session.tenantId });
       }
       return runDetailed(tx, {
         subject: r.subject,

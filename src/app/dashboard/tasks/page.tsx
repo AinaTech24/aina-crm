@@ -10,6 +10,7 @@ import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
 import { CustomViews } from "@/components/common/CustomViews";
 import { TaskList } from "./TaskList";
 import { TaskKanban } from "./TaskKanban";
+import { WorkSwitcher } from "@/components/layout/WorkSwitcher";
 
 export const dynamic = "force-dynamic";
 
@@ -128,12 +129,15 @@ export default async function TasksPage({
             Most tasks are created by workflows. RMs see only what's assigned to them.
           </p>
         </div>
-        <Link
-          href="/dashboard/tasks/new"
-          className="rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-sm font-medium flex items-center gap-1.5"
-        >
-          <Plus className="size-4" /> New task
-        </Link>
+        <div className="flex items-center gap-3">
+          <WorkSwitcher current="/dashboard/tasks" />
+          <Link
+            href="/dashboard/tasks/new"
+            className="rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-sm font-medium flex items-center gap-1.5"
+          >
+            <Plus className="size-4" /> New task
+          </Link>
+        </div>
       </div>
 
       {/* View tabs — list / mine / assigned-by-me / kanban board */}

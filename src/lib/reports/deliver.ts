@@ -9,7 +9,7 @@
 import { withTenant } from "@/db/client";
 import { emailAdapter } from "@/lib/comms/adapters/resend";
 import { loadTenant } from "@/lib/comms/pipeline";
-import { runDetailed, runMatrix, type DetailedResult, type MatrixResult } from "./run";
+import { runDetailed, runMatrix, runSummary, type DetailedResult, type MatrixResult, type SummaryResult, type SummaryGroupNode } from "./run";
 import type { SavedReport } from "@/db/schema";
 
 const MAX_EMAIL_ROWS = 50;
@@ -51,6 +51,30 @@ function matrixToHtml(m: MatrixResult): string {
   return `<table style="border-collapse:collapse;width:100%"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
 }
 
+function summaryToHtml(s: SummaryResult): string {
+  const aggCols = s.aggregateDefs.map((a) => a.label);
+  const head = `<th style="text-align:left;padding:6px 10px;border-bottom:2px solid #e5e7eb;font-size:12px;color:#475569">Group</th><th style="text-align:right;padding:6px 10px;border-bottom:2px solid #e5e7eb;font-size:12px;color:#475569">Records</th>${aggCols
+    .map((c) => `<th style="text-align:right;padding:6px 10px;border-bottom:2px solid #e5e7eb;font-size:12px;color:#475569">${esc(c)}</th>`)
+    .join("")}`;
+  const rows: string[] = [];
+  const walk = (node: SummaryGroupNode, depth: number) => {
+    const indent = depth * 16;
+    rows.push(
+      `<tr><td style="padding:6px 10px;border-bottom:1px solid #f1f5f9;font-size:13px;font-weight:600;padding-left:${10 + indent}px">${esc(node.key)}</td><td style="padding:6px 10px;border-bottom:1px solid #f1f5f9;font-size:13px;text-align:right">${num(node.count)}</td>${node.aggregates
+        .map((v) => `<td style="padding:6px 10px;border-bottom:1px solid #f1f5f9;font-size:13px;text-align:right">${num(v)}</td>`)
+        .join("")}</tr>`
+    );
+    for (const c of node.children ?? []) walk(c, depth + 1);
+  };
+  for (const root of s.tree.slice(0, MAX_EMAIL_ROWS)) walk(root, 0);
+  rows.push(
+    `<tr style="background:#f8fafc"><td style="padding:6px 10px;font-size:13px;font-weight:700">Grand Total</td><td style="padding:6px 10px;font-size:13px;text-align:right;font-weight:700">${num(s.grand.count)}</td>${s.grand.aggregates
+      .map((v) => `<td style="padding:6px 10px;font-size:13px;text-align:right;font-weight:700">${num(v)}</td>`)
+      .join("")}</tr>`
+  );
+  return `<table style="border-collapse:collapse;width:100%"><thead><tr>${head}</tr></thead><tbody>${rows.join("")}</tbody></table>`;
+}
+
 function wrapHtml(name: string, inner: string, tenant: any, appUrl: string): string {
   const sig = [tenant?.legalName, tenant?.arn ? `ARN-${tenant.arn}` : ""].filter(Boolean).join(" · ");
   return `<div style="font-family:Arial,Helvetica,sans-serif;color:#0f172a;max-width:760px;margin:0 auto">
@@ -74,6 +98,9 @@ export async function renderReportEmail(
   if (report.reportType === "matrix") {
     const m = await runMatrix(tx, { subject: report.subject, ast: report.ast as any, matrix: report.matrix as any, tenantId: report.tenantId });
     inner = matrixToHtml(m);
+  } else if (report.reportType === "summary") {
+    const s = await runSummary(tx, { subject: report.subject, ast: report.ast as any, summary: report.summary as any, tenantId: report.tenantId });
+    inner = summaryToHtml(s);
   } else {
     const d = await runDetailed(tx, {
       subject: report.subject,

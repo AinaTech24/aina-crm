@@ -1,13 +1,15 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import { tenantIntegrations } from "@/db/schema/tenant_integrations";
 import { decrypt, encrypt } from "@/lib/crypto";
 
-export type IntegrationProvider = "resend" | "aisensy" | "msg91" | "waina" | "mailbox";
+export type IntegrationProvider = "resend" | "msg91" | "waina" | "mailbox";
 
 export interface TenantIntegrationResolved {
   id: string;
   tenantId: string;
+  /** NULL = firm-wide row; set = a specific user's personal mailbox. */
+  userId?: string | null;
   provider: IntegrationProvider;
   config: {
     apiKey: string;
@@ -30,6 +32,24 @@ export interface TenantIntegrationResolved {
   updatedAt: Date;
 }
 
+function rowToResolved(row: any): TenantIntegrationResolved | null {
+  try {
+    const config = JSON.parse(decrypt(row.encryptedConfig));
+    return { ...row, config } as TenantIntegrationResolved;
+  } catch (err) {
+    console.error(
+      `[comms-integrations] Failed to decrypt integration settings for tenant ${row.tenantId}, provider ${row.provider}:`,
+      err
+    );
+    return null;
+  }
+}
+
+/**
+ * Resolve the FIRM-WIDE integration row (user_id IS NULL). Per-user mailboxes are
+ * fetched via getUserMailbox so the firm default never accidentally returns a
+ * personal row now that both can co-exist.
+ */
 export async function getTenantIntegration(
   tx: Tx,
   tenantId: string,
@@ -42,72 +62,106 @@ export async function getTenantIntegration(
       and(
         eq(tenantIntegrations.tenantId, tenantId),
         eq(tenantIntegrations.provider, provider),
+        isNull(tenantIntegrations.userId),
         eq(tenantIntegrations.isActive, true)
       )
     )
     .limit(1);
-
   if (!row) return null;
+  return rowToResolved(row);
+}
 
-  try {
-    const decrypted = decrypt(row.encryptedConfig);
-    const config = JSON.parse(decrypted);
-    return {
-      ...row,
-      config,
-    } as TenantIntegrationResolved;
-  } catch (err) {
-    console.error(`[comms-integrations] Failed to decrypt integration settings for tenant ${tenantId}, provider ${provider}:`, err);
-    return null;
-  }
+/** Resolve a specific user's personal mailbox (provider = "mailbox"). */
+export async function getUserMailbox(
+  tx: Tx,
+  tenantId: string,
+  userId: string
+): Promise<TenantIntegrationResolved | null> {
+  const [row] = await tx
+    .select()
+    .from(tenantIntegrations)
+    .where(
+      and(
+        eq(tenantIntegrations.tenantId, tenantId),
+        eq(tenantIntegrations.provider, "mailbox"),
+        eq(tenantIntegrations.userId, userId),
+        eq(tenantIntegrations.isActive, true)
+      )
+    )
+    .limit(1);
+  if (!row) return null;
+  return rowToResolved(row);
 }
 
 /**
- * Create or update a tenant's integration credentials (one row per
- * tenant × provider). The `config` is encrypted at rest. Used by the
- * Settings → Integrations save endpoints.
+ * Create or update an integration row. `opts.userId` targets a personal mailbox;
+ * omitted/null targets the firm-wide row. The `config` is encrypted at rest.
+ *
+ * A manual select→update/insert (rather than ON CONFLICT) because the uniqueness
+ * is now enforced by two PARTIAL indexes that ON CONFLICT can't address cleanly.
  */
 export async function upsertTenantIntegration(
   tx: Tx,
   tenantId: string,
   provider: IntegrationProvider,
   config: Record<string, any>,
-  senderConfig?: TenantIntegrationResolved["senderConfig"]
+  senderConfig?: TenantIntegrationResolved["senderConfig"],
+  opts?: { userId?: string | null }
 ): Promise<void> {
+  const userId = opts?.userId ?? null;
   const encryptedConfig = encrypt(JSON.stringify(config));
-  await tx
-    .insert(tenantIntegrations)
-    .values({
-      tenantId,
-      provider,
-      encryptedConfig,
-      senderConfig: senderConfig ?? null,
-      isActive: true,
-    } as any)
-    .onConflictDoUpdate({
-      target: [tenantIntegrations.tenantId, tenantIntegrations.provider],
-      set: {
+
+  const [existing] = await tx
+    .select({ id: tenantIntegrations.id })
+    .from(tenantIntegrations)
+    .where(
+      and(
+        eq(tenantIntegrations.tenantId, tenantId),
+        eq(tenantIntegrations.provider, provider),
+        userId ? eq(tenantIntegrations.userId, userId) : isNull(tenantIntegrations.userId)
+      )
+    )
+    .limit(1);
+
+  if (existing) {
+    await tx
+      .update(tenantIntegrations)
+      .set({
         encryptedConfig,
         senderConfig: senderConfig ?? null,
         isActive: true,
         updatedAt: new Date(),
-      },
-    });
+      })
+      .where(eq(tenantIntegrations.id, existing.id));
+    return;
+  }
+
+  await tx.insert(tenantIntegrations).values({
+    tenantId,
+    userId,
+    provider,
+    encryptedConfig,
+    senderConfig: senderConfig ?? null,
+    isActive: true,
+  } as any);
 }
 
 /** Soft-disconnect: mark the integration inactive (keeps the row for audit). */
 export async function disableTenantIntegration(
   tx: Tx,
   tenantId: string,
-  provider: IntegrationProvider
+  provider: IntegrationProvider,
+  opts?: { userId?: string | null }
 ): Promise<void> {
+  const userId = opts?.userId ?? null;
   await tx
     .update(tenantIntegrations)
     .set({ isActive: false, updatedAt: new Date() })
     .where(
       and(
         eq(tenantIntegrations.tenantId, tenantId),
-        eq(tenantIntegrations.provider, provider)
+        eq(tenantIntegrations.provider, provider),
+        userId ? eq(tenantIntegrations.userId, userId) : isNull(tenantIntegrations.userId)
       )
     );
 }

@@ -25,6 +25,7 @@ import { Pager } from "@/components/common/Pager";
 const INVESTORS_COLUMNS = [
   { key: "name", label: "Name", required: true },
   { key: "pan", label: "PAN" },
+  { key: "category", label: "Category" },
   { key: "tier", label: "Tier" },
   { key: "segment", label: "Segment" },
   { key: "aum", label: "AUM" },
@@ -196,6 +197,7 @@ export default async function InvestorsPage({
     id: i.id,
     name: i.name,
     pan: showPan ? i.pan : null,
+    clientCategory: i.clientCategory ?? null,
     serviceTier: showTier ? i.serviceTier : null,
     segmentTag: showSegment ? i.segmentTag : null,
     aum: showAum ? Number(i.aum ?? 0) : 0,
@@ -293,6 +295,17 @@ export default async function InvestorsPage({
               { value: "Retail", label: "Retail" },
               { value: "NRI", label: "NRI" },
               { value: "Corporate", label: "Corporate" },
+            ],
+          },
+          {
+            type: "multi",
+            key: "category",
+            label: "Client Category",
+            options: [
+              { value: "A", label: "Category A" },
+              { value: "B", label: "Category B" },
+              { value: "C", label: "Category C" },
+              { value: "D", label: "Category D" },
             ],
           },
           {
@@ -397,7 +410,7 @@ export default async function InvestorsPage({
           <InvestorsTable
             rows={tableRows}
             sort={sortKey}
-            flags={{ showPan, showTier, showSegment, showAum, showSip, showKyc, showStatus }}
+            flags={{ showPan, showCategory: true, showTier, showSegment, showAum, showSip, showKyc, showStatus }}
           />
           <Pager
             page={page}

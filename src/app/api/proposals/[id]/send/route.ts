@@ -28,6 +28,7 @@ import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
+import { gateClientSend } from "@/lib/comms/guarded-send";
 import { autoAdvance, resolveLeadIdForInvestor } from "@/lib/blueprints/auto-advance";
 import { proposals, tenants, communications, investors } from "@/db/schema";
 import { checkAlignment } from "@/lib/proposal/risk-alignment";
@@ -275,6 +276,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       let waUrl: string | null = null;
       let recipientUsed: string | null = null;
       let bodyText: string | null = null;
+      let gate: Awaited<ReturnType<typeof gateClientSend>> | null = null;
+      const proposalInvestorId = p.recipientType === "investor" ? p.investorId : null;
 
       if (channel === "email") {
         if (!p.recipientEmail) {
@@ -286,6 +289,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         recipientUsed = p.recipientEmail;
         const html = buildHtmlEmail({ tenant, proposal: p, publicUrl });
         bodyText = html;
+        // Compliance + consent gate — a proposal is a regulated client document
+        // (scheme recommendations / projected corpus). Scans for assured-return
+        // & adviser-term language; respects channel opt-outs.
+        gate = await gateClientSend(tx, {
+          tenantId: session.tenantId, channel: "email", category: "transactional",
+          text: html, subject: `${p.title} — ${tenant?.displayName ?? "Investment proposal"}`,
+          investorId: proposalInvestorId,
+        });
+        if (!gate.allowed) {
+          return NextResponse.json({ error: `Proposal blocked by compliance/consent: ${gate.detail}`, findings: (gate as any).findings }, { status: 422 });
+        }
         const client = getResend();
         if (client) {
           const from =
@@ -320,6 +334,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         recipientUsed = phone;
         const text = buildWhatsAppText({ tenant, proposal: p, publicUrl });
         bodyText = text;
+        gate = await gateClientSend(tx, {
+          tenantId: session.tenantId, channel: "whatsapp", category: "transactional",
+          text, investorId: proposalInvestorId,
+        });
+        if (!gate.allowed) {
+          return NextResponse.json({ error: `Proposal blocked by compliance/consent: ${gate.detail}`, findings: (gate as any).findings }, { status: 422 });
+        }
         waUrl = `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
       }
 
@@ -333,6 +354,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         direction: "outbound",
         status: "sent",
         externalId,
+        consentSnapshot: (gate?.allowed ? gate.consentSnapshot : null) as any,
+        complianceSnapshot: (gate?.allowed ? gate.complianceFindings : null) as any,
+        complianceScore: gate?.allowed ? String(gate.complianceScore) : null,
         payload: {
           kind: "proposal",
           proposalId: id,

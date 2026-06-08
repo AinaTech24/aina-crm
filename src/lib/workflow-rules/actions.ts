@@ -90,15 +90,26 @@ export async function executeAction(action: Action, ctx: ActionContext): Promise
 async function runSendEmail(config: Record<string, unknown>, ctx: ActionContext): Promise<ActionResult> {
   try {
     const { dispatch } = await import("@/lib/comms/pipeline");
+    const recipient = String((ctx.record as any)?.email ?? "");
+    if (!recipient) return { type: "send_email", status: "skipped", detail: "No email address on file for this record." };
+    // "Send from": record_owner → the client's RM mailbox (resolveEmailSender
+    // prefers the acting user's own mailbox, falling back to the firm mailbox).
+    const actorUserId =
+      config.fromAddress === "record_owner" && ctx.subjectType === "investor"
+        ? ((ctx.record as any)?.rm_id ?? undefined)
+        : undefined;
     const res = await dispatch(ctx.tx, {
       tenantId: ctx.tenantId,
       channel: "email",
       templateKey: String(config.templateKey ?? config.template ?? ""),
-      recipient: { source: "subject", subjectType: ctx.subjectType, subjectId: ctx.subjectId } as any,
+      recipient,
       variables: (config.variables ?? {}) as Record<string, string>,
       category: (config.category ?? "transactional") as any,
-    } as any);
-    return { type: "send_email", status: "succeeded", externalId: (res as any)?.id };
+      investorId: ctx.subjectType === "investor" ? ctx.subjectId : undefined,
+      leadId: ctx.subjectType === "lead" ? ctx.subjectId : undefined,
+      actorUserId,
+    });
+    return { type: "send_email", status: res.status === "skipped" ? "skipped" : "succeeded", externalId: res.externalId, detail: res.skipped?.reason };
   } catch (e: any) {
     return { type: "send_email", status: "failed", error: e?.message ?? String(e) };
   }
@@ -107,15 +118,19 @@ async function runSendEmail(config: Record<string, unknown>, ctx: ActionContext)
 async function runSendWhatsApp(config: Record<string, unknown>, ctx: ActionContext): Promise<ActionResult> {
   try {
     const { dispatch } = await import("@/lib/comms/pipeline");
+    const recipient = String((ctx.record as any)?.whatsapp_phone ?? (ctx.record as any)?.phone ?? "");
+    if (!recipient) return { type: "send_whatsapp", status: "skipped", detail: "No WhatsApp number on file for this record." };
     const res = await dispatch(ctx.tx, {
       tenantId: ctx.tenantId,
       channel: "whatsapp",
       templateKey: String(config.templateKey ?? config.template ?? ""),
-      recipient: { source: "subject", subjectType: ctx.subjectType, subjectId: ctx.subjectId } as any,
+      recipient,
       variables: (config.variables ?? {}) as Record<string, string>,
       category: (config.category ?? "transactional") as any,
-    } as any);
-    return { type: "send_whatsapp", status: "succeeded", externalId: (res as any)?.id };
+      investorId: ctx.subjectType === "investor" ? ctx.subjectId : undefined,
+      leadId: ctx.subjectType === "lead" ? ctx.subjectId : undefined,
+    });
+    return { type: "send_whatsapp", status: res.status === "skipped" ? "skipped" : "succeeded", externalId: res.externalId, detail: res.skipped?.reason };
   } catch (e: any) {
     return { type: "send_whatsapp", status: "failed", error: e?.message ?? String(e) };
   }
@@ -124,14 +139,19 @@ async function runSendWhatsApp(config: Record<string, unknown>, ctx: ActionConte
 async function runSendSms(config: Record<string, unknown>, ctx: ActionContext): Promise<ActionResult> {
   try {
     const { dispatch } = await import("@/lib/comms/pipeline");
+    const recipient = String((ctx.record as any)?.phone ?? "");
+    if (!recipient) return { type: "send_sms", status: "skipped", detail: "No phone number on file for this record." };
     const res = await dispatch(ctx.tx, {
       tenantId: ctx.tenantId,
       channel: "sms",
       templateKey: String(config.templateKey ?? config.template ?? ""),
-      recipient: { source: "subject", subjectType: ctx.subjectType, subjectId: ctx.subjectId } as any,
+      recipient,
       variables: (config.variables ?? {}) as Record<string, string>,
-    } as any);
-    return { type: "send_sms", status: "succeeded", externalId: (res as any)?.id };
+      category: (config.category ?? "transactional") as any,
+      investorId: ctx.subjectType === "investor" ? ctx.subjectId : undefined,
+      leadId: ctx.subjectType === "lead" ? ctx.subjectId : undefined,
+    });
+    return { type: "send_sms", status: res.status === "skipped" ? "skipped" : "succeeded", externalId: res.externalId, detail: res.skipped?.reason };
   } catch (e: any) {
     return { type: "send_sms", status: "failed", error: e?.message ?? String(e) };
   }

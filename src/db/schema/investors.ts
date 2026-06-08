@@ -79,6 +79,15 @@ export const investors = pgTable(
     serviceTierLockedAt: timestamp("service_tier_locked_at", { withTimezone: true }),
     serviceTierManualOverride: boolean("service_tier_manual_override").default(false),
 
+    /**
+     * Client Category — a manually-assigned A/B/C/D classification the firm uses
+     * to grade clients (e.g. A = key/premium … D = low-touch). Distinct from the
+     * auto-computed `serviceTier` (A/B/C, review cadence) and `investorCategory`
+     * (entity type). NULL = not yet categorised. Assigned in the client master
+     * editor or in bulk from the client list.
+     */
+    clientCategory: text("client_category", { enum: ["A", "B", "C", "D"] }),
+
     /** Multi-tag client type used by RM dashboards.
      *  e.g. ['sip_investor', 'high_aum', 'review_due']. */
     clientTypes: jsonb("client_types").$type<string[]>().default([]),
@@ -233,6 +242,7 @@ export const investors = pgTable(
     statusIdx: index("investors_status_idx").on(t.tenantId, t.status),
     kycIdx: index("investors_kyc_idx").on(t.tenantId, t.kycStatus),
     tierIdx: index("investors_tier_idx").on(t.tenantId, t.serviceTier),
+    clientCategoryIdx: index("investors_client_category_idx").on(t.tenantId, t.clientCategory),
   })
 );
 

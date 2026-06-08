@@ -103,7 +103,7 @@ export function SchemesCatalog({ rows, amcs, canManage }: { rows: Scheme[]; amcs
 
       <div className="card-surface overflow-x-auto">
         {rows.length === 0 ? (
-          <div className="p-12 text-center text-sm text-muted-foreground">No schemes match. {canManage && "Add one with “New scheme”, or they seed from the AMFI/RTA feed."}</div>
+          <div className="p-12 text-center text-sm text-muted-foreground">No schemes yet. {canManage && "Click “Sync from AMFI” (top-right) to pull the full AMFI scheme universe, or add one manually with “New scheme”."}</div>
         ) : (
           <table className="w-full text-sm">
             <thead className="text-xs text-muted-foreground border-b">

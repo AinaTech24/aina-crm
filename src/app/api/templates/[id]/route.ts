@@ -35,7 +35,7 @@ const Patch = z.object({
   category: z.enum(["transactional", "utility", "marketing", "authentication"]).optional(),
   // SECURITY: `approved` / `pending_approval` are DELIBERATELY excluded. A
   // template only becomes sendable through submit → compliance-officer approve
-  // (or the AiSensy/Meta sync). Allowing them here let a `template.edit` holder
+  // (or the Wapi/Meta sync). Allowing them here let a `template.edit` holder
   // (marketing) self-approve and bypass the entire compliance moat. PATCH may
   // only park a template back to draft, archive it, or pause it.
   status: z.enum(["draft", "archived", "paused"]).optional(),

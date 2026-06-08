@@ -10,6 +10,7 @@ import {
   BarChart, Bar,
   PieChart, Pie, Cell,
   LineChart, Line,
+  AreaChart, Area,
   XAxis, YAxis, Tooltip, Legend, CartesianGrid,
 } from "recharts";
 
@@ -18,6 +19,7 @@ type Matrix = {
   colLabels: string[];
   rows: { key: string; cells: number[]; total: number }[];
 };
+export type ReportChartType = "bar" | "pie" | "line" | "area" | "donut";
 
 const COLORS = [
   "hsl(199, 89%, 48%)", // cyan
@@ -28,7 +30,7 @@ const COLORS = [
   "hsl(330, 70%, 55%)", // pink
 ];
 
-export default function ReportChart({ chartType, matrix }: { chartType: "bar" | "pie" | "line"; matrix: Matrix }) {
+export default function ReportChart({ chartType, matrix }: { chartType: ReportChartType; matrix: Matrix }) {
   const single = matrix.colLabels.length <= 1;
   const series = single ? ["total"] : matrix.colLabels;
   const data = matrix.rows.map((r) => {
@@ -41,9 +43,9 @@ export default function ReportChart({ chartType, matrix }: { chartType: "bar" | 
   return (
     <div className="h-72 w-full">
       <ResponsiveContainer width="100%" height="100%">
-        {chartType === "pie" ? (
+        {chartType === "pie" || chartType === "donut" ? (
           <PieChart>
-            <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={90} innerRadius={45} paddingAngle={2}>
+            <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={90} innerRadius={chartType === "donut" ? 55 : 45} paddingAngle={2}>
               {pieData.map((_, i) => (
                 <Cell key={i} fill={COLORS[i % COLORS.length]} />
               ))}
@@ -51,6 +53,17 @@ export default function ReportChart({ chartType, matrix }: { chartType: "bar" | 
             <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
             <Legend wrapperStyle={{ fontSize: 11 }} />
           </PieChart>
+        ) : chartType === "area" ? (
+          <AreaChart data={data} margin={{ top: 8, right: 12, bottom: 4, left: -8 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="hsl(214 28% 90%)" />
+            <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+            <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+            <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+            {!single && <Legend wrapperStyle={{ fontSize: 11 }} />}
+            {series.map((c, i) => (
+              <Area key={c} type="monotone" dataKey={c} stroke={COLORS[i % COLORS.length]} fill={COLORS[i % COLORS.length]} fillOpacity={0.18} strokeWidth={2} />
+            ))}
+          </AreaChart>
         ) : chartType === "line" ? (
           <LineChart data={data} margin={{ top: 8, right: 12, bottom: 4, left: -8 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="hsl(214 28% 90%)" />

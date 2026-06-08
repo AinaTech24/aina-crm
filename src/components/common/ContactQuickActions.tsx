@@ -7,7 +7,7 @@
  * email anywhere in the app (list rows, detail headers, the Celebrations
  * worklist). These open the RM's *own* WhatsApp / dialer / mail client with a
  * pre-filled message — a personal, compliance-safe touch that does NOT consume
- * our BSP (AiSensy) template quota. For templated/bulk sends, use the comms
+ * our BSP (Wapi) template quota. For templated/bulk sends, use the comms
  * pipeline instead.
  *
  * Drop-in:

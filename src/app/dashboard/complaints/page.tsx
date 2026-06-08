@@ -8,6 +8,7 @@ import { ResolutionEditor } from "@/components/complaints/ResolutionEditor";
 import { FilterBar } from "@/components/common/FilterBar";
 import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
 import { CustomViews } from "@/components/common/CustomViews";
+import { WorkSwitcher } from "@/components/layout/WorkSwitcher";
 
 const STATUS_TONE: Record<string, string> = {
   open: "bg-blue-50 text-blue-700",
@@ -147,6 +148,7 @@ export default async function ComplaintsPage({
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <WorkSwitcher current="/dashboard/complaints" />
           <Link href="/dashboard/complaints/disclosure" className="btn-secondary text-xs">
             <FileText className="size-3.5" /> Monthly disclosure
           </Link>

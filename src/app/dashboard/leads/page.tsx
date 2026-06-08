@@ -18,6 +18,12 @@ import { withTenant } from "@/db/client";
 import { leads, users } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { formatINR, formatDate } from "@/lib/utils";
+import { WorkSwitcher } from "@/components/layout/WorkSwitcher";
+
+const PIPELINE_VIEWS = [
+  { value: "/dashboard/leads", label: "Leads" },
+  { value: "/dashboard/pipeline-board", label: "Pipeline Board" },
+];
 import { LeadsKanban } from "@/components/leads/LeadsKanban";
 import { LeadsTable } from "@/components/leads/LeadsTable";
 import { LeadQuickFilters } from "@/components/leads/LeadQuickFilters";
@@ -284,6 +290,7 @@ export default async function LeadsPage({
           </p>
         </div>
         <div className="flex gap-2 items-center">
+          <WorkSwitcher current="/dashboard/leads" options={PIPELINE_VIEWS} label="Module" />
           {/* View toggle — Kanban vs List */}
           <div className="inline-flex rounded-lg border border-border bg-secondary/40 p-0.5 gap-0.5 mr-1">
             <Link

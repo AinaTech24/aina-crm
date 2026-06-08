@@ -6,6 +6,7 @@ import Link from "next/link";
 import { ChevronLeft, Upload, Loader2 } from "lucide-react";
 import { SelectField } from "@/components/ui/SelectField";
 import { DateField } from "@/components/ui/DateField";
+import { InvestorLookup } from "@/components/common/InvestorLookup";
 
 const CATEGORIES = [
   { key: "arn", label: "ARN" },
@@ -31,6 +32,7 @@ export default function UploadDocumentPage() {
     expiresOn: "",
   });
   const [file, setFile] = useState<File | null>(null);
+  const [client, setClient] = useState<{ id: string; name: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -74,6 +76,8 @@ export default function UploadDocumentPage() {
           mimeType: file.type,
           sizeBytes: file.size,
           expiresOn: form.expiresOn || undefined,
+          relatedEntityType: client ? "investor" : undefined,
+          relatedEntityId: client?.id,
         }),
       });
       const regJson = await regRes.json();
@@ -128,6 +132,17 @@ export default function UploadDocumentPage() {
             <DateField value={form.expiresOn} onChange={(e) => setForm({ ...form, expiresOn: e.target.value })} className="w-full" />
           </label>
         </div>
+        <label className="block">
+          <div className="text-xs font-medium mb-1">Link to a client <span className="text-muted-foreground font-normal">(optional — for KYC / client documents)</span></div>
+          <InvestorLookup
+            value={client?.id}
+            displayName={client?.name}
+            onSelect={(id, name) => setClient({ id, name })}
+            onClear={() => setClient(null)}
+            placeholder="Search client by name, PAN, or mobile…"
+          />
+          <div className="text-[11px] text-muted-foreground mt-1">Tag the client this document belongs to, so you can see it in the vault.</div>
+        </label>
         <label className="block">
           <div className="text-xs font-medium mb-1">Notes</div>
           <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={3} className="w-full border rounded-md px-3 py-2 text-sm bg-background" />

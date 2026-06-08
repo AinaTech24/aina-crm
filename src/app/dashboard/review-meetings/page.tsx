@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { sql } from "drizzle-orm";
-import { Calendar, Plus, CheckCircle2, Clock, AlertTriangle } from "lucide-react";
+import { Calendar, CheckCircle2, Clock, AlertTriangle } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { formatDate, formatRelative } from "@/lib/utils";
@@ -9,6 +9,7 @@ import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
 import { CustomViews } from "@/components/common/CustomViews";
 import { ColumnManager } from "@/components/common/ColumnManager";
 import { RowLink } from "@/components/common/RowLink";
+import { AddMeetingButton } from "@/components/review-meetings/AddMeetingButton";
 
 const MEETINGS_COLUMNS = [
   { key: "date", label: "Date", required: true },
@@ -203,12 +204,7 @@ export default async function ReviewMeetingsPage({
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Link
-            href="/dashboard/review-meetings/new?category=review"
-            className="btn-primary"
-          >
-            <Plus className="size-4" /> Add Meeting
-          </Link>
+          <AddMeetingButton />
         </div>
       </div>
 

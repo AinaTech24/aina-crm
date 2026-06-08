@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Bot, KeyRound, Loader2, CheckCircle2, XCircle, Save, Plug } from "lucide-react";
 
-type Provider = "anthropic" | "google";
+type Provider = "anthropic" | "google" | "openai";
 type ProviderDef = { value: Provider; label: string; fast: string; reasoning: string; keyHint: string; docsUrl: string };
 type Status = {
   provider: Provider;

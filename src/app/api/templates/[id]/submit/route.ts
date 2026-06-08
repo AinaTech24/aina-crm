@@ -2,7 +2,7 @@
  * POST /api/templates/[id]/submit
  *
  * Moves a draft template into the approval pipeline.
- *   - For utility/transactional WhatsApp: auto-submit to AiSensy (and Meta).
+ *   - For utility/transactional WhatsApp: auto-submit to Wapi (and Meta).
  *   - For marketing: requires a compliance officer to approve first.
  *   - For email: marks ready (no external approval needed beyond compliance).
  *
@@ -92,7 +92,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
         nextStatus = "approved_internal";
         templateStatus = "approved";
 
-        // WhatsApp: queue submission to AiSensy/Meta (handled by aisensy-template-sync worker)
+        // WhatsApp: queue submission to Wapi/Meta (handled by wapi-template-sync worker)
         if (tpl.channel === "whatsapp") {
           // The worker picks up templates with externalRef IS NULL and submits.
         }

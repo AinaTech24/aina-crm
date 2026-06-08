@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { ChevronLeft, Eye, ShieldCheck, AlertCircle, Save, Send } from "lucide-react";
-import { runComplianceChecks } from "@/lib/comms/compliance";
+import { runComplianceChecks, missingMandatoryLines } from "@/lib/comms/compliance";
 import { SelectField } from "@/components/ui/SelectField";
 import type { Template, TemplateVersion } from "@/db/schema";
 import type { EmailDesignerBody } from "@/lib/email-designer/types";
@@ -178,13 +178,18 @@ export function EditTemplateForm({ initialTemplate, initialVersion }: EditTempla
     });
   }, [parsedKeys]);
 
+  const activeTenant = useMemo(
+    () =>
+      tenant ?? {
+        legalName: "Demo Wealth Advisors",
+        arn: "123456",
+        principalEuin: "E123456",
+        riaRegistered: false,
+      },
+    [tenant]
+  );
+
   const compliance = useMemo(() => {
-    const activeTenant = tenant ?? {
-      legalName: "Demo Wealth Advisors",
-      arn: "123456",
-      principalEuin: "E123456",
-      riaRegistered: false,
-    };
     return runComplianceChecks({
       channel: initialTemplate.channel as any,
       category,
@@ -195,7 +200,22 @@ export function EditTemplateForm({ initialTemplate, initialVersion }: EditTempla
       whatsappSessionActive: false,
       hasMarketingConsent: true,
     });
-  }, [previewText, emailBody.subject, initialTemplate.channel, category, dltId, tenant]);
+  }, [previewText, emailBody.subject, initialTemplate.channel, category, dltId, activeTenant]);
+
+  // Mandatory footer lines (disclaimer / ARN / firm name) missing from the body.
+  // Only offered for the plain-text channels here; email carries them via the
+  // designer footer + auto-injected renderer footer.
+  const fixLines = useMemo(() => {
+    if (initialTemplate.channel === "email") return [];
+    return missingMandatoryLines({ category, text: previewText, tenant: activeTenant });
+  }, [initialTemplate.channel, category, previewText, activeTenant]);
+
+  function applyComplianceFix() {
+    if (!fixLines.length) return;
+    const append = (t: string) => `${(t ?? "").replace(/\s+$/, "")}\n\n${fixLines.join("\n")}`;
+    if (initialTemplate.channel === "whatsapp") setWaText(append);
+    else if (initialTemplate.channel === "sms") setSmsText(append);
+  }
 
   async function save(opts: { submitForApproval?: boolean }) {
     if (!isDraft) {
@@ -337,6 +357,16 @@ export function EditTemplateForm({ initialTemplate, initialVersion }: EditTempla
           />
         </div>
         <div className="font-mono text-xs">{compliance.score}/100</div>
+        {isDraft && fixLines.length > 0 && (
+          <button
+            type="button"
+            onClick={applyComplianceFix}
+            className="text-xs font-semibold rounded-md bg-emerald-600 text-white hover:bg-emerald-700 px-2.5 py-1 flex items-center gap-1"
+            title={`Insert the mandatory ${fixLines.join(" + ")}`}
+          >
+            <ShieldCheck className="size-3.5" /> Apply suggested fix
+          </button>
+        )}
         {compliance.findings.length > 0 && (
           <details className="text-xs">
             <summary className="cursor-pointer text-muted-foreground">{compliance.findings.length} finding(s)</summary>

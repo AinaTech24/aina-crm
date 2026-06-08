@@ -7,8 +7,14 @@ import { can } from "@/lib/auth/rbac";
 import { formatINR } from "@/lib/utils";
 import { PIPELINES, PIPELINE_KEYS, firstStage, isPipeline, type PipelineKey } from "@/lib/pipelines/config";
 import { StageMover } from "@/components/pipelines/StageMover";
+import { WorkSwitcher } from "@/components/layout/WorkSwitcher";
 
 export const dynamic = "force-dynamic";
+
+const PIPELINE_VIEWS = [
+  { value: "/dashboard/leads", label: "Leads" },
+  { value: "/dashboard/pipeline-board", label: "Pipeline Board" },
+];
 
 const AMT = (col: string) => sql.raw(`NULLIF(regexp_replace(COALESCE(${col},''),'[^0-9.]','','g'),'')::numeric`);
 
@@ -50,6 +56,7 @@ export default async function PipelineBoardPage({ searchParams }: { searchParams
           <p className="text-muted-foreground text-sm">Separate stage flows for each sales process. {mine ? "Your leads." : "Firm-wide."}</p>
         </div>
         <div className="flex items-center gap-2">
+          <WorkSwitcher current="/dashboard/pipeline-board" options={PIPELINE_VIEWS} label="Module" />
           {firmWide && (
             <div className="inline-flex rounded-lg border bg-secondary/40 p-0.5 gap-0.5 text-xs">
               <Link href={`/dashboard/pipeline-board?p=${p}`} className={`px-2.5 py-1 rounded-md font-medium ${!mine ? "bg-card shadow-sm" : "text-muted-foreground"}`}>Firm</Link>

@@ -19,7 +19,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { pool } from "@/db/client";
 import { encrypt, decrypt } from "@/lib/crypto";
 
-export type AiProvider = "anthropic" | "google";
+export type AiProvider = "anthropic" | "google" | "openai";
 export type AiTier = "fast" | "reasoning";
 
 /** Catalog that drives the admin UI + default model names per provider. */
@@ -47,15 +47,24 @@ export const AI_PROVIDERS: Array<{
     keyHint: "Anthropic API key (starts with sk-ant-…)",
     docsUrl: "https://console.anthropic.com/settings/keys",
   },
+  {
+    value: "openai",
+    label: "OpenAI ChatGPT",
+    fast: "gpt-4o-mini",
+    reasoning: "gpt-4o",
+    keyHint: "OpenAI API key (starts with sk-…)",
+    docsUrl: "https://platform.openai.com/api-keys",
+  },
 ];
 
 const DEFAULTS: Record<AiProvider, { fast: string; reasoning: string }> = {
   google: { fast: "gemini-2.5-flash", reasoning: "gemini-2.5-pro" },
   anthropic: { fast: "claude-haiku-4-5-20251001", reasoning: "claude-opus-4-7" },
+  openai: { fast: "gpt-4o-mini", reasoning: "gpt-4o" },
 };
 
 function isProvider(v: unknown): v is AiProvider {
-  return v === "anthropic" || v === "google";
+  return v === "anthropic" || v === "google" || v === "openai";
 }
 
 /** Shape persisted in platform_settings.value for key='ai'. Key is encrypted. */
@@ -96,6 +105,7 @@ async function readStored(): Promise<StoredAiConfig | null> {
 function resolveFromEnv(): ResolvedAiConfig {
   const gem = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || null;
   const ant = process.env.ANTHROPIC_API_KEY || null;
+  const oai = process.env.OPENAI_API_KEY || null;
   const pref = isProvider(process.env.AI_PROVIDER) ? (process.env.AI_PROVIDER as AiProvider) : null;
 
   const google = (): ResolvedAiConfig => ({
@@ -112,11 +122,20 @@ function resolveFromEnv(): ResolvedAiConfig {
     reasoningModel: process.env.ANTHROPIC_MODEL_REASONING || DEFAULTS.anthropic.reasoning,
     source: ant ? "env" : "none",
   });
+  const openai = (): ResolvedAiConfig => ({
+    provider: "openai",
+    apiKey: oai,
+    fastModel: process.env.OPENAI_MODEL_FAST || DEFAULTS.openai.fast,
+    reasoningModel: process.env.OPENAI_MODEL_REASONING || DEFAULTS.openai.reasoning,
+    source: oai ? "env" : "none",
+  });
 
   if (pref === "google") return google();
   if (pref === "anthropic") return anthropic();
-  if (gem && !ant) return google();
+  if (pref === "openai") return openai();
+  if (gem && !ant && !oai) return google();
   if (ant) return anthropic();
+  if (oai) return openai();
   if (gem) return google();
   // Nothing configured — default the provider label to google (the new default).
   return { provider: "google", apiKey: null, fastModel: DEFAULTS.google.fast, reasoningModel: DEFAULTS.google.reasoning, source: "none" };
@@ -200,6 +219,16 @@ export function aiMessagesClient() {
             messages: params.messages as any,
           });
           return res as unknown as AiResponse;
+        }
+        if (cfg.provider === "openai") {
+          try {
+            return await openaiCreate(cfg.apiKey, modelName, params);
+          } catch (e: any) {
+            if (tier === "reasoning" && e?.retryable && cfg.fastModel && cfg.fastModel !== modelName) {
+              return openaiCreate(cfg.apiKey, cfg.fastModel, params, { retries: 1 });
+            }
+            throw e;
+          }
         }
         // Google Gemini. geminiCreate already retries transient 429/5xx with
         // backoff. If the heavier "reasoning" model stays overloaded, degrade
@@ -355,6 +384,72 @@ async function geminiCreate(
   throw lastErr ?? new Error("The AI service is unavailable. Please try again.");
 }
 
+// ── OpenAI (ChatGPT) via the Chat Completions API — no SDK dependency ─────────
+async function openaiCreate(
+  apiKey: string,
+  model: string,
+  params: CreateParams,
+  opts: { retries?: number } = {}
+): Promise<AiResponse> {
+  const messages: Array<{ role: string; content: string }> = [];
+  if (params.system) messages.push({ role: "system", content: params.system });
+  for (const m of params.messages) {
+    messages.push({ role: m.role, content: typeof m.content === "string" ? m.content : JSON.stringify(m.content) });
+  }
+  const body: any = { model, messages, max_tokens: params.max_tokens };
+  // JSON mode for structured callers (the prompts already say "JSON").
+  if (params.responseFormat === "json") body.response_format = { type: "json_object" };
+
+  const url = "https://api.openai.com/v1/chat/completions";
+  const maxAttempts = (opts.retries ?? 2) + 1;
+  let lastErr: any;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 60_000);
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+      if (!res.ok) {
+        const t = await res.text().catch(() => "");
+        const err = aiHttpError(res.status, t);
+        if (err.retryable && attempt < maxAttempts - 1) {
+          lastErr = err;
+          await sleep(Math.min(8000, 600 * 2 ** attempt) + Math.floor(Math.random() * 400));
+          continue;
+        }
+        throw err;
+      }
+      const data: any = await res.json();
+      const text = data?.choices?.[0]?.message?.content ?? "";
+      if (!String(text).trim()) {
+        const err = new Error("The AI returned an empty response. Please try again.") as Error & { retryable?: boolean };
+        err.retryable = true;
+        throw err;
+      }
+      return { content: [{ type: "text", text: String(text) }] };
+    } catch (e: any) {
+      const transient =
+        e?.retryable === true ||
+        e?.name === "AbortError" ||
+        e?.code === "UND_ERR_CONNECT_TIMEOUT" ||
+        /fetch failed|network|ECONNRESET|ETIMEDOUT/i.test(e?.message ?? "");
+      if (transient && attempt < maxAttempts - 1) {
+        lastErr = e;
+        await sleep(Math.min(8000, 600 * 2 ** attempt) + Math.floor(Math.random() * 400));
+        continue;
+      }
+      throw e;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  throw lastErr ?? new Error("The AI service is unavailable. Please try again.");
+}
+
 // ── Admin helpers (status for display + save + live test) ─────────────────────
 export type AiAdminStatus = {
   provider: AiProvider;
@@ -447,6 +542,10 @@ export async function testAiConnection(input: {
       const r = await a.messages.create({ model, max_tokens: 16, messages: probe.messages as any });
       const t = (r.content.find((b: any) => b.type === "text") as any)?.text ?? "";
       return { ok: true, reply: String(t).slice(0, 40) };
+    }
+    if (input.provider === "openai") {
+      const r = await openaiCreate(apiKey, model, probe);
+      return { ok: true, reply: (r.content[0]?.text ?? "").slice(0, 40) };
     }
     const r = await geminiCreate(apiKey, model, probe);
     return { ok: true, reply: (r.content[0]?.text ?? "").slice(0, 40) };

@@ -36,34 +36,48 @@ export function resolveTokens(
   const resolved: Record<string, string> = {};
   for (const v of variables) {
     const value = resolveOne(v, ctx);
-    if ((value === null || value === undefined || value === "") && v.required) {
-      throw new TokenResolutionError(`Required variable '${v.key}' could not be resolved`);
-    }
+    // Don't hard-fail the whole send when a field can't be resolved — render it
+    // blank. Blocking an entire email because one optional field is empty is the
+    // wrong trade-off; the compliance gate + the author's review are the safety
+    // net, and the designer preview still flags unfilled fields.
     resolved[v.key] = formatValue(value, v);
   }
   return resolved;
 }
 
 function resolveOne(def: VariableDef, ctx: ResolveContext): unknown {
-  // Override always wins
+  // Override always wins.
   if (ctx.overrides && def.key in ctx.overrides) {
     return ctx.overrides[def.key];
   }
-  if (!def.source) {
-    return def.fallback ?? null;
-  }
-  const [root, ...rest] = def.source.split(".");
+  // Auto-detected designer variables (e.g. "investor.name") carry no explicit
+  // `source` — fall back to the key itself as the path.
+  const source = def.source || def.key;
+  if (!source) return def.fallback ?? null;
+  const [root, ...rest] = source.split(".");
+  const subject: any = ctx.subject ?? {};
+  const context: any = ctx.context ?? {};
+  // Map the merge-field namespaces to the loaded records. investor/lead both map
+  // to the subject; transaction/family/system come from the run context.
   const roots: Record<string, any> = {
-    subject: ctx.subject ?? {},
+    subject,
+    investor: subject,
+    lead: subject,
+    family: subject.family ?? context.family ?? {},
+    transaction: context.transaction ?? {},
+    system: context.system ?? {},
     tenant: ctx.tenant,
     user: ctx.user ?? {},
-    context: ctx.context ?? {},
+    context,
   };
   let cur = roots[root];
   if (cur === undefined) return def.fallback ?? null;
   for (const seg of rest) {
-    if (cur == null) return def.fallback ?? null;
-    cur = cur[seg];
+    if (cur == null || typeof cur !== "object") return def.fallback ?? null;
+    // Records are camelCase (drizzle); merge tokens are often snake_case — try
+    // the exact key, then the camelCased equivalent (date_of_birth → dateOfBirth).
+    const camel = seg.replace(/_([a-z])/g, (_m, c: string) => c.toUpperCase());
+    cur = (cur as any)[seg] !== undefined ? (cur as any)[seg] : (cur as any)[camel];
   }
   if (cur === undefined || cur === null) return def.fallback ?? null;
   return cur;
@@ -129,7 +143,7 @@ export function findUndeclaredPlaceholders(text: string, declaredKeys: string[])
 
 /**
  * Render a WhatsApp template body by replacing `{{key}}` mustache placeholders.
- * Also supports `{{1}}, {{2}}` style for raw AiSensy positional params.
+ * Also supports `{{1}}, {{2}}` style for raw Wapi positional params.
  */
 export function renderTemplateText(text: string, tokens: Record<string, string>): string {
   return text.replace(/\{\{\s*([^}]+)\s*\}\}/g, (_, key) => {

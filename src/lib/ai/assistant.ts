@@ -12,7 +12,7 @@
  *      same compliance gate before showing — model never bypasses rules.
  */
 
-import { aiMessagesClient } from "@/lib/ai/provider";
+import { aiMessagesClient, isAiConfigured } from "@/lib/ai/provider";
 import { FilterASTSchema, type FilterAST } from "@/lib/filter/ast";
 import { CATALOGS } from "@/lib/filter/catalog";
 import { POLICY_TYPES, PREMIUM_FREQUENCIES } from "@/db/schema/insurance";
@@ -343,6 +343,10 @@ ${fieldSummary}
 CRITICAL: Use only field keys from the list above. Do not invent fields.
 Output ONLY the JSON AST — no markdown, no explanation.`;
 
+  if (!(await isAiConfigured())) {
+    return { error: "AI isn't set up yet. Ask your admin to configure the AI provider + model under Settings → AI & Models." };
+  }
+
   try {
     const result = await client().messages.create({
       model: FAST_MODEL,
@@ -351,11 +355,17 @@ Output ONLY the JSON AST — no markdown, no explanation.`;
       responseFormat: "json",
       messages: [{ role: "user", content: query }],
     });
-    const text = result.content
-      .filter((b) => b.type === "text")
-      .map((b: any) => b.text)
+    const text = ((result as any)?.content ?? [])
+      .filter((b: any) => b && b.type === "text")
+      .map((b: any) => b.text ?? "")
       .join("\n")
       .trim();
+    if (!text) {
+      return {
+        error:
+          'The AI couldn\'t build a filter for that. Try rephrasing — e.g. "HNI clients in Mumbai with no contact in 60 days".',
+      };
+    }
 
     const parsed = parseAiJson(text);
     const ast = FilterASTSchema.safeParse(parsed);
@@ -364,7 +374,17 @@ Output ONLY the JSON AST — no markdown, no explanation.`;
     }
     return { ast: ast.data, explanation: `Translated to ${subject} filter.` };
   } catch (err: any) {
-    return { error: err.message ?? "AI error" };
+    // Log the real error+stack so a recurring failure is diagnosable in prod
+    // logs, but never surface a cryptic "Cannot read properties of undefined
+    // (reading 'type')" to the user — turn it into something actionable.
+    console.error("[ai] nlToFilterAst failed:", err?.stack || err?.message || err);
+    const raw = String(err?.message ?? "AI error");
+    const cryptic = /cannot read propert|undefined|null|is not a function/i.test(raw);
+    return {
+      error: cryptic
+        ? "The AI returned an unexpected response. Please try again — if it keeps failing, check the AI provider + model under Settings → AI & Models."
+        : raw,
+    };
   }
 }
 

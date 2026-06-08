@@ -137,8 +137,21 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(result, { status: 201 });
   } catch (err: any) {
-    if (String(err?.message).includes("templates_tenant_key_channel_locale_unique")) {
-      return NextResponse.json({ error: "template key already exists for this channel + locale" }, { status: 409 });
+    // Postgres unique_violation = 23505. Drizzle wraps the driver error, so the
+    // constraint name lives on err.cause/err.detail, NOT err.message ("Failed
+    // query: …"). Check the code + all message surfaces so a duplicate key is a
+    // friendly 409 instead of a masked 500 "internal".
+    const code = err?.code ?? err?.cause?.code;
+    const surfaces = `${err?.message ?? ""} ${err?.cause?.message ?? ""} ${err?.cause?.detail ?? ""} ${err?.detail ?? ""} ${err?.cause?.constraint ?? ""}`;
+    if (
+      code === "23505" ||
+      surfaces.includes("templates_tenant_key_channel_locale_unique") ||
+      /duplicate key|unique constraint/i.test(surfaces)
+    ) {
+      return NextResponse.json(
+        { error: "A template with this key already exists for this channel + locale. Change the key (the field under the title) and try again." },
+        { status: 409 }
+      );
     }
     return handleApiError(err);
   }

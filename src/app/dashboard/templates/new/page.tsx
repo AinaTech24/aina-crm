@@ -5,10 +5,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { ChevronLeft, Eye, ShieldCheck, AlertCircle, Save, Send, Plus, Trash, Paperclip } from "lucide-react";
-import { runComplianceChecks } from "@/lib/comms/compliance";
+import { runComplianceChecks, missingMandatoryLines } from "@/lib/comms/compliance";
 import { MergeFieldInserter, type VarDecl } from "@/components/templates/MergeFieldInserter";
 import { SelectField } from "@/components/ui/SelectField";
 import type { EmailDesignerBody } from "@/lib/email-designer/types";
+import { STARTER_TEMPLATES, applyStarter } from "@/lib/email-designer/starters";
 
 // Code-split the block-based email designer (847 lines + its editor deps) so
 // it loads only when the email channel is actually edited, not on page open.
@@ -51,6 +52,9 @@ export default function NewTemplatePage() {
   const router = useRouter();
   const [name, setName] = useState("New template");
   const [key, setKey] = useState("new_template");
+  // Auto-derive the key from the name until the user edits the key directly, so
+  // two templates never collide on the static default "new_template".
+  const [keyEdited, setKeyEdited] = useState(false);
   const [description, setDescription] = useState("");
   const [channel, setChannel] = useState<Channel>("email");
   const [category, setCategory] = useState<Category>("transactional");
@@ -62,9 +66,12 @@ export default function NewTemplatePage() {
   // Dynamic tenant details loaded from API
   const [tenant, setTenant] = useState<{
     legalName?: string;
+    displayName?: string;
     arn?: string;
     principalEuin?: string;
     riaRegistered?: boolean;
+    logoUrl?: string;
+    brandColor?: string;
   } | null>(null);
 
   useEffect(() => {
@@ -74,14 +81,24 @@ export default function NewTemplatePage() {
         if (data?.tenant) {
           setTenant({
             legalName: data.tenant.legalName ?? "",
+            displayName: data.tenant.displayName ?? "",
             arn: data.tenant.arn ?? "",
             principalEuin: data.tenant.principalEuin ?? undefined,
             riaRegistered: !!data.tenant.riaRegistered,
+            logoUrl: data.tenant.logoUrl ?? "",
+            brandColor: data.tenant.primaryColor ?? data.tenant.brandColor ?? undefined,
           });
         }
       })
       .catch((err) => console.error("Failed to load tenant details:", err));
   }, []);
+
+  // Keep `key` a slug of `name` until the user hand-edits the key field.
+  useEffect(() => {
+    if (keyEdited) return;
+    const slug = name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 80);
+    setKey(slug.length >= 2 ? slug : "new_template");
+  }, [name, keyEdited]);
 
   // Email body (block designer / HTML mode)
   const [emailBody, setEmailBody] = useState<EmailDesignerBody>(defaultEmailBody);
@@ -160,13 +177,18 @@ export default function NewTemplatePage() {
     });
   }, [parsedKeys]);
 
+  const activeTenant = useMemo(
+    () =>
+      tenant ?? {
+        legalName: "Demo Wealth Advisors",
+        arn: "123456",
+        principalEuin: "E123456",
+        riaRegistered: false,
+      },
+    [tenant]
+  );
+
   const compliance = useMemo(() => {
-    const activeTenant = tenant ?? {
-      legalName: "Demo Wealth Advisors",
-      arn: "123456",
-      principalEuin: "E123456",
-      riaRegistered: false,
-    };
     return runComplianceChecks({
       channel,
       category,
@@ -177,7 +199,21 @@ export default function NewTemplatePage() {
       whatsappSessionActive: false,
       hasMarketingConsent: true,
     });
-  }, [previewText, emailBody.subject, channel, category, dltId, tenant]);
+  }, [previewText, emailBody.subject, channel, category, dltId, activeTenant]);
+
+  // Mandatory footer lines (disclaimer / ARN / firm name) missing from the body.
+  // Offered for plain-text channels; email carries them via the designer footer.
+  const fixLines = useMemo(() => {
+    if (channel === "email") return [];
+    return missingMandatoryLines({ category, text: previewText, tenant: activeTenant });
+  }, [channel, category, previewText, activeTenant]);
+
+  function applyComplianceFix() {
+    if (!fixLines.length) return;
+    const append = (t: string) => `${t.replace(/\s+$/, "")}\n\n${fixLines.join("\n")}`;
+    if (channel === "whatsapp") setWaText((t) => append(t));
+    else if (channel === "sms") setSmsText((t) => append(t));
+  }
 
   /** Insert a merge token: into WA/SMS at the cursor, or into the email subject;
    *  and upsert a precise variable declaration so the schema is correct. */
@@ -253,7 +289,7 @@ export default function NewTemplatePage() {
           />
           <input
             value={key}
-            onChange={(e) => setKey(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_"))}
+            onChange={(e) => { setKeyEdited(true); setKey(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_")); }}
             className="text-xs font-mono text-muted-foreground bg-transparent border-none outline-none mt-1"
             placeholder="template_key"
           />
@@ -324,6 +360,16 @@ export default function NewTemplatePage() {
           />
         </div>
         <div className="font-mono text-xs">{compliance.score}/100</div>
+        {fixLines.length > 0 && (
+          <button
+            type="button"
+            onClick={applyComplianceFix}
+            className="text-xs font-semibold rounded-md bg-emerald-600 text-white hover:bg-emerald-700 px-2.5 py-1 flex items-center gap-1"
+            title={`Insert the mandatory ${fixLines.join(" + ")}`}
+          >
+            <ShieldCheck className="size-3.5" /> Apply suggested fix
+          </button>
+        )}
         {compliance.findings.length > 0 && (
           <details className="text-xs">
             <summary className="cursor-pointer text-muted-foreground">{compliance.findings.length} finding(s)</summary>
@@ -420,7 +466,54 @@ export default function NewTemplatePage() {
 
       {/* Body editor — per channel */}
       {channel === "email" && (
-        <EmailDesigner value={emailBody} onChange={setEmailBody} tenant={undefined} />
+        <div className="rounded-xl border border-border bg-secondary/30 p-3">
+          <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+            Start from a template
+          </div>
+          <div className="space-y-3 max-h-80 overflow-y-auto scrollbar-thin pr-1">
+            {([
+              { key: "client-transactional", label: "Client · Transactional", match: (s: (typeof STARTER_TEMPLATES)[number]) => s.audience !== "internal" && s.category === "transactional" },
+              { key: "client-utility", label: "Client · Utility / Service", match: (s: (typeof STARTER_TEMPLATES)[number]) => s.audience !== "internal" && s.category === "utility" },
+              { key: "client-marketing", label: "Client · Marketing", match: (s: (typeof STARTER_TEMPLATES)[number]) => s.audience !== "internal" && s.category === "marketing" },
+              { key: "internal", label: "Team & Internal · Alerts / Status / Reports", match: (s: (typeof STARTER_TEMPLATES)[number]) => s.audience === "internal" },
+            ] as const).map((group) => {
+              const items = STARTER_TEMPLATES.filter(group.match);
+              if (!items.length) return null;
+              return (
+                <div key={group.key}>
+                  <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70 mb-1.5">{group.label}</div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {items.map((s) => (
+                      <button
+                        key={s.key}
+                        type="button"
+                        onClick={() => {
+                          const body = applyStarter(s.key);
+                          if (body) {
+                            setEmailBody(body);
+                            setCategory(s.category);
+                            // Give the new template a meaningful, unique-ish name +
+                            // key so it doesn't collide on the static default.
+                            setName(s.name);
+                            setKeyEdited(false);
+                          }
+                        }}
+                        className="text-left rounded-lg border border-border bg-card px-3 py-2.5 hover:border-brand-cyan/60 hover:shadow-sm transition-all"
+                      >
+                        <div className="text-sm font-semibold truncate">{s.name}</div>
+                        <div className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2">{s.description}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <p className="text-[10px] text-muted-foreground mt-1.5">Pick one to pre-fill the designer, then customise. Or start from scratch below.</p>
+        </div>
+      )}
+      {channel === "email" && (
+        <EmailDesigner value={emailBody} onChange={setEmailBody} tenant={tenant ?? undefined} />
       )}
 
       {channel === "whatsapp" && (

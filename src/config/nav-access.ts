@@ -72,10 +72,7 @@ export const NAV_ACCESS_GROUPS: NavAccessGroup[] = [
     title: "Automation",
     items: [
       { key: "/dashboard/workflows/rules", label: "Workflow Rules", module: "automation_workflows" },
-      { key: "/dashboard/sales-ops", label: "Sales-Ops Rules" },
-      { key: "/dashboard/workflows", label: "Workflows (advanced)", module: "automation_workflows" },
       { key: "/dashboard/workflows/runs", label: "Automation Monitor", module: "automation_workflows" },
-      { key: "/dashboard/segments", label: "Segments & Filters", module: "automation_workflows" },
       { key: "/dashboard/templates", label: "Templates", module: "broadcasts" },
       { key: "/dashboard/campaigns", label: "Marketing Campaigns", module: "marketing_campaigns" },
       { key: "/dashboard/content-calendar", label: "Social Media Calendar", module: "content_calendar" },
@@ -101,7 +98,6 @@ export const NAV_ACCESS_GROUPS: NavAccessGroup[] = [
       { key: "/dashboard/amc-empanelments", label: "AMC Empanelments" },
       { key: "/dashboard/schemes", label: "Scheme Master" },
       { key: "/dashboard/product-offerings", label: "Products & Services" },
-      { key: "/dashboard/cybersecurity", label: "Cybersecurity", module: "cybersecurity" },
     ],
   },
   {

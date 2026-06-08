@@ -44,6 +44,9 @@ const SendEmailConfig = z.object({
     })
     .default({ source: "subject" }),
   category: z.enum(["transactional", "marketing"]).default("transactional"),
+  /** "Send from" — organization mailbox (firm default) or the record owner's
+   *  (client's RM) own mailbox. */
+  fromAddress: z.enum(["organization", "record_owner"]).optional(),
   /** Cc / Bcc */
   cc: z.array(z.string().email()).default([]),
   bcc: z.array(z.string().email()).default([]),

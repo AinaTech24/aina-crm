@@ -28,7 +28,7 @@ export const communications = pgTable(
     templateVersionId: uuid("template_version_id").references(() => templateVersions.id),
     templateKey: text("template_key"),
 
-    /** Provider-side message id (AiSensy / Resend / MSG91) */
+    /** Provider-side message id (Wapi / Resend / MSG91) */
     externalId: text("external_id"),
 
     status: text("status", {
@@ -63,6 +63,14 @@ export const communications = pgTable(
     payload: jsonb("payload"),
     /** Inbound message body for direction='inbound'. */
     inboundContent: jsonb("inbound_content"),
+
+    /** Email threading (RFC 5322). messageId = this message's Message-ID;
+     *  inReplyTo / emailReferences thread replies to their parent; threadId
+     *  groups a whole conversation on the record. */
+    messageId: text("message_id"),
+    inReplyTo: text("in_reply_to"),
+    emailReferences: text("email_references"),
+    threadId: uuid("thread_id"),
 
     /** Dispatch origin */
     workflowRunId: uuid("workflow_run_id").references(() => workflowRuns.id),
@@ -100,6 +108,31 @@ export const communications = pgTable(
     deliveryIdx: index("comms_delivery_idx").on(t.tenantId, t.direction, t.status, t.createdAt),
     // Drains due scheduled sends cheaply: WHERE status='scheduled' AND scheduled_at <= now().
     scheduledIdx: index("comms_scheduled_idx").on(t.status, t.scheduledAt),
+    threadIdx: index("comms_thread_idx").on(t.tenantId, t.threadId, t.createdAt),
+    messageIdIdx: index("comms_message_id_idx").on(t.tenantId, t.messageId),
+  })
+);
+
+/**
+ * Hard-bounced / unsubscribed email addresses. The send pipeline skips any
+ * recipient present here (deliverability + consent) — written by the Resend
+ * bounce webhook and by unsubscribe handling.
+ */
+export const emailSuppressions = pgTable(
+  "email_suppressions",
+  {
+    id,
+    tenantId: tenantId.references(() => tenants.id),
+    email: text("email").notNull(),
+    reason: text("reason", { enum: ["bounced", "complained", "unsubscribed", "manual"] })
+      .notNull()
+      .default("bounced"),
+    source: text("source"),
+    createdById: uuid("created_by_id").references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    tenantEmailUnique: uniqueIndex("email_suppressions_tenant_email_unique").on(t.tenantId, sql`lower(${t.email})`),
   })
 );
 
@@ -116,7 +149,6 @@ export const whatsappNumbers = pgTable(
     phoneE164: text("phone_e164").notNull(),
     displayName: text("display_name"),
     isDefault: text("is_default").default("false"),
-    aisensyAppId: text("aisensy_app_id"),
     ...timestamps,
   },
   (t) => ({
@@ -126,3 +158,4 @@ export const whatsappNumbers = pgTable(
 
 export type Communication = typeof communications.$inferSelect;
 export type WhatsappNumber = typeof whatsappNumbers.$inferSelect;
+export type EmailSuppression = typeof emailSuppressions.$inferSelect;

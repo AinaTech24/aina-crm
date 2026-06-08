@@ -30,6 +30,7 @@ export type InvestorTableRow = {
   id: string;
   name: string;
   pan: string | null;
+  clientCategory: string | null;
   serviceTier: string | null;
   segmentTag: string | null;
   aum: number;
@@ -43,6 +44,7 @@ export type InvestorTableRow = {
 
 export type InvestorTableFlags = {
   showPan: boolean;
+  showCategory: boolean;
   showTier: boolean;
   showSegment: boolean;
   showAum: boolean;
@@ -63,6 +65,12 @@ const tierColors: Record<string, string> = {
   B: "bg-emerald-100 text-emerald-700",
   C: "bg-blue-100 text-blue-700",
 };
+const categoryColors: Record<string, string> = {
+  A: "bg-amber-100 text-amber-800 border border-amber-300",
+  B: "bg-sky-100 text-sky-800 border border-sky-300",
+  C: "bg-slate-100 text-slate-700 border border-slate-300",
+  D: "bg-rose-50 text-rose-700 border border-rose-200",
+};
 
 export function InvestorsTable({
   rows,
@@ -78,7 +86,7 @@ export function InvestorsTable({
   const searchParams = useSearchParams();
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [bulk, setBulk] = useState<null | "assign" | "review" | "tier" | "segment">(null);
+  const [bulk, setBulk] = useState<null | "assign" | "review" | "tier" | "segment" | "category">(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -86,6 +94,7 @@ export function InvestorsTable({
   const [reviewDate, setReviewDate] = useState("");
   const [tierVal, setTierVal] = useState("A");
   const [segmentVal, setSegmentVal] = useState("HNI");
+  const [categoryVal, setCategoryVal] = useState("A");
 
   const allSelected = rows.length > 0 && selected.size === rows.length;
 
@@ -122,6 +131,7 @@ export function InvestorsTable({
     }
     if (bulk === "tier") value = tierVal;
     if (bulk === "segment") value = segmentVal;
+    if (bulk === "category") value = categoryVal;
 
     setBusy(true);
     setErr(null);
@@ -182,6 +192,7 @@ export function InvestorsTable({
           <button onClick={() => setBulk("review")} className="btn-ghost text-xs inline-flex items-center gap-1"><CalendarClock className="size-3.5" /> Set next review</button>
           <button onClick={() => setBulk("tier")} className="btn-ghost text-xs inline-flex items-center gap-1"><Layers className="size-3.5" /> Set tier</button>
           <button onClick={() => setBulk("segment")} className="btn-ghost text-xs inline-flex items-center gap-1"><Tag className="size-3.5" /> Set segment</button>
+          <button onClick={() => setBulk("category")} className="btn-ghost text-xs inline-flex items-center gap-1"><Layers className="size-3.5" /> Set category</button>
           <button onClick={deleteSelected} disabled={busy} className="btn-ghost text-xs inline-flex items-center gap-1 text-rose-600 hover:bg-rose-50 disabled:opacity-50"><Trash2 className="size-3.5" /> Delete</button>
           <button onClick={() => setSelected(new Set())} className="text-xs text-muted-foreground hover:underline ml-auto">Clear</button>
         </div>
@@ -210,6 +221,11 @@ export function InvestorsTable({
               {["HNI", "Affluent", "Retail", "NRI", "Corporate"].map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
           )}
+          {bulk === "category" && (
+            <select value={categoryVal} onChange={(e) => setCategoryVal(e.target.value)} className="input-base text-sm">
+              {["A", "B", "C", "D"].map((c) => <option key={c} value={c}>{`Category ${c}`}</option>)}
+            </select>
+          )}
           <button onClick={runBulk} disabled={busy} className="btn-primary text-xs inline-flex items-center gap-1">
             {busy && <Loader2 className="size-3.5 animate-spin" />} Apply to {selected.size}
           </button>
@@ -228,6 +244,7 @@ export function InvestorsTable({
               <button onClick={() => setSort("name")} className="inline-flex items-center gap-1 hover:text-foreground">Name <ArrowUpDown className="size-3" />{arrow("name")}</button>
             </th>
             {flags.showPan && <th data-col="pan" className="text-left py-2 font-medium">PAN</th>}
+            {flags.showCategory && <th data-col="category" className="text-left py-2 font-medium">Category</th>}
             {flags.showTier && <th data-col="tier" className="text-left py-2 font-medium">Tier</th>}
             {flags.showSegment && <th data-col="segment" className="text-left py-2 font-medium">Segment</th>}
             {flags.showAum && (
@@ -262,6 +279,15 @@ export function InvestorsTable({
                   <Link href={`/dashboard/investors/${i.id}`} className="hover:underline">{i.name}</Link>
                 </td>
                 {flags.showPan && <td data-col="pan" className="py-3 text-xs font-mono text-muted-foreground">{i.pan}</td>}
+                {flags.showCategory && (
+                  <td data-col="category" className="py-3">
+                    {i.clientCategory ? (
+                      <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${categoryColors[i.clientCategory] ?? ""}`} title={`Client Category ${i.clientCategory}`}>{i.clientCategory}</span>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    )}
+                  </td>
+                )}
                 {flags.showTier && (
                   <td data-col="tier" className="py-3">
                     {i.serviceTier ? (

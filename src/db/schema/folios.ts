@@ -31,6 +31,8 @@ export const folios = pgTable(
   (t) => ({
     folioUnique: uniqueIndex("folios_tenant_amc_folio_unique").on(t.tenantId, t.amcCode, t.folioNumber),
     investorIdx: index("folios_investor_idx").on(t.tenantId, t.investorId),
+    // Lookup by folio without amc_code — the RTA-import resolution hot path.
+    folioNumberIdx: index("folios_tenant_folio_idx").on(t.tenantId, t.folioNumber),
   })
 );
 

@@ -19,6 +19,7 @@ import { withTenant } from "@/db/client";
 import { getTeamDashboard, type Metric } from "@/lib/team/dashboard";
 import { LEAVE_TYPE_LABELS } from "@/lib/leave/policy";
 import { TeamMemberFilter } from "@/components/dashboards/TeamMemberFilter";
+import { TeamRangePicker } from "@/components/dashboards/TeamRangePicker";
 
 export const dynamic = "force-dynamic";
 
@@ -165,6 +166,7 @@ export default async function TeamDashboardPage({
               );
             })}
           </div>
+          <TeamRangePicker from={data.range.from} to={data.range.to} member={member} />
         </div>
       </div>
 

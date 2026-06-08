@@ -29,6 +29,7 @@ import {
   Code,
   Trash2,
   ChevronUp,
+  GripVertical,
   ChevronDown,
   PaintBucket,
   Eye,
@@ -54,6 +55,7 @@ export function EmailDesigner({
   tenant?: { displayName?: string | null; arn?: string | null; logoUrl?: string | null; brandColor?: string | null };
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [dragId, setDragId] = useState<string | null>(null);
   const [device, setDevice] = useState<"desktop" | "mobile">("desktop");
   const [sidebarTab, setSidebarTab] = useState<"blocks" | "theme" | "fields">("blocks");
   const [previewHtml, setPreviewHtml] = useState<string>("");
@@ -150,6 +152,17 @@ export function EmailDesigner({
     const j = idx + dir;
     if (j < 0 || j >= arr.length) return;
     [arr[idx], arr[j]] = [arr[j], arr[idx]];
+    update({ blocks: arr });
+  }
+  /** Drag-drop reorder: move `fromId` to occupy `toId`'s position. */
+  function moveBlockTo(fromId: string, toId: string) {
+    if (fromId === toId) return;
+    const arr = [...(value.blocks ?? [])];
+    const from = arr.findIndex((b: any) => b.id === fromId);
+    const to = arr.findIndex((b: any) => b.id === toId);
+    if (from < 0 || to < 0) return;
+    const [moved] = arr.splice(from, 1);
+    arr.splice(to, 0, moved);
     update({ blocks: arr });
   }
   function insertMergeField(field: MergeField) {
@@ -262,6 +275,10 @@ export function EmailDesigner({
                   onRemove={() => removeBlock(b.id)}
                   onMoveUp={() => moveBlock(b.id, -1)}
                   onMoveDown={() => moveBlock(b.id, 1)}
+                  dragging={dragId === b.id}
+                  onDragStartBlock={() => setDragId(b.id)}
+                  onDragEndBlock={() => setDragId(null)}
+                  onDropOnBlock={() => { if (dragId) moveBlockTo(dragId, b.id); setDragId(null); }}
                 />
               ))}
             </div>
@@ -544,6 +561,10 @@ function BlockCard({
   onRemove,
   onMoveUp,
   onMoveDown,
+  dragging,
+  onDragStartBlock,
+  onDragEndBlock,
+  onDropOnBlock,
 }: {
   block: any;
   selected: boolean;
@@ -552,16 +573,34 @@ function BlockCard({
   onRemove: () => void;
   onMoveUp: () => void;
   onMoveDown: () => void;
+  dragging?: boolean;
+  onDragStartBlock?: () => void;
+  onDragEndBlock?: () => void;
+  onDropOnBlock?: () => void;
 }) {
   return (
     <div
       onClick={onSelect}
+      onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
+      onDrop={(e) => { e.preventDefault(); onDropOnBlock?.(); }}
       className={`bg-white border rounded-lg p-3 cursor-pointer transition-shadow ${
         selected ? "border-brand-cyan shadow-md" : "border-border hover:shadow-sm"
-      }`}
+      } ${dragging ? "opacity-40" : ""}`}
     >
       <div className="flex items-center justify-between mb-2 -mt-1">
-        <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">{block.type.replace(/_/g, " ")}</div>
+        <div className="flex items-center gap-1">
+          <span
+            draggable
+            onDragStart={onDragStartBlock}
+            onDragEnd={onDragEndBlock}
+            onClick={(e) => e.stopPropagation()}
+            title="Drag to reorder"
+            className="cursor-grab text-muted-foreground/60 hover:text-muted-foreground active:cursor-grabbing"
+          >
+            <GripVertical className="size-3.5" />
+          </span>
+          <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">{block.type.replace(/_/g, " ")}</div>
+        </div>
         <div className="flex items-center gap-0.5 opacity-60 hover:opacity-100">
           <button onClick={(e) => { e.stopPropagation(); onMoveUp(); }} className="btn-icon h-6 w-6"><ChevronUp className="size-3" /></button>
           <button onClick={(e) => { e.stopPropagation(); onMoveDown(); }} className="btn-icon h-6 w-6"><ChevronDown className="size-3" /></button>

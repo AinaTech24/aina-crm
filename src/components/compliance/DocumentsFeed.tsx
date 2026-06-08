@@ -7,9 +7,10 @@ import {
   AlertTriangle, 
   Download, 
   Trash2, 
-  Loader2, 
-  Search, 
-  Filter 
+  Loader2,
+  Search,
+  Filter,
+  UserCircle2,
 } from "lucide-react";
 import { formatDate, formatRelative } from "@/lib/utils";
 
@@ -24,6 +25,8 @@ type DocRow = {
   issuedOn: string | Date | null;
   expiresOn: string | Date | null;
   createdAt: string | Date | null;
+  /** Resolved name of the linked client (investor), if this doc belongs to one. */
+  clientName?: string | null;
 };
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -77,10 +80,12 @@ export function DocumentsFeed({
 
   const filteredRows = useMemo(() => {
     return rows.filter((r) => {
-      const nameMatch = r.name.toLowerCase().includes(searchQuery.toLowerCase());
-      const descMatch = r.description ? r.description.toLowerCase().includes(searchQuery.toLowerCase()) : false;
+      const q = searchQuery.toLowerCase();
+      const nameMatch = r.name.toLowerCase().includes(q);
+      const descMatch = r.description ? r.description.toLowerCase().includes(q) : false;
+      const clientMatch = r.clientName ? r.clientName.toLowerCase().includes(q) : false;
       const categoryMatch = categoryFilter === "all" || r.category === categoryFilter;
-      return (nameMatch || descMatch) && categoryMatch;
+      return (nameMatch || descMatch || clientMatch) && categoryMatch;
     });
   }, [rows, searchQuery, categoryFilter]);
 
@@ -161,6 +166,7 @@ export function DocumentsFeed({
             <thead className="text-xs text-muted-foreground border-b bg-secondary/20">
               <tr>
                 <th className="text-left px-4 py-3 font-medium">Name</th>
+                <th className="text-left py-3 font-medium">Client</th>
                 <th className="text-left py-3 font-medium">Category</th>
                 <th className="text-left py-3 font-medium">Issued</th>
                 <th className="text-left py-3 font-medium">Expires</th>
@@ -178,6 +184,16 @@ export function DocumentsFeed({
                     <td className="px-4 py-3.5">
                       <div className="font-semibold text-sm">{d.name}</div>
                       {d.description && <div className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{d.description}</div>}
+                    </td>
+                    <td className="py-3.5 text-xs">
+                      {d.clientName ? (
+                        <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
+                          <UserCircle2 className="size-3.5 text-brand-cyan flex-shrink-0" />
+                          {d.clientName}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
                     </td>
                     <td className="py-3.5">
                       <span className={`text-[10px] font-bold border px-2 py-0.5 rounded-full ${CATEGORY_COLORS[d.category] ?? CATEGORY_COLORS.other}`}>

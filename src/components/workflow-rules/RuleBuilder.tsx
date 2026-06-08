@@ -11,7 +11,7 @@
  * Mirrors https://help.zoho.com/portal/en/kb/crm/automate-business-processes/workflows
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronLeft, ChevronRight, Plus, Trash2, Save, AlertTriangle, Sparkles } from "lucide-react";
 
@@ -971,6 +971,9 @@ function ScheduledActionRow({
   );
 }
 
+// Module-level cache so the template list is fetched once, not per action row.
+let _ruleTplCache: Array<{ key: string; name: string; channel: string; status?: string }> | null = null;
+
 function ActionConfigEditor({
   action,
   onChange,
@@ -984,34 +987,79 @@ function ActionConfigEditor({
   function set(patch: Record<string, any>) {
     onChange({ ...action, config: { ...c, ...patch } });
   }
+
+  const [allTemplates, setAllTemplates] = useState(_ruleTplCache ?? []);
+  useEffect(() => {
+    if (_ruleTplCache) return;
+    fetch("/api/templates")
+      .then((r) => r.json())
+      .then((j) => { _ruleTplCache = j.templates ?? []; setAllTemplates(_ruleTplCache!); })
+      .catch(() => {});
+  }, []);
+
   switch (action.type) {
     case "send_email":
     case "send_whatsapp":
     case "send_sms":
       return (
-        <div className="grid grid-cols-2 gap-2">
-          <div>
-            <label className="text-[10px] text-muted-foreground">Template key</label>
-            <input
-              value={String(c.templateKey ?? "")}
-              onChange={(e) => set({ templateKey: e.target.value })}
-              className="input-base text-xs w-full font-mono"
-              placeholder="e.g. welcome_v2"
-            />
-          </div>
-          <div>
-            <label className="text-[10px] text-muted-foreground">Category</label>
-            <select
-              value={String(c.category ?? "transactional")}
-              onChange={(e) => set({ category: e.target.value })}
-              className="input-base text-xs w-full"
-            >
-              <option value="transactional">Transactional</option>
-              <option value="utility">Utility</option>
-              <option value="marketing">Marketing</option>
-            </select>
-          </div>
-        </div>
+        (() => {
+          const channel = action.type === "send_email" ? "email" : action.type === "send_whatsapp" ? "whatsapp" : "sms";
+          const opts = allTemplates.filter((t) => t.channel === channel);
+          const chosen = String(c.templateKey ?? "");
+          const knownKey = !chosen || opts.some((t) => t.key === chosen);
+          return (
+            <div className="space-y-2">
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] text-muted-foreground">Template</label>
+                  <select
+                    value={chosen}
+                    onChange={(e) => set({ templateKey: e.target.value })}
+                    className="input-base text-xs w-full"
+                  >
+                    <option value="">{opts.length ? "Select a template…" : "No templates yet — create one first"}</option>
+                    {opts.map((t) => (
+                      <option key={t.key} value={t.key}>
+                        {t.name}{t.status && t.status !== "approved" ? ` (${t.status.replace(/_/g, " ")})` : ""}
+                      </option>
+                    ))}
+                    {!knownKey && <option value={chosen}>{chosen} (custom)</option>}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] text-muted-foreground">Category</label>
+                  <select
+                    value={String(c.category ?? "transactional")}
+                    onChange={(e) => set({ category: e.target.value })}
+                    className="input-base text-xs w-full"
+                  >
+                    <option value="transactional">Transactional</option>
+                    <option value="utility">Utility</option>
+                    <option value="marketing">Marketing</option>
+                  </select>
+                </div>
+              </div>
+              {action.type === "send_email" && (
+                <div>
+                  <label className="text-[10px] text-muted-foreground">Send from</label>
+                  <select
+                    value={String(c.fromAddress ?? "organization")}
+                    onChange={(e) => set({ fromAddress: e.target.value })}
+                    className="input-base text-xs w-full"
+                  >
+                    <option value="organization">Organization email (firm default)</option>
+                    <option value="record_owner">Record owner — the client&apos;s RM</option>
+                  </select>
+                </div>
+              )}
+              <p className="text-[10px] text-muted-foreground">
+                {opts.length === 0
+                  ? "Create a template under Templates → New (channel: " + channel + ") — it'll appear in this list."
+                  : "Pick a template your firm created. It must be Approved to actually send."}
+              </p>
+            </div>
+          );
+        })()
       );
     case "create_task":
     case "schedule_call":

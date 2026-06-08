@@ -1,4 +1,5 @@
-import { boolean, jsonb, pgTable, text, uniqueIndex } from "drizzle-orm/pg-core";
+import { boolean, jsonb, pgTable, text, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { id, tenantId, timestamps } from "./_shared";
 import { tenants } from "./tenants";
 
@@ -7,11 +8,15 @@ export const tenantIntegrations = pgTable(
   {
     id,
     tenantId: tenantId.references(() => tenants.id),
+    // NULL = firm-wide default (owner-managed). Set = that user's personal
+    // mailbox (per-RM IMAP/SMTP, or a Gmail / M365 account over OAuth).
+    userId: uuid("user_id"),
     provider: text("provider", { enum: ["resend", "aisensy", "msg91", "waina", "mailbox"] }).notNull(),
     encryptedConfig: text("encrypted_config").notNull(),
     senderConfig: jsonb("sender_config").$type<{
       fromEmail?: string;
       fromName?: string;
+      replyTo?: string;
       senderId?: string; // MSG91 Sender ID
       whatsappPhoneE164?: string;
     }>(),
@@ -19,6 +24,13 @@ export const tenantIntegrations = pgTable(
     ...timestamps,
   },
   (t) => ({
-    providerUnique: uniqueIndex("tenant_provider_unique").on(t.tenantId, t.provider),
+    // One firm-wide row per provider …
+    tenantLevelUnique: uniqueIndex("tenant_provider_tenant_level_unique")
+      .on(t.tenantId, t.provider)
+      .where(sql`user_id IS NULL`),
+    // … plus one personal row per (user, provider).
+    userLevelUnique: uniqueIndex("tenant_provider_user_level_unique")
+      .on(t.tenantId, t.userId, t.provider)
+      .where(sql`user_id IS NOT NULL`),
   })
 );

@@ -22,14 +22,21 @@ const TIME_SLOTS: Array<{ value: string; label: string }> = (() => {
   return out;
 })();
 
-const TYPES = [
-  ["portfolio_review", "Portfolio Review"],
-  ["goal_review", "Goal Review"],
-  ["new_investment_discussion", "New Investment Discussion"],
-  ["service_discussion", "Service Discussion"],
-  ["family_review", "Family Review"],
-  ["complaint_discussion", "Complaint Discussion"],
+// User-facing meeting type = the three categories the firm cares about.
+const CATEGORY_OPTIONS = [
+  ["new", "New Meeting"],
+  ["review", "Review Meeting"],
+  ["follow_up", "Follow-up Meeting"],
 ] as const;
+
+// The API still stores a granular `meetingType` (enum) alongside `category`;
+// map each user-facing category to one representative type so the UI stays to
+// the three options the user asked for.
+const TYPE_FOR_CATEGORY: Record<string, string> = {
+  new: "new_investment_discussion",
+  review: "portfolio_review",
+  follow_up: "follow_up_call",
+};
 
 const MODES = [
   ["office", "Office"],
@@ -55,12 +62,15 @@ export function ScheduleMeetingForm({
   families,
   preselectedInvestorId,
   preselectedLeadId,
+  preselectedCategory,
 }: {
   investors: InvestorOpt[];
   leads: LeadOpt[];
   families: FamilyOpt[];
   preselectedInvestorId?: string;
   preselectedLeadId?: string;
+  /** "new" | "review" | "follow_up" — defaults the Meeting type dropdown. */
+  preselectedCategory?: string;
 }) {
   const router = useRouter();
   const [subjectKind, setSubjectKind] = useState<Kind>(preselectedLeadId ? "lead" : "client");
@@ -70,7 +80,7 @@ export function ScheduleMeetingForm({
     leadId: preselectedLeadId ?? "",
     familyId: "",
     subject: "",
-    meetingType: "portfolio_review",
+    category: (["new", "review", "follow_up"].includes(preselectedCategory ?? "") ? preselectedCategory! : "review"),
     meetingDay: def.day,
     meetingTime: def.time,
     durationMinutes: "30",
@@ -89,8 +99,8 @@ export function ScheduleMeetingForm({
 
   function pickKind(k: Kind) {
     setSubjectKind(k);
-    // Family meetings default to the Family Review agenda.
-    if (k === "family" && form.meetingType !== "family_review") set("meetingType", "family_review");
+    // Family meetings are reviews.
+    if (k === "family" && form.category !== "review") set("category", "review");
   }
 
   async function save() {
@@ -99,7 +109,8 @@ export function ScheduleMeetingForm({
     try {
       const body: Record<string, any> = {
         subject: form.subject || undefined,
-        meetingType: form.meetingType,
+        category: form.category,
+        meetingType: TYPE_FOR_CATEGORY[form.category] ?? "portfolio_review",
         meetingDate: new Date(`${form.meetingDay}T${form.meetingTime || "11:00"}:00`).toISOString(),
         durationMinutes: parseInt(form.durationMinutes, 10) || 30,
         meetingMode: form.meetingMode,
@@ -227,8 +238,8 @@ export function ScheduleMeetingForm({
 
       <div className="grid grid-cols-2 gap-3">
         <Field label="Meeting type">
-          <SelectField value={form.meetingType} onChange={(e) => set("meetingType", e.target.value)} className="w-full">
-            {TYPES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+          <SelectField value={form.category} onChange={(e) => set("category", e.target.value)} className="w-full">
+            {CATEGORY_OPTIONS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
           </SelectField>
         </Field>
         <Field label="Mode">

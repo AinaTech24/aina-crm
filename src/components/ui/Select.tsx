@@ -58,7 +58,9 @@ export function Select({
     const flip = window.innerHeight - rect.bottom < 280 && rect.top > 280;
     const style: React.CSSProperties = {
       position: "fixed",
-      zIndex: 80,
+      // Above modals/drawers (which sit at z-[100]) so a Select used inside a
+      // modal opens in front of it, not hidden behind it.
+      zIndex: 200,
       minWidth: Math.round(rect.width),
     };
     if (alignRight) style.right = Math.round(Math.max(8, window.innerWidth - rect.right));

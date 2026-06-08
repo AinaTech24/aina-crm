@@ -8,6 +8,7 @@ import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { dispatch } from "@/lib/comms/pipeline";
+import { runComplianceChecks } from "@/lib/comms/compliance";
 import { assetVisibleTo } from "@/lib/content/asset-url";
 import {
   contentLibraryAssets,
@@ -111,19 +112,6 @@ export async function POST(
       if (!tmpl) {
         const tplId = uuid();
         const verId = uuid();
-        
-        // Create template and version
-        await tx.insert(templates).values({
-          id: tplId,
-          tenantId: session.tenantId,
-          key: "share_asset",
-          channel,
-          name: channel === "email" ? "Share Content Asset (Email)" : "Share Content Asset (WhatsApp)",
-          description: "System template for sharing content library assets",
-          category: "utility",
-          status: "approved",
-          currentVersionId: verId,
-        } as any);
 
         const templateBody = channel === "email"
           ? {
@@ -136,7 +124,7 @@ export async function POST(
               ]
             }
           : {
-              aisensyCampaignName: "share_asset",
+              wainaTemplateName: "share_asset",
               text: "Hi {{name}}, here is the asset: {{asset_title}} ({{asset_url}})."
             };
 
@@ -154,6 +142,43 @@ export async function POST(
               { key: "asset_url", type: "url" }
             ];
 
+        // Run the REAL compliance checker on the static body instead of
+        // self-blessing with a hardcoded 100. Email needs no Meta approval, so
+        // it can auto-approve; WhatsApp templates require Meta/AiSensy approval,
+        // so we create them as pending_approval — dispatch() will then surface
+        // an auditable "template_not_approved" skip rather than firing an
+        // unreviewed WhatsApp template.
+        const scanText =
+          channel === "email"
+            ? `${(templateBody as any).subject ?? ""} ${(templateBody as any).blocks?.[0]?.text ?? ""}`
+            : (templateBody as any).text ?? "";
+        const [tn] = await tx.select().from(tenants).where(eq(tenants.id, session.tenantId)).limit(1);
+        const compliance = runComplianceChecks({
+          channel: channel === "email" ? "email" : "whatsapp",
+          category: "utility",
+          tenant: { legalName: (tn as any)?.legalName, arn: (tn as any)?.arn, principalEuin: (tn as any)?.principalEuin ?? undefined, riaRegistered: (tn as any)?.riaRegistered ?? false },
+          text: scanText,
+        });
+        if (compliance.blocked) {
+          return NextResponse.json(
+            { error: "Share template failed compliance", findings: compliance.findings },
+            { status: 422 }
+          );
+        }
+        const tmplStatus = channel === "email" ? "approved" : "pending_approval";
+
+        await tx.insert(templates).values({
+          id: tplId,
+          tenantId: session.tenantId,
+          key: "share_asset",
+          channel,
+          name: channel === "email" ? "Share Content Asset (Email)" : "Share Content Asset (WhatsApp)",
+          description: "System template for sharing content library assets",
+          category: "utility",
+          status: tmplStatus,
+          currentVersionId: verId,
+        } as any);
+
         await tx.insert(templateVersions).values({
           id: verId,
           templateId: tplId,
@@ -161,9 +186,15 @@ export async function POST(
           versionNumber: 1,
           body: templateBody,
           variables: templateVariables,
-          approvalStatus: "approved",
-          complianceScore: "100.00",
+          approvalStatus: channel === "email" ? "approved_internal" : "draft",
+          complianceScore: String(compliance.score),
         } as any);
+
+        // Re-read so the (possibly pending) template flows into dispatch() below.
+        [tmpl] = await tx
+          .select()
+          .from(templates)
+          .where(and(eq(templates.tenantId, session.tenantId), eq(templates.key, "share_asset"), eq(templates.channel, channel)));
       }
 
       // 5. Build branded absolute asset link

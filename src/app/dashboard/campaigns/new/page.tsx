@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { CampaignAudienceBuilder, type AudienceSelection } from "@/components/campaigns/CampaignAudienceBuilder";
 import {
   ChevronLeft,
   MessageCircle,
@@ -49,6 +50,7 @@ export default function NewCampaignPage() {
   const [endDate, setEndDate] = useState("");
   const [targetAudience, setTargetAudience] = useState("");
   const [segmentId, setSegmentId] = useState("");
+  const [audience, setAudience] = useState<AudienceSelection | null>(null);
   const [templateId, setTemplateId] = useState("");
   const [scheduledAt, setScheduledAt] = useState("");
   const [throttle, setThrottle] = useState(60);
@@ -238,7 +240,7 @@ export default function NewCampaignPage() {
             className="input-base"
           />
           <p className="text-[11px] text-muted-foreground mt-1">
-            Describe the audience in plain English. For broadcasts, also pick a Segment below.
+            Optional note for your records. For broadcasts, set the actual <strong>Audience</strong> below.
           </p>
         </label>
 
@@ -248,37 +250,34 @@ export default function NewCampaignPage() {
             <div className="text-xs font-semibold text-brand-cyan uppercase tracking-wide">
               Broadcast send (optional)
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <label className="block">
-                <div className="text-xs font-medium mb-1">Template (approved {kind})</div>
-                <select
-                  value={templateId}
-                  onChange={(e) => setTemplateId(e.target.value)}
-                  className="input-base"
-                >
-                  <option value="">Select template…</option>
-                  {filteredTemplates.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name} ({t.key})
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="block">
-                <div className="text-xs font-medium mb-1">Segment</div>
-                <select
-                  value={segmentId}
-                  onChange={(e) => setSegmentId(e.target.value)}
-                  className="input-base"
-                >
-                  <option value="">Select audience…</option>
-                  {segments.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name} ({s.memberCount ?? 0} members)
-                    </option>
-                  ))}
-                </select>
-              </label>
+            <label className="block">
+              <div className="text-xs font-medium mb-1">Template (approved {kind})</div>
+              <select
+                value={templateId}
+                onChange={(e) => setTemplateId(e.target.value)}
+                className="input-base"
+              >
+                <option value="">Select template…</option>
+                {filteredTemplates.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name} ({t.key})
+                  </option>
+                ))}
+              </select>
+              {filteredTemplates.length === 0 && (
+                <p className="text-[11px] text-amber-700 mt-1">No approved {kind} template yet — create &amp; approve one under Templates first.</p>
+              )}
+            </label>
+            <div>
+              <div className="text-xs font-medium mb-1">Audience</div>
+              <CampaignAudienceBuilder
+                existingSegments={segments}
+                selected={audience}
+                onSelect={(sel) => {
+                  setAudience(sel);
+                  setSegmentId(sel?.segmentId ?? "");
+                }}
+              />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <label className="block">

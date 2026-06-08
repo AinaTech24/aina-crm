@@ -83,7 +83,7 @@ export const DDQ_ITEMS: DdqItem[] = [
   { key: "client_compliance_status", section: "IV", ddqRef: "4.16", title: "Clients compliance status (KYC / PAN / UBO / FATCA)", href: "/dashboard/reports/kyc-tracker", hrefLabel: "KYC tracker", coverage: "in_app" },
   { key: "disclosures", section: "IV", ddqRef: "4.9 / 5.10", title: "Disclosures to customers (incl. commission disclosure)", href: "/dashboard/templates", coverage: "in_app" },
   { key: "audit_report", section: "IV", ddqRef: "", title: "Audit report of last 2–3 years", href: null, coverage: "document", note: "If applicable" },
-  { key: "data_security_cert", section: "IV", ddqRef: "4.17 / 4.18", title: "Client data-security certificate", href: "/dashboard/cybersecurity", coverage: "in_app" },
+  { key: "data_security_cert", section: "IV", ddqRef: "4.17 / 4.18", title: "Client data-security certificate", href: null, coverage: "document" },
 
   // ───────────── V — HR Management ─────────────
   { key: "hr_policy", section: "V", ddqRef: "5.1", title: "HR policy", href: "/dashboard/sops", coverage: "document" },

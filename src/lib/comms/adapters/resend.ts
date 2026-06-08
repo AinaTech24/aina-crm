@@ -13,6 +13,7 @@
 import { Resend } from "resend";
 import nodemailer from "nodemailer";
 import { renderEmailTemplate } from "../email_renderer";
+import { describeMailError } from "../connection-error";
 import type { TemplateVersion } from "@/db/schema";
 
 /** Per-MFD SMTP mailbox — send client email straight from the firm's own server. */
@@ -22,6 +23,8 @@ export interface SmtpConfig {
   secure: boolean;
   user: string;
   pass: string;
+  /** XOAUTH2 access token (Gmail / M365 connected over OAuth). Wins over `pass`. */
+  accessToken?: string;
 }
 
 let client: Resend | null = null;
@@ -91,7 +94,11 @@ export const emailAdapter = {
         host: args.smtp.host,
         port: args.smtp.port,
         secure: args.smtp.secure,
-        auth: { user: args.smtp.user, pass: args.smtp.pass },
+        // STARTTLS upgrade for 587 (e.g. Microsoft 365) when not implicit-TLS.
+        requireTLS: !args.smtp.secure,
+        auth: args.smtp.accessToken
+          ? { type: "OAuth2", user: args.smtp.user, accessToken: args.smtp.accessToken }
+          : { user: args.smtp.user, pass: args.smtp.pass },
       });
       const info = await transporter.sendMail({
         from,
@@ -156,7 +163,11 @@ export async function verifySmtp(smtp: SmtpConfig): Promise<void> {
     connectionTimeout: 10_000,
     greetingTimeout: 10_000,
   });
-  await transporter.verify();
+  try {
+    await transporter.verify();
+  } catch (e: any) {
+    throw new Error(describeMailError(e, "smtp"));
+  }
 }
 
 function safeEqual(a: string, b: string): boolean {

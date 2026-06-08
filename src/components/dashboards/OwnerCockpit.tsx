@@ -1,16 +1,13 @@
 import React, { Suspense } from "react";
 import Link from "next/link";
 import { sql } from "drizzle-orm";
-import { ArrowDownRight, ArrowUpRight, TrendingUp, Users, UserPlus, ShieldCheck, Megaphone, AlertOctagon, Sparkles, ClipboardList, AlertCircle } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, TrendingUp, Users, UserPlus, AlertOctagon, Sparkles, ClipboardList, AlertCircle } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { formatINR } from "@/lib/utils";
 import type { SessionUser } from "@/lib/auth/session";
 import { GettingStartedChecklist } from "./GettingStartedChecklist";
 import { DataGapsTile } from "./DataGapsTile";
-import { OwnerInsightsSection } from "./OwnerInsightsSection";
-import { TrailIncomeTile } from "./TrailIncomeTile";
 import { SipPersistencyTile } from "./SipPersistencyTile";
-import { TopMoversPanel } from "./TopMoversPanel";
 import { PeriodSelector } from "./PeriodSelector";
 import { resolvePeriodDates, type Period } from "@/lib/dashboard/period";
 import { loadTenantLicense } from "@/lib/auth/license";
@@ -381,9 +378,6 @@ async function OwnerCockpitBody({
       </Suspense>
       )}
 
-      {/* ---------- 2a. Top movers — the clients behind the period numbers ---------- */}
-      {show("section.top_movers") && <TopMoversPanel session={session} startISO={startOfPeriodISO} periodLabel={periodLabel} />}
-
       {/* ---------- 2b. Data gaps — fixes from MFD ops checklist ---------- */}
       {show("section.data_gaps") && <DataGapsTile />}
 
@@ -392,30 +386,6 @@ async function OwnerCockpitBody({
       <Suspense fallback={<CardSkeleton />}>
         <AttentionQueuesSection session={session} />
       </Suspense>
-      )}
-
-      {/* ---------- 4. Team & health ---------- */}
-      {show("section.team_health") && (
-      <Group title="Team & health">
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <Stat href="/dashboard/tasks" label="Team Pending Tasks" value={String(data.teamTasks)} tone={data.teamTasks > 20 ? "amber" : "muted"} />
-          <Stat
-            href="/dashboard/compliance"
-            label="DDQ Readiness Score"
-            value={data.ddqScore != null ? `${data.ddqScore.toFixed(0)}%` : "—"}
-            tone={data.ddqScore != null && data.ddqScore < 70 ? "rose" : data.ddqScore != null && data.ddqScore < 85 ? "amber" : "emerald"}
-            icon={ShieldCheck}
-          />
-          <Stat
-            href="/dashboard/investors"
-            label="Data Quality Score"
-            value={data.dataQualityScore != null ? `${data.dataQualityScore.toFixed(0)}%` : "—"}
-            sub="Investors with complete profile"
-            tone={data.dataQualityScore != null && data.dataQualityScore < 70 ? "rose" : data.dataQualityScore != null && data.dataQualityScore < 85 ? "amber" : "emerald"}
-          />
-          <Stat href="/dashboard/campaigns" label="Marketing Campaigns Running" value={String(data.campaignsRunning)} icon={Megaphone} />
-        </div>
-      </Group>
       )}
 
       {/* ---------- 5. Conversion + RM-wise + chart (streamed via Suspense) ---------- */}
@@ -448,14 +418,8 @@ async function OwnerCockpitBody({
       </Suspense>
       )}
 
-      {/* ---------- Trail income — the MFD's revenue, finally on the dashboard ---------- */}
-      {show("section.trail_income") && <TrailIncomeTile session={session} />}
-
       {/* ---------- SIP Persistency — franchise health metric ---------- */}
       {show("section.sip_persistency") && <SipPersistencyTile session={session} />}
-
-      {/* ---------- Owner Insights — service-excellence + scaling section ---------- */}
-      {show("section.owner_insights") && <OwnerInsightsSection session={session} />}
     </div>
   );
 }

@@ -7,6 +7,7 @@ import { handleApiError } from "@/lib/api/error-handler";
  *          = "review"   value = ISO date string         → set next review date
  *          = "tier"     value = "A" | "B" | "C"          → set service tier
  *          = "segment"  value = segment tag              → set segment
+ *          = "category" value = "A" | "B" | "C" | "D"    → set client category
  *
  * Tenant isolation is enforced by RLS (withTenant sets app.tenant_id) — we
  * scope by id only, exactly like the single-investor and leads/bulk routes.
@@ -27,12 +28,13 @@ export const dynamic = "force-dynamic";
 
 const Body = z.object({
   ids: z.array(z.string().uuid()).min(1).max(1000),
-  action: z.enum(["assign", "review", "tier", "segment", "delete"]),
+  action: z.enum(["assign", "review", "tier", "segment", "category", "delete"]),
   value: z.string().nullable().optional(),
 });
 
 const TIERS = new Set(["A", "B", "C"]);
 const SEGMENTS = new Set(["HNI", "Affluent", "Retail", "NRI", "Corporate"]);
+const CATEGORIES = new Set(["A", "B", "C", "D"]);
 
 export async function POST(req: NextRequest) {
   try {
@@ -69,6 +71,12 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: "invalid segment" }, { status: 400 });
         }
         patch.segmentTag = value;
+        break;
+      case "category":
+        if (!value || !CATEGORIES.has(value)) {
+          return NextResponse.json({ error: "value must be A, B, C or D" }, { status: 400 });
+        }
+        patch.clientCategory = value;
         break;
       case "delete":
         // Soft delete — archive the client (status='closed'). A hard DELETE is

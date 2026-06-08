@@ -15,12 +15,15 @@
 import { v4 as uuid } from "uuid";
 import { and, eq } from "drizzle-orm";
 import { Resend } from "resend";
+import nodemailer from "nodemailer";
 import type { Tx } from "@/db/client";
 import { investors, tenants, communications } from "@/db/schema";
 import { valueInvestor } from "./valuation";
 import { renderValuationStatementPdf } from "./valuation-pdf";
 import { recordAudit } from "@/lib/audit";
 import { translateText } from "@/lib/comms/translate";
+import { gateClientSend } from "@/lib/comms/guarded-send";
+import { resolveEmailSender } from "@/lib/comms/sender";
 import { formatINR } from "@/lib/utils";
 
 export type StatementChannel = "email" | "whatsapp";
@@ -92,6 +95,10 @@ export async function sendInvestorStatement(
   let externalId: string | null = null;
   let waUrl: string | null = null;
   let recipientUsed: string | null = null;
+  // Compliance + consent snapshots captured at the gate, persisted on the row.
+  let complianceSnapshot: any = null;
+  let complianceScore: number | null = null;
+  let consentSnapshot: any = null;
 
   if (args.channel === "email") {
     if (!inv.email) return { ok: false, error: "client has no email on file", status: 400 };
@@ -107,23 +114,62 @@ export async function sendInvestorStatement(
       `<p>${escapeHtml(translated[0])}</p>` +
       `<p>${escapeHtml(translated[1])}</p>` +
       `<p style="color:#64748b;font-size:12px">${escapeHtml(arnLine)} · Mutual Fund investments are subject to market risks. Read all scheme related documents carefully.</p>`;
-    const client = getResend();
-    if (client) {
-      const from = process.env.EMAIL_FROM_TRANSACTIONAL ?? "no-reply@example.com";
-      try {
-        const result = await client.emails.send({
-          from,
-          to: [inv.email],
-          subject: `Your portfolio statement — ${tenant?.displayName ?? "Investment update"}`,
+    // Compliance + consent gate (transactional document).
+    const gate = await gateClientSend(tx, {
+      tenantId: args.tenantId, channel: "email", category: "transactional",
+      text: html, subject: `Your portfolio statement — ${tenant?.displayName ?? "Investment update"}`,
+      investorId: args.investorId,
+    });
+    if (!gate.allowed) return { ok: false, error: `Statement blocked: ${gate.detail}`, status: 422 };
+    complianceSnapshot = gate.complianceFindings; complianceScore = gate.complianceScore; consentSnapshot = gate.consentSnapshot;
+    // Resolve the real sender the same way the rest of the app does — the firm/RM
+    // mailbox (SMTP/OAuth) first, then a tenant or env Resend key. NEVER fake a
+    // send: if nothing is connected, fail clearly so the RM knows to set it up.
+    const subject = `Your portfolio statement — ${tenant?.displayName ?? "Investment update"}`;
+    const attachments = [{ filename: "portfolio-statement.pdf", content: pdf }];
+    const sender = await resolveEmailSender(tx, args.tenantId, args.actorUserId);
+    const fromAddr = sender.fromEmail || sender.smtp?.user || process.env.EMAIL_FROM_TRANSACTIONAL || "";
+    const from = sender.fromName ? `${sender.fromName} <${fromAddr}>` : fromAddr;
+    const resendKey = sender.apiKey || process.env.RESEND_API_KEY;
+    try {
+      if (sender.smtp?.host) {
+        const transporter = nodemailer.createTransport({
+          host: sender.smtp.host,
+          port: sender.smtp.port,
+          secure: sender.smtp.secure,
+          requireTLS: !sender.smtp.secure,
+          auth: sender.smtp.accessToken
+            ? { type: "OAuth2", user: sender.smtp.user, accessToken: sender.smtp.accessToken }
+            : { user: sender.smtp.user, pass: sender.smtp.pass },
+        });
+        const info = await transporter.sendMail({
+          from: from || sender.smtp.user,
+          to: inv.email,
+          replyTo: sender.replyTo || undefined,
+          subject,
           html,
-          attachments: [{ filename: "portfolio-statement.pdf", content: pdf }],
+          attachments,
+        });
+        externalId = info.messageId;
+      } else if (resendKey) {
+        const client = new Resend(resendKey);
+        const result = await client.emails.send({
+          from: from || "no-reply@example.com",
+          to: [inv.email],
+          subject,
+          html,
+          attachments,
         } as any);
         externalId = (result as any)?.data?.id ?? null;
-      } catch (e: any) {
-        return { ok: false, error: `Email send failed: ${e?.message ?? "unknown"}`, status: 502 };
+      } else {
+        return {
+          ok: false,
+          error: "No email sender connected — connect your mailbox in Settings → Integrations → Mailbox (or add a Resend key), then retry.",
+          status: 422,
+        };
       }
-    } else {
-      externalId = `dev_${uuid()}`; // no Resend key — dev fallback (PDF still generated)
+    } catch (e: any) {
+      return { ok: false, error: `Email send failed: ${e?.message ?? "unknown"}`, status: 502 };
     }
   } else {
     const phone = normalizePhone(inv.phone);
@@ -137,6 +183,12 @@ export async function sendInvestorStatement(
     ];
     const translated = await translateText(summary, lang);
     const lines = [...translated, "", `— ${tenant?.displayName ?? ""}`, `ARN ${tenant?.arn ?? "—"}`];
+    const gate = await gateClientSend(tx, {
+      tenantId: args.tenantId, channel: "whatsapp", category: "transactional",
+      text: lines.join("\n"), investorId: args.investorId,
+    });
+    if (!gate.allowed) return { ok: false, error: `Statement blocked: ${gate.detail}`, status: 422 };
+    complianceSnapshot = gate.complianceFindings; complianceScore = gate.complianceScore; consentSnapshot = gate.consentSnapshot;
     waUrl = `https://wa.me/${phone}?text=${encodeURIComponent(lines.join("\n"))}`;
   }
 
@@ -156,6 +208,9 @@ export async function sendInvestorStatement(
       generatedAt,
       scheduled: args.actorUserId == null,
     } as any,
+    consentSnapshot: consentSnapshot as any,
+    complianceSnapshot: complianceSnapshot as any,
+    complianceScore: complianceScore != null ? String(complianceScore) : null,
     sentAt: new Date(),
   } as any);
 

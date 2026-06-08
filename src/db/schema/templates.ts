@@ -64,7 +64,7 @@ export const templateVersions = pgTable(
      *
      * WhatsApp:
      *   { header?: {...}, body: { text: "..." }, footer?: {...},
-     *     buttons?: [...], components?: [...] (AiSensy format) }
+     *     buttons?: [...], components?: [...] (Wapi format) }
      *
      * Email:
      *   { subject: "...", preheader?: "...", blocks: [
@@ -114,7 +114,7 @@ export const templateVersions = pgTable(
     approvedAt: timestamp("approved_at", { withTimezone: true }),
     rejectionReason: text("rejection_reason"),
 
-    /** External reference (e.g. AiSensy/Meta template id, SES template name) */
+    /** External reference (e.g. Wapi/Meta template id, SES template name) */
     externalRef: text("external_ref"),
     externalStatus: text("external_status"),
     externalSyncedAt: timestamp("external_synced_at", { withTimezone: true }),
@@ -144,15 +144,15 @@ export const templateApprovals = pgTable("template_approvals", {
   ...timestamps,
 });
 
-/** WhatsApp-specific template metadata synced from AiSensy / Meta. */
+/** WhatsApp-specific template metadata synced from Wapi / Meta. */
 export const whatsappTemplates = pgTable(
   "whatsapp_templates",
   {
     id,
     tenantId: tenantId.references(() => tenants.id),
     templateId: uuid("template_id").references(() => templates.id),
-    aisensyName: text("aisensy_name").notNull(),
-    aisensyLanguage: text("aisensy_language").notNull().default("en"),
+    metaTemplateName: text("meta_template_name").notNull(),
+    metaLanguage: text("meta_language").notNull().default("en"),
     category: text("category", { enum: ["MARKETING", "UTILITY", "AUTHENTICATION"] }).notNull(),
     metaStatus: text("meta_status", {
       enum: ["PENDING", "APPROVED", "REJECTED", "PAUSED", "DISABLED"],
@@ -163,7 +163,7 @@ export const whatsappTemplates = pgTable(
     ...timestamps,
   },
   (t) => ({
-    nameUnique: uniqueIndex("wa_templates_unique").on(t.tenantId, t.aisensyName, t.aisensyLanguage),
+    nameUnique: uniqueIndex("wa_templates_unique").on(t.tenantId, t.metaTemplateName, t.metaLanguage),
     statusIdx: index("wa_templates_status_idx").on(t.tenantId, t.metaStatus),
   })
 );

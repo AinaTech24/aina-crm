@@ -33,7 +33,7 @@
  */
 
 import axios from "axios";
-import type { SendWhatsappArgs } from "./aisensy";
+import type { SendWhatsappArgs } from "./whatsapp-types";
 
 /** Platform default API base (per the Wapi docs `servers` block). */
 const DEFAULT_BASE_URL = "https://beckend.ainatech.in/api";

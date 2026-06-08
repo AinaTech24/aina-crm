@@ -22,6 +22,7 @@ import { investors, users } from "@/db/schema";
 import { loadTenantLicense } from "@/lib/auth/license";
 import { isFieldAllowed } from "@/lib/auth/field-gate";
 import { buildInvestorWhere } from "@/lib/investors/list-filters";
+import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
 
@@ -84,13 +85,26 @@ export async function GET(req: NextRequest) {
       session.tenantId,
       async (tx) => {
         const where = buildInvestorWhere(sp, session.userId);
-        return tx
+        const r = await tx
           .select({ inv: investors, rmName: users.name })
           .from(investors)
           .leftJoin(users, eq(users.id, investors.rmId))
           .where(where as any)
           .orderBy(desc(investors.aum))
           .limit(MAX_ROWS);
+        // DPDP: bulk PII reads must leave an access trail (which sensitive
+        // fields, how many records, under what filter).
+        await recordAudit(tx, {
+          tenantId: session.tenantId,
+          actorUserId: session.userId,
+          action: "investor.bulk_export",
+          entityType: "investor",
+          entityId: session.tenantId,
+          piiAccessed: { pan: show.pan, phone: show.phone, email: show.email } as any,
+          after: { count: r.length, filters: sp } as any,
+          ...clientMetaFromHeaders(req.headers),
+        });
+        return r;
       },
       { userId: session.userId, branchId: session.branchId, roles: session.roles }
     );
@@ -100,23 +114,66 @@ export async function GET(req: NextRequest) {
       const addr = (inv.address as any) ?? {};
       const row: Record<string, any> = { Name: inv.name };
       if (show.pan) row["PAN"] = inv.pan ?? "";
+      row["Name as per PAN"] = (inv as any).nameAsPerPan ?? "";
+      row["DOB"] = ymd((inv as any).dob);
+      row["Gender"] = (inv as any).gender ?? "";
       if (show.segment) row["Segment"] = inv.segmentTag ?? "";
       if (show.tier) row["Service tier"] = inv.serviceTier ?? "";
+      row["Client grade"] = (inv as any).clientCategory ?? "";
+      row["Investor type"] = (inv as any).investorCategory ?? "";
       if (show.status) row["Status"] = inv.status ?? "";
+      // ── KYC / compliance ──
       if (show.kyc) row["KYC"] = inv.kycStatus ?? "";
+      row["PAN–Aadhaar link"] = (inv as any).panAadhaarLinkStatus ?? "";
+      row["Residency"] = (inv as any).residencyStatus ?? "";
+      row["CKYC number"] = (inv as any).ckycNumber ?? "";
+      row["CKYC expiry"] = ymd((inv as any).ckycExpiryAt);
+      row["FATCA status"] = (inv as any).fatcaStatus ?? "";
+      row["FATCA expiry"] = ymd((inv as any).fatcaExpiryAt);
       if (show.risk) row["Risk profile"] = inv.riskProfile ?? "";
+      row["Risk score"] = (inv as any).riskProfileScore ?? "";
+      // ── Nominee ──
       if (show.nominee) row["Nominee"] = inv.nomineeName ?? "";
+      if (show.nominee) row["Nominee relation"] = (inv as any).nomineeRelation ?? "";
+      if (show.nominee) row["Nominee DOB"] = ymd((inv as any).nomineeDob);
+      // ── Money ──
       if (show.aum) row["AUM (INR)"] = Number(inv.aum ?? 0);
       if (show.sip) row["Monthly SIP (INR)"] = Number(inv.activeSipAmount ?? 0);
       if (show.inflow) row["Lifetime inflow (INR)"] = Number(inv.lifetimeInflow ?? 0);
+      if (show.inflow) row["Lifetime outflow (INR)"] = Number((inv as any).lifetimeOutflow ?? 0);
+      row["Health score"] = (inv as any).healthScore ?? "";
+      row["Health band"] = (inv as any).healthBand ?? "";
       row["RM"] = rmName ?? "";
+      // ── Contact ──
       if (show.phone) row["Phone"] = inv.phone ?? "";
+      if (show.phone) row["Alt mobile"] = (inv as any).alternatePhone ?? "";
+      if (show.phone) row["WhatsApp"] = (inv as any).whatsappPhone ?? "";
       if (show.email) row["Email"] = inv.email ?? "";
+      row["Language"] = (inv as any).languagePref ?? "";
+      // ── Address ──
+      row["Address"] = addr.line1 ?? "";
       row["City"] = addr.city ?? "";
+      row["State"] = addr.state ?? "";
+      row["Pincode"] = addr.pincode ?? "";
+      // ── Profile / trading ──
+      row["Occupation"] = (inv as any).occupation ?? "";
+      row["Income range"] = (inv as any).incomeRange ?? "";
+      row["Employer"] = (inv as any).employerName ?? "";
+      row["BSE UCC"] = (inv as any).bseUccCode ?? "";
+      row["NSE CAN"] = (inv as any).nseCanCode ?? "";
+      row["Mandate status"] = (inv as any).mandateStatus ?? "";
+      // ── Bank ──
+      row["Bank name"] = (inv as any).bankName ?? "";
+      row["Bank A/c (masked)"] = (inv as any).bankAccountNumberMasked ?? "";
+      row["Bank IFSC"] = (inv as any).bankIfsc ?? "";
+      // ── Dates ──
       row["Last review"] = ymd(inv.lastReviewAt);
       row["Next review"] = ymd(inv.nextReviewAt);
       row["Last transaction"] = ymd(inv.lastTransactionAt);
+      row["Last contact"] = ymd((inv as any).lastContactAt);
       row["Client since"] = ymd(inv.onboardedAt);
+      row["Tags"] = Array.isArray((inv as any).tags) ? (inv as any).tags.join(", ") : "";
+      row["Notes"] = (inv as any).notes ?? "";
       return row;
     });
 

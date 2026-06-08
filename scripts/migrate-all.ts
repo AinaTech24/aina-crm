@@ -40,7 +40,10 @@ import { sql } from "drizzle-orm";
 // (Read at call-time inside withSystem, so setting it here is sufficient.)
 process.env.ALLOW_SYSTEM_TX = process.env.ALLOW_SYSTEM_TX ?? "1";
 
-import { withSystem } from "../src/db/client";
+// NOTE: db/client.ts is imported DYNAMICALLY inside main() (not here), because
+// it picks its connection string at module-load time and prefers
+// APP_DATABASE_URL — the restricted runtime role that lacks DDL. Migrations
+// need DDL, so we force the privileged DATABASE_URL first, then import.
 
 const MIGRATIONS_DIR = join(process.cwd(), "drizzle", "migrations");
 const DRY = process.argv.includes("--dry");
@@ -59,6 +62,13 @@ function checksum(text: string): string {
 }
 
 async function main() {
+  // Migrations need DDL — always connect as the privileged role (DATABASE_URL),
+  // even when APP_DATABASE_URL (the restricted runtime role) is also set. Point
+  // the shared client at the master URL BEFORE importing it (it reads the
+  // connection string at module load).
+  if (process.env.DATABASE_URL) process.env.APP_DATABASE_URL = process.env.DATABASE_URL;
+  const { withSystem } = await import("../src/db/client");
+
   const files = readdirSync(MIGRATIONS_DIR)
     .filter((f) => f.endsWith(".sql"))
     .sort(); // zero-padded numeric prefixes sort chronologically

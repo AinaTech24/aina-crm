@@ -8,6 +8,7 @@ import { FilterBar } from "@/components/common/FilterBar";
 import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
 import { CustomViews } from "@/components/common/CustomViews";
 import { ColumnManager } from "@/components/common/ColumnManager";
+import { WorkSwitcher } from "@/components/layout/WorkSwitcher";
 
 const SR_COLUMNS = [
   { key: "ticket", label: "Ticket", required: true },
@@ -178,9 +179,12 @@ export default async function ServiceRequestsPage({
             13 service types · TAT clock per ticket · escalation to owner when SLA breaches.
           </p>
         </div>
-        <Link href="/dashboard/service-requests/new" className="btn-primary">
-          <Plus className="size-4" /> New ticket
-        </Link>
+        <div className="flex items-center gap-3">
+          <WorkSwitcher current="/dashboard/service-requests" />
+          <Link href="/dashboard/service-requests/new" className="btn-primary">
+            <Plus className="size-4" /> New ticket
+          </Link>
+        </div>
       </div>
 
       <div className="grid grid-cols-5 gap-3">

@@ -8,6 +8,7 @@
 
 import { useState } from "react";
 import { Printer } from "lucide-react";
+import { ClientNameField } from "./ClientNameField";
 import {
   fvSip,
   fvLumpsum,
@@ -108,11 +109,7 @@ function SipCalc() {
     >
       <div className="grid grid-cols-2 gap-3">
         <Field label="Client name">
-          <input
-            value={clientName}
-            onChange={(e) => setClientName(e.target.value)}
-            className="input-base text-sm w-full"
-          />
+          <ClientNameField value={clientName} onChange={setClientName} />
         </Field>
         <Field label="Investment objective">
           <input
@@ -155,7 +152,7 @@ function LumpsumCalc() {
     <CalcShell title="Lumpsum Investment Calculator" purpose="Future value of a one-shot lumpsum.">
       <div className="grid grid-cols-2 gap-3">
         <Field label="Client name">
-          <input value={clientName} onChange={(e) => setClientName(e.target.value)} className="input-base text-sm w-full" />
+          <ClientNameField value={clientName} onChange={setClientName} />
         </Field>
         <Field label="Investment objective">
           <input value={objective} onChange={(e) => setObjective(e.target.value)} className="input-base text-sm w-full" />
@@ -189,7 +186,7 @@ function GoalCalc() {
     <CalcShell title="Goal Calculator" purpose="Monthly SIP required to reach a target goal amount.">
       <div className="grid grid-cols-2 gap-3">
         <Field label="Client name">
-          <input value={clientName} onChange={(e) => setClientName(e.target.value)} className="input-base text-sm w-full" />
+          <ClientNameField value={clientName} onChange={setClientName} />
         </Field>
         <Field label="Goal name">
           <input value={goalName} onChange={(e) => setGoalName(e.target.value)} className="input-base text-sm w-full" />
@@ -223,7 +220,7 @@ function InflationCalc() {
     <CalcShell title="Inflation Calculator" purpose="Future value of an expense or goal, inflated.">
       <div className="grid grid-cols-2 gap-3">
         <Field label="Client name">
-          <input value={clientName} onChange={(e) => setClientName(e.target.value)} className="input-base text-sm w-full" />
+          <ClientNameField value={clientName} onChange={setClientName} />
         </Field>
         <Field label="Type of expense">
           <input value={expenseType} onChange={(e) => setExpenseType(e.target.value)} className="input-base text-sm w-full" placeholder="e.g. College fees, home cost" />
@@ -626,11 +623,7 @@ function StpCalc() {
     >
       <div className="grid grid-cols-2 gap-3">
         <Field label="Client name">
-          <input
-            value={clientName}
-            onChange={(e) => setClientName(e.target.value)}
-            className="input-base text-sm w-full"
-          />
+          <ClientNameField value={clientName} onChange={setClientName} />
         </Field>
         <NumberField label="Initial lumpsum amount (₹)" value={lumpsum} setValue={setLumpsum} />
         <NumberField label="Monthly transfer amount (₹)" value={transfer} setValue={setTransfer} />

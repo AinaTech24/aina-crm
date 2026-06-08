@@ -16,12 +16,13 @@
  * consent + compliance snapshot at send time, immutable forever.
  */
 
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { v4 as uuid } from "uuid";
 import type { Tx } from "@/db/client";
 import {
   communications,
   consents,
+  emailSuppressions,
   templateVersions,
   templates,
   dltTemplates,
@@ -32,9 +33,10 @@ import {
 import { runComplianceChecks, type ComplianceResult } from "./compliance";
 import { resolveTokens, renderTemplateText, type VariableDef } from "./tokens";
 import { whatsappAdapter, whatsappProviderId } from "./adapters/whatsapp";
-import { emailAdapter, type SmtpConfig } from "./adapters/resend";
+import { emailAdapter } from "./adapters/resend";
 import { smsAdapter } from "./adapters/msg91";
 import { getTenantIntegration } from "./integrations";
+import { resolveEmailSender } from "./sender";
 import { consumeRateLimit } from "./rate-limit";
 
 
@@ -43,7 +45,11 @@ export type DispatchChannel = "whatsapp" | "email" | "sms";
 export interface DispatchInput {
   tenantId: string;
   channel: DispatchChannel;
-  templateKey: string;
+  /** Required for template sends. Omitted for a free-form WhatsApp reply. */
+  templateKey?: string;
+  /** Free-form WhatsApp text (no template). Only valid inside the 24h session
+   *  window; still runs consent + session + the compliance gate (no bypass). */
+  freeformText?: string;
   recipient: string;
   variables: Record<string, unknown>;
   category: "transactional" | "utility" | "marketing" | "authentication";
@@ -57,6 +63,8 @@ export interface DispatchInput {
   locale?: string;
   /** Bypass consent check — only allowed for AUTHENTICATION/OTP category */
   bypassConsent?: boolean;
+  /** Sending RM — when set, email prefers that user's personal mailbox. */
+  actorUserId?: string;
 }
 
 export interface DispatchResult {
@@ -95,84 +103,158 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
   }
 
   // -----------------------------------------------------------
-  // 1. Resolve template + version
-  // -----------------------------------------------------------
-  const [tmpl] = await tx
-    .select()
-    .from(templates)
-    .where(
-      and(
-        eq(templates.tenantId, input.tenantId),
-        eq(templates.key, input.templateKey),
-        eq(templates.channel, input.channel),
-        eq(templates.locale, input.locale ?? "en-IN")
-      )
-    );
-  if (!tmpl) {
-    throw new Error(`Template '${input.templateKey}' (${input.channel}) not found`);
-  }
-  if (tmpl.status !== "approved") {
-    return await skip(tx, communicationId, input, "template_not_approved");
-  }
-  if (!tmpl.currentVersionId) {
-    throw new Error(`Template '${input.templateKey}' has no current version`);
-  }
-  const [version] = await tx
-    .select()
-    .from(templateVersions)
-    .where(eq(templateVersions.id, tmpl.currentVersionId));
-  if (!version) {
-    throw new Error("Template version missing");
-  }
-
-  // -----------------------------------------------------------
-  // 2. Render — resolve typed tokens
+  // 1 + 2. Resolve template + render  (free-form path skips the template)
   // -----------------------------------------------------------
   const tenantRow = await loadTenant(tx, input.tenantId);
   const subject = input.investorId ? await loadInvestor(tx, input.investorId) : null;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let version: any;
   let rendered: { text: string; subject?: string; tokens: Record<string, string> };
-  try {
-    const tokens = resolveTokens(version.variables as VariableDef[], {
-      tenant: tenantRow,
-      subject,
-      context: input.meta,
-      overrides: input.variables as Record<string, any>,
-    });
-    rendered = renderBody(input.channel, version, tokens);
-  } catch (err) {
-    return await skip(
-      tx,
-      communicationId,
-      input,
-      "render_error",
-      `Variable resolution failed: ${(err as Error).message}`
-    );
+
+  if (input.freeformText != null && input.channel === "whatsapp") {
+    // Free-form in-session reply — no template. The synthesized version carries
+    // the plain text for the adapter (buildWainaPayload sends body.text when no
+    // template name is present). Consent + session + compliance still run below.
+    version = { id: null, body: { text: input.freeformText }, variables: [] };
+    rendered = { text: input.freeformText, tokens: {} };
+  } else {
+    if (!input.templateKey) {
+      throw new Error("dispatch: templateKey is required for a template send");
+    }
+    const [tmpl] = await tx
+      .select()
+      .from(templates)
+      .where(
+        and(
+          eq(templates.tenantId, input.tenantId),
+          eq(templates.key, input.templateKey),
+          eq(templates.channel, input.channel),
+          eq(templates.locale, input.locale ?? "en-IN")
+        )
+      );
+    if (!tmpl) {
+      throw new Error(`Template '${input.templateKey}' (${input.channel}) not found`);
+    }
+    if (tmpl.status !== "approved") {
+      return await skip(tx, communicationId, input, "template_not_approved");
+    }
+    if (!tmpl.currentVersionId) {
+      throw new Error(`Template '${input.templateKey}' has no current version`);
+    }
+    const [v] = await tx
+      .select()
+      .from(templateVersions)
+      .where(eq(templateVersions.id, tmpl.currentVersionId));
+    if (!v) {
+      throw new Error("Template version missing");
+    }
+    version = v;
+    try {
+      const tokens = resolveTokens(version.variables as VariableDef[], {
+        tenant: tenantRow,
+        subject,
+        context: input.meta,
+        overrides: input.variables as Record<string, any>,
+      });
+      // Firm-branding tokens the designer email renderer reads to draw the logo +
+      // auto-footer (ARN / address / firm name). These aren't template variables,
+      // so they must be injected from the tenant record here.
+      const t = tenantRow as any;
+      const addr = t?.address;
+      // Email clients (Gmail/Outlook) can't load a relative logo path — make it
+      // absolute against the app's public URL.
+      const appBase = (process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL || "").replace(/\/$/, "");
+      const rawLogo = String(t?.logoUrl ?? "");
+      const absLogo = rawLogo && !/^https?:\/\//i.test(rawLogo)
+        ? `${appBase}${rawLogo.startsWith("/") ? "" : "/"}${rawLogo}`
+        : rawLogo;
+      Object.assign(tokens, {
+        tenant_logo_url: absLogo,
+        logo_url: absLogo,
+        tenant_name: t?.legalName ?? "",
+        tenant_display_name: t?.displayName ?? "",
+        tenant_arn: t?.arn ?? "",
+        euin: t?.principalEuin ?? "",
+        firm_website: t?.website ?? "",
+        brand_color: t?.primaryColor ?? "",
+        firm_address: addr
+          ? [addr.line1, addr.line2, addr.city, addr.state, addr.pincode].filter(Boolean).join(", ")
+          : "",
+      });
+      rendered = renderBody(input.channel, version, tokens);
+    } catch (err) {
+      return await skip(
+        tx,
+        communicationId,
+        input,
+        "render_error",
+        `Variable resolution failed: ${(err as Error).message}`
+      );
+    }
   }
 
   // -----------------------------------------------------------
   // 3. Consent check
   // -----------------------------------------------------------
+  // Free-form WhatsApp replies are customer-initiated (the 24h window only opens
+  // when the client messaged us — enforced in step 4), so the open session IS the
+  // consent. The compliance gate (step 5) still runs fully. Templates still
+  // require explicit consent.
   let consentSnapshot: Consent | null = null;
-  if (input.investorId && !input.bypassConsent && input.category !== "authentication") {
-    const consentRow = await getConsent(
-      tx,
-      input.tenantId,
-      input.investorId,
-      input.channel,
-      input.category === "marketing" ? "marketing" : "transactional"
-    );
-    if (!consentRow || consentRow.status !== "granted") {
-      return await skip(tx, communicationId, input, "skipped_consent");
+  if (input.investorId && !input.bypassConsent && !input.freeformText && input.category !== "authentication") {
+    const scope = input.category === "marketing" ? "marketing" : "transactional";
+    const consentRow = await getConsent(tx, input.tenantId, input.investorId, input.channel, scope);
+    if (input.category === "marketing") {
+      // Marketing/promotional requires an explicit opt-in (SEBI/AMFI + DPDP).
+      if (!consentRow || consentRow.status !== "granted") {
+        return await skip(tx, communicationId, input, "skipped_consent");
+      }
+    } else {
+      // Transactional / utility service communications (statements, reminders,
+      // confirmations) to an EXISTING client are permitted by default — the
+      // client gave you their contact details for service. Only an explicit
+      // opt-out (revoked) blocks them; the compliance gate (step 5) still runs.
+      if (consentRow && consentRow.status === "revoked") {
+        return await skip(tx, communicationId, input, "skipped_consent", "client has opted out of service messages");
+      }
     }
     consentSnapshot = consentRow;
+  }
+
+  // -----------------------------------------------------------
+  // 3b. Email suppression — never send to a hard-bounced / unsubscribed address.
+  // -----------------------------------------------------------
+  if (input.channel === "email") {
+    const [supp] = await tx
+      .select({ reason: emailSuppressions.reason })
+      .from(emailSuppressions)
+      .where(and(eq(emailSuppressions.tenantId, input.tenantId), sql`lower(${emailSuppressions.email}) = ${input.recipient.toLowerCase()}`))
+      .limit(1);
+    if (supp) {
+      return await skip(tx, communicationId, input, "skipped_no_contact", `address suppressed (${supp.reason})`);
+    }
   }
 
   // -----------------------------------------------------------
   // 4. WhatsApp session window
   // -----------------------------------------------------------
   let sessionActive = false;
-  if (input.channel === "whatsapp" && input.investorId) {
-    sessionActive = await hasActiveWhatsappSession(tx, input.tenantId, input.investorId);
+  if (input.channel === "whatsapp" && (input.investorId || input.leadId)) {
+    sessionActive = await hasActiveWhatsappSession(tx, input.tenantId, {
+      investorId: input.investorId,
+      leadId: input.leadId,
+    });
+  }
+  // Free-form (non-template) replies are only permitted INSIDE the 24h window.
+  if (input.freeformText != null && !sessionActive) {
+    return await skip(
+      tx,
+      communicationId,
+      input,
+      "skipped_session",
+      "WhatsApp 24h window is closed — send an approved template to reopen the conversation."
+    );
   }
 
   // -----------------------------------------------------------
@@ -284,14 +366,10 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
         idempotencyKey: input.workflowRunStepId ?? communicationId,
       });
     } else if (input.channel === "email") {
-      // Prefer the MFD's own mailbox (SMTP) when connected — client email then
-      // originates from their real address. Otherwise fall back to Resend with
-      // the firm's sender identity.
-      const mailbox = await getTenantIntegration(tx, input.tenantId, "mailbox");
-      const smtp = (mailbox?.config as any)?.smtp as SmtpConfig | undefined;
-      const useSmtp = !!(mailbox?.isActive && smtp?.host);
-      const resend = useSmtp ? null : await getTenantIntegration(tx, input.tenantId, "resend");
-      const sender = useSmtp ? mailbox?.senderConfig : resend?.senderConfig;
+      // One resolver decides the sender: the acting RM's own mailbox → the firm
+      // mailbox (SMTP / OAuth) → Resend with the firm's sender identity. OAuth
+      // mailboxes get a freshly-minted access token inside resolveEmailSender.
+      const sender = await resolveEmailSender(tx, input.tenantId, input.actorUserId);
       adapterResult = await emailAdapter.send({
         tenantId: input.tenantId,
         templateVersion: version,
@@ -301,13 +379,13 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
         category: input.category as any,
         cc: (input.meta?.cc as string[]) ?? [],
         bcc: (input.meta?.bcc as string[]) ?? [],
-        apiKey: resend?.config?.apiKey,
-        smtp: useSmtp ? smtp : undefined,
-        // From: explicit sender email, else the SMTP login address.
-        fromOverride: sender?.fromEmail ?? (useSmtp ? smtp?.user : undefined),
-        fromNameOverride: sender?.fromName,
+        apiKey: sender.apiKey,
+        smtp: sender.smtp,
+        // From: explicit sender email, else the mailbox login address.
+        fromOverride: sender.fromEmail ?? (sender.smtp ? sender.smtp.user : undefined),
+        fromNameOverride: sender.fromName,
         // Client replies route to the MFD's own inbox.
-        replyTo: sender?.replyTo,
+        replyTo: sender.replyTo,
         // Stable across step retries → Resend dedupes a re-fired send.
         idempotencyKey: input.workflowRunStepId ?? communicationId,
       });
@@ -360,6 +438,7 @@ async function skip(
     | "skipped_compliance"
     | "skipped_session"
     | "skipped_rate_limit"
+    | "skipped_no_contact"
     | "template_not_approved"
     | "render_error",
   detail?: string,
@@ -465,9 +544,20 @@ export async function loadTenant(tx: Tx, tenantId: string) {
   return t;
 }
 async function loadInvestor(tx: Tx, id: string) {
-  const { investors } = await import("@/db/schema");
+  const { investors, users } = await import("@/db/schema");
   const [i] = await tx.select().from(investors).where(eq(investors.id, id));
-  return i ?? null;
+  if (!i) return null;
+  // Enrich with the computed merge tokens templates use but that aren't columns:
+  // investor.first_name (first word of name) and investor.rm_name (the RM's name).
+  const enriched: any = { ...i };
+  enriched.first_name = String((i as any).name ?? "").trim().split(/\s+/)[0] ?? "";
+  if ((i as any).rmId) {
+    const [rm] = await tx.select({ name: users.name }).from(users).where(eq(users.id, (i as any).rmId));
+    enriched.rm_name = rm?.name ?? "";
+  } else {
+    enriched.rm_name = "";
+  }
+  return enriched;
 }
 export async function getConsent(
   tx: Tx,
@@ -489,14 +579,24 @@ export async function getConsent(
     );
   return c ?? null;
 }
-async function hasActiveWhatsappSession(tx: Tx, tenantId: string, investorId: string): Promise<boolean> {
+export async function hasActiveWhatsappSession(
+  tx: Tx,
+  tenantId: string,
+  subject: { investorId?: string | null; leadId?: string | null }
+): Promise<boolean> {
+  const subjectCond = subject.investorId
+    ? eq(communications.investorId, subject.investorId)
+    : subject.leadId
+      ? eq(communications.leadId, subject.leadId)
+      : null;
+  if (!subjectCond) return false;
   const [row] = await tx
     .select()
     .from(communications)
     .where(
       and(
         eq(communications.tenantId, tenantId),
-        eq(communications.investorId, investorId),
+        subjectCond,
         eq(communications.channel, "whatsapp"),
         eq(communications.direction, "inbound")
       )

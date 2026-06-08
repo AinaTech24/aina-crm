@@ -27,8 +27,11 @@ export default function AiAssistantPage() {
           body: JSON.stringify({ query, subject: "investor" }),
         });
         const j = await res.json();
-        if (j.error) {
-          setResults((r) => [{ kind: "error", message: j.error }, ...r]);
+        if (j.error || !j.ast) {
+          setResults((r) => [
+            { kind: "error", message: j.error ?? "The AI couldn't build a filter for that. Try rephrasing." },
+            ...r,
+          ]);
         } else {
           // Then run the AST against the data
           const preview = await fetch("/api/segments/preview", {
