@@ -1,0 +1,53 @@
+name: Deploy to AWS (EC2)
+
+# A push to deploy/aws SSHes into the EC2 box and runs scripts/redeploy.sh, which
+# pulls, rebuilds the image, runs DB migrations (the compose `migrate` service),
+# and restarts web + worker. Until the DEPLOY_SSH_* repo secrets are set, the SSH
+# step is skipped (the push still succeeds) — so this never blocks a commit.
+#
+# Required repo secrets (Settings → Secrets and variables → Actions):
+#   DEPLOY_SSH_HOST   EC2 public IP / DNS
+#   DEPLOY_SSH_USER   ssh user (e.g. ubuntu or ec2-user)
+#   DEPLOY_SSH_KEY    the PRIVATE key (PEM) for that user — paste the full file
+# Optional:
+#   DEPLOY_SSH_PORT   defaults to 22
+#   DEPLOY_APP_DIR    repo path on the box (defaults to /home/ubuntu/MYCRM)
+
+on:
+  push:
+    branches: [deploy/aws]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-aws
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check deploy secrets
+        id: gate
+        env:
+          HOST: ${{ secrets.DEPLOY_SSH_HOST }}
+        run: |
+          if [ -n "$HOST" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Auto-deploy skipped — add repo secrets DEPLOY_SSH_HOST / DEPLOY_SSH_USER / DEPLOY_SSH_KEY to enable SSH deploy on push to deploy/aws."
+          fi
+
+      - name: SSH → redeploy on the box
+        if: steps.gate.outputs.ready == 'true'
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_SSH_HOST }}
+          username: ${{ secrets.DEPLOY_SSH_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_SSH_PORT || 22 }}
+          command_timeout: 30m
+          script: |
+            set -e
+            cd "${{ secrets.DEPLOY_APP_DIR || '/home/ubuntu/MYCRM' }}"
+            bash scripts/redeploy.sh

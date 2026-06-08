@@ -83,6 +83,37 @@ file supports Tier 0 too if you'd rather start there.
 6. `docker compose -f docker-compose.prod.yml up -d` → Caddy gets the cert, site is live.
 7. Smoke-test `/api/health`, `/api/health/workers`, a test email/WhatsApp send.
 
+## Redeploying after a code change
+
+**A push to GitHub does not deploy by itself** — the EC2 box must rebuild + restart.
+(If "changes aren't reflecting" on the live site, this is almost always why.)
+
+**Option A — automatic (recommended).** Add these repo secrets (GitHub →
+Settings → Secrets and variables → Actions). Then **every push to `deploy/aws`**
+SSHes into the box and redeploys via `.github/workflows/deploy.yml`:
+
+| Secret | Value |
+|---|---|
+| `DEPLOY_SSH_HOST` | EC2 public IP / DNS |
+| `DEPLOY_SSH_USER` | ssh user, e.g. `ubuntu` |
+| `DEPLOY_SSH_KEY` | the **private** key (PEM) for that user — paste the whole file |
+| `DEPLOY_SSH_PORT` | *(optional)* defaults to 22 |
+| `DEPLOY_APP_DIR` | *(optional)* repo path on the box, defaults to `/home/ubuntu/MYCRM` |
+
+Until those secrets exist the workflow runs but skips the SSH step (the push still
+succeeds), so it never blocks a commit.
+
+**Option B — manual, one command on the box:**
+```bash
+cd ~/MYCRM                 # the repo path on the EC2 box
+bash scripts/redeploy.sh   # pull → rebuild → migrate → restart → health-check
+```
+
+**DB migrations now run automatically on every deploy** — the compose `migrate`
+one-shot service applies pending migrations before web/worker start, so you never
+have to remember `migrate:all` again. (A brand-new DB still needs the one-time
+`db:push` + `db:provision-app-role` from the first-run steps above.)
+
 ## Files already in the repo for this
 - `Dockerfile` — one image, runs web or worker by command.
 - `docker-compose.prod.yml` — web + worker + redis + caddy (+ optional on-box postgres).

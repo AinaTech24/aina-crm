@@ -6,12 +6,19 @@
 #       docker compose -f docker-compose.prod.yml --profile db-onbox up -d
 #   (then point DATABASE_URL / APP_DATABASE_URL at postgres:5432)
 #
-# First run on the box:
+# First run on a FRESH database (order matters — numbered migrations only ALTER
+# existing tables, so the schema must exist first):
 #   1. put real values in  .env.production   (see .env.production.example)
 #   2. set  APP_DOMAIN=app.yourfirm.com  in the shell or .env.production
 #   3. docker compose -f docker-compose.prod.yml build
-#   4. docker compose -f docker-compose.prod.yml run --rm web npm run migrate:all
-#   5. docker compose -f docker-compose.prod.yml up -d
+#   4. docker compose -f docker-compose.prod.yml run --rm web npm run db:push
+#   5. docker compose -f docker-compose.prod.yml run --rm web npm run db:provision-app-role
+#   6. docker compose -f docker-compose.prod.yml up -d
+#
+# Redeploy after a code change (the EASY path — pending migrations run AUTOMATICALLY
+# via the `migrate` service before web/worker start):
+#   git pull && docker compose -f docker-compose.prod.yml up -d --build
+#   (or just: bash scripts/redeploy.sh)
 #
 # Upgrade path: when one box isn't enough, the SAME image moves to ECS Fargate;
 # Redis → ElastiCache, on-box Postgres → RDS. Nothing about the app changes.
@@ -51,7 +58,26 @@ services:
     expose:
       - "3000"
     depends_on:
-      - redis
+      # Schema is migrated BEFORE the app serves traffic — every deploy.
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+
+  # One-shot: applies pending DB migrations before web/worker start, on every
+  # `up`. Idempotent (skips already-applied), so re-running is a no-op. If it
+  # fails, web/worker won't start — we never serve against a half-migrated schema.
+  # NB: a BRAND-NEW database must be initialised first (db:push +
+  # db:provision-app-role) — see docs/deploy-aws.md; migrate:all only ALTERs
+  # tables that already exist.
+  migrate:
+    image: mfd-app:latest # reuses the image built by `web`
+    env_file:
+      - .env.production
+    command: ["npm", "run", "migrate:all"]
+    restart: "no"
+    healthcheck:
+      disable: true
 
   worker:
     image: mfd-app:latest # reuses the image built by `web`
@@ -67,7 +93,10 @@ services:
     healthcheck:
       disable: true
     depends_on:
-      - redis
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
 
   redis:
     image: redis:7-alpine
