@@ -35,6 +35,8 @@ interface ProductConfig {
   txnTypes: string[];
   /** Default asset class for new/converted lines. */
   defaultAssetClass?: string;
+  /** Asset class is fixed for this product (e.g. Bond/NCD = Debt) — shown read-only. */
+  lockAssetClass?: boolean;
 }
 const PRODUCT_CONFIG: Record<string, ProductConfig> = {
   mutual_fund: { schemeLabel: "Scheme", schemePlaceholder: "Search catalog or type a name…", catalog: true,
@@ -46,9 +48,9 @@ const PRODUCT_CONFIG: Record<string, ProductConfig> = {
   sif: { schemeLabel: "Strategy", schemePlaceholder: "SIF strategy name…", catalog: false,
     txnTypes: ["lumpsum", "additional_purchase", "sip", "redemption"], defaultAssetClass: "equity" },
   bond: { schemeLabel: "Bond / instrument", schemePlaceholder: "Bond name / ISIN…", catalog: false,
-    txnTypes: ["lumpsum", "redemption"], defaultAssetClass: "debt" },
+    txnTypes: ["lumpsum", "redemption"], defaultAssetClass: "debt", lockAssetClass: true },
   ncd: { schemeLabel: "NCD / instrument", schemePlaceholder: "NCD name / ISIN…", catalog: false,
-    txnTypes: ["lumpsum", "redemption"], defaultAssetClass: "debt" },
+    txnTypes: ["lumpsum", "redemption"], defaultAssetClass: "debt", lockAssetClass: true },
   other: { schemeLabel: "Item", schemePlaceholder: "Product / item name…", catalog: false,
     txnTypes: ["lumpsum", "additional_purchase", "sip", "redemption"] },
 };
@@ -167,7 +169,11 @@ export function BusinessEntryForm({
       ls.map((l) => ({
         ...l,
         txnType: c.txnTypes.includes(l.txnType) ? l.txnType : c.txnTypes[0],
-        assetClass: !c.catalog && c.defaultAssetClass && (!l.assetClass || l.assetClass === "equity") ? c.defaultAssetClass : l.assetClass,
+        assetClass: c.lockAssetClass && c.defaultAssetClass
+          ? c.defaultAssetClass // fixed for this product (e.g. Bond/NCD = Debt)
+          : !c.catalog && c.defaultAssetClass && (!l.assetClass || l.assetClass === "equity")
+            ? c.defaultAssetClass
+            : l.assetClass,
         schemeCode: c.catalog ? l.schemeCode : "",
       }))
     );
@@ -331,7 +337,13 @@ export function BusinessEntryForm({
                 </div>
                 <div className="lg:col-span-2">
                   <Label sm>Asset class</Label>
-                  <SelectField size="sm" value={l.assetClass} onChange={(e) => patchLine(i, { assetClass: e.target.value })} className="w-full">
+                  <SelectField
+                    size="sm"
+                    value={l.assetClass}
+                    onChange={(e) => patchLine(i, { assetClass: e.target.value })}
+                    disabled={cfg.lockAssetClass}
+                    className={`w-full ${cfg.lockAssetClass ? "opacity-70 cursor-not-allowed" : ""}`}
+                  >
                     {CLASS_OPTS.map(([v, lab]) => <option key={v} value={v}>{lab}</option>)}
                   </SelectField>
                 </div>
