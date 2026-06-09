@@ -87,8 +87,8 @@ const NAV: NavSection[] = [
   {
     title: "",
     items: [
-      { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-      { href: "/dashboard/boards", label: "My Dashboards", icon: LayoutDashboard },
+      // Dashboard + My Dashboards are merged into the DashboardNavDropdown
+      // rendered at the top of CustomizableNav.
       { href: "/dashboard/command-center", label: "Command Center", icon: Inbox,
         roles: ["owner", "rm", "branch_head", "back_office", "ops", "compliance"] },
       { href: "/dashboard/next-best-action", label: "Next Best Action", icon: Sparkles,

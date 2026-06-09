@@ -19,6 +19,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { DashboardNavDropdown } from "./DashboardNavDropdown";
 import {
   Search, Pencil, Check, Plus, GripVertical, X, RotateCcw, Circle,
   // ── nav module icons (rendered here by name; see ICONS map) ──
@@ -238,6 +239,8 @@ export function CustomizableNav({
       </div>
 
       <nav className="flex-1 overflow-y-auto overflow-x-hidden px-3 pb-4 pt-2 space-y-5 scrollbar-thin">
+        {/* Combined Dashboards dropdown (Dashboard + My Dashboards) — pinned top */}
+        {!searchResults && <DashboardNavDropdown />}
         {/* ---- search results (flat) ---- */}
         {searchResults ? (
           <div className="space-y-0.5">
