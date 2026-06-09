@@ -272,7 +272,7 @@ function MultiSelectChip({
                 const checked = value.includes(o.value);
                 return (
                   <li key={o.value}>
-                    <label className="flex items-center gap-2 px-2 py-1.5 text-xs hover:bg-secondary rounded cursor-pointer">
+                    <label className={`flex items-center gap-2 px-2 py-1.5 text-xs rounded cursor-pointer transition ${checked ? "bg-brand-cyan-light/40 text-brand-cyan-deep font-medium" : "hover:bg-secondary"}`}>
                       <input
                         type="checkbox"
                         checked={checked}
@@ -282,7 +282,7 @@ function MultiSelectChip({
                             : [...value, o.value];
                           onChange(next);
                         }}
-                        className="size-3.5 rounded border-border text-brand-cyan focus:ring-brand-cyan"
+                        className="size-3.5 rounded border-border accent-brand-cyan focus:ring-brand-cyan"
                       />
                       <span className="capitalize">{o.label}</span>
                     </label>

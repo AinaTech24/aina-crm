@@ -81,6 +81,13 @@
     @apply border-border;
   }
 
+  /* Native checkboxes / radios pick up the firm's theme accent (not the
+     browser-default blue) everywhere — filter dropdowns, forms, pickers. */
+  input[type="checkbox"],
+  input[type="radio"] {
+    accent-color: hsl(var(--brand-cyan));
+  }
+
   html {
     font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   }
