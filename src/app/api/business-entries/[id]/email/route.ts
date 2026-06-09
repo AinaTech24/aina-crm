@@ -6,13 +6,14 @@ import { handleApiError } from "@/lib/api/error-handler";
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { businessEntries, businessEntryLines, investors } from "@/db/schema";
 import { emailAdapter } from "@/lib/comms/adapters/resend";
 import { resolveEmailSender } from "@/lib/comms/sender";
+import { loadTenant } from "@/lib/comms/pipeline";
 import { renderBusinessEmail } from "@/lib/business/email";
 
 export const dynamic = "force-dynamic";
@@ -46,7 +47,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           const [inv] = await tx.select({ email: investors.email }).from(investors).where(eq(investors.id, entry.investorId)).limit(1);
           email = inv?.email ?? null;
         }
-        const firm = (await tx.execute(sql`SELECT name FROM tenants WHERE id = ${session.tenantId}::uuid LIMIT 1`)).rows[0] as any;
+        // Use the shared loader (Drizzle select, RLS-safe) — the tenants table
+        // has no "name" column (it's display_name / legal_name), which is what
+        // made the old raw SELECT throw.
+        const firm = await loadTenant(tx, session.tenantId);
         // Resolve the firm's OWN mailbox (sending RM → firm SMTP/OAuth → Resend)
         // so the confirmation genuinely leaves from the firm's inbox. A mailbox
         // hiccup (OAuth refresh / decrypt / unknown provider) must NOT abort the
@@ -58,7 +62,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           console.error("[business_entry.email] sender resolve failed — falling back to Resend:", (e as Error)?.message);
           sender = { source: "resend" };
         }
-        return { entry, lines, email, firmName: firm?.name ?? "Your advisor", sender };
+        return { entry, lines, email, firmName: firm?.displayName ?? firm?.legalName ?? "Your advisor", sender };
       });
     } catch (e: any) {
       console.error("[business_entry.email] prepare failed:", e?.stack || e?.message || e);
