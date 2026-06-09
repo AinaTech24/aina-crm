@@ -307,41 +307,46 @@ export async function nlToFilterAst(
   subject: "investor" | "lead" | "task"
 ): Promise<{ ast: FilterAST; explanation: string } | { error: string }> {
   const catalog = CATALOGS[subject];
+  // Give the model the full per-field context — enum values + the exact
+  // operators each field allows — so it picks valid fields, ops and values
+  // instead of guessing (which is what made "review due" return 0 rows).
   const fieldSummary = catalog.fields
-    .map((f) => `  - ${f.key} (${f.type}): ${f.label}`)
+    .map((f) => {
+      const ev = f.enumValues?.length ? `; values: ${f.enumValues.join(" | ")}` : "";
+      const ops = f.ops?.length ? `; ops: ${f.ops.join(", ")}` : "";
+      return `  - "${f.key}" (${f.type}) — ${f.label}${ev}${ops}`;
+    })
     .join("\n");
+  const today = new Date().toISOString().slice(0, 10);
 
-  const systemPrompt = `You translate natural-language queries about ${subject}s into a JSON FilterAST.
+  const systemPrompt = `You translate a natural-language question about ${subject}s in an Indian Mutual-Fund-Distributor CRM into a JSON FilterAST that SELECTS the matching ${subject}s. Today's date is ${today}.
 
-The AST schema:
-  {
-    "type": "group",
-    "op": "AND" | "OR",
-    "not"?: boolean,
-    "children": [ ...predicates or nested groups ]
-  }
+AST shape:
+  { "type": "group", "op": "AND" | "OR", "not"?: boolean, "children": [ ...predicates or nested groups ] }
+Predicate:
+  { "type": "predicate", "field": { "kind": "attr", "path": "<field_key>" }, "op": "<operator>", "value": <value>, "duration"?: { "amount": <number>, "unit": "day"|"week"|"month"|"year" } }
 
-A predicate:
-  {
-    "type": "predicate",
-    "field": { "kind": "attr", "path": "<field_key>" },
-    "op": "<operator>",
-    "value": <value>,
-    "duration"?: { "amount": <number>, "unit": "day"|"week"|"month"|"year" }
-  }
+For date_within / date_in_next / date_in_last provide a "duration". For enum fields use ONLY a value from that field's "values:" list. Use only an operator listed for that field.
 
-Operators: eq, ne, gt, gte, lt, lte, contains, starts_with, ends_with, in, not_in,
-between, is_null, is_not_null, is_empty, is_not_empty, is_true, is_false,
-date_within, date_before, date_after, date_in_next, date_in_last, date_today,
-date_yesterday, date_tomorrow, date_is_anniversary
-
-For date_within / date_in_next / date_in_last, also provide a "duration" object.
-
-Available fields on ${subject}:
+Fields on ${subject} — use ONLY these keys (with their listed ops + enum values):
 ${fieldSummary}
 
-CRITICAL: Use only field keys from the list above. Do not invent fields.
-Output ONLY the JSON AST — no markdown, no explanation.`;
+Read business language into the right field (only use a field that appears in the list above for THIS subject):
+- "review due / reviews pending / overdue for review / due for review" → days_to_review lte 0 (0 or negative = the review date has arrived/passed).
+- "no contact / not contacted in N days" → days_since_last_contact gte N. "no transaction in N days" → days_since_last_transaction gte N.
+- "HNI / high net worth" → aum gte 10000000 (₹1 crore); "ultra HNI" → aum gte 50000000.
+- "dormant / inactive / lapsed / closed / at-risk" → the matching value of the status / health field.
+- "in <city>" → city eq "<City>". "birthday / anniversary this month" → date_is_anniversary on the date-of-birth field.
+- A "how many / count / number of X" question STILL means "select the X" — build the filter that selects them; the app counts the rows. Never return an error just because it says "how many".
+- If there is no real condition (e.g. "all clients", "everyone"), return { "type": "group", "op": "AND", "children": [] }.
+
+Examples:
+Q: "how many clients have a review due"
+A: {"type":"group","op":"AND","children":[{"type":"predicate","field":{"kind":"attr","path":"days_to_review"},"op":"lte","value":0}]}
+Q: "HNI clients in Mumbai with no contact in 60 days"
+A: {"type":"group","op":"AND","children":[{"type":"predicate","field":{"kind":"attr","path":"aum"},"op":"gte","value":10000000},{"type":"predicate","field":{"kind":"attr","path":"city"},"op":"eq","value":"Mumbai"},{"type":"predicate","field":{"kind":"attr","path":"days_since_last_contact"},"op":"gte","value":60}]}
+
+CRITICAL: use only field keys from the Fields list above. Output ONLY the JSON AST — no markdown, no prose.`;
 
   if (!(await isAiConfigured())) {
     return { error: "AI isn't set up yet. Ask your admin to configure the AI provider + model under Settings → AI & Models." };
