@@ -176,6 +176,9 @@ export const investors = pgTable(
     lastContactAt: timestamp("last_contact_at", { withTimezone: true }),
     lastReviewAt: timestamp("last_review_at", { withTimezone: true }),
     nextReviewAt: timestamp("next_review_at", { withTimezone: true }),
+    /** Explicit review cadence for this client. When null, cadence is derived
+     *  from serviceTier (A=quarterly, B=half-yearly, C=annual). Drives nextReviewAt. */
+    reviewFrequency: text("review_frequency", { enum: ["monthly", "quarterly", "half_yearly", "annual"] }),
 
     /** Lifecycle */
     isMinor: boolean("is_minor").default(false),

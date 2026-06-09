@@ -108,6 +108,7 @@ export function InvestorEditPanel({
     mandateStatus: investor.mandateStatus ?? "none",
     mandateRefNo: investor.mandateRefNo ?? "",
     status: investor.status ?? "active",
+    reviewFrequency: investor.reviewFrequency ?? "",
     notes: investor.notes ?? "",
     city: investor.address?.city ?? "",
     state: investor.address?.state ?? "",
@@ -138,6 +139,8 @@ export function InvestorEditPanel({
         // notes and address are all rendered editable, so persist them too.
         investorCategory: form.investorCategory || undefined,
         gender: form.gender || null,
+        // Explicit review cadence — empty string clears it (back to tier-driven).
+        reviewFrequency: form.reviewFrequency || null,
         notes: form.notes,
         address: {
           line1: form.addressLine1 || undefined,
@@ -338,6 +341,21 @@ export function InvestorEditPanel({
             </select>
           ) : (
             <span>{investor.segmentTag ?? "—"}</span>
+          )}
+        </KV>
+        <KV label="Review frequency">
+          {editing ? (
+            <select value={form.reviewFrequency} onChange={(e) => set("reviewFrequency", e.target.value)} className={inputCls}>
+              <option value="">Auto (by service tier)</option>
+              <option value="monthly">Monthly</option>
+              <option value="quarterly">Quarterly</option>
+              <option value="half_yearly">Half-yearly</option>
+              <option value="annual">Yearly</option>
+            </select>
+          ) : (
+            <span className="capitalize">
+              {investor.reviewFrequency ? investor.reviewFrequency.replace(/_/g, "-") : "Auto (by service tier)"}
+            </span>
           )}
         </KV>
         {showRiskProfile && (

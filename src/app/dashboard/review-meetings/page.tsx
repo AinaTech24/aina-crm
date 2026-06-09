@@ -3,13 +3,12 @@ import { sql } from "drizzle-orm";
 import { Calendar, CheckCircle2, Clock, AlertTriangle } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { formatDate, formatRelative } from "@/lib/utils";
 import { FilterBar } from "@/components/common/FilterBar";
 import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
 import { CustomViews } from "@/components/common/CustomViews";
 import { ColumnManager } from "@/components/common/ColumnManager";
-import { RowLink } from "@/components/common/RowLink";
 import { AddMeetingButton } from "@/components/review-meetings/AddMeetingButton";
+import { MeetingsBulkTable } from "@/components/review-meetings/MeetingsBulkTable";
 
 const MEETINGS_COLUMNS = [
   { key: "date", label: "Date", required: true },
@@ -39,30 +38,11 @@ const TYPE_LABEL: Record<string, string> = {
   other: "Other",
 };
 
-const CATEGORY_LABEL: Record<string, string> = {
-  review: "Review",
-  new: "New",
-  follow_up: "Follow-up",
-};
-
-const CATEGORY_TONE: Record<string, string> = {
-  review: "bg-brand-cyan-light text-brand-cyan-deep",
-  new: "bg-violet-50 text-violet-700",
-  follow_up: "bg-amber-50 text-amber-700",
-};
-
 const MODE_LABEL: Record<string, string> = {
   office: "Office",
   client_place: "Client Place",
   online: "Online",
   phone: "Phone",
-};
-
-const MODE_TONE: Record<string, string> = {
-  office: "bg-blue-50 text-blue-700",
-  client_place: "bg-purple-50 text-purple-700",
-  online: "bg-cyan-50 text-cyan-700",
-  phone: "bg-amber-50 text-amber-700",
 };
 
 const STATUS_TONE: Record<string, string> = {
@@ -314,175 +294,7 @@ export default async function ReviewMeetingsPage({
         }
       />
 
-      <div className="card-surface">
-        <div className="border-b border-border px-4 py-2.5 font-semibold flex items-center justify-between">
-          <span>Upcoming meetings ({upcoming.length})</span>
-          {upcoming.length > 0 && (
-            <span className="text-xs text-muted-foreground">Click a row to open</span>
-          )}
-        </div>
-        {upcoming.length === 0 ? (
-          <div className="p-12 text-center text-sm text-muted-foreground">
-            <Calendar className="size-8 mx-auto text-muted-foreground/50" />
-            <div className="mt-2">No meetings scheduled.</div>
-          </div>
-        ) : (
-          <table className="w-full text-sm" data-table="meetings-upcoming">
-            <thead className="text-xs text-muted-foreground border-b">
-              <tr>
-                <th data-col="date" className="text-left px-4 py-2 font-medium">Date</th>
-                <th data-col="client" className="text-left py-2 font-medium">Client</th>
-                <th data-col="category" className="text-left py-2 font-medium">Category</th>
-                <th data-col="agenda" className="text-left py-2 font-medium">Agenda</th>
-                <th data-col="mode" className="text-left py-2 font-medium">Mode</th>
-                <th data-col="rm" className="text-left py-2 font-medium">RM</th>
-                <th data-col="status" className="text-left py-2 font-medium pr-4">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {upcoming.map((m) => (
-                <RowLink key={m.id} href={`/dashboard/review-meetings/${m.id}`} className="border-b last:border-0 hover:bg-secondary/40">
-                  <td data-col="date" className="px-4 py-3 whitespace-nowrap">
-                    <Link href={`/dashboard/review-meetings/${m.id}`} className="font-medium tabular-nums hover:underline">
-                      {new Date(m.meeting_date).toLocaleString("en-IN", {
-                        day: "numeric",
-                        month: "short",
-                        hour: "numeric",
-                        minute: "2-digit",
-                      })}
-                    </Link>
-                    <div className="text-[11px] text-muted-foreground">
-                      in {Math.ceil((new Date(m.meeting_date).getTime() - Date.now()) / (24 * 60 * 60 * 1000))} day(s)
-                    </div>
-                  </td>
-                  <td data-col="client" className="py-3">
-                    {m.party_name ? (
-                      <Link
-                        href={
-                          m.party_kind === "lead"
-                            ? `/dashboard/leads/${m.lead_id}`
-                            : `/dashboard/investors/${m.investor_id}`
-                        }
-                        className="hover:underline"
-                      >
-                        {m.party_name}
-                      </Link>
-                    ) : (
-                      <span className="text-muted-foreground">—</span>
-                    )}
-                    <div className="text-xs text-muted-foreground">
-                      {m.party_kind === "lead" ? "Lead" : m.segment_tag ?? "—"}
-                    </div>
-                  </td>
-                  <td data-col="category" className="py-3">
-                    <span className={`chip text-[10px] ${CATEGORY_TONE[m.category ?? "review"] ?? ""}`}>
-                      {CATEGORY_LABEL[m.category ?? "review"] ?? m.category}
-                    </span>
-                    {m.parent_meeting_id && (
-                      <div className="text-[10px] text-muted-foreground mt-0.5">
-                        ↳ follow-up
-                      </div>
-                    )}
-                  </td>
-                  <td data-col="agenda" className="py-3 text-xs">
-                    {m.subject ? (
-                      <>
-                        <div className="font-medium max-w-[220px] truncate">{m.subject}</div>
-                        <div className="text-[11px] text-muted-foreground">{TYPE_LABEL[m.meeting_type] ?? m.meeting_type}</div>
-                      </>
-                    ) : (
-                      TYPE_LABEL[m.meeting_type] ?? m.meeting_type
-                    )}
-                  </td>
-                  <td data-col="mode" className="py-3">
-                    <span className={`chip ${MODE_TONE[m.meeting_mode] ?? ""}`}>
-                      {MODE_LABEL[m.meeting_mode] ?? m.meeting_mode}
-                    </span>
-                  </td>
-                  <td data-col="rm" className="py-3 text-xs">{m.rm_name ?? "—"}</td>
-                  <td data-col="status" className="py-3 pr-4">
-                    <span className={`chip capitalize ${STATUS_TONE[m.status] ?? ""}`}>
-                      {m.status.replace(/_/g, " ")}
-                    </span>
-                  </td>
-                </RowLink>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-
-      {past.length > 0 && (
-        <div className="card-surface">
-          <div className="border-b border-border px-4 py-2.5 font-semibold">
-            Past meetings ({past.length})
-          </div>
-          <table className="w-full text-sm">
-            <thead className="text-xs text-muted-foreground border-b">
-              <tr>
-                <th className="text-left px-4 py-2 font-medium">Date</th>
-                <th className="text-left py-2 font-medium">Client</th>
-                <th className="text-left py-2 font-medium">Type</th>
-                <th className="text-left py-2 font-medium">Status</th>
-                <th className="text-right py-2 font-medium">Action items</th>
-                <th className="text-right py-2 font-medium">Attachments</th>
-                <th className="text-left py-2 font-medium pr-4">Notes</th>
-              </tr>
-            </thead>
-            <tbody>
-              {past.slice(0, 50).map((m) => (
-                <RowLink key={m.id} href={`/dashboard/review-meetings/${m.id}`} className="border-b last:border-0 hover:bg-secondary/40">
-                  <td className="px-4 py-3 text-xs tabular-nums whitespace-nowrap">
-                    <Link href={`/dashboard/review-meetings/${m.id}`} className="font-medium hover:underline">
-                      {formatDate(m.meeting_date)}
-                    </Link>
-                    <div className="text-[11px] text-muted-foreground">{formatRelative(m.meeting_date)}</div>
-                  </td>
-                  <td className="py-3">
-                    {m.party_name ? (
-                      <Link
-                        href={
-                          m.party_kind === "lead"
-                            ? `/dashboard/leads/${m.lead_id}`
-                            : `/dashboard/investors/${m.investor_id}`
-                        }
-                        className="hover:underline"
-                      >
-                        {m.party_name}
-                      </Link>
-                    ) : (
-                      <span className="text-muted-foreground">—</span>
-                    )}
-                  </td>
-                  <td className="py-3 text-xs">
-                    {m.subject ? <span className="font-medium">{m.subject}</span> : (TYPE_LABEL[m.meeting_type] ?? m.meeting_type)}
-                  </td>
-                  <td className="py-3">
-                    <span className={`chip capitalize ${STATUS_TONE[m.status] ?? ""}`}>
-                      {m.status.replace(/_/g, " ")}
-                    </span>
-                  </td>
-                  <td className="py-3 text-right tabular-nums">
-                    {m.action_count > 0 ? (
-                      <span className={m.follow_up_task_created === "true" ? "text-emerald-600" : "text-amber-600"}>
-                        {m.action_count}
-                      </span>
-                    ) : (
-                      "—"
-                    )}
-                  </td>
-                  <td className="py-3 text-right tabular-nums text-muted-foreground">
-                    {m.attach_count > 0 ? m.attach_count : "—"}
-                  </td>
-                  <td className="py-3 pr-4 text-xs text-muted-foreground max-w-[260px] truncate">
-                    {m.meeting_notes ?? <span className="italic">No notes yet</span>}
-                  </td>
-                </RowLink>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <MeetingsBulkTable upcoming={upcoming} past={past} rmOptions={rmOptions} />
     </div>
   );
 }

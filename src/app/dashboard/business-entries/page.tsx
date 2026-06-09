@@ -7,6 +7,7 @@ import { businessEntries, users } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { formatINR } from "@/lib/utils";
 import { FilterBar } from "@/components/common/FilterBar";
+import { BusinessEntriesTable } from "@/components/business-entries/BusinessEntriesTable";
 import { PRODUCT_TYPES, BUSINESS_ENTRY_STATUSES } from "@/db/schema/business_entries";
 
 export const dynamic = "force-dynamic";
@@ -16,13 +17,6 @@ const MANAGE_ROLES = ["owner", "branch_head", "rm", "back_office", "ops"];
 const PRODUCT_LABEL: Record<string, string> = {
   mutual_fund: "Mutual Fund", pms: "PMS", aif: "AIF", sif: "SIF", bond: "Bond", ncd: "NCD", other: "Other",
 };
-const STATUS_TONE: Record<string, string> = {
-  draft: "bg-slate-100 text-slate-600",
-  confirmed: "bg-sky-50 text-sky-700",
-  emailed: "bg-emerald-50 text-emerald-700",
-  cancelled: "bg-rose-50 text-rose-600",
-};
-
 function fyStartISO(now = new Date()): string {
   const y = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1; // FY = Apr–Mar
   return `${y}-04-01`;
@@ -134,41 +128,8 @@ export default async function BusinessEntriesPage({
           </Link>
         </div>
       ) : (
-        <div className="card-surface overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="text-xs text-muted-foreground border-b">
-              <tr>
-                <th className="text-left px-4 py-2 font-medium">Date</th>
-                <th className="text-left py-2 font-medium">Client</th>
-                <th className="text-left py-2 font-medium">Product</th>
-                <th className="text-right py-2 font-medium">Schemes</th>
-                <th className="text-right py-2 font-medium">Amount</th>
-                <th className="text-left py-2 font-medium">RM</th>
-                <th className="text-left py-2 font-medium pr-4">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r.id} className="border-b last:border-0 hover:bg-brand-cyan-light/20 transition-colors">
-                  <td className="px-4 py-2.5 text-xs tabular-nums whitespace-nowrap">
-                    <Link href={`/dashboard/business-entries/${r.id}`} className="hover:underline">
-                      {new Date(r.businessDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "2-digit" })}
-                    </Link>
-                  </td>
-                  <td className="py-2.5 font-medium">
-                    <Link href={`/dashboard/business-entries/${r.id}`} className="hover:underline">{r.clientName}</Link>
-                  </td>
-                  <td className="py-2.5 text-xs text-muted-foreground">{PRODUCT_LABEL[r.productType] ?? r.productType}</td>
-                  <td className="py-2.5 text-right text-xs tabular-nums">{r.lineCount}</td>
-                  <td className="py-2.5 text-right tabular-nums font-medium">{formatINR(Number(r.totalAmount))}</td>
-                  <td className="py-2.5 text-xs text-muted-foreground">{r.rmName ?? "—"}</td>
-                  <td className="py-2.5 pr-4">
-                    <span className={`chip text-[10px] capitalize ${STATUS_TONE[r.status] ?? ""}`}>{r.status}</span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="card-surface">
+          <BusinessEntriesTable rows={rows as any} rmOptions={rmOptions} />
         </div>
       )}
     </div>

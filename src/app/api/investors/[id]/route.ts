@@ -106,6 +106,7 @@ const Patch = z.object({
   mandateStatus: z.enum(["none", "pending", "active", "expired", "rejected", "cancelled"]).nullable().optional(),
   mandateRefNo: z.string().max(60).nullable().optional(),
   status: z.enum(["active", "dormant", "inactive", "redemption_risk", "closed", "exited"]).optional(),
+  reviewFrequency: z.enum(["monthly", "quarterly", "half_yearly", "annual"]).nullable().optional(),
 });
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -205,10 +206,25 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       const merged = { ...before, ...parse.data };
       const health = healthFields(merged as any);
 
+      // When an explicit review cadence is set, derive the next review date from
+      // the last review (or today) so the "Next review" reminder reflects it.
+      const reviewPatch: Record<string, unknown> = {};
+      if (parse.data.reviewFrequency) {
+        const base = before.lastReviewAt ? new Date(before.lastReviewAt as any) : new Date();
+        const months =
+          parse.data.reviewFrequency === "monthly" ? 1 :
+          parse.data.reviewFrequency === "quarterly" ? 3 :
+          parse.data.reviewFrequency === "half_yearly" ? 6 : 12;
+        const next = new Date(base);
+        next.setMonth(next.getMonth() + months);
+        reviewPatch.nextReviewAt = next;
+      }
+
       const after = await tx
         .update(investors)
         .set({
           ...parse.data,
+          ...reviewPatch,
           updatedAt: new Date(),
           ...(touchingKyc
             ? { kycLastUpdatedBy: session.userId }
