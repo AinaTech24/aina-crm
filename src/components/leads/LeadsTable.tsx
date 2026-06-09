@@ -254,7 +254,7 @@ export function LeadsTable({ rows, sort }: { rows: Row[]; sort: string }) {
                     {l.createdAt ? formatDate(l.createdAt) : "—"}
                   </td>
                   <td data-col="actions" className="px-4 py-3 text-right">
-                    <RowActions editHref={`/dashboard/leads/${l.id}`} deleteUrl={`/api/leads/${l.id}`} itemLabel="lead" itemName={l.name} verb="Mark lost" />
+                    <RowActions editHref={`/dashboard/leads/${l.id}`} deleteUrl={`/api/leads/${l.id}`} itemLabel="lead" itemName={l.name} verb="Delete" />
                   </td>
                 </tr>
               );

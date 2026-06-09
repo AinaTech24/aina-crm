@@ -124,6 +124,11 @@ export function LeadsKanban({
 }) {
   const router = useRouter();
   const [rows, setRows] = useState<LeadRow[]>(initialRows);
+  // Re-sync from the server after a router.refresh() (delete, convert, etc.) so a
+  // removed lead's card disappears immediately instead of lingering in local state.
+  useEffect(() => {
+    setRows(initialRows);
+  }, [initialRows]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [savingIds, setSavingIds] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
@@ -553,7 +558,7 @@ function DraggableCard({
           deleteUrl={`/api/leads/${l.id}`}
           itemLabel="lead"
           itemName={l.name}
-          verb="Mark lost"
+          verb="Delete"
         />
       </div>
 
