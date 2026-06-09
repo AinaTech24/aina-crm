@@ -1,15 +1,17 @@
 "use client";
 
 /**
- * Quick-share strip for a goal — pre-fills a WhatsApp message and a mailto link
- * with the public print URL. Click and the RM's WhatsApp / Outlook opens with
- * the message ready to send.
- *
- * "Copy link" gets the same URL into the clipboard for ad-hoc sharing.
+ * Quick-share strip for a goal:
+ *   - WhatsApp → wa.me link with the print URL (RM ships from their own WA)
+ *   - Email    → sends the DETAILED goal-plan PDF to the client from the firm's
+ *                mailbox (POST /api/goals/[id]/email); outcome via toast
+ *   - Copy link → the print URL onto the clipboard
  */
 
 import { useState } from "react";
-import { MessageCircle, Mail, Copy, Check } from "lucide-react";
+import { MessageCircle, Mail, Copy, Check, Loader2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useToast } from "@/components/ui/Toast";
 
 export function GoalShareActions({
   goalId,
@@ -24,9 +26,11 @@ export function GoalShareActions({
   investorPhone: string | null;
   investorEmail: string | null;
 }) {
+  const router = useRouter();
+  const toast = useToast();
   const [copied, setCopied] = useState(false);
+  const [sending, setSending] = useState(false);
 
-  // The print page URL — opens in a new tab, ready for browser-print to PDF.
   const printUrl =
     typeof window === "undefined"
       ? ""
@@ -36,19 +40,9 @@ export function GoalShareActions({
     `Hi ${investorName}, sharing the latest plan for your "${goalName}" goal. ` +
       `Open this report:\n${printUrl}\n\nLet me know a good time to discuss.`
   );
-  const emailSubject = encodeURIComponent(`Your goal plan — ${goalName}`);
-  const emailBody = encodeURIComponent(
-    `Hi ${investorName},\n\nSharing the latest plan for your "${goalName}" goal. ` +
-      `You can view (and print) the full report here:\n${printUrl}\n\n` +
-      `Happy to walk through it on a call.\n\nThanks.`
-  );
-
   const waHref = investorPhone
     ? `https://wa.me/${investorPhone.replace(/[^\d]/g, "")}?text=${waMsg}`
     : `https://wa.me/?text=${waMsg}`;
-  const mailHref = investorEmail
-    ? `mailto:${investorEmail}?subject=${emailSubject}&body=${emailBody}`
-    : `mailto:?subject=${emailSubject}&body=${emailBody}`;
 
   function copy() {
     if (!printUrl) return;
@@ -56,6 +50,25 @@ export function GoalShareActions({
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     });
+  }
+
+  async function sendEmail() {
+    if (sending) return;
+    setSending(true);
+    try {
+      const res = await fetch(`/api/goals/${goalId}/email`, { method: "POST" });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(j.error ?? `Send failed (${res.status})`, "Couldn't email the plan");
+        return;
+      }
+      toast.success(`Goal plan emailed to ${investorName} with the PDF attached.`);
+      router.refresh();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Network error", "Couldn't email the plan");
+    } finally {
+      setSending(false);
+    }
   }
 
   return (
@@ -73,9 +86,14 @@ export function GoalShareActions({
         >
           <MessageCircle className="size-3.5 text-emerald-600" /> WhatsApp
         </a>
-        <a href={mailHref} className="btn-secondary text-xs">
-          <Mail className="size-3.5 text-blue-600" /> Email
-        </a>
+        <button
+          onClick={sendEmail}
+          disabled={sending || !investorEmail}
+          className="btn-secondary text-xs disabled:opacity-50"
+          title={investorEmail ? `Email ${investorEmail} the detailed plan PDF` : "No email on file for this client"}
+        >
+          {sending ? <Loader2 className="size-3.5 animate-spin" /> : <Mail className="size-3.5 text-blue-600" />} Email
+        </button>
         <button onClick={copy} className="btn-secondary text-xs">
           {copied ? (
             <>

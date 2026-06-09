@@ -130,13 +130,10 @@ function buildHtmlEmail(args: {
       ${
         proposal.coverLetter
           ? `<p style="margin:0 0 12px;color:#334155;font-size:13px;line-height:1.6;white-space:pre-line">${proposal.coverLetter}</p>`
-          : `<p style="margin:0 0 12px;color:#334155;font-size:13px;line-height:1.6">Please find the proposal we discussed, summarised below. Click the button to view the full document.</p>`
+          : `<p style="margin:0 0 12px;color:#334155;font-size:13px;line-height:1.6">Please find your proposal attached as a PDF, summarised below.</p>`
       }
       <table style="width:100%;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;margin:12px 0">${totalInv}${corpus}</table>
       ${productLines}
-      <div style="margin:20px 0;text-align:center">
-        <a href="${publicUrl}" style="display:inline-block;background:${primary};color:white;padding:10px 22px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px">View full proposal</a>
-      </div>
       ${validUntil}
     </div>
     <div style="background:#f1f5f9;padding:14px 24px;color:#64748b;font-size:10px;line-height:1.5;border-top:1px solid #e2e8f0">
