@@ -172,7 +172,7 @@ export default async function ProposalDetailPage({
               Recommendation →
             </Link>
             <Link
-              href={`/dashboard/proposals/${p.id}/print`}
+              href={`/api/proposals/${p.id}/pdf?download=1`}
               target="_blank"
               className="btn-secondary text-xs"
             >

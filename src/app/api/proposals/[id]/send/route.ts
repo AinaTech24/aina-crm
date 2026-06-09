@@ -66,6 +66,7 @@ function buildHtmlEmail(args: {
 }) {
   const { tenant, proposal, publicUrl } = args;
   const primary = tenant?.primaryColor || "#0e2557";
+  const secondary = tenant?.secondaryColor || "#0ea5e9";
   const products = (proposal.products ?? []) as any[];
   const groups: Record<string, any[]> = {};
   for (const p of products) {
@@ -122,6 +123,7 @@ function buildHtmlEmail(args: {
         tenant?.arn ?? "—"
       } · ${proposal.proposalNumber}</div>
     </div>
+    <div style="height:5px;background:${primary};background:linear-gradient(to right, ${primary}, ${secondary});"></div>
     <div style="padding:24px">
       <p style="margin:0 0 6px;color:#64748b;font-size:13px">Dear ${proposal.recipientName},</p>
       <h2 style="margin:8px 0 6px;font-size:18px;letter-spacing:-0.01em">${proposal.title}</h2>
