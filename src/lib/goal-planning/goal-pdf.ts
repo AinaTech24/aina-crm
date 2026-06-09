@@ -1,13 +1,14 @@
 /**
- * Server-rendered goal-plan PDF (pdf-lib, no headless Chrome) — the detailed
- * report emailed to the client: logo + ARN + theme gradient letterhead, the
- * goal headline, the key figures (target, time, required SIP, status) and the
- * full plan breakdown (current value, returns, inflation, step-up, projected
- * value, gap, top-up needed). Returned as a Buffer for the email attachment.
+ * Server-rendered DETAILED goal-plan PDF (pdf-lib, no headless Chrome) — carries
+ * the same detail as the on-screen "Detailed PDF": logo + ARN + theme gradient
+ * letterhead, headline cards (target / time / required SIP / status), the plan
+ * breakdown, the return-sensitivity table (flat SIP & lumpsum per return rate),
+ * and the full year-by-year projection. Multi-page with repeating headers +
+ * footer. Returned as a Buffer for the goal "Email" attachment.
  */
 
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage, type PDFImage, type RGB } from "pdf-lib";
-import { computeGoal, monthsBetween } from "./calc";
+import { computeGoal, monthsBetween, sensitivitySipRates, projectYearly } from "./calc";
 
 export type GoalBrand = {
   displayName?: string | null;
@@ -36,7 +37,8 @@ const DISCLAIMER =
   "Mutual Fund investments are subject to market risks. Read all scheme related documents carefully. " +
   "Projections are illustrative based on the stated assumptions and are not guaranteed.";
 
-const W = 595.28, H = 841.89, MARGIN = 44;
+const PW = 595.28, PH = 841.89, MARGIN = 44;
+type Col = { h: string; w: number; align?: "r"; get: (r: any) => string };
 
 export async function renderGoalPdf(args: {
   goal: Record<string, any>;
@@ -47,15 +49,25 @@ export async function renderGoalPdf(args: {
   const { goal, investor, brand } = args;
   const generatedAt = args.generatedAt ?? new Date().toISOString();
 
+  const targetAmount = Number(goal.targetAmount);
+  const currentValue = Number(goal.currentValue ?? 0);
+  const ret = Number(goal.expectedReturn ?? 12);
   const monthsLeft = monthsBetween(new Date(), new Date(goal.targetDate));
   const calc = computeGoal({
-    futureTarget: Number(goal.targetAmount),
-    currentValue: Number(goal.currentValue ?? 0),
+    futureTarget: targetAmount,
+    currentValue,
     existingMonthlySip: Number(goal.existingMonthlySip ?? goal.monthlyContribution ?? 0),
     monthsLeft,
-    expectedReturnPct: Number(goal.expectedReturn ?? 12),
+    expectedReturnPct: ret,
     inflationPct: goal.inflationPct ? Number(goal.inflationPct) : 6,
     stepUpPct: goal.stepUpPct ? Number(goal.stepUpPct) : 10,
+  } as any);
+  const sensitivity = sensitivitySipRates(targetAmount, currentValue, monthsLeft);
+  const projection = projectYearly({
+    currentValue,
+    initialMonthlySip: calc.requiredMonthlySipTotal,
+    annualReturnPct: ret,
+    months: monthsLeft,
   } as any);
 
   const doc = await PDFDocument.create();
@@ -66,67 +78,66 @@ export async function renderGoalPdf(args: {
   doc.setTitle(ascii(`Goal plan — ${goal.name ?? "Goal"}`));
   doc.setProducer("Aina CRM");
 
-  const page = doc.addPage([W, H]);
-  const usable = W - 2 * MARGIN;
+  const usable = PW - 2 * MARGIN;
   const logo = await embedLogo(doc, brand.logoUrl);
+  const cur = { page: doc.addPage([PW, PH]), y: 0 };
+  const newPage = () => { cur.page = doc.addPage([PW, PH]); cur.y = PH - MARGIN; };
+  const ensure = (need: number) => { if (cur.y - need < 92) { newPage(); return true; } return false; };
 
   // ── Letterhead ──
-  const topY = H - MARGIN;
-  let arnY = topY - 30;
-  if (logo) {
-    const maxH = 40, maxW = 200;
-    let dw = (logo.width / logo.height) * maxH, dh = maxH;
-    if (dw > maxW) { dw = maxW; dh = (logo.height / logo.width) * maxW; }
-    page.drawImage(logo, { x: MARGIN, y: topY - dh, width: dw, height: dh });
-    arnY = topY - dh - 11;
-  } else {
-    page.drawText(ascii(brand.legalName ?? brand.displayName ?? "Your Advisor"), { x: MARGIN, y: topY - 15, size: 14, font: bold, color: INK });
+  {
+    const topY = PH - MARGIN;
+    let arnY = topY - 30;
+    if (logo) {
+      const maxH = 40, maxW = 200;
+      let dw = (logo.width / logo.height) * maxH, dh = maxH;
+      if (dw > maxW) { dw = maxW; dh = (logo.height / logo.width) * maxW; }
+      cur.page.drawImage(logo, { x: MARGIN, y: topY - dh, width: dw, height: dh });
+      arnY = topY - dh - 11;
+    } else {
+      cur.page.drawText(ascii(brand.legalName ?? brand.displayName ?? "Your Advisor"), { x: MARGIN, y: topY - 15, size: 14, font: bold, color: INK });
+    }
+    cur.page.drawText(ascii(`ARN ${(brand.arn ?? "—").toString().replace(/^ARN-?/i, "")}${brand.euin ? ` - EUIN ${brand.euin}` : ""}`), { x: MARGIN, y: arnY, size: 9, font: helv, color: SLATE });
+    const titleLabel = "GOAL PLAN";
+    cur.page.drawText(titleLabel, { x: PW - MARGIN - bold.widthOfTextAtSize(titleLabel, 11), y: topY - 13, size: 11, font: bold, color: primary });
+    const dl = ascii(`Prepared ${fmtDate(generatedAt)}`);
+    cur.page.drawText(dl, { x: PW - MARGIN - helv.widthOfTextAtSize(dl, 9), y: topY - 28, size: 9, font: helv, color: SLATE });
+    const stripY = Math.min(arnY - 12, topY - 56);
+    drawGradientStrip(cur.page, MARGIN, stripY, usable, 5, primary, secondary);
+    cur.y = stripY - 26;
   }
-  page.drawText(ascii(`ARN ${(brand.arn ?? "—").toString().replace(/^ARN-?/i, "")}${brand.euin ? ` - EUIN ${brand.euin}` : ""}`), { x: MARGIN, y: arnY, size: 9, font: helv, color: SLATE });
-  const titleLabel = "GOAL PLAN";
-  page.drawText(titleLabel, { x: W - MARGIN - bold.widthOfTextAtSize(titleLabel, 11), y: topY - 13, size: 11, font: bold, color: primary });
-  const dlabel = ascii(`Prepared ${fmtDate(generatedAt)}`);
-  page.drawText(dlabel, { x: W - MARGIN - helv.widthOfTextAtSize(dlabel, 9), y: topY - 28, size: 9, font: helv, color: SLATE });
-  const stripY = Math.min(arnY - 12, topY - 56);
-  drawGradientStrip(page, MARGIN, stripY, usable, 5, primary, secondary);
 
-  let y = stripY - 26;
-
-  // ── Goal headline ──
-  page.drawText(ascii(goal.name ?? "Goal"), { x: MARGIN, y, size: 16, font: bold, color: INK });
-  y -= 18;
-  page.drawText(ascii(`Prepared for ${investor?.name ?? "Investor"}`), { x: MARGIN, y, size: 10, font: helv, color: SLATE });
-  y -= 26;
+  // ── Headline ──
+  cur.page.drawText(ascii(goal.name ?? "Goal"), { x: MARGIN, y: cur.y, size: 16, font: bold, color: INK });
+  cur.y -= 18;
+  cur.page.drawText(ascii(`Prepared for ${investor?.name ?? "Investor"} - ${monthsLeft} months to target`), { x: MARGIN, y: cur.y, size: 10, font: helv, color: SLATE });
+  cur.y -= 26;
 
   // ── Headline cards ──
   const statusTone = calc.status === "on_track" || calc.status === "achieved" ? GREEN : calc.status === "behind_track" ? RED : SLATE;
   const cards: Array<{ label: string; value: string; tone?: RGB }> = [
     { label: "Target amount", value: inr(calc.futureTarget) },
-    { label: "Time to goal", value: `${(calc.yearsLeft ?? Math.round((monthsLeft / 12) * 10) / 10)} yrs` },
+    { label: "Time to goal", value: `${calc.yearsLeft ?? Math.round((monthsLeft / 12) * 10) / 10} yrs` },
     { label: "Required monthly SIP", value: inr(calc.requiredMonthlySipTotal), tone: primary },
     { label: "Status", value: STATUS_LABEL[calc.status] ?? calc.status, tone: statusTone },
   ];
-  const gap = 10;
-  const cw = (usable - gap * (cards.length - 1)) / cards.length;
-  const ch = 52;
-  cards.forEach((c, i) => {
-    const x = MARGIN + i * (cw + gap);
-    page.drawRectangle({ x, y: y - ch, width: cw, height: ch, color: HEADBG, borderColor: LINE, borderWidth: 1 });
-    page.drawText(ascii(c.label).toUpperCase(), { x: x + 8, y: y - 15, size: 6.4, font: bold, color: MUTED });
-    const vs = fitText(ascii(c.value), bold, 12, cw - 14, 8);
-    page.drawText(ascii(c.value), { x: x + 8, y: y - 37, size: vs, font: bold, color: c.tone ?? INK });
-  });
-  y -= ch + 28;
+  {
+    const gap = 10, cw = (usable - gap * 3) / 4, ch = 52;
+    cards.forEach((c, i) => {
+      const x = MARGIN + i * (cw + gap);
+      cur.page.drawRectangle({ x, y: cur.y - ch, width: cw, height: ch, color: HEADBG, borderColor: LINE, borderWidth: 1 });
+      cur.page.drawText(ascii(c.label).toUpperCase(), { x: x + 8, y: cur.y - 15, size: 6.4, font: bold, color: MUTED });
+      const vs = fitText(ascii(c.value), bold, 12, cw - 14, 8);
+      cur.page.drawText(ascii(c.value), { x: x + 8, y: cur.y - 37, size: vs, font: bold, color: c.tone ?? INK });
+    });
+    cur.y -= ch + 26;
+  }
 
-  // ── Plan breakdown ──
-  page.drawText("PLAN BREAKDOWN", { x: MARGIN, y, size: 9, font: bold, color: primary });
-  y -= 6;
-  page.drawRectangle({ x: MARGIN, y: y - 2, width: usable, height: 1, color: LINE });
-  y -= 18;
-
+  // ── Plan breakdown (label : value) ──
+  section(cur, primary, bold, "PLAN BREAKDOWN", usable);
   const rows: Array<[string, string]> = [
     ["Target date", fmtDate(goal.targetDate)],
-    ["Current value", inr(Number(goal.currentValue ?? 0))],
+    ["Current value", inr(currentValue)],
     ["Expected return (p.a.)", `${calc.expectedReturnPct}%`],
     ["Inflation assumed", `${calc.inflationPct}%`],
     ["Annual step-up", `${calc.stepUpPct}%`],
@@ -136,20 +147,86 @@ export async function renderGoalPdf(args: {
     ["Additional monthly SIP needed", inr(calc.additionalMonthlySipNeeded)],
   ];
   for (const [label, val] of rows) {
-    page.drawText(ascii(label), { x: MARGIN, y, size: 9.5, font: helv, color: SLATE });
+    ensure(15);
+    cur.page.drawText(ascii(label), { x: MARGIN, y: cur.y, size: 9.5, font: helv, color: SLATE });
     const tv = ascii(val);
-    page.drawText(tv, { x: W - MARGIN - bold.widthOfTextAtSize(tv, 9.5), y, size: 9.5, font: bold, color: INK });
-    y -= 8;
-    page.drawRectangle({ x: MARGIN, y: y + 2, width: usable, height: 0.6, color: LINE });
-    y -= 12;
+    cur.page.drawText(tv, { x: PW - MARGIN - bold.widthOfTextAtSize(tv, 9.5), y: cur.y, size: 9.5, font: bold, color: INK });
+    cur.y -= 8;
+    cur.page.drawRectangle({ x: MARGIN, y: cur.y + 2, width: usable, height: 0.6, color: LINE });
+    cur.y -= 12;
   }
+  cur.y -= 8;
 
-  // ── Footer ──
-  drawFooter(page, { helv, bold, brand, generatedAt });
+  // ── Return sensitivity ──
+  const sensCols: Col[] = [
+    { h: "Return p.a.", w: 0.34, get: (s) => `${s.ratePct}%` },
+    { h: "Flat SIP needed", w: 0.33, align: "r", get: (s) => inr(Math.round(s.sip)) },
+    { h: "Lumpsum today", w: 0.33, align: "r", get: (s) => inr(Math.round(s.lumpsum)) },
+  ];
+  section(cur, primary, bold, "RETURN SENSITIVITY", usable);
+  drawTable(cur, { helv, bold }, sensCols, sensitivity, usable, newPage, ensure);
+  cur.y -= 10;
+
+  // ── Year-by-year projection ──
+  const projCols: Col[] = [
+    { h: "Year", w: 0.16, get: (r) => String(r.year) },
+    { h: "Contributed", w: 0.21, align: "r", get: (r) => inr(Math.round(r.contributedThisYear)) },
+    { h: "Cumulative", w: 0.21, align: "r", get: (r) => inr(Math.round(r.cumulativeContributed)) },
+    { h: "Corpus EoY", w: 0.24, align: "r", get: (r) => inr(Math.round(r.endOfYearCorpus)) },
+    { h: "% to target", w: 0.18, align: "r", get: (r) => `${Math.round((r.endOfYearCorpus / targetAmount) * 100)}%` },
+  ];
+  section(cur, primary, bold, "YEAR-BY-YEAR PROJECTION", usable);
+  cur.page.drawText(ascii(`Assumes ${inr(currentValue)} today + ${inr(Math.round(calc.requiredMonthlySipTotal))}/mo, compounding at ${ret}% p.a.`), { x: MARGIN, y: cur.y, size: 7.5, font: helv, color: MUTED });
+  cur.y -= 14;
+  drawTable(cur, { helv, bold }, projCols, projection, usable, newPage, ensure);
+
+  for (const pg of doc.getPages()) drawFooter(pg, { helv, bold, brand, generatedAt });
   return Buffer.from(await doc.save());
 }
 
 /* ── helpers ── */
+function section(cur: { page: PDFPage; y: number }, primary: RGB, bold: PDFFont, title: string, usable: number) {
+  if (cur.y < 120) { /* let drawTable/ensure handle page; here just keep simple */ }
+  cur.page.drawText(title, { x: MARGIN, y: cur.y, size: 9, font: bold, color: primary });
+  cur.y -= 6;
+  cur.page.drawRectangle({ x: MARGIN, y: cur.y - 2, width: usable, height: 1, color: LINE });
+  cur.y -= 16;
+}
+function drawTable(
+  cur: { page: PDFPage; y: number },
+  f: { helv: PDFFont; bold: PDFFont },
+  cols: Col[],
+  data: any[],
+  usable: number,
+  newPage: () => void,
+  ensure: (n: number) => boolean,
+) {
+  const header = () => {
+    cur.page.drawRectangle({ x: MARGIN, y: cur.y - 4, width: usable, height: 15, color: HEADBG });
+    let x = MARGIN + 6;
+    for (const c of cols) {
+      const cw = c.w * usable;
+      if (c.align === "r") cur.page.drawText(c.h, { x: x + cw - 8 - f.helv.widthOfTextAtSize(c.h, 6.8), y: cur.y, size: 6.8, font: f.bold, color: MUTED });
+      else cur.page.drawText(c.h, { x, y: cur.y, size: 6.8, font: f.bold, color: MUTED });
+      x += cw;
+    }
+    cur.y -= 16;
+  };
+  header();
+  for (const r of data) {
+    if (ensure(15)) header();
+    let x = MARGIN + 6;
+    for (const c of cols) {
+      const cw = c.w * usable;
+      const v = ascii(String(c.get(r) ?? "-"));
+      if (c.align === "r") cur.page.drawText(truncate(v, f.helv, 8.5, cw - 8), { x: x + cw - 6 - f.helv.widthOfTextAtSize(truncate(v, f.helv, 8.5, cw - 8), 8.5), y: cur.y, size: 8.5, font: c.h === "Corpus EoY" ? f.bold : f.helv, color: INK });
+      else cur.page.drawText(truncate(v, f.helv, 8.5, cw - 6), { x, y: cur.y, size: 8.5, font: f.helv, color: INK });
+      x += cw;
+    }
+    cur.page.drawRectangle({ x: MARGIN, y: cur.y - 4, width: usable, height: 0.6, color: LINE });
+    cur.y -= 16;
+  }
+}
 function drawFooter(page: PDFPage, a: { helv: PDFFont; bold: PDFFont; brand: GoalBrand; generatedAt: string }) {
   const pw = page.getWidth();
   page.drawRectangle({ x: MARGIN, y: 52, width: pw - 2 * MARGIN, height: 1, color: LINE });
@@ -201,6 +278,12 @@ function fitText(text: string, font: PDFFont, size: number, maxWidth: number, mi
   let s = size;
   while (s > min && font.widthOfTextAtSize(text, s) > maxWidth) s -= 0.5;
   return s;
+}
+function truncate(text: string, font: PDFFont, size: number, maxWidth: number): string {
+  if (font.widthOfTextAtSize(text, size) <= maxWidth) return text;
+  let t = text;
+  while (t.length > 1 && font.widthOfTextAtSize(`${t}...`, size) > maxWidth) t = t.slice(0, -1);
+  return `${t}...`;
 }
 function wrap(text: string, font: PDFFont, size: number, maxWidth: number): string[] {
   const words = (text || "").split(/\s+/).filter(Boolean);
