@@ -383,7 +383,7 @@ function NewInsuranceForm() {
         </p>
       </div>
 
-      {/* 0. AI auto-fill — new policies only */}
+      {/* 0. Document auto-fill (PDF text / OCR — no AI) — new policies only */}
       {!editId && (
         <div
           className={`card-surface p-5 border-2 border-dashed transition-colors ${
@@ -417,7 +417,7 @@ function NewInsuranceForm() {
               <>
                 <Loader2 className="size-8 animate-spin text-brand-cyan" />
                 <div className="text-sm font-medium">Reading your policy…</div>
-                <div className="text-xs text-muted-foreground">Extracting fields — usually ~15 seconds.</div>
+                <div className="text-xs text-muted-foreground">Pulling fields from the document — instant for PDFs, a little longer for photos.</div>
               </>
             ) : (
               <>
@@ -426,7 +426,7 @@ function NewInsuranceForm() {
                   <Sparkles className="size-4" /> Upload policy → auto-fill
                 </button>
                 <div className="text-xs text-muted-foreground">
-                  Drag &amp; drop a PDF, JPG, or PNG — max 25MB. AI fills the form for you to review.
+                  Drag &amp; drop a PDF, JPG, or PNG — max 25MB. We read the document and fill the form for you to review.
                 </div>
                 <div className="flex items-center gap-1 text-[11px] text-muted-foreground/80">
                   <Lock className="size-3" /> Reviewed before saving · the file isn’t stored.

@@ -3,21 +3,22 @@ import { handleApiError } from "@/lib/api/error-handler";
  * POST /api/insurance/extract
  *
  * Multipart upload of a policy document (PDF / JPG / PNG, <= 25MB). Reads it
- * with Claude and returns a structured draft mapped to our insurance schema for
- * the RM to review + edit + save. Persists NOTHING — advisory auto-fill only,
- * exactly like every other AI helper in this codebase (AI is a starting point,
- * never the source of truth). Gated by insurance.write + an active license.
+ * with a PDF text-layer extractor (digital PDFs) or OCR (images) — NO AI, no
+ * token limits, no API cost — and returns a best-effort structured draft mapped
+ * to our insurance schema for the RM to review + edit + save. Persists NOTHING.
+ * Gated by insurance.write + an active license.
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
-import { extractInsurancePolicy } from "@/lib/ai/assistant";
+import { extractDocumentText } from "@/lib/insurance/extract-text";
+import { parseInsurancePolicy } from "@/lib/insurance/parse-policy";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-// Document extraction is a vision call — give it headroom over the default.
+// OCR on an image can take a few seconds — give it headroom over the default.
 export const maxDuration = 60;
 
 const MAX_BYTES = 25 * 1024 * 1024; // 25 MB — matches the dropzone copy
@@ -47,10 +48,7 @@ export async function POST(req: NextRequest) {
 
     const mediaType = ALLOWED[file.type as keyof typeof ALLOWED];
     if (!mediaType) {
-      return NextResponse.json(
-        { error: "unsupported file type — upload a PDF, JPG, or PNG" },
-        { status: 415 }
-      );
+      return NextResponse.json({ error: "unsupported file type — upload a PDF, JPG, or PNG" }, { status: 415 });
     }
     if (file.size === 0) {
       return NextResponse.json({ error: "the uploaded file is empty" }, { status: 400 });
@@ -59,13 +57,31 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "file too large — maximum is 25MB" }, { status: 413 });
     }
 
-    const base64 = Buffer.from(await file.arrayBuffer()).toString("base64");
-    const result = await extractInsurancePolicy({ base64, mediaType });
+    const buffer = Buffer.from(await file.arrayBuffer());
 
-    if ("error" in result) {
-      return NextResponse.json({ error: result.error }, { status: 502 });
+    let extracted;
+    try {
+      extracted = await extractDocumentText(buffer, mediaType);
+    } catch (e: any) {
+      return NextResponse.json(
+        { error: `Couldn't read the document: ${e?.message ?? "unknown error"}` },
+        { status: 422 }
+      );
     }
-    return NextResponse.json({ draft: result }, { status: 200 });
+
+    const cleaned = extracted.text.replace(/\s+/g, " ").trim();
+
+    // A PDF with no text layer is almost certainly a scan — guide the RM to OCR it.
+    if (extracted.method === "pdf-text" && cleaned.length < 40) {
+      const draft = parseInsurancePolicy("", { ocr: false });
+      draft.warnings = [
+        "This looks like a scanned PDF with no text layer. Upload it as a JPG/PNG photo so it can be read by OCR, or enter the fields manually.",
+      ];
+      return NextResponse.json({ draft }, { status: 200 });
+    }
+
+    const draft = parseInsurancePolicy(extracted.text, { ocr: extracted.method === "ocr" });
+    return NextResponse.json({ draft }, { status: 200 });
   } catch (err: any) {
     return handleApiError(err);
   }
