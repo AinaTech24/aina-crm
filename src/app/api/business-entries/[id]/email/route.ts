@@ -62,7 +62,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           console.error("[business_entry.email] sender resolve failed — falling back to Resend:", (e as Error)?.message);
           sender = { source: "resend" };
         }
-        return { entry, lines, email, firmName: firm?.displayName ?? firm?.legalName ?? "Your advisor", sender };
+        return {
+          entry,
+          lines,
+          email,
+          firmName: firm?.displayName ?? firm?.legalName ?? "Your advisor",
+          firmLogoUrl: firm?.logoUrl ?? null,
+          firmArn: firm?.arn ?? null,
+          sender,
+        };
       });
     } catch (e: any) {
       console.error("[business_entry.email] prepare failed:", e?.stack || e?.message || e);
@@ -87,6 +95,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         businessDate: String(ctx.entry.businessDate),
         total: ctx.entry.totalAmount,
         lines: ctx.lines.map((l) => ({ schemeName: l.schemeName, txnType: l.txnType, amount: l.amount, frequency: l.frequency, fromSchemeName: l.fromSchemeName })),
+        logoUrl: ctx.firmLogoUrl,
+        arn: ctx.firmArn,
       });
       subject = r.subject; text = r.text; html = r.html;
     } catch {

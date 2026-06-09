@@ -24,6 +24,7 @@ import { emailAdapter } from "./adapters/resend";
 import { renderTemplateText } from "./tokens";
 import { getConsent, loadTenant } from "./pipeline";
 import { resolveEmailSender } from "./sender";
+import { emailLogoHeaderHtml } from "./email-logo";
 
 
 const MF_DISCLAIMER =
@@ -90,6 +91,7 @@ function buildEmailContent(
   const text = [bodyText, "", MF_DISCLAIMER, signature].filter((l) => l !== undefined).join("\n");
 
   const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#1a1a1a;line-height:1.55">
+  ${emailLogoHeaderHtml(tenantRow?.logoUrl, tenantRow?.displayName ?? tenantRow?.legalName)}
   <p style="white-space:pre-wrap;margin:0 0 16px">${escapeHtml(bodyText)}</p>
   <hr style="border:none;border-top:1px solid #e5e7eb;margin:20px 0"/>
   <p style="font-size:12px;color:#6b7280;margin:0 0 4px">${escapeHtml(MF_DISCLAIMER)}</p>

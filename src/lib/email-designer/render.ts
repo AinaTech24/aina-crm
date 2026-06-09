@@ -55,7 +55,15 @@ export function renderEmailHtml(body: EmailDesignerBody, ctx: RenderContext): st
   const blocks = body.blocks ?? [];
   const footer = body.footer ?? { includeArn: true, includeAddress: true, includeUnsubscribe: true };
 
-  const inner = blocks.map((b) => renderBlock(b, theme, ctx)).join("");
+  // Every email should lead with the firm's logo. If this template has no logo
+  // block, auto-prepend one from the theme/tenant logo so nothing ships unbranded.
+  const hasLogoBlock = blocks.some((b) => (b as any)?.type === "logo");
+  const autoLogoUrl = theme.logoUrl || ctx.tenant?.logoUrl || "";
+  const autoLogo =
+    !hasLogoBlock && autoLogoUrl
+      ? `<div style="text-align:${theme.logoAlign ?? "center"};margin-bottom:18px;"><img src="${escape(autoLogoUrl)}" alt="${escape(ctx.tenant?.displayName ?? "Logo")}" height="${theme.logoHeight ?? 40}" style="height:${theme.logoHeight ?? 40}px;max-height:${theme.logoHeight ?? 40}px;display:inline-block;"/></div>`
+      : "";
+  const inner = autoLogo + blocks.map((b) => renderBlock(b, theme, ctx)).join("");
   const footerHtml = renderFooter(footer, theme, ctx);
   const subject = substituteVariables(body.subject ?? "", ctx);
   const preheader = substituteVariables(body.preheader ?? "", ctx);

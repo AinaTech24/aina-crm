@@ -4,6 +4,8 @@
  * returns claims), with the mandatory MF risk line.
  */
 
+import { emailLogoHeaderHtml } from "@/lib/comms/email-logo";
+
 const TXN_LABEL: Record<string, string> = {
   sip: "SIP", lumpsum: "Lumpsum", additional_purchase: "Additional Purchase",
   switch: "Switch", stp: "STP", swp: "SWP", redemption: "Redemption",
@@ -35,6 +37,7 @@ export function renderBusinessEmail(input: {
   total: string | number;
   lines: EmailLine[];
   arn?: string | null;
+  logoUrl?: string | null;
 }): { subject: string; text: string; html: string } {
   const dateStr = new Date(input.businessDate).toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" });
   const product = PRODUCT_LABEL[input.productType] ?? "Investment";
@@ -66,6 +69,7 @@ export function renderBusinessEmail(input: {
 
   const html = `
   <div style="font-family:Arial,Helvetica,sans-serif;max-width:600px;margin:0 auto;color:#0f172a;">
+    ${emailLogoHeaderHtml(input.logoUrl, input.firmName)}
     <p>Dear ${esc(input.clientName)},</p>
     <p>Thank you for your continued trust. Here is a summary of the <strong>${esc(product)}</strong> transactions we have processed for you on <strong>${esc(dateStr)}</strong>:</p>
     <table style="width:100%;border-collapse:collapse;margin:16px 0;font-size:14px;">
