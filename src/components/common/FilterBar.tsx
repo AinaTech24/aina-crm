@@ -250,7 +250,7 @@ function MultiSelectChip({
         className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 h-8 text-xs font-medium transition ${
           active
             ? "bg-brand-cyan-light/40 border-brand-cyan/40 text-brand-cyan-deep"
-            : "bg-card border-border hover:bg-secondary"
+            : "bg-card border-border hover:bg-brand-cyan-light/40"
         }`}
       >
         <FilterIcon className="size-3" />
@@ -272,7 +272,7 @@ function MultiSelectChip({
                 const checked = value.includes(o.value);
                 return (
                   <li key={o.value}>
-                    <label className={`flex items-center gap-2 px-2 py-1.5 text-xs rounded cursor-pointer transition ${checked ? "bg-brand-cyan-light/40 text-brand-cyan-deep font-medium" : "hover:bg-secondary"}`}>
+                    <label className={`flex items-center gap-2 px-2 py-1.5 text-xs rounded cursor-pointer transition ${checked ? "bg-brand-cyan-light/40 text-brand-cyan-deep font-medium" : "hover:bg-brand-cyan-light/40"}`}>
                       <input
                         type="checkbox"
                         checked={checked}

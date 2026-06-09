@@ -19,6 +19,7 @@ import {
   DollarSign
 } from "lucide-react";
 import { InvestorLookup } from "@/components/common/InvestorLookup";
+import { SelectField } from "@/components/ui/SelectField";
 import { formatINR } from "@/lib/utils";
 import { computeGoal } from "@/lib/goal-planning/calc";
 
@@ -515,14 +516,14 @@ function PlanFormContent() {
             <span className="text-[9px] text-muted-foreground">/100</span>
           </div>
 
-          <select
+          <SelectField
             value={status}
             onChange={(e) => setStatus(e.target.value as any)}
             className="input-base text-xs font-semibold py-1 bg-card w-36"
           >
             <option value="draft">Draft Mode</option>
             <option value="finalized">Finalized</option>
-          </select>
+          </SelectField>
         </div>
       </div>
 
@@ -606,7 +607,7 @@ function PlanFormContent() {
 
               <label className="block">
                 <div className="text-xs font-bold mb-1">Client Risk Profile</div>
-                <select
+                <SelectField
                   value={riskProfile}
                   onChange={(e) => setRiskProfile(e.target.value)}
                   className="input-base bg-card"
@@ -616,7 +617,7 @@ function PlanFormContent() {
                   <option value="moderate">Moderate</option>
                   <option value="moderately_aggressive">Moderately Aggressive</option>
                   <option value="aggressive">Aggressive</option>
-                </select>
+                </SelectField>
               </label>
             </div>
 
@@ -764,7 +765,7 @@ function PlanFormContent() {
                   {assets.map((a, i) => (
                     <div key={i} className="bg-secondary/10 p-3 rounded-lg border space-y-2">
                       <div className="flex items-center gap-2">
-                        <select
+                        <SelectField
                           value={a.category}
                           onChange={(e) => patchAsset(i, { category: e.target.value as any })}
                           className="input-base text-xs py-1"
@@ -775,7 +776,7 @@ function PlanFormContent() {
                           <option value="real_estate">Real Estate</option>
                           <option value="cash">Liquid Cash / Bank Bal</option>
                           <option value="other">Other Asset</option>
-                        </select>
+                        </SelectField>
                         <button
                           type="button"
                           onClick={() => removeAsset(i)}
@@ -1158,7 +1159,7 @@ function PlanFormContent() {
                   <div key={i} className="bg-secondary/10 border rounded-xl p-4 space-y-3">
                     <div className="flex items-center justify-between gap-2 border-b pb-2">
                       <div className="flex items-center gap-2 flex-1">
-                        <select
+                        <SelectField
                           value={g.category}
                           onChange={(e) => patchGoal(i, { category: e.target.value })}
                           className="input-base text-xs py-1 max-w-[150px]"
@@ -1168,7 +1169,7 @@ function PlanFormContent() {
                               {c.label}
                             </option>
                           ))}
-                        </select>
+                        </SelectField>
                         <input
                           type="text"
                           placeholder="Goal Label (e.g. Aarav's Masters)"
@@ -1437,7 +1438,7 @@ function PlanFormContent() {
                 {recommendations.map((r, i) => (
                   <div key={i} className="bg-secondary/15 border p-3 rounded-lg space-y-2">
                     <div className="flex items-center gap-2">
-                      <select
+                      <SelectField
                         value={r.category}
                         onChange={(e) => patchRecommendation(i, { category: e.target.value as any })}
                         className="input-base text-xs py-0.5"
@@ -1447,9 +1448,9 @@ function PlanFormContent() {
                         <option value="goals">Goal SIP Plan</option>
                         <option value="investment">Mutual Funds / PMS Portfolio</option>
                         <option value="general">General Recommendation</option>
-                      </select>
+                      </SelectField>
 
-                      <select
+                      <SelectField
                         value={r.priority}
                         onChange={(e) => patchRecommendation(i, { priority: e.target.value as any })}
                         className="input-base text-xs py-0.5 max-w-[100px]"
@@ -1457,7 +1458,7 @@ function PlanFormContent() {
                         <option value="high">High Priority</option>
                         <option value="medium">Medium</option>
                         <option value="low">Low Priority</option>
-                      </select>
+                      </SelectField>
 
                       <button
                         type="button"
@@ -1533,8 +1534,10 @@ function PlanFormContent() {
         {step < 5 ? (
           <button
             type="button"
+            disabled={step === 1 && (!recipient || !clientAge)}
             onClick={() => setStep(step + 1)}
-            className="btn-primary text-xs flex items-center gap-1"
+            className="btn-primary text-xs flex items-center gap-1 disabled:opacity-50"
+            title={step === 1 && (!recipient || !clientAge) ? "Select a client and enter the client's age to continue" : undefined}
           >
             Next Step <ChevronRight className="size-3.5" />
           </button>
