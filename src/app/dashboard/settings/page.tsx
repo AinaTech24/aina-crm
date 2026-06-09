@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Building2, Database, Users, CreditCard, MessageCircle, Mail, Webhook, ShieldCheck, Workflow, KeyRound, Palette, UserCircle, GitBranch, Target } from "lucide-react";
+import { Building2, Database, Users, CreditCard, MessageCircle, Mail, Webhook, ShieldCheck, Workflow, KeyRound, Palette, UserCircle, GitBranch, Target, Network } from "lucide-react";
 
 const SECTIONS = [
   {
@@ -49,6 +49,12 @@ const SECTIONS = [
     title: "Team & roles",
     desc: "Invite team members, assign roles, manage seats.",
     href: "/dashboard/employees",
+  },
+  {
+    icon: Network,
+    title: "Desks (sub-branch teams)",
+    desc: "Group each branch into desks (DK, RC, 1…) and assign RMs — drives the monthly MIS roll-ups.",
+    href: "/dashboard/settings/desks",
   },
   {
     icon: GitBranch,

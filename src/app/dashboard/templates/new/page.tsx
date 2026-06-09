@@ -4,7 +4,10 @@ import { useMemo, useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
-import { ChevronLeft, ChevronDown, Eye, ShieldCheck, AlertCircle, Save, Send, Plus, Trash, Paperclip } from "lucide-react";
+import {
+  ChevronLeft, ChevronDown, ShieldCheck, AlertCircle, Save, Send, Plus, Trash, Paperclip,
+  Mail, MessageSquare, Smartphone, Check, ArrowRight, Sparkles,
+} from "lucide-react";
 import { runComplianceChecks, missingMandatoryLines } from "@/lib/comms/compliance";
 import { MergeFieldInserter, type VarDecl } from "@/components/templates/MergeFieldInserter";
 import { SelectField } from "@/components/ui/SelectField";
@@ -20,6 +23,19 @@ const EmailDesigner = dynamic(
 
 type Channel = "whatsapp" | "email" | "sms";
 type Category = "transactional" | "utility" | "marketing" | "authentication";
+
+const CHANNELS: { value: Channel; label: string; help: string; Icon: typeof Mail }[] = [
+  { value: "email", label: "Email", help: "A designed email with your logo & branding", Icon: Mail },
+  { value: "whatsapp", label: "WhatsApp", help: "A short WhatsApp text message", Icon: MessageSquare },
+  { value: "sms", label: "SMS", help: "A plain text SMS (DLT-registered)", Icon: Smartphone },
+];
+
+const CATEGORIES: { value: Category; label: string; help: string }[] = [
+  { value: "transactional", label: "Transactional", help: "Order, SIP & payment confirmations, statements" },
+  { value: "utility", label: "Service / Reminder", help: "Reminders, status updates, document requests" },
+  { value: "marketing", label: "Marketing", help: "Promotions & newsletters — needs marketing consent" },
+  { value: "authentication", label: "Authentication", help: "OTP / verification codes" },
+];
 
 const defaultEmailBody: EmailDesignerBody = {
   subject: "Welcome to {{tenant.displayName}}",
@@ -48,8 +64,15 @@ function extractVariables(text: string): string[] {
   return Array.from(new Set(matches.map((m) => m.slice(2, -2).trim())));
 }
 
+const STEPS = [
+  { n: 1 as const, label: "Set up" },
+  { n: 2 as const, label: "Design" },
+  { n: 3 as const, label: "Review & send" },
+];
+
 export default function NewTemplatePage() {
   const router = useRouter();
+  const [step, setStep] = useState<1 | 2 | 3>(1);
   const [name, setName] = useState("New template");
   const [key, setKey] = useState("new_template");
   // Auto-derive the key from the name until the user edits the key directly, so
@@ -211,8 +234,8 @@ export default function NewTemplatePage() {
   function applyComplianceFix() {
     if (!fixLines.length) return;
     const append = (t: string) => `${t.replace(/\s+$/, "")}\n\n${fixLines.join("\n")}`;
-    if (channel === "whatsapp") setWaText((t) => append(t));
-    else if (channel === "sms") setSmsText((t) => append(t));
+    if (channel === "whatsapp") setWaText(append);
+    else if (channel === "sms") setSmsText(append);
   }
 
   /** Insert a merge token: into WA/SMS at the cursor, or into the email subject;
@@ -270,266 +293,47 @@ export default function NewTemplatePage() {
     }
   }
 
-  return (
-    <div className="space-y-4 max-w-[1400px]">
-      <Link
-        href="/dashboard/templates"
-        className="text-sm text-muted-foreground hover:underline flex items-center gap-1"
+  const channelLabel = CHANNELS.find((c) => c.value === channel)?.label ?? channel;
+  const categoryMeta = CATEGORIES.find((c) => c.value === category);
+
+  // ---- shared sub-blocks ---------------------------------------------------
+
+  const complianceBadge = (
+    <div className="inline-flex items-center gap-2 text-xs">
+      <span
+        className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 font-medium ${
+          compliance.blocked
+            ? "bg-rose-50 text-rose-700"
+            : compliance.score >= 90
+              ? "bg-emerald-50 text-emerald-700"
+              : "bg-amber-50 text-amber-700"
+        }`}
       >
-        <ChevronLeft className="size-4" /> Back to templates
-      </Link>
-
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div className="flex-1 min-w-[300px]">
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="text-2xl font-bold tracking-tight bg-transparent border-none outline-none w-full"
-            placeholder="Template name"
-          />
-          <input
-            value={key}
-            onChange={(e) => { setKeyEdited(true); setKey(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_")); }}
-            className="text-xs font-mono text-muted-foreground bg-transparent border-none outline-none mt-1"
-            placeholder="template_key"
-          />
-        </div>
-        <div className="flex gap-2">
-          <button onClick={() => save({ submitForApproval: false })} disabled={saving} className="btn-secondary text-sm flex items-center gap-1">
-            <Save className="size-4" /> Save draft
-          </button>
-          <button
-            disabled={compliance.blocked || saving}
-            onClick={() => save({ submitForApproval: true })}
-            className="btn-primary text-sm disabled:opacity-50 flex items-center gap-1"
-          >
-            <Send className="size-4" /> Submit for approval
-          </button>
-        </div>
-      </div>
-
-      {error && (
-        <div className="card-surface p-3 text-sm text-rose-700 bg-rose-50/40">{error}</div>
+        <ShieldCheck className="size-3.5" />
+        {compliance.blocked ? "Not ready to send" : compliance.score >= 90 ? "Looks good" : "Could be better"} · {compliance.score}/100
+      </span>
+      {fixLines.length > 0 && (
+        <button
+          type="button"
+          onClick={applyComplianceFix}
+          className="font-semibold rounded-md bg-emerald-600 text-white hover:bg-emerald-700 px-2.5 py-1 inline-flex items-center gap-1"
+          title={`Insert the mandatory ${fixLines.join(" + ")}`}
+        >
+          <Sparkles className="size-3.5" /> Fix it for me
+        </button>
       )}
+    </div>
+  );
 
-      <div className="grid grid-cols-3 gap-3">
-        <Field label="Channel">
-          <SelectField value={channel} onChange={(e) => setChannel(e.target.value as Channel)} className="w-full">
-            <option value="email">Email</option>
-            <option value="whatsapp">WhatsApp</option>
-            <option value="sms">SMS</option>
-          </SelectField>
-        </Field>
-        <Field label="Category">
-          <SelectField value={category} onChange={(e) => setCategory(e.target.value as Category)} className="w-full">
-            <option value="transactional">Transactional</option>
-            <option value="utility">Utility</option>
-            <option value="marketing">Marketing</option>
-            <option value="authentication">Authentication</option>
-          </SelectField>
-        </Field>
-        <Field label="Locale">
-          <SelectField value={locale} onChange={(e) => setLocale(e.target.value)} className="w-full">
-            <option value="en-IN">English (India)</option>
-            <option value="hi-IN">Hindi</option>
-            <option value="gu-IN">Gujarati</option>
-            <option value="mr-IN">Marathi</option>
-          </SelectField>
-        </Field>
-      </div>
-
-      <Field label="Description / summary">
-        <input
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          placeholder="What is this template for? e.g. Sent when a SIP bounces — low-balance variant"
-          className="input-base w-full"
-        />
-      </Field>
-
-      {/* Compliance score strip */}
-      <div className="card-surface p-3 flex items-center gap-3">
-        <ShieldCheck className={`size-4 ${compliance.blocked ? "text-rose-600" : "text-emerald-600"}`} />
-        <div className="text-sm font-medium">Compliance score</div>
-        <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
-          <div
-            className={`h-full ${
-              compliance.blocked ? "bg-rose-500" : compliance.score >= 90 ? "bg-emerald-500" : "bg-amber-500"
-            }`}
-            style={{ width: `${compliance.score}%` }}
-          />
-        </div>
-        <div className="font-mono text-xs">{compliance.score}/100</div>
-        {fixLines.length > 0 && (
-          <button
-            type="button"
-            onClick={applyComplianceFix}
-            className="text-xs font-semibold rounded-md bg-emerald-600 text-white hover:bg-emerald-700 px-2.5 py-1 flex items-center gap-1"
-            title={`Insert the mandatory ${fixLines.join(" + ")}`}
-          >
-            <ShieldCheck className="size-3.5" /> Apply suggested fix
-          </button>
-        )}
-        {compliance.findings.length > 0 && (
-          <details className="text-xs">
-            <summary className="cursor-pointer text-muted-foreground">{compliance.findings.length} finding(s)</summary>
-            <ul className="mt-2 space-y-1 max-w-md">
-              {compliance.findings.map((f, i) => (
-                <li key={i} className="flex items-start gap-1.5">
-                  <AlertCircle
-                    className={`size-3 mt-0.5 ${
-                      f.severity === "block" ? "text-rose-600" : f.severity === "warn" ? "text-amber-600" : "text-blue-600"
-                    }`}
-                  />
-                  <span>{f.message}</span>
-                </li>
-              ))}
-            </ul>
-          </details>
-        )}
-      </div>
-
-      {/* Variable Configuration Panel — collapsed by default so it doesn't crowd the editor */}
-      {declaredVars.length > 0 && (
-        <details className="card-surface p-4 bg-slate-50/50 group">
-          <summary className="flex items-center justify-between cursor-pointer list-none select-none">
-            <h3 className="font-semibold text-xs text-slate-800 flex items-center gap-1.5">
-              <ChevronDown className="size-3.5 -rotate-90 group-open:rotate-0 transition-transform" />
-              Auto-Detected Variables ({declaredVars.length})
-            </h3>
-            <span className="text-[10px] text-muted-foreground font-mono">Use {"{{variable_name}}"} in text to add more</span>
-          </summary>
-          <div className="border rounded-md divide-y bg-background overflow-hidden mt-3">
-            {declaredVars.map((v, idx) => (
-              <div key={v.key} className="p-3 grid grid-cols-1 md:grid-cols-4 gap-3 items-center text-xs">
-                <div className="font-mono font-semibold text-slate-700 truncate">{v.key}</div>
-                <div>
-                  <label className="text-[9px] text-muted-foreground block font-medium uppercase tracking-wider mb-0.5">Type</label>
-                  <SelectField
-                    value={v.type}
-                    onChange={(e) => {
-                      const next = [...declaredVars];
-                      next[idx].type = e.target.value as any;
-                      setDeclaredVars(next);
-                    }}
-                    size="sm"
-                    className="w-full"
-                  >
-                    <option value="string">String</option>
-                    <option value="number">Number</option>
-                    <option value="currency">Currency (INR)</option>
-                    <option value="date">Date</option>
-                    <option value="boolean">Boolean</option>
-                    <option value="url">URL</option>
-                  </SelectField>
-                </div>
-                <div>
-                  <label className="text-[9px] text-muted-foreground block font-medium uppercase tracking-wider mb-0.5">Source path</label>
-                  <input
-                    value={v.source ?? ""}
-                    onChange={(e) => {
-                      const next = [...declaredVars];
-                      next[idx].source = e.target.value;
-                      setDeclaredVars(next);
-                    }}
-                    placeholder="e.g. investor.name"
-                    className="input-base py-1 px-2 text-xs w-full font-mono bg-background"
-                  />
-                </div>
-                <div className="flex items-center gap-2 md:pt-3">
-                  <input
-                    type="checkbox"
-                    id={`req-${v.key}`}
-                    checked={!!v.required}
-                    onChange={(e) => {
-                      const next = [...declaredVars];
-                      next[idx].required = e.target.checked;
-                      setDeclaredVars(next);
-                    }}
-                    className="rounded border-gray-300 text-primary focus:ring-primary size-3.5"
-                  />
-                  <label htmlFor={`req-${v.key}`} className="cursor-pointer text-xs text-slate-600 select-none">
-                    Required Variable
-                  </label>
-                </div>
-              </div>
-            ))}
-          </div>
-        </details>
-      )}
-
-      {/* Merge-field inserter (Sanchay-style target module + field picker) */}
-      <MergeFieldInserter onInsert={insertMergeField} />
-      {channel === "email" && (
-        <p className="text-[11px] text-muted-foreground -mt-1">
-          For email, the field is added to the <strong>subject</strong> + declared as a variable; type{" "}
-          <code className="bg-muted px-1 rounded">{`{{investor.name}}`}</code> directly into body blocks too.
-        </p>
-      )}
-
-      {/* Body editor — per channel */}
-      {channel === "email" && (
-        <div className="pt-3 mt-1 border-t border-border/60">
-          <h2 className="text-base font-bold tracking-tight">Design your email</h2>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Start from a ready-made template, then customise it in the editor below.
-          </p>
-        </div>
-      )}
-      {channel === "email" && (
-        <div className="rounded-xl border border-border bg-secondary/30 p-3">
-          <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-            Start from a template
-          </div>
-          <div className="space-y-3 max-h-80 overflow-y-auto scrollbar-thin pr-1">
-            {([
-              { key: "client-transactional", label: "Client · Transactional", match: (s: (typeof STARTER_TEMPLATES)[number]) => s.audience !== "internal" && s.category === "transactional" },
-              { key: "client-utility", label: "Client · Utility / Service", match: (s: (typeof STARTER_TEMPLATES)[number]) => s.audience !== "internal" && s.category === "utility" },
-              { key: "client-marketing", label: "Client · Marketing", match: (s: (typeof STARTER_TEMPLATES)[number]) => s.audience !== "internal" && s.category === "marketing" },
-              { key: "internal", label: "Team & Internal · Alerts / Status / Reports", match: (s: (typeof STARTER_TEMPLATES)[number]) => s.audience === "internal" },
-            ] as const).map((group) => {
-              const items = STARTER_TEMPLATES.filter(group.match);
-              if (!items.length) return null;
-              return (
-                <div key={group.key}>
-                  <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70 mb-1.5">{group.label}</div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                    {items.map((s) => (
-                      <button
-                        key={s.key}
-                        type="button"
-                        onClick={() => {
-                          const body = applyStarter(s.key);
-                          if (body) {
-                            setEmailBody(body);
-                            setCategory(s.category);
-                            // Give the new template a meaningful, unique-ish name +
-                            // key so it doesn't collide on the static default.
-                            setName(s.name);
-                            setKeyEdited(false);
-                          }
-                        }}
-                        className="text-left rounded-lg border border-border bg-card px-3 py-2.5 hover:border-brand-cyan/60 hover:shadow-sm transition-all"
-                      >
-                        <div className="text-sm font-semibold truncate">{s.name}</div>
-                        <div className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2">{s.description}</div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          <p className="text-[10px] text-muted-foreground mt-1.5">Pick one to pre-fill the designer, then customise. Or start from scratch below.</p>
-        </div>
-      )}
+  const editorForChannel = (
+    <>
       {channel === "email" && (
         <EmailDesigner value={emailBody} onChange={setEmailBody} tenant={tenant ?? undefined} />
       )}
 
       {channel === "whatsapp" && (
         <div className="card-surface p-5 space-y-3">
-          <Field label="Body">
+          <Field label="Message text">
             <textarea
               ref={waRef}
               value={waText}
@@ -539,9 +343,9 @@ export default function NewTemplatePage() {
             />
           </Field>
           <div className="text-xs text-muted-foreground">
-            Use <code className="bg-muted px-1 rounded">{`{{name}}`}</code>,{" "}
-            <code className="bg-muted px-1 rounded">{`{{amount}}`}</code> etc. for personalization. Variables resolve
-            from subject + tenant + run context at send time.
+            Tip: type <code className="bg-muted px-1 rounded">{`{{name}}`}</code> or{" "}
+            <code className="bg-muted px-1 rounded">{`{{amount}}`}</code> where you want the client&apos;s details to
+            appear — they get filled in automatically when the message is sent.
           </div>
         </div>
       )}
@@ -551,7 +355,7 @@ export default function NewTemplatePage() {
           <Field label="DLT Template ID">
             <input value={dltId} onChange={(e) => setDltId(e.target.value)} className="input-base w-full font-mono" placeholder="1107171234567" />
           </Field>
-          <Field label="SMS body (max ~160 chars per part)">
+          <Field label="SMS text (max ~160 characters per part)">
             <textarea
               ref={smsRef}
               value={smsText}
@@ -563,52 +367,430 @@ export default function NewTemplatePage() {
           <div className="text-xs text-muted-foreground">{smsText.length} characters · {Math.ceil(smsText.length / 160)} SMS part(s)</div>
         </div>
       )}
+    </>
+  );
 
-      {/* Attachments (auto-attach on email send) */}
-      <div className="card-surface p-5 space-y-2">
-        <div className="flex items-center justify-between">
-          <h3 className="font-semibold text-sm flex items-center gap-2">
-            <Paperclip className="size-4 text-brand-cyan" /> Attachments ({attachments.length})
-          </h3>
-          <button
-            type="button"
-            onClick={() => setAttachments((a) => [...a, { name: "", url: "" }])}
-            className="btn-ghost text-xs"
-          >
-            <Plus className="size-3.5" /> Add
-          </button>
-        </div>
-        {attachments.length === 0 ? (
-          <p className="text-xs text-muted-foreground">
-            Attach a hosted file (fund factsheet, KYC form, brochure) — auto-attached on every <strong>email</strong> send.
-          </p>
-        ) : (
-          <ul className="space-y-2">
-            {attachments.map((a, i) => (
-              <li key={i} className="flex items-center gap-2">
-                <input
-                  value={a.name}
-                  onChange={(e) => setAttachments((arr) => arr.map((x, idx) => (idx === i ? { ...x, name: e.target.value } : x)))}
-                  placeholder="Display name"
-                  className="input-base text-sm w-1/3"
-                />
-                <input
-                  value={a.url}
-                  onChange={(e) => setAttachments((arr) => arr.map((x, idx) => (idx === i ? { ...x, url: e.target.value } : x)))}
-                  placeholder="https://… (hosted file URL)"
-                  className="input-base text-sm flex-1 font-mono"
-                />
+  // ---- render --------------------------------------------------------------
+
+  return (
+    <div className={`mx-auto pb-28 ${step === 2 ? "max-w-[1400px]" : "max-w-3xl"}`}>
+      <Link
+        href="/dashboard/templates"
+        className="text-sm text-muted-foreground hover:underline flex items-center gap-1 mb-3"
+      >
+        <ChevronLeft className="size-4" /> Back to templates
+      </Link>
+
+      {/* Title + stepper */}
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold tracking-tight">Create a message template</h1>
+        <p className="text-sm text-muted-foreground mt-0.5">
+          Three quick steps — set it up, design it, then send it for approval.
+        </p>
+
+        <ol className="mt-4 flex items-center gap-2">
+          {STEPS.map((s, i) => {
+            const state = s.n < step ? "done" : s.n === step ? "current" : "todo";
+            return (
+              <li key={s.n} className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => setAttachments((arr) => arr.filter((_, idx) => idx !== i))}
-                  className="p-2 text-muted-foreground hover:text-rose-600 hover:bg-rose-50 rounded-md"
+                  onClick={() => setStep(s.n)}
+                  className={`flex items-center gap-2 rounded-full pl-1.5 pr-3 py-1 text-sm font-medium transition-colors ${
+                    state === "current"
+                      ? "bg-brand-cyan/10 text-brand-cyan-deep"
+                      : state === "done"
+                        ? "text-emerald-700 hover:bg-emerald-50"
+                        : "text-muted-foreground hover:bg-muted"
+                  }`}
                 >
-                  <Trash className="size-3.5" />
+                  <span
+                    className={`grid place-items-center size-6 rounded-full text-xs font-bold ${
+                      state === "current"
+                        ? "bg-brand-cyan text-white"
+                        : state === "done"
+                          ? "bg-emerald-600 text-white"
+                          : "bg-muted text-muted-foreground"
+                    }`}
+                  >
+                    {state === "done" ? <Check className="size-3.5" /> : s.n}
+                  </span>
+                  {s.label}
                 </button>
+                {i < STEPS.length - 1 && <span className="w-6 h-px bg-border" />}
               </li>
-            ))}
-          </ul>
-        )}
+            );
+          })}
+        </ol>
+      </div>
+
+      {error && (
+        <div className="card-surface p-3 mb-4 text-sm text-rose-700 bg-rose-50/40">{error}</div>
+      )}
+
+      {/* ============================ STEP 1 — SET UP ============================ */}
+      {step === 1 && (
+        <div className="space-y-6">
+          <section>
+            <h2 className="font-semibold text-sm mb-2">1. How do you want to reach your client?</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {CHANNELS.map(({ value, label, help, Icon }) => {
+                const active = channel === value;
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setChannel(value)}
+                    className={`text-left rounded-xl border p-4 transition-all ${
+                      active ? "border-brand-cyan ring-2 ring-brand-cyan/20 bg-brand-cyan/5" : "border-border bg-card hover:border-brand-cyan/50"
+                    }`}
+                  >
+                    <Icon className={`size-5 mb-2 ${active ? "text-brand-cyan-deep" : "text-muted-foreground"}`} />
+                    <div className="font-semibold text-sm">{label}</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">{help}</div>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+
+          <section className="grid grid-cols-1 gap-4">
+            <h2 className="font-semibold text-sm -mb-1">2. Name it &amp; tell us what it&apos;s for</h2>
+            <Field label="Template name">
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="input-base w-full text-base"
+                placeholder="e.g. SIP bounce — friendly reminder"
+              />
+            </Field>
+            <Field label="What is this template for? (optional)">
+              <input
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="e.g. Sent when a SIP bounces — low-balance variant"
+                className="input-base w-full"
+              />
+            </Field>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Field label="Message type">
+                <SelectField value={category} onChange={(e) => setCategory(e.target.value as Category)} className="w-full">
+                  {CATEGORIES.map((c) => (
+                    <option key={c.value} value={c.value}>{c.label}</option>
+                  ))}
+                </SelectField>
+                {categoryMeta && <p className="text-[11px] text-muted-foreground mt-1">{categoryMeta.help}</p>}
+              </Field>
+              <Field label="Language">
+                <SelectField value={locale} onChange={(e) => setLocale(e.target.value)} className="w-full">
+                  <option value="en-IN">English (India)</option>
+                  <option value="hi-IN">Hindi</option>
+                  <option value="gu-IN">Gujarati</option>
+                  <option value="mr-IN">Marathi</option>
+                </SelectField>
+              </Field>
+            </div>
+          </section>
+
+          {channel === "email" && (
+            <section>
+              <h2 className="font-semibold text-sm mb-1">3. Choose a starting point</h2>
+              <p className="text-xs text-muted-foreground mb-3">
+                Pick a ready-made email to start from — you can change everything in the next step. Or skip to start from a blank email.
+              </p>
+              <div className="space-y-4">
+                {([
+                  { key: "client-transactional", label: "Client · Transactional", match: (s: (typeof STARTER_TEMPLATES)[number]) => s.audience !== "internal" && s.category === "transactional" },
+                  { key: "client-utility", label: "Client · Service / Reminder", match: (s: (typeof STARTER_TEMPLATES)[number]) => s.audience !== "internal" && s.category === "utility" },
+                  { key: "client-marketing", label: "Client · Marketing", match: (s: (typeof STARTER_TEMPLATES)[number]) => s.audience !== "internal" && s.category === "marketing" },
+                  { key: "internal", label: "Team & Internal", match: (s: (typeof STARTER_TEMPLATES)[number]) => s.audience === "internal" },
+                ] as const).map((group) => {
+                  const items = STARTER_TEMPLATES.filter(group.match);
+                  if (!items.length) return null;
+                  return (
+                    <div key={group.key}>
+                      <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70 mb-1.5">{group.label}</div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                        {items.map((s) => (
+                          <button
+                            key={s.key}
+                            type="button"
+                            onClick={() => {
+                              const body = applyStarter(s.key);
+                              if (body) {
+                                setEmailBody(body);
+                                setCategory(s.category);
+                                setName(s.name);
+                                setKeyEdited(false);
+                                setStep(2);
+                              }
+                            }}
+                            className="text-left rounded-lg border border-border bg-card px-3 py-2.5 hover:border-brand-cyan/60 hover:shadow-sm transition-all"
+                          >
+                            <div className="text-sm font-semibold truncate">{s.name}</div>
+                            <div className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2">{s.description}</div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+        </div>
+      )}
+
+      {/* ============================ STEP 2 — DESIGN ============================ */}
+      {step === 2 && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <h2 className="font-semibold text-base">
+                {channel === "email" ? "Design your email" : `Write your ${channelLabel} message`}
+              </h2>
+              <p className="text-xs text-muted-foreground">
+                {channel === "email"
+                  ? "Add blocks, edit text and see the live preview on the right."
+                  : "Keep it short and personal. Use the personalisation helper to drop in client details."}
+              </p>
+            </div>
+            {complianceBadge}
+          </div>
+
+          {/* Personalisation helper — collapsible so it doesn't crowd the editor */}
+          <details className="card-surface p-0 group" open={channel !== "email"}>
+            <summary className="flex items-center justify-between cursor-pointer list-none select-none px-4 py-3">
+              <span className="font-semibold text-sm flex items-center gap-1.5">
+                <ChevronDown className="size-4 -rotate-90 group-open:rotate-0 transition-transform" />
+                Add personalisation (client name, amount, dates…)
+              </span>
+            </summary>
+            <div className="px-4 pb-4 space-y-2">
+              <MergeFieldInserter onInsert={insertMergeField} />
+              {channel === "email" && (
+                <p className="text-[11px] text-muted-foreground">
+                  Picking a field adds it to the <strong>subject line</strong>. To use it in the body, just type{" "}
+                  <code className="bg-muted px-1 rounded">{`{{investor.name}}`}</code> directly into any text block.
+                </p>
+              )}
+            </div>
+          </details>
+
+          {editorForChannel}
+        </div>
+      )}
+
+      {/* ========================= STEP 3 — REVIEW & SEND ========================= */}
+      {step === 3 && (
+        <div className="space-y-4">
+          <h2 className="font-semibold text-base">Review &amp; send for approval</h2>
+
+          {/* Compliance result — friendly */}
+          <div className={`card-surface p-4 ${compliance.blocked ? "bg-rose-50/40" : "bg-emerald-50/30"}`}>
+            <div className="flex items-center gap-3">
+              <ShieldCheck className={`size-5 ${compliance.blocked ? "text-rose-600" : "text-emerald-600"}`} />
+              <div className="flex-1">
+                <div className="font-semibold text-sm">
+                  {compliance.blocked ? "A few things to fix before sending" : "Compliance check passed"}
+                </div>
+                <div className="text-xs text-muted-foreground">Score {compliance.score}/100</div>
+              </div>
+              {fixLines.length > 0 && (
+                <button
+                  type="button"
+                  onClick={applyComplianceFix}
+                  className="text-xs font-semibold rounded-md bg-emerald-600 text-white hover:bg-emerald-700 px-2.5 py-1 inline-flex items-center gap-1"
+                >
+                  <Sparkles className="size-3.5" /> Fix it for me
+                </button>
+              )}
+            </div>
+            {compliance.findings.length > 0 && (
+              <ul className="mt-3 space-y-1.5 text-xs">
+                {compliance.findings.map((f, i) => (
+                  <li key={i} className="flex items-start gap-1.5">
+                    <AlertCircle
+                      className={`size-3.5 mt-0.5 shrink-0 ${
+                        f.severity === "block" ? "text-rose-600" : f.severity === "warn" ? "text-amber-600" : "text-blue-600"
+                      }`}
+                    />
+                    <span>{f.message}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          {/* Summary */}
+          <div className="card-surface p-4">
+            <h3 className="font-semibold text-sm mb-3">Summary</h3>
+            <dl className="grid grid-cols-2 sm:grid-cols-4 gap-y-3 gap-x-4 text-sm">
+              <SummaryItem label="Name" value={name} />
+              <SummaryItem label="Channel" value={channelLabel} />
+              <SummaryItem label="Type" value={categoryMeta?.label ?? category} />
+              <SummaryItem label="Language" value={locale} />
+            </dl>
+          </div>
+
+          {/* Attachments (email only really) */}
+          <div className="card-surface p-4 space-y-2">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-sm flex items-center gap-2">
+                <Paperclip className="size-4 text-brand-cyan" /> Attachments ({attachments.length})
+              </h3>
+              <button type="button" onClick={() => setAttachments((a) => [...a, { name: "", url: "" }])} className="btn-ghost text-xs">
+                <Plus className="size-3.5" /> Add
+              </button>
+            </div>
+            {attachments.length === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                Attach a hosted file (fund factsheet, KYC form, brochure) — auto-attached on every <strong>email</strong> send.
+              </p>
+            ) : (
+              <ul className="space-y-2">
+                {attachments.map((a, i) => (
+                  <li key={i} className="flex items-center gap-2">
+                    <input
+                      value={a.name}
+                      onChange={(e) => setAttachments((arr) => arr.map((x, idx) => (idx === i ? { ...x, name: e.target.value } : x)))}
+                      placeholder="Display name"
+                      className="input-base text-sm w-1/3"
+                    />
+                    <input
+                      value={a.url}
+                      onChange={(e) => setAttachments((arr) => arr.map((x, idx) => (idx === i ? { ...x, url: e.target.value } : x)))}
+                      placeholder="https://… (hosted file URL)"
+                      className="input-base text-sm flex-1 font-mono"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setAttachments((arr) => arr.filter((_, idx) => idx !== i))}
+                      className="p-2 text-muted-foreground hover:text-rose-600 hover:bg-rose-50 rounded-md"
+                    >
+                      <Trash className="size-3.5" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          {/* Advanced — hidden by default; the techie bits live here */}
+          <details className="card-surface p-0 group">
+            <summary className="flex items-center justify-between cursor-pointer list-none select-none px-4 py-3">
+              <span className="font-semibold text-sm flex items-center gap-1.5">
+                <ChevronDown className="size-4 -rotate-90 group-open:rotate-0 transition-transform" />
+                Advanced settings
+              </span>
+              <span className="text-[11px] text-muted-foreground">Most people can skip this</span>
+            </summary>
+            <div className="px-4 pb-4 space-y-4">
+              <Field label="Template key (used internally — auto-generated)">
+                <input
+                  value={key}
+                  onChange={(e) => { setKeyEdited(true); setKey(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_")); }}
+                  className="input-base w-full font-mono text-sm"
+                  placeholder="template_key"
+                />
+              </Field>
+
+              {declaredVars.length > 0 && (
+                <div>
+                  <div className="text-xs text-muted-foreground mb-1.5">
+                    Personalisation fields found in your message ({declaredVars.length}) — we guessed the format for each.
+                  </div>
+                  <div className="border rounded-md divide-y bg-background overflow-hidden">
+                    {declaredVars.map((v, idx) => (
+                      <div key={v.key} className="p-3 grid grid-cols-1 md:grid-cols-4 gap-3 items-center text-xs">
+                        <div className="font-mono font-semibold text-slate-700 truncate">{v.key}</div>
+                        <div>
+                          <label className="text-[9px] text-muted-foreground block font-medium uppercase tracking-wider mb-0.5">Format</label>
+                          <SelectField
+                            value={v.type}
+                            onChange={(e) => {
+                              const next = [...declaredVars];
+                              next[idx].type = e.target.value as any;
+                              setDeclaredVars(next);
+                            }}
+                            size="sm"
+                            className="w-full"
+                          >
+                            <option value="string">Text</option>
+                            <option value="number">Number</option>
+                            <option value="currency">Currency (INR)</option>
+                            <option value="date">Date</option>
+                            <option value="boolean">Yes / No</option>
+                            <option value="url">Link</option>
+                          </SelectField>
+                        </div>
+                        <div>
+                          <label className="text-[9px] text-muted-foreground block font-medium uppercase tracking-wider mb-0.5">Source path</label>
+                          <input
+                            value={v.source ?? ""}
+                            onChange={(e) => {
+                              const next = [...declaredVars];
+                              next[idx].source = e.target.value;
+                              setDeclaredVars(next);
+                            }}
+                            placeholder="e.g. investor.name"
+                            className="input-base py-1 px-2 text-xs w-full font-mono bg-background"
+                          />
+                        </div>
+                        <div className="flex items-center gap-2 md:pt-3">
+                          <input
+                            type="checkbox"
+                            id={`req-${v.key}`}
+                            checked={!!v.required}
+                            onChange={(e) => {
+                              const next = [...declaredVars];
+                              next[idx].required = e.target.checked;
+                              setDeclaredVars(next);
+                            }}
+                            className="rounded border-gray-300 text-primary focus:ring-primary size-3.5"
+                          />
+                          <label htmlFor={`req-${v.key}`} className="cursor-pointer text-xs text-slate-600 select-none">
+                            Required
+                          </label>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </details>
+        </div>
+      )}
+
+      {/* ============================ STICKY FOOTER NAV ============================ */}
+      <div className="sticky bottom-3 z-10 mt-6 rounded-xl border border-border bg-card/95 backdrop-blur shadow-lg px-4 py-3 flex items-center justify-between gap-3">
+        <div>
+          {step > 1 && (
+            <button type="button" onClick={() => setStep((s) => (s - 1) as 1 | 2 | 3)} className="btn-secondary text-sm flex items-center gap-1">
+              <ChevronLeft className="size-4" /> Back
+            </button>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={() => save({ submitForApproval: false })} disabled={saving} className="btn-secondary text-sm flex items-center gap-1">
+            <Save className="size-4" /> Save draft
+          </button>
+          {step < 3 ? (
+            <button type="button" onClick={() => setStep((s) => (s + 1) as 1 | 2 | 3)} className="btn-primary text-sm flex items-center gap-1">
+              {step === 1 ? "Next: Design" : "Next: Review"} <ArrowRight className="size-4" />
+            </button>
+          ) : (
+            <button
+              disabled={compliance.blocked || saving}
+              onClick={() => save({ submitForApproval: true })}
+              className="btn-primary text-sm disabled:opacity-50 flex items-center gap-1"
+              title={compliance.blocked ? "Fix the compliance issues above before submitting" : undefined}
+            >
+              <Send className="size-4" /> Submit for approval
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -620,6 +802,15 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <div className="text-xs text-muted-foreground mb-1">{label}</div>
       {children}
     </label>
+  );
+}
+
+function SummaryItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</dt>
+      <dd className="font-medium truncate" title={value}>{value || "—"}</dd>
+    </div>
   );
 }
 

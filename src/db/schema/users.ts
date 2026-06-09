@@ -9,6 +9,9 @@ export const users = pgTable(
     id,
     tenantId: tenantId.references(() => tenants.id),
     branchId: uuid("branch_id").references(() => branches.id),
+    /** Sub-branch desk this user belongs to (FK desks.id, enforced in migration
+     *  0101). Drives the Branch → Desk → RM roll-up in the monthly MIS reports. */
+    deskId: uuid("desk_id"),
     email: text("email").notNull(),
     name: text("name").notNull(),
     phone: text("phone"),
