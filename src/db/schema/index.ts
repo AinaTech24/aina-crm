@@ -72,3 +72,4 @@ export * from "./cadences";
 export * from "./reconciliation";
 export * from "./ignored_duplicates";
 export * from "./platform_settings";
+export * from "./metric_snapshots";

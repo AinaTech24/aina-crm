@@ -29,6 +29,7 @@ const REPORTS: { group: string; items: ReportItem[] }[] = [
     { key: "sip_expiring", label: "SIP Expiring Soon", icon: "Calendar" },
     { key: "sip_topup_opportunity", label: "SIP Top-Up Opportunity", icon: "TrendingUp" },
     { key: "rm_sip_book", label: "RM-wise SIP Book", icon: "Users" },
+    { key: "sip_book_size", label: "SIP Book Size (branch-wise)", icon: "BarChart3", href: "/dashboard/reports/metric/sip-book" },
     { key: "sip_rejected", label: "SIP Rejected", icon: "AlertTriangle" },
     { key: "sip_recovery_monthly", label: "Monthly SIP Recovery", icon: "TrendingUp" },
   ]},
@@ -39,7 +40,14 @@ const REPORTS: { group: string; items: ReportItem[] }[] = [
     { key: "rm_pending", label: "RM-wise Pending Work", icon: "AlertTriangle" },
     { key: "employee_tasks", label: "Employee-wise Tasks", icon: "Users" },
     { key: "branch_business", label: "Branch-wise Business", icon: "Briefcase" },
+    { key: "aum_status", label: "AUM Status (branch-wise)", icon: "BarChart3", href: "/dashboard/reports/metric/aum" },
     { key: "team_productivity", label: "Team Productivity", icon: "Users" },
+  ]},
+  { group: "Branch & RM Business (Monthly)", items: [
+    { key: "branch_rm_sip", label: "SIP — Branch & RM-wise", icon: "TrendingUp", href: "/dashboard/reports/branch-rm/sip" },
+    { key: "branch_rm_equity", label: "Equity Lumpsum — Branch & RM-wise", icon: "BarChart3", href: "/dashboard/reports/branch-rm/equity-lumpsum" },
+    { key: "branch_rm_liquid", label: "Liquid Lumpsum — Branch & RM-wise", icon: "BarChart3", href: "/dashboard/reports/branch-rm/liquid-lumpsum" },
+    { key: "branch_rm_insurance", label: "Insurance — Branch & RM-wise", icon: "ShieldCheck", href: "/dashboard/reports/branch-rm/insurance" },
   ]},
   { group: "Lead Blueprint", items: [
     { key: "blueprint_drop_off", label: "Lead Drop-off Analysis", icon: "TrendingDown" },

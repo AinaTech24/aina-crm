@@ -15,6 +15,7 @@ import { requireSession } from "@/lib/auth/session";
 import { formatRelative } from "@/lib/utils";
 import { RowActions } from "@/components/common/RowActions";
 import { EmptyState } from "@/components/common/EmptyState";
+import { FetchWhatsappTemplatesButton } from "@/components/templates/FetchWhatsappTemplatesButton";
 
 export const dynamic = "force-dynamic";
 
@@ -114,9 +115,12 @@ export default async function TemplatesPage({
             Reusable, versioned WhatsApp · Email · SMS templates — every one compliance-checked before it can send.
           </p>
         </div>
-        <Link href="/dashboard/templates/new" className="btn-primary">
-          <Plus className="size-4" /> New template
-        </Link>
+        <div className="flex items-center gap-2">
+          <FetchWhatsappTemplatesButton />
+          <Link href="/dashboard/templates/new" className="btn-primary">
+            <Plus className="size-4" /> New template
+          </Link>
+        </div>
       </div>
 
       {/* KPI strip */}

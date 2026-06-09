@@ -174,12 +174,13 @@ export const wainaWhatsappAdapter = {
     }
   },
 
-  /** List approved templates from the Aina WhatsApp workspace. Uses the shared
-   *  env key (the per-tenant key is only threaded on the send path). */
-  async listTemplates(): Promise<Array<any>> {
-    const apiKey = process.env.WAINA_API_KEY;
+  /** List templates from the Aina WhatsApp workspace. Pass the tenant's connected
+   *  key (opts.apiKey) to fetch THAT firm's templates; falls back to the shared
+   *  env key for the background sync. */
+  async listTemplates(opts?: { apiKey?: string; baseUrl?: string | null }): Promise<Array<any>> {
+    const apiKey = opts?.apiKey ?? process.env.WAINA_API_KEY;
     if (!apiKey) return [];
-    const base = toApiBase(process.env.WAINA_BASE_URL ?? process.env.WAINA_WEBHOOK_URL);
+    const base = toApiBase(opts?.baseUrl ?? process.env.WAINA_BASE_URL ?? process.env.WAINA_WEBHOOK_URL);
     try {
       const res = await axios.get(`${base}/extension/templates`, {
         timeout: 30_000,

@@ -11,7 +11,7 @@ import { handleApiError } from "@/lib/api/error-handler";
 
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuid } from "uuid";
-import { desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
@@ -97,10 +97,25 @@ export async function POST(req: NextRequest) {
         dltTemplateId,
       });
 
+      // Auto-resolve a colliding key (tenant, channel, locale) by appending _2,
+      // _3… so saving never fails on a default key like "new_template". Templates
+      // are low-cardinality per tenant, so reading the existing keys is cheap.
+      const existingKeys = await tx
+        .select({ key: templates.key })
+        .from(templates)
+        .where(and(eq(templates.tenantId, session.tenantId), eq(templates.channel, body.channel), eq(templates.locale, body.locale)));
+      const taken = new Set(existingKeys.map((r) => r.key));
+      let key = body.key;
+      if (taken.has(key)) {
+        let n = 2;
+        while (taken.has(`${key}_${n}`)) n++;
+        key = `${key}_${n}`;
+      }
+
       await tx.insert(templates).values({
         id: tplId,
         tenantId: session.tenantId,
-        key: body.key,
+        key,
         channel: body.channel,
         name: body.name,
         description: body.description,
@@ -132,7 +147,7 @@ export async function POST(req: NextRequest) {
         ? [`Undeclared merge fields will render blank: ${undeclared.map((k) => `{{${k}}}`).join(", ")}`]
         : [];
 
-      return { id: tplId, versionId: verId, compliance, warnings };
+      return { id: tplId, versionId: verId, key, compliance, warnings };
     });
 
     return NextResponse.json(result, { status: 201 });

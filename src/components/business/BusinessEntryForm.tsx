@@ -40,23 +40,23 @@ interface ProductConfig {
 }
 const PRODUCT_CONFIG: Record<string, ProductConfig> = {
   mutual_fund: { schemeLabel: "Scheme", schemePlaceholder: "Search catalog or type a name…", catalog: true,
-    txnTypes: ["lumpsum", "additional_purchase", "sip", "switch", "stp", "swp", "redemption"] },
+    txnTypes: ["lumpsum", "additional_purchase", "sip", "sip_stop", "switch", "stp", "swp", "redemption"] },
   pms: { schemeLabel: "Strategy", schemePlaceholder: "PMS strategy name…", catalog: false,
     txnTypes: ["lumpsum", "additional_purchase", "redemption"], defaultAssetClass: "equity" },
   aif: { schemeLabel: "Scheme / fund", schemePlaceholder: "AIF scheme name…", catalog: false,
     txnTypes: ["lumpsum", "additional_purchase", "redemption"], defaultAssetClass: "other" },
   sif: { schemeLabel: "Strategy", schemePlaceholder: "SIF strategy name…", catalog: false,
-    txnTypes: ["lumpsum", "additional_purchase", "sip", "redemption"], defaultAssetClass: "equity" },
+    txnTypes: ["lumpsum", "additional_purchase", "sip", "sip_stop", "redemption"], defaultAssetClass: "equity" },
   bond: { schemeLabel: "Bond / instrument", schemePlaceholder: "Bond name / ISIN…", catalog: false,
     txnTypes: ["lumpsum", "redemption"], defaultAssetClass: "debt", lockAssetClass: true },
   ncd: { schemeLabel: "NCD / instrument", schemePlaceholder: "NCD name / ISIN…", catalog: false,
     txnTypes: ["lumpsum", "redemption"], defaultAssetClass: "debt", lockAssetClass: true },
   other: { schemeLabel: "Item", schemePlaceholder: "Product / item name…", catalog: false,
-    txnTypes: ["lumpsum", "additional_purchase", "sip", "redemption"] },
+    txnTypes: ["lumpsum", "additional_purchase", "sip", "sip_stop", "redemption"] },
 };
 const productCfg = (pt: string): ProductConfig => PRODUCT_CONFIG[pt] ?? PRODUCT_CONFIG.mutual_fund;
 const TXN_OPTS: [string, string][] = [
-  ["lumpsum", "Lumpsum"], ["additional_purchase", "Additional Purchase"], ["sip", "SIP"],
+  ["lumpsum", "Lumpsum"], ["additional_purchase", "Additional Purchase"], ["sip", "SIP"], ["sip_stop", "SIP Stop"],
   ["switch", "Switch"], ["stp", "STP"], ["swp", "SWP"], ["redemption", "Redemption"],
 ];
 const FREQ_OPTS: [string, string][] = [
@@ -66,12 +66,13 @@ const CLASS_OPTS: [string, string][] = [
   ["equity", "Equity"], ["hybrid", "Hybrid"], ["debt", "Debt"], ["liquid", "Liquid"], ["gold", "Gold"], ["other", "Other"],
 ];
 const STATUS_OPTS: [string, string][] = [["draft", "Draft"], ["confirmed", "Confirmed"]];
-const NEEDS_FREQ = new Set(["sip", "stp", "swp"]);
+const NEEDS_FREQ = new Set(["sip", "sip_stop", "stp", "swp"]);
 const NEEDS_FROM = new Set(["switch", "stp", "swp"]);
 /** Recurring installments (amount is per-installment, not a one-time figure). */
-const RECURRING_TXN = new Set(["sip", "stp", "swp"]);
-/** Money leaving the book — never adds to "business booked". */
-const OUTFLOW_TXN = new Set(["redemption", "swp"]);
+const RECURRING_TXN = new Set(["sip", "sip_stop", "stp", "swp"]);
+/** Money leaving the book — never adds to "business booked". A SIP Stop is a
+ *  reduction of the SIP book, so it likewise must not count as positive business. */
+const OUTFLOW_TXN = new Set(["redemption", "swp", "sip_stop"]);
 
 type Line = {
   key: string;
