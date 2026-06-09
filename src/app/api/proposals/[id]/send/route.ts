@@ -32,6 +32,9 @@ import { gateClientSend } from "@/lib/comms/guarded-send";
 import { autoAdvance, resolveLeadIdForInvestor } from "@/lib/blueprints/auto-advance";
 import { proposals, tenants, communications, investors } from "@/db/schema";
 import { checkAlignment } from "@/lib/proposal/risk-alignment";
+import { resolveEmailSender } from "@/lib/comms/sender";
+import { emailAdapter } from "@/lib/comms/adapters/resend";
+import { renderProposalPdf } from "@/lib/proposal/proposal-pdf";
 import { formatINR } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -300,27 +303,64 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         if (!gate.allowed) {
           return NextResponse.json({ error: `Proposal blocked by compliance/consent: ${gate.detail}`, findings: (gate as any).findings }, { status: 422 });
         }
-        const client = getResend();
-        if (client) {
-          const from =
-            process.env.EMAIL_FROM_TRANSACTIONAL ?? "no-reply@example.com";
-          try {
-            const result = await client.emails.send({
-              from,
-              to: [p.recipientEmail],
+        // Generate the proposal PDF and attach it, and send through the firm's
+        // OWN mailbox (RM → firm SMTP/OAuth → Resend). The old path sent via
+        // Resend directly from an unverified "no-reply@…" From, which bounced.
+        let pdf: Buffer | null = null;
+        try {
+          pdf = await renderProposalPdf({
+            proposal: p as any,
+            brand: {
+              displayName: (tenant as any)?.displayName, legalName: (tenant as any)?.legalName,
+              arn: (tenant as any)?.arn, euin: (tenant as any)?.euin,
+              primaryColor: (tenant as any)?.primaryColor, secondaryColor: (tenant as any)?.secondaryColor,
+              logoUrl: (tenant as any)?.logoUrl,
+            },
+          });
+        } catch (e) {
+          console.warn("[proposal.send] PDF generation failed; sending without attachment:", (e as Error)?.message);
+        }
+        let sender: Awaited<ReturnType<typeof resolveEmailSender>>;
+        try {
+          sender = await resolveEmailSender(tx, session.tenantId, session.userId);
+        } catch {
+          sender = { source: "resend" };
+        }
+        if (!(sender.smtp?.host || sender.apiKey || process.env.RESEND_API_KEY)) {
+          return NextResponse.json(
+            { error: "No email sender connected. Connect your firm's mailbox under Settings → Email (SMTP/IMAP) to send proposals." },
+            { status: 400 }
+          );
+        }
+        try {
+          const res = await emailAdapter.send({
+            tenantId: session.tenantId,
+            tokens: {},
+            rendered: {
               subject: `${p.title} — ${tenant?.displayName ?? "Investment proposal"} (${p.proposalNumber})`,
-              html,
-            } as any);
-            externalId = (result as any)?.data?.id ?? null;
-          } catch (e: any) {
-            return NextResponse.json(
-              { error: `Email send failed: ${e?.message ?? "unknown"}` },
-              { status: 502 }
-            );
-          }
-        } else {
-          // No Resend key configured — fall back to logging only (useful in dev)
-          externalId = `dev_${uuid()}`;
+              text: `Please find your proposal "${p.title}" (${p.proposalNumber}) attached. View it online: ${publicUrl}`,
+              tokens: {},
+            },
+            recipient: p.recipientEmail,
+            category: "transactional",
+            inlineHtml: html,
+            idempotencyKey: `proposal:${id}`,
+            smtp: sender.smtp,
+            apiKey: sender.apiKey,
+            fromOverride: sender.fromEmail || undefined,
+            fromNameOverride: sender.fromName || tenant?.displayName || tenant?.legalName || undefined,
+            replyTo: sender.replyTo || undefined,
+            attachments: pdf
+              ? [{ filename: `Proposal-${String(p.proposalNumber ?? id).replace(/[^A-Za-z0-9_-]+/g, "_")}.pdf`, content: pdf }]
+              : undefined,
+          });
+          externalId = res.externalId;
+        } catch (e: any) {
+          const m = String(e?.message ?? "");
+          const friendly = /RESEND_API_KEY|EAUTH|invalid login|535|ECONNREFUSED|getaddrinfo|ETIMEDOUT|certificate|authentication/i.test(m)
+            ? "Couldn't send — check your firm's email connection under Settings → Email (SMTP/IMAP)."
+            : (m || "Could not send email");
+          return NextResponse.json({ error: friendly }, { status: 502 });
         }
       } else {
         // whatsapp — generate wa.me link, client opens in new tab

@@ -61,6 +61,8 @@ export interface SendEmailArgs {
   smtp?: SmtpConfig;
   /** Stable key so a re-fired send dedupes provider-side (Resend idempotency). */
   idempotencyKey?: string;
+  /** In-memory attachments (e.g. a generated proposal/statement PDF). */
+  attachments?: Array<{ filename: string; content: Buffer }>;
 }
 
 export const emailAdapter = {
@@ -81,9 +83,12 @@ export const emailAdapter = {
 
     // Template-level attachments (factsheet, KYC form, …) — Resend fetches by URL.
     const tplAttachments = (args.templateVersion?.attachments as Array<{ name: string; url: string }> | undefined) ?? [];
-    const attachments = tplAttachments
-      .filter((a) => a?.url)
-      .map((a) => ({ filename: a.name || a.url.split("/").pop() || "attachment", path: a.url }));
+    const attachments: Array<{ filename: string; path?: string; content?: Buffer }> = [
+      ...tplAttachments
+        .filter((a) => a?.url)
+        .map((a) => ({ filename: a.name || a.url.split("/").pop() || "attachment", path: a.url })),
+      ...(args.attachments ?? []).map((a) => ({ filename: a.filename, content: a.content })),
+    ];
 
     // MFD-owned SMTP path: send straight through the firm's mail server so the
     // message genuinely originates from their mailbox (authentic From; no Resend
