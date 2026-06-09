@@ -1,23 +1,23 @@
 "use client";
 
 /**
- * Reports grid with per-user "hide report" support.
+ * Reports list with search + per-user "hide report" support.
  *
  * The canned reports are built-in (defined in code, shared across tenants) — so
  * an MFD can't truly delete one, but they CAN hide the ones they don't use to
- * declutter their view. Hidden keys persist to localStorage per user/device,
- * matching how CustomizableNav personalizes the sidebar.
+ * declutter their view. Hidden keys persist to localStorage per user/device.
  *
- * Hover a card → × to hide it. "Manage hidden" reveals hidden cards (dimmed)
- * with a ↺ to restore, plus "Restore all".
+ * Search filters across every group by report name (or group name). Hover a row
+ * → × to hide it; "Manage hidden" reveals hidden rows (dimmed) with a ↺ to
+ * restore, plus "Restore all".
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   BarChart3, TrendingUp, TrendingDown, Users, Filter, AlertTriangle, FileText,
   Calendar, Briefcase, Shield, ShieldCheck, Clock, CheckCircle2, ListChecks,
-  Megaphone, X, RotateCcw, type LucideIcon,
+  Megaphone, X, RotateCcw, Search, ChevronRight, type LucideIcon,
 } from "lucide-react";
 
 const ICONS: Record<string, LucideIcon> = {
@@ -34,6 +34,7 @@ export function ReportsGrid({ sections }: { sections: Section[] }) {
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const [manage, setManage] = useState(false);
   const [ready, setReady] = useState(false);
+  const [query, setQuery] = useState("");
 
   useEffect(() => {
     try {
@@ -53,75 +54,80 @@ export function ReportsGrid({ sections }: { sections: Section[] }) {
       /* ignore */
     }
   }
-  const hide = (k: string) => {
-    const n = new Set(hidden);
-    n.add(k);
-    save(n);
-  };
-  const restore = (k: string) => {
-    const n = new Set(hidden);
-    n.delete(k);
-    save(n);
-  };
-
+  const hide = (k: string) => { const n = new Set(hidden); n.add(k); save(n); };
+  const restore = (k: string) => { const n = new Set(hidden); n.delete(k); save(n); };
   const hiddenCount = hidden.size;
 
-  return (
-    <div className="space-y-6">
-      {ready && (hiddenCount > 0 || manage) && (
-        <div className="flex items-center justify-between gap-3 flex-wrap rounded-lg border border-border/60 bg-secondary/40 px-3 py-2 text-xs">
-          <span className="text-muted-foreground">
-            {manage
-              ? "Manage mode — click ↺ to restore a hidden report, or × on a card to hide it."
-              : `${hiddenCount} report${hiddenCount === 1 ? "" : "s"} hidden from your view.`}
-          </span>
-          <div className="flex items-center gap-2">
-            {manage && hiddenCount > 0 && (
-              <button
-                type="button"
-                onClick={() => save(new Set())}
-                className="text-brand-cyan-deep hover:underline font-medium"
-              >
-                Restore all
-              </button>
-            )}
-            <button type="button" onClick={() => setManage((m) => !m)} className="btn-secondary text-xs px-2.5 py-1">
-              {manage ? "Done" : "Manage hidden"}
-            </button>
-          </div>
-        </div>
-      )}
+  // Build the visible sections: apply hide-state (unless managing) + the search.
+  const ql = query.trim().toLowerCase();
+  const visible = useMemo(() => {
+    return sections
+      .map((section) => {
+        const groupMatch = !!ql && section.group.toLowerCase().includes(ql);
+        let items = !ready ? section.items : manage ? section.items : section.items.filter((it) => !hidden.has(it.key));
+        if (ql) items = items.filter((it) => groupMatch || it.label.toLowerCase().includes(ql));
+        return { group: section.group, items };
+      })
+      .filter((s) => s.items.length > 0);
+  }, [sections, ready, manage, hidden, ql]);
 
-      {sections.map((section) => {
-        // Before hydration we render every item (matches the server render →
-        // no hydration mismatch); after, we filter out hidden ones unless in
-        // manage mode.
-        const items = !ready ? section.items : manage ? section.items : section.items.filter((it) => !hidden.has(it.key));
-        if (items.length === 0) return null;
-        return (
+  const totalMatches = visible.reduce((n, s) => n + s.items.length, 0);
+
+  return (
+    <div className="space-y-4">
+      {/* Search + manage controls */}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="relative w-full sm:max-w-sm">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search reports…"
+            className="h-9 w-full rounded-lg border border-border bg-card pl-9 pr-3 text-sm focus:outline-none focus:border-brand-cyan/60 focus:ring-2 focus:ring-brand-cyan/15"
+          />
+        </div>
+        <div className="flex items-center gap-2 text-xs">
+          {ready && manage && hiddenCount > 0 && (
+            <button type="button" onClick={() => save(new Set())} className="text-brand-cyan-deep hover:underline font-medium">
+              Restore all
+            </button>
+          )}
+          {ready && (hiddenCount > 0 || manage) && (
+            <button type="button" onClick={() => setManage((m) => !m)} className="btn-secondary text-xs px-2.5 py-1">
+              {manage ? "Done" : `Manage hidden (${hiddenCount})`}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {totalMatches === 0 ? (
+        <div className="border rounded-lg p-8 text-center text-sm text-muted-foreground">
+          No reports match “{query}”.{" "}
+          <button type="button" onClick={() => setQuery("")} className="text-brand-cyan-deep hover:underline">Clear search</button>
+        </div>
+      ) : (
+        visible.map((section) => (
           <section key={section.group}>
-            <h2 className="font-semibold text-sm uppercase tracking-wide text-muted-foreground mb-2">{section.group}</h2>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-              {items.map((r) => {
+            <h2 className="font-semibold text-xs uppercase tracking-wide text-muted-foreground mb-1.5">{section.group}</h2>
+            <div className="rounded-lg border border-border bg-card divide-y divide-border/60 overflow-hidden">
+              {section.items.map((r) => {
                 const Icon = ICONS[r.iconName] ?? BarChart3;
                 const isHidden = ready && hidden.has(r.key);
                 return (
-                  <div key={r.key} className={`relative group ${isHidden ? "opacity-50" : ""}`}>
-                    <Link
-                      href={r.href}
-                      className="block h-full border rounded-lg p-4 bg-card hover:bg-accent/40 transition-colors"
-                    >
-                      <Icon className="size-4 text-muted-foreground" />
-                      <div className="mt-2 font-medium text-sm pr-6">{r.label}</div>
+                  <div key={r.key} className={`group flex items-center ${isHidden ? "opacity-50" : ""}`}>
+                    <Link href={r.href} className="flex-1 flex items-center gap-3 px-3 py-2.5 hover:bg-accent/40 transition-colors min-w-0">
+                      <Icon className="size-4 text-muted-foreground shrink-0" />
+                      <span className="text-sm font-medium truncate">{r.label}</span>
+                      <ChevronRight className="size-4 text-muted-foreground/40 ml-auto shrink-0" />
                     </Link>
-                    {ready &&
-                      (isHidden ? (
+                    {ready && (
+                      isHidden ? (
                         <button
                           type="button"
                           onClick={() => restore(r.key)}
                           aria-label={`Restore ${r.label}`}
                           title="Restore report"
-                          className="absolute top-2 right-2 size-6 grid place-items-center rounded-md bg-card border text-emerald-600 hover:bg-emerald-50"
+                          className="px-3 self-stretch grid place-items-center text-emerald-600 hover:bg-emerald-50"
                         >
                           <RotateCcw className="size-3.5" />
                         </button>
@@ -131,18 +137,19 @@ export function ReportsGrid({ sections }: { sections: Section[] }) {
                           onClick={() => hide(r.key)}
                           aria-label={`Hide ${r.label}`}
                           title="Hide this report"
-                          className="absolute top-2 right-2 size-6 grid place-items-center rounded-md text-muted-foreground hover:bg-rose-50 hover:text-rose-600 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+                          className="px-3 self-stretch grid place-items-center text-muted-foreground hover:bg-rose-50 hover:text-rose-600 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
                         >
                           <X className="size-3.5" />
                         </button>
-                      ))}
+                      )
+                    )}
                   </div>
                 );
               })}
             </div>
           </section>
-        );
-      })}
+        ))
+      )}
     </div>
   );
 }
