@@ -19,7 +19,6 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { formatDate, formatINR } from "@/lib/utils";
 import { financialPlans, investors, users } from "@/db/schema";
-import { AdvisorAlphaSimulator } from "@/components/financial-plans/AdvisorAlphaSimulator";
 
 export const dynamic = "force-dynamic";
 
@@ -485,12 +484,6 @@ export default async function FinancialPlanDetailPage({
             )}
           </div>
         </div>
-
-        {/* Advisor's Alpha Compounding Simulator */}
-        <AdvisorAlphaSimulator
-          initialCapital={netWorth > 0 ? netWorth : 1000000}
-          mfdValueAddText={plan.mfdValueAddText}
-        />
 
         {/* General Notes */}
         {plan.notes && (
