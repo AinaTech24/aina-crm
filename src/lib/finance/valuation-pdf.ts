@@ -66,6 +66,7 @@ export async function renderValuationStatementPdf(args: RenderStatementArgs): Pr
   const helv = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
   const primary = hexToRgb(brand.primaryColor);
+  const secondary = brand.secondaryColor ? hexToRgb(brand.secondaryColor) : ACCENT;
 
   doc.setTitle(ascii(`Portfolio statement — ${investor.name ?? "Client"}`));
   doc.setProducer("Aina CRM");
@@ -77,29 +78,33 @@ export async function renderValuationStatementPdf(args: RenderStatementArgs): Pr
   const margin = 44;
   let y = H;
 
-  // ── Branded letterhead — white, logo + name + ARN + gradient strip.
-  //    Matches the proposal PDF letterhead. ──────────────────────────────
+  // ── Branded letterhead — the LOGO is the brand identity (no firm-name text
+  //    when a logo is present), + ARN, + a gradient strip in the firm's own
+  //    theme colours (primary → secondary). ───────────────────────────────
   const logo = await embedLogo(doc, brand.logoUrl);
   const topY = H - margin;
-  let nameX = margin;
+  let arnY = topY - 30;
   if (logo) {
-    const maxH = 38, maxW = 150;
+    const maxH = 40, maxW = 200;
     let dw = (logo.width / logo.height) * maxH;
     let dh = maxH;
     if (dw > maxW) { dw = maxW; dh = (logo.height / logo.width) * maxW; }
     page.drawImage(logo, { x: margin, y: topY - dh, width: dw, height: dh });
-    nameX = margin + dw + 12;
+    arnY = topY - dh - 11;
+  } else {
+    // No logo on file — fall back to the firm name so there is still an identity.
+    page.drawText(ascii(brand.legalName ?? brand.displayName ?? "Your Advisor"), {
+      x: margin, y: topY - 15, size: 14, font: bold, color: INK,
+    });
+    arnY = topY - 30;
   }
-  page.drawText(ascii(brand.legalName ?? brand.displayName ?? "Your Advisor"), {
-    x: nameX, y: topY - 15, size: 14, font: bold, color: INK,
-  });
   page.drawText(
     ascii(
       `ARN ${(brand.arn ?? "—").toString().replace(/^ARN-?/i, "")}` +
       `${brand.euin ? ` - EUIN ${brand.euin}` : ""}` +
       `${brand.gstNumber ? ` - GSTIN ${brand.gstNumber}` : ""}`
     ),
-    { x: nameX, y: topY - 30, size: 9, font: helv, color: SLATE }
+    { x: margin, y: arnY, size: 9, font: helv, color: SLATE }
   );
   const titleLabel = "PORTFOLIO STATEMENT";
   const tlW = bold.widthOfTextAtSize(titleLabel, 11);
@@ -108,8 +113,8 @@ export async function renderValuationStatementPdf(args: RenderStatementArgs): Pr
   const aoW = helv.widthOfTextAtSize(asOfLabel, 9);
   page.drawText(asOfLabel, { x: W - margin - aoW, y: topY - 28, size: 9, font: helv, color: SLATE });
 
-  const stripY = topY - 46;
-  drawGradientStrip(page, margin, stripY, W - 2 * margin, 5, primary, ACCENT);
+  const stripY = Math.min(arnY - 12, topY - 56);
+  drawGradientStrip(page, margin, stripY, W - 2 * margin, 5, primary, secondary);
 
   y = stripY - 24;
 

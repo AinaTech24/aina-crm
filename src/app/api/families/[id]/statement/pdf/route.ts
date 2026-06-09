@@ -62,8 +62,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         valuation: agg,
         investor: { name: `${famName} (Household)`, pan: null },
         brand: {
-          displayName: (t as any)?.displayName, legalName: (t as any)?.legalName, arn: (t as any)?.arn,
-          primaryColor: (t as any)?.primaryColor, phone: (t as any)?.phone, email: (t as any)?.email, website: (t as any)?.website,
+          displayName: (t as any)?.displayName, legalName: (t as any)?.legalName, arn: (t as any)?.arn, euin: (t as any)?.euin,
+          primaryColor: (t as any)?.primaryColor, secondaryColor: (t as any)?.secondaryColor, logoUrl: (t as any)?.logoUrl,
+          gstNumber: (t as any)?.gstNumber, phone: (t as any)?.phone, email: (t as any)?.email, website: (t as any)?.website,
         },
         generatedAt: new Date().toISOString(),
       });

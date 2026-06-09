@@ -94,8 +94,8 @@ export default async function GoalPrintPage({
       />
 
       <div className="max-w-3xl mx-auto px-8 py-10 print:py-6 print:px-6">
-        {/* Letterhead */}
-        <div className="flex items-start justify-between pb-4 border-b-2 border-slate-900">
+        {/* Letterhead — the logo is the brand identity (no firm-name text); ARN kept */}
+        <div className="flex items-start justify-between pb-4">
           <div className="flex items-center gap-3">
             <FirmLogo
               src={data.tenant?.logoUrl}
@@ -103,13 +103,10 @@ export default async function GoalPrintPage({
               color={data.tenant?.primaryColor ?? "#0e2557"}
               size={48}
               radius={6}
-              maxWidth={170}
+              maxWidth={200}
             />
             <div>
-              <div className="text-base font-bold tracking-tight">
-                {data.tenant?.displayName ?? data.tenant?.legalName ?? "MFD Firm"}
-              </div>
-              <div className="text-[11px] text-slate-600">ARN {data.tenant?.arn ?? "—"}</div>
+              <div className="text-[11px] text-slate-600">ARN {String(data.tenant?.arn ?? "—").replace(/^ARN-?/i, "")}</div>
               {data.tenant?.email && (
                 <div className="text-[11px] text-slate-600">{data.tenant.email}</div>
               )}
@@ -120,6 +117,11 @@ export default async function GoalPrintPage({
             <div>Prepared {new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</div>
           </div>
         </div>
+        {/* Theme gradient rule (matches the statement PDF) */}
+        <div
+          className="h-[5px] rounded-full"
+          style={{ background: `linear-gradient(to right, ${data.tenant?.primaryColor ?? "#0e2557"}, ${(data.tenant as any)?.secondaryColor ?? "#0ea5e9"})` }}
+        />
 
         {/* Salutation */}
         <div className="mt-5 text-sm">
