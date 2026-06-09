@@ -12,6 +12,7 @@
  */
 
 import type { EmailDesignerBody, EmailTheme, EmailBlock, EmailFooter } from "./types";
+import { absoluteEmailUrl } from "@/lib/comms/email-logo";
 
 export interface RenderContext {
   /** Variables for merge-field substitution. Nested paths supported. */
@@ -58,7 +59,7 @@ export function renderEmailHtml(body: EmailDesignerBody, ctx: RenderContext): st
   // Every email should lead with the firm's logo. If this template has no logo
   // block, auto-prepend one from the theme/tenant logo so nothing ships unbranded.
   const hasLogoBlock = blocks.some((b) => (b as any)?.type === "logo");
-  const autoLogoUrl = theme.logoUrl || ctx.tenant?.logoUrl || "";
+  const autoLogoUrl = absoluteEmailUrl(theme.logoUrl || ctx.tenant?.logoUrl || "");
   const autoLogo =
     !hasLogoBlock && autoLogoUrl
       ? `<div style="text-align:${theme.logoAlign ?? "center"};margin-bottom:18px;"><img src="${escape(autoLogoUrl)}" alt="${escape(ctx.tenant?.displayName ?? "Logo")}" height="${theme.logoHeight ?? 40}" style="height:${theme.logoHeight ?? 40}px;max-height:${theme.logoHeight ?? 40}px;display:inline-block;"/></div>`
@@ -156,7 +157,7 @@ function renderBlock(block: EmailBlock, theme: EmailTheme, ctx: RenderContext): 
 }
 
 function renderLogo(theme: EmailTheme, ctx: RenderContext): string {
-  const url = theme.logoUrl || ctx.tenant?.logoUrl || "";
+  const url = absoluteEmailUrl(theme.logoUrl || ctx.tenant?.logoUrl || "");
   if (!url) return "";
   return `<div style="text-align:${theme.logoAlign};margin-bottom:18px;"><img src="${escape(url)}" alt="${escape(ctx.tenant?.displayName ?? "Logo")}" height="${theme.logoHeight}" style="height:${theme.logoHeight}px;max-height:${theme.logoHeight}px;display:inline-block;"/></div>`;
 }
