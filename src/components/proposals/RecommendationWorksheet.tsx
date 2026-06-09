@@ -12,6 +12,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Save, Plus, Trash2, Printer } from "lucide-react";
+import { useToast } from "@/components/ui/Toast";
 
 type RecType = "sip" | "lumpsum" | "swp" | "stp";
 type PlanType = "regular" | "direct";
@@ -86,15 +87,13 @@ export function RecommendationWorksheet({
 }) {
   const router = useRouter();
   const [rows, setRows] = useState<Row[]>(initialRows);
+  const toast = useToast();
   const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-  const [ok, setOk] = useState<string | null>(null);
 
   function updateRow(idx: number, patch: Partial<Row>) {
     setRows((prev) =>
       prev.map((r, i) => (i === idx ? { ...r, ...patch } : r))
     );
-    setOk(null);
   }
   function addRow(type: RecType) {
     setRows((prev) => [...prev, { ...EMPTY_BASE, recommendationType: type }]);
@@ -105,23 +104,22 @@ export function RecommendationWorksheet({
 
   async function saveAll() {
     setBusy(true);
-    setErr(null);
-    setOk(null);
     try {
       const res = await fetch(`/api/proposals/${proposalId}/schemes`, {
         method: "PUT",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ rows }),
       });
-      const j = await res.json();
+      const j = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setErr(j.error ?? `Save failed (${res.status})`);
+        toast.error(j.error ?? `Save failed (${res.status})`, "Couldn't save");
         return;
       }
-      setOk(`Saved ${j.rows?.length ?? 0} rows.`);
+      const n = j.rows?.length ?? 0;
+      toast.success(`Saved ${n} recommendation${n === 1 ? "" : "s"}.`);
       router.refresh();
     } catch (e: any) {
-      setErr(e?.message ?? "Network error");
+      toast.error(e?.message ?? "Network error", "Couldn't save");
     } finally {
       setBusy(false);
     }
@@ -142,17 +140,6 @@ export function RecommendationWorksheet({
           Save all
         </button>
       </div>
-      {err && (
-        <div className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-md px-3 py-2">
-          {err}
-        </div>
-      )}
-      {ok && (
-        <div className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-md px-3 py-2">
-          ✓ {ok}
-        </div>
-      )}
-
       <SipSection rows={rows} updateRow={updateRow} addRow={addRow} removeRow={removeRow} />
       <LumpsumSection rows={rows} updateRow={updateRow} addRow={addRow} removeRow={removeRow} />
       <SwpSection rows={rows} updateRow={updateRow} addRow={addRow} removeRow={removeRow} />

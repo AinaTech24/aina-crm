@@ -13,15 +13,16 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Send, CheckCircle2, XCircle, Loader2 } from "lucide-react";
+import { useToast } from "@/components/ui/Toast";
 
 export function ProposalStatusActions({ id, status }: { id: string; status: string }) {
   const router = useRouter();
+  const toast = useToast();
   const [busy, setBusy] = useState<string | null>(null);
-  const [err, setErr] = useState<string | null>(null);
 
+  const LABEL: Record<string, string> = { sent: "marked as sent", accepted: "marked accepted", rejected: "marked rejected" };
   async function transition(next: string, extra: any = {}) {
     setBusy(next);
-    setErr(null);
     try {
       const res = await fetch(`/api/proposals/${id}`, {
         method: "PATCH",
@@ -30,10 +31,13 @@ export function ProposalStatusActions({ id, status }: { id: string; status: stri
       });
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
-        setErr(j.error ?? `Failed (${res.status})`);
+        toast.error(j.error ?? `Failed (${res.status})`, "Couldn't update proposal");
         return;
       }
+      toast.success(`Proposal ${LABEL[next] ?? next}.`);
       router.refresh();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Network error", "Couldn't update proposal");
     } finally {
       setBusy(null);
     }
@@ -45,7 +49,6 @@ export function ProposalStatusActions({ id, status }: { id: string; status: stri
 
   return (
     <div className="flex items-center gap-1.5">
-      {err && <span className="text-[11px] text-destructive">{err}</span>}
       {canSend && (
         <button
           onClick={() => transition("sent")}

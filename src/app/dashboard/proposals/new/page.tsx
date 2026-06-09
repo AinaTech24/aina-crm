@@ -29,6 +29,8 @@ import {
 } from "lucide-react";
 import { InvestorLookup } from "@/components/common/InvestorLookup";
 import { SchemeAutocomplete } from "@/components/mf/SchemeAutocomplete";
+import { SelectField } from "@/components/ui/SelectField";
+import { DateField } from "@/components/ui/DateField";
 import { RiskAlignmentBanner } from "@/components/proposals/RiskAlignmentBanner";
 import { formatINR } from "@/lib/utils";
 
@@ -632,7 +634,7 @@ export default function NewProposalPage() {
           </label>
           <label className="block">
             <div className="text-xs font-medium mb-1">Type</div>
-            <select
+            <SelectField
               value={type}
               onChange={(e) => setType(e.target.value as any)}
               className="input-base"
@@ -643,14 +645,13 @@ export default function NewProposalPage() {
               <option value="aif">AIF</option>
               <option value="comprehensive">Comprehensive</option>
               <option value="mixed">Mixed</option>
-            </select>
+            </SelectField>
           </label>
         </div>
         <div className="grid grid-cols-2 gap-3">
           <label className="block">
             <div className="text-xs font-medium mb-1">Valid until</div>
-            <input
-              type="date"
+            <DateField
               value={validUntil}
               onChange={(e) => setValidUntil(e.target.value)}
               className="input-base"
@@ -658,7 +659,7 @@ export default function NewProposalPage() {
           </label>
           <label className="block">
             <div className="text-xs font-medium mb-1">Overall risk rating</div>
-            <select
+            <SelectField
               value={riskRating}
               onChange={(e) => setRiskRating(e.target.value as any)}
               className="input-base"
@@ -667,7 +668,7 @@ export default function NewProposalPage() {
               <option value="moderate">Moderate</option>
               <option value="aggressive">Aggressive</option>
               <option value="mixed">Mixed</option>
-            </select>
+            </SelectField>
           </label>
         </div>
         <label className="block">
@@ -991,7 +992,7 @@ function MFRow({ item, onPatch }: { item: MF; onPatch: (p: Partial<MF>) => void 
       />
       <label className="block">
         <div className="text-[11px] font-medium mb-1 text-muted-foreground">Risk rating</div>
-        <select
+        <SelectField
           value={item.riskRating ?? ""}
           onChange={(e) => onPatch({ riskRating: (e.target.value || undefined) as any })}
           className="input-base text-sm"
@@ -1001,7 +1002,7 @@ function MFRow({ item, onPatch }: { item: MF; onPatch: (p: Partial<MF>) => void 
           <option value="moderate">Moderate</option>
           <option value="high">High</option>
           <option value="very_high">Very High</option>
-        </select>
+        </SelectField>
       </label>
       <div className="col-span-3">
         <TextInput
@@ -1035,7 +1036,7 @@ function InsRow({ item, onPatch }: { item: Ins; onPatch: (p: Partial<Ins>) => vo
       />
       <label className="block">
         <div className="text-[11px] font-medium mb-1 text-muted-foreground">Policy type</div>
-        <select
+        <SelectField
           value={item.policyType ?? ""}
           onChange={(e) => onPatch({ policyType: (e.target.value || undefined) as any })}
           className="input-base text-sm"
@@ -1047,7 +1048,7 @@ function InsRow({ item, onPatch }: { item: Ins; onPatch: (p: Partial<Ins>) => vo
           <option value="health">Health</option>
           <option value="money_back">Money-back</option>
           <option value="other">Other</option>
-        </select>
+        </SelectField>
       </label>
       <NumberInput
         label="Sum assured"
@@ -1178,7 +1179,7 @@ function AIFRow({ item, onPatch }: { item: AIF; onPatch: (p: Partial<AIF>) => vo
       />
       <label className="block">
         <div className="text-[11px] font-medium mb-1 text-muted-foreground">Category</div>
-        <select
+        <SelectField
           value={item.category ?? ""}
           onChange={(e) => onPatch({ category: (e.target.value || undefined) as any })}
           className="input-base text-sm"
@@ -1187,7 +1188,7 @@ function AIFRow({ item, onPatch }: { item: AIF; onPatch: (p: Partial<AIF>) => vo
           <option value="cat1">Cat I</option>
           <option value="cat2">Cat II</option>
           <option value="cat3">Cat III</option>
-        </select>
+        </SelectField>
       </label>
       <NumberInput
         label="Min investment"

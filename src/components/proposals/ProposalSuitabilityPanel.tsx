@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ShieldCheck, FileText, AlertCircle, Save, Loader2 } from "lucide-react";
 import { RiskAlignmentBanner } from "./RiskAlignmentBanner";
+import { useToast } from "@/components/ui/Toast";
 import { type ClientProfile, type SchemeLine } from "@/lib/proposal/risk-alignment";
 
 export function ProposalSuitabilityPanel({
@@ -22,14 +23,11 @@ export function ProposalSuitabilityPanel({
   const router = useRouter();
   const [suitabilityNote, setSuitabilityNote] = useState(initialSuitabilityNote ?? "");
   const [overrideReason, setOverrideReason] = useState(initialOverrideReason ?? "");
+  const toast = useToast();
   const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
 
   async function handleSave() {
     setBusy(true);
-    setErr(null);
-    setSuccess(false);
     try {
       const res = await fetch(`/api/proposals/${proposalId}`, {
         method: "PATCH",
@@ -40,14 +38,14 @@ export function ProposalSuitabilityPanel({
         }),
       });
       if (!res.ok) {
-        const j = await res.json();
-        setErr(j.error ?? `Save failed (${res.status})`);
+        const j = await res.json().catch(() => ({}));
+        toast.error(j.error ?? `Save failed (${res.status})`, "Couldn't save");
         return;
       }
-      setSuccess(true);
+      toast.success("Compliance details saved — you can now send the proposal.");
       router.refresh();
     } catch (e: any) {
-      setErr(e?.message ?? "An error occurred.");
+      toast.error(e?.message ?? "An error occurred.", "Couldn't save");
     } finally {
       setBusy(false);
     }
@@ -107,18 +105,6 @@ export function ProposalSuitabilityPanel({
           </div>
         </label>
       </div>
-
-      {err && (
-        <div className="rounded-lg border border-destructive/20 bg-destructive/5 text-destructive text-xs p-3">
-          {err}
-        </div>
-      )}
-
-      {success && (
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 text-emerald-800 text-xs p-3">
-          Compliance details saved successfully. You can now send the proposal.
-        </div>
-      )}
 
       <div className="flex justify-end pt-2">
         <button
