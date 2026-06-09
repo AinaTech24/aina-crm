@@ -26,30 +26,47 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!session.roles.some((r) => MANAGE_ROLES.includes(r))) return NextResponse.json({ error: "forbidden" }, { status: 403 });
     const meta = clientMetaFromHeaders(req.headers);
 
-    const ctx = await withTenant(session.tenantId, async (tx) => {
-      const [entry] = await tx
-        .select()
-        .from(businessEntries)
-        .where(and(eq(businessEntries.id, id), eq(businessEntries.tenantId, session.tenantId)))
-        .limit(1);
-      if (!entry) return { error: "not_found" as const };
-      const lines = await tx
-        .select()
-        .from(businessEntryLines)
-        .where(eq(businessEntryLines.entryId, id))
-        .orderBy(asc(businessEntryLines.sortOrder));
+    let ctx;
+    try {
+      ctx = await withTenant(session.tenantId, async (tx) => {
+        const [entry] = await tx
+          .select()
+          .from(businessEntries)
+          .where(and(eq(businessEntries.id, id), eq(businessEntries.tenantId, session.tenantId)))
+          .limit(1);
+        if (!entry) return { error: "not_found" as const };
+        const lines = await tx
+          .select()
+          .from(businessEntryLines)
+          .where(eq(businessEntryLines.entryId, id))
+          .orderBy(asc(businessEntryLines.sortOrder));
 
-      let email: string | null = null;
-      if (entry.investorId) {
-        const [inv] = await tx.select({ email: investors.email }).from(investors).where(eq(investors.id, entry.investorId)).limit(1);
-        email = inv?.email ?? null;
-      }
-      const firm = (await tx.execute(sql`SELECT name FROM tenants WHERE id = ${session.tenantId}::uuid LIMIT 1`)).rows[0] as any;
-      // Resolve the firm's OWN mailbox (sending RM → firm SMTP/OAuth → Resend)
-      // so the confirmation genuinely leaves from the firm's inbox.
-      const sender = await resolveEmailSender(tx, session.tenantId, session.userId);
-      return { entry, lines, email, firmName: firm?.name ?? "Your advisor", sender };
-    });
+        let email: string | null = null;
+        if (entry.investorId) {
+          const [inv] = await tx.select({ email: investors.email }).from(investors).where(eq(investors.id, entry.investorId)).limit(1);
+          email = inv?.email ?? null;
+        }
+        const firm = (await tx.execute(sql`SELECT name FROM tenants WHERE id = ${session.tenantId}::uuid LIMIT 1`)).rows[0] as any;
+        // Resolve the firm's OWN mailbox (sending RM → firm SMTP/OAuth → Resend)
+        // so the confirmation genuinely leaves from the firm's inbox. A mailbox
+        // hiccup (OAuth refresh / decrypt / unknown provider) must NOT abort the
+        // send and surface as a masked "internal" — fall back to Resend.
+        let sender: Awaited<ReturnType<typeof resolveEmailSender>>;
+        try {
+          sender = await resolveEmailSender(tx, session.tenantId, session.userId);
+        } catch (e) {
+          console.error("[business_entry.email] sender resolve failed — falling back to Resend:", (e as Error)?.message);
+          sender = { source: "resend" };
+        }
+        return { entry, lines, email, firmName: firm?.name ?? "Your advisor", sender };
+      });
+    } catch (e: any) {
+      console.error("[business_entry.email] prepare failed:", e?.stack || e?.message || e);
+      return NextResponse.json(
+        { error: `Couldn't prepare the email — ${String(e?.message ?? "please try again").slice(0, 160)}` },
+        { status: 502 }
+      );
+    }
 
     if ("error" in ctx) return NextResponse.json({ error: "not found" }, { status: 404 });
     if (!ctx.email) {
