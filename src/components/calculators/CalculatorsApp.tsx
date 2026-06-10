@@ -21,6 +21,8 @@ import { SwpPeriodicPlanner } from "./SwpPeriodicPlanner";
 import { SwpEndPeriodCalculator } from "./SwpEndPeriodCalculator";
 import { SwpComprehensivePlanner } from "./SwpComprehensivePlanner";
 import { StpComprehensivePlanner } from "./StpComprehensivePlanner";
+import { EmiSipRecoveryPlanner } from "./EmiSipRecoveryPlanner";
+import { ReviewOfInvestments } from "./ReviewOfInvestments";
 import {
   fvSip,
   fvLumpsum,
@@ -28,6 +30,7 @@ import {
   inflatedTarget,
   fvStepUpSip,
   growingSipSchedule,
+  vacationPlan,
   costOfDelay,
   retirementCorpus,
   swpDeplete,
@@ -51,6 +54,9 @@ type TabKey =
   | "swpend"
   | "swpcomp"
   | "stpcomp"
+  | "emisip"
+  | "review"
+  | "vacation"
   | "sip"
   | "lumpsum"
   | "goal"
@@ -76,6 +82,9 @@ const TABS: Array<{ key: TabKey; label: string }> = [
   { key: "swpend", label: "★ SWP End Period" },
   { key: "swpcomp", label: "★ SWP Comprehensive" },
   { key: "stpcomp", label: "★ STP Comprehensive" },
+  { key: "emisip", label: "★ EMI → SIP" },
+  { key: "review", label: "★ Review of Investments" },
+  { key: "vacation", label: "★ Vacation Planner" },
   { key: "sip", label: "1. SIP" },
   { key: "lumpsum", label: "2. Lumpsum" },
   { key: "goal", label: "3. Goal" },
@@ -125,6 +134,9 @@ export function CalculatorsApp() {
       {tab === "swpend" && <SwpEndPeriodCalculator />}
       {tab === "swpcomp" && <SwpComprehensivePlanner />}
       {tab === "stpcomp" && <StpComprehensivePlanner />}
+      {tab === "emisip" && <EmiSipRecoveryPlanner />}
+      {tab === "review" && <ReviewOfInvestments />}
+      {tab === "vacation" && <VacationPlannerCalc />}
       {tab === "sip" && <SipCalc />}
       {tab === "lumpsum" && <LumpsumCalc />}
       {tab === "goal" && <GoalCalc />}
@@ -669,6 +681,150 @@ function SipFvChart({
         ))}
         <polyline fill="none" stroke="#94a3b8" strokeWidth={2} points={poly(regular)} />
         <polyline fill="none" stroke="#10b981" strokeWidth={2.5} points={poly(growing)} />
+      </svg>
+    </div>
+  );
+}
+
+/* ───────────────────────── ★ Vacation Planner ─────────────────────────
+ * Advanced Vacation Calculator (EFP workbook). Fund N escalating annual
+ * vacations from a corpus earning the equity return; cover the gap left after
+ * the initial investment (grown one year) with a growing SIP. */
+function VacationPlannerCalc() {
+  const [clientName, setClientName] = useState("");
+  const [initial, setInitial] = useState(2000000);
+  const [returnPct, setReturnPct] = useState(12);
+  const [growthPct, setGrowthPct] = useState(15);
+  const [sipYears, setSipYears] = useState(12);
+  const [vacationCost, setVacationCost] = useState(400000);
+  const [inflationPct, setInflationPct] = useState(4);
+  const [numVacations, setNumVacations] = useState(50);
+
+  const res = vacationPlan({
+    initialInvestment: initial,
+    equityReturnPct: returnPct,
+    sipGrowthPct: growthPct,
+    sipYears,
+    currentVacationCost: vacationCost,
+    vacationInflationPct: inflationPct,
+    numVacations,
+  });
+
+  const fullyFunded = res.amountStillNeeded <= 0;
+  const last = res.drawdown[res.drawdown.length - 1];
+
+  return (
+    <CalcShell
+      title="Advanced Vacation Planner"
+      purpose="Fund a lifetime of escalating annual vacations — the corpus you need, and the growing SIP to build the gap."
+    >
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <Field label="Client name">
+          <ClientNameField value={clientName} onChange={setClientName} />
+        </Field>
+        <NumberField label="Initial investment (₹)" value={initial} setValue={setInitial} />
+        <NumberField label="Current cost / vacation (₹)" value={vacationCost} setValue={setVacationCost} />
+        <NumberField label="No. of vacations" value={numVacations} setValue={setNumVacations} step={1} />
+        <NumberField label="Equity return (% p.a.)" value={returnPct} setValue={setReturnPct} step={0.5} />
+        <NumberField label="Vacation inflation (% p.a.)" value={inflationPct} setValue={setInflationPct} step={0.5} />
+        <NumberField label="SIP grows / yr (%)" value={growthPct} setValue={setGrowthPct} step={0.5} />
+        <NumberField label="No. of years of SIP" value={sipYears} setValue={setSipYears} step={1} />
+      </div>
+
+      <ResultRow
+        cells={[
+          { label: "Corpus needed (1 yr out)", value: inr(res.corpusNeeded), tone: "emerald" },
+          { label: "Initial grows to (1 yr)", value: inr(res.initialAfterOneYear) },
+          {
+            label: fullyFunded ? "Surplus — fully funded" : "Gap to fund via SIP",
+            value: inr(fullyFunded ? res.initialAfterOneYear - res.corpusNeeded : res.amountStillNeeded),
+            tone: fullyFunded ? "emerald" : "amber",
+          },
+        ]}
+      />
+
+      <ResultRow
+        cells={[
+          { label: "Growing SIP — monthly (mo 1)", value: fullyFunded ? "—" : inr(res.monthlySip), tone: "emerald" },
+          { label: "Growing SIP — annual (yr 1)", value: fullyFunded ? "—" : inr(res.annualSip), tone: "emerald" },
+          { label: "Total vacation spend (nominal)", value: inrCompact(res.totalNominalSpend) },
+        ]}
+      />
+
+      <VacationDrawdownChart rows={res.drawdown} />
+
+      <div className="grid grid-cols-2 gap-3 text-xs">
+        <div className="border rounded-md p-3 space-y-1">
+          <div className="font-semibold text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
+            First vacation
+          </div>
+          <Row k="Year 1 cost" v={inr(res.drawdown[0]?.cost ?? vacationCost)} />
+          <Row k="Growth-adjusted rate" v={`${res.realRatePct.toFixed(2)}%`} />
+        </div>
+        <div className="border rounded-md p-3 space-y-1">
+          <div className="font-semibold text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
+            Final vacation (#{numVacations})
+          </div>
+          <Row k={`Year ${numVacations} cost`} v={inr(last?.cost ?? 0)} />
+          <Row k="Corpus left at end" v={inr(Math.max(0, last?.balanceAfter ?? 0))} />
+        </div>
+      </div>
+
+      <p className="text-[11px] text-muted-foreground">
+        The corpus is the present value (one year out) of {numVacations} annual vacations — each escalating {inflationPct}% and
+        withdrawn at the start of the year, with the remaining balance earning {returnPct}%. The growing SIP steps up {growthPct}%
+        every year for {sipYears} years. The SIP figures grow the actual initial investment by one year (the workbook’s monthly
+        path does the same), so the monthly value matches the source sheet to the rupee.
+      </p>
+    </CalcShell>
+  );
+}
+
+function VacationDrawdownChart({
+  rows,
+}: {
+  rows: { index: number; balanceAfter: number; cost: number }[];
+}) {
+  const W = 640;
+  const H = 200;
+  const padL = 6;
+  const padR = 6;
+  const padT = 16;
+  const padB = 18;
+  const n = rows.length;
+  if (n < 2) return null;
+  const maxBal = Math.max(...rows.map((d) => d.balanceAfter), 1);
+  const x = (i: number) => padL + (i / (n - 1)) * (W - padL - padR);
+  const y = (v: number) => padT + (1 - Math.max(0, v) / maxBal) * (H - padT - padB);
+  const poly = rows.map((d, i) => `${x(i).toFixed(1)},${y(d.balanceAfter).toFixed(1)}`).join(" ");
+  const grid = [0, 0.25, 0.5, 0.75, 1];
+
+  return (
+    <div className="border rounded-md p-3">
+      <div className="flex items-center gap-4 mb-2 text-[11px]">
+        <span className="inline-flex items-center gap-1.5">
+          <span className="size-2.5 rounded-sm bg-cyan-600" /> Corpus balance
+        </span>
+        <span className="ml-auto text-muted-foreground">Drawn down across {n} vacations → ≈ ₹0</span>
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label="Vacation corpus drawn down to zero">
+        {grid.map((g, i) => (
+          <g key={i}>
+            <line
+              x1={padL}
+              x2={W - padR}
+              y1={y(maxBal * g)}
+              y2={y(maxBal * g)}
+              stroke="currentColor"
+              className="text-border"
+              strokeWidth={1}
+            />
+            <text x={padL} y={y(maxBal * g) - 2} className="fill-muted-foreground" fontSize={9}>
+              {inrCompact(maxBal * g)}
+            </text>
+          </g>
+        ))}
+        <polyline fill="none" stroke="#0891b2" strokeWidth={2.5} points={poly} />
       </svg>
     </div>
   );

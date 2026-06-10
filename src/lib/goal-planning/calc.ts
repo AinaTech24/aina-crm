@@ -135,6 +135,102 @@ export function growingSipSchedule(params: {
   return { regular, growing, monthlyRatePct: i * 100 };
 }
 
+/* ───────────────── Advanced Vacation Planner (EFP calculator) ─────────────────
+ * Faithful replica of the "Advanced Vacation Calculator" workbook. The client
+ * wants to fund a stream of `numVacations` annual vacations — the first a year
+ * out — each escalating with inflation, drawn from a corpus that earns the
+ * equity return. The corpus needed is a growing annuity-DUE present value; the
+ * gap left after growing the initial investment one year is funded by a
+ * growing SIP (annual or monthly variant).
+ *
+ * `excelPV` replicates Excel's PV(rate, nper, pmt, fv, type) exactly. NOTE: the
+ * workbook's ANNUAL path hard-codes a stale ₹10 L "initial after a year" (its
+ * input grew to ₹20 L); we instead grow the ACTUAL initial investment by one
+ * year for BOTH the annual and monthly SIP — which is what the sheet's monthly
+ * path already does — so the two are internally consistent. The monthly figure
+ * reproduces the workbook to the rupee; the annual one is the consistent value.
+ */
+function excelPV(rate: number, nper: number, pmt: number, fv = 0, type = 0): number {
+  if (nper <= 0) return 0;
+  if (rate === 0) return -(pmt * nper + fv);
+  const p = Math.pow(1 + rate, -nper);
+  return -(pmt * (1 + rate * type) * ((1 - p) / rate) + fv * p);
+}
+
+export type VacationDrawdownRow = {
+  index: number; // 1-based vacation number
+  cost: number; // escalated cost of this vacation
+  balanceAfter: number; // corpus balance after the withdrawal + a year of growth
+};
+
+export type VacationPlanInput = {
+  initialInvestment: number;
+  equityReturnPct: number;
+  sipGrowthPct: number;
+  sipYears: number;
+  currentVacationCost: number;
+  vacationInflationPct: number;
+  numVacations: number;
+};
+
+export type VacationPlanResult = {
+  realRatePct: number; // (1+r)/(1+infl)−1, ×100 — the growth-adjusted discount rate
+  corpusNeeded: number; // growing annuity-due PV of the escalating vacation stream
+  initialAfterOneYear: number; // initial × (1+r)
+  amountStillNeeded: number; // max(0, corpus − grown initial)
+  annualSip: number; // first-year growing annual SIP
+  monthlySip: number; // first-month growing monthly SIP
+  totalNominalSpend: number; // sum of all escalated vacation costs
+  drawdown: VacationDrawdownRow[];
+};
+
+export function vacationPlan(input: VacationPlanInput): VacationPlanResult {
+  const r = input.equityReturnPct / 100;
+  const g = input.sipGrowthPct / 100;
+  const infl = input.vacationInflationPct / 100;
+  const n = Math.max(0, Math.floor(input.numVacations));
+  const cost0 = Math.max(0, input.currentVacationCost);
+  const sipYears = Math.max(0, Math.floor(input.sipYears));
+
+  // Step 2 — corpus: growing annuity-due PV of the escalating vacation stream.
+  const realRate = (1 + r) / (1 + infl) - 1;
+  const corpusNeeded = excelPV(realRate, n, -cost0, 0, 1);
+
+  // Step 1 — initial investment grown by one year.
+  const initialAfterOneYear = Math.max(0, input.initialInvestment) * (1 + r);
+
+  // Step 3 — gap to fund from the growing SIP.
+  const amountStillNeeded = Math.max(0, corpusNeeded - initialAfterOneYear);
+
+  // Steps 7–10 — required growing SIP = gap ÷ PV(₹100 growing SIP) × 100.
+  const pv100Annual = excelPV((1 + r) / (1 + g) - 1, sipYears, -100, 0, 1);
+  const pv100Monthly = excelPV(Math.pow((1 + r) / (1 + g), 1 / 12) - 1, sipYears * 12, -100, 0, 1);
+  const annualSip = pv100Annual > 0 ? (amountStillNeeded / pv100Annual) * 100 : 0;
+  const monthlySip = pv100Monthly > 0 ? (amountStillNeeded / pv100Monthly) * 100 : 0;
+
+  // Drawdown trajectory — validates the corpus (it depletes to ≈0 after n vacations).
+  const drawdown: VacationDrawdownRow[] = [];
+  let bal = corpusNeeded;
+  let totalNominalSpend = 0;
+  for (let k = 0; k < n; k++) {
+    const cost = cost0 * Math.pow(1 + infl, k);
+    totalNominalSpend += cost;
+    bal = (bal - cost) * (1 + r); // annuity-due: withdraw at start, grow the remainder
+    drawdown.push({ index: k + 1, cost, balanceAfter: bal });
+  }
+
+  return {
+    realRatePct: realRate * 100,
+    corpusNeeded,
+    initialAfterOneYear,
+    amountStillNeeded,
+    annualSip,
+    monthlySip,
+    totalNominalSpend,
+    drawdown,
+  };
+}
+
 /** Constant monthly SIP needed to hit `target` starting from `currentValue`. */
 export function requiredSip(
   target: number,
