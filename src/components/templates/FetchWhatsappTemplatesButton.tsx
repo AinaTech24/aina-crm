@@ -25,7 +25,10 @@ export function FetchWhatsappTemplatesButton() {
         return;
       }
       if (j.fetched === 0) {
-        toast.success("No templates found in your WhatsApp workspace yet.", "WhatsApp");
+        toast.info(
+          "Connected — but your WhatsApp (WAina) workspace has no templates yet. Create & approve them in the WAina console, then Fetch again.",
+          "WhatsApp"
+        );
       } else {
         toast.success(`Fetched ${j.fetched} WhatsApp template(s) — ${j.approved} approved & sendable.`, "Synced");
       }

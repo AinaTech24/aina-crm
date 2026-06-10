@@ -176,20 +176,10 @@ export const wainaWhatsappAdapter = {
 
   /** List templates from the Aina WhatsApp workspace. Pass the tenant's connected
    *  key (opts.apiKey) to fetch THAT firm's templates; falls back to the shared
-   *  env key for the background sync. */
+   *  env key for the background sync. Errors are swallowed → [] (the background
+   *  sync can't surface them); use fetchWainaTemplatesDetailed for diagnostics. */
   async listTemplates(opts?: { apiKey?: string; baseUrl?: string | null }): Promise<Array<any>> {
-    const apiKey = opts?.apiKey ?? process.env.WAINA_API_KEY;
-    if (!apiKey) return [];
-    const base = toApiBase(opts?.baseUrl ?? process.env.WAINA_BASE_URL ?? process.env.WAINA_WEBHOOK_URL);
-    try {
-      const res = await axios.get(`${base}/extension/templates`, {
-        timeout: 30_000,
-        headers: { "x-api-key": apiKey },
-      });
-      return (res.data?.data ?? []) as any[];
-    } catch {
-      return [];
-    }
+    return (await fetchWainaTemplatesDetailed(opts)).templates;
   },
 
   async submitTemplate(): Promise<{ ok: boolean; metaTemplateId?: string; raw: unknown }> {
@@ -202,6 +192,32 @@ export const wainaWhatsappAdapter = {
     return false;
   },
 };
+
+/**
+ * GET /extension/templates — diagnostic variant that SURFACES failures (HTTP
+ * status, message, and the exact URL hit) instead of swallowing them to []. The
+ * "Fetch from WhatsApp" flow uses this so a wrong key / wrong base-URL shows a
+ * real error rather than a misleading "no templates found".
+ */
+export async function fetchWainaTemplatesDetailed(opts?: {
+  apiKey?: string;
+  baseUrl?: string | null;
+}): Promise<{ ok: boolean; templates: any[]; error?: string; status?: number; url: string }> {
+  const apiKey = opts?.apiKey ?? process.env.WAINA_API_KEY;
+  const base = toApiBase(opts?.baseUrl ?? process.env.WAINA_BASE_URL ?? process.env.WAINA_WEBHOOK_URL);
+  const url = `${base}/extension/templates`;
+  if (!apiKey) return { ok: false, templates: [], error: "No API key configured", url };
+  try {
+    const res = await axios.get(url, { timeout: 30_000, headers: { "x-api-key": apiKey } });
+    const data = res.data?.data ?? res.data?.templates ?? [];
+    return { ok: true, templates: Array.isArray(data) ? data : [], url };
+  } catch (e: any) {
+    const status = e.response?.status as number | undefined;
+    const d = e.response?.data;
+    const detail = d?.message ?? d?.error ?? e.message ?? "request failed";
+    return { ok: false, templates: [], error: typeof detail === "string" ? detail : JSON.stringify(detail), status, url };
+  }
+}
 
 /* ── Standalone helpers for the Settings UI (live connection + numbers) ──── */
 

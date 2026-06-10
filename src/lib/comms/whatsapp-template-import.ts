@@ -17,7 +17,7 @@ import type { Tx } from "@/db/client";
 import { templates, templateVersions } from "@/db/schema";
 import { getTenantIntegration } from "./integrations";
 import { whatsappProviderId } from "./adapters/whatsapp";
-import { wainaWhatsappAdapter } from "./adapters/waina";
+import { fetchWainaTemplatesDetailed } from "./adapters/waina";
 
 const CATEGORY_MAP: Record<string, string> = { MARKETING: "marketing", UTILITY: "utility", AUTHENTICATION: "authentication" };
 function mapCategory(c?: string): string {
@@ -52,8 +52,21 @@ export async function importWhatsappTemplatesForTenant(tx: Tx, tenantId: string,
   }
   const baseUrl = (integ?.config as any)?.webhookUrl as string | undefined;
 
-  const metas = await wainaWhatsappAdapter.listTemplates({ apiKey, baseUrl });
+  const fetched = await fetchWainaTemplatesDetailed({ apiKey, baseUrl });
+  if (!fetched.ok) {
+    // A real failure (bad key, wrong base URL, network) — surface it instead of
+    // silently reporting "no templates found".
+    return {
+      ok: false,
+      fetched: 0,
+      imported: 0,
+      approved: 0,
+      error: `Couldn't reach your WhatsApp workspace${fetched.status ? ` (HTTP ${fetched.status})` : ""}: ${fetched.error}. Tried ${fetched.url}. Check the WAina API key under Settings → Integrations → WhatsApp.`,
+    };
+  }
+  const metas = fetched.templates;
   if (!metas.length) {
+    // Genuinely empty: the key works but the WAina/Meta workspace has no templates.
     return { ok: true, fetched: 0, imported: 0, approved: 0 };
   }
 
