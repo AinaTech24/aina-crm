@@ -283,7 +283,20 @@ export default function NewTemplatePage() {
       const data = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(data?.error ?? `HTTP ${r.status}`);
       if (opts.submitForApproval) {
-        await fetch(`/api/templates/${data.id}/submit`, { method: "POST" });
+        const sr = await fetch(`/api/templates/${data.id}/submit`, { method: "POST" });
+        const sd = await sr.json().catch(() => ({}));
+        if (!sr.ok) {
+          // The draft saved, but submission (e.g. Meta rejection, WhatsApp not
+          // connected) failed — keep the user here with the real reason rather
+          // than navigating away as if it succeeded.
+          throw new Error(sd?.error ?? `Submit failed (HTTP ${sr.status})`);
+        }
+        const dest =
+          channel === "whatsapp" && sd?.submittedToMeta
+            ? `/dashboard/templates/${data.id}?submitted=meta`
+            : `/dashboard/templates/${data.id}`;
+        router.push(dest);
+        return;
       }
       router.push(`/dashboard/templates/${data.id}`);
     } catch (e: any) {

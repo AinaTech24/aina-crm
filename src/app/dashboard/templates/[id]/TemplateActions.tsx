@@ -27,10 +27,12 @@ export function TemplateActions({
   const [rejectReason, setRejectReason] = useState("");
   const [showRejectInput, setShowRejectInput] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   async function handleAction(url: string, method: string = "POST", body?: any) {
     setLoading(true);
     setError(null);
+    setNotice(null);
     try {
       const res = await fetch(url, {
         method,
@@ -44,6 +46,9 @@ export function TemplateActions({
       if (url.endsWith("/version")) {
         router.push(`/dashboard/templates/${templateId}/edit`);
       } else {
+        if (data?.submittedToMeta) {
+          setNotice("Submitted to Meta for WhatsApp approval — usually 1–24 hours. It becomes sendable the moment Meta approves it.");
+        }
         router.refresh();
       }
     } catch (err: any) {
@@ -58,6 +63,11 @@ export function TemplateActions({
       {error && (
         <div className="p-3 text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-md">
           {error}
+        </div>
+      )}
+      {notice && (
+        <div className="p-3 text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-md">
+          {notice}
         </div>
       )}
 

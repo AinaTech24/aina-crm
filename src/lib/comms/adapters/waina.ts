@@ -225,8 +225,82 @@ export const wainaWhatsappAdapter = {
     return (await fetchWainaTemplatesDetailed(opts)).templates;
   },
 
-  async submitTemplate(): Promise<{ ok: boolean; metaTemplateId?: string; raw: unknown }> {
-    throw new Error("Aina WhatsApp adapter: create/submit templates in the Aina WhatsApp console, not via this API");
+  /**
+   * Create + submit a template to Meta via Wapi's POST /extension/templates
+   * (multipart). Wapi reviews → Meta approves (1–24h); the approved template then
+   * appears in GET /extension/templates and is sendable. Returns the wapi
+   * template_id (stored as externalRef) or a clear error.
+   */
+  async submitTemplate(opts: {
+    apiKey?: string;
+    baseUrl?: string | null;
+    templateName: string;
+    category: string;
+    language: string;
+    messageBody: string;
+    variableExamples: Array<{ key: string; example: string }>;
+    headerText?: string;
+    footerText?: string;
+    headerMediaUrl?: string;
+    buttons?: any[];
+  }): Promise<{ ok: boolean; metaTemplateId?: string; status?: string; error?: string; raw: unknown }> {
+    const apiKey = opts.apiKey ?? process.env.WAINA_API_KEY;
+    if (!apiKey) return { ok: false, error: "WhatsApp isn't connected (no API key).", raw: null };
+    const base = toApiBase(opts.baseUrl ?? process.env.WAINA_BASE_URL ?? process.env.WAINA_WEBHOOK_URL);
+
+    const fd = new FormData();
+    fd.append("template_name", opts.templateName);
+    fd.append("category", opts.category);
+    fd.append("language", opts.language);
+    fd.append("message_body", opts.messageBody);
+    fd.append("variable_examples", JSON.stringify(opts.variableExamples ?? []));
+    if (opts.headerText) fd.append("header_text", opts.headerText);
+    if (opts.footerText) fd.append("footer_text", opts.footerText);
+    if (opts.buttons?.length) fd.append("buttons", JSON.stringify(opts.buttons));
+    if (opts.headerMediaUrl) fd.append("header_media_url", opts.headerMediaUrl);
+
+    try {
+      // fetch sets the multipart boundary itself — do NOT set Content-Type.
+      const res = await fetch(`${base}/extension/templates`, {
+        method: "POST",
+        headers: { "x-api-key": apiKey },
+        body: fd,
+        signal: AbortSignal.timeout(25_000),
+      });
+      const data: any = await res.json().catch(() => ({}));
+      if (!res.ok || data?.success === false) {
+        return { ok: false, error: String(data?.message ?? data?.error ?? `HTTP ${res.status}`), raw: data };
+      }
+      const d = data?.data ?? data;
+      return { ok: true, metaTemplateId: d?.template_id ?? d?.id, status: d?.status ?? "pending", raw: data };
+    } catch (e: any) {
+      return { ok: false, error: String(e?.message ?? "request failed"), raw: null };
+    }
+  },
+
+  /** Poll a submitted template's Meta approval status. */
+  async templateStatus(
+    wapiId: string,
+    opts?: { apiKey?: string; baseUrl?: string | null }
+  ): Promise<{ ok: boolean; status?: string; isFinal?: boolean; rejectionReason?: string; error?: string }> {
+    const apiKey = opts?.apiKey ?? process.env.WAINA_API_KEY;
+    if (!apiKey) return { ok: false, error: "no api key" };
+    const base = toApiBase(opts?.baseUrl ?? process.env.WAINA_BASE_URL ?? process.env.WAINA_WEBHOOK_URL);
+    try {
+      const res = await axios.get(`${base}/extension/templates/${encodeURIComponent(wapiId)}/status`, {
+        timeout: 15_000,
+        headers: { "x-api-key": apiKey },
+      });
+      const d = (res.data?.data ?? res.data ?? {}) as any;
+      return {
+        ok: true,
+        status: d.status,
+        isFinal: d.is_final ?? d.isFinal,
+        rejectionReason: d.rejection_reason ?? d.rejectionReason,
+      };
+    } catch (e: any) {
+      return { ok: false, error: String(e?.response?.data?.message ?? e?.message ?? "request failed") };
+    }
   },
 
   verifyWebhookSignature(): boolean {

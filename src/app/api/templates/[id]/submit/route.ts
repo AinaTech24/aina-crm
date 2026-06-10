@@ -17,6 +17,10 @@ import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { templates, templateVersions, templateApprovals, tenants } from "@/db/schema";
 import { runComplianceChecks } from "@/lib/comms/compliance";
+import { getTenantIntegration } from "@/lib/comms/integrations";
+import { whatsappProviderId } from "@/lib/comms/adapters/whatsapp";
+import { wainaWhatsappAdapter } from "@/lib/comms/adapters/waina";
+import { buildMetaSubmission } from "@/lib/comms/whatsapp-template-submit";
 
 export const dynamic = "force-dynamic";
 
@@ -54,7 +58,9 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
         dltTemplateId: tpl.channel === "sms" ? (ver.body as any)?.dltTemplateId : undefined,
       });
 
-      if (compliance.blocked) {
+      // WhatsApp templates are reviewed by Meta itself, so the firm's content gate
+      // shouldn't pre-block submission (it would just re-block what Meta will judge).
+      if (compliance.blocked && String(tpl.channel) !== "whatsapp") {
         throw Object.assign(new Error("compliance blocked"), { status: 422, compliance });
       }
 
@@ -67,6 +73,47 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
         notes: `score=${compliance.score}`,
         decidedAt: new Date(),
       } as any);
+
+      // WhatsApp → create + submit to Meta via WAina. Meta is the approval
+      // authority for WhatsApp templates, so we submit directly (approval 1–24h).
+      if (String(tpl.channel) === "whatsapp") {
+        const integ = await getTenantIntegration(tx, session.tenantId, whatsappProviderId);
+        const apiKey = (integ?.config as any)?.apiKey as string | undefined;
+        const baseUrl = (integ?.config as any)?.webhookUrl as string | undefined;
+        if (!integ?.isActive || !apiKey) {
+          throw Object.assign(
+            new Error("Connect WhatsApp (WAina) in Settings → Integrations before submitting templates."),
+            { status: 400 }
+          );
+        }
+        const sub = buildMetaSubmission(tpl as any, ver as any);
+        const result = await wainaWhatsappAdapter.submitTemplate({ apiKey, baseUrl, ...sub });
+        if (!result.ok) {
+          throw Object.assign(new Error(`WhatsApp: ${result.error ?? "submission rejected"}`), { status: 400 });
+        }
+        await tx
+          .update(templateVersions)
+          .set({
+            approvalStatus: "submitted",
+            externalRef: result.metaTemplateId ?? sub.templateName,
+            externalStatus: "PENDING",
+            externalSyncedAt: new Date(),
+            complianceChecks: compliance,
+            complianceScore: String(compliance.score),
+          } as any)
+          .where(and(eq(templateVersions.id, ver.id), eq(templateVersions.tenantId, session.tenantId)));
+        await tx
+          .update(templates)
+          .set({ status: "pending_approval" } as any)
+          .where(and(eq(templates.id, id), eq(templates.tenantId, session.tenantId)));
+        return {
+          compliance,
+          nextStatus: "submitted",
+          templateStatus: "pending_approval",
+          submittedToMeta: true,
+          metaTemplateId: result.metaTemplateId,
+        };
+      }
 
       let nextStatus = "submitted";
       let templateStatus = "pending_approval";
@@ -91,11 +138,6 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
         } as any);
         nextStatus = "approved_internal";
         templateStatus = "approved";
-
-        // WhatsApp: queue submission to Wapi/Meta (handled by wapi-template-sync worker)
-        if (tpl.channel === "whatsapp") {
-          // The worker picks up templates with externalRef IS NULL and submits.
-        }
       }
 
       await tx
