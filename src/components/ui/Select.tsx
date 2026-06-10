@@ -29,6 +29,8 @@ export function Select({
   ariaLabel,
   size = "md",
   id,
+  searchable = false,
+  searchPlaceholder = "Search…",
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -40,15 +42,23 @@ export function Select({
   ariaLabel?: string;
   size?: "sm" | "md";
   id?: string;
+  /** Show a filter box at the top of the menu (handy for long lists). */
+  searchable?: boolean;
+  searchPlaceholder?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
   const [flipUp, setFlipUp] = useState(false);
   const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({});
+  const [query, setQuery] = useState("");
   const ref = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLUListElement>(null);
 
   const selected = options.find((o) => o.value === value);
+  const visible =
+    searchable && query.trim()
+      ? options.filter((o) => o.label.toLowerCase().includes(query.trim().toLowerCase()))
+      : options;
 
   // Position the (portalled) menu in viewport-fixed coords from the trigger
   // rect, so NO overflow:hidden/auto ancestor (a task-row card, the filter bar,
@@ -77,7 +87,10 @@ export function Select({
   }
 
   useIsoLayoutEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setQuery("");
+      return;
+    }
     setActive(options.findIndex((o) => o.value === value));
     reposition();
     function onDown(e: MouseEvent) {
@@ -104,7 +117,7 @@ export function Select({
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function commit(i: number) {
-    const o = options[i];
+    const o = visible[i];
     if (!o || o.disabled) return;
     onChange(o.value);
     setOpen(false);
@@ -120,7 +133,7 @@ export function Select({
     if (open) {
       if (e.key === "ArrowDown") {
         e.preventDefault();
-        setActive((a) => Math.min(options.length - 1, a + 1));
+        setActive((a) => Math.min(visible.length - 1, a + 1));
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
         setActive((a) => Math.max(0, a - 1));
@@ -166,10 +179,38 @@ export function Select({
           style={menuStyle}
           className={`w-max max-w-[min(20rem,90vw)] max-h-64 overflow-y-auto scrollbar-thin card-elevated bg-card p-1 animate-scale-in ${flipUp ? "origin-bottom" : "origin-top"} ${menuClassName}`}
         >
-          {options.length === 0 && (
-            <li className="px-2.5 py-2 text-xs text-muted-foreground">No options</li>
+          {searchable && (
+            <li className="sticky top-0 bg-card p-1 -m-1 mb-1 border-b border-border z-10">
+              <input
+                autoFocus
+                value={query}
+                onChange={(e) => {
+                  setQuery(e.target.value);
+                  setActive(0);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "ArrowDown") {
+                    e.preventDefault();
+                    setActive((a) => Math.min(visible.length - 1, a + 1));
+                  } else if (e.key === "ArrowUp") {
+                    e.preventDefault();
+                    setActive((a) => Math.max(0, a - 1));
+                  } else if (e.key === "Enter") {
+                    e.preventDefault();
+                    commit(active >= 0 ? active : 0);
+                  } else if (e.key === "Escape") {
+                    setOpen(false);
+                  }
+                }}
+                placeholder={searchPlaceholder}
+                className="w-full rounded-md border border-border px-2 py-1.5 text-xs focus:outline-none focus:border-brand-cyan"
+              />
+            </li>
           )}
-          {options.map((o, i) => {
+          {visible.length === 0 && (
+            <li className="px-2.5 py-2 text-xs text-muted-foreground">{searchable && query ? "No matches" : "No options"}</li>
+          )}
+          {visible.map((o, i) => {
             const isSel = o.value === value;
             return (
               <li key={o.value || `__${i}`} role="option" aria-selected={isSel}>

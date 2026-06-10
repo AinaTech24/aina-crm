@@ -322,6 +322,8 @@ export function WhatsAppRelatedList({
                 value={tplKey}
                 onChange={setTplKey}
                 placeholder="Select a template…"
+                searchable
+                searchPlaceholder="Search templates…"
                 options={templates.map((t) => ({
                   value: t.key,
                   label: t.status && t.status !== "approved" ? `${t.name} (${t.status.replace(/_/g, " ")})` : t.name,

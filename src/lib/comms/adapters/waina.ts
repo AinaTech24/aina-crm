@@ -114,6 +114,9 @@ export type WapiSend =
       endpoint: "/extension/send-message";
       body: {
         to: string;
+        /** The live /extension/send-message endpoint requires `phone_number`
+         *  (the docs say `to`); we send both to be safe. */
+        phone_number: string;
         template_name: string;
         language: string;
         variables: Record<string, string>;
@@ -166,6 +169,7 @@ export function buildWainaPayload(args: SendWhatsappArgs, defaultLanguage = "en_
     endpoint: "/extension/send-message",
     body: {
       to,
+      phone_number: to,
       template_name: templateName,
       language,
       variables,
