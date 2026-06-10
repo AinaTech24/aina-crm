@@ -46,7 +46,6 @@ import {
   Server,
   Inbox,
   Activity,
-  Users2,
 } from "lucide-react";
 import { eq } from "drizzle-orm";
 import { withTenant } from "@/db/client";
@@ -100,8 +99,8 @@ const NAV: NavSection[] = [
         roles: ["owner", "rm", "branch_head", "back_office", "ops"] },
       { href: "/dashboard/calendar", label: "Calendar", icon: Calendar },
       { href: "/dashboard/attendance", label: "Attendance", icon: CalendarCheck },
-      { href: "/dashboard/team", label: "Team Dashboard", icon: Users2,
-        roles: ["owner", "branch_head"] },
+      // Team Dashboard now lives inside the top "Dashboards" dropdown
+      // (see dashboardSubItems below + DashboardNavDropdown).
     ],
   },
   {
@@ -352,6 +351,15 @@ export default async function DashboardLayout({ children }: { children: React.Re
     }))
   );
 
+  // Sub-items for the top "Dashboards" dropdown. Dashboard + My Dashboards are
+  // always available; Team Dashboard is role-gated (owner / branch_head).
+  const canSeeTeam = session.roles.some((r) => r === "owner" || r === "branch_head");
+  const dashboardSubItems = [
+    { href: "/dashboard", label: "Dashboard" },
+    { href: "/dashboard/boards", label: "My Dashboards" },
+    ...(canSeeTeam ? [{ href: "/dashboard/team", label: "Team Dashboard" }] : []),
+  ];
+
   const roleLabel = primaryRoleLabel(session.roles);
 
   const initials = session.name
@@ -412,7 +420,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
         </div>
 
         {/* Nav — searchable, user-personalizable (reorder + custom groups) */}
-        <CustomizableNav items={flatNavItems} storageKey={`aina:nav:${session.userId}`} />
+        <CustomizableNav
+          items={flatNavItems}
+          storageKey={`aina:nav:${session.userId}`}
+          dashboardSubItems={dashboardSubItems}
+        />
 
     </>
   );

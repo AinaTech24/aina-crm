@@ -695,3 +695,10 @@
    when collapsed (the nav itself still shows icons). */
 .sidebar-collapsed .sidebar-when-expanded { display: none; }
 .sidebar-collapsed nav { padding-top: 0.5rem; }
+
+/* Collapsible nav sections (the per-group dropdowns). When a section is
+   collapsed its items carry `.nav-sec-collapsed` and are hidden — but only in
+   the expanded sidebar / mobile drawer. In the slim icon-rail the section
+   headers are already hidden, so we keep every icon visible regardless. */
+.nav-sec-collapsed { display: none; }
+.sidebar-collapsed .nav-sec-collapsed { display: block; }

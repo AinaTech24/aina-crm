@@ -19,9 +19,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { DashboardNavDropdown } from "./DashboardNavDropdown";
+import { DashboardNavDropdown, type DashboardSubItem } from "./DashboardNavDropdown";
 import {
-  Search, Pencil, Check, Plus, GripVertical, X, RotateCcw, Circle,
+  Search, Pencil, Check, Plus, GripVertical, X, RotateCcw, Circle, ChevronDown,
   // ── nav module icons (rendered here by name; see ICONS map) ──
   Activity, AlertTriangle, BarChart3, Bot, Boxes, Briefcase, Cake, Calculator,
   Calendar, CalendarCheck, CalendarOff, ClipboardCheck, Copy, CreditCard,
@@ -115,9 +115,11 @@ function reconcile(saved: SavedLayout | null, items: NavItemData[]): Group[] {
 export function CustomizableNav({
   items,
   storageKey,
+  dashboardSubItems,
 }: {
   items: NavItemData[];
   storageKey: string;
+  dashboardSubItems?: DashboardSubItem[];
 }) {
   const pathname = usePathname() ?? "";
   const itemMap = useMemo(() => new Map(items.map((i) => [i.href, i])), [items]);
@@ -126,7 +128,11 @@ export function CustomizableNav({
   const [editing, setEditing] = useState(false);
   const [query, setQuery] = useState("");
   const [dragHref, setDragHref] = useState<string | null>(null);
+  // Per-group collapse state (groupId → collapsed). Defaults to expanded; the
+  // user can collapse a section like the Dashboards dropdown. Persisted per user.
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const loadedRef = useRef(false);
+  const collapseKey = `${storageKey}:collapsed`;
 
   // Load saved layout once on mount, reconciled against current access.
   useEffect(() => {
@@ -149,6 +155,29 @@ export function CustomizableNav({
       /* ignore quota / disabled storage */
     }
   }, [layout, storageKey]);
+
+  // Load + persist per-group collapse state.
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(collapseKey);
+      if (raw) setCollapsed(JSON.parse(raw) as Record<string, boolean>);
+    } catch {
+      /* ignore */
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [collapseKey]);
+  useEffect(() => {
+    if (!loadedRef.current) return;
+    try {
+      localStorage.setItem(collapseKey, JSON.stringify(collapsed));
+    } catch {
+      /* ignore */
+    }
+  }, [collapsed, collapseKey]);
+
+  function toggleCollapse(id: string) {
+    setCollapsed((prev) => ({ ...prev, [id]: !prev[id] }));
+  }
 
   const isActive = (href: string) =>
     href === "/dashboard" ? pathname === "/dashboard" : pathname === href || pathname.startsWith(href + "/");
@@ -239,8 +268,8 @@ export function CustomizableNav({
       </div>
 
       <nav className="flex-1 overflow-y-auto overflow-x-hidden px-3 pb-4 pt-2 space-y-5 scrollbar-thin">
-        {/* Combined Dashboards dropdown (Dashboard + My Dashboards) — pinned top */}
-        {!searchResults && <DashboardNavDropdown />}
+        {/* Combined Dashboards dropdown (Dashboard + My Dashboards + Team) — pinned top */}
+        {!searchResults && <DashboardNavDropdown items={dashboardSubItems} />}
         {/* ---- search results (flat) ---- */}
         {searchResults ? (
           <div className="space-y-0.5">
@@ -256,35 +285,48 @@ export function CustomizableNav({
           /* ---- grouped layout ---- */
           layout.map((g) => {
             if (!editing && g.items.length === 0) return null;
+            const titled = g.title !== "";
+            // A titled section is a collapsible dropdown (like Dashboards). The
+            // header-less top group + edit mode always show their items.
+            const isCollapsed = !editing && titled && !!collapsed[g.id];
+            const groupActive = g.items.some((h) => isActive(h));
             return (
               <div
                 key={g.id}
                 onDragOver={editing ? (e) => e.preventDefault() : undefined}
                 onDrop={editing ? (e) => { e.preventDefault(); if (dragHref) moveItem(dragHref, g.id, null); setDragHref(null); } : undefined}
               >
-                {g.title !== "" || editing ? (
+                {editing ? (
                   <div className="sidebar-section-title px-2 mb-2 flex items-center gap-1">
-                    {editing ? (
-                      <>
-                        <input
-                          value={g.title}
-                          onChange={(e) => renameGroup(g.id, e.target.value)}
-                          placeholder="Group name"
-                          className="flex-1 min-w-0 bg-transparent text-[10px] font-bold uppercase tracking-[0.1em] text-foreground/70 border-b border-dashed border-border focus:outline-none focus:border-brand-cyan"
-                        />
-                        {layout.length > 1 && (
-                          <button type="button" onClick={() => deleteGroup(g.id)} className="text-muted-foreground hover:text-rose-600" title="Delete group (items move to the first group)">
-                            <X className="size-3" />
-                          </button>
-                        )}
-                      </>
-                    ) : (
-                      <span className="text-[10px] font-bold uppercase tracking-[0.1em] text-muted-foreground/70">{g.title}</span>
+                    <input
+                      value={g.title}
+                      onChange={(e) => renameGroup(g.id, e.target.value)}
+                      placeholder="Group name"
+                      className="flex-1 min-w-0 bg-transparent text-[10px] font-bold uppercase tracking-[0.1em] text-foreground/70 border-b border-dashed border-border focus:outline-none focus:border-brand-cyan"
+                    />
+                    {layout.length > 1 && (
+                      <button type="button" onClick={() => deleteGroup(g.id)} className="text-muted-foreground hover:text-rose-600" title="Delete group (items move to the first group)">
+                        <X className="size-3" />
+                      </button>
                     )}
                   </div>
+                ) : titled ? (
+                  <button
+                    type="button"
+                    onClick={() => toggleCollapse(g.id)}
+                    aria-expanded={!isCollapsed}
+                    className="sidebar-section-title group/sec w-full px-2 mb-2 flex items-center gap-1 text-left hover:text-foreground"
+                  >
+                    <span className={`flex-1 truncate text-[10px] font-bold uppercase tracking-[0.1em] ${groupActive ? "text-brand-cyan-deep" : "text-muted-foreground/70"}`}>
+                      {g.title}
+                    </span>
+                    <ChevronDown className={`size-3 shrink-0 text-muted-foreground/60 transition-transform ${isCollapsed ? "-rotate-90" : ""}`} />
+                  </button>
                 ) : null}
 
-                <div className="space-y-0.5 min-h-[8px]">
+                {/* Items stay mounted; when the section is collapsed we hide them
+                    via CSS so the icon-rail still shows every glyph. */}
+                <div className={`space-y-0.5 min-h-[8px] ${isCollapsed ? "nav-sec-collapsed" : ""}`}>
                   {g.items.map((href) => {
                     const it = itemMap.get(href);
                     if (!it) return null;

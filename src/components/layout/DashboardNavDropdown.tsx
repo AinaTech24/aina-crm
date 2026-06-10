@@ -11,14 +11,20 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LayoutDashboard, ChevronDown } from "lucide-react";
 
-const SUB = [
+export type DashboardSubItem = { href: string; label: string };
+
+const DEFAULT_SUB: DashboardSubItem[] = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/dashboard/boards", label: "My Dashboards" },
 ];
 
-export function DashboardNavDropdown() {
+const isOn = (pathname: string, href: string) =>
+  href === "/dashboard" ? pathname === "/dashboard" : pathname === href || pathname.startsWith(href + "/");
+
+export function DashboardNavDropdown({ items }: { items?: DashboardSubItem[] }) {
   const pathname = usePathname() ?? "";
-  const onDash = pathname === "/dashboard" || pathname.startsWith("/dashboard/boards");
+  const sub = items && items.length ? items : DEFAULT_SUB;
+  const onDash = sub.some((s) => isOn(pathname, s.href));
   const [open, setOpen] = useState(onDash);
 
   return (
@@ -36,8 +42,8 @@ export function DashboardNavDropdown() {
 
       {open && (
         <div className="ml-4 pl-3 border-l border-border/60 space-y-0.5 sidebar-when-expanded">
-          {SUB.map((s) => {
-            const active = s.href === "/dashboard" ? pathname === "/dashboard" : pathname === s.href || pathname.startsWith(s.href + "/");
+          {sub.map((s) => {
+            const active = isOn(pathname, s.href);
             return (
               <Link
                 key={s.href}
