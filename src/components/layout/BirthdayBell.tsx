@@ -37,7 +37,7 @@ export function BirthdayBell() {
 
   useEffect(() => {
     load();
-    const i = setInterval(load, 5 * 60_000);
+    const i = setInterval(load, 15 * 60_000);
     return () => clearInterval(i);
   }, []);
 

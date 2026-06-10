@@ -13,8 +13,12 @@
  * above the trigger when there isn't room below.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+
+// Position the calendar BEFORE paint so it doesn't flash at the wrong spot then
+// jump (the open stutter). Falls back to useEffect during SSR.
+const useIsoLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
 import { Calendar as CalIcon, ChevronLeft, ChevronRight } from "lucide-react";
 
 const MONTHS = [
@@ -87,7 +91,7 @@ export function DatePicker({
     setCoords({ left, top });
   }
 
-  useEffect(() => {
+  useIsoLayoutEffect(() => {
     if (!open) return;
     setView(fromISO(value) ?? new Date());
     reposition();

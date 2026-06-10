@@ -28,6 +28,7 @@ const nextConfig: NextConfig = {
       "@radix-ui/react-tabs",
       "@radix-ui/react-tooltip",
       "@radix-ui/react-toast",
+      "@xyflow/react",
     ],
   },
   serverExternalPackages: ["pg", "bullmq", "ioredis"],

@@ -42,7 +42,7 @@ export function NotificationBell() {
       } catch {}
     }
     load();
-    const i = setInterval(load, 30_000);
+    const i = setInterval(load, 90_000);
     return () => {
       cancelled = true;
       clearInterval(i);

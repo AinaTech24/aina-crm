@@ -23,7 +23,9 @@
 import { sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 
-const REVOCATION_CACHE_TTL_MS = 30_000;
+// 2-minute cache: a revoked/offboarded session stops working within this window.
+// Bumped from 30s to cut the per-page DB revocation lookup on normal browsing.
+const REVOCATION_CACHE_TTL_MS = 120_000;
 
 type CacheEntry = { invalidAfterMs: number; cachedAt: number };
 const cache = new Map<string, CacheEntry>();

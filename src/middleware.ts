@@ -104,7 +104,12 @@ export async function middleware(req: NextRequest) {
 
   if (!session) {
     if (pathname.startsWith("/api/")) {
-      return NextResponse.json({ error: "not authenticated" }, { status: 401 });
+      const res = NextResponse.json({ error: "not authenticated" }, { status: 401 });
+      // Self-heal: a present-but-invalid/expired token would otherwise be re-sent
+      // on every request and keep failing — delete it so the next login is clean
+      // (fixes the "had to clear cookies before login worked" symptom).
+      if (token) res.cookies.delete(cookieName);
+      return res;
     }
     // Nicety: an Aina admin who lands on an MFD page (no mfd_session) but holds
     // a valid admin session is sent to their console instead of the login page.
@@ -116,7 +121,11 @@ export async function middleware(req: NextRequest) {
     }
     const loginUrl = new URL("/login", req.url);
     loginUrl.searchParams.set("next", pathname);
-    return NextResponse.redirect(loginUrl);
+    const redirect = NextResponse.redirect(loginUrl);
+    // Clear the stale/invalid session cookie on the way to login so it can't keep
+    // re-failing (no manual cookie-clearing needed).
+    if (token) redirect.cookies.delete(cookieName);
+    return redirect;
   }
 
   // Surface ↔ role consistency. With separate cookies this is mostly defensive,
