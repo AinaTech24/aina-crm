@@ -29,6 +29,7 @@ import { HumanLifeValueCalculator } from "./HumanLifeValueCalculator";
 import { GoalPlannerCalculator } from "./GoalPlannerCalculator";
 import { CapitalGainsTaxCalculator } from "./CapitalGainsTaxCalculator";
 import { OpmHousePlanner } from "./OpmHousePlanner";
+import { AnnualLumpsumRequiredCalculator } from "./AnnualLumpsumRequiredCalculator";
 import {
   fvSip,
   fvLumpsum,
@@ -69,6 +70,7 @@ type TabKey =
   | "goalplan"
   | "captax"
   | "opm"
+  | "annualreq"
   | "sip"
   | "lumpsum"
   | "goal"
@@ -103,6 +105,7 @@ const TABS: Array<{ key: TabKey; label: string }> = [
   { key: "goalplan", label: "★ Goal Planner" },
   { key: "captax", label: "★ Capital Gains Tax" },
   { key: "opm", label: "★ OPM House (SWP)" },
+  { key: "annualreq", label: "★ Annual Lumpsum (Target)" },
   { key: "sip", label: "1. SIP" },
   { key: "lumpsum", label: "2. Lumpsum" },
   { key: "goal", label: "3. Goal" },
@@ -161,6 +164,7 @@ export function CalculatorsApp() {
       {tab === "goalplan" && <GoalPlannerCalculator />}
       {tab === "captax" && <CapitalGainsTaxCalculator />}
       {tab === "opm" && <OpmHousePlanner />}
+      {tab === "annualreq" && <AnnualLumpsumRequiredCalculator />}
       {tab === "sip" && <SipCalc />}
       {tab === "lumpsum" && <LumpsumCalc />}
       {tab === "goal" && <GoalCalc />}
