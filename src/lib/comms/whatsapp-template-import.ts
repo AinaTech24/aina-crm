@@ -54,14 +54,18 @@ export async function importWhatsappTemplatesForTenant(tx: Tx, tenantId: string,
 
   const fetched = await fetchWainaTemplatesDetailed({ apiKey, baseUrl });
   if (!fetched.ok) {
-    // A real failure (bad key, wrong base URL, network) — surface it instead of
-    // silently reporting "no templates found".
+    // A real failure (bad key, wrong base URL, permission error, network) —
+    // surface it instead of silently reporting "no templates found".
+    const isPerm = /permission|forbidden|unauthor/i.test(fetched.error ?? "") || fetched.status === 403;
+    const hint = isPerm
+      ? "Your WAina key can read the workspace but not its templates — it may be a webhook key or lack the template scope. In WAina → API Keys, generate an API key with template access and paste it via Update key."
+      : "Check the WAina API key under Settings → Integrations → WhatsApp.";
     return {
       ok: false,
       fetched: 0,
       imported: 0,
       approved: 0,
-      error: `Couldn't reach your WhatsApp workspace${fetched.status ? ` (HTTP ${fetched.status})` : ""}: ${fetched.error}. Tried ${fetched.url}. Check the WAina API key under Settings → Integrations → WhatsApp.`,
+      error: `WhatsApp template fetch was rejected${fetched.status ? ` (${fetched.status})` : ""}: ${fetched.error}. ${hint}`,
     };
   }
   const metas = fetched.templates;

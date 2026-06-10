@@ -223,12 +223,28 @@ export async function fetchWainaTemplatesDetailed(opts?: {
   if (!apiKey) return { ok: false, templates: [], error: "No API key configured", url };
   try {
     const res = await axios.get(url, { timeout: 30_000, headers: { "x-api-key": apiKey } });
-    const data = res.data?.data ?? res.data?.templates ?? [];
-    return { ok: true, templates: Array.isArray(data) ? data : [], url };
+    const body = (res.data ?? {}) as Record<string, any>;
+    const arr = body.data ?? body.templates ?? null;
+    const bodyCode = typeof body.code === "number" ? body.code : undefined;
+
+    // WAina returns HTTP 200 even for permission/auth failures, with the error in
+    // the BODY (e.g. { code: 403, msg: "permission error" }). Detect that so it
+    // surfaces as a real error instead of a misleading "0 templates".
+    const bodyError = body.msg ?? body.message ?? body.error;
+    if (body.success === false || (bodyCode !== undefined && bodyCode >= 400) || (!Array.isArray(arr) && bodyError)) {
+      return {
+        ok: false,
+        templates: [],
+        error: String(bodyError ?? `error ${bodyCode ?? ""}`).trim() || "permission/access error",
+        status: bodyCode ?? res.status,
+        url,
+      };
+    }
+    return { ok: true, templates: Array.isArray(arr) ? arr : [], url };
   } catch (e: any) {
     const status = e.response?.status as number | undefined;
     const d = e.response?.data;
-    const detail = d?.message ?? d?.error ?? e.message ?? "request failed";
+    const detail = d?.msg ?? d?.message ?? d?.error ?? e.message ?? "request failed";
     return { ok: false, templates: [], error: typeof detail === "string" ? detail : JSON.stringify(detail), status, url };
   }
 }
