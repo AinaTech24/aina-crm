@@ -8,9 +8,13 @@
  *   <Select value={v} onChange={setV} options={[{value:"a",label:"A"}]} />
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, Check } from "lucide-react";
+
+// Position the menu BEFORE the browser paints (no first-frame jump/stutter when
+// opening). Falls back to useEffect during SSR to avoid the layout-effect warning.
+const useIsoLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
 export type SelectOption = { value: string; label: string; disabled?: boolean };
 
@@ -72,7 +76,7 @@ export function Select({
     setMenuStyle(style);
   }
 
-  useEffect(() => {
+  useIsoLayoutEffect(() => {
     if (!open) return;
     setActive(options.findIndex((o) => o.value === value));
     reposition();

@@ -9,7 +9,7 @@ import { RmSelector } from "@/components/common/RmSelector";
 import { useToast } from "@/components/ui/Toast";
 import { TaskDetailDrawer } from "./TaskDetailDrawer";
 import { taskChecklist, type Task } from "@/db/schema";
-import { CheckSquare, Square, Loader2, Plus, ListChecks } from "lucide-react";
+import { Loader2, Plus, ListChecks } from "lucide-react";
 
 interface TaskRow {
   task: Task;
@@ -295,7 +295,7 @@ export function TaskList({ initialRows, currentUserId }: TaskListProps) {
                   isDone ? "opacity-60 bg-slate-50/30" : ""
                 }`}
               >
-                {/* Bulk select */}
+                {/* Single per-row checkbox (bulk select; complete via bulk action or the detail drawer) */}
                 <input
                   type="checkbox"
                   checked={selected.has(t.id)}
@@ -304,20 +304,6 @@ export function TaskList({ initialRows, currentUserId }: TaskListProps) {
                   className="size-3.5 rounded border-slate-300 flex-shrink-0"
                   aria-label="Select task"
                 />
-
-                {/* Complete checkbox */}
-                <button
-                  type="button"
-                  onClick={(e) => handleToggleComplete(t.id, !isDone, e)}
-                  disabled={completingTaskId === t.id}
-                  className="text-slate-400 hover:text-primary transition-colors focus:outline-none flex-shrink-0"
-                >
-                  {isDone ? (
-                    <CheckSquare className="size-4.5 text-emerald-600" />
-                  ) : (
-                    <Square className="size-4.5" />
-                  )}
-                </button>
 
                 <div className="flex-1 min-w-0">
                   <div

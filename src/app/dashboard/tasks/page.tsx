@@ -9,6 +9,7 @@ import { FilterBar } from "@/components/common/FilterBar";
 import { Pager } from "@/components/common/Pager";
 import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
 import { CustomViews } from "@/components/common/CustomViews";
+import { TaskViewSelect } from "./TaskViewSelect";
 import { TaskList } from "./TaskList";
 import { TaskKanban } from "./TaskKanban";
 import { WorkSwitcher } from "@/components/layout/WorkSwitcher";
@@ -33,7 +34,9 @@ export default async function TasksPage({
   const view = sp.view ?? "";
   const isKanban = view === "kanban";
   // Sort + pagination (list only; the kanban shows a wide unpaged slice).
-  const sortKey = sp.sort === "priority" || sp.sort === "created" ? sp.sort : "due";
+  // Default = newest-created first (recently added on top). Users can switch to
+  // due-date or priority via the Sort dropdown.
+  const sortKey = sp.sort === "priority" || sp.sort === "due" ? sp.sort : "created";
   const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
   const PAGE_SIZE = 50;
 
@@ -87,10 +90,10 @@ export default async function TasksPage({
     // tasks to the top (Postgres NULLS FIRST) which read backwards.
     const orderByExpr =
       sortKey === "priority"
-        ? sql`case ${tasks.priority} when 'urgent' then 0 when 'high' then 1 when 'normal' then 2 else 3 end asc, ${tasks.dueAt} asc nulls last`
+        ? sql`case ${tasks.priority} when 'urgent' then 0 when 'high' then 1 when 'normal' then 2 else 3 end asc, ${tasks.dueAt} asc nulls last, ${tasks.createdAt} desc`
         : sortKey === "created"
         ? sql`${tasks.createdAt} desc`
-        : sql`${tasks.dueAt} asc nulls last`;
+        : sql`${tasks.dueAt} asc nulls last, ${tasks.createdAt} desc`;
 
     // Total matching count (for the pager) — same predicate + join (search hits
     // the assignee name, so the join must be present).
@@ -165,29 +168,10 @@ export default async function TasksPage({
         </div>
       </div>
 
-      {/* View tabs — list / mine / assigned-by-me / kanban board */}
-      <div className="flex items-center gap-1 border-b border-border -mb-2 overflow-x-auto">
-        {[
-          { key: "", label: "All tasks" },
-          { key: "to_me", label: "Assigned to me" },
-          { key: "by_me", label: "Assigned by me" },
-          { key: "kanban", label: "Kanban board" },
-        ].map((t) => {
-          const active = view === t.key;
-          return (
-            <Link
-              key={t.key || "all"}
-              href={t.key ? `/dashboard/tasks?view=${t.key}` : "/dashboard/tasks"}
-              className={`px-3.5 py-2 text-sm font-medium border-b-2 -mb-px whitespace-nowrap transition-colors ${
-                active
-                  ? "border-primary text-primary"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              {t.label}
-            </Link>
-          );
-        })}
+      {/* View switcher — custom dropdown (list / mine / assigned-by-me / kanban) */}
+      <div className="flex items-center gap-2">
+        <span className="text-sm text-muted-foreground">View</span>
+        <TaskViewSelect current={view} />
       </div>
 
       {/* Clickable Interactive Stats Ribbon */}
@@ -216,8 +200,9 @@ export default async function TasksPage({
                 key: "sort",
                 label: "Sort",
                 options: [
+                  { value: "created", label: "Newest first" },
+                  { value: "due", label: "Due date" },
                   { value: "priority", label: "Priority" },
-                  { value: "created", label: "Newest" },
                 ],
               }]
             : []),
