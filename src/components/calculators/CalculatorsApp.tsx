@@ -23,6 +23,7 @@ import { SwpComprehensivePlanner } from "./SwpComprehensivePlanner";
 import { StpComprehensivePlanner } from "./StpComprehensivePlanner";
 import { EmiSipRecoveryPlanner } from "./EmiSipRecoveryPlanner";
 import { ReviewOfInvestments } from "./ReviewOfInvestments";
+import { HumanLifeValueCalculator } from "./HumanLifeValueCalculator";
 import {
   fvSip,
   fvLumpsum,
@@ -57,6 +58,7 @@ type TabKey =
   | "emisip"
   | "review"
   | "vacation"
+  | "hlv"
   | "sip"
   | "lumpsum"
   | "goal"
@@ -85,6 +87,7 @@ const TABS: Array<{ key: TabKey; label: string }> = [
   { key: "emisip", label: "★ EMI → SIP" },
   { key: "review", label: "★ Review of Investments" },
   { key: "vacation", label: "★ Vacation Planner" },
+  { key: "hlv", label: "★ Human Life Value" },
   { key: "sip", label: "1. SIP" },
   { key: "lumpsum", label: "2. Lumpsum" },
   { key: "goal", label: "3. Goal" },
@@ -137,6 +140,7 @@ export function CalculatorsApp() {
       {tab === "emisip" && <EmiSipRecoveryPlanner />}
       {tab === "review" && <ReviewOfInvestments />}
       {tab === "vacation" && <VacationPlannerCalc />}
+      {tab === "hlv" && <HumanLifeValueCalculator />}
       {tab === "sip" && <SipCalc />}
       {tab === "lumpsum" && <LumpsumCalc />}
       {tab === "goal" && <GoalCalc />}
