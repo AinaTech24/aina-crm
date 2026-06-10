@@ -54,6 +54,48 @@ export function NumberField({
   );
 }
 
+export function TextField({
+  label, value, setValue, placeholder,
+}: { label: string; value: string; setValue: (v: string) => void; placeholder?: string }) {
+  return (
+    <Field label={label}>
+      <input
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        placeholder={placeholder}
+        className="input-base text-sm w-full"
+      />
+    </Field>
+  );
+}
+
+/** Segmented single-choice control (radio replacement). */
+export function Segmented<T extends string>({
+  value, onChange, options, label,
+}: { value: T; onChange: (v: T) => void; options: Array<{ value: T; label: string }>; label?: string }) {
+  return (
+    <div>
+      {label && (
+        <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium block mb-1">{label}</span>
+      )}
+      <div className="inline-flex flex-wrap rounded-lg border border-border bg-secondary/30 p-0.5 gap-0.5">
+        {options.map((o) => (
+          <button
+            key={o.value}
+            type="button"
+            onClick={() => onChange(o.value)}
+            className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+              value === o.value ? "bg-brand-cyan text-white shadow-sm" : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function SmallNum({
   label, value, onChange,
 }: { label: string; value: number; onChange: (v: number) => void }) {
