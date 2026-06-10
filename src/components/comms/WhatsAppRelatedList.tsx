@@ -37,6 +37,9 @@ type TemplateInfo = {
   variables: TemplateVar[] | null;
   /** Stored media-header URL is an expiring Meta CDN URL → will 131053 on send. */
   mediaBroken?: boolean;
+  /** Meta-approved (WAina) template → deliverable anytime. CRM-authored → free-form
+   *  text, delivers only inside the 24h session window. */
+  isMetaTemplate?: boolean;
 };
 
 const QUICK_REPLIES = [
@@ -328,7 +331,7 @@ export function WhatsAppRelatedList({
                 searchPlaceholder="Search templates…"
                 options={templates.map((t) => ({
                   value: t.key,
-                  label: `${t.status && t.status !== "approved" ? `${t.name} (${t.status.replace(/_/g, " ")})` : t.name}${t.mediaBroken ? "  ⚠ media expired" : ""}`,
+                  label: `${t.isMetaTemplate ? "✅ " : "✏ "}${t.status && t.status !== "approved" ? `${t.name} (${t.status.replace(/_/g, " ")})` : t.name}${t.mediaBroken ? "  ⚠ media expired" : ""}`,
                 }))}
               />
             )}
@@ -350,6 +353,15 @@ export function WhatsAppRelatedList({
                 ⚠ This template's header image/video link has <span className="font-medium">expired</span> on Meta's
                 side (error 131053). Re-upload the sample media for this template in the WAina console, then{" "}
                 <span className="font-medium">Fetch from WhatsApp</span> again — otherwise the send will fail.
+              </div>
+            )}
+            {selectedTpl && selectedTpl.isMetaTemplate === false && !sessionActive && (
+              <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-900">
+                ⚠ <span className="font-medium">This is a CRM template, not a Meta-approved WhatsApp template.</span>{" "}
+                It sends as free-form text, which WhatsApp <span className="font-medium">only delivers within 24h of
+                the client messaging you</span>. This client has no open chat, so it will show “sent” but{" "}
+                <span className="font-medium">won't be delivered</span>. Pick a ✅ Meta-approved template (fetched
+                from WhatsApp) for proactive sends.
               </div>
             )}
             {blockedSend && (

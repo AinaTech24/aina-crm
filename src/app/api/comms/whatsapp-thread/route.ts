@@ -121,8 +121,12 @@ export async function GET(req: NextRequest) {
       const url = b.headerSampleUrl ?? b.headerMediaUrl;
       const mediaBroken =
         b.headerMediaBroken === true || (isMedia && (!url || EXPIRING_MEDIA.test(String(url))));
+      // A Meta-approved (WAina-fetched) template can be sent to anyone, anytime.
+      // A CRM-authored one goes as free-form text → delivers only inside the 24h
+      // session window.
+      const isMetaTemplate = !!(b.wainaTemplateName || b.metaTemplateName);
       const { body: _omit, ...rest } = t;
-      return { ...rest, mediaBroken };
+      return { ...rest, mediaBroken, isMetaTemplate };
     });
 
     return NextResponse.json({ messages, sessionActive: data.sessionActive, templates: tmpls });
