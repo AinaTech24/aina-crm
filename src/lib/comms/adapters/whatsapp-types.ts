@@ -9,6 +9,9 @@ export interface SendWhatsappArgs {
   tenantId: string;
   templateVersion: TemplateVersion;
   tokens: Record<string, string>;
+  /** Fully-rendered body text (tokens already resolved by the pipeline). Used for
+   *  free-form sends so the adapter never has to re-derive block-based content. */
+  renderedText?: string;
   recipient: string; // E.164 number — "+91XXXXXXXXXX"
   apiKey?: string;
   /** Per-tenant send endpoint / base-URL override (defaults to env / platform URL). */

@@ -130,14 +130,18 @@ export function buildWainaPayload(args: SendWhatsappArgs, defaultLanguage = "en_
 
   // No template → plain-text send (only valid inside the 24h customer-care window).
   if (!templateName) {
+    // Prefer the pipeline's fully-rendered text (handles block-based bodies);
+    // fall back to substituting tokens into a raw body string.
     const raw = body.text ?? body.body?.text ?? body.message ?? "";
-    const message = String(substituteTokens(raw, args.tokens) ?? "");
+    const message = String(args.renderedText?.trim() || substituteTokens(raw, args.tokens) || "");
     if (!message) {
       throw new Error(
         "Aina WhatsApp send: no template name (set templateVersion.body.wainaTemplateName or externalRef) and no plain-text body"
       );
     }
-    return { endpoint: "/extension/send-message", body: { to, phone_number: to, message, ...pn } };
+    // Free-form text: the endpoint wants `message_text` (template sends use
+    // `template_name`); send `message` too for compatibility.
+    return { endpoint: "/extension/send-message", body: { to, phone_number: to, message_text: message, message, ...pn } };
   }
 
   const language = body.languageCode ?? body.wainaLanguage ?? defaultLanguage;

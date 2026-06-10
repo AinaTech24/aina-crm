@@ -404,6 +404,7 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
         tenantId: input.tenantId,
         templateVersion: version,
         tokens: rendered.tokens,
+        renderedText: rendered.text,
         recipient: input.recipient,
         apiKey: integration?.config?.apiKey,
         webhookUrl: integration?.config?.webhookUrl,
