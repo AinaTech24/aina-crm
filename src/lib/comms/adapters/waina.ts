@@ -108,23 +108,12 @@ function substituteTokens(value: unknown, tokens: Record<string, string>): unkno
  * `header_text` — NOT a Meta `components` array (Wapi builds that itself and
  * falls back to the template's saved sample media when no URL is passed).
  */
-export type WapiSend =
-  | { endpoint: "/whatsapp/send"; body: { to: string; message: string; phone_number_id?: string } }
-  | {
-      endpoint: "/extension/send-message";
-      body: {
-        to: string;
-        /** The live /extension/send-message endpoint requires `phone_number`
-         *  (the docs say `to`); we send both to be safe. */
-        phone_number: string;
-        template_name: string;
-        language: string;
-        variables: Record<string, string>;
-        header_media_url?: string;
-        header_text?: string;
-        phone_number_id?: string;
-      };
-    };
+/** Endpoint + body. We send everything through /extension/send-message (the
+ *  "extension" API that only needs `phone_number`): a template send carries
+ *  template_name + variables (+ optional header media); a free-form send (24h
+ *  window) carries `message`. The old /whatsapp/send needs contact_id +
+ *  phone_number_id, which we don't resolve here. */
+export type WapiSend = { endpoint: "/extension/send-message"; body: Record<string, unknown> };
 
 /**
  * Pure mapper: SendWhatsappArgs (+ default language) → Wapi request (endpoint + body).
@@ -148,7 +137,7 @@ export function buildWainaPayload(args: SendWhatsappArgs, defaultLanguage = "en_
         "Aina WhatsApp send: no template name (set templateVersion.body.wainaTemplateName or externalRef) and no plain-text body"
       );
     }
-    return { endpoint: "/whatsapp/send", body: { to, message, ...pn } };
+    return { endpoint: "/extension/send-message", body: { to, phone_number: to, message, ...pn } };
   }
 
   const language = body.languageCode ?? body.wainaLanguage ?? defaultLanguage;

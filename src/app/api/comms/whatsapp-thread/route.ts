@@ -203,7 +203,14 @@ export async function POST(req: NextRequest) {
     });
 
     return NextResponse.json(result);
-  } catch (err) {
+  } catch (err: any) {
+    // Surface the real WhatsApp/WAina failure (e.g. a provider rejection) to the
+    // sender instead of a generic "internal" — these messages aren't sensitive
+    // and the RM needs to see why a send didn't go out.
+    const msg = String(err?.message ?? "");
+    if (/whatsapp|aina|template|phone|contact/i.test(msg)) {
+      return NextResponse.json({ error: msg.replace(/^Aina WhatsApp send failed:\s*/i, "WhatsApp: ") }, { status: 502 });
+    }
     return handleApiError(err);
   }
 }
