@@ -10,6 +10,9 @@ import { useState } from "react";
 import { Printer } from "lucide-react";
 import { ClientNameField } from "./ClientNameField";
 import { Sip360Planner } from "./Sip360Planner";
+import { StepUpReckoner } from "./StepUpReckoner";
+import { IncomeBridgePlanner } from "./IncomeBridgePlanner";
+import { SalaryWealthBuilder } from "./SalaryWealthBuilder";
 import {
   fvSip,
   fvLumpsum,
@@ -27,6 +30,9 @@ import {
 
 type TabKey =
   | "sip360"
+  | "reckoner"
+  | "bridge"
+  | "salary"
   | "sip"
   | "lumpsum"
   | "goal"
@@ -40,6 +46,9 @@ type TabKey =
 
 const TABS: Array<{ key: TabKey; label: string }> = [
   { key: "sip360", label: "★ SIP 360° Planner" },
+  { key: "reckoner", label: "★ Step-Up SIP Reckoner" },
+  { key: "bridge", label: "★ Income Bridge (SIP→SWP)" },
+  { key: "salary", label: "★ Salary → Wealth" },
   { key: "sip", label: "1. SIP" },
   { key: "lumpsum", label: "2. Lumpsum" },
   { key: "goal", label: "3. Goal" },
@@ -77,6 +86,9 @@ export function CalculatorsApp() {
       </div>
 
       {tab === "sip360" && <Sip360Planner />}
+      {tab === "reckoner" && <StepUpReckoner />}
+      {tab === "bridge" && <IncomeBridgePlanner />}
+      {tab === "salary" && <SalaryWealthBuilder />}
       {tab === "sip" && <SipCalc />}
       {tab === "lumpsum" && <LumpsumCalc />}
       {tab === "goal" && <GoalCalc />}
