@@ -29,6 +29,7 @@ const PatchInput = z.object({
   investorId: z.string().uuid().nullish(),
   clientName: z.string().min(1).max(200).optional(),
   productType: z.enum(PRODUCT_TYPES).optional(),
+  platform: z.string().max(80).nullish(),
   businessDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   status: z.enum(BUSINESS_ENTRY_STATUSES).optional(),
   rmId: z.string().uuid().nullish(),
@@ -87,6 +88,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       if (b.investorId !== undefined) set.investorId = b.investorId;
       if (b.clientName !== undefined) set.clientName = b.clientName;
       if (b.productType !== undefined) set.productType = b.productType;
+      if (b.platform !== undefined) set.platform = b.platform ?? null;
       if (b.businessDate !== undefined) set.businessDate = b.businessDate;
       if (b.status !== undefined) set.status = b.status;
       if (b.rmId !== undefined) set.rmId = b.rmId;

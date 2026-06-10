@@ -74,3 +74,5 @@ export * from "./ignored_duplicates";
 export * from "./platform_settings";
 export * from "./metric_snapshots";
 export * from "./desks";
+export * from "./annual_targets";
+export * from "./equity";

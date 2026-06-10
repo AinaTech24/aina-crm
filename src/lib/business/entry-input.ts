@@ -35,6 +35,7 @@ export const EntryInput = z.object({
   investorId: z.string().uuid().nullish(),
   clientName: z.string().min(1).max(200),
   productType: z.enum(PRODUCT_TYPES).default("mutual_fund"),
+  platform: z.string().max(80).nullish(),
   businessDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   status: z.enum(BUSINESS_ENTRY_STATUSES).default("draft"),
   rmId: z.string().uuid().nullish(),

@@ -36,6 +36,13 @@ export const POLICY_TYPES = [
   "home",
   "life_other",
   "general_other",
+  // Commercial / general lines (Finowise MIS taxonomy).
+  "fire",
+  "marine",
+  "burglary",
+  "workmen_comp",
+  "group_personal_accident",
+  "group_health",
 ] as const;
 
 export const POLICY_STATUSES = [

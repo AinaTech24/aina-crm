@@ -92,6 +92,7 @@ export async function POST(req: NextRequest) {
         investorId: b.investorId ?? null,
         clientName: b.clientName,
         productType: b.productType,
+        platform: b.platform ?? null,
         businessDate: b.businessDate,
         status: b.status,
         rmId,

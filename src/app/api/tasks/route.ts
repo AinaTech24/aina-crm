@@ -51,6 +51,13 @@ const Body = z.object({
     .array(z.object({ id: z.string().max(64), text: z.string().min(1).max(500), done: z.boolean() }))
     .max(100)
     .optional(),
+  /** Back-office classification (Finowise MIS) — stored in meta for the
+   *  Back-Office Work report. */
+  boParticular: z
+    .enum(["purchase_rectified", "sip_rectified", "nj_redemption", "nj_wecare_switch", "pms"])
+    .optional(),
+  boChannel: z.enum(["online", "offline"]).optional(),
+  boValue: z.number().min(0).max(1e12).optional(),
 });
 
 /**
@@ -156,7 +163,14 @@ export async function POST(req: NextRequest) {
         recurrenceUntil: body.recurrenceUntil ?? null,
         // Chain root = this task itself when recurring.
         recurrenceParentId: body.recurrence ? id : null,
-        meta: body.checklist?.length ? { checklist: body.checklist.map((c) => ({ ...c, done: false })) } : undefined,
+        meta: (() => {
+          const m: Record<string, unknown> = {};
+          if (body.checklist?.length) m.checklist = body.checklist.map((c) => ({ ...c, done: false }));
+          if (body.boParticular) m.boParticular = body.boParticular;
+          if (body.boChannel) m.boChannel = body.boChannel;
+          if (body.boValue != null) m.boValue = body.boValue;
+          return Object.keys(m).length ? m : undefined;
+        })(),
       } as any);
 
       await recordAudit(tx, {

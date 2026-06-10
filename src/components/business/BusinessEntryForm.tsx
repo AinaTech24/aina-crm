@@ -106,6 +106,7 @@ type InitialEntry = {
   investorId: string | null;
   clientName: string;
   productType: string;
+  platform?: string | null;
   businessDate: string;
   status: string;
   rmId: string | null;
@@ -133,6 +134,7 @@ export function BusinessEntryForm({
   const [investorId, setInvestorId] = useState(initial?.investorId ?? "");
   const [clientName, setClientName] = useState(initial?.clientName ?? "");
   const [productType, setProductType] = useState(initial?.productType ?? "mutual_fund");
+  const [platform, setPlatform] = useState(initial?.platform ?? "");
   const [businessDate, setBusinessDate] = useState(initial?.businessDate ?? new Date().toISOString().slice(0, 10));
   const [status, setStatus] = useState(initial?.status === "draft" || initial?.status === "confirmed" ? initial.status : "draft");
   const [rmId, setRmId] = useState(initial?.rmId ?? currentUserId);
@@ -219,7 +221,7 @@ export function BusinessEntryForm({
       const body = {
         investorId: investorId || null,
         clientName: clientName.trim(),
-        productType, businessDate, status, rmId: rmId || null,
+        productType, platform: platform.trim() || null, businessDate, status, rmId: rmId || null,
         amcName: amcName.trim() || null, folioNo: folioNo.trim() || null, notes: notes.trim() || null,
         lines: cleaned.map((l) => ({
           schemeCode: l.schemeCode || null, schemeName: l.schemeName.trim(), amcName: l.amcName || null,
@@ -262,6 +264,21 @@ export function BusinessEntryForm({
           <SelectField value={productType} onChange={(e) => changeProduct(e.target.value)} className="w-full">
             {PRODUCT_OPTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </SelectField>
+        </div>
+        <div>
+          <Label>Platform</Label>
+          <input
+            value={platform}
+            onChange={(e) => setPlatform(e.target.value)}
+            list="be-platforms"
+            placeholder="NJ, Motilal, Piper Serica…"
+            className="w-full rounded-md border border-border px-2 py-2 text-sm focus:outline-none focus:border-brand-cyan"
+          />
+          <datalist id="be-platforms">
+            {["NJ", "Motilal Oswal", "Piper Serica", "Anand Rathi", "Phillip Capital", "Advisorkhoj", "AK Capital", "Omni Science", "BSE Star MF", "MFU"].map((p) => (
+              <option key={p} value={p} />
+            ))}
+          </datalist>
         </div>
         <div>
           <Label>Business date</Label>

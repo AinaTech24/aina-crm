@@ -60,6 +60,14 @@ export const serviceRequests = pgTable(
         "folio_correction",
         "other",
         "feedback",
+        // Back-office operational services (Finowise MIS "Other Services")
+        "iin",
+        "can",
+        "name_change",
+        "swp",
+        "swp_stop",
+        "physical_kyc",
+        "video_kyc",
         // Legacy
         "complaint",
         "redemption_help",

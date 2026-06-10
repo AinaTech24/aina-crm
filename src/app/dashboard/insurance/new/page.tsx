@@ -45,6 +45,12 @@ const POLICY_TYPES: [string, string][] = [
   ["travel", "Travel"],
   ["home", "Home"],
   ["life_other", "Life — Other"],
+  ["fire", "Fire / Property"],
+  ["marine", "Marine"],
+  ["burglary", "Burglary"],
+  ["workmen_comp", "Workmen Comp (WC)"],
+  ["group_personal_accident", "Group Personal Accident (GPA)"],
+  ["group_health", "Group Health (GHI)"],
   ["general_other", "General — Other"],
 ];
 
@@ -60,6 +66,12 @@ const CATEGORY_BY_TYPE: Record<string, InsuranceCategory> = {
   motor: "motor",
   travel: "general",
   home: "general",
+  fire: "general",
+  marine: "general",
+  burglary: "general",
+  workmen_comp: "general",
+  group_personal_accident: "general",
+  group_health: "health",
   general_other: "general",
 };
 

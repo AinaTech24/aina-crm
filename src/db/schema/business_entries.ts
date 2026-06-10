@@ -33,6 +33,9 @@ export const businessEntries = pgTable(
     clientName: text("client_name").notNull(),
 
     productType: text("product_type", { enum: PRODUCT_TYPES }).notNull().default("mutual_fund"),
+    /** Execution venue / distribution platform (Finowise MIS) — e.g. NJ, Motilal
+     *  Oswal, Piper Serica, Anand Rathi, Phillip Capital, Advisorkhoj, AK Capital. */
+    platform: text("platform"),
     /** Business / closing date. */
     businessDate: date("business_date").notNull(),
     status: text("status", { enum: BUSINESS_ENTRY_STATUSES }).notNull().default("draft"),

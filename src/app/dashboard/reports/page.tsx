@@ -18,9 +18,11 @@ const REPORTS: { group: string; items: ReportItem[] }[] = [
     { key: "daily_lumpsum", label: "Daily Purchase", icon: "TrendingUp" },
     { key: "redemption", label: "Daily Redemption", icon: "TrendingDown" },
     { key: "net_sales", label: "Net Business", icon: "BarChart3" },
+    { key: "net_sales_platform", label: "Net Sales by Platform", icon: "BarChart3", href: "/dashboard/reports/net-sales" },
     { key: "amc_business", label: "AMC-wise Business", icon: "BarChart3" },
     { key: "scheme_category_business", label: "Scheme Category-wise", icon: "BarChart3" },
     { key: "aum_movement", label: "AUM Movement", icon: "BarChart3" },
+    { key: "equity_team", label: "Equity Team (Direct Equity) — Planned vs Actual", icon: "TrendingUp", href: "/dashboard/reports/equity-team" },
   ]},
   { group: "SIP Tracker", items: [
     { key: "active_sip_book", label: "Active SIP Book", icon: "BarChart3" },
@@ -28,6 +30,7 @@ const REPORTS: { group: string; items: ReportItem[] }[] = [
     { key: "sip_stopped", label: "SIP Stopped This Month", icon: "TrendingDown" },
     { key: "sip_expiring", label: "SIP Expiring Soon", icon: "Calendar" },
     { key: "sip_topup_opportunity", label: "SIP Top-Up Opportunity", icon: "TrendingUp" },
+    { key: "sip_health", label: "SIP Health & Efforts", icon: "TrendingUp", href: "/dashboard/reports/sip-health" },
     { key: "rm_sip_book", label: "RM-wise SIP Book", icon: "Users" },
     { key: "sip_book_size", label: "SIP Book Size (branch-wise)", icon: "BarChart3", href: "/dashboard/reports/metric/sip-book" },
     { key: "sip_rejected", label: "SIP Rejected", icon: "AlertTriangle" },
@@ -44,10 +47,13 @@ const REPORTS: { group: string; items: ReportItem[] }[] = [
     { key: "team_productivity", label: "Team Productivity", icon: "Users" },
   ]},
   { group: "Branch & RM Business (Monthly)", items: [
+    { key: "sif_status", label: "SIF Business — Target vs Actual", icon: "TrendingUp", href: "/dashboard/reports/sif-status" },
     { key: "branch_rm_sip", label: "SIP — Branch & RM-wise", icon: "TrendingUp", href: "/dashboard/reports/branch-rm/sip" },
     { key: "branch_rm_equity", label: "Equity Lumpsum — Branch & RM-wise", icon: "BarChart3", href: "/dashboard/reports/branch-rm/equity-lumpsum" },
     { key: "branch_rm_liquid", label: "Liquid Lumpsum — Branch & RM-wise", icon: "BarChart3", href: "/dashboard/reports/branch-rm/liquid-lumpsum" },
     { key: "branch_rm_insurance", label: "Insurance — Branch & RM-wise", icon: "ShieldCheck", href: "/dashboard/reports/branch-rm/insurance" },
+    { key: "redemption_by_client", label: "Redemption by Client", icon: "TrendingDown", href: "/dashboard/reports/redemption" },
+    { key: "sip_rejection", label: "SIP Rejection / Pending / Repurchase", icon: "AlertTriangle", href: "/dashboard/reports/sip-rejection" },
   ]},
   { group: "Lead Blueprint", items: [
     { key: "blueprint_drop_off", label: "Lead Drop-off Analysis", icon: "TrendingDown" },
@@ -93,6 +99,14 @@ const REPORTS: { group: string; items: ReportItem[] }[] = [
     { key: "marketing_calendar", label: "Monthly Marketing Calendar", icon: "Calendar" },
     { key: "pending_approval_content", label: "Pending Approval Content", icon: "FileText" },
     { key: "marketing-assets", label: "Marketing assets & trust builders", icon: "Megaphone" },
+  ]},
+  { group: "Insurance", items: [
+    { key: "insurance_production", label: "Advisor Production (Personal + Commercial)", icon: "ShieldCheck", href: "/dashboard/reports/insurance-production" },
+    { key: "insurance_claims", label: "Claims Summary", icon: "ShieldCheck", href: "/dashboard/reports/insurance-claims" },
+  ]},
+  { group: "Back Office (Monthly)", items: [
+    { key: "bo_other_services", label: "Other Services (IIN/CAN/KYC…) by Branch", icon: "ListChecks", href: "/dashboard/reports/other-services" },
+    { key: "bo_work", label: "Back-Office Work (Rectifications)", icon: "CheckCircle2", href: "/dashboard/reports/back-office-work" },
   ]},
   { group: "Compliance", items: [
     { key: "ddq_readiness", label: "DDQ Readiness", icon: "FileText", href: "/dashboard/compliance" },

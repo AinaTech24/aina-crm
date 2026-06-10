@@ -20,8 +20,10 @@ type PremiumFrequency = (typeof PREMIUM_FREQUENCIES)[number];
 
 const CATEGORY_BY_POLICY_TYPE: Record<PolicyType, InsuranceCategory> = {
   term: "life", ulip: "life", endowment: "life", money_back: "life", life_other: "life",
-  health: "health", critical_illness: "health",
+  health: "health", critical_illness: "health", group_health: "health",
   personal_accident: "general", travel: "general", home: "general", general_other: "general",
+  fire: "general", marine: "general", burglary: "general", workmen_comp: "general",
+  group_personal_accident: "general",
   motor: "motor",
 };
 
