@@ -145,9 +145,16 @@ export function WhatsAppRelatedList({
         return;
       }
       if (j.status === "skipped") {
-        toast.error(`Blocked: ${j.skipped?.reason ?? "compliance / consent / session"}`);
+        const reason = String(j.skipped?.reason ?? "compliance / consent / session");
+        // If blocked purely on consent, offer a one-click "record consent & resend"
+        // (only for clients — consent is keyed to an investor).
+        if (/consent/i.test(reason) && entityType === "investor") {
+          setBlockedSend({ body, okMsg });
+        }
+        toast.error(`Blocked: ${reason}`);
         return;
       }
+      setBlockedSend(null);
       toast.success(okMsg);
       setText("");
       setTplKey("");
@@ -156,6 +163,36 @@ export function WhatsAppRelatedList({
       toast.error(e?.message ?? "Network error");
     } finally {
       setSending(false);
+    }
+  }
+
+  // A send blocked on consent — surfaced so the RM can record the client's opt-in
+  // and immediately retry.
+  const [blockedSend, setBlockedSend] = useState<{ body: Record<string, unknown>; okMsg: string } | null>(null);
+  const [recording, setRecording] = useState(false);
+
+  async function recordConsentAndResend() {
+    if (!blockedSend) return;
+    setRecording(true);
+    try {
+      const res = await fetch("/api/comms/consent", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ investorId: entityId, channel: "whatsapp", scope: "all", status: "granted" }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        toast.error(j.error ?? "Could not record consent");
+        return;
+      }
+      toast.success("Consent recorded — resending…");
+      const retry = blockedSend;
+      setBlockedSend(null);
+      await send(retry.body, retry.okMsg);
+    } catch (e: any) {
+      toast.error(e?.message ?? "Network error");
+    } finally {
+      setRecording(false);
     }
   }
 
@@ -302,6 +339,23 @@ export function WhatsAppRelatedList({
                     <input value={vars[v.key] ?? ""} onChange={(e) => setVars((s) => ({ ...s, [v.key]: e.target.value }))} className="input-base" />
                   </label>
                 ))}
+              </div>
+            )}
+            {blockedSend && (
+              <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 flex items-center justify-between gap-3">
+                <span>
+                  Blocked — this client hasn’t opted in to WhatsApp. If they’ve agreed to receive messages from
+                  you, record their consent and resend.
+                </span>
+                <button
+                  type="button"
+                  onClick={recordConsentAndResend}
+                  disabled={recording}
+                  className="btn-primary text-xs whitespace-nowrap"
+                >
+                  {recording ? <Loader2 className="size-3.5 animate-spin" /> : null}
+                  {recording ? "Recording…" : "Record consent & resend"}
+                </button>
               </div>
             )}
             <div className="flex justify-end">

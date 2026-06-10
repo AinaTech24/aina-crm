@@ -16,7 +16,7 @@
  * consent + compliance snapshot at send time, immutable forever.
  */
 
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { v4 as uuid } from "uuid";
 import type { Tx } from "@/db/client";
 import {
@@ -720,7 +720,9 @@ export async function getConsent(
   channel: string,
   scope: "transactional" | "marketing"
 ) {
-  const [c] = await tx
+  // A blanket `all`-scope consent covers both transactional + marketing. Prefer
+  // the exact scope when present, else fall back to an `all` consent.
+  const rows = await tx
     .select()
     .from(consents)
     .where(
@@ -728,10 +730,10 @@ export async function getConsent(
         eq(consents.tenantId, tenantId),
         eq(consents.investorId, investorId),
         eq(consents.channel, channel as any),
-        eq(consents.scope, scope as any)
+        inArray(consents.scope, [scope, "all"] as any)
       )
     );
-  return c ?? null;
+  return rows.find((r) => r.scope === scope) ?? rows.find((r) => r.scope === "all") ?? null;
 }
 export async function hasActiveWhatsappSession(
   tx: Tx,
