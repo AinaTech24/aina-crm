@@ -251,19 +251,14 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
   if (input.investorId && !input.bypassConsent && !input.freeformText && input.category !== "authentication") {
     const scope = input.category === "marketing" ? "marketing" : "transactional";
     const consentRow = await getConsent(tx, input.tenantId, input.investorId, input.channel, scope);
-    if (input.category === "marketing") {
-      // Marketing/promotional requires an explicit opt-in (SEBI/AMFI + DPDP).
-      if (!consentRow || consentRow.status !== "granted") {
-        return await skip(tx, communicationId, input, "skipped_consent");
-      }
-    } else {
-      // Transactional / utility service communications (statements, reminders,
-      // confirmations) to an EXISTING client are permitted by default — the
-      // client gave you their contact details for service. Only an explicit
-      // opt-out (revoked) blocks them; the compliance gate (step 5) still runs.
-      if (consentRow && consentRow.status === "revoked") {
-        return await skip(tx, communicationId, input, "skipped_consent", "client has opted out of service messages");
-      }
+    // Consent gate relaxed per firm preference: messages send by DEFAULT (no
+    // explicit opt-in required for any category). The ONLY block is an explicit
+    // opt-out (revoked) — we must never message a client who said "stop", both to
+    // respect their choice and to keep the WhatsApp number from being banned by
+    // Meta for messaging opted-out users. The full compliance gate (step 5) still
+    // runs on every send.
+    if (consentRow && consentRow.status === "revoked") {
+      return await skip(tx, communicationId, input, "skipped_consent", "client has opted out");
     }
     consentSnapshot = consentRow;
   }
