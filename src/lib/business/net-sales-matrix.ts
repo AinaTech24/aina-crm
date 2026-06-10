@@ -17,16 +17,32 @@ export const PRODUCT_OPTIONS: [string, string][] = [
   ["sif", "SIF"],
   ["bond", "Bond"],
   ["ncd", "NCD"],
+  ["p2p", "P2P"],
+  ["las", "LAS"],
   ["other", "Other"],
   ["__all__", "All products"],
 ];
 
-export type NetSalesRow = { platform: string; gross: number; redemption: number; net: number };
+const ASSET_LABEL: Record<string, string> = {
+  equity: "Equity",
+  debt: "Debt",
+  hybrid: "Hybrid",
+  liquid: "Liquid",
+  gold: "Gold",
+  other: "Others",
+};
+
+export type NetSalesCell = { gross: number; redemption: number; net: number };
+export type NetSalesRow = NetSalesCell & {
+  kind: "platform" | "asset" | "platform_total";
+  label: string;
+  indent: boolean;
+};
 export type NetSalesMatrix = {
   period: string;
   productType: string;
   rows: NetSalesRow[];
-  total: { gross: number; redemption: number; net: number };
+  total: NetSalesCell;
 };
 
 const n = (v: unknown): number => {
@@ -45,8 +61,10 @@ export async function loadNetSalesMatrix(tx: Tx, productType: string, period: st
   const all = productType === "__all__";
   const productCond = all ? sql`` : sql`AND be.product_type = ${productType}`;
 
+  // One row per (platform, asset class) so each platform can be broken down.
   const res = await tx.execute(sql`
     SELECT COALESCE(NULLIF(be.platform, ''), '(Unspecified)') AS platform,
+      COALESCE(bel.asset_class, 'other') AS asset_class,
       COALESCE(SUM(bel.amount) FILTER (WHERE bel.txn_type IN ('lumpsum','additional_purchase','sip','switch','stp')), 0)::numeric AS gross,
       COALESCE(SUM(bel.amount) FILTER (WHERE bel.txn_type IN ('redemption','swp')), 0)::numeric AS redemption
     FROM business_entries be
@@ -54,20 +72,39 @@ export async function loadNetSalesMatrix(tx: Tx, productType: string, period: st
     WHERE be.status IN ('confirmed','emailed')
       AND be.business_date >= ${start} AND be.business_date < ${end}
       ${productCond}
-    GROUP BY COALESCE(NULLIF(be.platform, ''), '(Unspecified)')
-    ORDER BY gross DESC
+    GROUP BY COALESCE(NULLIF(be.platform, ''), '(Unspecified)'), COALESCE(bel.asset_class, 'other')
   `);
 
-  const rows: NetSalesRow[] = (res.rows as any[]).map((r) => {
-    const gross = n(r.gross);
-    const redemption = n(r.redemption);
-    return { platform: String(r.platform), gross, redemption, net: gross - redemption };
-  });
+  // Group by platform.
+  const byPlatform = new Map<string, { asset: string; gross: number; redemption: number }[]>();
+  for (const r of res.rows as Array<{ platform: string; asset_class: string; gross: string; redemption: string }>) {
+    const arr = byPlatform.get(r.platform) ?? [];
+    arr.push({ asset: r.asset_class, gross: n(r.gross), redemption: n(r.redemption) });
+    byPlatform.set(r.platform, arr);
+  }
 
-  const total = rows.reduce(
-    (a, r) => ({ gross: a.gross + r.gross, redemption: a.redemption + r.redemption, net: a.net + r.net }),
-    { gross: 0, redemption: 0, net: 0 }
-  );
+  // Order platforms by total gross desc.
+  const platformGross = (items: { gross: number }[]) => items.reduce((s, x) => s + x.gross, 0);
+  const platforms = [...byPlatform.entries()].sort((a, b) => platformGross(b[1]) - platformGross(a[1]));
+
+  const rows: NetSalesRow[] = [];
+  const total: NetSalesCell = { gross: 0, redemption: 0, net: 0 };
+
+  for (const [platform, items] of platforms) {
+    items.sort((a, b) => b.gross - a.gross);
+    const pTot = items.reduce(
+      (a, it) => ({ gross: a.gross + it.gross, redemption: a.redemption + it.redemption, net: a.net + (it.gross - it.redemption) }),
+      { gross: 0, redemption: 0, net: 0 }
+    );
+    // Platform header (carries the subtotal), then its asset-class rows indented.
+    rows.push({ kind: "platform_total", label: platform, indent: false, ...pTot });
+    for (const it of items) {
+      rows.push({ kind: "asset", label: ASSET_LABEL[it.asset] ?? it.asset, indent: true, gross: it.gross, redemption: it.redemption, net: it.gross - it.redemption });
+    }
+    total.gross += pTot.gross;
+    total.redemption += pTot.redemption;
+    total.net += pTot.net;
+  }
 
   return { period, productType, rows, total };
 }

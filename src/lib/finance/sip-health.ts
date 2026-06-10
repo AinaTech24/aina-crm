@@ -30,6 +30,9 @@ export type SipHealth = {
   period: string;
   liveSip: { amount: number; count: number };
   fresh: { amount: number; count: number };
+  /** Fresh SIP split: new-to-firm clients vs existing clients (₹). */
+  freshNew: number;
+  freshExisting: number;
   stopped: { amount: number; count: number };
   netSip: number;
   maturing: { amount: number; count: number };
@@ -53,6 +56,22 @@ export async function loadSipHealth(tx: Tx, period: string): Promise<SipHealth> 
 
   const fresh = await one(tx, sql`
     SELECT COALESCE(SUM(bel.amount),0)::numeric AS amt, COUNT(*)::int AS cnt
+      FROM business_entries be JOIN business_entry_lines bel ON bel.entry_id = be.id
+     WHERE bel.txn_type = 'sip' AND be.status IN ('confirmed','emailed')
+       AND be.business_date >= ${start} AND be.business_date < ${end}
+  `);
+
+  // Fresh SIP split: new-to-firm (no prior SIP business) vs existing client.
+  const freshSplit = await one(tx, sql`
+    SELECT
+      COALESCE(SUM(bel.amount) FILTER (WHERE NOT EXISTS (
+        SELECT 1 FROM business_entries be2 JOIN business_entry_lines bel2 ON bel2.entry_id = be2.id
+         WHERE be2.investor_id = be.investor_id AND bel2.txn_type = 'sip' AND be2.business_date < ${start}
+      )), 0)::numeric AS new_amt,
+      COALESCE(SUM(bel.amount) FILTER (WHERE EXISTS (
+        SELECT 1 FROM business_entries be2 JOIN business_entry_lines bel2 ON bel2.entry_id = be2.id
+         WHERE be2.investor_id = be.investor_id AND bel2.txn_type = 'sip' AND be2.business_date < ${start}
+      )), 0)::numeric AS existing_amt
       FROM business_entries be JOIN business_entry_lines bel ON bel.entry_id = be.id
      WHERE bel.txn_type = 'sip' AND be.status IN ('confirmed','emailed')
        AND be.business_date >= ${start} AND be.business_date < ${end}
@@ -103,6 +122,8 @@ export async function loadSipHealth(tx: Tx, period: string): Promise<SipHealth> 
     period,
     liveSip: { amount: n(live.amt), count: n(live.cnt) },
     fresh: { amount: n(fresh.amt), count: n(fresh.cnt) },
+    freshNew: n(freshSplit.new_amt),
+    freshExisting: n(freshSplit.existing_amt),
     stopped: { amount: n(stopped.amt), count: n(stopped.cnt) },
     netSip: n(fresh.amt) - n(stopped.amt),
     maturing: { amount: n(maturing.amt), count: n(maturing.cnt) },

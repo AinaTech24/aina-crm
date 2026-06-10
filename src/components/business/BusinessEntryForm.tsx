@@ -17,7 +17,7 @@ import { useToast } from "@/components/ui/Toast";
 import { classifyAssetClass } from "@/lib/business/asset-class";
 
 const PRODUCT_OPTS: [string, string][] = [
-  ["mutual_fund", "Mutual Fund"], ["pms", "PMS"], ["aif", "AIF"], ["sif", "SIF"], ["bond", "Bond"], ["ncd", "NCD"], ["other", "Other"],
+  ["mutual_fund", "Mutual Fund"], ["pms", "PMS"], ["aif", "AIF"], ["sif", "SIF"], ["bond", "Bond"], ["ncd", "NCD"], ["p2p", "P2P"], ["las", "LAS"], ["other", "Other"],
 ];
 
 /**
@@ -51,6 +51,10 @@ const PRODUCT_CONFIG: Record<string, ProductConfig> = {
     txnTypes: ["lumpsum", "redemption"], defaultAssetClass: "debt", lockAssetClass: true },
   ncd: { schemeLabel: "NCD / instrument", schemePlaceholder: "NCD name / ISIN…", catalog: false,
     txnTypes: ["lumpsum", "redemption"], defaultAssetClass: "debt", lockAssetClass: true },
+  p2p: { schemeLabel: "Platform / plan", schemePlaceholder: "P2P platform / plan…", catalog: false,
+    txnTypes: ["lumpsum", "additional_purchase", "redemption"], defaultAssetClass: "debt" },
+  las: { schemeLabel: "Facility", schemePlaceholder: "Loan-against-securities facility…", catalog: false,
+    txnTypes: ["lumpsum", "redemption"], defaultAssetClass: "other" },
   other: { schemeLabel: "Item", schemePlaceholder: "Product / item name…", catalog: false,
     txnTypes: ["lumpsum", "additional_purchase", "sip", "sip_stop", "redemption"] },
 };

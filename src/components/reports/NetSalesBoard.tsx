@@ -100,16 +100,23 @@ export function NetSalesBoard() {
               </tr>
             </thead>
             <tbody>
-              {data.rows.map((r) => (
-                <tr key={r.platform} className="border-t border-border">
-                  <td className="px-3 py-1.5 font-medium">{r.platform}</td>
+              {data.rows.map((r, i) => (
+                <tr
+                  key={i}
+                  className={
+                    r.kind === "platform_total"
+                      ? "border-t-2 border-border bg-brand-cyan-light/30 font-semibold"
+                      : "border-t border-border/50"
+                  }
+                >
+                  <td className={`px-3 py-1.5 ${r.indent ? "pl-7 text-muted-foreground" : "font-medium"}`}>{r.label}</td>
                   <td className="px-3 py-1.5 text-right tabular-nums">{money(r.gross)}</td>
                   <td className="px-3 py-1.5 text-right tabular-nums">{money(r.redemption)}</td>
                   <td className={`px-3 py-1.5 text-right tabular-nums ${r.net < 0 ? "text-rose-600" : ""}`}>{money(r.net)}</td>
                 </tr>
               ))}
-              <tr className="border-t-2 border-border bg-brand-cyan-light/60 font-semibold">
-                <td className="px-3 py-1.5">Total</td>
+              <tr className="border-t-2 border-border bg-brand-cyan-light/60 font-bold">
+                <td className="px-3 py-1.5">Grand Total</td>
                 <td className="px-3 py-1.5 text-right tabular-nums">{money(data.total.gross)}</td>
                 <td className="px-3 py-1.5 text-right tabular-nums">{money(data.total.redemption)}</td>
                 <td className={`px-3 py-1.5 text-right tabular-nums ${data.total.net < 0 ? "text-rose-600" : ""}`}>{money(data.total.net)}</td>

@@ -76,3 +76,4 @@ export * from "./metric_snapshots";
 export * from "./desks";
 export * from "./annual_targets";
 export * from "./equity";
+export * from "./effort_entries";

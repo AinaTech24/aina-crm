@@ -13,12 +13,16 @@ import { ReportsGrid } from "@/components/reports/ReportsGrid";
 type ReportItem = { key: string; label: string; icon: string; href?: string };
 
 const REPORTS: { group: string; items: ReportItem[] }[] = [
+  { group: "Growth MIS (Monthly)", items: [
+    { key: "growth_mis", label: "Growth MIS — Efforts × Results", icon: "BarChart3", href: "/dashboard/reports/growth-mis" },
+  ]},
   { group: "Sales & Business", items: [
     { key: "daily_sip_added", label: "Daily SIP Added", icon: "TrendingUp" },
     { key: "daily_lumpsum", label: "Daily Purchase", icon: "TrendingUp" },
     { key: "redemption", label: "Daily Redemption", icon: "TrendingDown" },
     { key: "net_sales", label: "Net Business", icon: "BarChart3" },
     { key: "net_sales_platform", label: "Net Sales by Platform", icon: "BarChart3", href: "/dashboard/reports/net-sales" },
+    { key: "efforts", label: "Efforts — Plan vs Actual", icon: "ListChecks", href: "/dashboard/reports/efforts" },
     { key: "amc_business", label: "AMC-wise Business", icon: "BarChart3" },
     { key: "scheme_category_business", label: "Scheme Category-wise", icon: "BarChart3" },
     { key: "aum_movement", label: "AUM Movement", icon: "BarChart3" },

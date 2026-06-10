@@ -91,7 +91,7 @@ export function SipHealthBoard() {
             <h2 className="text-sm font-semibold mb-2">SIP Health</h2>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               <Card title="Live SIP (book)" value={money(data.liveSip.amount)} sub={`${data.liveSip.count} SIPs`} />
-              <Card title="Fresh SIP (this month)" value={money(data.fresh.amount)} sub={`${data.fresh.count} new`} tone="good" />
+              <Card title="Fresh SIP (this month)" value={money(data.fresh.amount)} sub={`New ${money(data.freshNew)} · Existing ${money(data.freshExisting)}`} tone="good" />
               <Card title="Stopped SIP (this month)" value={money(data.stopped.amount)} sub={`${data.stopped.count} stopped`} tone="bad" />
               <Card title="Net SIP" value={money(data.netSip)} sub="Fresh − Stopped" tone={data.netSip >= 0 ? "good" : "bad"} />
               <Card title="Maturing this month" value={money(data.maturing.amount)} sub={`${data.maturing.count} SIPs`} />
