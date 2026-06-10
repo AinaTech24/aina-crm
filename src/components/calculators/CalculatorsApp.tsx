@@ -23,9 +23,12 @@ import { SwpComprehensivePlanner } from "./SwpComprehensivePlanner";
 import { StpComprehensivePlanner } from "./StpComprehensivePlanner";
 import { EmiSipRecoveryPlanner } from "./EmiSipRecoveryPlanner";
 import { FvAnnualLumpsumPlanner } from "./FvAnnualLumpsumPlanner";
+import { DebtFundBenefitCalculator } from "./DebtFundBenefitCalculator";
 import { ReviewOfInvestments } from "./ReviewOfInvestments";
 import { HumanLifeValueCalculator } from "./HumanLifeValueCalculator";
 import { GoalPlannerCalculator } from "./GoalPlannerCalculator";
+import { CapitalGainsTaxCalculator } from "./CapitalGainsTaxCalculator";
+import { OpmHousePlanner } from "./OpmHousePlanner";
 import {
   fvSip,
   fvLumpsum,
@@ -59,10 +62,13 @@ type TabKey =
   | "stpcomp"
   | "emisip"
   | "fvannual"
+  | "debtfund"
   | "review"
   | "vacation"
   | "hlv"
   | "goalplan"
+  | "captax"
+  | "opm"
   | "sip"
   | "lumpsum"
   | "goal"
@@ -90,10 +96,13 @@ const TABS: Array<{ key: TabKey; label: string }> = [
   { key: "stpcomp", label: "★ STP Comprehensive" },
   { key: "emisip", label: "★ EMI → SIP" },
   { key: "fvannual", label: "★ FV Annual Lumpsum" },
+  { key: "debtfund", label: "★ Debt Fund Hold/Sell" },
   { key: "review", label: "★ Review of Investments" },
   { key: "vacation", label: "★ Vacation Planner" },
   { key: "hlv", label: "★ Human Life Value" },
   { key: "goalplan", label: "★ Goal Planner" },
+  { key: "captax", label: "★ Capital Gains Tax" },
+  { key: "opm", label: "★ OPM House (SWP)" },
   { key: "sip", label: "1. SIP" },
   { key: "lumpsum", label: "2. Lumpsum" },
   { key: "goal", label: "3. Goal" },
@@ -145,10 +154,13 @@ export function CalculatorsApp() {
       {tab === "stpcomp" && <StpComprehensivePlanner />}
       {tab === "emisip" && <EmiSipRecoveryPlanner />}
       {tab === "fvannual" && <FvAnnualLumpsumPlanner />}
+      {tab === "debtfund" && <DebtFundBenefitCalculator />}
       {tab === "review" && <ReviewOfInvestments />}
       {tab === "vacation" && <VacationPlannerCalc />}
       {tab === "hlv" && <HumanLifeValueCalculator />}
       {tab === "goalplan" && <GoalPlannerCalculator />}
+      {tab === "captax" && <CapitalGainsTaxCalculator />}
+      {tab === "opm" && <OpmHousePlanner />}
       {tab === "sip" && <SipCalc />}
       {tab === "lumpsum" && <LumpsumCalc />}
       {tab === "goal" && <GoalCalc />}

@@ -231,6 +231,96 @@ export function vacationPlan(input: VacationPlanInput): VacationPlanResult {
   };
 }
 
+/* ──────────── Unconventional SWP — OPM to buy a house (Financial Pathshala) ────────────
+ * Leverage strategy: instead of paying cash for the house, take the loan AND
+ * invest the same amount in an equity MF, then run an SWP that withdraws each
+ * EMI. While the MF return exceeds the loan rate the corpus outlives the loan,
+ * so once the loan is cleared a corpus still remains — the house effectively
+ * funded by "other people's money". Faithful replica of the workbook (to ₹).
+ *
+ * Loan side (amortising): interestₘ = balₘ₋₁·r;  balₘ = balₘ₋₁ − (EMI − interestₘ).
+ * MF side (SWP at the START of the month, then a month's growth):
+ *   Lₘ = Oₘ₋₁ (L₁ = invested);  Nₘ = Lₘ − EMI;  Oₘ = Nₘ·(1 + mfr).
+ */
+export type OpmYearRow = {
+  year: number;
+  loanBalance: number;
+  mfCorpus: number;
+  cumInterest: number;
+  cumWithdrawal: number;
+};
+
+export type OpmResult = {
+  emi: number;
+  months: number;
+  totalPaid: number; // Σ EMI = total SWP withdrawal
+  totalInterest: number; // Σ interest
+  corpusLeft: number; // MF corpus after the final month
+  minCorpus: number; // lowest post-SWP balance (flags depletion)
+  corpusSurvived: boolean; // corpus never went negative ⇒ strategy holds
+  loanBalanceEnd: number; // ≈ 0 when fully amortised
+  yearly: OpmYearRow[];
+};
+
+export function opmHouseStrategy(input: {
+  loanAmount: number; // also the amount invested in the MF
+  loanRatePct: number;
+  tenureYears: number;
+  mfReturnPct: number;
+}): OpmResult {
+  const months = Math.max(0, Math.round(input.tenureYears * 12));
+  const loan = Math.max(0, input.loanAmount);
+  const r = input.loanRatePct / 100 / 12;
+  const mfr = input.mfReturnPct / 100 / 12;
+  // EMI = Excel PMT(r, months, -loan): flat-rate limit guarded.
+  const emi = months === 0 ? 0 : r === 0 ? loan / months : (loan * r) / (1 - Math.pow(1 + r, -months));
+
+  let loanBal = loan;
+  let cumInterest = 0;
+  let cumWithdrawal = 0;
+  let mfO = loan; // corpus "balance amount" carried into the next month
+  let minCorpus = loan;
+  let corpusSurvived = true;
+
+  const yearly: OpmYearRow[] = [];
+  for (let m = 1; m <= months; m++) {
+    // Loan amortisation.
+    const interest = loanBal * r;
+    loanBal = loanBal - (emi - interest);
+    cumInterest += interest;
+
+    // MF + SWP — withdraw EMI at the start, grow the remainder one month.
+    const L = m === 1 ? loan : mfO;
+    const afterSwp = L - emi;
+    if (afterSwp < minCorpus) minCorpus = afterSwp;
+    if (afterSwp < 0) corpusSurvived = false;
+    mfO = afterSwp + afterSwp * mfr;
+    cumWithdrawal += emi;
+
+    if (m % 12 === 0 || m === months) {
+      yearly.push({
+        year: Math.ceil(m / 12),
+        loanBalance: Math.max(0, loanBal),
+        mfCorpus: mfO,
+        cumInterest,
+        cumWithdrawal,
+      });
+    }
+  }
+
+  return {
+    emi,
+    months,
+    totalPaid: cumWithdrawal,
+    totalInterest: cumInterest,
+    corpusLeft: months === 0 ? loan : mfO,
+    minCorpus,
+    corpusSurvived,
+    loanBalanceEnd: months === 0 ? loan : loanBal,
+    yearly,
+  };
+}
+
 /** Constant monthly SIP needed to hit `target` starting from `currentValue`. */
 export function requiredSip(
   target: number,
