@@ -321,6 +321,24 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
     }
   }
 
+  // Email sends ALWAYS carry a non-removable footer (ComplianceFooter in
+  // email_renderer / the designer renderer) with the firm name, ARN and the
+  // AMFI risk disclaimer. The gate scans `rendered.text` (the template BODY),
+  // which doesn't include that footer — so a body without those lines was being
+  // falsely blocked even though the recipient would receive them. For email,
+  // evaluate against body + the mandatory footer lines the renderer guarantees.
+  // This reflects the real sent content; it is NOT a bypass (WhatsApp free-form
+  // and SMS have no auto-footer, so they stay fully gated on the body).
+  let complianceText = rendered.text;
+  if (input.channel === "email") {
+    const footerLines = missingMandatoryLines({
+      category: input.category,
+      text: rendered.text,
+      tenant: { legalName: tenantRow?.legalName, arn: tenantRow?.arn },
+    });
+    if (footerLines.length) complianceText = `${rendered.text}\n\n${footerLines.join("\n")}`;
+  }
+
   const compliance = runComplianceChecks({
     channel: input.channel,
     category: input.category,
@@ -330,7 +348,7 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
       principalEuin: tenantRow?.principalEuin ?? undefined,
       riaRegistered: tenantRow?.riaRegistered ?? false,
     },
-    text: rendered.text,
+    text: complianceText,
     subject: rendered.subject,
     dltTemplateId: input.channel === "sms" ? extractDltId(version) : undefined,
     dltTemplateContent: dltContent,

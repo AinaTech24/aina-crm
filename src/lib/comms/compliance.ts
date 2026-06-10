@@ -119,8 +119,12 @@ export function missingMandatoryLines(params: {
   }
 
   const arn = params.tenant.arn?.trim();
-  if (arn && params.category !== "authentication" && !text.includes(`ARN-${arn}`) && !text.includes(`ARN ${arn}`)) {
-    lines.push(`ARN-${arn}`);
+  if (arn && params.category !== "authentication") {
+    // ARN may be stored with or without the "ARN-" prefix — normalise to the
+    // bare number so we never emit "ARN-ARN-249212" (matches ruleArnDisclosure).
+    const bare = arn.replace(/^arn[\s-]*/i, "");
+    const forms = [`ARN-${bare}`, `ARN ${bare}`, arn];
+    if (!forms.some((f) => f && text.includes(f))) lines.push(`ARN-${bare}`);
   }
 
   const legalName = params.tenant.legalName?.trim();
