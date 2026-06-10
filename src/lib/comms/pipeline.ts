@@ -339,7 +339,12 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
     amcApprovalRef: (version.body as any)?.amcApprovalRef,
   });
 
-  if (compliance.blocked) {
+  // WhatsApp TEMPLATE sends are pre-vetted by Meta before they can be sent at all,
+  // so the firm's content rules (AMFI disclaimer / ARN / scheme-specific) would
+  // just re-block an already-approved template. Record the findings for audit, but
+  // don't block. Email / SMS / free-form WhatsApp are still fully gated.
+  const isWhatsappTemplate = input.channel === "whatsapp" && !input.freeformText;
+  if (compliance.blocked && !isWhatsappTemplate) {
     return await skip(tx, communicationId, input, "skipped_compliance", JSON.stringify(compliance.findings), compliance);
   }
 
