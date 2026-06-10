@@ -101,19 +101,37 @@ function substituteTokens(value: unknown, tokens: Record<string, string>): unkno
   return value;
 }
 
-/** Wapi `POST /whatsapp/send` request body — text or template form. */
-export type WapiSendBody =
-  | { to: string; message: string; phone_number_id?: string }
-  | { to: string; template_name: string; language: string; components: any[]; phone_number_id?: string };
+/**
+ * Wapi request: a plain-text send (POST /whatsapp/send, 24h window only) OR a
+ * template send (POST /extension/send-message). The template form uses the
+ * documented simple shape — `variables` map + optional `header_media_url` /
+ * `header_text` — NOT a Meta `components` array (Wapi builds that itself and
+ * falls back to the template's saved sample media when no URL is passed).
+ */
+export type WapiSend =
+  | { endpoint: "/whatsapp/send"; body: { to: string; message: string; phone_number_id?: string } }
+  | {
+      endpoint: "/extension/send-message";
+      body: {
+        to: string;
+        template_name: string;
+        language: string;
+        variables: Record<string, string>;
+        header_media_url?: string;
+        header_text?: string;
+        phone_number_id?: string;
+      };
+    };
 
 /**
- * Pure mapper: SendWhatsappArgs (+ default language) → Wapi request body.
+ * Pure mapper: SendWhatsappArgs (+ default language) → Wapi request (endpoint + body).
  * Separated from the HTTP call so it can be unit-tested without a network send.
  */
-export function buildWainaPayload(args: SendWhatsappArgs, defaultLanguage = "en_US"): WapiSendBody {
+export function buildWainaPayload(args: SendWhatsappArgs, defaultLanguage = "en_US"): WapiSend {
   const body = (args.templateVersion.body ?? {}) as Record<string, any>;
   const to = normalizeWaId(args.recipient);
   const phoneNumberId: string | undefined = body.wainaPhoneNumberId ?? body.phoneNumberId ?? undefined;
+  const pn = phoneNumberId ? { phone_number_id: phoneNumberId } : {};
 
   const templateName =
     body.wainaTemplateName ?? body.metaTemplateName ?? args.templateVersion.externalRef ?? body.aisensyCampaignName;
@@ -127,39 +145,44 @@ export function buildWainaPayload(args: SendWhatsappArgs, defaultLanguage = "en_
         "Aina WhatsApp send: no template name (set templateVersion.body.wainaTemplateName or externalRef) and no plain-text body"
       );
     }
-    return { to, message, ...(phoneNumberId ? { phone_number_id: phoneNumberId } : {}) };
+    return { endpoint: "/whatsapp/send", body: { to, message, ...pn } };
   }
 
   const language = body.languageCode ?? body.wainaLanguage ?? defaultLanguage;
 
-  // Build the Meta `components` array.
-  let components: any[];
-  if (Array.isArray(body.wainaTemplateComponents)) {
-    components = substituteTokens(body.wainaTemplateComponents, args.tokens) as any[];
-  } else if (Array.isArray(body.components)) {
-    components = substituteTokens(body.components, args.tokens) as any[];
-  } else {
-    const variables = (args.templateVersion.variables as Array<{ key: string }>) ?? [];
-    const parameters = variables.map((v) => ({ type: "text", text: args.tokens[v.key] ?? "" }));
-    components = parameters.length ? [{ type: "body", parameters }] : [];
-  }
+  // Body placeholders → variables map ({ "1": "Atul", ... }).
+  const vars = (args.templateVersion.variables as Array<{ key: string }>) ?? [];
+  const variables: Record<string, string> = {};
+  for (const v of vars) variables[v.key] = args.tokens[v.key] ?? "";
+
+  // Optional per-send header overrides (Wapi falls back to the template's saved
+  // sample media / header text when these aren't passed).
+  const headerMediaRaw = body.headerMediaUrl ?? body.wainaHeaderMediaUrl;
+  const headerTextRaw = body.headerText ?? body.wainaHeaderText;
+  const header_media_url = headerMediaRaw ? String(substituteTokens(headerMediaRaw, args.tokens)) : undefined;
+  const header_text = headerTextRaw ? String(substituteTokens(headerTextRaw, args.tokens)) : undefined;
 
   return {
-    to,
-    template_name: templateName,
-    language,
-    components,
-    ...(phoneNumberId ? { phone_number_id: phoneNumberId } : {}),
+    endpoint: "/extension/send-message",
+    body: {
+      to,
+      template_name: templateName,
+      language,
+      variables,
+      ...(header_media_url ? { header_media_url } : {}),
+      ...(header_text ? { header_text } : {}),
+      ...pn,
+    },
   };
 }
 
 export const wainaWhatsappAdapter = {
   async send(args: SendWhatsappArgs): Promise<{ externalId: string; status: "sent" | "queued" }> {
     const cfg = resolveConfig(args);
-    const payload = buildWainaPayload(args, cfg.defaultLanguage);
+    const { endpoint, body: payload } = buildWainaPayload(args, cfg.defaultLanguage);
 
     try {
-      const res = await axios.post(`${cfg.baseUrl}/whatsapp/send`, payload, {
+      const res = await axios.post(`${cfg.baseUrl}${endpoint}`, payload, {
         timeout: 15_000,
         headers: {
           "Content-Type": "application/json",
@@ -169,8 +192,9 @@ export const wainaWhatsappAdapter = {
         },
       });
       const data = (res.data ?? {}) as Record<string, any>;
-      if (data.success === false) {
-        throw new Error(String(data.error ?? data.message ?? "send rejected"));
+      // Wapi returns HTTP 200 even on errors, with the error in the body.
+      if (data.success === false || (typeof data.code === "number" && data.code >= 400)) {
+        throw new Error(String(data.msg ?? data.error ?? data.message ?? "send rejected"));
       }
       const d = (data.data ?? data) as Record<string, any>;
       const externalId =

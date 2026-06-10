@@ -36,6 +36,24 @@ function bodyText(components: any): string {
   return (body?.text ?? body?.parameters?.text ?? "") as string;
 }
 
+/** Distinct {{N}} placeholder keys in order of first appearance. */
+function extractVarKeys(text: string): string[] {
+  const seen = new Set<string>();
+  for (const m of String(text ?? "").matchAll(/\{\{\s*([\w]+)\s*\}\}/g)) seen.add(m[1]);
+  return [...seen];
+}
+
+/** Header type + sample media URL + whether the header carries a {{var}}. */
+function headerInfo(components: any): { format: string | null; sampleUrl: string | null; hasVar: boolean } {
+  if (!Array.isArray(components)) return { format: null, sampleUrl: null, hasVar: false };
+  const h = components.find((c) => (c?.type ?? "").toString().toUpperCase() === "HEADER");
+  if (!h) return { format: null, sampleUrl: null, hasVar: false };
+  const format = (h.format ?? "").toString().toUpperCase() || null;
+  const sampleUrl = h.example?.header_handle?.[0] ?? h.example?.header_url ?? null;
+  const hasVar = /\{\{\s*\w+\s*\}\}/.test(String(h.text ?? ""));
+  return { format, sampleUrl, hasVar };
+}
+
 export interface ImportResult {
   ok: boolean;
   fetched: number;
@@ -90,8 +108,24 @@ export async function importWhatsappTemplatesForTenant(tx: Tx, tenantId: string,
     const tplStatus = metaStatus === "APPROVED" ? "approved" : metaStatus === "REJECTED" ? "rejected" : "pending_approval";
     const verApproval = metaStatus === "APPROVED" ? "approved_external" : metaStatus === "REJECTED" ? "rejected" : "submitted";
 
-    // Body carries the Meta name + components so the WAina adapter can send it.
-    const body = { wainaTemplateName: name, metaTemplateName: name, languageCode: language, components, body: { text }, text } as any;
+    // Body placeholders {{1}},{{2}} → editable variables in the composer + the send.
+    const varKeys = extractVarKeys(text);
+    const variables = varKeys.map((k) => ({ key: k, label: `Variable {{${k}}}`, required: true }));
+    const hdr = headerInfo(components);
+
+    // Body carries the Meta name + components + header info so the WAina adapter
+    // can send via /extension/send-message (variables + optional header media).
+    const body = {
+      wainaTemplateName: name,
+      metaTemplateName: name,
+      languageCode: language,
+      components,
+      body: { text },
+      text,
+      headerFormat: hdr.format,
+      headerSampleUrl: hdr.sampleUrl,
+      headerHasVar: hdr.hasVar,
+    } as any;
 
     const [existing] = await tx
       .select()
@@ -106,7 +140,7 @@ export async function importWhatsappTemplatesForTenant(tx: Tx, tenantId: string,
       if (existing.currentVersionId) {
         await tx
           .update(templateVersions)
-          .set({ body, approvalStatus: verApproval as any, externalRef: name, externalStatus: metaStatus, externalSyncedAt: new Date(), updatedAt: new Date() } as any)
+          .set({ body, variables, approvalStatus: verApproval as any, externalRef: name, externalStatus: metaStatus, externalSyncedAt: new Date(), updatedAt: new Date() } as any)
           .where(eq(templateVersions.id, existing.currentVersionId));
       }
     } else {
@@ -119,7 +153,7 @@ export async function importWhatsappTemplatesForTenant(tx: Tx, tenantId: string,
       } as any);
       await tx.insert(templateVersions).values({
         id: verId, templateId, tenantId, versionNumber: 1, body,
-        variables: [], attachments: [], approvalStatus: verApproval as any,
+        variables, attachments: [], approvalStatus: verApproval as any,
         externalRef: name, externalStatus: metaStatus, externalSyncedAt: new Date(),
         createdByUserId: actorUserId ?? null,
       } as any);
