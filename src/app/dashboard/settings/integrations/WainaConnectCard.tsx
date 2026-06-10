@@ -1,13 +1,22 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Check, AlertCircle, Loader2, MessageCircle } from "lucide-react";
+import { Check, AlertCircle, Loader2, MessageCircle, RefreshCw } from "lucide-react";
 
 type Status = {
   connected: boolean;
   keyHint?: string;
   webhookUrl?: string;
   defaultLanguage?: string;
+};
+
+type WsNumber = { display_phone_number?: string; id?: string };
+type Verify = {
+  connected: boolean;
+  ok: boolean;
+  workspaceName?: string | null;
+  numbers?: WsNumber[];
+  error?: string | null;
 };
 
 export default function WainaConnectCard() {
@@ -21,6 +30,19 @@ export default function WainaConnectCard() {
   const [webhookUrl, setWebhookUrl] = useState("");
   const [defaultLanguage, setDefaultLanguage] = useState("en_US");
 
+  const [verify, setVerify] = useState<Verify | null>(null);
+  const [verifying, setVerifying] = useState(false);
+
+  async function checkConnection() {
+    setVerifying(true);
+    try {
+      const res = await fetch("/api/settings/integrations/waina/verify", { cache: "no-store" });
+      if (res.ok) setVerify((await res.json()) as Verify);
+    } finally {
+      setVerifying(false);
+    }
+  }
+
   async function load() {
     setLoading(true);
     try {
@@ -31,6 +53,7 @@ export default function WainaConnectCard() {
         if (data.webhookUrl) setWebhookUrl(data.webhookUrl);
         if (data.defaultLanguage) setDefaultLanguage(data.defaultLanguage);
         setEditing(!data.connected);
+        if (data.connected) void checkConnection();
       }
     } finally {
       setLoading(false);
@@ -124,27 +147,66 @@ export default function WainaConnectCard() {
 
       <div className="mt-4 pt-4 border-t space-y-3">
         {connected && !editing ? (
-          <div className="flex items-center justify-between gap-3">
-            <div className="text-sm">
-              <span className="text-muted-foreground">Webhook key:</span>{" "}
-              <span className="font-mono">{status?.keyHint ?? "••••"}</span>
-              <span className="text-muted-foreground ml-3">Language:</span>{" "}
-              <span className="font-mono">{status?.defaultLanguage ?? "en_US"}</span>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-sm">
+                <span className="text-muted-foreground">Webhook key:</span>{" "}
+                <span className="font-mono">{status?.keyHint ?? "••••"}</span>
+                <span className="text-muted-foreground ml-3">Language:</span>{" "}
+                <span className="font-mono">{status?.defaultLanguage ?? "en_US"}</span>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setEditing(true)}
+                  className="text-sm px-3 py-1.5 rounded-md border hover:bg-accent"
+                >
+                  Update key
+                </button>
+                <button
+                  onClick={disconnect}
+                  disabled={saving}
+                  className="text-sm px-3 py-1.5 rounded-md border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-50"
+                >
+                  Disconnect
+                </button>
+              </div>
             </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setEditing(true)}
-                className="text-sm px-3 py-1.5 rounded-md border hover:bg-accent"
-              >
-                Update key
-              </button>
-              <button
-                onClick={disconnect}
-                disabled={saving}
-                className="text-sm px-3 py-1.5 rounded-md border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-50"
-              >
-                Disconnect
-              </button>
+
+            {/* Live workspace identity — tells the firm WHICH WAina workspace this
+                key belongs to (= where they must create + approve templates). */}
+            <div className="rounded-md bg-muted/40 border border-border px-3 py-2 text-sm">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Connected workspace</span>
+                <button
+                  onClick={checkConnection}
+                  disabled={verifying}
+                  className="text-xs inline-flex items-center gap-1 text-brand-cyan-deep hover:underline disabled:opacity-50"
+                >
+                  {verifying ? <Loader2 className="size-3 animate-spin" /> : <RefreshCw className="size-3" />} Check
+                </button>
+              </div>
+              {verifying && !verify ? (
+                <div className="text-xs text-muted-foreground mt-1">Checking…</div>
+              ) : verify?.ok ? (
+                <div className="mt-1">
+                  <div className="font-semibold">{verify.workspaceName || "(workspace name not returned)"}</div>
+                  {verify.numbers && verify.numbers.length > 0 && (
+                    <div className="text-xs text-muted-foreground mt-0.5">
+                      Sender{verify.numbers.length > 1 ? "s" : ""}:{" "}
+                      {verify.numbers.map((n) => n.display_phone_number).filter(Boolean).join(", ")}
+                    </div>
+                  )}
+                  <p className="text-xs text-muted-foreground mt-1.5">
+                    Create &amp; approve your WhatsApp templates in <span className="font-medium">this</span> WAina
+                    workspace (wapi.ainatech.in), then “Fetch from WhatsApp”. Templates made in the CRM aren’t sent
+                    to Meta.
+                  </p>
+                </div>
+              ) : verify ? (
+                <div className="text-xs text-rose-600 mt-1">
+                  Couldn’t verify: {verify.error ?? "unknown error"}. Your key may be wrong — Update key.
+                </div>
+              ) : null}
             </div>
           </div>
         ) : (
@@ -169,15 +231,18 @@ export default function WainaConnectCard() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="text-xs font-medium text-muted-foreground">
-                  Endpoint URL (optional)
+                  Endpoint URL (optional — leave blank)
                 </label>
                 <input
                   type="text"
                   value={webhookUrl}
                   onChange={(e) => setWebhookUrl(e.target.value)}
-                  placeholder="https://beckend.ainatech.in/api/extension/zoho-workflow"
+                  placeholder="Leave blank — defaults to beckend.ainatech.in"
                   className="mt-1 w-full rounded-md border px-3 py-2 text-sm bg-background"
                 />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Only set this if AINA gives you a custom host. The API path is added automatically.
+                </p>
               </div>
               <div>
                 <label className="text-xs font-medium text-muted-foreground">
