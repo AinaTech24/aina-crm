@@ -35,6 +35,7 @@ export async function GET() {
       workspaceName: result.workspaceName ?? null,
       numbers: result.numbers ?? [],
       error: result.error ?? null,
+      httpStatus: result.httpStatus ?? null,
     });
   } catch (err) {
     return handleApiError(err);

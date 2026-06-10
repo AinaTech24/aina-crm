@@ -255,26 +255,66 @@ export async function wapiListPhoneNumbers(
   return (res.data?.data ?? []) as WapiPhoneNumber[];
 }
 
+/** Pull a workspace display name out of the status payload, tolerating the field
+ *  the live API actually uses (the documented `workspace_name` may differ). */
+function pickWorkspaceName(d: Record<string, any>, root: Record<string, any>): string | undefined {
+  const candidates = [
+    d.workspace_name, d.workspaceName, d.name, d.display_name, d.displayName, d.title,
+    d.workspace?.name, d.workspace?.workspace_name, d.workspace?.display_name,
+    d.account?.name, d.business_name, d.businessName,
+    root.workspace_name, root.workspaceName, root.name,
+  ];
+  for (const c of candidates) {
+    if (typeof c === "string" && c.trim()) return c.trim();
+  }
+  return undefined;
+}
+
 /** GET /extension/status — verify the key + surface the workspace name + numbers. */
 export async function wapiCheckConnection(
   apiKey: string,
   baseUrl?: string | null
-): Promise<{ ok: boolean; workspaceName?: string; numbers: WapiPhoneNumber[]; error?: string }> {
+): Promise<{ ok: boolean; workspaceName?: string; numbers: WapiPhoneNumber[]; error?: string; httpStatus?: number }> {
   const base = toApiBase(baseUrl ?? process.env.WAINA_BASE_URL ?? process.env.WAINA_WEBHOOK_URL);
   try {
     const res = await axios.get(`${base}/extension/status`, {
       timeout: 15_000,
       headers: { "x-api-key": apiKey },
     });
-    const d = (res.data?.data ?? {}) as Record<string, any>;
+    const root = (res.data ?? {}) as Record<string, any>;
+    const d = (root.data ?? root) as Record<string, any>;
+    let numbers = (d.phone_numbers ?? d.phoneNumbers ?? d.numbers ?? root.phone_numbers ?? []) as WapiPhoneNumber[];
+    let workspaceName = pickWorkspaceName(d, root);
+
+    // If status didn't carry a name/numbers, fall back to the phone-numbers
+    // endpoint so we can at least identify the workspace by its sender number.
+    if ((!numbers || numbers.length === 0) || !workspaceName) {
+      try {
+        const nums = await wapiListPhoneNumbers(apiKey, baseUrl);
+        if ((!numbers || numbers.length === 0) && nums.length) numbers = nums;
+        if (!workspaceName && nums[0]?.display_phone_number) {
+          workspaceName = `Workspace (${nums[0].display_phone_number})`;
+        }
+      } catch {
+        /* best-effort */
+      }
+    }
+
     return {
-      ok: res.data?.success !== false,
-      workspaceName: d.workspace_name,
-      numbers: (d.phone_numbers ?? []) as WapiPhoneNumber[],
+      ok: root.success !== false,
+      workspaceName,
+      numbers: numbers ?? [],
+      httpStatus: res.status,
     };
   } catch (e: any) {
-    const detail = e.response?.data ?? e.message;
-    return { ok: false, numbers: [], error: typeof detail === "string" ? detail : JSON.stringify(detail) };
+    const status = e.response?.status as number | undefined;
+    const detail = e.response?.data?.message ?? e.response?.data?.error ?? e.response?.data ?? e.message;
+    return {
+      ok: false,
+      numbers: [],
+      error: typeof detail === "string" ? detail : JSON.stringify(detail),
+      httpStatus: status,
+    };
   }
 }
 

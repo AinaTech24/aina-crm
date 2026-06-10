@@ -17,6 +17,7 @@ type Verify = {
   workspaceName?: string | null;
   numbers?: WsNumber[];
   error?: string | null;
+  httpStatus?: number | null;
 };
 
 export default function WainaConnectCard() {
@@ -197,8 +198,11 @@ export default function WainaConnectCard() {
                     </div>
                   ) : (
                     <div className="text-amber-700">
-                      Connected, but this workspace looks empty — no name, sender number, or templates set up yet.
-                      Finish setup in the WAina console.
+                      The key works (WAina replied{verify.httpStatus ? ` HTTP ${verify.httpStatus}` : ""}), but no
+                      workspace name or sender number came back — this usually means the WhatsApp number isn’t set
+                      up in this WAina workspace yet, or this is a <span className="font-medium">webhook</span> key
+                      rather than an <span className="font-medium">API</span> key (generate one in WAina → API
+                      Keys). Finish setup in the WAina console, then re-check.
                     </div>
                   )}
                   {verify.workspaceName && verify.numbers && verify.numbers.length > 0 && (
