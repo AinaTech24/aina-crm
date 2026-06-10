@@ -189,17 +189,31 @@ export default function WainaConnectCard() {
                 <div className="text-xs text-muted-foreground mt-1">Checking…</div>
               ) : verify?.ok ? (
                 <div className="mt-1">
-                  <div className="font-semibold">{verify.workspaceName || "(workspace name not returned)"}</div>
-                  {verify.numbers && verify.numbers.length > 0 && (
+                  {verify.workspaceName ? (
+                    <div className="font-semibold">{verify.workspaceName}</div>
+                  ) : verify.numbers && verify.numbers.length > 0 ? (
+                    <div className="font-semibold">
+                      Workspace with number {verify.numbers.map((n) => n.display_phone_number).filter(Boolean).join(", ")}
+                    </div>
+                  ) : (
+                    <div className="text-amber-700">
+                      Connected, but this workspace looks empty — no name, sender number, or templates set up yet.
+                      Finish setup in the WAina console.
+                    </div>
+                  )}
+                  {verify.workspaceName && verify.numbers && verify.numbers.length > 0 && (
                     <div className="text-xs text-muted-foreground mt-0.5">
                       Sender{verify.numbers.length > 1 ? "s" : ""}:{" "}
                       {verify.numbers.map((n) => n.display_phone_number).filter(Boolean).join(", ")}
                     </div>
                   )}
                   <p className="text-xs text-muted-foreground mt-1.5">
-                    Create &amp; approve your WhatsApp templates in <span className="font-medium">this</span> WAina
-                    workspace (wapi.ainatech.in), then “Fetch from WhatsApp”. Templates made in the CRM aren’t sent
-                    to Meta.
+                    WhatsApp templates are created &amp; approved in the WAina console — WAina’s API has no
+                    “create template” endpoint, so templates made in the CRM are <span className="font-medium">not</span>{" "}
+                    sent to Meta. Author them in WAina → wait for Meta approval → “Fetch from WhatsApp”.{" "}
+                    <a href="https://wapi.ainatech.in" target="_blank" rel="noopener noreferrer" className="text-brand-cyan-deep underline">
+                      Open WAina console ↗
+                    </a>
                   </p>
                 </div>
               ) : verify ? (
