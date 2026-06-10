@@ -252,7 +252,21 @@ export async function wapiListPhoneNumbers(
     timeout: 15_000,
     headers: { "x-api-key": apiKey },
   });
-  return (res.data?.data ?? []) as WapiPhoneNumber[];
+  const arr = (res.data?.data ?? res.data?.phone_numbers ?? res.data ?? []) as any[];
+  return (Array.isArray(arr) ? arr : []).map(normNumber);
+}
+
+/** Normalise a WAina phone-number object to our shape, tolerating field variants
+ *  (the live API may use `phone_number` / `number` instead of `display_phone_number`). */
+function normNumber(x: any): WapiPhoneNumber {
+  return {
+    id: String(x?.id ?? x?.phone_number_id ?? x?.phoneNumberId ?? ""),
+    display_phone_number: String(
+      x?.display_phone_number ?? x?.phone_number ?? x?.number ?? x?.phone ?? x?.display ?? x?.msisdn ?? ""
+    ),
+    quality_rating: x?.quality_rating,
+    is_primary: x?.is_primary,
+  };
 }
 
 /** Pull a workspace display name out of the status payload, tolerating the field
@@ -283,7 +297,8 @@ export async function wapiCheckConnection(
     });
     const root = (res.data ?? {}) as Record<string, any>;
     const d = (root.data ?? root) as Record<string, any>;
-    let numbers = (d.phone_numbers ?? d.phoneNumbers ?? d.numbers ?? root.phone_numbers ?? []) as WapiPhoneNumber[];
+    const rawNums = (d.phone_numbers ?? d.phoneNumbers ?? d.numbers ?? root.phone_numbers ?? []) as any[];
+    let numbers = rawNums.map(normNumber);
     let workspaceName = pickWorkspaceName(d, root);
 
     // If status didn't carry a name/numbers, fall back to the phone-numbers
