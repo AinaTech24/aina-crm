@@ -15,6 +15,8 @@ import { IncomeBridgePlanner } from "./IncomeBridgePlanner";
 import { SalaryWealthBuilder } from "./SalaryWealthBuilder";
 import { CashflowCorpusPlanner } from "./CashflowCorpusPlanner";
 import { PropertyYieldCalculator } from "./PropertyYieldCalculator";
+import { InsuranceReturnAnalyzer } from "./InsuranceReturnAnalyzer";
+import { SurrenderAnalyzer } from "./SurrenderAnalyzer";
 import {
   fvSip,
   fvLumpsum,
@@ -37,6 +39,8 @@ type TabKey =
   | "salary"
   | "multipurpose"
   | "property"
+  | "insurance"
+  | "surrender"
   | "sip"
   | "lumpsum"
   | "goal"
@@ -55,6 +59,8 @@ const TABS: Array<{ key: TabKey; label: string }> = [
   { key: "salary", label: "★ Salary → Wealth" },
   { key: "multipurpose", label: "★ Cashflow & Corpus" },
   { key: "property", label: "★ Property Yield" },
+  { key: "insurance", label: "★ Insurance IRR" },
+  { key: "surrender", label: "★ Surrender vs Invest" },
   { key: "sip", label: "1. SIP" },
   { key: "lumpsum", label: "2. Lumpsum" },
   { key: "goal", label: "3. Goal" },
@@ -97,6 +103,8 @@ export function CalculatorsApp() {
       {tab === "salary" && <SalaryWealthBuilder />}
       {tab === "multipurpose" && <CashflowCorpusPlanner />}
       {tab === "property" && <PropertyYieldCalculator />}
+      {tab === "insurance" && <InsuranceReturnAnalyzer />}
+      {tab === "surrender" && <SurrenderAnalyzer />}
       {tab === "sip" && <SipCalc />}
       {tab === "lumpsum" && <LumpsumCalc />}
       {tab === "goal" && <GoalCalc />}

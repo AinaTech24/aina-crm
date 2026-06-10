@@ -57,6 +57,84 @@ export function fvSip(monthlySip: number, annualReturnPct: number, months: numbe
   return monthlySip * ((Math.pow(1 + m, months) - 1) / m) * (1 + m);
 }
 
+/* ───────────────── Growing SIP (BIRD calculator) ─────────────────
+ * Faithful replica of the "Growing SIP & SIP" workbook. Two differences from
+ * the helpers above, kept intentionally so the numbers MATCH that sheet:
+ *   1. Rate: the annual return is treated as EFFECTIVE and converted to a
+ *      monthly rate via i = (1+r)^(1/12) − 1  (Excel NOMINAL(r,12)/12),
+ *      not the simpler r/12 used elsewhere.
+ *   2. Annuity-DUE: contributions are made at the START of each month (type=1).
+ * The growing SIP steps the monthly amount up by `annualGrowthPct` each YEAR
+ * (constant within the year); the balance compounds across years.
+ */
+export type SipYearRow = {
+  year: number;
+  fv: number; // future value at end of this year
+  yearCost: number; // contributed during this year
+  invested: number; // cumulative contributed
+  profit: number; // fv − invested
+  profitPctOfCorpus: number; // profit / invested (fraction, e.g. 0.74 = 74%)
+};
+
+export type GrowingSipResult = {
+  regular: SipYearRow[];
+  growing: SipYearRow[];
+  monthlyRatePct: number; // the effective monthly rate, × 100
+};
+
+export function growingSipSchedule(params: {
+  monthlySip: number;
+  annualReturnPct: number;
+  annualGrowthPct: number;
+  years: number;
+}): GrowingSipResult {
+  const P = Math.max(0, params.monthlySip);
+  const years = Math.max(0, Math.floor(params.years));
+  const i = Math.pow(1 + params.annualReturnPct / 100, 1 / 12) - 1; // effective → monthly
+  const g = params.annualGrowthPct / 100;
+  // FV factor for an annuity-due of `n` unit payments at monthly rate i.
+  const dueFactor = (n: number) => (i === 0 ? n : ((Math.pow(1 + i, n) - 1) / i) * (1 + i));
+
+  const regular: SipYearRow[] = [];
+  const growing: SipYearRow[] = [];
+
+  // Regular SIP — constant monthly amount P.
+  for (let y = 1; y <= years; y++) {
+    const fv = P * dueFactor(y * 12);
+    const invested = P * 12 * y;
+    const profit = fv - invested;
+    regular.push({
+      year: y,
+      fv,
+      yearCost: P * 12,
+      invested,
+      profit,
+      profitPctOfCorpus: invested > 0 ? profit / invested : 0,
+    });
+  }
+
+  // Growing SIP — monthly amount steps up by g each year; balance compounds.
+  let bal = 0;
+  let invested = 0;
+  for (let y = 1; y <= years; y++) {
+    const monthly = P * Math.pow(1 + g, y - 1);
+    bal = bal * Math.pow(1 + i, 12) + monthly * dueFactor(12);
+    const yearCost = monthly * 12;
+    invested += yearCost;
+    const profit = bal - invested;
+    growing.push({
+      year: y,
+      fv: bal,
+      yearCost,
+      invested,
+      profit,
+      profitPctOfCorpus: invested > 0 ? profit / invested : 0,
+    });
+  }
+
+  return { regular, growing, monthlyRatePct: i * 100 };
+}
+
 /** Constant monthly SIP needed to hit `target` starting from `currentValue`. */
 export function requiredSip(
   target: number,
