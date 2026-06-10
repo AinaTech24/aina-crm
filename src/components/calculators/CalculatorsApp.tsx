@@ -19,6 +19,8 @@ import { InsuranceReturnAnalyzer } from "./InsuranceReturnAnalyzer";
 import { SurrenderAnalyzer } from "./SurrenderAnalyzer";
 import { SwpPeriodicPlanner } from "./SwpPeriodicPlanner";
 import { SwpEndPeriodCalculator } from "./SwpEndPeriodCalculator";
+import { SwpComprehensivePlanner } from "./SwpComprehensivePlanner";
+import { StpComprehensivePlanner } from "./StpComprehensivePlanner";
 import {
   fvSip,
   fvLumpsum,
@@ -47,6 +49,8 @@ type TabKey =
   | "surrender"
   | "swpperiodic"
   | "swpend"
+  | "swpcomp"
+  | "stpcomp"
   | "sip"
   | "lumpsum"
   | "goal"
@@ -70,6 +74,8 @@ const TABS: Array<{ key: TabKey; label: string }> = [
   { key: "surrender", label: "★ Surrender vs Invest" },
   { key: "swpperiodic", label: "★ SWP Periodic" },
   { key: "swpend", label: "★ SWP End Period" },
+  { key: "swpcomp", label: "★ SWP Comprehensive" },
+  { key: "stpcomp", label: "★ STP Comprehensive" },
   { key: "sip", label: "1. SIP" },
   { key: "lumpsum", label: "2. Lumpsum" },
   { key: "goal", label: "3. Goal" },
@@ -117,6 +123,8 @@ export function CalculatorsApp() {
       {tab === "surrender" && <SurrenderAnalyzer />}
       {tab === "swpperiodic" && <SwpPeriodicPlanner />}
       {tab === "swpend" && <SwpEndPeriodCalculator />}
+      {tab === "swpcomp" && <SwpComprehensivePlanner />}
+      {tab === "stpcomp" && <StpComprehensivePlanner />}
       {tab === "sip" && <SipCalc />}
       {tab === "lumpsum" && <LumpsumCalc />}
       {tab === "goal" && <GoalCalc />}
