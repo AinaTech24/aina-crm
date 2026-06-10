@@ -147,9 +147,17 @@ export function buildWainaPayload(args: SendWhatsappArgs, defaultLanguage = "en_
   const variables: Record<string, string> = {};
   for (const v of vars) variables[v.key] = args.tokens[v.key] ?? "";
 
-  // Optional per-send header overrides (Wapi falls back to the template's saved
-  // sample media / header text when these aren't passed).
-  const headerMediaRaw = body.headerMediaUrl ?? body.wainaHeaderMediaUrl;
+  // Header media: prefer an explicit per-send override, else the template's
+  // STORED sample URL — but only if it's a permanent URL. Meta's signed CDN URLs
+  // (scontent.whatsapp.net / lookaside.fbsbx.com) expire → 131053 errors, so we
+  // never re-send those; Wapi then uses its own re-uploaded media or returns a
+  // clear "pass header_media_url" error which we surface to the RM.
+  const EXPIRING_MEDIA = /scontent\.whatsapp\.net|lookaside\.fbsbx\.com/i;
+  const storedSample =
+    typeof body.headerSampleUrl === "string" && !EXPIRING_MEDIA.test(body.headerSampleUrl)
+      ? body.headerSampleUrl
+      : undefined;
+  const headerMediaRaw = body.headerMediaUrl ?? body.wainaHeaderMediaUrl ?? storedSample;
   const headerTextRaw = body.headerText ?? body.wainaHeaderText;
   const header_media_url = headerMediaRaw ? String(substituteTokens(headerMediaRaw, args.tokens)) : undefined;
   const header_text = headerTextRaw ? String(substituteTokens(headerTextRaw, args.tokens)) : undefined;

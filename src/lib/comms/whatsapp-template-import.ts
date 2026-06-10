@@ -43,15 +43,29 @@ function extractVarKeys(text: string): string[] {
   return [...seen];
 }
 
-/** Header type + sample media URL + whether the header carries a {{var}}. */
-function headerInfo(components: any): { format: string | null; sampleUrl: string | null; hasVar: boolean } {
-  if (!Array.isArray(components)) return { format: null, sampleUrl: null, hasVar: false };
+/** Meta's signed CDN sample URLs expire (hours/days) → Meta error 131053 on send.
+ *  A template whose stored media URL is one of these can't be sent reliably
+ *  unless a fresh permanent `header_media_url` is passed. */
+const EXPIRING_MEDIA_URL = /scontent\.whatsapp\.net|lookaside\.fbsbx\.com/i;
+const MEDIA_FORMATS = ["IMAGE", "VIDEO", "DOCUMENT"];
+
+/** Header type + sample media URL + whether the header carries a {{var}} + whether
+ *  the stored media URL is an expiring Meta CDN URL (so the template is "broken"). */
+function headerInfo(components: any): {
+  format: string | null;
+  sampleUrl: string | null;
+  hasVar: boolean;
+  mediaBroken: boolean;
+} {
+  if (!Array.isArray(components)) return { format: null, sampleUrl: null, hasVar: false, mediaBroken: false };
   const h = components.find((c) => (c?.type ?? "").toString().toUpperCase() === "HEADER");
-  if (!h) return { format: null, sampleUrl: null, hasVar: false };
+  if (!h) return { format: null, sampleUrl: null, hasVar: false, mediaBroken: false };
   const format = (h.format ?? "").toString().toUpperCase() || null;
   const sampleUrl = h.example?.header_handle?.[0] ?? h.example?.header_url ?? null;
   const hasVar = /\{\{\s*\w+\s*\}\}/.test(String(h.text ?? ""));
-  return { format, sampleUrl, hasVar };
+  const mediaBroken =
+    !!format && MEDIA_FORMATS.includes(format) && (!sampleUrl || EXPIRING_MEDIA_URL.test(String(sampleUrl)));
+  return { format, sampleUrl, hasVar, mediaBroken };
 }
 
 export interface ImportResult {
@@ -125,6 +139,7 @@ export async function importWhatsappTemplatesForTenant(tx: Tx, tenantId: string,
       headerFormat: hdr.format,
       headerSampleUrl: hdr.sampleUrl,
       headerHasVar: hdr.hasVar,
+      headerMediaBroken: hdr.mediaBroken,
     } as any;
 
     const [existing] = await tx

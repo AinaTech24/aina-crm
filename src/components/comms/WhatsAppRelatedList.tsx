@@ -35,6 +35,8 @@ type TemplateInfo = {
   category: string;
   status?: string;
   variables: TemplateVar[] | null;
+  /** Stored media-header URL is an expiring Meta CDN URL → will 131053 on send. */
+  mediaBroken?: boolean;
 };
 
 const QUICK_REPLIES = [
@@ -326,7 +328,7 @@ export function WhatsAppRelatedList({
                 searchPlaceholder="Search templates…"
                 options={templates.map((t) => ({
                   value: t.key,
-                  label: t.status && t.status !== "approved" ? `${t.name} (${t.status.replace(/_/g, " ")})` : t.name,
+                  label: `${t.status && t.status !== "approved" ? `${t.name} (${t.status.replace(/_/g, " ")})` : t.name}${t.mediaBroken ? "  ⚠ media expired" : ""}`,
                 }))}
               />
             )}
@@ -341,6 +343,13 @@ export function WhatsAppRelatedList({
                     <input value={vars[v.key] ?? ""} onChange={(e) => setVars((s) => ({ ...s, [v.key]: e.target.value }))} className="input-base" />
                   </label>
                 ))}
+              </div>
+            )}
+            {selectedTpl?.mediaBroken && (
+              <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                ⚠ This template's header image/video link has <span className="font-medium">expired</span> on Meta's
+                side (error 131053). Re-upload the sample media for this template in the WAina console, then{" "}
+                <span className="font-medium">Fetch from WhatsApp</span> again — otherwise the send will fail.
               </div>
             )}
             {blockedSend && (

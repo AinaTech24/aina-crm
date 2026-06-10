@@ -77,6 +77,7 @@ export async function GET(req: NextRequest) {
           category: templates.category,
           status: templates.status,
           variables: templateVersions.variables,
+          body: templateVersions.body,
         })
         .from(templates)
         .innerJoin(templateVersions, eq(templateVersions.id, templates.currentVersionId))
@@ -110,7 +111,21 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    return NextResponse.json({ messages, sessionActive: data.sessionActive, templates: data.tmplRows });
+    // Flag templates whose stored media-header URL is an expiring Meta CDN URL
+    // (Meta 131053) so the composer can warn before a doomed send.
+    const EXPIRING_MEDIA = /scontent\.whatsapp\.net|lookaside\.fbsbx\.com/i;
+    const tmpls = data.tmplRows.map((t) => {
+      const b = (t.body ?? {}) as any;
+      const fmt = String(b.headerFormat ?? "").toUpperCase();
+      const isMedia = ["IMAGE", "VIDEO", "DOCUMENT"].includes(fmt);
+      const url = b.headerSampleUrl ?? b.headerMediaUrl;
+      const mediaBroken =
+        b.headerMediaBroken === true || (isMedia && (!url || EXPIRING_MEDIA.test(String(url))));
+      const { body: _omit, ...rest } = t;
+      return { ...rest, mediaBroken };
+    });
+
+    return NextResponse.json({ messages, sessionActive: data.sessionActive, templates: tmpls });
   } catch (err) {
     return handleApiError(err);
   }
