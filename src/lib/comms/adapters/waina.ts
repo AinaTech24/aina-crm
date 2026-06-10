@@ -44,14 +44,28 @@ interface WapiConfig {
   defaultLanguage: string;
 }
 
-/** Normalise any configured URL — a base, or a legacy full send endpoint — back
- *  to the `/api` base so we can append the documented paths. */
+/**
+ * Normalise ANY configured WAina URL down to the API base `<origin>/api`.
+ *
+ * The WAina extension/send endpoints always live under `<origin>/api/...`, so we
+ * only need the ORIGIN — whatever path was pasted is ignored. This is deliberate:
+ * firms routinely paste a webhook/trigger URL (e.g.
+ * `…/api/ecommerce-webhook/trigger/<id>`) or a full send URL into the override
+ * field; the old logic appended `/extension/templates` to that and 404'd. We now
+ * keep the host and rebuild the `/api` base. A deeper `…/api` prefix is preserved
+ * for any host that uses one.
+ */
 function toApiBase(raw?: string | null): string {
-  let u = (raw ?? "").trim().replace(/\/+$/, "");
+  const u = (raw ?? "").trim();
   if (!u) return DEFAULT_BASE_URL;
-  // Strip a known endpoint suffix if someone configured the full send URL.
-  u = u.replace(/\/(extension\/(zoho-workflow|send-message)|whatsapp\/send)$/i, "");
-  return u || DEFAULT_BASE_URL;
+  try {
+    const url = new URL(u);
+    const m = url.pathname.match(/^(.*?\/api)(\/|$)/);
+    const prefix = m ? m[1] : "/api";
+    return `${url.origin}${prefix}`.replace(/\/+$/, "");
+  } catch {
+    return DEFAULT_BASE_URL;
+  }
 }
 
 function resolveConfig(args: SendWhatsappArgs): WapiConfig {
