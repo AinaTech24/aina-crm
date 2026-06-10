@@ -9,6 +9,7 @@
 import { useState } from "react";
 import { Printer } from "lucide-react";
 import { ClientNameField } from "./ClientNameField";
+import { Sip360Planner } from "./Sip360Planner";
 import {
   fvSip,
   fvLumpsum,
@@ -25,6 +26,7 @@ import {
 } from "@/lib/goal-planning/calc";
 
 type TabKey =
+  | "sip360"
   | "sip"
   | "lumpsum"
   | "goal"
@@ -37,6 +39,7 @@ type TabKey =
   | "cagr";
 
 const TABS: Array<{ key: TabKey; label: string }> = [
+  { key: "sip360", label: "★ SIP 360° Planner" },
   { key: "sip", label: "1. SIP" },
   { key: "lumpsum", label: "2. Lumpsum" },
   { key: "goal", label: "3. Goal" },
@@ -50,7 +53,7 @@ const TABS: Array<{ key: TabKey; label: string }> = [
 ];
 
 export function CalculatorsApp() {
-  const [tab, setTab] = useState<TabKey>("sip");
+  const [tab, setTab] = useState<TabKey>("sip360");
 
   return (
     <div className="space-y-4">
@@ -73,6 +76,7 @@ export function CalculatorsApp() {
         </button>
       </div>
 
+      {tab === "sip360" && <Sip360Planner />}
       {tab === "sip" && <SipCalc />}
       {tab === "lumpsum" && <LumpsumCalc />}
       {tab === "goal" && <GoalCalc />}

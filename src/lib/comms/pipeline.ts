@@ -30,7 +30,7 @@ import {
   type Template,
   type TemplateVersion,
 } from "@/db/schema";
-import { runComplianceChecks, type ComplianceResult } from "./compliance";
+import { runComplianceChecks, missingMandatoryLines, type ComplianceResult } from "./compliance";
 import { resolveTokens, renderTemplateText, type VariableDef } from "./tokens";
 import { whatsappAdapter, whatsappProviderId } from "./adapters/whatsapp";
 import { emailAdapter } from "./adapters/resend";
