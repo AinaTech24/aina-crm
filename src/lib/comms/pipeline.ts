@@ -111,6 +111,12 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let version: any;
   let rendered: { text: string; subject?: string; tokens: Record<string, string> };
+  // The template's own category is authoritative for the compliance ruleset
+  // (templates.category: "category drives compliance ruleset"). Captured here so
+  // a transactional/utility template (welcome, onboarding, confirmations) is
+  // never hard-blocked by marketing-only rules, even if the calling rule passed
+  // category: "marketing".
+  let templateCategory: DispatchInput["category"] | undefined;
 
   if (input.freeformText != null && input.channel === "whatsapp") {
     // Free-form in-session reply — no template. The synthesized version carries
@@ -136,13 +142,14 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
     if (!tmpl) {
       throw new Error(`Template '${input.templateKey}' (${input.channel}) not found`);
     }
+    templateCategory = tmpl.category as DispatchInput["category"];
     if (tmpl.status !== "approved") {
       // Email transactional/utility templates have no external approval body
       // (unlike WhatsApp→Meta or SMS→DLT), and the 11-rule compliance gate runs
       // on every send regardless — so let the firm's own non-marketing email go
       // out even as a draft. Marketing email + all WhatsApp/SMS still require an
       // approved template.
-      const needsApproval = input.channel !== "email" || input.category === "marketing";
+      const needsApproval = input.channel !== "email" || (templateCategory ?? input.category) === "marketing";
       if (needsApproval) {
         return await skip(tx, communicationId, input, "template_not_approved");
       }
@@ -329,10 +336,15 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
   // evaluate against body + the mandatory footer lines the renderer guarantees.
   // This reflects the real sent content; it is NOT a bypass (WhatsApp free-form
   // and SMS have no auto-footer, so they stay fully gated on the body).
+  // Effective compliance class — the template's declared category wins over the
+  // caller's hint (a welcome/onboarding template stays transactional even if a
+  // rule passed "marketing", so it's never a hard block).
+  const complianceCategory = templateCategory ?? input.category;
+
   let complianceText = rendered.text;
   if (input.channel === "email") {
     const footerLines = missingMandatoryLines({
-      category: input.category,
+      category: complianceCategory,
       text: rendered.text,
       tenant: { legalName: tenantRow?.legalName, arn: tenantRow?.arn },
     });
@@ -341,7 +353,7 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
 
   const compliance = runComplianceChecks({
     channel: input.channel,
-    category: input.category,
+    category: complianceCategory,
     tenant: {
       legalName: tenantRow?.legalName,
       arn: tenantRow?.arn,
@@ -353,7 +365,7 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
     dltTemplateId: input.channel === "sms" ? extractDltId(version) : undefined,
     dltTemplateContent: dltContent,
     whatsappSessionActive: sessionActive,
-    hasMarketingConsent: input.category === "marketing" ? !!consentSnapshot : true,
+    hasMarketingConsent: complianceCategory === "marketing" ? !!consentSnapshot : true,
     amcApprovalRef: (version.body as any)?.amcApprovalRef,
   });
 
