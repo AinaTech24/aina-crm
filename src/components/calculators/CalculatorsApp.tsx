@@ -17,12 +17,15 @@ import { CashflowCorpusPlanner } from "./CashflowCorpusPlanner";
 import { PropertyYieldCalculator } from "./PropertyYieldCalculator";
 import { InsuranceReturnAnalyzer } from "./InsuranceReturnAnalyzer";
 import { SurrenderAnalyzer } from "./SurrenderAnalyzer";
+import { SwpPeriodicPlanner } from "./SwpPeriodicPlanner";
+import { SwpEndPeriodCalculator } from "./SwpEndPeriodCalculator";
 import {
   fvSip,
   fvLumpsum,
   requiredSip,
   inflatedTarget,
   fvStepUpSip,
+  growingSipSchedule,
   costOfDelay,
   retirementCorpus,
   swpDeplete,
@@ -35,12 +38,15 @@ import {
 type TabKey =
   | "sip360"
   | "reckoner"
+  | "growing"
   | "bridge"
   | "salary"
   | "multipurpose"
   | "property"
   | "insurance"
   | "surrender"
+  | "swpperiodic"
+  | "swpend"
   | "sip"
   | "lumpsum"
   | "goal"
@@ -55,12 +61,15 @@ type TabKey =
 const TABS: Array<{ key: TabKey; label: string }> = [
   { key: "sip360", label: "★ SIP 360° Planner" },
   { key: "reckoner", label: "★ Step-Up SIP Reckoner" },
+  { key: "growing", label: "★ Growing SIP vs SIP" },
   { key: "bridge", label: "★ Income Bridge (SIP→SWP)" },
   { key: "salary", label: "★ Salary → Wealth" },
   { key: "multipurpose", label: "★ Cashflow & Corpus" },
   { key: "property", label: "★ Property Yield" },
   { key: "insurance", label: "★ Insurance IRR" },
   { key: "surrender", label: "★ Surrender vs Invest" },
+  { key: "swpperiodic", label: "★ SWP Periodic" },
+  { key: "swpend", label: "★ SWP End Period" },
   { key: "sip", label: "1. SIP" },
   { key: "lumpsum", label: "2. Lumpsum" },
   { key: "goal", label: "3. Goal" },
@@ -99,12 +108,15 @@ export function CalculatorsApp() {
 
       {tab === "sip360" && <Sip360Planner />}
       {tab === "reckoner" && <StepUpReckoner />}
+      {tab === "growing" && <GrowingSipCalc />}
       {tab === "bridge" && <IncomeBridgePlanner />}
       {tab === "salary" && <SalaryWealthBuilder />}
       {tab === "multipurpose" && <CashflowCorpusPlanner />}
       {tab === "property" && <PropertyYieldCalculator />}
       {tab === "insurance" && <InsuranceReturnAnalyzer />}
       {tab === "surrender" && <SurrenderAnalyzer />}
+      {tab === "swpperiodic" && <SwpPeriodicPlanner />}
+      {tab === "swpend" && <SwpEndPeriodCalculator />}
       {tab === "sip" && <SipCalc />}
       {tab === "lumpsum" && <LumpsumCalc />}
       {tab === "goal" && <GoalCalc />}
@@ -499,6 +511,161 @@ function SwpCalc() {
   );
 }
 
+/* ───────────────────────── ★ Growing SIP vs SIP ───────────────────────── */
+function GrowingSipCalc() {
+  const [clientName, setClientName] = useState("");
+  const [sip, setSip] = useState(100000);
+  const [returnPct, setReturnPct] = useState(14);
+  const [growthPct, setGrowthPct] = useState(10);
+  const [years, setYears] = useState(20);
+
+  const { regular, growing } = growingSipSchedule({
+    monthlySip: sip,
+    annualReturnPct: returnPct,
+    annualGrowthPct: growthPct,
+    years: Math.min(40, Math.max(1, years)),
+  });
+
+  const rLast = regular[regular.length - 1];
+  const gLast = growing[growing.length - 1];
+  const span = rLast?.year ?? years;
+  const advantage = (gLast?.fv ?? 0) - (rLast?.fv ?? 0);
+
+  return (
+    <CalcShell
+      title="Growing SIP vs Regular SIP"
+      purpose="A step-up SIP that increases your monthly amount each year vs a flat SIP — year-by-year corpus, profit and profit-as-%-of-cost. Returns are treated as effective annual (compounded monthly, contributions at month start), matching the BIRD working sheet."
+    >
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <Field label="Client name">
+          <ClientNameField value={clientName} onChange={setClientName} />
+        </Field>
+        <NumberField label="Monthly SIP (₹)" value={sip} setValue={setSip} />
+        <NumberField label="Expected return (% p.a.)" value={returnPct} setValue={setReturnPct} step={0.5} />
+        <NumberField label="Annual step-up (%)" value={growthPct} setValue={setGrowthPct} step={1} />
+        <NumberField label="Years" value={years} setValue={setYears} step={1} />
+      </div>
+
+      <ResultRow
+        cells={[
+          { label: `Regular SIP corpus (${span}y)`, value: inr(rLast?.fv ?? 0) },
+          { label: `Growing SIP corpus (${span}y)`, value: inr(gLast?.fv ?? 0), tone: "emerald" },
+          { label: "Extra from step-up", value: inr(advantage), tone: "emerald" },
+        ]}
+      />
+      <ResultRow
+        cells={[
+          { label: "Invested — regular", value: inr(rLast?.invested ?? 0) },
+          { label: "Invested — growing", value: inr(gLast?.invested ?? 0) },
+          {
+            label: "Growing — profit % of cost",
+            value: `${((gLast?.profitPctOfCorpus ?? 0) * 100).toFixed(0)}%`,
+            tone: "emerald",
+          },
+        ]}
+      />
+
+      <SipFvChart regular={regular} growing={growing} />
+
+      <div className="overflow-x-auto scrollbar-thin border rounded-md">
+        <table className="w-full text-xs">
+          <thead className="text-muted-foreground bg-secondary/40">
+            <tr>
+              <th className="px-2 py-1.5 text-left" rowSpan={2}>Year</th>
+              <th className="px-2 py-1.5 text-center border-l" colSpan={3}>Regular SIP</th>
+              <th className="px-2 py-1.5 text-center border-l" colSpan={3}>Growing SIP</th>
+            </tr>
+            <tr>
+              <th className="px-2 py-1 text-right">Corpus</th>
+              <th className="px-2 py-1 text-right">Invested</th>
+              <th className="px-2 py-1 text-right">Profit %</th>
+              <th className="px-2 py-1 text-right border-l">Corpus</th>
+              <th className="px-2 py-1 text-right">Invested</th>
+              <th className="px-2 py-1 text-right">Profit %</th>
+            </tr>
+          </thead>
+          <tbody>
+            {regular.map((rr, idx) => {
+              const gg = growing[idx];
+              return (
+                <tr key={rr.year} className="border-t hover:bg-accent/30">
+                  <td className="px-2 py-1.5 font-medium">{rr.year}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums">{inrCompact(rr.fv)}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground">{inrCompact(rr.invested)}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums">{(rr.profitPctOfCorpus * 100).toFixed(0)}%</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums border-l text-emerald-700 font-medium">{inrCompact(gg.fv)}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums text-muted-foreground">{inrCompact(gg.invested)}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums">{(gg.profitPctOfCorpus * 100).toFixed(0)}%</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-[11px] text-muted-foreground">
+        Profit % = (corpus − amount invested) ÷ amount invested. The growing SIP invests more over time, so its
+        corpus is far larger; a flat SIP can show a higher profit-% only because its cost base is smaller.
+      </p>
+    </CalcShell>
+  );
+}
+
+function SipFvChart({
+  regular,
+  growing,
+}: {
+  regular: { year: number; fv: number }[];
+  growing: { year: number; fv: number }[];
+}) {
+  const W = 640;
+  const H = 220;
+  const padL = 6;
+  const padR = 6;
+  const padT = 16;
+  const padB = 18;
+  const n = regular.length;
+  if (n < 2) return null;
+  const maxFv = Math.max(...growing.map((d) => d.fv), ...regular.map((d) => d.fv), 1);
+  const x = (i: number) => padL + (i / (n - 1)) * (W - padL - padR);
+  const y = (v: number) => padT + (1 - v / maxFv) * (H - padT - padB);
+  const poly = (data: { fv: number }[]) => data.map((d, i) => `${x(i).toFixed(1)},${y(d.fv).toFixed(1)}`).join(" ");
+  const grid = [0, 0.25, 0.5, 0.75, 1];
+
+  return (
+    <div className="border rounded-md p-3">
+      <div className="flex items-center gap-4 mb-2 text-[11px]">
+        <span className="inline-flex items-center gap-1.5">
+          <span className="size-2.5 rounded-sm bg-slate-400" /> Regular SIP
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="size-2.5 rounded-sm bg-emerald-500" /> Growing SIP
+        </span>
+        <span className="ml-auto text-muted-foreground">Corpus across {n} years</span>
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label="SIP corpus growth: regular vs growing">
+        {grid.map((g, i) => (
+          <g key={i}>
+            <line
+              x1={padL}
+              x2={W - padR}
+              y1={y(maxFv * g)}
+              y2={y(maxFv * g)}
+              stroke="currentColor"
+              className="text-border"
+              strokeWidth={1}
+            />
+            <text x={padL} y={y(maxFv * g) - 2} className="fill-muted-foreground" fontSize={9}>
+              {inrCompact(maxFv * g)}
+            </text>
+          </g>
+        ))}
+        <polyline fill="none" stroke="#94a3b8" strokeWidth={2} points={poly(regular)} />
+        <polyline fill="none" stroke="#10b981" strokeWidth={2.5} points={poly(growing)} />
+      </svg>
+    </div>
+  );
+}
+
 /* ───────────────────────── Shared shell + bits ───────────────────────── */
 function CalcShell({
   title,
@@ -624,6 +791,16 @@ function inr(n: number): string {
     currency: "INR",
     maximumFractionDigits: 0,
   }).format(n);
+}
+
+/** Compact INR (₹X Cr / ₹X L / ₹Xk) — for dense tables + chart axis labels. */
+function inrCompact(n: number): string {
+  if (!Number.isFinite(n)) return "—";
+  const a = Math.abs(n);
+  if (a >= 1e7) return `₹${(n / 1e7).toFixed(2)} Cr`;
+  if (a >= 1e5) return `₹${(n / 1e5).toFixed(1)} L`;
+  if (a >= 1e3) return `₹${(n / 1e3).toFixed(0)}k`;
+  return `₹${Math.round(n)}`;
 }
 
 /* ───────────────────────── 9. STP ───────────────────────── */
