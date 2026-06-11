@@ -44,10 +44,9 @@ import {
   RotateCcw,
   Eye,
   EyeOff,
-  ChevronUp,
-  ChevronDown,
   X,
   Layers,
+  GripVertical,
 } from "lucide-react";
 
 export type RelatedListDef = {
@@ -204,17 +203,17 @@ export function RelatedListsManager({
     });
   }
 
-  function move(key: string, dir: -1 | 1) {
+  // Drag-to-reorder: drop `fromKey` at `toKey`'s position.
+  function reorder(fromKey: string, toKey: string) {
     setPrefs((p) => {
       if (!p) return p;
-      // Start from the current effective order
       const cur = ordered.map((s) => s.key);
-      const idx = cur.indexOf(key);
-      if (idx < 0) return p;
-      const next = idx + dir;
-      if (next < 0 || next >= cur.length) return p;
+      const from = cur.indexOf(fromKey);
+      const to = cur.indexOf(toKey);
+      if (from < 0 || to < 0 || from === to) return p;
       const copy = [...cur];
-      [copy[idx], copy[next]] = [copy[next], copy[idx]];
+      copy.splice(from, 1);
+      copy.splice(to, 0, fromKey);
       return { ...p, order: copy };
     });
   }
@@ -249,7 +248,7 @@ export function RelatedListsManager({
           sections={ordered}
           hidden={hiddenSet}
           onToggle={toggleHidden}
-          onMove={move}
+          onReorder={reorder}
           onReset={reset}
           onClose={() => setOpen(false)}
         />
@@ -264,18 +263,20 @@ function CustomizeDrawer({
   sections,
   hidden,
   onToggle,
-  onMove,
+  onReorder,
   onReset,
   onClose,
 }: {
   sections: RelatedListDef[];
   hidden: Set<string>;
   onToggle: (k: string) => void;
-  onMove: (k: string, dir: -1 | 1) => void;
+  onReorder: (fromKey: string, toKey: string) => void;
   onReset: () => void;
   onClose: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const [dragKey, setDragKey] = useState<string | null>(null);
+  const [overKey, setOverKey] = useState<string | null>(null);
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
@@ -313,38 +314,36 @@ function CustomizeDrawer({
           </button>
         </div>
 
+        <div className="px-4 pt-2 text-[11px] text-muted-foreground">Drag the handle to reorder.</div>
         <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
-          {sections.map((s, i) => {
+          {sections.map((s) => {
             const isHidden = hidden.has(s.key);
-            const isFirst = i === 0;
-            const isLast = i === sections.length - 1;
             return (
               <div
                 key={s.key}
-                className={`flex items-center gap-2 rounded-lg border px-2.5 py-2 ${
+                onDragOver={(e) => { e.preventDefault(); if (overKey !== s.key) setOverKey(s.key); }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  if (dragKey && dragKey !== s.key) onReorder(dragKey, s.key);
+                  setDragKey(null);
+                  setOverKey(null);
+                }}
+                className={`flex items-center gap-2 rounded-lg border px-2.5 py-2 transition-colors ${
                   isHidden ? "bg-muted/40 border-border" : "bg-card border-border"
+                } ${dragKey === s.key ? "opacity-40" : ""} ${
+                  overKey === s.key && dragKey && dragKey !== s.key ? "ring-2 ring-brand-cyan/50 border-brand-cyan/40" : ""
                 }`}
               >
-                <div className="flex flex-col gap-0.5">
-                  <button
-                    type="button"
-                    onClick={() => onMove(s.key, -1)}
-                    disabled={isFirst}
-                    className="rounded p-0.5 hover:bg-accent disabled:opacity-30 disabled:cursor-not-allowed"
-                    aria-label="Move up"
-                  >
-                    <ChevronUp className="size-3.5" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onMove(s.key, 1)}
-                    disabled={isLast}
-                    className="rounded p-0.5 hover:bg-accent disabled:opacity-30 disabled:cursor-not-allowed"
-                    aria-label="Move down"
-                  >
-                    <ChevronDown className="size-3.5" />
-                  </button>
-                </div>
+                <span
+                  draggable
+                  onDragStart={(e) => { setDragKey(s.key); e.dataTransfer.effectAllowed = "move"; }}
+                  onDragEnd={() => { setDragKey(null); setOverKey(null); }}
+                  className="shrink-0 cursor-grab active:cursor-grabbing text-muted-foreground/60 hover:text-foreground"
+                  title="Drag to reorder"
+                  aria-label="Drag to reorder"
+                >
+                  <GripVertical className="size-4" />
+                </span>
 
                 <button
                   type="button"
