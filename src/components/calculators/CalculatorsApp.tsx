@@ -7,7 +7,7 @@
  */
 
 import { useState } from "react";
-import { Printer } from "lucide-react";
+import { Printer, ChevronLeft, Search, X } from "lucide-react";
 import { ClientNameField } from "./ClientNameField";
 import { Sip360Planner } from "./Sip360Planner";
 import { StepUpReckoner } from "./StepUpReckoner";
@@ -108,74 +108,113 @@ type TabKey =
   | "stp"
   | "cagr";
 
-const TABS: Array<{ key: TabKey; label: string }> = [
-  { key: "sip360", label: "★ SIP 360° Planner" },
-  { key: "reckoner", label: "★ Step-Up SIP Reckoner" },
-  { key: "growing", label: "★ Growing SIP vs SIP" },
-  { key: "bridge", label: "★ Income Bridge (SIP→SWP)" },
-  { key: "salary", label: "★ Salary → Wealth" },
-  { key: "multipurpose", label: "★ Cashflow & Corpus" },
-  { key: "property", label: "★ Property Yield" },
-  { key: "insurance", label: "★ Insurance IRR" },
-  { key: "surrender", label: "★ Surrender vs Invest" },
-  { key: "swpperiodic", label: "★ SWP Periodic" },
-  { key: "swpend", label: "★ SWP End Period" },
-  { key: "swpcomp", label: "★ SWP Comprehensive" },
-  { key: "stpcomp", label: "★ STP Comprehensive" },
-  { key: "emisip", label: "★ EMI → SIP" },
-  { key: "fvannual", label: "★ FV Annual Lumpsum" },
-  { key: "debtfund", label: "★ Debt Fund Hold/Sell" },
-  { key: "assetalloc", label: "★ Asset Allocation FV" },
-  { key: "review", label: "★ Review of Investments" },
-  { key: "vacation", label: "★ Vacation Planner" },
-  { key: "hlv", label: "★ Human Life Value" },
-  { key: "goalplan", label: "★ Goal Planner" },
-  { key: "captax", label: "★ Capital Gains Tax" },
-  { key: "opm", label: "★ OPM House (SWP)" },
-  { key: "annualreq", label: "★ Annual Lumpsum (Target)" },
-  { key: "taxregime", label: "🛡 Old vs New Regime" },
-  { key: "realreturn", label: "🛡 Real Return (tax+inflation)" },
-  { key: "nps", label: "🛡 NPS Retirement & Tax" },
-  { key: "harvest", label: "🛡 LTCG Tax-Harvesting" },
-  { key: "crash", label: "🔥 Market-Crash Stress Test" },
-  { key: "fire", label: "🔥 FIRE Number" },
-  { key: "childedu", label: "🔥 Child Education" },
-  { key: "collision", label: "🔥 Goal-Collision Timeline" },
-  { key: "xirr", label: "🧭 XIRR" },
-  { key: "rebalance", label: "🧭 Portfolio Rebalancing" },
-  { key: "feasibility", label: "🧭 Goal-Feasibility Score" },
-  { key: "expensedrag", label: "🧭 Expense-Ratio Drag" },
-  { key: "sip", label: "1. SIP" },
-  { key: "lumpsum", label: "2. Lumpsum" },
-  { key: "goal", label: "3. Goal" },
-  { key: "inflation", label: "4. Inflation" },
-  { key: "delay", label: "5. Cost of Delay" },
-  { key: "retirement", label: "6. Retirement" },
-  { key: "stepup", label: "7. Step-up SIP" },
-  { key: "swp", label: "8. SWP" },
-  { key: "stp", label: "9. STP" },
-  { key: "cagr", label: "10. CAGR" },
+type CalcMeta = { key: TabKey; name: string; icon: string; desc: string };
+type CalcGroup = { title: string; icon: string; items: CalcMeta[] };
+
+const CATALOG: CalcGroup[] = [
+  {
+    title: "SIP & Wealth Building", icon: "📈", items: [
+      { key: "sip360", name: "SIP 360° Planner", icon: "📊", desc: "Deep SIP analysis — future value, step-up, delay & maturity" },
+      { key: "reckoner", name: "Step-Up SIP Reckoner", icon: "🪜", desc: "Compare regular vs %/₹ step-up across timeframes" },
+      { key: "growing", name: "Growing SIP vs SIP", icon: "🌱", desc: "How a growing SIP outpaces a flat one" },
+      { key: "salary", name: "Salary → Wealth", icon: "💼", desc: "Invest a % of salary that rises with increments" },
+      { key: "stepup", name: "Step-up SIP", icon: "⬆️", desc: "A SIP with a fixed yearly increase" },
+      { key: "fvannual", name: "FV of Annual Lumpsum", icon: "🗓️", desc: "Future value of a yearly lumpsum investment" },
+      { key: "annualreq", name: "Annual Lumpsum for Target", icon: "🎯", desc: "Yearly lumpsum needed to reach a goal" },
+      { key: "sip", name: "SIP Calculator", icon: "💧", desc: "Future value of a monthly SIP" },
+      { key: "lumpsum", name: "Lumpsum Calculator", icon: "💰", desc: "Future value of a one-time investment" },
+      { key: "cagr", name: "CAGR", icon: "📐", desc: "Annualised growth rate between two values" },
+    ],
+  },
+  {
+    title: "Goals & Planning", icon: "🎯", items: [
+      { key: "goalplan", name: "Goal Planner", icon: "🎯", desc: "Lumpsum/SIP needed for one or many goals" },
+      { key: "multipurpose", name: "Cashflow & Corpus", icon: "🔀", desc: "Build a corpus and draw income from it" },
+      { key: "vacation", name: "Vacation Planner", icon: "🏖️", desc: "Save up for a dream trip" },
+      { key: "childedu", name: "Child Education", icon: "🎓", desc: "Fund education at ~10% education inflation" },
+      { key: "collision", name: "Goal-Collision Timeline", icon: "🗓️", desc: "Spot the years your goals overlap & peak" },
+      { key: "feasibility", name: "Goal-Feasibility Score", icon: "✅", desc: "0–100 score — are the goals on track?" },
+      { key: "goal", name: "Goal Calculator", icon: "🎯", desc: "Monthly SIP to reach a target amount" },
+      { key: "inflation", name: "Inflation", icon: "📈", desc: "What today's cost becomes in the future" },
+      { key: "delay", name: "Cost of Delay", icon: "⏳", desc: "What waiting to invest really costs" },
+      { key: "retirement", name: "Retirement", icon: "🌴", desc: "The corpus you'll need to retire" },
+    ],
+  },
+  {
+    title: "Income & Withdrawal (SWP/STP)", icon: "💸", items: [
+      { key: "bridge", name: "Income Bridge (SIP→SWP)", icon: "🌉", desc: "Build with SIP, then draw a monthly income" },
+      { key: "swpperiodic", name: "SWP Periodic", icon: "🔁", desc: "Periodic withdrawals from a corpus" },
+      { key: "swpend", name: "SWP End Period", icon: "⏱️", desc: "How long your money lasts under SWP" },
+      { key: "swpcomp", name: "SWP Comprehensive", icon: "🧾", desc: "Full SWP — any mode, frequency & increment" },
+      { key: "stpcomp", name: "STP Comprehensive", icon: "🔄", desc: "Move debt → equity systematically" },
+      { key: "opm", name: "OPM House (SWP)", icon: "🏠", desc: "Fund a home using an SWP income stream" },
+      { key: "swp", name: "SWP Calculator", icon: "💸", desc: "Simple systematic withdrawal plan" },
+      { key: "stp", name: "STP Calculator", icon: "🔁", desc: "Systematic transfer plan" },
+    ],
+  },
+  {
+    title: "Insurance & Protection", icon: "🛡️", items: [
+      { key: "insurance", name: "Insurance IRR", icon: "🛡️", desc: "A policy's real return vs mutual funds" },
+      { key: "surrender", name: "Surrender vs Invest", icon: "⚖️", desc: "Keep a policy, or surrender and invest?" },
+      { key: "hlv", name: "Human Life Value", icon: "👪", desc: "Term cover your family actually needs" },
+    ],
+  },
+  {
+    title: "Tax", icon: "🧾", items: [
+      { key: "taxregime", name: "Old vs New Tax Regime", icon: "🧾", desc: "Which regime saves more (FY 2025-26)" },
+      { key: "realreturn", name: "Real Return", icon: "📉", desc: "Your return after tax and inflation" },
+      { key: "nps", name: "NPS Retirement & Tax", icon: "🏦", desc: "Corpus, pension and the 80CCD(1B) benefit" },
+      { key: "harvest", name: "LTCG Tax-Harvesting", icon: "✂️", desc: "Bank the ₹1.25L tax-free gain every year" },
+      { key: "captax", name: "Capital Gains Tax", icon: "🧮", desc: "LTCG/STCG with CII indexation" },
+    ],
+  },
+  {
+    title: "Property & Assets", icon: "🏠", items: [
+      { key: "property", name: "Property Yield", icon: "🏠", desc: "The real return on a property investment" },
+      { key: "debtfund", name: "Debt Fund Hold/Sell", icon: "📊", desc: "Hold or sell a debt fund, post-tax" },
+      { key: "emisip", name: "EMI → SIP", icon: "🔄", desc: "Turn an EMI into wealth instead" },
+      { key: "assetalloc", name: "Asset Allocation FV", icon: "🧩", desc: "Future value of a Debt/Equity mix" },
+    ],
+  },
+  {
+    title: "Advisor Tools", icon: "🧭", items: [
+      { key: "xirr", name: "XIRR", icon: "📅", desc: "True return on irregular, dated cashflows" },
+      { key: "rebalance", name: "Portfolio Rebalancing", icon: "⚖️", desc: "Exact buy/sell to hit your target mix" },
+      { key: "expensedrag", name: "Expense-Ratio Drag", icon: "💧", desc: "What a costlier fund quietly costs you" },
+      { key: "review", name: "Review of Investments", icon: "📋", desc: "Compare your funds' performance side by side" },
+    ],
+  },
+  {
+    title: "Markets & Mindset", icon: "🔥", items: [
+      { key: "crash", name: "Market-Crash Stress Test", icon: "📉", desc: "The cost of panic-selling vs staying invested" },
+      { key: "fire", name: "FIRE Number", icon: "🔥", desc: "When can you achieve financial independence?" },
+    ],
+  },
 ];
 
-export function CalculatorsApp() {
-  const [tab, setTab] = useState<TabKey>("sip360");
+const ALL_CALCS: CalcMeta[] = CATALOG.flatMap((g) => g.items);
+const CALC_META: Record<string, CalcMeta> = Object.fromEntries(ALL_CALCS.map((c) => [c.key, c]));
 
+export function CalculatorsApp() {
+  const [tab, setTab] = useState<TabKey | null>(null);
+  const [query, setQuery] = useState("");
+
+  if (tab === null) {
+    return <CalcGallery query={query} setQuery={setQuery} onPick={setTab} />;
+  }
+
+  const meta = CALC_META[tab];
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between print:hidden">
-        <div className="flex flex-wrap gap-1">
-          {TABS.map((t) => (
-            <button
-              key={t.key}
-              onClick={() => setTab(t.key)}
-              className={`chip text-xs ${
-                tab === t.key ? "bg-slate-900 text-white" : "bg-slate-100"
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
+      <div className="flex items-center justify-between gap-3 print:hidden">
+        <button onClick={() => { setTab(null); setQuery(""); }} className="btn-ghost text-xs">
+          <ChevronLeft className="size-3.5" /> All calculators
+        </button>
+        {meta && (
+          <span className="text-sm font-semibold flex items-center gap-1.5 truncate">
+            <span aria-hidden>{meta.icon}</span> {meta.name}
+          </span>
+        )}
         <button onClick={() => window.print()} className="btn-ghost text-xs">
           <Printer className="size-3.5" /> Print
         </button>
@@ -228,6 +267,83 @@ export function CalculatorsApp() {
       {tab === "stp" && <StpCalc />}
       {tab === "cagr" && <CagrCalc />}
     </div>
+  );
+}
+
+/* ───────────────────── calculator gallery (launcher) ───────────────────── */
+
+function CalcGallery({
+  query, setQuery, onPick,
+}: { query: string; setQuery: (v: string) => void; onPick: (k: TabKey) => void }) {
+  const q = query.trim().toLowerCase();
+  const filtered = q
+    ? ALL_CALCS.filter((c) => c.name.toLowerCase().includes(q) || c.desc.toLowerCase().includes(q))
+    : null;
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h2 className="text-lg font-bold flex items-center gap-2">🧮 MF Investment Calculators</h2>
+        <p className="text-sm text-muted-foreground">
+          {ALL_CALCS.length} client-ready calculators — pick one to open it. Results are illustrative.
+        </p>
+      </div>
+
+      <div className="relative max-w-md print:hidden">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search calculators by name…"
+          autoFocus
+          className="w-full rounded-lg border border-border bg-card pl-9 pr-9 py-2 text-sm focus:outline-none focus:border-brand-cyan focus:ring-2 focus:ring-brand-cyan/15"
+        />
+        {query && (
+          <button type="button" onClick={() => setQuery("")} aria-label="Clear search"
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+            <X className="size-4" />
+          </button>
+        )}
+      </div>
+
+      {filtered ? (
+        filtered.length ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+            {filtered.map((c) => <CalcCard key={c.key} c={c} onPick={onPick} />)}
+          </div>
+        ) : (
+          <div className="text-center text-sm text-muted-foreground py-12">No calculators match “{query}”.</div>
+        )
+      ) : (
+        CATALOG.map((g) => (
+          <div key={g.title} className="space-y-2.5 break-inside-avoid">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+              <span aria-hidden>{g.icon}</span> {g.title}
+              <span className="text-muted-foreground/60 font-medium normal-case tracking-normal">· {g.items.length}</span>
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+              {g.items.map((c) => <CalcCard key={c.key} c={c} onPick={onPick} />)}
+            </div>
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
+
+function CalcCard({ c, onPick }: { c: CalcMeta; onPick: (k: TabKey) => void }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onPick(c.key)}
+      className="group text-left rounded-xl border border-border bg-card p-3.5 flex gap-3 items-start hover:border-brand-cyan/50 hover:shadow-md hover:-translate-y-0.5 transition-all"
+    >
+      <span className="text-2xl leading-none shrink-0" aria-hidden>{c.icon}</span>
+      <span className="min-w-0">
+        <span className="block font-semibold text-sm leading-tight group-hover:text-brand-cyan-deep">{c.name}</span>
+        <span className="block text-xs text-muted-foreground mt-1 leading-snug">{c.desc}</span>
+      </span>
+    </button>
   );
 }
 
