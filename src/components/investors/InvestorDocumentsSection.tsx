@@ -8,7 +8,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { FileText, Upload, Download, Trash2, Loader2, FolderOpen, UserCheck, Send, Link as LinkIcon, Copy, ExternalLink, CheckCircle2, Eye, Cloud, HardDrive, ChevronRight } from "lucide-react";
+import { FileText, Upload, Download, Trash2, Loader2, FolderOpen, UserCheck, Send, Link as LinkIcon, Copy, ExternalLink, CheckCircle2, Eye, ChevronRight } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { DocumentViewerModal, type ViewerDoc } from "@/components/documents/DocumentViewerModal";
@@ -45,7 +45,6 @@ export function InvestorDocumentsSection({ investorId, investorName, investorPho
   const [uploading, setUploading] = useState(false);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [storage, setStorage] = useState<{ configured: boolean; bucket: string; region: string } | null>(null);
   const [viewer, setViewer] = useState<ViewerDoc | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -62,14 +61,6 @@ export function InvestorDocumentsSection({ investorId, investorName, investorPho
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [investorId]);
-
-  // Tell the user where uploads actually land (S3 vs local disk on the server).
-  useEffect(() => {
-    fetch("/api/diagnostics/storage")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((s) => s && setStorage({ configured: !!s.configured, bucket: s.bucket, region: s.region }))
-      .catch(() => {});
-  }, []);
 
   // When linked from the Documents vault with #documents, scroll this section
   // into view (the element renders client-side, so the native hash jump misses).
@@ -240,22 +231,6 @@ export function InvestorDocumentsSection({ investorId, investorName, investorPho
         <h3 className="font-semibold flex items-center gap-2">
           <FolderOpen className="size-4 text-brand-cyan" /> Documents &amp; attachments
           {docs.length > 0 && <span className="chip text-[10px] bg-secondary">{docs.length}</span>}
-          {storage &&
-            (storage.configured ? (
-              <span
-                className="chip text-[9px] bg-emerald-50 text-emerald-700 inline-flex items-center gap-1"
-                title={`Uploads are stored in S3 bucket "${storage.bucket}" (${storage.region})`}
-              >
-                <Cloud className="size-3" /> S3
-              </span>
-            ) : (
-              <span
-                className="chip text-[9px] bg-amber-50 text-amber-700 inline-flex items-center gap-1"
-                title="S3 is not configured on the server — files save to local disk. Set S3 env vars + redeploy."
-              >
-                <HardDrive className="size-3" /> Local disk
-              </span>
-            ))}
         </h3>
         <div className="flex items-center gap-2">
           <input
@@ -460,7 +435,7 @@ function DocGroup({
               <div className="min-w-0 flex-1">
                 <div className="text-sm font-medium truncate">{d.name}</div>
                 <div className="text-[11px] text-muted-foreground flex items-center gap-2 flex-wrap">
-                  <span className="capitalize">{d.category.replace(/_/g, " ")}</span>
+                  <span className="capitalize">{d.category === "kyd" ? "KYC" : d.category.replace(/_/g, " ")}</span>
                   {fmtSize(d.sizeBytes) && <span>· {fmtSize(d.sizeBytes)}</span>}
                   {fmtDate(d.createdAt) && <span>· {fmtDate(d.createdAt)}</span>}
                   {d.clientUploaded && <span className="chip text-[9px] bg-emerald-50 text-emerald-700">client</span>}

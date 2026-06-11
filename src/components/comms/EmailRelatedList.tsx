@@ -158,7 +158,7 @@ export function EmailRelatedList({
           No emails yet. Use <span className="font-medium text-foreground">Send email</span> or <span className="font-medium text-foreground">Write email</span> to start the conversation.
         </div>
       ) : (
-        <div className="rounded-xl border border-border divide-y divide-border overflow-hidden">
+        <div className="rounded-xl border border-border divide-y divide-border max-h-96 overflow-y-auto scrollbar-thin">
           {emails.map((e) => {
             const chip = statusChip(e.status, e.direction);
             const isOpen = expanded === e.id;

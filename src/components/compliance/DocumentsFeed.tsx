@@ -224,7 +224,7 @@ export function DocumentsFeed({
             <option value="arn">ARN</option>
             <option value="euin">EUIN</option>
             <option value="nism">NISM Certificate</option>
-            <option value="kyd">KYD Document</option>
+            <option value="kyd">KYC Document</option>
             <option value="amc_empanelment">AMC Empanelment</option>
             <option value="ddq">DDQ Document</option>
             <option value="sop">SOP</option>
@@ -333,7 +333,7 @@ export function DocumentsFeed({
                               <div className="text-sm font-medium truncate">{d.name}</div>
                               <div className="flex items-center gap-2 mt-0.5">
                                 <span className={`text-[10px] font-bold border px-1.5 py-0.5 rounded-full ${CATEGORY_COLORS[d.category] ?? CATEGORY_COLORS.other}`}>
-                                  {d.category.toUpperCase().replace(/_/g, " ")}
+                                  {d.category === "kyd" ? "KYC" : d.category.toUpperCase().replace(/_/g, " ")}
                                 </span>
                                 {exp && (
                                   <span className={`text-[10px] inline-flex items-center gap-0.5 ${expired ? "text-rose-600 font-semibold" : expiringSoon ? "text-amber-600 font-semibold" : "text-muted-foreground"}`}>

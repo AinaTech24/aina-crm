@@ -73,6 +73,7 @@ const INVESTOR_DETAIL_SECTIONS: RelatedListDef[] = [
   { key: "documents", label: "Documents & attachments" },
   { key: "emails", label: "Emails" },
   { key: "whatsapp", label: "WhatsApp" },
+  { key: "activity", label: "Activity timeline" },
   { key: "blueprint", label: "Onboarding blueprint" },
   { key: "edit_panel", label: "Inline-editable details" },
   { key: "master", label: "Master record (full read-only view)" },
@@ -527,6 +528,15 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
 
       <RelatedListSection moduleKey="investors-detail" sectionKey="whatsapp">
         <WhatsAppRelatedList entityType="investor" entityId={inv.id} entityName={inv.name} entityPhone={inv.whatsappPhone ?? inv.phone} />
+      </RelatedListSection>
+
+      <RelatedListSection moduleKey="investors-detail" sectionKey="activity">
+        <ActivityTimeline
+          communications={data.communications}
+          tasks={data.tasks}
+          serviceRequests={data.serviceRequests}
+          reviewMeetings={data.reviewMeetings}
+        />
       </RelatedListSection>
 
       {/* Client-phase onboarding bar — stages 13-15: Operations → Portal
