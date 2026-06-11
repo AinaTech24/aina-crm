@@ -46,6 +46,7 @@ type Prereq = {
 type Outcome =
   | { kind: "advanced" }
   | { kind: "needs_action"; items: Prereq[]; targetStage: string }
+  | { kind: "sent"; message: string; waMeUrl?: string | null }
   | { kind: "error"; message: string };
 
 export function GuidedStageActions({
@@ -174,18 +175,28 @@ export function GuidedStageActions({
 
         case "call_api": {
           const endpoint = action.behaviour.endpoint.replace("{id}", leadId);
-          await fetch(endpoint, {
+          const res = await fetch(endpoint, {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify(action.behaviour.body ?? {}),
           });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            setOutcome({ kind: "error", message: data?.error ?? "The action could not be completed." });
+            break;
+          }
           if (action.behaviour.afterStage) {
             await advance(action.behaviour.afterStage);
           }
           router.refresh();
           window.dispatchEvent(new CustomEvent("blueprint:refresh"));
           onAfterAdvance?.();
-          setOutcome({ kind: "advanced" });
+          // If the endpoint reports what it did (e.g. email + WhatsApp sent), show it.
+          if (typeof data?.summary === "string") {
+            setOutcome({ kind: "sent", message: data.summary, waMeUrl: data.waMeUrl ?? null });
+          } else {
+            setOutcome({ kind: "advanced" });
+          }
           break;
         }
 
@@ -338,6 +349,30 @@ export function GuidedStageActions({
           >
             Dismiss
           </button>
+        </div>
+      )}
+
+      {/* Sent panel — the link went out (email + WhatsApp). */}
+      {outcome?.kind === "sent" && (
+        <div className="rounded-xl border-2 border-emerald-300 bg-emerald-50/70 p-4">
+          <div className="flex items-start gap-3">
+            <div className="size-9 rounded-lg bg-emerald-100 grid place-items-center flex-shrink-0">
+              <CheckCircle2 className="size-4 text-emerald-700" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-semibold text-emerald-900">Document link sent</div>
+              <p className="text-xs text-emerald-800/90 mt-0.5">{outcome.message}</p>
+              {outcome.waMeUrl && (
+                <a href={outcome.waMeUrl} target="_blank" rel="noopener noreferrer"
+                  className="text-xs text-emerald-800 underline mt-1 inline-block">
+                  WhatsApp not delivered? Send from your phone →
+                </a>
+              )}
+            </div>
+            <button type="button" onClick={() => setOutcome(null)} className="text-xs text-emerald-800 hover:underline flex-shrink-0">
+              Dismiss
+            </button>
+          </div>
         </div>
       )}
 

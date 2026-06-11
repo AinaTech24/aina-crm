@@ -384,8 +384,8 @@ export const STAGE_ACTIONS: Record<string, StageAction[]> = {
       label: "Send Doc Checklist",
       tone: "primary",
       targetStage: "documents_pending",
-      hint: "One-time WhatsApp / email link the client uses to upload.",
-      behaviour: { kind: "open_dialog", dialog: "send_doc_checklist" },
+      hint: "One click — emails AND WhatsApps the client a secure upload link.",
+      behaviour: { kind: "call_api", endpoint: "/api/leads/{id}/send-doc-checklist", afterStage: "documents_pending" },
     },
     {
       key: "docs_received",
@@ -412,8 +412,8 @@ export const STAGE_ACTIONS: Record<string, StageAction[]> = {
       label: "Resend Link",
       tone: "secondary",
       targetStage: "documents_pending",
-      hint: "Client missed the original link — nudge them.",
-      behaviour: { kind: "open_dialog", dialog: "send_doc_checklist" },
+      hint: "Re-send the upload link via email + WhatsApp.",
+      behaviour: { kind: "call_api", endpoint: "/api/leads/{id}/send-doc-checklist" },
     },
   ],
 

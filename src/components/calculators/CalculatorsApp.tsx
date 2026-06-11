@@ -318,52 +318,52 @@ export function CalculatorsApp({ firmName }: { firmName?: string } = {}) {
 
       <div ref={calcRef} className="space-y-4">
 
-      {tab === "sip360" && <Sip360Planner />}
-      {tab === "reckoner" && <StepUpReckoner />}
-      {tab === "growing" && <GrowingSipCalc />}
-      {tab === "bridge" && <IncomeBridgePlanner />}
-      {tab === "salary" && <SalaryWealthBuilder />}
-      {tab === "multipurpose" && <CashflowCorpusPlanner />}
-      {tab === "property" && <PropertyYieldCalculator />}
-      {tab === "insurance" && <InsuranceReturnAnalyzer />}
-      {tab === "surrender" && <SurrenderAnalyzer />}
-      {tab === "swpperiodic" && <SwpPeriodicPlanner />}
-      {tab === "swpend" && <SwpEndPeriodCalculator />}
-      {tab === "swpcomp" && <SwpComprehensivePlanner />}
-      {tab === "stpcomp" && <StpComprehensivePlanner />}
-      {tab === "emisip" && <EmiSipRecoveryPlanner />}
-      {tab === "fvannual" && <FvAnnualLumpsumPlanner />}
-      {tab === "debtfund" && <DebtFundBenefitCalculator />}
-      {tab === "assetalloc" && <AssetAllocationFvPlanner />}
-      {tab === "review" && <ReviewOfInvestments />}
-      {tab === "vacation" && <VacationPlannerCalc />}
-      {tab === "hlv" && <HumanLifeValueCalculator />}
-      {tab === "goalplan" && <GoalPlannerCalculator />}
-      {tab === "captax" && <CapitalGainsTaxCalculator />}
-      {tab === "opm" && <OpmHousePlanner />}
-      {tab === "annualreq" && <AnnualLumpsumRequiredCalculator />}
-      {tab === "taxregime" && <TaxRegimeOptimizer />}
-      {tab === "realreturn" && <RealReturnCalculator />}
-      {tab === "nps" && <NpsPlanner />}
-      {tab === "harvest" && <TaxHarvestingCalculator />}
-      {tab === "crash" && <CrashStressTest />}
-      {tab === "fire" && <FireNumberCalculator />}
-      {tab === "childedu" && <ChildEducationProjector />}
-      {tab === "collision" && <GoalCollisionTimeline />}
-      {tab === "xirr" && <XirrCalculator />}
-      {tab === "rebalance" && <RebalanceCalculator />}
-      {tab === "feasibility" && <GoalFeasibilityScore />}
-      {tab === "expensedrag" && <ExpenseDragCalculator />}
-      {tab === "sip" && <SipCalc />}
-      {tab === "lumpsum" && <LumpsumCalc />}
-      {tab === "goal" && <GoalCalc />}
-      {tab === "inflation" && <InflationCalc />}
-      {tab === "delay" && <DelayCalc />}
-      {tab === "retirement" && <RetirementCalc />}
-      {tab === "stepup" && <StepUpCalc />}
-      {tab === "swp" && <SwpCalc />}
-      {tab === "stp" && <StpCalc />}
-      {tab === "cagr" && <CagrCalc />}
+        {tab === "sip360" && <Sip360Planner />}
+        {tab === "reckoner" && <StepUpReckoner />}
+        {tab === "growing" && <GrowingSipCalc />}
+        {tab === "bridge" && <IncomeBridgePlanner />}
+        {tab === "salary" && <SalaryWealthBuilder />}
+        {tab === "multipurpose" && <CashflowCorpusPlanner />}
+        {tab === "property" && <PropertyYieldCalculator />}
+        {tab === "insurance" && <InsuranceReturnAnalyzer />}
+        {tab === "surrender" && <SurrenderAnalyzer />}
+        {tab === "swpperiodic" && <SwpPeriodicPlanner />}
+        {tab === "swpend" && <SwpEndPeriodCalculator />}
+        {tab === "swpcomp" && <SwpComprehensivePlanner />}
+        {tab === "stpcomp" && <StpComprehensivePlanner />}
+        {tab === "emisip" && <EmiSipRecoveryPlanner />}
+        {tab === "fvannual" && <FvAnnualLumpsumPlanner />}
+        {tab === "debtfund" && <DebtFundBenefitCalculator />}
+        {tab === "assetalloc" && <AssetAllocationFvPlanner />}
+        {tab === "review" && <ReviewOfInvestments />}
+        {tab === "vacation" && <VacationPlannerCalc />}
+        {tab === "hlv" && <HumanLifeValueCalculator />}
+        {tab === "goalplan" && <GoalPlannerCalculator />}
+        {tab === "captax" && <CapitalGainsTaxCalculator />}
+        {tab === "opm" && <OpmHousePlanner />}
+        {tab === "annualreq" && <AnnualLumpsumRequiredCalculator />}
+        {tab === "taxregime" && <TaxRegimeOptimizer />}
+        {tab === "realreturn" && <RealReturnCalculator />}
+        {tab === "nps" && <NpsPlanner />}
+        {tab === "harvest" && <TaxHarvestingCalculator />}
+        {tab === "crash" && <CrashStressTest />}
+        {tab === "fire" && <FireNumberCalculator />}
+        {tab === "childedu" && <ChildEducationProjector />}
+        {tab === "collision" && <GoalCollisionTimeline />}
+        {tab === "xirr" && <XirrCalculator />}
+        {tab === "rebalance" && <RebalanceCalculator />}
+        {tab === "feasibility" && <GoalFeasibilityScore />}
+        {tab === "expensedrag" && <ExpenseDragCalculator />}
+        {tab === "sip" && <SipCalc />}
+        {tab === "lumpsum" && <LumpsumCalc />}
+        {tab === "goal" && <GoalCalc />}
+        {tab === "inflation" && <InflationCalc />}
+        {tab === "delay" && <DelayCalc />}
+        {tab === "retirement" && <RetirementCalc />}
+        {tab === "stepup" && <StepUpCalc />}
+        {tab === "swp" && <SwpCalc />}
+        {tab === "stp" && <StpCalc />}
+        {tab === "cagr" && <CagrCalc />}
       </div>
     </div>
   );
@@ -381,12 +381,6 @@ function CalcGallery({
 
   return (
     <div className="space-y-5">
-      <div>
-        <h2 className="text-lg font-bold flex items-center gap-2">🧮 MF Investment Calculators</h2>
-        <p className="text-sm text-muted-foreground">
-          {ALL_CALCS.length} client-ready calculators — pick one to open it. Results are illustrative.
-        </p>
-      </div>
 
       <div className="relative max-w-md print:hidden">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
