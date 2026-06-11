@@ -2,15 +2,21 @@
 
 import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { 
-  FolderArchive, 
-  AlertTriangle, 
-  Download, 
-  Trash2, 
+import {
+  FolderArchive,
+  AlertTriangle,
+  Download,
+  DownloadCloud,
+  Trash2,
   Loader2,
   Search,
   Filter,
   UserCircle2,
+  Building2,
+  ChevronRight,
+  Eye,
+  ExternalLink,
+  FileText,
 } from "lucide-react";
 import { formatDate, formatRelative } from "@/lib/utils";
 
@@ -25,8 +31,21 @@ type DocRow = {
   issuedOn: string | Date | null;
   expiresOn: string | Date | null;
   createdAt: string | Date | null;
-  /** Resolved name of the linked client (investor), if this doc belongs to one. */
+  clientId?: string | null;
   clientName?: string | null;
+  clientEmail?: string | null;
+  clientPhone?: string | null;
+};
+
+type Group = {
+  key: string;
+  clientId: string | null;
+  clientName: string;
+  clientEmail: string | null;
+  clientPhone: string | null;
+  docs: DocRow[];
+  expiring: number;
+  expired: number;
 };
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -56,14 +75,13 @@ export function DocumentsFeed({
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [open, setOpen] = useState<Record<string, boolean>>({});
 
   async function handleDelete(id: string) {
-    if (!confirm("Are you sure you want to permanently delete this document from S3 and your database?")) return;
+    if (!confirm("Permanently delete this document from storage and the database?")) return;
     setDeletingId(id);
     try {
-      const res = await fetch(`/api/compliance/documents?id=${encodeURIComponent(id)}`, {
-        method: "DELETE",
-      });
+      const res = await fetch(`/api/compliance/documents?id=${encodeURIComponent(id)}`, { method: "DELETE" });
       if (res.ok) {
         setRows((prev) => prev.filter((r) => r.id !== id));
         router.refresh();
@@ -78,16 +96,60 @@ export function DocumentsFeed({
     }
   }
 
-  const filteredRows = useMemo(() => {
-    return rows.filter((r) => {
-      const q = searchQuery.toLowerCase();
-      const nameMatch = r.name.toLowerCase().includes(q);
-      const descMatch = r.description ? r.description.toLowerCase().includes(q) : false;
-      const clientMatch = r.clientName ? r.clientName.toLowerCase().includes(q) : false;
-      const categoryMatch = categoryFilter === "all" || r.category === categoryFilter;
-      return (nameMatch || descMatch || clientMatch) && categoryMatch;
+  function downloadAll(g: Group) {
+    const ids = g.docs.map((d) => d.id).join(",");
+    const a = document.createElement("a");
+    a.href = `/api/compliance/documents/download-all?ids=${encodeURIComponent(ids)}`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+
+  // Docs that pass the category filter + search (search also matches client).
+  const visibleDocs = useMemo(() => {
+    const ql = searchQuery.trim().toLowerCase();
+    return rows.filter((d) => {
+      if (categoryFilter !== "all" && d.category !== categoryFilter) return false;
+      if (!ql) return true;
+      return (
+        d.name.toLowerCase().includes(ql) ||
+        (d.description?.toLowerCase().includes(ql) ?? false) ||
+        (d.clientName?.toLowerCase().includes(ql) ?? false) ||
+        (d.clientEmail?.toLowerCase().includes(ql) ?? false)
+      );
     });
   }, [rows, searchQuery, categoryFilter]);
+
+  const groups = useMemo<Group[]>(() => {
+    const map = new Map<string, Group>();
+    for (const d of visibleDocs) {
+      const key = d.clientId ?? "__firm__";
+      if (!map.has(key)) {
+        map.set(key, {
+          key,
+          clientId: d.clientId ?? null,
+          clientName: d.clientId ? d.clientName ?? "Client" : "Firm & unassigned documents",
+          clientEmail: d.clientEmail ?? null,
+          clientPhone: d.clientPhone ?? null,
+          docs: [],
+          expiring: 0,
+          expired: 0,
+        });
+      }
+      const g = map.get(key)!;
+      g.docs.push(d);
+      const exp = d.expiresOn ? new Date(d.expiresOn) : null;
+      if (exp) {
+        if (exp.getTime() < Date.now()) g.expired++;
+        else if (exp.getTime() - Date.now() < 30 * 24 * 60 * 60 * 1000) g.expiring++;
+      }
+    }
+    return [...map.values()].sort((a, b) => {
+      if (a.clientId === null) return 1; // firm group last
+      if (b.clientId === null) return -1;
+      return a.clientName.localeCompare(b.clientName);
+    });
+  }, [visibleDocs]);
 
   return (
     <div className="space-y-6">
@@ -99,36 +161,30 @@ export function DocumentsFeed({
         </div>
         <div className="border rounded-lg p-4 bg-card">
           <div className="text-xs text-muted-foreground">Expiring (30d)</div>
-          <div className={`text-2xl font-bold mt-1 ${stats.expiringSoon > 0 ? "text-amber-600" : "text-foreground"}`}>
-            {stats.expiringSoon}
-          </div>
+          <div className={`text-2xl font-bold mt-1 ${stats.expiringSoon > 0 ? "text-amber-600" : "text-foreground"}`}>{stats.expiringSoon}</div>
         </div>
         <div className="border rounded-lg p-4 bg-card">
           <div className="text-xs text-muted-foreground">Expired</div>
-          <div className={`text-2xl font-bold mt-1 ${stats.expired > 0 ? "text-rose-600 font-bold" : "text-foreground"}`}>
-            {stats.expired}
-          </div>
+          <div className={`text-2xl font-bold mt-1 ${stats.expired > 0 ? "text-rose-600" : "text-foreground"}`}>{stats.expired}</div>
         </div>
       </div>
 
-      {/* Filter Toolbar */}
+      {/* Filter toolbar */}
       <div className="flex items-center justify-between gap-4 flex-wrap bg-secondary/10 p-3 rounded-lg border border-border/40 print:hidden">
         <div className="flex-1 min-w-[240px] relative">
           <Search className="absolute left-3 top-2.5 size-4 text-muted-foreground" />
           <input
             type="text"
-            placeholder="Search documents by name or description..."
+            placeholder="Search by document name, description or client…"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full bg-background border rounded-md pl-9 pr-4 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-brand-cyan"
           />
         </div>
-
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium">
             <Filter className="size-3.5" /> Category:
           </div>
-
           <select
             value={categoryFilter}
             onChange={(e) => setCategoryFilter(e.target.value)}
@@ -151,98 +207,141 @@ export function DocumentsFeed({
         </div>
       </div>
 
-      {/* Table view */}
-      <div className="border rounded-lg bg-card">
-        {filteredRows.length === 0 ? (
-          <div className="p-12 text-center text-sm text-muted-foreground">
-            <FolderArchive className="size-8 mx-auto text-muted-foreground/50" />
-            <div className="mt-2">No documents found.</div>
-            <p className="mt-2 text-xs max-w-md mx-auto">
-              Upload compliance files such as NISM certificates, registrations, and empanelments to manage them here.
-            </p>
-          </div>
-        ) : (
-          <table className="w-full text-sm">
-            <thead className="text-xs text-muted-foreground border-b bg-secondary/20">
-              <tr>
-                <th className="text-left px-4 py-3 font-medium">Name</th>
-                <th className="text-left py-3 font-medium">Client</th>
-                <th className="text-left py-3 font-medium">Category</th>
-                <th className="text-left py-3 font-medium">Issued</th>
-                <th className="text-left py-3 font-medium">Expires</th>
-                <th className="text-left py-3 font-medium">Uploaded</th>
-                <th className="text-right pr-4 py-3 font-medium print:hidden">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredRows.map((d) => {
-                const exp = d.expiresOn ? new Date(d.expiresOn) : null;
-                const expired = exp && exp.getTime() < Date.now();
-                const expiringSoon = exp && !expired && exp.getTime() - Date.now() < 30 * 24 * 60 * 60 * 1000;
-                return (
-                  <tr key={d.id} className="border-b last:border-0 hover:bg-accent/40 align-middle">
-                    <td className="px-4 py-3.5">
-                      <div className="font-semibold text-sm">{d.name}</div>
-                      {d.description && <div className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{d.description}</div>}
-                    </td>
-                    <td className="py-3.5 text-xs">
-                      {d.clientName ? (
-                        <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
-                          <UserCircle2 className="size-3.5 text-brand-cyan flex-shrink-0" />
-                          {d.clientName}
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
-                    </td>
-                    <td className="py-3.5">
-                      <span className={`text-[10px] font-bold border px-2 py-0.5 rounded-full ${CATEGORY_COLORS[d.category] ?? CATEGORY_COLORS.other}`}>
-                        {d.category.toUpperCase().replace("_", " ")}
-                      </span>
-                    </td>
-                    <td className="py-3.5 text-xs text-muted-foreground">{d.issuedOn ? formatDate(d.issuedOn) : "—"}</td>
-                    <td className="py-3.5 text-xs">
-                      {exp ? (
-                        <span className={expired ? "text-rose-600 font-semibold inline-flex items-center gap-1" : expiringSoon ? "text-amber-600 font-semibold inline-flex items-center gap-1" : ""}>
-                          {(expired || expiringSoon) && <AlertTriangle className="size-3.5" />}
-                          {formatDate(exp)}
-                        </span>
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                    <td className="py-3.5 text-xs text-muted-foreground">{formatRelative(d.createdAt)}</td>
-                    <td className="py-3.5 pr-4 text-right print:hidden">
-                      <div className="inline-flex items-center gap-2">
-                        {deletingId === d.id && <Loader2 className="size-4 animate-spin text-muted-foreground" />}
-                        
-                        <a
-                          href={`/api/compliance/documents/download?id=${encodeURIComponent(d.id)}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="size-8 rounded-lg hover:bg-secondary/40 border border-border/40 grid place-items-center text-muted-foreground hover:text-brand-cyan transition-colors"
-                          title="Download document from S3"
-                        >
-                          <Download className="size-4" />
-                        </a>
-
-                        <button
-                          onClick={() => handleDelete(d.id)}
-                          disabled={deletingId != null}
-                          className="size-8 rounded-lg hover:bg-rose-50 border border-border/40 grid place-items-center text-muted-foreground hover:text-rose-600 hover:border-rose-200 transition-colors disabled:opacity-50"
-                          title="Permanently delete document"
-                        >
-                          <Trash2 className="size-4" />
-                        </button>
+      {/* Client-grouped accordion */}
+      {groups.length === 0 ? (
+        <div className="border rounded-lg bg-card p-12 text-center text-sm text-muted-foreground">
+          <FolderArchive className="size-8 mx-auto text-muted-foreground/50" />
+          <div className="mt-2">No documents found.</div>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {groups.map((g) => {
+            const isOpen = !!open[g.key];
+            const isFirm = g.clientId === null;
+            return (
+              <div key={g.key} className="border rounded-lg bg-card overflow-hidden">
+                {/* Header row */}
+                <div className="flex items-center gap-3 px-3 sm:px-4 py-3">
+                  <button
+                    type="button"
+                    onClick={() => setOpen((o) => ({ ...o, [g.key]: !o[g.key] }))}
+                    className="flex items-center gap-3 flex-1 min-w-0 text-left"
+                    aria-expanded={isOpen}
+                  >
+                    <ChevronRight className={`size-4 text-muted-foreground shrink-0 transition-transform duration-300 ${isOpen ? "rotate-90" : ""}`} />
+                    <div className={`size-9 rounded-lg grid place-items-center shrink-0 ${isFirm ? "bg-slate-100 dark:bg-slate-800" : "bg-brand-cyan/10"}`}>
+                      {isFirm ? <Building2 className="size-4 text-slate-500" /> : <UserCircle2 className="size-5 text-brand-cyan-deep" />}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="font-semibold text-sm truncate">{g.clientName}</div>
+                      <div className="text-xs text-muted-foreground truncate">
+                        {isFirm ? "Firm-level & unassigned documents" : [g.clientEmail, g.clientPhone].filter(Boolean).join(" · ") || "Client"}
                       </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-      </div>
+                    </div>
+                  </button>
+
+                  {/* Counts + alerts */}
+                  <div className="hidden sm:flex items-center gap-2 text-xs">
+                    <span className="text-muted-foreground">{g.docs.length} doc{g.docs.length !== 1 ? "s" : ""}</span>
+                    {g.expired > 0 && (
+                      <span className="inline-flex items-center gap-1 text-rose-600 font-semibold"><AlertTriangle className="size-3" />{g.expired}</span>
+                    )}
+                    {g.expiring > 0 && (
+                      <span className="inline-flex items-center gap-1 text-amber-600 font-semibold"><AlertTriangle className="size-3" />{g.expiring}</span>
+                    )}
+                  </div>
+
+                  {/* Bulk actions */}
+                  <div className="flex items-center gap-1.5 print:hidden">
+                    <button
+                      type="button"
+                      onClick={() => downloadAll(g)}
+                      title="Download all as ZIP"
+                      className="size-8 rounded-lg hover:bg-secondary/40 border border-border/40 grid place-items-center text-muted-foreground hover:text-brand-cyan transition-colors"
+                    >
+                      <DownloadCloud className="size-4" />
+                    </button>
+                    {!isFirm && g.clientId && (
+                      <a
+                        href={`/dashboard/investors/${g.clientId}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title="View all in the client's profile"
+                        className="size-8 rounded-lg hover:bg-secondary/40 border border-border/40 grid place-items-center text-muted-foreground hover:text-brand-cyan transition-colors"
+                      >
+                        <ExternalLink className="size-4" />
+                      </a>
+                    )}
+                  </div>
+                </div>
+
+                {/* Expandable body — smooth height via grid-rows */}
+                <div className={`grid transition-all duration-300 ease-in-out ${isOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"}`}>
+                  <div className="overflow-hidden">
+                    <div className="border-t divide-y divide-border/60">
+                      {g.docs.map((d) => {
+                        const exp = d.expiresOn ? new Date(d.expiresOn) : null;
+                        const expired = exp && exp.getTime() < Date.now();
+                        const expiringSoon = exp && !expired && exp.getTime() - Date.now() < 30 * 24 * 60 * 60 * 1000;
+                        return (
+                          <div key={d.id} className="flex items-center gap-3 px-3 sm:px-4 py-2.5 hover:bg-accent/30">
+                            <FileText className="size-4 text-muted-foreground shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-medium truncate">{d.name}</div>
+                              <div className="flex items-center gap-2 mt-0.5">
+                                <span className={`text-[10px] font-bold border px-1.5 py-0.5 rounded-full ${CATEGORY_COLORS[d.category] ?? CATEGORY_COLORS.other}`}>
+                                  {d.category.toUpperCase().replace(/_/g, " ")}
+                                </span>
+                                {exp && (
+                                  <span className={`text-[10px] inline-flex items-center gap-0.5 ${expired ? "text-rose-600 font-semibold" : expiringSoon ? "text-amber-600 font-semibold" : "text-muted-foreground"}`}>
+                                    {(expired || expiringSoon) && <AlertTriangle className="size-3" />}
+                                    {expired ? "Expired " : "Expires "}{formatDate(exp)}
+                                  </span>
+                                )}
+                                <span className="text-[10px] text-muted-foreground">Uploaded {formatRelative(d.createdAt)}</span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1.5 print:hidden">
+                              {deletingId === d.id && <Loader2 className="size-4 animate-spin text-muted-foreground" />}
+                              <a
+                                href={`/api/compliance/documents/download?id=${encodeURIComponent(d.id)}&inline=1`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                title="View"
+                                className="size-8 rounded-lg hover:bg-secondary/40 border border-border/40 grid place-items-center text-muted-foreground hover:text-brand-cyan transition-colors"
+                              >
+                                <Eye className="size-4" />
+                              </a>
+                              <a
+                                href={`/api/compliance/documents/download?id=${encodeURIComponent(d.id)}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                title="Download"
+                                className="size-8 rounded-lg hover:bg-secondary/40 border border-border/40 grid place-items-center text-muted-foreground hover:text-brand-cyan transition-colors"
+                              >
+                                <Download className="size-4" />
+                              </a>
+                              <button
+                                type="button"
+                                onClick={() => handleDelete(d.id)}
+                                disabled={deletingId != null}
+                                title="Delete"
+                                className="size-8 rounded-lg hover:bg-rose-50 border border-border/40 grid place-items-center text-muted-foreground hover:text-rose-600 hover:border-rose-200 transition-colors disabled:opacity-50"
+                              >
+                                <Trash2 className="size-4" />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

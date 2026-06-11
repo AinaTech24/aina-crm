@@ -56,13 +56,13 @@ export default async function DocumentsPage() {
           .map((r) => r.relatedEntityId as string)
       )
     );
-    const clientNames: Record<string, string> = {};
+    const clientInfo: Record<string, { name: string; email: string | null; phone: string | null }> = {};
     if (investorIds.length) {
       const names = await tx
-        .select({ id: investors.id, name: investors.name })
+        .select({ id: investors.id, name: investors.name, email: investors.email, phone: investors.phone })
         .from(investors)
         .where(inArray(investors.id, investorIds));
-      for (const n of names) clientNames[n.id] = n.name;
+      for (const n of names) clientInfo[n.id] = { name: n.name, email: n.email, phone: n.phone };
     }
 
     return {
@@ -70,7 +70,7 @@ export default async function DocumentsPage() {
       expiringSoon: Number(s.expiring_soon),
       expired: Number(s.expired),
       rows,
-      clientNames,
+      clientInfo,
     };
   });
 
@@ -80,22 +80,26 @@ export default async function DocumentsPage() {
     expired: data.expired,
   };
 
-  const initialRows = data.rows.map((row) => ({
-    id: row.id,
-    name: row.name,
-    category: row.category,
-    description: row.description,
-    storageKey: row.storageKey,
-    mimeType: row.mimeType,
-    sizeBytes: row.sizeBytes,
-    issuedOn: row.issuedOn,
-    expiresOn: row.expiresOn,
-    createdAt: row.createdAt,
-    clientName:
-      row.relatedEntityType === "investor" && row.relatedEntityId
-        ? data.clientNames[row.relatedEntityId] ?? null
-        : null,
-  }));
+  const initialRows = data.rows.map((row) => {
+    const cid = row.relatedEntityType === "investor" && row.relatedEntityId ? (row.relatedEntityId as string) : null;
+    const info = cid ? data.clientInfo[cid] : null;
+    return {
+      id: row.id,
+      name: row.name,
+      category: row.category,
+      description: row.description,
+      storageKey: row.storageKey,
+      mimeType: row.mimeType,
+      sizeBytes: row.sizeBytes,
+      issuedOn: row.issuedOn,
+      expiresOn: row.expiresOn,
+      createdAt: row.createdAt,
+      clientId: cid,
+      clientName: info?.name ?? null,
+      clientEmail: info?.email ?? null,
+      clientPhone: info?.phone ?? null,
+    };
+  });
 
   return (
     <div className="space-y-6 max-w-7xl">

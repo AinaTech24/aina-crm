@@ -16,6 +16,8 @@ export async function GET(req: NextRequest) {
     requireAny(session.roles, ["compliance.view", "kyc.manage"], session.permissions);
 
     const id = new URL(req.url).searchParams.get("id");
+    // inline=1 → view in a browser tab (PDF/image); otherwise download as a file.
+    const inline = new URL(req.url).searchParams.get("inline") === "1";
     if (!id) {
       return NextResponse.json({ error: "id required" }, { status: 400 });
     }
@@ -34,8 +36,8 @@ export async function GET(req: NextRequest) {
         throw new Error("Document not found or unauthorized access");
       }
 
-      // Generate a presigned S3 download URL valid for 10 minutes (600 seconds)
-      return await presignedGetUrl(doc.storageKey, 600, doc.name);
+      // Generate a presigned S3 URL valid for 10 minutes (600 seconds)
+      return await presignedGetUrl(doc.storageKey, 600, doc.name, inline);
     });
 
     const redirectUrl = downloadUrl.startsWith("/")

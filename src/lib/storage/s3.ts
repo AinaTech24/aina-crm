@@ -53,16 +53,45 @@ export async function presignedPutUrl(key: string, contentType: string, ttlSecon
   return getSignedUrl(client(), cmd, { expiresIn: ttlSeconds });
 }
 
-export async function presignedGetUrl(key: string, ttlSeconds = 600, filename?: string): Promise<string> {
+export async function presignedGetUrl(
+  key: string,
+  ttlSeconds = 600,
+  filename?: string,
+  inline = false
+): Promise<string> {
   if (!isS3Configured()) {
     return `/api/upload-local/${key}`;
   }
+  // `inline` lets the browser preview the file (PDF/image) in a tab; otherwise
+  // it downloads as an attachment with the original name.
+  const safeName = filename ? filename.replace(/["\\]/g, "") : undefined;
+  const disposition = inline
+    ? safeName
+      ? `inline; filename="${safeName}"`
+      : "inline"
+    : safeName
+      ? `attachment; filename="${safeName}"`
+      : undefined;
   const cmd = new GetObjectCommand({
     Bucket: bucket(),
     Key: key,
-    ResponseContentDisposition: filename ? `attachment; filename="${filename}"` : undefined,
+    ResponseContentDisposition: disposition,
   });
   return getSignedUrl(client(), cmd, { expiresIn: ttlSeconds });
+}
+
+/** Read an object's raw bytes (S3 GetObject, or local disk in the fallback). */
+export async function getObjectBytes(key: string): Promise<Buffer> {
+  if (!isS3Configured()) {
+    const filePath = path.join(process.cwd(), "node-local", "uploads", key);
+    return fs.promises.readFile(filePath);
+  }
+  const res = await client().send(new GetObjectCommand({ Bucket: bucket(), Key: key }));
+  const stream = res.Body as AsyncIterable<Uint8Array> | undefined;
+  if (!stream) return Buffer.alloc(0);
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  return Buffer.concat(chunks);
 }
 
 export async function deleteObject(key: string): Promise<void> {
