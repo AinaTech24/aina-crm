@@ -1,12 +1,11 @@
 "use client";
 
 import { useState, Suspense } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Loader2, ArrowRight, ShieldCheck } from "lucide-react";
 
 function LoginForm() {
-  const router = useRouter();
   const params = useSearchParams();
   const next = params.get("next") ?? "/dashboard";
 
@@ -47,7 +46,13 @@ function LoginForm() {
         setChallenge(j.challenge);
         return;
       }
-      router.push(destFor(j.user?.roles));
+      // Hard navigation (not router.push): forces a fresh request that carries
+      // the new session cookie and bypasses the Next.js Router Cache, which may
+      // still hold the unauthenticated /dashboard render. This is what makes
+      // sign-in land on the dashboard in one click, every time — no stale-cookie
+      // loop, no manual cookie clearing.
+      window.location.assign(destFor(j.user?.roles));
+      return; // keep the spinner up while the browser navigates away
     } finally {
       setBusy(false);
     }
@@ -68,7 +73,13 @@ function LoginForm() {
         setErr(j.error ?? "Verification failed");
         return;
       }
-      router.push(destFor(j.user?.roles));
+      // Hard navigation (not router.push): forces a fresh request that carries
+      // the new session cookie and bypasses the Next.js Router Cache, which may
+      // still hold the unauthenticated /dashboard render. This is what makes
+      // sign-in land on the dashboard in one click, every time — no stale-cookie
+      // loop, no manual cookie clearing.
+      window.location.assign(destFor(j.user?.roles));
+      return; // keep the spinner up while the browser navigates away
     } finally {
       setBusy(false);
     }

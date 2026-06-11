@@ -7,7 +7,21 @@
  */
 
 import { useRef, useState } from "react";
-import { Printer, ChevronLeft, Search, X, Download, Mail, MessageCircle } from "lucide-react";
+import {
+  Printer, ChevronLeft, Search, X, Download, Mail, MessageCircle,
+  // group icons
+  TrendingUp, Target, HandCoins, ShieldCheck, Receipt, Building2, Wrench, Flame,
+  // per-calculator icons (each used exactly once — no duplicates)
+  LineChart, ArrowUpNarrowWide, Sprout, Briefcase, ChevronsUp, CalendarClock, Crosshair, Droplets, Coins, Percent,
+  Goal, Shuffle, TreePalm, GraduationCap, CalendarRange, BadgeCheck, Flag, Thermometer, Hourglass, Armchair,
+  Route, Repeat, Timer, ScrollText, RefreshCw, House, Banknote, ArrowLeftRight,
+  Shield, Scale, Users,
+  GitCompare, TrendingDown, Landmark, Scissors, Calculator,
+  Warehouse, BarChart3, Recycle, PieChart,
+  CalendarDays, SlidersHorizontal, Anchor, ClipboardList,
+  Siren, Rocket,
+  type LucideIcon,
+} from "lucide-react";
 import { captureCalcResults } from "./capture";
 import { ClientNameField } from "./ClientNameField";
 import { Sip360Planner } from "./Sip360Planner";
@@ -110,86 +124,86 @@ type TabKey =
   | "stp"
   | "cagr";
 
-type CalcMeta = { key: TabKey; name: string; icon: string; desc: string };
-type CalcGroup = { title: string; icon: string; items: CalcMeta[] };
+type CalcMeta = { key: TabKey; name: string; icon: LucideIcon; desc: string };
+type CalcGroup = { title: string; icon: LucideIcon; items: CalcMeta[] };
 
 const CATALOG: CalcGroup[] = [
   {
-    title: "SIP & Wealth Building", icon: "📈", items: [
-      { key: "sip360", name: "SIP 360° Planner", icon: "📊", desc: "Deep SIP analysis — future value, step-up, delay & maturity" },
-      { key: "reckoner", name: "Step-Up SIP Reckoner", icon: "🪜", desc: "Compare regular vs %/₹ step-up across timeframes" },
-      { key: "growing", name: "Growing SIP vs SIP", icon: "🌱", desc: "How a growing SIP outpaces a flat one" },
-      { key: "salary", name: "Salary → Wealth", icon: "💼", desc: "Invest a % of salary that rises with increments" },
-      { key: "stepup", name: "Step-up SIP", icon: "⬆️", desc: "A SIP with a fixed yearly increase" },
-      { key: "fvannual", name: "FV of Annual Lumpsum", icon: "🗓️", desc: "Future value of a yearly lumpsum investment" },
-      { key: "annualreq", name: "Annual Lumpsum for Target", icon: "🎯", desc: "Yearly lumpsum needed to reach a goal" },
-      { key: "sip", name: "SIP Calculator", icon: "💧", desc: "Future value of a monthly SIP" },
-      { key: "lumpsum", name: "Lumpsum Calculator", icon: "💰", desc: "Future value of a one-time investment" },
-      { key: "cagr", name: "CAGR", icon: "📐", desc: "Annualised growth rate between two values" },
+    title: "SIP & Wealth Building", icon: TrendingUp, items: [
+      { key: "sip360", name: "SIP 360° Planner", icon: LineChart, desc: "Deep SIP analysis — future value, step-up, delay & maturity" },
+      { key: "reckoner", name: "Step-Up SIP Reckoner", icon: ArrowUpNarrowWide, desc: "Compare regular vs %/₹ step-up across timeframes" },
+      { key: "growing", name: "Growing SIP vs SIP", icon: Sprout, desc: "How a growing SIP outpaces a flat one" },
+      { key: "salary", name: "Salary → Wealth", icon: Briefcase, desc: "Invest a % of salary that rises with increments" },
+      { key: "stepup", name: "Step-up SIP", icon: ChevronsUp, desc: "A SIP with a fixed yearly increase" },
+      { key: "fvannual", name: "FV of Annual Lumpsum", icon: CalendarClock, desc: "Future value of a yearly lumpsum investment" },
+      { key: "annualreq", name: "Annual Lumpsum for Target", icon: Crosshair, desc: "Yearly lumpsum needed to reach a goal" },
+      { key: "sip", name: "SIP Calculator", icon: Droplets, desc: "Future value of a monthly SIP" },
+      { key: "lumpsum", name: "Lumpsum Calculator", icon: Coins, desc: "Future value of a one-time investment" },
+      { key: "cagr", name: "CAGR", icon: Percent, desc: "Annualised growth rate between two values" },
     ],
   },
   {
-    title: "Goals & Planning", icon: "🎯", items: [
-      { key: "goalplan", name: "Goal Planner", icon: "🎯", desc: "Lumpsum/SIP needed for one or many goals" },
-      { key: "multipurpose", name: "Cashflow & Corpus", icon: "🔀", desc: "Build a corpus and draw income from it" },
-      { key: "vacation", name: "Vacation Planner", icon: "🏖️", desc: "Save up for a dream trip" },
-      { key: "childedu", name: "Child Education", icon: "🎓", desc: "Fund education at ~10% education inflation" },
-      { key: "collision", name: "Goal-Collision Timeline", icon: "🗓️", desc: "Spot the years your goals overlap & peak" },
-      { key: "feasibility", name: "Goal-Feasibility Score", icon: "✅", desc: "0–100 score — are the goals on track?" },
-      { key: "goal", name: "Goal Calculator", icon: "🎯", desc: "Monthly SIP to reach a target amount" },
-      { key: "inflation", name: "Inflation", icon: "📈", desc: "What today's cost becomes in the future" },
-      { key: "delay", name: "Cost of Delay", icon: "⏳", desc: "What waiting to invest really costs" },
-      { key: "retirement", name: "Retirement", icon: "🌴", desc: "The corpus you'll need to retire" },
+    title: "Goals & Planning", icon: Target, items: [
+      { key: "goalplan", name: "Goal Planner", icon: Goal, desc: "Lumpsum/SIP needed for one or many goals" },
+      { key: "multipurpose", name: "Cashflow & Corpus", icon: Shuffle, desc: "Build a corpus and draw income from it" },
+      { key: "vacation", name: "Vacation Planner", icon: TreePalm, desc: "Save up for a dream trip" },
+      { key: "childedu", name: "Child Education", icon: GraduationCap, desc: "Fund education at ~10% education inflation" },
+      { key: "collision", name: "Goal-Collision Timeline", icon: CalendarRange, desc: "Spot the years your goals overlap & peak" },
+      { key: "feasibility", name: "Goal-Feasibility Score", icon: BadgeCheck, desc: "0–100 score — are the goals on track?" },
+      { key: "goal", name: "Goal Calculator", icon: Flag, desc: "Monthly SIP to reach a target amount" },
+      { key: "inflation", name: "Inflation", icon: Thermometer, desc: "What today's cost becomes in the future" },
+      { key: "delay", name: "Cost of Delay", icon: Hourglass, desc: "What waiting to invest really costs" },
+      { key: "retirement", name: "Retirement", icon: Armchair, desc: "The corpus you'll need to retire" },
     ],
   },
   {
-    title: "Income & Withdrawal (SWP/STP)", icon: "💸", items: [
-      { key: "bridge", name: "Income Bridge (SIP→SWP)", icon: "🌉", desc: "Build with SIP, then draw a monthly income" },
-      { key: "swpperiodic", name: "SWP Periodic", icon: "🔁", desc: "Periodic withdrawals from a corpus" },
-      { key: "swpend", name: "SWP End Period", icon: "⏱️", desc: "How long your money lasts under SWP" },
-      { key: "swpcomp", name: "SWP Comprehensive", icon: "🧾", desc: "Full SWP — any mode, frequency & increment" },
-      { key: "stpcomp", name: "STP Comprehensive", icon: "🔄", desc: "Move debt → equity systematically" },
-      { key: "opm", name: "OPM House (SWP)", icon: "🏠", desc: "Fund a home using an SWP income stream" },
-      { key: "swp", name: "SWP Calculator", icon: "💸", desc: "Simple systematic withdrawal plan" },
-      { key: "stp", name: "STP Calculator", icon: "🔁", desc: "Systematic transfer plan" },
+    title: "Income & Withdrawal (SWP/STP)", icon: HandCoins, items: [
+      { key: "bridge", name: "Income Bridge (SIP→SWP)", icon: Route, desc: "Build with SIP, then draw a monthly income" },
+      { key: "swpperiodic", name: "SWP Periodic", icon: Repeat, desc: "Periodic withdrawals from a corpus" },
+      { key: "swpend", name: "SWP End Period", icon: Timer, desc: "How long your money lasts under SWP" },
+      { key: "swpcomp", name: "SWP Comprehensive", icon: ScrollText, desc: "Full SWP — any mode, frequency & increment" },
+      { key: "stpcomp", name: "STP Comprehensive", icon: RefreshCw, desc: "Move debt → equity systematically" },
+      { key: "opm", name: "OPM House (SWP)", icon: House, desc: "Fund a home using an SWP income stream" },
+      { key: "swp", name: "SWP Calculator", icon: Banknote, desc: "Simple systematic withdrawal plan" },
+      { key: "stp", name: "STP Calculator", icon: ArrowLeftRight, desc: "Systematic transfer plan" },
     ],
   },
   {
-    title: "Insurance & Protection", icon: "🛡️", items: [
-      { key: "insurance", name: "Insurance IRR", icon: "🛡️", desc: "A policy's real return vs mutual funds" },
-      { key: "surrender", name: "Surrender vs Invest", icon: "⚖️", desc: "Keep a policy, or surrender and invest?" },
-      { key: "hlv", name: "Human Life Value", icon: "👪", desc: "Term cover your family actually needs" },
+    title: "Insurance & Protection", icon: ShieldCheck, items: [
+      { key: "insurance", name: "Insurance IRR", icon: Shield, desc: "A policy's real return vs mutual funds" },
+      { key: "surrender", name: "Surrender vs Invest", icon: Scale, desc: "Keep a policy, or surrender and invest?" },
+      { key: "hlv", name: "Human Life Value", icon: Users, desc: "Term cover your family actually needs" },
     ],
   },
   {
-    title: "Tax", icon: "🧾", items: [
-      { key: "taxregime", name: "Old vs New Tax Regime", icon: "🧾", desc: "Which regime saves more (FY 2025-26)" },
-      { key: "realreturn", name: "Real Return", icon: "📉", desc: "Your return after tax and inflation" },
-      { key: "nps", name: "NPS Retirement & Tax", icon: "🏦", desc: "Corpus, pension and the 80CCD(1B) benefit" },
-      { key: "harvest", name: "LTCG Tax-Harvesting", icon: "✂️", desc: "Bank the ₹1.25L tax-free gain every year" },
-      { key: "captax", name: "Capital Gains Tax", icon: "🧮", desc: "LTCG/STCG with CII indexation" },
+    title: "Tax", icon: Receipt, items: [
+      { key: "taxregime", name: "Old vs New Tax Regime", icon: GitCompare, desc: "Which regime saves more (FY 2025-26)" },
+      { key: "realreturn", name: "Real Return", icon: TrendingDown, desc: "Your return after tax and inflation" },
+      { key: "nps", name: "NPS Retirement & Tax", icon: Landmark, desc: "Corpus, pension and the 80CCD(1B) benefit" },
+      { key: "harvest", name: "LTCG Tax-Harvesting", icon: Scissors, desc: "Bank the ₹1.25L tax-free gain every year" },
+      { key: "captax", name: "Capital Gains Tax", icon: Calculator, desc: "LTCG/STCG with CII indexation" },
     ],
   },
   {
-    title: "Property & Assets", icon: "🏠", items: [
-      { key: "property", name: "Property Yield", icon: "🏠", desc: "The real return on a property investment" },
-      { key: "debtfund", name: "Debt Fund Hold/Sell", icon: "📊", desc: "Hold or sell a debt fund, post-tax" },
-      { key: "emisip", name: "EMI → SIP", icon: "🔄", desc: "Turn an EMI into wealth instead" },
-      { key: "assetalloc", name: "Asset Allocation FV", icon: "🧩", desc: "Future value of a Debt/Equity mix" },
+    title: "Property & Assets", icon: Building2, items: [
+      { key: "property", name: "Property Yield", icon: Warehouse, desc: "The real return on a property investment" },
+      { key: "debtfund", name: "Debt Fund Hold/Sell", icon: BarChart3, desc: "Hold or sell a debt fund, post-tax" },
+      { key: "emisip", name: "EMI → SIP", icon: Recycle, desc: "Turn an EMI into wealth instead" },
+      { key: "assetalloc", name: "Asset Allocation FV", icon: PieChart, desc: "Future value of a Debt/Equity mix" },
     ],
   },
   {
-    title: "Advisor Tools", icon: "🧭", items: [
-      { key: "xirr", name: "XIRR", icon: "📅", desc: "True return on irregular, dated cashflows" },
-      { key: "rebalance", name: "Portfolio Rebalancing", icon: "⚖️", desc: "Exact buy/sell to hit your target mix" },
-      { key: "expensedrag", name: "Expense-Ratio Drag", icon: "💧", desc: "What a costlier fund quietly costs you" },
-      { key: "review", name: "Review of Investments", icon: "📋", desc: "Compare your funds' performance side by side" },
+    title: "Advisor Tools", icon: Wrench, items: [
+      { key: "xirr", name: "XIRR", icon: CalendarDays, desc: "True return on irregular, dated cashflows" },
+      { key: "rebalance", name: "Portfolio Rebalancing", icon: SlidersHorizontal, desc: "Exact buy/sell to hit your target mix" },
+      { key: "expensedrag", name: "Expense-Ratio Drag", icon: Anchor, desc: "What a costlier fund quietly costs you" },
+      { key: "review", name: "Review of Investments", icon: ClipboardList, desc: "Compare your funds' performance side by side" },
     ],
   },
   {
-    title: "Markets & Mindset", icon: "🔥", items: [
-      { key: "crash", name: "Market-Crash Stress Test", icon: "📉", desc: "The cost of panic-selling vs staying invested" },
-      { key: "fire", name: "FIRE Number", icon: "🔥", desc: "When can you achieve financial independence?" },
+    title: "Markets & Mindset", icon: Flame, items: [
+      { key: "crash", name: "Market-Crash Stress Test", icon: Siren, desc: "The cost of panic-selling vs staying invested" },
+      { key: "fire", name: "FIRE Number", icon: Rocket, desc: "When can you achieve financial independence?" },
     ],
   },
 ];
@@ -269,7 +283,7 @@ export function CalculatorsApp({ firmName }: { firmName?: string } = {}) {
         </button>
         {meta && (
           <span className="text-sm font-semibold flex items-center gap-1.5 truncate">
-            <span aria-hidden>{meta.icon}</span> {meta.name}
+            <meta.icon className="size-4 text-brand-cyan-deep shrink-0" /> {meta.name}
           </span>
         )}
         <div className="flex items-center gap-2 flex-wrap">
@@ -411,7 +425,7 @@ function CalcGallery({
         CATALOG.map((g) => (
           <div key={g.title} className="space-y-2.5 break-inside-avoid">
             <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-              <span aria-hidden>{g.icon}</span> {g.title}
+              <g.icon className="size-3.5 text-brand-cyan-deep" /> {g.title}
               <span className="text-muted-foreground/60 font-medium normal-case tracking-normal">· {g.items.length}</span>
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
@@ -431,7 +445,9 @@ function CalcCard({ c, onPick }: { c: CalcMeta; onPick: (k: TabKey) => void }) {
       onClick={() => onPick(c.key)}
       className="group text-left rounded-xl border border-border bg-card p-3.5 flex gap-3 items-start hover:border-brand-cyan/50 hover:shadow-md hover:-translate-y-0.5 transition-all"
     >
-      <span className="text-2xl leading-none shrink-0" aria-hidden>{c.icon}</span>
+      <span className="shrink-0 grid place-items-center size-9 rounded-lg bg-brand-cyan/10 text-brand-cyan-deep group-hover:bg-brand-cyan/15 transition-colors">
+        <c.icon className="size-5" />
+      </span>
       <span className="min-w-0">
         <span className="block font-semibold text-sm leading-tight group-hover:text-brand-cyan-deep">{c.name}</span>
         <span className="block text-xs text-muted-foreground mt-1 leading-snug">{c.desc}</span>
