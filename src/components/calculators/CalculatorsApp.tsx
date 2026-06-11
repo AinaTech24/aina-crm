@@ -6,8 +6,9 @@
  * helpers.
  */
 
-import { useState } from "react";
-import { Printer, ChevronLeft, Search, X, Download } from "lucide-react";
+import { useRef, useState } from "react";
+import { Printer, ChevronLeft, Search, X, Download, Mail, MessageCircle } from "lucide-react";
+import { captureCalcResults } from "./capture";
 import { ClientNameField } from "./ClientNameField";
 import { Sip360Planner } from "./Sip360Planner";
 import { StepUpReckoner } from "./StepUpReckoner";
@@ -200,16 +201,58 @@ export function CalculatorsApp({ firmName }: { firmName?: string } = {}) {
   const [tab, setTab] = useState<TabKey | null>(null);
   const [query, setQuery] = useState("");
   const [clientName, setClientName] = useState("");
+  const [shareMode, setShareMode] = useState<null | "email" | "whatsapp">(null);
+  const [recipient, setRecipient] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [shareMsg, setShareMsg] = useState<string | null>(null);
+  const calcRef = useRef<HTMLDivElement>(null);
 
-  function downloadPdf(calcName: string) {
-    // Browsers save the print-to-PDF with the document title as the filename.
-    const safe = (s: string) => (s || "").replace(/[^\w .&-]+/g, "").trim();
-    const prevTitle = document.title;
-    document.title = [safe(clientName) || "Client", safe(calcName), safe(firmName ?? "")]
-      .filter(Boolean)
-      .join(" — ");
-    window.print();
-    window.setTimeout(() => { document.title = prevTitle; }, 800);
+  async function downloadServerPdf(calcName: string) {
+    const root = calcRef.current;
+    if (!root) { window.print(); return; }
+    setBusy(true); setShareMsg(null);
+    try {
+      const { blocks } = captureCalcResults(root);
+      const res = await fetch("/api/calculators/pdf", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ calcName, clientName, blocks }),
+      });
+      if (!res.ok) throw new Error("pdf");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${clientName || "Client"}-${calcName}.pdf`.replace(/[^A-Za-z0-9_.-]+/g, "_");
+      document.body.appendChild(a); a.click(); a.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch {
+      window.print(); // fall back to the branded print → Save-as-PDF
+    } finally { setBusy(false); }
+  }
+
+  async function doShare(channel: "email" | "whatsapp", calcName: string) {
+    const root = calcRef.current;
+    if (!root) return;
+    setBusy(true); setShareMsg(null);
+    try {
+      const { blocks } = captureCalcResults(root);
+      const res = await fetch("/api/calculators/share", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ channel, to: recipient, calcName, clientName, blocks }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) { setShareMsg(j.error || "Couldn't share."); return; }
+      if (channel === "whatsapp" && j.waLink) {
+        window.open(j.waLink, "_blank");
+        setShareMsg(j.hosted ? "WhatsApp opened with the PDF link ✓" : "WhatsApp opened (sent as text — PDF hosting off).");
+        setShareMode(null);
+      } else if (channel === "email") {
+        setShareMsg("Emailed to the client ✓");
+        setShareMode(null);
+      }
+    } catch {
+      setShareMsg("Couldn't share — try again.");
+    } finally { setBusy(false); }
   }
 
   if (tab === null) {
@@ -217,10 +260,11 @@ export function CalculatorsApp({ firmName }: { firmName?: string } = {}) {
   }
 
   const meta = CALC_META[tab];
+  const calcName = meta?.name ?? "Calculator";
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3 flex-wrap print:hidden">
-        <button onClick={() => { setTab(null); setQuery(""); }} className="btn-ghost text-xs">
+        <button onClick={() => { setTab(null); setQuery(""); setShareMode(null); setShareMsg(null); }} className="btn-ghost text-xs">
           <ChevronLeft className="size-3.5" /> All calculators
         </button>
         {meta && (
@@ -228,21 +272,42 @@ export function CalculatorsApp({ firmName }: { firmName?: string } = {}) {
             <span aria-hidden>{meta.icon}</span> {meta.name}
           </span>
         )}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <input
             value={clientName}
             onChange={(e) => setClientName(e.target.value)}
-            placeholder="Client name (for PDF)"
-            className="h-8 rounded-md border border-border bg-card px-2.5 text-xs w-44 focus:outline-none focus:border-brand-cyan focus:ring-2 focus:ring-brand-cyan/15"
+            placeholder="Client name"
+            className="h-8 rounded-md border border-border bg-card px-2.5 text-xs w-36 focus:outline-none focus:border-brand-cyan focus:ring-2 focus:ring-brand-cyan/15"
           />
-          <button onClick={() => window.print()} className="btn-ghost text-xs" title="Print">
-            <Printer className="size-3.5" /> Print
+          <button onClick={() => downloadServerPdf(calcName)} disabled={busy} className="btn-primary text-xs disabled:opacity-60" title="Branded PDF">
+            <Download className="size-3.5" /> {busy ? "…" : "PDF"}
           </button>
-          <button onClick={() => downloadPdf(meta?.name ?? "Calculator")} className="btn-primary text-xs" title="Save a branded PDF">
-            <Download className="size-3.5" /> Download PDF
+          <button onClick={() => { setShareMode(shareMode === "email" ? null : "email"); setShareMsg(null); setRecipient(""); }} className="btn-ghost text-xs" title="Email to client">
+            <Mail className="size-3.5" /> Email
           </button>
+          <button onClick={() => { setShareMode(shareMode === "whatsapp" ? null : "whatsapp"); setShareMsg(null); setRecipient(""); }} className="btn-ghost text-xs" title="Share on WhatsApp">
+            <MessageCircle className="size-3.5" /> WhatsApp
+          </button>
+          <button onClick={() => window.print()} className="btn-ghost text-xs" title="Print"><Printer className="size-3.5" /></button>
         </div>
       </div>
+
+      {/* Share recipient row */}
+      {shareMode && (
+        <div className="flex items-center gap-2 flex-wrap rounded-lg border border-border bg-secondary/30 p-2 print:hidden">
+          <input
+            value={recipient}
+            onChange={(e) => setRecipient(e.target.value)}
+            placeholder={shareMode === "email" ? "Client email address" : "Client WhatsApp number (optional)"}
+            className="h-8 rounded-md border border-border bg-card px-2.5 text-xs w-56 focus:outline-none focus:border-brand-cyan"
+          />
+          <button onClick={() => doShare(shareMode, calcName)} disabled={busy} className="btn-primary text-xs disabled:opacity-60">
+            {busy ? "Sending…" : shareMode === "email" ? "Send email" : "Open WhatsApp"}
+          </button>
+          {shareMsg && <span className="text-xs text-muted-foreground">{shareMsg}</span>}
+        </div>
+      )}
+      {shareMsg && !shareMode && <div className="text-xs text-emerald-700 print:hidden">{shareMsg}</div>}
 
       {/* Print-only — client line under the firm letterhead. */}
       {clientName && (
@@ -250,6 +315,8 @@ export function CalculatorsApp({ firmName }: { firmName?: string } = {}) {
           <strong>Prepared for:</strong> {clientName}
         </div>
       )}
+
+      <div ref={calcRef} className="space-y-4">
 
       {tab === "sip360" && <Sip360Planner />}
       {tab === "reckoner" && <StepUpReckoner />}
@@ -297,6 +364,7 @@ export function CalculatorsApp({ firmName }: { firmName?: string } = {}) {
       {tab === "swp" && <SwpCalc />}
       {tab === "stp" && <StpCalc />}
       {tab === "cagr" && <CagrCalc />}
+      </div>
     </div>
   );
 }

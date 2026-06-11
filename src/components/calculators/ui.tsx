@@ -133,7 +133,7 @@ export function Toggle({
 export function Section({ n, title, children }: { n: number | string; title: string; children: React.ReactNode }) {
   return (
     <div className="space-y-2 break-inside-avoid">
-      <h3 className="text-sm font-semibold flex items-center gap-2">
+      <h3 data-pdf="section" data-pdf-title={title} className="text-sm font-semibold flex items-center gap-2">
         <span className="inline-grid place-items-center size-5 rounded-md bg-brand-cyan-light text-brand-cyan-deep text-[11px] font-bold">{n}</span>
         {title}
       </h3>
@@ -150,7 +150,7 @@ export function Stat({ label, value, tone }: { label: string; value: string; ton
           : tone === "rose" ? "border-rose-200 bg-rose-50/60"
             : "";
   return (
-    <div className={`border rounded-md p-3 ${t}`}>
+    <div data-pdf="stat" data-pdf-label={label} data-pdf-value={value} className={`border rounded-md p-3 ${t}`}>
       <div className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium">{label}</div>
       <div className="text-lg font-semibold mt-0.5">{value}</div>
     </div>
@@ -168,7 +168,7 @@ export function Table({
 }) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-sm border-collapse">
+      <table data-pdf="table" className="w-full text-sm border-collapse">
         <thead>
           <tr className="text-left">
             {head.map((h, i) => (
@@ -209,5 +209,5 @@ export function Insight({ children, tone = "emerald" }: { children: React.ReactN
       : tone === "rose" ? "text-rose-800 bg-rose-50/70 border-rose-200"
         : tone === "cyan" ? "text-brand-cyan-deep bg-brand-cyan-light/40 border-brand-cyan/30"
           : "text-emerald-800 bg-emerald-50/70 border-emerald-200";
-  return <div className={`text-xs rounded-md border px-3 py-2 ${cls}`}>{children}</div>;
+  return <div data-pdf="insight" className={`text-xs rounded-md border px-3 py-2 ${cls}`}>{children}</div>;
 }

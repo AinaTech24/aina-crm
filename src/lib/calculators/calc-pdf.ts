@@ -1,0 +1,170 @@
+/**
+ * calc-pdf — render a branded, one-page-or-more PDF from a captured calculator
+ * result (title + ordered blocks of stats / tables / insights). Built with
+ * pdf-lib (Node runtime). Used by the calculator Download / Email / WhatsApp
+ * share paths so a calculator illustration looks like an official firm document.
+ */
+
+import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage, type PDFImage } from "pdf-lib";
+
+export type PdfBlock =
+  | { type: "stat"; label: string; value: string }
+  | { type: "section"; text: string }
+  | { type: "table"; head: string[]; rows: string[][] }
+  | { type: "insight"; text: string };
+
+export type CalcPdfInput = {
+  firmName: string;
+  arn?: string | null;
+  preparedBy?: string | null;
+  clientName?: string | null;
+  calcName: string;
+  blocks: PdfBlock[];
+  logoBytes?: Uint8Array | null;
+  primaryHex?: string | null;
+};
+
+const A4: [number, number] = [595.28, 841.89];
+const MARGIN = 40;
+const ascii = (s: string) => (s ?? "").replace(/[^\x20-\x7E₹]/g, (c) => (c === "₹" ? "Rs " : "")).replace(/\s+/g, " ").trim();
+
+function hexToRgb(hex?: string | null) {
+  const h = (hex ?? "#0e2557").replace("#", "");
+  const n = parseInt(h.length === 3 ? h.split("").map((c) => c + c).join("") : h, 16);
+  return rgb(((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255);
+}
+
+/** Word-wrap `text` to `maxWidth` at `size`, returns lines. */
+function wrap(text: string, font: PDFFont, size: number, maxWidth: number): string[] {
+  const words = ascii(text).split(" ");
+  const lines: string[] = [];
+  let line = "";
+  for (const w of words) {
+    const test = line ? `${line} ${w}` : w;
+    if (font.widthOfTextAtSize(test, size) > maxWidth && line) { lines.push(line); line = w; }
+    else line = test;
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
+export async function renderCalcPdf(input: CalcPdfInput): Promise<Buffer> {
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const primary = hexToRgb(input.primaryHex);
+  const slate = rgb(0.39, 0.45, 0.55);
+  const ink = rgb(0.06, 0.09, 0.16);
+
+  let logo: PDFImage | null = null;
+  if (input.logoBytes && input.logoBytes.length) {
+    try { logo = await doc.embedPng(input.logoBytes); } catch { try { logo = await doc.embedJpg(input.logoBytes); } catch { logo = null; } }
+  }
+
+  doc.setTitle(ascii(`${input.clientName || "Client"} - ${input.calcName} - ${input.firmName}`));
+  doc.setProducer("Aina CRM");
+
+  const W = A4[0], H = A4[1];
+  const contentW = W - MARGIN * 2;
+  let page: PDFPage = doc.addPage(A4);
+  let y = H - MARGIN;
+
+  const newPage = () => { page = doc.addPage(A4); y = H - MARGIN; };
+  const need = (h: number) => { if (y - h < MARGIN + 28) newPage(); };
+
+  // ── Letterhead ──
+  if (logo) {
+    const lw = 40, lh = (logo.height / logo.width) * lw;
+    page.drawImage(logo, { x: MARGIN, y: y - lh, width: lw, height: Math.min(lh, 44) });
+  }
+  const headX = MARGIN + (logo ? 50 : 0);
+  page.drawText(ascii(input.firmName), { x: headX, y: y - 14, size: 14, font: bold, color: ink });
+  page.drawText(ascii(`ARN ${input.arn ?? "-"}`), { x: headX, y: y - 28, size: 9, font, color: slate });
+  page.drawText("Investment Illustration", { x: W - MARGIN - 130, y: y - 14, size: 11, font: bold, color: primary });
+  const dt = new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+  page.drawText(ascii(`Prepared ${dt}`), { x: W - MARGIN - 130, y: y - 27, size: 9, font, color: slate });
+  y -= 46;
+  page.drawRectangle({ x: MARGIN, y, width: contentW, height: 3, color: primary });
+  y -= 18;
+
+  // ── Title + client ──
+  page.drawText(ascii(input.calcName), { x: MARGIN, y: y - 6, size: 16, font: bold, color: ink });
+  y -= 22;
+  if (input.clientName) {
+    page.drawText(ascii(`Prepared for: ${input.clientName}`), { x: MARGIN, y, size: 11, font, color: slate });
+    y -= 18;
+  }
+  y -= 4;
+
+  // ── Blocks ──
+  let i = 0;
+  while (i < input.blocks.length) {
+    const b = input.blocks[i];
+    if (b.type === "stat") {
+      // Batch consecutive stats into rows of 3 cards.
+      const group: { label: string; value: string }[] = [];
+      while (i < input.blocks.length && input.blocks[i].type === "stat") { group.push(input.blocks[i] as any); i++; }
+      const cols = 3, cw = contentW / cols, ch = 40;
+      for (let g = 0; g < group.length; g += cols) {
+        need(ch + 8);
+        const row = group.slice(g, g + cols);
+        row.forEach((s, c) => {
+          const x = MARGIN + c * cw;
+          page.drawRectangle({ x, y: y - ch, width: cw - 8, height: ch, borderColor: rgb(0.89, 0.91, 0.94), borderWidth: 1, color: rgb(0.98, 0.99, 1) });
+          page.drawText(ascii(s.label).slice(0, 34), { x: x + 8, y: y - 14, size: 7.5, font, color: slate });
+          page.drawText(ascii(s.value).slice(0, 22), { x: x + 8, y: y - 30, size: 12, font: bold, color: ink });
+        });
+        y -= ch + 8;
+      }
+      continue;
+    }
+    if (b.type === "section") {
+      need(24);
+      y -= 6;
+      page.drawText(ascii(b.text), { x: MARGIN, y: y - 10, size: 11, font: bold, color: primary });
+      y -= 20;
+      i++; continue;
+    }
+    if (b.type === "insight") {
+      const lines = wrap(b.text, font, 9, contentW - 16);
+      need(lines.length * 12 + 12);
+      const boxH = lines.length * 12 + 10;
+      page.drawRectangle({ x: MARGIN, y: y - boxH, width: contentW, height: boxH, color: rgb(0.94, 0.99, 0.96), borderColor: rgb(0.78, 0.92, 0.83), borderWidth: 1 });
+      lines.forEach((ln, k) => page.drawText(ln, { x: MARGIN + 8, y: y - 14 - k * 12, size: 9, font, color: rgb(0.1, 0.3, 0.18) }));
+      y -= boxH + 8;
+      i++; continue;
+    }
+    if (b.type === "table") {
+      const head = b.head.map(ascii);
+      const colW = contentW / Math.max(1, head.length);
+      need(18);
+      // header
+      page.drawRectangle({ x: MARGIN, y: y - 16, width: contentW, height: 16, color: rgb(0.95, 0.96, 0.98) });
+      head.forEach((h, c) => page.drawText(h.slice(0, 26), { x: MARGIN + 4 + c * colW, y: y - 12, size: 7.5, font: bold, color: slate }));
+      y -= 16;
+      for (const row of b.rows) {
+        need(14);
+        row.slice(0, head.length).forEach((cell, c) => {
+          page.drawText(ascii(cell).slice(0, 26), { x: MARGIN + 4 + c * colW, y: y - 11, size: 8, font, color: ink });
+        });
+        page.drawLine({ start: { x: MARGIN, y: y - 14 }, end: { x: W - MARGIN, y: y - 14 }, thickness: 0.3, color: rgb(0.9, 0.92, 0.95) });
+        y -= 14;
+      }
+      y -= 8;
+      i++; continue;
+    }
+    i++;
+  }
+
+  // ── Footer disclaimer on every page ──
+  const disc = "Illustration only; not a guarantee of returns. Mutual fund investments are subject to market risks. Read all scheme related documents carefully.";
+  const pages = doc.getPages();
+  pages.forEach((p, idx) => {
+    p.drawLine({ start: { x: MARGIN, y: MARGIN + 18 }, end: { x: W - MARGIN, y: MARGIN + 18 }, thickness: 0.5, color: rgb(0.89, 0.91, 0.94) });
+    wrap(disc, font, 7, contentW).forEach((ln, k) => p.drawText(ln, { x: MARGIN, y: MARGIN + 8 - k * 8, size: 7, font, color: slate }));
+    p.drawText(ascii(`${input.firmName} - ARN ${input.arn ?? "-"}`), { x: MARGIN, y: MARGIN + 24, size: 7, font, color: slate });
+    p.drawText(`${idx + 1}/${pages.length}`, { x: W - MARGIN - 20, y: MARGIN + 24, size: 7, font, color: slate });
+  });
+
+  return Buffer.from(await doc.save());
+}

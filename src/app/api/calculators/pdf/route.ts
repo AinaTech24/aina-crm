@@ -1,0 +1,61 @@
+/**
+ * POST /api/calculators/pdf
+ *
+ * Build a branded, firm-letterhead PDF from a captured calculator result
+ * (title + blocks) and return it as a download. Body:
+ *   { calcName, clientName?, blocks: PdfBlock[] }
+ */
+
+import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
+import { eq } from "drizzle-orm";
+import { withTenant } from "@/db/client";
+import { requireSession } from "@/lib/auth/session";
+import { tenants } from "@/db/schema";
+import { renderCalcPdf, type PdfBlock } from "@/lib/calculators/calc-pdf";
+import { fetchBrandLogoBytes } from "@/lib/calculators/share-helpers";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+const Body = z.object({
+  calcName: z.string().min(1).max(120),
+  clientName: z.string().max(120).optional().nullable(),
+  blocks: z.array(z.any()).max(300),
+});
+
+export async function POST(req: NextRequest) {
+  try {
+    const session = await requireSession();
+    const parsed = Body.safeParse(await req.json().catch(() => ({})));
+    if (!parsed.success) return NextResponse.json({ error: "Invalid body" }, { status: 400 });
+    const { calcName, clientName, blocks } = parsed.data;
+
+    const tenant = await withTenant(session.tenantId, async (tx) =>
+      (await tx.select().from(tenants).where(eq(tenants.id, session.tenantId)).limit(1))[0] ?? null
+    );
+
+    const logoBytes = await fetchBrandLogoBytes((tenant as any)?.logoUrl);
+    const pdf = await renderCalcPdf({
+      firmName: tenant?.legalName ?? tenant?.displayName ?? "Your firm",
+      arn: tenant?.arn ?? null,
+      preparedBy: session.name,
+      clientName: clientName ?? null,
+      calcName,
+      blocks: blocks as PdfBlock[],
+      logoBytes,
+      primaryHex: (tenant as any)?.primaryColor ?? null,
+    });
+
+    const fname = `${clientName || "Client"}-${calcName}`.replace(/[^A-Za-z0-9_-]+/g, "_").slice(0, 60) + ".pdf";
+    return new NextResponse(new Uint8Array(pdf), {
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `attachment; filename="${fname}"`,
+        "Cache-Control": "no-store",
+      },
+    });
+  } catch (err: any) {
+    return NextResponse.json({ error: err?.message ?? "Could not build PDF" }, { status: err?.status ?? 500 });
+  }
+}
