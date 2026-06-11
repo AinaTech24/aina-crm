@@ -88,10 +88,10 @@ export function DocumentViewerModal({ doc, onClose }: { doc: ViewerDoc | null; o
             <X className="size-4" />
           </button>
         </div>
-        <div className="flex-1 min-h-0 bg-muted/30 grid place-items-center overflow-auto">
+        <div className="flex-1 min-h-0 bg-muted/30 flex items-center justify-center overflow-hidden p-2">
           {isImage ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={doc.src} alt={name} className="max-h-full max-w-full object-contain" />
+            <img src={doc.src} alt={name} className="block max-h-full max-w-full w-auto h-auto object-contain" />
           ) : isPdf ? (
             <iframe src={doc.src} title={name} className="w-full h-full border-0" />
           ) : (
