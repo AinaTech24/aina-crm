@@ -167,6 +167,23 @@ export type Action = z.infer<typeof ActionSchema>;
 export type ScheduledAction = z.infer<typeof ScheduledActionSchema>;
 
 // ---------------------------------------------------------------------------
+// Condition branches — Zoho lets one rule hold up to 10 condition sets, each
+// with its own actions. A record falls into the FIRST branch whose criteria
+// match (top-down). When `branches` is empty the legacy single
+// criteriaRows/instantActions/scheduledActions fields apply.
+// ---------------------------------------------------------------------------
+
+export const RuleBranchSchema = z.object({
+  name: z.string().max(80).optional(),
+  criteriaPattern: z.string().nullable().optional(),
+  criteriaRows: z.array(CriteriaRowSchema).max(10).default([]),
+  instantActions: z.array(ActionSchema).max(20).default([]),
+  scheduledActions: z.array(ScheduledActionSchema).max(20).default([]),
+});
+
+export type RuleBranch = z.infer<typeof RuleBranchSchema>;
+
+// ---------------------------------------------------------------------------
 // Full rule shape (for API + UI)
 // ---------------------------------------------------------------------------
 
@@ -189,6 +206,10 @@ export const WorkflowRuleSchema = z.object({
   criteriaRows: z.array(CriteriaRowSchema).max(10).default([]),
   instantActions: z.array(ActionSchema).max(20).default([]),
   scheduledActions: z.array(ScheduledActionSchema).max(20).default([]),
+  /** Extra condition branches beyond the main criteria (Zoho: ≤10 per rule).
+   *  When present, branches are evaluated top-down and the first match wins;
+   *  the main criteria/actions above act as branch #1. */
+  branches: z.array(RuleBranchSchema).max(10).default([]),
   enabled: z.boolean().default(true),
   executionOrder: z.number().int().default(100),
 });

@@ -66,6 +66,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (updates.criteriaRows !== undefined) next.criteriaRows = updates.criteriaRows;
     if (updates.instantActions !== undefined) next.instantActions = updates.instantActions;
     if (updates.scheduledActions !== undefined) next.scheduledActions = updates.scheduledActions;
+    if (updates.branches !== undefined) next.branches = updates.branches;
     if (updates.enabled !== undefined) next.enabled = updates.enabled;
     if (updates.executionOrder !== undefined) next.executionOrder = updates.executionOrder;
     next.updatedAt = new Date();

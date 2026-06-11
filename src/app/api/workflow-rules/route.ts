@@ -66,6 +66,7 @@ export async function POST(req: NextRequest) {
           criteriaRows: input.criteriaRows as any,
           instantActions: input.instantActions as any,
           scheduledActions: input.scheduledActions as any,
+          branches: input.branches as any,
           enabled: input.enabled,
           executionOrder: input.executionOrder,
           createdBy: session.userId,

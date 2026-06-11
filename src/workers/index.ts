@@ -12,6 +12,7 @@ import { startWorkflowRunnerWorker } from "./workflow-runner";
 import { startSegmentMaterializerWorker } from "./segment-materializer";
 import { startMasterSchedulerWorker } from "./master-scheduler";
 import { startWorkflowRulesSchedulerWorker } from "./workflow-rules-scheduler";
+import { startWorkflowRulesTimeScannerWorker } from "./workflow-rules-time-scanner";
 import { startBlueprintSLAWorker } from "./blueprint-sla-worker";
 import { startScheduledCommsWorker } from "./scheduled-comms";
 import { startReportSchedulerWorker } from "./report-scheduler";
@@ -103,6 +104,7 @@ if (groups.includes("seg")) stops.push(startSegmentMaterializerWorker());
 if (groups.includes("sched")) {
   stops.push(startMasterSchedulerWorker());
   stops.push(startWorkflowRulesSchedulerWorker());
+  stops.push(startWorkflowRulesTimeScannerWorker());
   stops.push(startBlueprintSLAWorker());
   stops.push(startScheduledCommsWorker());
   stops.push(startCampaignDispatcherWorker());

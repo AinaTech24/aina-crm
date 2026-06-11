@@ -38,6 +38,17 @@ type CriteriaRow = { field: string; operator: string; value: any };
 type Action = { type: string; label?: string; config: Record<string, any> };
 type ScheduledAction = Action & { delay: { amount: number; unit: "minute" | "hour" | "day" | "week"; anchor: "trigger" | "date_field"; anchorField?: string } };
 
+/** Extra condition set beyond the main criteria (Zoho: ≤10 per rule). The main
+ *  Conditions/Actions steps act as Branch 1; a record falls into the FIRST
+ *  branch (top-down) whose conditions match. */
+type Branch = {
+  name: string;
+  criteriaPattern: string;
+  criteriaRows: CriteriaRow[];
+  instantActions: Action[];
+  scheduledActions: ScheduledAction[];
+};
+
 const ACTION_TYPES: Array<{ key: string; label: string; description: string; instantOnly?: boolean }> = [
   { key: "send_email", label: "Email Notification", description: "Send a templated email to the subject or recipient list." },
   { key: "send_whatsapp", label: "WhatsApp Message", description: "Send a Meta-approved WhatsApp template." },
@@ -49,8 +60,9 @@ const ACTION_TYPES: Array<{ key: string; label: string; description: string; ins
   { key: "add_tag", label: "Add Tag", description: "Append a tag to the record." },
   { key: "remove_tag", label: "Remove Tag", description: "Remove a tag from the record." },
   { key: "webhook", label: "Webhook", description: "POST the record payload to an external URL." },
-  { key: "custom_function", label: "Custom Function", description: "Run a saved server function (advanced)." },
-  { key: "create_record", label: "Create Record", description: "Create a record in another module." },
+  // custom_function + create_record are intentionally absent — the backend
+  // rejects them as unimplemented stubs (see lib/workflow-rules/guard.ts), so
+  // offering them here would only produce a save-time error.
   { key: "convert_lead", label: "Convert Lead", description: "Convert a lead into an investor.", instantOnly: true },
   { key: "create_notification", label: "In-app Notification", description: "Send an in-app bell notification." },
 ];
@@ -101,6 +113,8 @@ export function RuleBuilder({ modules }: { modules: Module[] }) {
   // Step 4
   const [instantActions, setInstantActions] = useState<Action[]>([]);
   const [scheduledActions, setScheduledActions] = useState<ScheduledAction[]>([]);
+  // Extra condition branches (optional) — first match wins, top-down.
+  const [branches, setBranches] = useState<Branch[]>([]);
 
   const mod = useMemo(() => modules.find((m) => m.key === moduleKey), [moduleKey, modules]);
   const dateFields = mod?.fields.filter((f) => f.dateAnchor) ?? [];
@@ -131,6 +145,13 @@ export function RuleBuilder({ modules }: { modules: Module[] }) {
         criteriaRows,
         instantActions,
         scheduledActions,
+        branches: branches.map((b) => ({
+          name: b.name.trim() || undefined,
+          criteriaPattern: b.criteriaPattern.trim() || null,
+          criteriaRows: b.criteriaRows,
+          instantActions: b.instantActions,
+          scheduledActions: b.scheduledActions,
+        })),
         enabled: true,
         executionOrder: 100,
       };
@@ -258,14 +279,23 @@ export function RuleBuilder({ modules }: { modules: Module[] }) {
         )}
 
         {step === 4 && (
-          <ActionsStep
-            mod={mod}
-            instantActions={instantActions}
-            setInstantActions={setInstantActions}
-            scheduledActions={scheduledActions}
-            setScheduledActions={setScheduledActions}
-            dateFields={dateFields}
-          />
+          <>
+            <ActionsStep
+              mod={mod}
+              instantActions={instantActions}
+              setInstantActions={setInstantActions}
+              scheduledActions={scheduledActions}
+              setScheduledActions={setScheduledActions}
+              dateFields={dateFields}
+            />
+            <BranchesSection
+              mod={mod}
+              dateFields={dateFields}
+              branches={branches}
+              setBranches={setBranches}
+              mainHasCriteria={criteriaRows.length > 0}
+            />
+          </>
         )}
       </div>
 
@@ -291,7 +321,11 @@ export function RuleBuilder({ modules }: { modules: Module[] }) {
         ) : (
           <button
             type="button"
-            disabled={submitting || instantActions.length + scheduledActions.length === 0}
+            disabled={
+              submitting ||
+              (instantActions.length + scheduledActions.length === 0 &&
+                !branches.some((b) => b.instantActions.length + b.scheduledActions.length > 0))
+            }
             onClick={submit}
             className="btn-primary text-sm disabled:opacity-40"
           >
@@ -1269,4 +1303,105 @@ function defaultConfigFor(typeKey: string, mod: Module | undefined): Record<stri
 function triggerConfigFromState(t: Trigger): Record<string, any> {
   const { kind, ...rest } = t as any;
   return rest;
+}
+
+// =============================================================================
+// Condition branches (Zoho: multiple conditions per rule, first match wins)
+// =============================================================================
+
+function BranchesSection({
+  mod,
+  dateFields,
+  branches,
+  setBranches,
+  mainHasCriteria,
+}: {
+  mod: Module | undefined;
+  dateFields: ModuleField[];
+  branches: Branch[];
+  setBranches: (b: Branch[]) => void;
+  mainHasCriteria: boolean;
+}) {
+  function addBranch() {
+    if (branches.length >= 9) return; // main criteria + 9 = Zoho's 10-condition cap
+    setBranches([
+      ...branches,
+      { name: `Condition ${branches.length + 2}`, criteriaPattern: "", criteriaRows: [], instantActions: [], scheduledActions: [] },
+    ]);
+  }
+  function patch(i: number, p: Partial<Branch>) {
+    setBranches(branches.map((b, idx) => (idx === i ? { ...b, ...p } : b)));
+  }
+  function remove(i: number) {
+    setBranches(branches.filter((_, idx) => idx !== i));
+  }
+
+  return (
+    <div className="pt-5 border-t border-border space-y-4">
+      <div>
+        <div className="text-sm font-semibold">Condition branches <span className="text-muted-foreground font-normal">(optional)</span></div>
+        <p className="text-[11px] text-muted-foreground mt-0.5">
+          The Conditions + Actions above are <strong>Condition 1</strong>. Add more branches and a record
+          falls into the <strong>first</strong> branch (top-down) whose conditions match — e.g. “Hot lead → call task,
+          Cold lead → nurture email” in one rule.
+        </p>
+        {branches.length > 0 && !mainHasCriteria && (
+          <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2.5 py-1.5 mt-2">
+            Condition 1 has no criteria, so it matches <strong>every</strong> record and the branches below
+            will never be reached. Add criteria to Condition 1 (step 3), ordering specific → general.
+          </p>
+        )}
+      </div>
+
+      {branches.map((b, i) => (
+        <div key={i} className="rounded-xl border border-border bg-secondary/20 p-4 space-y-4">
+          <div className="flex items-center gap-2">
+            <span className="chip bg-brand-cyan-light text-brand-cyan-deep text-[10px] font-bold shrink-0">
+              Condition {i + 2}
+            </span>
+            <input
+              value={b.name}
+              onChange={(e) => patch(i, { name: e.target.value })}
+              placeholder="Branch name (e.g. Hot leads)"
+              className="input-base text-sm flex-1"
+            />
+            <button
+              type="button"
+              onClick={() => remove(i)}
+              className="size-8 grid place-items-center rounded-lg border border-border/60 text-muted-foreground hover:text-rose-600 hover:border-rose-200"
+              title="Remove this branch"
+            >
+              <Trash2 className="size-4" />
+            </button>
+          </div>
+
+          <CriteriaStep
+            mod={mod}
+            rows={b.criteriaRows}
+            setRows={(rows) => patch(i, { criteriaRows: rows })}
+            pattern={b.criteriaPattern}
+            setPattern={(pattern) => patch(i, { criteriaPattern: pattern })}
+          />
+
+          <ActionsStep
+            mod={mod}
+            instantActions={b.instantActions}
+            setInstantActions={(a) => patch(i, { instantActions: a })}
+            scheduledActions={b.scheduledActions}
+            setScheduledActions={(a) => patch(i, { scheduledActions: a })}
+            dateFields={dateFields}
+          />
+        </div>
+      ))}
+
+      <button
+        type="button"
+        onClick={addBranch}
+        disabled={branches.length >= 9}
+        className="w-full flex items-center justify-center gap-1.5 rounded-lg border border-dashed border-border text-xs font-semibold text-muted-foreground hover:text-brand-cyan-deep hover:border-brand-cyan/50 hover:bg-brand-cyan-light/30 py-2.5 transition-colors disabled:opacity-40"
+      >
+        <Plus className="size-3.5" /> Add condition branch
+      </button>
+    </div>
+  );
 }

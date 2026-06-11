@@ -9,6 +9,7 @@ import { MODULES } from "@/lib/workflow-rules/modules";
 import { RuleToggle } from "@/components/workflow-rules/RuleToggle";
 import { LockButton } from "@/components/workflow-rules/LockButton";
 import { DeleteRuleButton } from "@/components/workflow-rules/DeleteRuleButton";
+import { TestRulePanel } from "@/components/workflow-rules/TestRulePanel";
 import { formatDate, formatRelative } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -62,12 +63,14 @@ export default async function RuleDetailPage({
   const instant = (rule.instantActions ?? []) as any[];
   const scheduled = (rule.scheduledActions ?? []) as any[];
   const criteria = (rule.criteriaRows ?? []) as any[];
+  const branches = ((rule as any).branches ?? []) as any[];
 
   // Usage stats
   const total = execs.length;
   const succeeded = execs.filter((e) => e.status === "succeeded").length;
   const failed = execs.filter((e) => e.status === "failed").length;
   const partial = execs.filter((e) => e.status === "partial").length;
+  const successRate = total > 0 ? Math.round(((succeeded + partial) / total) * 100) : null;
 
   return (
     <div className="space-y-6 max-w-5xl">
@@ -106,11 +109,16 @@ export default async function RuleDetailPage({
       )}
 
       {/* Stats */}
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         <Tile label="Total runs" value={String(total)} />
         <Tile label="Succeeded" value={String(succeeded)} tone="emerald" />
         <Tile label="Partial" value={String(partial)} tone="amber" />
         <Tile label="Failed" value={String(failed)} tone={failed > 0 ? "rose" : "muted"} />
+        <Tile
+          label="Success rate"
+          value={successRate === null ? "—" : `${successRate}%`}
+          tone={successRate === null ? "muted" : successRate >= 90 ? "emerald" : successRate >= 60 ? "amber" : "rose"}
+        />
       </div>
 
       {/* Trigger summary */}
@@ -200,6 +208,54 @@ export default async function RuleDetailPage({
           </ul>
         )}
       </div>
+
+      {/* Extra condition branches (first match wins, top-down) */}
+      {branches.length > 0 && (
+        <div className="card-surface p-4 space-y-3">
+          <h3 className="font-semibold flex items-center gap-2 text-sm">
+            <Workflow className="size-4 text-brand-cyan" /> Condition branches ({branches.length + 1})
+          </h3>
+          <p className="text-[11px] text-muted-foreground">
+            A record falls into the <strong>first</strong> condition that matches — the Conditions/Actions above are
+            Condition 1; these follow in order.
+          </p>
+          {branches.map((b: any, i: number) => (
+            <div key={i} className="rounded-lg border border-border bg-secondary/20 p-3 space-y-2">
+              <div className="text-xs font-semibold">
+                Condition {i + 2}
+                {b.name ? <span className="text-muted-foreground font-normal"> · {b.name}</span> : null}
+              </div>
+              {(b.criteriaRows ?? []).length === 0 ? (
+                <div className="text-[11px] italic text-muted-foreground">Matches every record that reaches it.</div>
+              ) : (
+                <ol className="space-y-0.5 text-[11px] font-mono">
+                  {(b.criteriaRows ?? []).map((c: any, j: number) => (
+                    <li key={j}>
+                      <span className="text-muted-foreground">{j + 1}.</span> {c.field} {c.operator} {String(c.value ?? "")}
+                    </li>
+                  ))}
+                  {b.criteriaPattern && <li className="text-muted-foreground">Pattern: {b.criteriaPattern}</li>}
+                </ol>
+              )}
+              <div className="flex flex-wrap gap-1.5">
+                {(b.instantActions ?? []).map((a: any, j: number) => (
+                  <span key={`i${j}`} className="chip bg-brand-cyan-light text-brand-cyan-deep text-[10px]">
+                    {ACTION_LABELS[a.type] ?? a.type}
+                  </span>
+                ))}
+                {(b.scheduledActions ?? []).map((a: any, j: number) => (
+                  <span key={`s${j}`} className="chip bg-amber-50 text-amber-700 text-[10px]">
+                    {ACTION_LABELS[a.type] ?? a.type} · after {a.delay?.amount} {a.delay?.unit}(s)
+                  </span>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Dry-run tester */}
+      <TestRulePanel ruleId={rule.id} />
 
       {/* Recent executions */}
       <div className="card-surface overflow-hidden">

@@ -107,6 +107,26 @@ export const workflowRules = pgTable(
       .notNull()
       .default(sql`'[]'::jsonb`),
 
+    /** Condition branches (Zoho: up to 10 conditions per rule, each with its own
+     *  actions; a record falls into the FIRST branch whose criteria match).
+     *  Empty array = the legacy single criteriaRows/instantActions columns apply. */
+    branches: jsonb("branches")
+      .$type<
+        Array<{
+          name?: string;
+          criteriaPattern?: string | null;
+          criteriaRows?: Array<{ field: string; operator: string; value: unknown }>;
+          instantActions?: Array<{ type: string; config: Record<string, unknown> }>;
+          scheduledActions?: Array<{
+            delay: { amount: number; unit: "minute" | "hour" | "day" | "week"; anchor?: "trigger" | "date_field"; anchorField?: string };
+            type: string;
+            config: Record<string, unknown>;
+          }>;
+        }>
+      >()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+
     /** Active / inactive toggle. Zoho shows this on the rule list. */
     enabled: boolean("enabled").notNull().default(true),
 

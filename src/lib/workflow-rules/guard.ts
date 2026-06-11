@@ -1,12 +1,13 @@
 /**
  * Save-time guards for Workflow Rules (shared by POST + PATCH).
  *
- * Only `record_action` triggers are evaluated by the runner today, and
- * `create_record` / `custom_function` actions are unimplemented stubs. Reject
- * them at save time so a user never builds an inert rule that silently never
- * fires (or whose action silently no-ops).
+ * record_action rules fire from the outbox; score_change rules piggyback on
+ * edit events; date_field + recurrence rules fire from the time scanner
+ * worker. Note / recommendation / competitor triggers (Zoho Zia concepts) and
+ * the `create_record` / `custom_function` action stubs stay rejected at save
+ * time so a user never builds an inert rule that silently never fires.
  */
-const IMPLEMENTED_TRIGGERS = new Set(["record_action"]);
+const IMPLEMENTED_TRIGGERS = new Set(["record_action", "date_field", "score_change", "recurrence"]);
 const UNIMPLEMENTED_ACTIONS = new Set(["create_record", "custom_function"]);
 
 export function unsupportedRuleFeature(input: {
@@ -15,7 +16,7 @@ export function unsupportedRuleFeature(input: {
   scheduledActions?: Array<{ type: string }>;
 }): string | null {
   if (!IMPLEMENTED_TRIGGERS.has(input.triggerType)) {
-    return `Trigger "${input.triggerType}" isn't active yet — only "on record create / edit / delete" rules currently fire. Date-field, score-change, note and recurrence triggers are coming soon.`;
+    return `Trigger "${input.triggerType}" isn't active yet — record create/edit/delete, date-based, score-based and recurring rules all fire; note-based triggers are coming soon.`;
   }
   const bad = [...(input.instantActions ?? []), ...(input.scheduledActions ?? [])]
     .map((a) => a.type)

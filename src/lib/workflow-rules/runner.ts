@@ -4,16 +4,23 @@
  * For an incoming event (from events_outbox or a manual test):
  *   1. Find matching rules for (module, triggerType)
  *   2. For record_action triggers: check `when` matches event kind, check
- *      `fields[]` (if specified) actually changed
- *   3. Evaluate criteria against the "after" snapshot
- *   4. Execute each instantAction via the action handler
- *   5. Queue each scheduledAction into workflow_rule_scheduled_jobs
+ *      `fields[]` (if specified) actually changed.
+ *      For score_change triggers: check the score field moved in the rule's
+ *      direction (and crossed the threshold, when one is set).
+ *   3. Resolve the condition branch — Zoho-style: the main criteria is
+ *      branch #1; extra `branches` are evaluated top-down, FIRST match wins.
+ *   4. Execute the branch's instantActions via the action handler
+ *   5. Queue the branch's scheduledActions into workflow_rule_scheduled_jobs
  *   6. Write a workflow_rule_executions row for the audit log
+ *
+ * Time-based rules (date_field / recurrence) reuse the same core via
+ * `fireRuleOnRecordTx` — called by src/workers/workflow-rules-time-scanner.ts
+ * with a synthetic idempotency eventId, so a re-scan can never double-fire.
  */
 
 import { withTenant } from "@/db/client";
 import { workflowRules, workflowRuleExecutions, workflowRuleScheduledJobs } from "@/db/schema";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { getModule, type ModuleKey } from "./modules";
 import { evaluateCriteria } from "./criteria";
 import { executeAction, type ActionResult } from "./actions";
@@ -35,8 +42,53 @@ export interface RunResult {
   ruleId: string;
   matched: boolean;
   reason?: string;
+  /** Which condition branch fired (0 = the rule's main criteria). */
+  branchIndex?: number;
+  branchName?: string;
   instantOutcomes: ActionResult[];
   scheduledQueued: number;
+}
+
+/** One resolved condition set — the main criteria (idx 0) or an extra branch. */
+export interface EffectiveBranch {
+  idx: number;
+  name?: string;
+  criteriaPattern?: string | null;
+  criteriaRows: CriteriaRow[];
+  instantActions: Action[];
+  scheduledActions: ScheduledAction[];
+}
+
+/** Branch idx → scheduled-job actionIndex namespace (so per-branch reschedule
+ *  lookups stay unique: branch 0 uses 0..99, branch 1 uses 100..199, …). */
+const BRANCH_INDEX_STRIDE = 100;
+
+export function effectiveBranches(rule: any): EffectiveBranch[] {
+  const main: EffectiveBranch = {
+    idx: 0,
+    name: undefined,
+    criteriaPattern: rule.criteriaPattern ?? null,
+    criteriaRows: (rule.criteriaRows ?? []) as CriteriaRow[],
+    instantActions: (rule.instantActions ?? []) as Action[],
+    scheduledActions: (rule.scheduledActions ?? []) as ScheduledAction[],
+  };
+  const extra = ((rule.branches ?? []) as any[]).map((b, i) => ({
+    idx: i + 1,
+    name: typeof b?.name === "string" ? b.name : undefined,
+    criteriaPattern: b?.criteriaPattern ?? null,
+    criteriaRows: (b?.criteriaRows ?? []) as CriteriaRow[],
+    instantActions: (b?.instantActions ?? []) as Action[],
+    scheduledActions: (b?.scheduledActions ?? []) as ScheduledAction[],
+  }));
+  return [main, ...extra];
+}
+
+/** First branch (top-down) whose criteria match the record — Zoho semantics. */
+export function resolveBranch(rule: any, record: Record<string, unknown>): EffectiveBranch | null {
+  for (const b of effectiveBranches(rule)) {
+    if (evaluateCriteria(b.criteriaRows, b.criteriaPattern, record)) return b;
+  }
+  return null;
 }
 
 /**
@@ -48,14 +100,15 @@ export async function runRulesForEvent(event: RuleEvent): Promise<RunResult[]> {
   if (!mod) return [];
 
   return withTenant(event.tenantId, async (tx) => {
-    // Find rules: module + record_action trigger + enabled
+    // record_action rules + score_change rules (the latter piggyback on edit
+    // events, comparing the score field's before/after values).
     const rules = await tx
       .select()
       .from(workflowRules)
       .where(
         and(
           eq(workflowRules.module, event.module as any),
-          eq(workflowRules.triggerType, "record_action"),
+          inArray(workflowRules.triggerType, ["record_action", "score_change"]),
           eq(workflowRules.enabled, true)
         )
       )
@@ -71,87 +124,152 @@ export async function runRulesForEvent(event: RuleEvent): Promise<RunResult[]> {
 }
 
 async function runOneRule(tx: any, rule: any, event: RuleEvent): Promise<RunResult> {
-  const cfg = (rule.triggerConfig ?? {}) as { when?: string; fields?: string[]; repeat?: boolean };
-  const when = cfg.when ?? "create_or_edit";
-  const repeat = cfg.repeat ?? false;
+  // ── Trigger gating (per trigger type) ──────────────────────────────────
+  if (rule.triggerType === "score_change") {
+    if (event.recordAction !== "edit") {
+      return { ruleId: rule.id, matched: false, reason: "score rules fire on edits", instantOutcomes: [], scheduledQueued: 0 };
+    }
+    if (!scoreChangeMatches(rule, event.before, event.after)) {
+      return { ruleId: rule.id, matched: false, reason: "score did not move/cross as configured", instantOutcomes: [], scheduledQueued: 0 };
+    }
+  } else {
+    // record_action
+    const cfg = (rule.triggerConfig ?? {}) as { when?: string; fields?: string[] };
+    const when = cfg.when ?? "create_or_edit";
 
-  // Step 1 — does the event's recordAction match the rule's `when`?
-  const matchedAction =
-    when === "create_or_edit"
-      ? event.recordAction === "create" || event.recordAction === "edit"
-      : when === "field_update"
-        ? event.recordAction === "edit"
-        : when === event.recordAction;
-  if (!matchedAction) {
-    return { ruleId: rule.id, matched: false, reason: "trigger.when mismatch", instantOutcomes: [], scheduledQueued: 0 };
-  }
+    // Step 1 — does the event's recordAction match the rule's `when`?
+    const matchedAction =
+      when === "create_or_edit"
+        ? event.recordAction === "create" || event.recordAction === "edit"
+        : when === "field_update"
+          ? event.recordAction === "edit"
+          : when === event.recordAction;
+    if (!matchedAction) {
+      return { ruleId: rule.id, matched: false, reason: "trigger.when mismatch", instantOutcomes: [], scheduledQueued: 0 };
+    }
 
-  // Step 2 — for "edit" with specific fields, check they changed
-  if ((when === "edit" || when === "field_update") && (cfg.fields?.length ?? 0) > 0) {
-    const changedFields = diffChangedFields(event.before, event.after);
-    const anyMatch = cfg.fields!.some((f) => changedFields.includes(f));
-    if (!anyMatch) {
-      return { ruleId: rule.id, matched: false, reason: "no watched field changed", instantOutcomes: [], scheduledQueued: 0 };
+    // Step 2 — for "edit" with specific fields, check they changed
+    if ((when === "edit" || when === "field_update") && (cfg.fields?.length ?? 0) > 0) {
+      const changedFields = diffChangedFields(event.before, event.after);
+      const anyMatch = cfg.fields!.some((f) => changedFields.includes(f));
+      if (!anyMatch) {
+        return { ruleId: rule.id, matched: false, reason: "no watched field changed", instantOutcomes: [], scheduledQueued: 0 };
+      }
     }
   }
 
-  // Step 3 — evaluate criteria
   const record = (event.after ?? event.before ?? {}) as Record<string, unknown>;
-  const matchesCriteria = evaluateCriteria(
-    (rule.criteriaRows ?? []) as CriteriaRow[],
-    rule.criteriaPattern,
-    record
-  );
-  if (!matchesCriteria) {
-    if (event.recordAction === "edit") {
+  return applyRule(tx, rule, {
+    subjectType: event.subjectType,
+    subjectId: event.subjectId,
+    record,
+    before: event.before,
+    recordAction: event.recordAction,
+    eventId: event.eventId ?? null,
+    triggeredBy: "event",
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Core: branch resolution → idempotency claim → actions → audit log.
+// Shared by the event path above and the time scanner (date/recurrence rules).
+// ---------------------------------------------------------------------------
+
+export interface ApplyRuleContext {
+  subjectType: string;
+  subjectId: string;
+  record: Record<string, unknown>;
+  before?: Record<string, unknown> | null;
+  recordAction?: "create" | "edit" | "delete" | "field_update";
+  /** Idempotency key, unique per (rule, firing): the outbox event id, or a
+   *  synthetic key like "date:<subjectId>:<yyyy-mm-dd>" from the time scanner. */
+  eventId?: string | null;
+  triggeredBy: "event" | "schedule" | "manual" | "test";
+}
+
+/** Fire one rule against one record inside an existing tenant transaction. */
+export async function fireRuleOnRecordTx(tx: any, rule: any, ctx: ApplyRuleContext): Promise<RunResult> {
+  return applyRule(tx, rule, ctx);
+}
+
+async function applyRule(tx: any, rule: any, ctx: ApplyRuleContext): Promise<RunResult> {
+  const record = ctx.record;
+
+  // Step 3 — resolve the condition branch (first match wins)
+  const branch = resolveBranch(rule, record);
+  if (!branch) {
+    if (ctx.recordAction === "edit") {
       await cancelScheduledJobsForSubjectAndRule(
         tx,
         rule.tenantId,
         rule.id,
-        event.subjectType,
-        event.subjectId,
+        ctx.subjectType,
+        ctx.subjectId,
         "Record no longer matches criteria"
       );
     }
     return { ruleId: rule.id, matched: false, reason: "criteria not met", instantOutcomes: [], scheduledQueued: 0 };
   }
 
-  // Step 3.5 — repeat check (Zoho: Execute only once when criteria is first met)
-  if (!repeat && event.recordAction === "edit" && event.before) {
-    const metBefore = evaluateCriteria(
-      (rule.criteriaRows ?? []) as CriteriaRow[],
-      rule.criteriaPattern,
-      event.before as Record<string, unknown>
-    );
-    if (metBefore) {
-      return {
-        ruleId: rule.id,
-        matched: false,
-        reason: "criteria already met in before state and repeat=false",
-        instantOutcomes: [],
-        scheduledQueued: 0,
-      };
+  // Step 3.4 — branch switch on edit: cancel jobs queued by OTHER branches
+  // (the record now falls into a different condition, so the old branch's
+  // pending follow-ups no longer apply — Zoho cancels these too).
+  let branchBefore: EffectiveBranch | null = null;
+  if (ctx.recordAction === "edit" && ctx.before) {
+    branchBefore = resolveBranch(rule, ctx.before as Record<string, unknown>);
+    if (branchBefore && branchBefore.idx !== branch.idx) {
+      await tx
+        .update(workflowRuleScheduledJobs)
+        .set({ status: "cancelled", cancelReason: "Record moved to a different condition branch", updatedAt: new Date() })
+        .where(
+          and(
+            eq(workflowRuleScheduledJobs.tenantId, rule.tenantId),
+            eq(workflowRuleScheduledJobs.ruleId, rule.id),
+            eq(workflowRuleScheduledJobs.subjectType, ctx.subjectType),
+            eq(workflowRuleScheduledJobs.subjectId, ctx.subjectId),
+            eq(workflowRuleScheduledJobs.status, "pending"),
+            sql`(action_index < ${branch.idx * BRANCH_INDEX_STRIDE} OR action_index >= ${(branch.idx + 1) * BRANCH_INDEX_STRIDE})`
+          )
+        );
     }
   }
 
+  // Step 3.5 — repeat check (Zoho: Execute only once when criteria is first met).
+  // Only meaningful for record_action edits where we know the before state.
+  const repeat = ((rule.triggerConfig ?? {}) as { repeat?: boolean }).repeat ?? false;
+  if (
+    rule.triggerType === "record_action" &&
+    !repeat &&
+    ctx.recordAction === "edit" &&
+    ctx.before &&
+    branchBefore &&
+    branchBefore.idx === branch.idx
+  ) {
+    return {
+      ruleId: rule.id,
+      matched: false,
+      reason: "criteria already met in before state and repeat=false",
+      instantOutcomes: [],
+      scheduledQueued: 0,
+    };
+  }
+
   // Step 3.6 — idempotency claim.
-  // For event-sourced triggers, insert the execution row UP-FRONT keyed on
-  // (rule_id, trigger_event_id). The partial unique index (migration 0058)
-  // makes a re-delivery of the same outbox event a no-op insert, so instant
-  // actions — which include external sends (email / WhatsApp / SMS) — never
-  // fire twice for one event. Without this, an outbox poller crash between
-  // "deliver" and "mark processed" would double-message clients.
+  // Insert the execution row UP-FRONT keyed on (rule_id, trigger_event_id).
+  // The partial unique index (migration 0058) makes a re-delivery of the same
+  // event — or a re-scan of the same date tick — a no-op insert, so instant
+  // actions (external sends) never fire twice for one logical trigger.
   let executionId: string | null = null;
-  if (event.eventId) {
+  if (ctx.eventId) {
     const claimed = await tx
       .insert(workflowRuleExecutions)
       .values({
         tenantId: rule.tenantId,
         ruleId: rule.id,
-        triggeredBy: "event",
-        triggerEventId: event.eventId,
-        subjectType: event.subjectType,
-        subjectId: event.subjectId,
+        triggeredBy: ctx.triggeredBy,
+        triggerEventId: ctx.eventId,
+        subjectType: ctx.subjectType,
+        subjectId: ctx.subjectId,
         contextSnapshot: record,
         instantOutcomes: [],
         scheduledQueued: 0,
@@ -178,14 +296,14 @@ async function runOneRule(tx: any, rule: any, event: RuleEvent): Promise<RunResu
     executionId = claimed[0].id;
   }
 
-  // Step 4 — execute instant actions
+  // Step 4 — execute the branch's instant actions
   const instantOutcomes: ActionResult[] = [];
-  for (const action of (rule.instantActions ?? []) as Action[]) {
+  for (const action of branch.instantActions) {
     try {
       const out = await executeAction(action, {
         tenantId: rule.tenantId,
-        subjectType: event.subjectType,
-        subjectId: event.subjectId,
+        subjectType: ctx.subjectType,
+        subjectId: ctx.subjectId,
         record,
         tx,
       });
@@ -199,12 +317,13 @@ async function runOneRule(tx: any, rule: any, event: RuleEvent): Promise<RunResu
     }
   }
 
-  // Step 5 — queue scheduled actions
+  // Step 5 — queue the branch's scheduled actions
   let scheduledQueued = 0;
-  for (let i = 0; i < (rule.scheduledActions ?? []).length; i++) {
-    const sa = (rule.scheduledActions as ScheduledAction[])[i];
+  for (let i = 0; i < branch.scheduledActions.length; i++) {
+    const sa = branch.scheduledActions[i];
     const runAt = computeRunAt(sa, record);
     if (!runAt) continue;
+    const actionIndex = branch.idx * BRANCH_INDEX_STRIDE + i;
 
     // Reschedule existing pending job if it exists
     const existing = await tx
@@ -214,9 +333,9 @@ async function runOneRule(tx: any, rule: any, event: RuleEvent): Promise<RunResu
         and(
           eq(workflowRuleScheduledJobs.tenantId, rule.tenantId),
           eq(workflowRuleScheduledJobs.ruleId, rule.id),
-          eq(workflowRuleScheduledJobs.subjectType, event.subjectType),
-          eq(workflowRuleScheduledJobs.subjectId, event.subjectId),
-          eq(workflowRuleScheduledJobs.actionIndex, i),
+          eq(workflowRuleScheduledJobs.subjectType, ctx.subjectType),
+          eq(workflowRuleScheduledJobs.subjectId, ctx.subjectId),
+          eq(workflowRuleScheduledJobs.actionIndex, actionIndex),
           eq(workflowRuleScheduledJobs.status, "pending")
         )
       )
@@ -235,9 +354,10 @@ async function runOneRule(tx: any, rule: any, event: RuleEvent): Promise<RunResu
       await tx.insert(workflowRuleScheduledJobs).values({
         tenantId: rule.tenantId,
         ruleId: rule.id,
-        actionIndex: i,
-        subjectType: event.subjectType,
-        subjectId: event.subjectId,
+        executionId,
+        actionIndex,
+        subjectType: ctx.subjectType,
+        subjectId: ctx.subjectId,
         actionType: sa.type,
         actionConfig: sa.config,
         runAt,
@@ -267,10 +387,10 @@ async function runOneRule(tx: any, rule: any, event: RuleEvent): Promise<RunResu
     await tx.insert(workflowRuleExecutions).values({
       tenantId: rule.tenantId,
       ruleId: rule.id,
-      triggeredBy: "event",
-      triggerEventId: event.eventId ?? null,
-      subjectType: event.subjectType,
-      subjectId: event.subjectId,
+      triggeredBy: ctx.triggeredBy,
+      triggerEventId: null,
+      subjectType: ctx.subjectType,
+      subjectId: ctx.subjectId,
       contextSnapshot: record,
       instantOutcomes,
       scheduledQueued,
@@ -286,7 +406,56 @@ async function runOneRule(tx: any, rule: any, event: RuleEvent): Promise<RunResu
     })
     .where(eq(workflowRules.id, rule.id));
 
-  return { ruleId: rule.id, matched: true, instantOutcomes, scheduledQueued };
+  return {
+    ruleId: rule.id,
+    matched: true,
+    branchIndex: branch.idx,
+    branchName: branch.name,
+    instantOutcomes,
+    scheduledQueued,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Score-change gating
+// ---------------------------------------------------------------------------
+
+/**
+ * Did the score field move per the rule's config?
+ *   direction increase/decrease — value moved that way;
+ *   with a threshold — fire only when the value CROSSES the threshold
+ *   (before < t ≤ after going up; before ≥ t > after going down), so a score
+ *   hovering above the line doesn't re-fire on every +1.
+ */
+function scoreChangeMatches(
+  rule: any,
+  before: Record<string, unknown> | null | undefined,
+  after: Record<string, unknown> | null | undefined
+): boolean {
+  const cfg = (rule.triggerConfig ?? {}) as { field?: string; direction?: string; threshold?: number };
+  const field = String(cfg.field ?? "");
+  if (!field) return false;
+  const num = (v: unknown) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+  const b = num(before?.[field]);
+  const a = num(after?.[field]);
+  if (a === null || b === null || a === b) return false;
+
+  const direction = cfg.direction ?? "updated";
+  if (direction === "increase" && a <= b) return false;
+  if (direction === "decrease" && a >= b) return false;
+
+  const t = num(cfg.threshold);
+  if (t !== null) {
+    const crossedUp = b < t && a >= t;
+    const crossedDown = b >= t && a < t;
+    if (direction === "increase") return crossedUp;
+    if (direction === "decrease") return crossedDown;
+    return crossedUp || crossedDown;
+  }
+  return true;
 }
 
 function diffChangedFields(
