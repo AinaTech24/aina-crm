@@ -19,6 +19,7 @@ import {
   FileText,
 } from "lucide-react";
 import { formatDate, formatRelative } from "@/lib/utils";
+import { DocumentViewerModal, type ViewerDoc } from "@/components/documents/DocumentViewerModal";
 
 type DocRow = {
   id: string;
@@ -75,7 +76,9 @@ export function DocumentsFeed({
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deletingGroup, setDeletingGroup] = useState<string | null>(null);
   const [open, setOpen] = useState<Record<string, boolean>>({});
+  const [viewer, setViewer] = useState<ViewerDoc | null>(null);
 
   async function handleDelete(id: string) {
     if (!confirm("Permanently delete this document from storage and the database?")) return;
@@ -103,6 +106,29 @@ export function DocumentsFeed({
     document.body.appendChild(a);
     a.click();
     a.remove();
+  }
+
+  async function deleteAll(g: Group) {
+    if (!confirm(`Permanently delete all ${g.docs.length} document(s) for "${g.clientName}"? This cannot be undone.`)) return;
+    setDeletingGroup(g.key);
+    try {
+      const ids = g.docs.map((d) => d.id);
+      const results = await Promise.allSettled(
+        ids.map((id) => fetch(`/api/compliance/documents?id=${encodeURIComponent(id)}`, { method: "DELETE" }))
+      );
+      const okIds = new Set<string>();
+      results.forEach((r, i) => {
+        if (r.status === "fulfilled" && r.value.ok) okIds.add(ids[i]);
+      });
+      setRows((prev) => prev.filter((r) => !okIds.has(r.id)));
+      router.refresh();
+      if (okIds.size < ids.length) alert(`Deleted ${okIds.size} of ${ids.length}. Some could not be removed.`);
+    } catch (err) {
+      console.error(err);
+      alert("Error deleting documents.");
+    } finally {
+      setDeletingGroup(null);
+    }
   }
 
   // Docs that pass the category filter + search (search also matches client).
@@ -261,6 +287,15 @@ export function DocumentsFeed({
                     >
                       <DownloadCloud className="size-4" />
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => deleteAll(g)}
+                      disabled={deletingGroup === g.key}
+                      title="Delete all documents in this group"
+                      className="size-8 rounded-lg hover:bg-rose-50 border border-border/40 grid place-items-center text-muted-foreground hover:text-rose-600 hover:border-rose-200 transition-colors disabled:opacity-50"
+                    >
+                      {deletingGroup === g.key ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+                    </button>
                     {!isFirm && g.clientId && (
                       <a
                         href={`/dashboard/investors/${g.clientId}#documents`}
@@ -303,15 +338,21 @@ export function DocumentsFeed({
                             </div>
                             <div className="flex items-center gap-1.5 print:hidden">
                               {deletingId === d.id && <Loader2 className="size-4 animate-spin text-muted-foreground" />}
-                              <a
-                                href={`/api/compliance/documents/download?id=${encodeURIComponent(d.id)}&inline=1`}
-                                target="_blank"
-                                rel="noopener noreferrer"
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setViewer({
+                                    name: d.name,
+                                    mimeType: d.mimeType,
+                                    src: `/api/compliance/documents/download?id=${encodeURIComponent(d.id)}&inline=1`,
+                                    downloadHref: `/api/compliance/documents/download?id=${encodeURIComponent(d.id)}`,
+                                  })
+                                }
                                 title="View"
                                 className="size-8 rounded-lg hover:bg-secondary/40 border border-border/40 grid place-items-center text-muted-foreground hover:text-brand-cyan transition-colors"
                               >
                                 <Eye className="size-4" />
-                              </a>
+                              </button>
                               <a
                                 href={`/api/compliance/documents/download?id=${encodeURIComponent(d.id)}`}
                                 target="_blank"
@@ -342,6 +383,8 @@ export function DocumentsFeed({
           })}
         </div>
       )}
+
+      <DocumentViewerModal doc={viewer} onClose={() => setViewer(null)} />
     </div>
   );
 }

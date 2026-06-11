@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ChevronLeft, Upload, Loader2, Cloud, HardDrive } from "lucide-react";
+import { ChevronLeft, Upload, Loader2 } from "lucide-react";
 import { SelectField } from "@/components/ui/SelectField";
 import { DateField } from "@/components/ui/DateField";
 import { InvestorLookup } from "@/components/common/InvestorLookup";
@@ -35,14 +35,6 @@ export default function UploadDocumentPage() {
   const [client, setClient] = useState<{ id: string; name: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [storage, setStorage] = useState<{ configured: boolean; bucket: string; region: string } | null>(null);
-
-  useEffect(() => {
-    fetch("/api/diagnostics/storage")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((s) => s && setStorage({ configured: !!s.configured, bucket: s.bucket, region: s.region }))
-      .catch(() => {});
-  }, []);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -99,26 +91,16 @@ export default function UploadDocumentPage() {
   }
 
   return (
-    <div className="space-y-4 max-w-2xl">
+    <div className="space-y-4 max-w-4xl">
       <Link href="/dashboard/documents" className="text-sm text-muted-foreground hover:underline flex items-center gap-1">
         <ChevronLeft className="size-4" /> Back to documents
       </Link>
       <h1 className="text-2xl font-bold tracking-tight">Upload document</h1>
       <p className="text-sm text-muted-foreground">
-        Files are stored encrypted in S3 (ap-south-1, DPDP-compliant). Requires S3 credentials in <code className="bg-muted px-1 rounded">.env</code>.
+        Files are stored encrypted in S3 (ap-south-1, DPDP-compliant).
       </p>
-      {storage &&
-        (storage.configured ? (
-          <div className="text-xs inline-flex items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 text-emerald-700 px-2.5 py-1.5">
-            <Cloud className="size-3.5" /> Storage: <strong>S3</strong> · bucket <code className="font-mono">{storage.bucket}</code> · {storage.region}
-          </div>
-        ) : (
-          <div className="text-xs inline-flex items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 text-amber-800 px-2.5 py-1.5">
-            <HardDrive className="size-3.5" /> Storage: <strong>local disk</strong> — S3 isn&apos;t configured on the server, so files won&apos;t reach your bucket. Set S3 env vars + redeploy.
-          </div>
-        ))}
 
-      <form onSubmit={submit} className="border rounded-lg bg-card p-5 space-y-3">
+      <form onSubmit={submit} className="border rounded-lg bg-card p-5 space-y-4">
         <label className="block border-2 border-dashed rounded-md p-6 text-center cursor-pointer hover:bg-accent/40">
           <input
             type="file"
@@ -133,11 +115,11 @@ export default function UploadDocumentPage() {
           </div>
         </label>
 
-        <label className="block">
-          <div className="text-xs font-medium mb-1">Document name</div>
-          <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder={file?.name ?? ""} className="w-full border rounded-md px-3 py-2 text-sm bg-background" />
-        </label>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <label className="block">
+            <div className="text-xs font-medium mb-1">Document name</div>
+            <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder={file?.name ?? ""} className="w-full border rounded-md px-3 py-2 text-sm bg-background" />
+          </label>
           <label className="block">
             <div className="text-xs font-medium mb-1">Category</div>
             <SelectField value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className="w-full">
@@ -148,22 +130,22 @@ export default function UploadDocumentPage() {
             <div className="text-xs font-medium mb-1">Expires on</div>
             <DateField value={form.expiresOn} onChange={(e) => setForm({ ...form, expiresOn: e.target.value })} className="w-full" />
           </label>
+          <label className="block sm:col-span-2">
+            <div className="text-xs font-medium mb-1">Link to a client <span className="text-muted-foreground font-normal">(optional — for KYC / client documents)</span></div>
+            <InvestorLookup
+              value={client?.id}
+              displayName={client?.name}
+              onSelect={(id, name) => setClient({ id, name })}
+              onClear={() => setClient(null)}
+              placeholder="Search client by name, PAN, or mobile…"
+            />
+            <div className="text-[11px] text-muted-foreground mt-1">Tag the client this document belongs to, so you can see it in the vault.</div>
+          </label>
+          <label className="block sm:col-span-2 lg:col-span-1">
+            <div className="text-xs font-medium mb-1">Notes</div>
+            <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={2} className="w-full border rounded-md px-3 py-2 text-sm bg-background" />
+          </label>
         </div>
-        <label className="block">
-          <div className="text-xs font-medium mb-1">Link to a client <span className="text-muted-foreground font-normal">(optional — for KYC / client documents)</span></div>
-          <InvestorLookup
-            value={client?.id}
-            displayName={client?.name}
-            onSelect={(id, name) => setClient({ id, name })}
-            onClear={() => setClient(null)}
-            placeholder="Search client by name, PAN, or mobile…"
-          />
-          <div className="text-[11px] text-muted-foreground mt-1">Tag the client this document belongs to, so you can see it in the vault.</div>
-        </label>
-        <label className="block">
-          <div className="text-xs font-medium mb-1">Notes</div>
-          <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={3} className="w-full border rounded-md px-3 py-2 text-sm bg-background" />
-        </label>
         {err && <div className="text-sm text-rose-600">{err}</div>}
         <div className="flex justify-end gap-2 pt-2 border-t">
           <Link href="/dashboard/documents" className="rounded-md border px-4 py-2 text-sm">Cancel</Link>

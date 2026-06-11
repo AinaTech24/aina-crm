@@ -8,9 +8,10 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { FileText, Upload, Download, Trash2, Loader2, FolderOpen, UserCheck, Send, Link as LinkIcon, Copy, ExternalLink, CheckCircle2, Eye, Cloud, HardDrive } from "lucide-react";
+import { FileText, Upload, Download, Trash2, Loader2, FolderOpen, UserCheck, Send, Link as LinkIcon, Copy, ExternalLink, CheckCircle2, Eye, Cloud, HardDrive, ChevronRight } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { DocumentViewerModal, type ViewerDoc } from "@/components/documents/DocumentViewerModal";
 
 type Doc = {
   id: string;
@@ -45,6 +46,7 @@ export function InvestorDocumentsSection({ investorId, investorName, investorPho
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [storage, setStorage] = useState<{ configured: boolean; bucket: string; region: string } | null>(null);
+  const [viewer, setViewer] = useState<ViewerDoc | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   async function load() {
@@ -67,6 +69,17 @@ export function InvestorDocumentsSection({ investorId, investorName, investorPho
       .then((r) => (r.ok ? r.json() : null))
       .then((s) => s && setStorage({ configured: !!s.configured, bucket: s.bucket, region: s.region }))
       .catch(() => {});
+  }, []);
+
+  // When linked from the Documents vault with #documents, scroll this section
+  // into view (the element renders client-side, so the native hash jump misses).
+  useEffect(() => {
+    if (typeof window === "undefined" || window.location.hash !== "#documents") return;
+    const el = document.getElementById("documents");
+    if (el) {
+      const t = setTimeout(() => el.scrollIntoView({ behavior: "smooth", block: "start" }), 200);
+      return () => clearTimeout(t);
+    }
   }, []);
 
   async function onFiles(files: FileList | null) {
@@ -126,15 +139,18 @@ export function InvestorDocumentsSection({ investorId, investorName, investorPho
     }
   }
 
-  // View opens the file inline in a new tab (PDF/image preview) rather than
-  // forcing a download.
+  // View opens the file inline in an in-app pop-up modal (PDF/image preview)
+  // rather than a new browser tab.
   async function view(d: Doc) {
     setBusyId(d.id);
     try {
       const res = await fetch(`/api/investors/${investorId}/documents/download?docId=${d.id}&inline=1`);
       const j = await res.json().catch(() => ({}));
-      if (res.ok && j.url) window.open(j.url, "_blank", "noopener,noreferrer");
-      else toast.error(j.error ?? "Could not open document", "View failed");
+      if (res.ok && j.url) {
+        setViewer({ name: d.name, mimeType: d.mimeType, src: j.url, onDownload: () => download(d) });
+      } else {
+        toast.error(j.error ?? "Could not open document", "View failed");
+      }
     } finally {
       setBusyId(null);
     }
@@ -394,6 +410,8 @@ export function InvestorDocumentsSection({ investorId, investorName, investorPho
         onConfirm={() => confirmId && doDelete(confirmId)}
         onCancel={() => setConfirmId(null)}
       />
+
+      <DocumentViewerModal doc={viewer} onClose={() => setViewer(null)} />
     </div>
   );
 }
@@ -417,15 +435,25 @@ function DocGroup({
   onDownload: (d: Doc) => void;
   onDelete: (id: string) => void;
 }) {
+  const [open, setOpen] = useState(true);
   return (
     <div>
-      <div className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5 mb-2">
-        <Icon className="size-3.5" /> {title}
-      </div>
-      {emptyHint ? (
-        <div className="text-xs text-muted-foreground/70 px-1 py-2">{emptyHint}</div>
-      ) : (
-        <ul className="divide-y divide-border rounded-lg border border-border overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="w-full text-xs font-semibold text-muted-foreground flex items-center gap-1.5 mb-2 hover:text-foreground transition-colors"
+        aria-expanded={open}
+      >
+        <ChevronRight className={`size-3.5 shrink-0 transition-transform duration-300 ${open ? "rotate-90" : ""}`} />
+        <Icon className="size-3.5" /> <span>{title}</span>
+        <span className="ml-1 rounded-full bg-secondary px-1.5 text-[9px] font-bold">{docs.length}</span>
+      </button>
+      <div className={`grid transition-all duration-300 ease-in-out ${open ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"}`}>
+        <div className="overflow-hidden pb-0.5">
+          {emptyHint ? (
+            <div className="text-xs text-muted-foreground/70 px-1 py-2">{emptyHint}</div>
+          ) : (
+            <ul className="divide-y divide-border rounded-lg border border-border overflow-hidden">
           {docs.map((d) => (
             <li key={d.id} className="flex items-center gap-3 px-3 py-2.5 hover:bg-brand-cyan-light/20 transition-colors">
               <FileText className="size-4 text-muted-foreground shrink-0" />
@@ -467,8 +495,10 @@ function DocGroup({
               </button>
             </li>
           ))}
-        </ul>
-      )}
+            </ul>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
