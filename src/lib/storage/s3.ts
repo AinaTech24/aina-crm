@@ -31,6 +31,25 @@ export function isS3Configured(): boolean {
   return !!(accessKeyId() && secretAccessKey());
 }
 
+/**
+ * Whether S3 is mandatory (no local-disk fallback allowed). On by default in
+ * production, so a missing/broken S3 config fails LOUDLY instead of silently
+ * writing documents to the container's ephemeral disk (which then disappear on
+ * the next deploy and never reach the bucket). Opt out with ALLOW_LOCAL_STORAGE=1.
+ */
+function s3Required(): boolean {
+  return process.env.NODE_ENV === "production" && process.env.ALLOW_LOCAL_STORAGE !== "1";
+}
+
+/** Throws a clear error when S3 is mandatory but not configured. */
+function assertS3OrLocalAllowed(): void {
+  if (!isS3Configured() && s3Required()) {
+    throw new Error(
+      "S3 storage is required in production but is not configured — set S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY (a matching pair) in .env.production. Refusing to store the document on local disk."
+    );
+  }
+}
+
 function client(): S3Client {
   const akid = accessKeyId();
   return new S3Client({
@@ -86,6 +105,7 @@ export function vaultKey(tenantId: string, kind: "compliance" | "kyc" | "marketi
 
 export async function presignedPutUrl(key: string, contentType: string, ttlSeconds = 600): Promise<string> {
   if (!isS3Configured()) {
+    assertS3OrLocalAllowed();
     return `/api/upload-local/${key}`;
   }
   // NOTE: do NOT set ServerSideEncryption here. When it's part of the signed
@@ -161,6 +181,7 @@ export async function deleteObject(key: string): Promise<void> {
  */
 export async function putObject(key: string, body: Buffer | Uint8Array, contentType: string): Promise<void> {
   if (!isS3Configured()) {
+    assertS3OrLocalAllowed();
     const filePath = path.join(process.cwd(), "node-local", "uploads", key);
     const dir = path.dirname(filePath);
     await fs.promises.mkdir(dir, { recursive: true });
