@@ -39,6 +39,10 @@ import { CrashStressTest } from "./CrashStressTest";
 import { FireNumberCalculator } from "./FireNumberCalculator";
 import { ChildEducationProjector } from "./ChildEducationProjector";
 import { GoalCollisionTimeline } from "./GoalCollisionTimeline";
+import { XirrCalculator } from "./XirrCalculator";
+import { RebalanceCalculator } from "./RebalanceCalculator";
+import { GoalFeasibilityScore } from "./GoalFeasibilityScore";
+import { ExpenseDragCalculator } from "./ExpenseDragCalculator";
 import {
   fvSip,
   fvLumpsum,
@@ -89,6 +93,10 @@ type TabKey =
   | "fire"
   | "childedu"
   | "collision"
+  | "xirr"
+  | "rebalance"
+  | "feasibility"
+  | "expensedrag"
   | "sip"
   | "lumpsum"
   | "goal"
@@ -133,6 +141,10 @@ const TABS: Array<{ key: TabKey; label: string }> = [
   { key: "fire", label: "🔥 FIRE Number" },
   { key: "childedu", label: "🔥 Child Education" },
   { key: "collision", label: "🔥 Goal-Collision Timeline" },
+  { key: "xirr", label: "🧭 XIRR" },
+  { key: "rebalance", label: "🧭 Portfolio Rebalancing" },
+  { key: "feasibility", label: "🧭 Goal-Feasibility Score" },
+  { key: "expensedrag", label: "🧭 Expense-Ratio Drag" },
   { key: "sip", label: "1. SIP" },
   { key: "lumpsum", label: "2. Lumpsum" },
   { key: "goal", label: "3. Goal" },
@@ -201,6 +213,10 @@ export function CalculatorsApp() {
       {tab === "fire" && <FireNumberCalculator />}
       {tab === "childedu" && <ChildEducationProjector />}
       {tab === "collision" && <GoalCollisionTimeline />}
+      {tab === "xirr" && <XirrCalculator />}
+      {tab === "rebalance" && <RebalanceCalculator />}
+      {tab === "feasibility" && <GoalFeasibilityScore />}
+      {tab === "expensedrag" && <ExpenseDragCalculator />}
       {tab === "sip" && <SipCalc />}
       {tab === "lumpsum" && <LumpsumCalc />}
       {tab === "goal" && <GoalCalc />}
