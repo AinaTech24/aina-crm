@@ -15,6 +15,7 @@
     "check:rbac": "node scripts/check-require-cap.mjs",
     "check:rls": "node scripts/check-rls.mjs",
     "check:migrations": "node scripts/check-migration-dups.mjs",
+    "check:colors": "node scripts/check-hardcoded-colors.mjs",
     "check:calc": "tsx scripts/check-calc-math.ts",
     "check:finance": "tsx scripts/check-finance-math.ts",
     "check:spine": "tsx scripts/check-spine.ts",

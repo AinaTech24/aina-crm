@@ -24,6 +24,8 @@ jobs:
         run: npm run check:migrations
       - name: Calculator math assertions
         run: npm run check:calc
+      - name: Hardcoded-color ratchet (shared components stay themeable)
+        run: npm run check:colors
       - name: Unit tests (money math + central spine)
         run: npm test
 

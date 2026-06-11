@@ -10,11 +10,11 @@ import { Megaphone, Pin } from "lucide-react";
 import { withTenant } from "@/db/client";
 
 const CAT_TONE: Record<string, string> = {
-  urgent: "border-rose-200 bg-rose-50/70 text-rose-900",
-  policy: "border-blue-200 bg-blue-50/70 text-blue-900",
-  event: "border-violet-200 bg-violet-50/70 text-violet-900",
-  system: "border-amber-200 bg-amber-50/70 text-amber-900",
-  general: "border-slate-200 bg-slate-50/70 text-slate-800",
+  urgent: "border-rose-200 bg-rose-50/70 text-rose-900 dark:border-rose-900 dark:bg-rose-950/50 dark:text-rose-200",
+  policy: "border-blue-200 bg-blue-50/70 text-blue-900 dark:border-blue-900 dark:bg-blue-950/50 dark:text-blue-200",
+  event: "border-violet-200 bg-violet-50/70 text-violet-900 dark:border-violet-900 dark:bg-violet-950/50 dark:text-violet-200",
+  system: "border-amber-200 bg-amber-50/70 text-amber-900 dark:border-amber-900 dark:bg-amber-950/50 dark:text-amber-200",
+  general: "border-border bg-secondary/70 text-foreground",
 };
 
 export async function AnnouncementsStrip({ session }: { session: { tenantId: string; roles: string[]; branchId?: string | null } }) {

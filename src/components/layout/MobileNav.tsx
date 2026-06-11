@@ -66,7 +66,7 @@ export function MobileNav({ children }: { children: React.ReactNode }) {
             <button
               type="button"
               onClick={() => setOpen(false)}
-              className="absolute top-3 right-3 z-10 size-8 rounded-lg bg-white/15 hover:bg-white/25 text-white grid place-items-center"
+              className="absolute top-3 right-3 z-10 size-11 rounded-lg bg-foreground/10 hover:bg-foreground/20 text-foreground grid place-items-center"
               aria-label="Close menu"
             >
               <X className="size-4" />

@@ -9,6 +9,7 @@
  */
 
 import Link from "next/link";
+import { Suspense } from "react";
 import { sql } from "drizzle-orm";
 import { LayoutDashboard, Star } from "lucide-react";
 import { withTenant } from "@/db/client";
@@ -23,6 +24,7 @@ import { AnnouncementsStrip } from "@/components/announcements/AnnouncementsStri
 import { DashboardMemberFilter } from "@/components/dashboards/DashboardMemberFilter";
 import { getDefaultBoard } from "@/lib/dashboards/service";
 import { DashboardView } from "@/components/dashboards/custom/DashboardView";
+import { DashboardPageSkeleton } from "@/components/dashboards/DashboardSkeletons";
 import type { PlacedWidget } from "@/lib/dashboards/widgets";
 
 export const dynamic = "force-dynamic";
@@ -121,7 +123,10 @@ export default async function DashboardPage({
     <>
       <AnnouncementsStrip session={session} />
       {memberBar}
-      {dash}
+      {/* The role cockpits are async server components doing their own data
+          fetching — stream them in behind a skeleton so the shell (sidebar,
+          topbar, announcements) paints immediately. */}
+      <Suspense fallback={<DashboardPageSkeleton />}>{dash}</Suspense>
     </>
   );
 }

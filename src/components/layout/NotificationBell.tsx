@@ -104,7 +104,7 @@ export function NotificationBell() {
                 const Sev = SEVERITY[n.severity] ?? SEVERITY.info;
                 const Icon = isBday ? Cake : Sev.icon;
                 const Inner = (
-                  <div className={`flex items-start gap-2 px-3 py-2 hover:bg-accent ${isBday ? "bg-violet-50/60" : ""} ${!isBday && n.readAt ? "opacity-60" : ""}`}>
+                  <div className={`flex items-start gap-2 px-3 py-2 hover:bg-accent ${isBday ? "bg-violet-50/60 dark:bg-violet-950/40" : ""} ${!isBday && n.readAt ? "opacity-60" : ""}`}>
                     <Icon className={`size-4 mt-0.5 flex-shrink-0 ${isBday ? "text-violet-600" : Sev.color}`} />
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-medium leading-tight">{n.title}</div>

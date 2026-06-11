@@ -103,7 +103,7 @@ export function SubDistributorLookup({
         className="input-base text-sm w-full"
       />
       {open && (q.length >= 1 || results.length > 0) && (
-        <div className="absolute z-30 mt-1 w-full bg-white border border-slate-200 rounded-md shadow-lg max-h-72 overflow-auto">
+        <div className="absolute z-30 mt-1 w-full bg-card border border-border rounded-md shadow-lg max-h-72 overflow-auto">
           {busy && (
             <div className="px-3 py-2 text-xs text-muted-foreground flex items-center gap-2">
               <Loader2 className="size-3 animate-spin" /> Searching…

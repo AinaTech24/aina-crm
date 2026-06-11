@@ -31,6 +31,25 @@ export function ChartSkeleton({ height = "h-56" }: { height?: string }) {
   );
 }
 
+/** Full-page fallback while a role dashboard streams in (Suspense boundary on
+ *  /dashboard) — KPI row + two chart placeholders, matching the cockpit shape. */
+export function DashboardPageSkeleton() {
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <CardSkeleton />
+        <CardSkeleton />
+        <CardSkeleton />
+        <CardSkeleton />
+      </div>
+      <div className="grid lg:grid-cols-2 gap-4">
+        <ChartSkeleton />
+        <LeaderboardSkeleton />
+      </div>
+    </div>
+  );
+}
+
 export function LeaderboardSkeleton() {
   return (
     <div className="card-surface glass-card p-5 animate-pulse flex flex-col">
