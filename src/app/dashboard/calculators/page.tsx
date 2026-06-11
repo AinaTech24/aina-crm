@@ -85,7 +85,7 @@ export default async function CalculatorsPage() {
         </p>
       </div>
 
-      <CalculatorsApp />
+      <CalculatorsApp firmName={firmName} />
 
       {/* Disclaimer must stay visible in print/PDF — any illustration handed
           to a client has to carry the market-risk disclaimer (AMFI best

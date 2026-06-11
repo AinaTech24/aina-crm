@@ -30,6 +30,7 @@ export type DialogKind =
   | "capture_risk_profile_manually"
   | "send_doc_checklist"
   | "capture_approval"
+  | "won_lead_product"
   | "mark_lost";
 
 export type StageAction = {
@@ -39,6 +40,9 @@ export type StageAction = {
   targetStage: string;
   hint?: string;
   behaviour: StageActionBehaviour;
+  /** If set, this action only shows when the lead's pipeline is one of these
+   *  (mf | insurance | general). Used to branch Won-Lead onboarding by product. */
+  pipelines?: string[];
 };
 
 export const STAGE_ACTIONS: Record<string, StageAction[]> = {

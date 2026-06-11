@@ -385,7 +385,119 @@ export const LEAD_TO_CLIENT_STAGES: SeedStage[] = [
     automationsOnEnter: ["client_review_cadence_init"],
     flavour: "terminal_success",
   },
+
+  // ───────────────────────── INSURANCE ONBOARDING BRANCH ──
+  // Parallel onboarding journey for insurance-led clients. Forks from "Won
+  // Lead" when the client's primary product is Insurance (leads.pipeline =
+  // "insurance"). Rendered instead of the MF onboarding (request_documents …)
+  // when the lead is on the insurance branch — see PRODUCT_BRANCH below.
+  {
+    key: "insurance_needs_analysis",
+    name: "Needs Analysis",
+    description: "Assess the client's protection gap, dependents, liabilities and goals.",
+    order: 31,
+    ownerRole: "sales",
+    requiredFields: [],
+    slaDays: 2,
+    allowedActions: ["insurance_quote"],
+    automationsOnEnter: ["insurance_needs_analysis_start"],
+  },
+  {
+    key: "insurance_quote",
+    name: "Quote Shared",
+    description: "Illustrations / premium quotes shared for the recommended cover.",
+    order: 32,
+    ownerRole: "sales",
+    requiredFields: [],
+    slaDays: 3,
+    allowedActions: ["insurance_proposal", "insurance_lost"],
+  },
+  {
+    key: "insurance_proposal",
+    name: "Proposal Filled",
+    description: "Proposal form completed; KYC + medicals collected.",
+    order: 33,
+    ownerRole: "operations",
+    requiredFields: [],
+    slaDays: 2,
+    allowedActions: ["insurance_underwriting"],
+  },
+  {
+    key: "insurance_underwriting",
+    name: "Underwriting",
+    description: "Submitted to the insurer; underwriting / medicals in progress.",
+    order: 34,
+    ownerRole: "operations",
+    requiredFields: [],
+    slaDays: 10,
+    allowedActions: ["insurance_policy_issued", "insurance_lost"],
+  },
+  {
+    key: "insurance_policy_issued",
+    name: "Policy Issued",
+    description: "Policy issued and in force — client onboarded on insurance.",
+    order: 35,
+    ownerRole: "operations",
+    requiredFields: [],
+    allowedActions: [],
+    automationsOnEnter: ["insurance_policy_issued_welcome"],
+    flavour: "terminal_success",
+  },
+  {
+    key: "insurance_lost",
+    name: "Not Proceeded",
+    description: "Client did not proceed / proposal declined.",
+    order: 36,
+    ownerRole: "sales",
+    requiredFields: [],
+    allowedActions: ["insurance_needs_analysis"],
+    flavour: "terminal_failure",
+  },
 ];
+
+/** Onboarding stage keys per product branch — drives journey-bar filtering. */
+export const MF_ONBOARDING_KEYS = [
+  "request_documents", "documents_pending", "documents_received",
+  "kyc_validated", "kyc_registered", "kyc_pending", "modify_kyc", "physical_kyc", "online_kyc",
+  "ucc_create", "ucc_activated", "mandate_create", "mandate_activated", "mandate_reject",
+  "make_transaction", "transaction_successful", "transaction_failed",
+  "family_mapping", "update_information", "add_in_review_sheet",
+] as const;
+
+export const INSURANCE_ONBOARDING_KEYS = [
+  "insurance_needs_analysis", "insurance_quote", "insurance_proposal",
+  "insurance_underwriting", "insurance_policy_issued", "insurance_lost",
+] as const;
+
+/** Entry stage for the insurance onboarding branch (from Won Lead). */
+export const INSURANCE_ENTRY_STAGE = "insurance_needs_analysis";
+
+/**
+ * Products the firm can onboard a client into. The PRIMARY product chosen on
+ * "Won Lead" decides which onboarding branch (pipeline) the journey takes.
+ */
+export const LEAD_PRODUCTS = [
+  { value: "mutual_funds", label: "Mutual Funds", pipeline: "mf" },
+  { value: "insurance", label: "Insurance", pipeline: "insurance" },
+  { value: "stocks_pms_aif", label: "Stocks / PMS / AIF", pipeline: "general" },
+  { value: "nps", label: "NPS", pipeline: "general" },
+  { value: "fd_bonds", label: "FD / Bonds", pipeline: "general" },
+  { value: "other", label: "Other", pipeline: "general" },
+] as const;
+
+export type LeadProduct = (typeof LEAD_PRODUCTS)[number]["value"];
+
+/** Map a primary product to its sales pipeline (mf | insurance | general). */
+export function productToPipeline(primary: string): "mf" | "insurance" | "general" {
+  return LEAD_PRODUCTS.find((p) => p.value === primary)?.pipeline ?? "mf";
+}
+
+/** Which onboarding branch a stage belongs to (null = shared / lead phase). */
+export function onboardingBranchOf(stageKey: string): "mf" | "insurance" | null {
+  if ((INSURANCE_ONBOARDING_KEYS as readonly string[]).includes(stageKey)) return "insurance";
+  if ((MF_ONBOARDING_KEYS as readonly string[]).includes(stageKey)) return "mf";
+  return null;
+}
 
 /**
  * Disposition of an instance once it reaches a given stage.
@@ -405,6 +517,9 @@ export function stageDisposition(stageKey: string): "completed" | "lost" | "in_p
   if (!s) return "in_progress";
   if (s.flavour === "terminal_success") return "completed";
   if (s.flavour === "terminal_failure" && s.order <= LEAD_PHASE_LAST_ORDER) return "lost";
+  // The insurance branch's "Not Proceeded" is a genuine closed-lost terminal
+  // (unlike the MF retry-failure stages), so close the journey out.
+  if (stageKey === "insurance_lost") return "lost";
   return "in_progress";
 }
 
@@ -499,4 +614,14 @@ export const LEAD_TO_CLIENT_TRANSITIONS: Array<{
   { from: "transaction_successful", to: "family_mapping", name: "Map Family" },
   { from: "family_mapping", to: "update_information", name: "Enrich Master" },
   { from: "update_information", to: "add_in_review_sheet", name: "Add to Review" },
+
+  // ─── Won Lead → Insurance onboarding branch ────────────────────
+  { from: "won_lead", to: "insurance_needs_analysis", name: "Start Insurance Onboarding" },
+  { from: "insurance_needs_analysis", to: "insurance_quote", name: "Share Quote" },
+  { from: "insurance_quote", to: "insurance_proposal", name: "Proposal Filled" },
+  { from: "insurance_quote", to: "insurance_lost", name: "Dropped" },
+  { from: "insurance_proposal", to: "insurance_underwriting", name: "Submit to Insurer" },
+  { from: "insurance_underwriting", to: "insurance_policy_issued", name: "Policy Issued" },
+  { from: "insurance_underwriting", to: "insurance_lost", name: "Declined" },
+  { from: "insurance_lost", to: "insurance_needs_analysis", name: "Reopen" },
 ];

@@ -16,6 +16,18 @@
 import { useState } from "react";
 import { Trash2 } from "lucide-react";
 import { ClientNameField } from "./ClientNameField";
+import { SchemeAutocomplete, type SchemePick } from "../mf/SchemeAutocomplete";
+
+/** Map an MFAPI scheme category to one of our asset-class buckets. */
+function deriveAssetClass(cat?: string | null): string | null {
+  const c = (cat ?? "").toLowerCase();
+  if (c.includes("equity")) return "Equity";
+  if (c.includes("debt")) return "Debt";
+  if (c.includes("hybrid")) return "Hybrid";
+  if (c.includes("gold") || c.includes("silver") || c.includes("commodit")) return "Commodity";
+  if (c.includes("solution")) return "Solution Oriented";
+  return null;
+}
 
 const PERIODS = [
   { key: "m1", label: "1 mth" },
@@ -68,6 +80,27 @@ export function ReviewOfInvestments() {
   }
   function addRow() { setRows((prev) => [...prev, blankRow()]); }
   function removeRow(id: number) { setRows((prev) => (prev.length <= 1 ? prev : prev.filter((r) => r.id !== id))); }
+
+  /** A scheme was picked from the MFAPI catalog — set name + asset class +
+   *  category immediately, then fetch live trailing returns and fill the cells. */
+  async function applyScheme(id: number, pick: SchemePick) {
+    const ac = deriveAssetClass(pick.category);
+    updateRow(id, { scheme: pick.schemeName, ...(ac ? { assetClass: ac } : {}), ...(pick.category ? { category: pick.category } : {}) });
+    try {
+      const res = await fetch(`/api/mf/schemes/${encodeURIComponent(pick.schemeCode)}/returns`);
+      if (!res.ok) return;
+      const j = await res.json();
+      const ret = j?.returns ?? {};
+      const r1 = (v: unknown) => (typeof v === "number" ? Math.round(v * 10) / 10 : "");
+      const ac2 = deriveAssetClass(j?.category ?? pick.category);
+      setRows((prev) => prev.map((row) => row.id === id ? {
+        ...row,
+        ...(j?.category ? { category: j.category } : {}),
+        ...(ac2 ? { assetClass: ac2 } : {}),
+        perf: { m1: r1(ret.m1), m3: r1(ret.m3), m6: r1(ret.m6), y1: r1(ret.y1), y3: r1(ret.y3), y5: r1(ret.y5), si: r1(ret.si) },
+      } : row));
+    } catch { /* upstream unreachable — keep manual entry */ }
+  }
 
   // Unweighted average per visible period (across rows that have a value).
   const averages: Record<string, number | null> = {};
@@ -139,12 +172,13 @@ export function ReviewOfInvestments() {
                 <td className="p-1.5 align-top">
                   <SelectOrCustom value={r.category} options={CATEGORIES} onChange={(v) => updateRow(r.id, { category: v })} />
                 </td>
-                <td className="p-1.5 align-top min-w-[180px]">
-                  <input
-                    value={r.scheme}
-                    onChange={(e) => updateRow(r.id, { scheme: e.target.value })}
-                    placeholder="Scheme name"
-                    className="input-base text-sm w-full"
+                <td className="p-1.5 align-top min-w-[240px]">
+                  <SchemeAutocomplete
+                    size="sm"
+                    defaultValue={r.scheme}
+                    placeholder="Search scheme (live from MFAPI)…"
+                    onSelect={(s) => applyScheme(r.id, s)}
+                    onQueryChange={(q) => updateRow(r.id, { scheme: q })}
                   />
                 </td>
                 {shownPeriods.map((p) => (
@@ -190,8 +224,9 @@ export function ReviewOfInvestments() {
       <button type="button" onClick={addRow} className="btn-secondary text-xs print:hidden">+ Add more</button>
 
       <p className="text-[11px] text-muted-foreground">
-        *Mutual fund investments are subject to market risk; read all scheme-related documents carefully.
-        Returns are entered from the latest factsheet/research and are point-to-point trailing returns.
+        Pick a scheme to <strong>auto-fill live trailing returns from MFAPI</strong> (point-to-point; periods ≥ 1 year are annualised),
+        or type any name and enter values manually. *Mutual fund investments are subject to market risk; read all scheme-related
+        documents carefully. Past performance may or may not be sustained.
       </p>
     </div>
   );

@@ -7,7 +7,7 @@
  */
 
 import { useState } from "react";
-import { Printer, ChevronLeft, Search, X } from "lucide-react";
+import { Printer, ChevronLeft, Search, X, Download } from "lucide-react";
 import { ClientNameField } from "./ClientNameField";
 import { Sip360Planner } from "./Sip360Planner";
 import { StepUpReckoner } from "./StepUpReckoner";
@@ -195,9 +195,21 @@ const CATALOG: CalcGroup[] = [
 const ALL_CALCS: CalcMeta[] = CATALOG.flatMap((g) => g.items);
 const CALC_META: Record<string, CalcMeta> = Object.fromEntries(ALL_CALCS.map((c) => [c.key, c]));
 
-export function CalculatorsApp() {
+export function CalculatorsApp({ firmName }: { firmName?: string } = {}) {
   const [tab, setTab] = useState<TabKey | null>(null);
   const [query, setQuery] = useState("");
+  const [clientName, setClientName] = useState("");
+
+  function downloadPdf(calcName: string) {
+    // Browsers save the print-to-PDF with the document title as the filename.
+    const safe = (s: string) => (s || "").replace(/[^\w .&-]+/g, "").trim();
+    const prevTitle = document.title;
+    document.title = [safe(clientName) || "Client", safe(calcName), safe(firmName ?? "")]
+      .filter(Boolean)
+      .join(" — ");
+    window.print();
+    window.setTimeout(() => { document.title = prevTitle; }, 800);
+  }
 
   if (tab === null) {
     return <CalcGallery query={query} setQuery={setQuery} onPick={setTab} />;
@@ -206,7 +218,7 @@ export function CalculatorsApp() {
   const meta = CALC_META[tab];
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3 print:hidden">
+      <div className="flex items-center justify-between gap-3 flex-wrap print:hidden">
         <button onClick={() => { setTab(null); setQuery(""); }} className="btn-ghost text-xs">
           <ChevronLeft className="size-3.5" /> All calculators
         </button>
@@ -215,10 +227,28 @@ export function CalculatorsApp() {
             <span aria-hidden>{meta.icon}</span> {meta.name}
           </span>
         )}
-        <button onClick={() => window.print()} className="btn-ghost text-xs">
-          <Printer className="size-3.5" /> Print
-        </button>
+        <div className="flex items-center gap-2">
+          <input
+            value={clientName}
+            onChange={(e) => setClientName(e.target.value)}
+            placeholder="Client name (for PDF)"
+            className="h-8 rounded-md border border-border bg-card px-2.5 text-xs w-44 focus:outline-none focus:border-brand-cyan focus:ring-2 focus:ring-brand-cyan/15"
+          />
+          <button onClick={() => window.print()} className="btn-ghost text-xs" title="Print">
+            <Printer className="size-3.5" /> Print
+          </button>
+          <button onClick={() => downloadPdf(meta?.name ?? "Calculator")} className="btn-primary text-xs" title="Save a branded PDF">
+            <Download className="size-3.5" /> Download PDF
+          </button>
+        </div>
       </div>
+
+      {/* Print-only — client line under the firm letterhead. */}
+      {clientName && (
+        <div className="hidden print:block" style={{ marginBottom: 6, fontSize: 13 }}>
+          <strong>Prepared for:</strong> {clientName}
+        </div>
+      )}
 
       {tab === "sip360" && <Sip360Planner />}
       {tab === "reckoner" && <StepUpReckoner />}
