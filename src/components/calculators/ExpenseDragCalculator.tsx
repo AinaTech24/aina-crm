@@ -8,6 +8,7 @@
 import { useMemo, useState } from "react";
 import { computeExpenseDrag } from "@/lib/calculators/expense-drag";
 import { inr, fmtPct, NumberField, Section, Stat, Table, Insight } from "./ui";
+import { CalcChart } from "./CalcChart";
 
 export function ExpenseDragCalculator() {
   const [lumpsum, setLumpsum] = useState(0);
@@ -50,6 +51,14 @@ export function ExpenseDragCalculator() {
       </div>
 
       <Section n={1} title="Wealth gap over time">
+        <CalcChart
+          data={r.series.map((p) => ({ year: p.year, a: p.a, b: p.b }))}
+          xKey="year"
+          series={[
+            { key: "b", name: `Lower ER (${fmtPct(expenseRatioBPct)})`, color: "#10b981" },
+            { key: "a", name: `Higher ER (${fmtPct(expenseRatioAPct)})`, color: "#ef4444" },
+          ]}
+        />
         <div className="max-h-96 overflow-y-auto print:max-h-none">
           <Table
             head={["Year", `A (${fmtPct(expenseRatioAPct)} ER)`, `B (${fmtPct(expenseRatioBPct)} ER)`, "Gap"]}

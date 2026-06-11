@@ -400,7 +400,6 @@ export const LEAD_TO_CLIENT_STAGES: SeedStage[] = [
     requiredFields: [],
     slaDays: 2,
     allowedActions: ["insurance_quote"],
-    automationsOnEnter: ["insurance_needs_analysis_start"],
   },
   {
     key: "insurance_quote",
@@ -440,7 +439,6 @@ export const LEAD_TO_CLIENT_STAGES: SeedStage[] = [
     ownerRole: "operations",
     requiredFields: [],
     allowedActions: [],
-    automationsOnEnter: ["insurance_policy_issued_welcome"],
     flavour: "terminal_success",
   },
   {

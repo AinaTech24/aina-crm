@@ -14,6 +14,7 @@
 import { useMemo, useState } from "react";
 import { ClientNameField } from "./ClientNameField";
 import { computeSip360, type Sip360Scenario } from "@/lib/calculators/sip360";
+import { FundReturnPicker } from "./FundReturnPicker";
 import {
   inr, clampNum, fmtPct, Field, NumberField, SmallNum, Toggle, Section, Stat, Table, Insight,
 } from "./ui";
@@ -99,6 +100,8 @@ export function Sip360Planner() {
           )}
         </div>
       </div>
+
+      <div className="max-w-xs"><FundReturnPicker onPick={setRate1} /></div>
 
       {/* ─────────── Optional comparisons ─────────── */}
       <div className="rounded-lg border border-border/70 p-4 space-y-4 bg-secondary/20 print:bg-transparent">

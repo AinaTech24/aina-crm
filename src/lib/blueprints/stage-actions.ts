@@ -243,8 +243,10 @@ export const STAGE_ACTIONS: Record<string, StageAction[]> = {
       label: "Qualified — Won Lead",
       tone: "success",
       targetStage: "won_lead",
-      hint: "Ready to convert into a client.",
-      behaviour: { kind: "advance_only" },
+      hint: "Pick which product(s) the client is investing in — the onboarding flow adapts to it.",
+      // Opens the product-interest dialog; on save it records the product, sets
+      // the pipeline and advances to Won Lead (then the right onboarding branch).
+      behaviour: { kind: "open_dialog", dialog: "won_lead_product" },
     },
     {
       key: "not_qualified",
@@ -261,6 +263,7 @@ export const STAGE_ACTIONS: Record<string, StageAction[]> = {
   //   - Request Documents  → kick off the doc-collection flow
   //   - Documents Received → docs already on file, skip the request
   won_lead: [
+    // ── MF / general onboarding ──
     {
       key: "request_docs",
       label: "Request Documents",
@@ -268,6 +271,7 @@ export const STAGE_ACTIONS: Record<string, StageAction[]> = {
       targetStage: "request_documents",
       hint: "Mint a doc-collection link and send it to the client.",
       behaviour: { kind: "open_dialog", dialog: "send_doc_checklist" },
+      pipelines: ["mf", "general"],
     },
     {
       key: "docs_already_received",
@@ -275,6 +279,86 @@ export const STAGE_ACTIONS: Record<string, StageAction[]> = {
       tone: "secondary",
       targetStage: "documents_received",
       hint: "Client gave docs in-person — skip the request step.",
+      behaviour: { kind: "advance_only" },
+      pipelines: ["mf", "general"],
+    },
+    // ── Insurance onboarding ──
+    {
+      key: "start_insurance",
+      label: "Start Insurance Onboarding",
+      tone: "primary",
+      targetStage: "insurance_needs_analysis",
+      hint: "Begin the protection journey: needs analysis → quote → proposal → underwriting → policy.",
+      behaviour: { kind: "advance_only" },
+      pipelines: ["insurance"],
+    },
+  ],
+
+  // ──────────────────────────────────── INSURANCE ONBOARDING ──
+  insurance_needs_analysis: [
+    {
+      key: "quote",
+      label: "Share Quote",
+      tone: "primary",
+      targetStage: "insurance_quote",
+      hint: "Protection gap assessed — share premium illustrations.",
+      behaviour: { kind: "advance_only" },
+    },
+  ],
+  insurance_quote: [
+    {
+      key: "proposal",
+      label: "Proposal Filled",
+      tone: "primary",
+      targetStage: "insurance_proposal",
+      hint: "Client accepted — fill the proposal form + collect KYC/medicals.",
+      behaviour: { kind: "advance_only" },
+    },
+    {
+      key: "dropped",
+      label: "Client Dropped",
+      tone: "danger",
+      targetStage: "insurance_lost",
+      hint: "Client decided not to proceed.",
+      behaviour: { kind: "advance_only" },
+    },
+  ],
+  insurance_proposal: [
+    {
+      key: "underwriting",
+      label: "Submit to Insurer",
+      tone: "primary",
+      targetStage: "insurance_underwriting",
+      hint: "Proposal submitted — underwriting / medicals in progress.",
+      behaviour: { kind: "advance_only" },
+    },
+  ],
+  insurance_underwriting: [
+    {
+      key: "issued",
+      label: "Policy Issued",
+      tone: "success",
+      targetStage: "insurance_policy_issued",
+      hint: "Insurer issued the policy — client is onboarded.",
+      behaviour: { kind: "advance_only" },
+    },
+    {
+      key: "declined",
+      label: "Declined / Not Proceeded",
+      tone: "danger",
+      targetStage: "insurance_lost",
+      hint: "Underwriting declined or client backed out.",
+      behaviour: { kind: "advance_only" },
+    },
+  ],
+  insurance_policy_issued: [],
+  insurance_lost: [
+    {
+      key: "reopen",
+      label: "Reopen",
+      tone: "secondary",
+      targetStage: "insurance_needs_analysis",
+      hint: "Revisit — client is interested again.",
       behaviour: { kind: "advance_only" },
     },
   ],

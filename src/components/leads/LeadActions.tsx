@@ -14,6 +14,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { RmSelector } from "@/components/common/RmSelector";
+import { ProductInterestDialog } from "@/components/leads/ProductInterestDialog";
 
 type Props = {
   leadId: string;
@@ -63,7 +64,7 @@ const ACTIVITY_TYPES = [
 export function LeadActions(props: Props) {
   const router = useRouter();
   const [dialog, setDialog] = useState<
-    "stage" | "convert" | "task" | "meeting" | "schedule_meeting" | "activity" | null
+    "stage" | "convert" | "task" | "meeting" | "schedule_meeting" | "activity" | "won_product" | null
   >(null);
 
   // Listen for "open this dialog please" events emitted by the
@@ -83,6 +84,11 @@ export function LeadActions(props: Props) {
           // Open the in-place meeting modal — creates a real review_meeting
           // row, not just a task. Same record the Meetings module reads from.
           setDialog("schedule_meeting");
+          break;
+        case "won_lead_product":
+          // "Qualified — Won Lead" → ask which product the client wants. The
+          // dialog records it, sets the pipeline, and advances to Won Lead.
+          setDialog("won_product");
           break;
         case "send_risk_profile":
         case "capture_risk_profile_manually":
@@ -175,6 +181,18 @@ export function LeadActions(props: Props) {
             // Tell the BlueprintStageBar (client component) to re-fetch
             // its /blueprint endpoint — router.refresh() alone doesn't
             // re-run its useEffect.
+            window.dispatchEvent(new CustomEvent("blueprint:refresh"));
+          }}
+        />
+      )}
+      {dialog === "won_product" && (
+        <ProductInterestDialog
+          leadId={props.leadId}
+          leadName={props.leadName}
+          onClose={() => setDialog(null)}
+          onDone={() => {
+            setDialog(null);
+            router.refresh();
             window.dispatchEvent(new CustomEvent("blueprint:refresh"));
           }}
         />

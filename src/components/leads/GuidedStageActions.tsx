@@ -51,11 +51,15 @@ type Outcome =
 export function GuidedStageActions({
   leadId,
   currentStage,
+  pipeline,
   onOpenDialog,
   onAfterAdvance,
 }: {
   leadId: string;
   currentStage: string;
+  /** Lead's product pipeline (mf | insurance | general). Filters product-
+   *  specific actions (e.g. Won-Lead onboarding branch). */
+  pipeline?: string;
   onOpenDialog?: (kind: DialogKind) => void;
   onAfterAdvance?: () => void;
 }) {
@@ -71,7 +75,11 @@ export function GuidedStageActions({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const actions = STAGE_ACTIONS[currentStage] ?? [];
+  // Show only the actions for this lead's pipeline. Untagged actions show for
+  // everyone; tagged ones (e.g. Won-Lead's "Request Documents" vs "Start
+  // Insurance Onboarding") show only for their matching pipeline.
+  const lp = pipeline ?? "mf";
+  const actions = (STAGE_ACTIONS[currentStage] ?? []).filter((a) => !a.pipelines || a.pipelines.includes(lp));
 
   if (actions.length === 0) {
     return null; // terminal / boundary stage — nothing to do here

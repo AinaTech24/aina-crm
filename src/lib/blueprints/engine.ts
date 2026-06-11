@@ -33,12 +33,14 @@ import {
   leadBlueprintInstances,
   leadStageHistory,
   eventsOutbox,
+  leads,
 } from "@/db/schema";
 import {
   LEAD_TO_CLIENT_BLUEPRINT_NAME,
   LEAD_TO_CLIENT_STAGES,
   LEAD_TO_CLIENT_TRANSITIONS,
   stageDisposition,
+  onboardingBranchOf,
 } from "./lead_to_client";
 import { checkPrerequisites } from "./prerequisites";
 
@@ -437,6 +439,9 @@ export interface StageView {
     slaRemainingDays: number | null;
     isDelayed: boolean;
   };
+  /** The lead's product pipeline (mf | insurance | general) — drives which
+   *  onboarding branch the journey + actions show. */
+  pipeline: string;
   allStages: Array<{
     key: string;
     name: string;
@@ -462,11 +467,30 @@ export interface StageView {
 
 export async function getStage(tx: Tx, tenantId: string, leadId: string): Promise<StageView> {
   const inst = await ensureInstance(tx, tenantId, leadId);
-  const stages = await tx
+  const allDbStages = await tx
     .select()
     .from(blueprintStages)
     .where(eq(blueprintStages.blueprintId, inst.blueprintId))
     .orderBy(asc(blueprintStages.stageOrder));
+
+  // Which onboarding branch does this lead follow? Insurance-primary leads walk
+  // the insurance journey; everyone else (mf / general) walks MF onboarding.
+  const [leadRow] = await tx
+    .select({ pipeline: leads.pipeline })
+    .from(leads)
+    .where(eq(leads.id, leadId))
+    .limit(1);
+  const pipeline = (leadRow?.pipeline as string) ?? "mf";
+  const branch: "mf" | "insurance" = pipeline === "insurance" ? "insurance" : "mf";
+
+  // Hide the OFF-branch onboarding stages so the stepper shows one clean path.
+  // Lead-phase / shared stages always show; the current stage is never hidden
+  // (e.g. if a lead is mid-insurance but its pipeline flag was changed).
+  const stages = allDbStages.filter((s) => {
+    if (s.stageKey === inst.currentStageKey) return true;
+    const b = onboardingBranchOf(s.stageKey);
+    return b === null || b === branch;
+  });
   const currentIdx = stages.findIndex((s) => s.stageKey === inst.currentStageKey);
   const current = stages[currentIdx];
 
@@ -495,6 +519,7 @@ export async function getStage(tx: Tx, tenantId: string, leadId: string): Promis
       slaRemainingDays,
       isDelayed: inst.isDelayed,
     },
+    pipeline,
     allStages: stages.map((s, i) => ({
       key: s.stageKey,
       name: s.stageName,
@@ -506,7 +531,7 @@ export async function getStage(tx: Tx, tenantId: string, leadId: string): Promis
       phase: s.stageOrder <= 10 ? "lead" : "client",
     })),
     history: history.map((h) => {
-      const stage = stages.find((s) => s.stageKey === h.stageKey);
+      const stage = allDbStages.find((s) => s.stageKey === h.stageKey);
       return {
         stageKey: h.stageKey,
         stageName: stage?.stageName ?? h.stageKey,

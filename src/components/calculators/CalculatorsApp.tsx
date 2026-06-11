@@ -43,6 +43,7 @@ import { XirrCalculator } from "./XirrCalculator";
 import { RebalanceCalculator } from "./RebalanceCalculator";
 import { GoalFeasibilityScore } from "./GoalFeasibilityScore";
 import { ExpenseDragCalculator } from "./ExpenseDragCalculator";
+import { FundReturnPicker } from "./FundReturnPicker";
 import {
   fvSip,
   fvLumpsum,
@@ -417,6 +418,7 @@ function SipCalc() {
         <NumberField label="Years" value={years} setValue={setYears} step={1} />
         <NumberField label="Expected return (% p.a.)" value={returnPct} setValue={setReturnPct} step={0.1} />
       </div>
+      <div className="max-w-xs"><FundReturnPicker onPick={setReturnPct} /></div>
       <ResultRow
         cells={[
           { label: "Amount invested", value: inr(invested) },
@@ -451,6 +453,7 @@ function LumpsumCalc() {
         <NumberField label="Years" value={years} setValue={setYears} step={1} />
         <NumberField label="Expected return (% p.a.)" value={returnPct} setValue={setReturnPct} step={0.1} />
       </div>
+      <div className="max-w-xs"><FundReturnPicker onPick={setReturnPct} /></div>
       <ResultRow
         cells={[
           { label: "Amount invested", value: inr(amount) },
@@ -485,6 +488,7 @@ function GoalCalc() {
         <NumberField label="Years to goal" value={years} setValue={setYears} step={1} />
         <NumberField label="Expected return (% p.a.)" value={returnPct} setValue={setReturnPct} step={0.1} />
       </div>
+      <div className="max-w-xs"><FundReturnPicker onPick={setReturnPct} /></div>
       <ResultRow
         cells={[
           { label: "Goal amount", value: inr(goalAmount) },

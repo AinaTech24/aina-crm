@@ -9,6 +9,7 @@
 import { useMemo, useState } from "react";
 import { computeCrashStress } from "@/lib/calculators/crash-stress";
 import { inr, fmtPct, NumberField, Section, Stat, Table, Insight } from "./ui";
+import { CalcChart } from "./CalcChart";
 
 export function CrashStressTest() {
   const [monthlySip, setMonthlySip] = useState(25000);
@@ -62,6 +63,15 @@ export function CrashStressTest() {
       </Insight>
 
       <Section n={1} title="Corpus path (year-by-year)">
+        <CalcChart
+          data={r.series.filter((p) => p.month % 12 === 0).map((p) => ({ year: p.month / 12, stay: p.stay, noCrash: p.noCrash, panic: p.panic }))}
+          xKey="year"
+          series={[
+            { key: "stay", name: "Stayed invested", color: "#10b981" },
+            { key: "noCrash", name: "No crash", color: "#94a3b8" },
+            { key: "panic", name: "Panic-sold", color: "#ef4444" },
+          ]}
+        />
         <div className="max-h-96 overflow-y-auto print:max-h-none">
           <Table
             head={["Year", "Stayed invested", "No crash", "Panic-sold"]}

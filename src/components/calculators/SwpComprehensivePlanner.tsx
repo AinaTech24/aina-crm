@@ -18,6 +18,7 @@ import {
 import {
   inr, fmtPct, clampNum, NumberField, Field, Toggle, Segmented, Section, Stat, Table, Insight,
 } from "./ui";
+import { CalcChart } from "./CalcChart";
 
 export function SwpComprehensivePlanner() {
   const [clientName, setClientName] = useState("");
@@ -202,6 +203,11 @@ export function SwpComprehensivePlanner() {
       {/* Year-by-year */}
       {result.yearRows.length > 0 && (
         <Section n={1} title="Year-by-year distribution">
+          <CalcChart
+            data={result.yearRows.map((r) => ({ year: r.year, balance: r.endBalance }))}
+            xKey="year"
+            series={[{ key: "balance", name: "Corpus balance", color: "#0ea5e9" }]}
+          />
           <div className="max-h-96 overflow-y-auto print:max-h-none">
             <Table
               head={["Year", `Withdrawal / ${per}`, "Withdrawn that year", "Balance at year-end"]}

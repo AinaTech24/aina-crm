@@ -11,6 +11,7 @@ import { useMemo, useState } from "react";
 import { ClientNameField } from "./ClientNameField";
 import { computeAnnualLumpsumRequired } from "@/lib/calculators/annual-lumpsum-required";
 import { inr, fmtPct, NumberField, Field, Stat, Table, Insight, Section } from "./ui";
+import { CalcChart } from "./CalcChart";
 
 export function AnnualLumpsumRequiredCalculator() {
   const [clientName, setClientName] = useState("");
@@ -89,6 +90,11 @@ export function AnnualLumpsumRequiredCalculator() {
 
       {/* Accumulation schedule (scenario 1) */}
       <Section n={1} title={`Accumulation schedule @ ${fmtPct(s1.ratePct)}`}>
+        <CalcChart
+          data={s1.schedule.map((r) => ({ year: r.year, value: r.yearEndValue }))}
+          xKey="year"
+          series={[{ key: "value", name: "Corpus", color: "#0ea5e9" }]}
+        />
         <div className="max-h-96 overflow-y-auto print:max-h-none">
           <Table
             head={["Year", "Investment", "Corpus at year-end"]}

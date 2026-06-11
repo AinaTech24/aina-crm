@@ -110,7 +110,7 @@ export function BlueprintStageBar({
   onConvertClick?: () => void;
 }) {
   const router = useRouter();
-  const [data, setData] = useState<{ current: Current; allStages: Stage[]; history: HistoryRow[] } | null>(null);
+  const [data, setData] = useState<{ current: Current; allStages: Stage[]; history: HistoryRow[]; pipeline?: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [advancing, setAdvancing] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
@@ -378,6 +378,7 @@ export function BlueprintStageBar({
         <GuidedStageActions
           leadId={leadId}
           currentStage={current.key}
+          pipeline={data?.pipeline}
           onOpenDialog={(kind) => {
             // Bubble up to the page so the existing LeadActions dialogs
             // (LogActivity, LogPastMeeting, etc.) can open.
