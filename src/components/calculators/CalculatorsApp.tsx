@@ -2,8 +2,8 @@
 
 /**
  * 8-calculator tabbed app — Network FP "3.5 MF Investment Calculators"
- * parity. Pure client-side; uses the existing goal-planning math
- * helpers.
+ * parity and advisor tools. Pure client-side; uses the existing goal-planning
+ * math helpers.
  */
 
 import { useRef, useState } from "react";
@@ -19,11 +19,13 @@ import {
   GitCompare, TrendingDown, Landmark, Scissors, Calculator,
   Warehouse, BarChart3, Recycle, PieChart,
   CalendarDays, SlidersHorizontal, Anchor, ClipboardList,
-  Siren, Rocket,
+  Siren, Rocket, Trophy, Coffee, PiggyBank, Home, Gauge, Layers, Wallet,
+  Lightbulb, Sparkles, LifeBuoy, Wand2, Split, Umbrella, Building, Sailboat, Gem, Car, ShieldAlert, Boxes, CirclePause, Brain, History, CopyPlus,
   type LucideIcon,
 } from "lucide-react";
 import { captureCalcResults } from "./capture";
 import { ClientNameField } from "./ClientNameField";
+import { ScenarioControls } from "./ScenarioControls";
 import { Sip360Planner } from "./Sip360Planner";
 import { StepUpReckoner } from "./StepUpReckoner";
 import { IncomeBridgePlanner } from "./IncomeBridgePlanner";
@@ -59,6 +61,28 @@ import { RebalanceCalculator } from "./RebalanceCalculator";
 import { GoalFeasibilityScore } from "./GoalFeasibilityScore";
 import { ExpenseDragCalculator } from "./ExpenseDragCalculator";
 import { FundReturnPicker } from "./FundReturnPicker";
+import { CrorepatiCountdown } from "./CrorepatiCountdown";
+import { HabitCorpusCalculator } from "./HabitCorpusCalculator";
+import { FdVsEquityGap } from "./FdVsEquityGap";
+import { RentVsBuyPlanner } from "./RentVsBuyPlanner";
+import { LifestyleShockCalculator } from "./LifestyleShockCalculator";
+import { MoneyLastCalculator } from "./MoneyLastCalculator";
+import { CroreRaceCalculator } from "./CroreRaceCalculator";
+import { PortfolioHealthScore } from "./PortfolioHealthScore";
+import { FundOverlapCalculator } from "./FundOverlapCalculator";
+import { AumOpportunityCalculator } from "./AumOpportunityCalculator";
+import { PrepayVsInvestCalculator } from "./PrepayVsInvestCalculator";
+import { BtidCalculator } from "./BtidCalculator";
+import { NpsVsMfCalculator } from "./NpsVsMfCalculator";
+import { PassiveIncomeBuilder } from "./PassiveIncomeBuilder";
+import { WeddingPlanner } from "./WeddingPlanner";
+import { DreamCarPlanner } from "./DreamCarPlanner";
+import { EmergencyFundPlanner } from "./EmergencyFundPlanner";
+import { RetirementBucketStrategy } from "./RetirementBucketStrategy";
+import { SipPauseCostCalculator } from "./SipPauseCostCalculator";
+import { MoneyPersonalityQuiz } from "./MoneyPersonalityQuiz";
+import { InflationTimeMachine } from "./InflationTimeMachine";
+import { WealthDoublingCalculator } from "./WealthDoublingCalculator";
 import {
   fvSip,
   fvLumpsum,
@@ -113,6 +137,28 @@ type TabKey =
   | "rebalance"
   | "feasibility"
   | "expensedrag"
+  | "crorepati"
+  | "habit"
+  | "fdgap"
+  | "lifestyle"
+  | "moneylast"
+  | "crorerace"
+  | "rentbuy"
+  | "portfoliohealth"
+  | "fundoverlap"
+  | "aumopportunity"
+  | "prepayinvest"
+  | "btid"
+  | "npsvsmf"
+  | "passiveincome"
+  | "wedding"
+  | "dreamcar"
+  | "emergency"
+  | "buckets"
+  | "sippause"
+  | "quiz"
+  | "timemachine"
+  | "doubling"
   | "sip"
   | "lumpsum"
   | "goal"
@@ -193,7 +239,21 @@ const CATALOG: CalcGroup[] = [
     ],
   },
   {
+    title: "Investor Conversion", icon: Rocket, items: [
+      { key: "crorepati", name: "Crorepati Countdown", icon: Trophy, desc: "The month a SIP crosses 1/2/5 crore" },
+      { key: "habit", name: "Small Habit, Big Corpus", icon: Coffee, desc: "Turn daily spending into a long-term corpus" },
+      { key: "fdgap", name: "FD vs Equity Gap", icon: PiggyBank, desc: "Compare FD comfort with equity wealth creation" },
+      { key: "rentbuy", name: "Rent vs Buy", icon: Home, desc: "Buy a home or rent and invest the difference" },
+      { key: "lifestyle", name: "Inflation Lifestyle Shock", icon: Siren, desc: "What today's lifestyle costs at retirement" },
+      { key: "moneylast", name: "Will My Money Last?", icon: Hourglass, desc: "Does the retirement corpus outlive the client?" },
+      { key: "crorerace", name: "₹1 Crore Race", icon: Flag, desc: "Years to the goal across different SIPs" },
+    ],
+  },
+  {
     title: "Advisor Tools", icon: Wrench, items: [
+      { key: "portfoliohealth", name: "Portfolio Health Score", icon: Gauge, desc: "100-point portfolio diagnostic for reviews" },
+      { key: "fundoverlap", name: "Fund Overlap", icon: Layers, desc: "Show when many funds behave like fewer funds" },
+      { key: "aumopportunity", name: "AUM Opportunity", icon: Wallet, desc: "Estimate extra AUM and SIP business potential" },
       { key: "xirr", name: "XIRR", icon: CalendarDays, desc: "True return on irregular, dated cashflows" },
       { key: "rebalance", name: "Portfolio Rebalancing", icon: SlidersHorizontal, desc: "Exact buy/sell to hit your target mix" },
       { key: "expensedrag", name: "Expense-Ratio Drag", icon: Anchor, desc: "What a costlier fund quietly costs you" },
@@ -204,6 +264,34 @@ const CATALOG: CalcGroup[] = [
     title: "Markets & Mindset", icon: Flame, items: [
       { key: "crash", name: "Market-Crash Stress Test", icon: Siren, desc: "The cost of panic-selling vs staying invested" },
       { key: "fire", name: "FIRE Number", icon: Rocket, desc: "When can you achieve financial independence?" },
+    ],
+  },
+  {
+    title: "Smart Decisions", icon: Lightbulb, items: [
+      { key: "prepayinvest", name: "Prepay vs Invest", icon: Split, desc: "Prepay the loan or invest the surplus?" },
+      { key: "btid", name: "Term + MF vs ULIP", icon: Umbrella, desc: "Buy term & invest vs a bundled policy" },
+      { key: "npsvsmf", name: "NPS vs Mutual Fund", icon: Building, desc: "Retirement: tax break vs flexibility" },
+    ],
+  },
+  {
+    title: "Dreams & Milestones", icon: Sparkles, items: [
+      { key: "passiveincome", name: "Financial-Freedom Builder", icon: Sailboat, desc: "The SIP for a target passive income" },
+      { key: "wedding", name: "Dream Wedding Planner", icon: Gem, desc: "Fund the big day, stress-free" },
+      { key: "dreamcar", name: "Dream Car — Invest First", icon: Car, desc: "Invest & buy cash vs an auto-loan" },
+    ],
+  },
+  {
+    title: "Essentials & Behaviour", icon: LifeBuoy, items: [
+      { key: "emergency", name: "Emergency Fund Planner", icon: ShieldAlert, desc: "Build the financial seatbelt first" },
+      { key: "buckets", name: "Retirement Bucket Strategy", icon: Boxes, desc: "Draw income for life across 3 buckets" },
+      { key: "sippause", name: "Cost of Pausing a SIP", icon: CirclePause, desc: "What skipping SIPs costs at the goal" },
+    ],
+  },
+  {
+    title: "Engagement & Fun", icon: Wand2, items: [
+      { key: "quiz", name: "Money Personality Quiz", icon: Brain, desc: "Reveal an investor archetype + asset mix" },
+      { key: "timemachine", name: "Inflation Time Machine", icon: History, desc: "What money is worth across the years" },
+      { key: "doubling", name: "Wealth Doubling (Rule of 72)", icon: CopyPlus, desc: "How fast money doubles + milestones" },
     ],
   },
 ];
@@ -303,6 +391,7 @@ export function CalculatorsApp({ firmName }: { firmName?: string } = {}) {
             <MessageCircle className="size-3.5" /> WhatsApp
           </button>
           <button onClick={() => window.print()} className="btn-ghost text-xs" title="Print"><Printer className="size-3.5" /></button>
+          <ScenarioControls calculatorKey={tab} calculatorName={calcName} clientName={clientName} containerRef={calcRef} />
         </div>
       </div>
 
@@ -368,6 +457,28 @@ export function CalculatorsApp({ firmName }: { firmName?: string } = {}) {
         {tab === "rebalance" && <RebalanceCalculator />}
         {tab === "feasibility" && <GoalFeasibilityScore />}
         {tab === "expensedrag" && <ExpenseDragCalculator />}
+        {tab === "crorepati" && <CrorepatiCountdown />}
+        {tab === "habit" && <HabitCorpusCalculator />}
+        {tab === "fdgap" && <FdVsEquityGap />}
+        {tab === "rentbuy" && <RentVsBuyPlanner />}
+        {tab === "lifestyle" && <LifestyleShockCalculator />}
+        {tab === "moneylast" && <MoneyLastCalculator />}
+        {tab === "crorerace" && <CroreRaceCalculator />}
+        {tab === "portfoliohealth" && <PortfolioHealthScore />}
+        {tab === "fundoverlap" && <FundOverlapCalculator />}
+        {tab === "aumopportunity" && <AumOpportunityCalculator />}
+        {tab === "prepayinvest" && <PrepayVsInvestCalculator />}
+        {tab === "btid" && <BtidCalculator />}
+        {tab === "npsvsmf" && <NpsVsMfCalculator />}
+        {tab === "passiveincome" && <PassiveIncomeBuilder />}
+        {tab === "wedding" && <WeddingPlanner />}
+        {tab === "dreamcar" && <DreamCarPlanner />}
+        {tab === "emergency" && <EmergencyFundPlanner />}
+        {tab === "buckets" && <RetirementBucketStrategy />}
+        {tab === "sippause" && <SipPauseCostCalculator />}
+        {tab === "quiz" && <MoneyPersonalityQuiz />}
+        {tab === "timemachine" && <InflationTimeMachine />}
+        {tab === "doubling" && <WealthDoublingCalculator />}
         {tab === "sip" && <SipCalc />}
         {tab === "lumpsum" && <LumpsumCalc />}
         {tab === "goal" && <GoalCalc />}

@@ -78,11 +78,14 @@ export function Segmented<T extends string>({
       {label && (
         <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium block mb-1">{label}</span>
       )}
-      <div className="inline-flex flex-wrap rounded-lg border border-border bg-secondary/30 p-0.5 gap-0.5">
+      {/* data-calc-seg + data-active let the scenario save/restore snapshot the
+          selected mode generically (see ScenarioControls). */}
+      <div data-calc-seg={label ?? ""} className="inline-flex flex-wrap rounded-lg border border-border bg-secondary/30 p-0.5 gap-0.5">
         {options.map((o) => (
           <button
             key={o.value}
             type="button"
+            data-active={value === o.value ? "1" : undefined}
             onClick={() => onChange(o.value)}
             className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
               value === o.value ? "bg-brand-cyan text-white shadow-sm" : "text-muted-foreground hover:text-foreground"

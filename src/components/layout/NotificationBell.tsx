@@ -130,6 +130,15 @@ export function NotificationBell() {
               })}
             </ul>
           )}
+          <div className="border-t border-border px-3 py-2 text-center">
+            <Link
+              href="/dashboard/notifications"
+              onClick={() => setOpen(false)}
+              className="text-xs font-medium text-brand-cyan-deep hover:underline"
+            >
+              View all notifications →
+            </Link>
+          </div>
         </div>
       )}
     </div>

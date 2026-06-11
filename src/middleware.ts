@@ -125,12 +125,12 @@ export async function middleware(req: NextRequest) {
     if (!onAdminSurface) {
       const adminToken = req.cookies.get(ADMIN_SESSION_COOKIE)?.value;
       if (adminToken && (await verifySession(adminToken))?.isPlatformAdmin) {
-        return NextResponse.redirect(new URL("/super-admin", req.url));
+        return tag(NextResponse.redirect(new URL("/super-admin", req.url)));
       }
     }
     const loginUrl = new URL("/login", req.url);
     loginUrl.searchParams.set("next", pathname);
-    const redirect = NextResponse.redirect(loginUrl);
+    const redirect = tag(NextResponse.redirect(loginUrl));
     // Clear the stale/invalid session cookie on the way to login so it can't keep
     // re-failing (no manual cookie-clearing needed).
     if (token) redirect.cookies.delete(cookieName);
@@ -142,15 +142,15 @@ export async function middleware(req: NextRequest) {
   if (onAdminSurface) {
     if (!session.isPlatformAdmin) {
       if (pathname.startsWith("/api/")) {
-        return NextResponse.json({ error: "forbidden" }, { status: 403 });
+        return tag(NextResponse.json({ error: "forbidden" }, { status: 403 }));
       }
-      return NextResponse.redirect(new URL("/dashboard", req.url));
+      return tag(NextResponse.redirect(new URL("/dashboard", req.url)));
     }
   } else if (
     session.isPlatformAdmin &&
     (pathname === "/dashboard" || pathname.startsWith("/dashboard/"))
   ) {
-    return NextResponse.redirect(new URL("/super-admin", req.url));
+    return tag(NextResponse.redirect(new URL("/super-admin", req.url)));
   }
 
   const res = tag(NextResponse.next());
