@@ -56,13 +56,13 @@ export default async function DocumentsPage() {
           .map((r) => r.relatedEntityId as string)
       )
     );
-    const clientInfo: Record<string, { name: string; email: string | null; phone: string | null }> = {};
+    const clientInfo: Record<string, { name: string; email: string | null; phone: string | null; avatarUrl: string | null }> = {};
     if (investorIds.length) {
       const names = await tx
-        .select({ id: investors.id, name: investors.name, email: investors.email, phone: investors.phone })
+        .select({ id: investors.id, name: investors.name, email: investors.email, phone: investors.phone, avatarUrl: investors.avatarUrl })
         .from(investors)
         .where(inArray(investors.id, investorIds));
-      for (const n of names) clientInfo[n.id] = { name: n.name, email: n.email, phone: n.phone };
+      for (const n of names) clientInfo[n.id] = { name: n.name, email: n.email, phone: n.phone, avatarUrl: n.avatarUrl };
     }
 
     return {
@@ -98,6 +98,7 @@ export default async function DocumentsPage() {
       clientName: info?.name ?? null,
       clientEmail: info?.email ?? null,
       clientPhone: info?.phone ?? null,
+      clientAvatar: cid && info?.avatarUrl ? `/api/investors/${cid}/avatar` : null,
     };
   });
 

@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ChevronLeft, Sparkles, Loader2, AlertTriangle, ExternalLink } from "lucide-react";
+import { ChevronLeft, Sparkles, Loader2, AlertTriangle, ExternalLink, Camera, Trash2 } from "lucide-react";
+import { Avatar } from "@/components/ui/Avatar";
 import { InvestorLookup } from "@/components/common/InvestorLookup";
 import { RmSelector } from "@/components/common/RmSelector";
 import { SubDistributorLookup } from "@/components/common/SubDistributorLookup";
@@ -48,6 +49,7 @@ export default function NewLeadPage() {
   const router = useRouter();
   const [form, setForm] = useState({
     name: "",
+    avatarUrl: "",
     email: "",
     phone: "",
     city: "",
@@ -72,6 +74,35 @@ export default function NewLeadPage() {
   const [err, setErr] = useState<string | null>(null);
   const [duplicates, setDuplicates] = useState<DupMatch[]>([]);
   const [dupChecking, setDupChecking] = useState(false);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+
+  async function onPickAvatar(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) return setErr("Please choose an image file.");
+    if (file.size > 5 * 1024 * 1024) return setErr("Image must be under 5 MB.");
+    setUploadingAvatar(true);
+    setErr(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("kind", "general");
+      const up = await fetch("/api/compliance/upload", { method: "POST", body: fd })
+        .then((r) => r.json())
+        .catch(() => ({}));
+      if (!up?.key) return setErr(up?.error ?? "Photo upload failed");
+      setForm((f) => ({ ...f, avatarUrl: up.key }));
+      setAvatarPreview(URL.createObjectURL(file));
+    } finally {
+      setUploadingAvatar(false);
+    }
+  }
+  function clearAvatar() {
+    setForm((f) => ({ ...f, avatarUrl: "" }));
+    setAvatarPreview(null);
+  }
 
   // Debounced live duplicate scan — fires when phone or email changes,
   // hits /api/leads/check-duplicate, surfaces matches inline.
@@ -120,6 +151,7 @@ export default function NewLeadPage() {
       // string would fail the API's enum / uuid / number validators).
       const payload: any = {
         name: form.name,
+        avatarUrl: form.avatarUrl || undefined,
         email: form.email || undefined,
         phone: form.phone || undefined,
         city: form.city || undefined,
@@ -191,6 +223,22 @@ export default function NewLeadPage() {
       </div>
 
       <form onSubmit={submit} className="card-surface p-5 space-y-4">
+        <div className="flex items-center gap-3">
+          <Avatar src={avatarPreview} name={form.name} size={56} />
+          <div className="flex items-center gap-2">
+            <label className="btn-secondary text-xs inline-flex items-center gap-1.5 cursor-pointer">
+              {uploadingAvatar ? <Loader2 className="size-3.5 animate-spin" /> : <Camera className="size-3.5" />}
+              {form.avatarUrl ? "Change photo" : "Add photo"}{" "}
+              <span className="text-muted-foreground font-normal">(optional)</span>
+              <input type="file" accept="image/*" className="hidden" onChange={onPickAvatar} />
+            </label>
+            {form.avatarUrl && (
+              <button type="button" onClick={clearAvatar} className="btn-ghost text-xs inline-flex items-center gap-1 text-rose-600">
+                <Trash2 className="size-3.5" /> Remove
+              </button>
+            )}
+          </div>
+        </div>
         <Row label="Name" value={form.name} setValue={(v) => set("name", v)} required />
         <Row
           label="Email"

@@ -34,6 +34,8 @@ const CreateBody = z.object({
   phone: z.string().optional(),
   pan: z.string().optional(),
   city: z.string().optional(),
+  // Optional lead photo — storage key (general kind) or URL. Never required.
+  avatarUrl: z.string().max(500).optional(),
   source: z
     .enum([
       // Spec-canonical (10)
@@ -162,6 +164,7 @@ export async function POST(req: NextRequest) {
           phoneNormalized: normalizePhoneLast10(body.phone),
           pan: normalizePan(body.pan),
           city: body.city || null,
+          avatarUrl: body.avatarUrl || null,
           source: normalizeLeadSource(body.source),
           sourceCampaign: body.sourceCampaign || null,
           stage: "new",

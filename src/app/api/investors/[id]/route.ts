@@ -37,6 +37,8 @@ const Patch = z.object({
   email: z.string().email().optional().or(z.literal("")),
   phone: z.string().optional(),
   whatsappPhone: z.string().optional(),
+  // Client photo — storage key (general kind) or external URL; "" clears it.
+  avatarUrl: z.string().max(500).nullable().optional(),
   segmentTag: z.enum(["HNI", "Affluent", "Retail", "NRI", "Corporate"]).optional(),
   investorCategory: z.enum(["individual", "huf", "corporate", "company", "trust", "nri", "minor", "other"]).optional(),
   rmId: z.string().uuid().optional(),

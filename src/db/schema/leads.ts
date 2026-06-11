@@ -20,6 +20,10 @@ export const leads = pgTable(
     city: text("city"),
     pincode: text("pincode"),
 
+    /** Optional lead photo — storage key (S3 general/ kind) or external URL;
+     *  served via /api/leads/[id]/avatar. Never mandatory. */
+    avatarUrl: text("avatar_url"),
+
     /**
      * Lead source — per spec §6 Module 3:
      *   Referral · Website · Social Media · Webinar · Seminar · Walk-in

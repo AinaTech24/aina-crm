@@ -35,6 +35,10 @@ export const investors = pgTable(
     alternatePhone: text("alternate_phone"),
     whatsappPhone: text("whatsapp_phone"),
 
+    /** Client photo — storage key (S3 general/ kind) or external URL; served
+     *  via /api/investors/[id]/avatar. Optional. */
+    avatarUrl: text("avatar_url"),
+
     /** Profile (used in client master + risk profile prefill). */
     occupation: text("occupation"), // matches master_values('occupation')
     incomeRange: text("income_range"), // matches master_values('income_range')

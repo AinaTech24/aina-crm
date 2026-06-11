@@ -48,6 +48,7 @@ import { SipHealthCard, type SipHealth } from "@/components/investors/SipHealthC
 import { CrossSellCard } from "@/components/investors/CrossSellCard";
 import { RelatedModulesRail } from "@/components/investors/RelatedModulesRail";
 import { InvestorDocumentsSection } from "@/components/investors/InvestorDocumentsSection";
+import { InvestorAvatarEditor } from "@/components/investors/InvestorAvatarEditor";
 import { EmailRelatedList } from "@/components/comms/EmailRelatedList";
 import { WhatsAppRelatedList } from "@/components/comms/WhatsAppRelatedList";
 import { SectionNav } from "@/components/common/SectionNav";
@@ -334,14 +335,7 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
       <RelatedListSection moduleKey="investors-detail" sectionKey="header">
       <div className="border rounded-lg bg-card p-6">
         <div className="flex items-start gap-4">
-          <div className="size-16 rounded-full bg-primary/10 grid place-items-center text-xl font-bold flex-shrink-0">
-            {inv.name
-              .split(" ")
-              .map((n) => n[0])
-              .slice(0, 2)
-              .join("")
-              .toUpperCase()}
-          </div>
+          <InvestorAvatarEditor investorId={inv.id} name={inv.name} hasAvatar={!!inv.avatarUrl} size={64} />
           <div className="flex-1 min-w-0">
             <h1 className="text-2xl font-bold tracking-tight">{inv.name}</h1>
             <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">

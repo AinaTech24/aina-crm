@@ -11,7 +11,6 @@ import {
   Loader2,
   Search,
   Filter,
-  UserCircle2,
   Building2,
   ChevronRight,
   Eye,
@@ -20,6 +19,8 @@ import {
 } from "lucide-react";
 import { formatDate, formatRelative } from "@/lib/utils";
 import { DocumentViewerModal, type ViewerDoc } from "@/components/documents/DocumentViewerModal";
+import { Avatar } from "@/components/ui/Avatar";
+import { SelectField } from "@/components/ui/SelectField";
 
 type DocRow = {
   id: string;
@@ -36,6 +37,7 @@ type DocRow = {
   clientName?: string | null;
   clientEmail?: string | null;
   clientPhone?: string | null;
+  clientAvatar?: string | null;
 };
 
 type Group = {
@@ -44,6 +46,7 @@ type Group = {
   clientName: string;
   clientEmail: string | null;
   clientPhone: string | null;
+  clientAvatar: string | null;
   docs: DocRow[];
   expiring: number;
   expired: number;
@@ -157,6 +160,7 @@ export function DocumentsFeed({
           clientName: d.clientId ? d.clientName ?? "Client" : "Firm & unassigned documents",
           clientEmail: d.clientEmail ?? null,
           clientPhone: d.clientPhone ?? null,
+          clientAvatar: d.clientAvatar ?? null,
           docs: [],
           expiring: 0,
           expired: 0,
@@ -211,10 +215,10 @@ export function DocumentsFeed({
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium">
             <Filter className="size-3.5" /> Category:
           </div>
-          <select
+          <SelectField
             value={categoryFilter}
             onChange={(e) => setCategoryFilter(e.target.value)}
-            className="bg-background border rounded-md px-2.5 py-1.5 text-xs font-semibold focus:outline-none"
+            className="text-xs font-semibold min-w-[160px]"
           >
             <option value="all">All Categories</option>
             <option value="arn">ARN</option>
@@ -229,7 +233,7 @@ export function DocumentsFeed({
             <option value="audit_report">Audit Report</option>
             <option value="ria_compliance">RIA Compliance</option>
             <option value="other">Other</option>
-          </select>
+          </SelectField>
         </div>
       </div>
 
@@ -255,9 +259,13 @@ export function DocumentsFeed({
                     aria-expanded={isOpen}
                   >
                     <ChevronRight className={`size-4 text-muted-foreground shrink-0 transition-transform duration-300 ${isOpen ? "rotate-90" : ""}`} />
-                    <div className={`size-9 rounded-lg grid place-items-center shrink-0 ${isFirm ? "bg-slate-100 dark:bg-slate-800" : "bg-brand-cyan/10"}`}>
-                      {isFirm ? <Building2 className="size-4 text-slate-500" /> : <UserCircle2 className="size-5 text-brand-cyan-deep" />}
-                    </div>
+                    {isFirm ? (
+                      <div className="size-9 rounded-lg grid place-items-center shrink-0 bg-slate-100 dark:bg-slate-800">
+                        <Building2 className="size-4 text-slate-500" />
+                      </div>
+                    ) : (
+                      <Avatar src={g.clientAvatar} name={g.clientName} size={36} />
+                    )}
                     <div className="min-w-0">
                       <div className="font-semibold text-sm truncate">{g.clientName}</div>
                       <div className="text-xs text-muted-foreground truncate">
