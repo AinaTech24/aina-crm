@@ -174,7 +174,7 @@ export function ActivityTimeline({
           No recorded activity or communications found for this client.
         </div>
       ) : (
-        <div className="relative pl-6 space-y-5 before:absolute before:left-3 before:top-2 before:bottom-2 before:w-0.5 before:bg-border/60">
+        <div className="relative pl-6 pr-2 space-y-5 max-h-96 overflow-y-auto overflow-x-hidden scrollbar-thin before:absolute before:left-3 before:top-2 before:bottom-2 before:w-0.5 before:bg-border/60">
           {mergedItems.map((item) => (
             <div key={item.id} className="relative group">
               {/* Timeline dot */}

@@ -16,6 +16,20 @@ import { presignedGetUrl } from "@/lib/storage/s3";
 
 export const dynamic = "force-dynamic";
 
+const EXT_BY_MIME: Record<string, string> = {
+  "application/pdf": ".pdf", "image/png": ".png", "image/jpeg": ".jpg", "image/jpg": ".jpg",
+  "image/webp": ".webp", "image/gif": ".gif", "application/msword": ".doc",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+  "application/vnd.ms-excel": ".xls",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
+  "text/csv": ".csv", "text/plain": ".txt",
+};
+function filenameFor(name: string | null, mime: string | null): string {
+  let base = (name || "document").trim();
+  if (!/\.[a-z0-9]{2,5}$/i.test(base)) base += EXT_BY_MIME[(mime || "").toLowerCase()] ?? "";
+  return base;
+}
+
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   try {
@@ -28,7 +42,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     const doc = await withTenant(session.tenantId, async (tx) => {
       const [d] = await tx
-        .select({ storageKey: complianceDocuments.storageKey, name: complianceDocuments.name })
+        .select({ storageKey: complianceDocuments.storageKey, name: complianceDocuments.name, mimeType: complianceDocuments.mimeType })
         .from(complianceDocuments)
         .where(
           and(
@@ -43,7 +57,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     });
 
     if (!doc || !doc.storageKey) return NextResponse.json({ error: "document not found" }, { status: 404 });
-    const url = await presignedGetUrl(doc.storageKey, 600, doc.name ?? undefined, inline);
+    const url = await presignedGetUrl(doc.storageKey, 600, filenameFor(doc.name, doc.mimeType), inline);
     return NextResponse.json({ url });
   } catch (err: any) {
     return handleApiError(err);

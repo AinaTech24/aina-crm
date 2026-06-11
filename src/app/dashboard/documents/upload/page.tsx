@@ -91,7 +91,7 @@ export default function UploadDocumentPage() {
   }
 
   return (
-    <div className="space-y-4 max-w-4xl">
+    <div className="space-y-4 max-w-4xl mx-auto">
       <Link href="/dashboard/documents" className="text-sm text-muted-foreground hover:underline flex items-center gap-1">
         <ChevronLeft className="size-4" /> Back to documents
       </Link>

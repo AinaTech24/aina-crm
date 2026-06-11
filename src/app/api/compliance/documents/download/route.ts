@@ -9,6 +9,21 @@ import { handleApiError } from "@/lib/api/error-handler";
 
 export const dynamic = "force-dynamic";
 
+const EXT_BY_MIME: Record<string, string> = {
+  "application/pdf": ".pdf", "image/png": ".png", "image/jpeg": ".jpg", "image/jpg": ".jpg",
+  "image/webp": ".webp", "image/gif": ".gif", "application/msword": ".doc",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+  "application/vnd.ms-excel": ".xls",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
+  "text/csv": ".csv", "text/plain": ".txt",
+};
+/** The document's real name, with an extension appended from its mime when missing. */
+function filenameFor(name: string | null, mime: string | null): string {
+  let base = (name || "document").trim();
+  if (!/\.[a-z0-9]{2,5}$/i.test(base)) base += EXT_BY_MIME[(mime || "").toLowerCase()] ?? "";
+  return base;
+}
+
 export async function GET(req: NextRequest) {
   try {
     const session = await requireSession();
@@ -27,6 +42,7 @@ export async function GET(req: NextRequest) {
         .select({
           name: complianceDocuments.name,
           storageKey: complianceDocuments.storageKey,
+          mimeType: complianceDocuments.mimeType,
         })
         .from(complianceDocuments)
         .where(and(eq(complianceDocuments.id, id), eq(complianceDocuments.tenantId, session.tenantId)))
@@ -36,8 +52,9 @@ export async function GET(req: NextRequest) {
         throw new Error("Document not found or unauthorized access");
       }
 
-      // Generate a presigned S3 URL valid for 10 minutes (600 seconds)
-      return await presignedGetUrl(doc.storageKey, 600, doc.name, inline);
+      // Generate a presigned S3 URL valid for 10 minutes (600 seconds), naming
+      // the file by the document's real name (with the right extension).
+      return await presignedGetUrl(doc.storageKey, 600, filenameFor(doc.name, doc.mimeType), inline);
     });
 
     const redirectUrl = downloadUrl.startsWith("/")

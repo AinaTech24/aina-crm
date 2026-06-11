@@ -696,9 +696,15 @@
 .sidebar-collapsed .sidebar-when-expanded { display: none; }
 .sidebar-collapsed nav { padding-top: 0.5rem; }
 
-/* Collapsible nav sections (the per-group dropdowns). When a section is
-   collapsed its items carry `.nav-sec-collapsed` and are hidden — but only in
-   the expanded sidebar / mobile drawer. In the slim icon-rail the section
-   headers are already hidden, so we keep every icon visible regardless. */
-.nav-sec-collapsed { display: none; }
-.sidebar-collapsed .nav-sec-collapsed { display: block; }
+/* Collapsible nav sections (the per-group dropdowns). The body animates open /
+   shut via max-height + opacity — but only in the expanded sidebar / mobile
+   drawer. In the slim icon-rail the section headers are hidden, so we force
+   every section open (no animation) to keep all icons visible. */
+.nav-sec-body {
+  overflow: hidden;
+  max-height: 60rem;
+  opacity: 1;
+  transition: max-height 300ms ease, opacity 250ms ease;
+}
+.nav-sec-body.nav-sec-collapsed { max-height: 0; opacity: 0; }
+.sidebar-collapsed .nav-sec-body.nav-sec-collapsed { max-height: none; opacity: 1; }

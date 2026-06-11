@@ -133,15 +133,19 @@ export async function presignedGetUrl(
     return `/api/upload-local/${key}`;
   }
   // `inline` lets the browser preview the file (PDF/image) in a tab; otherwise
-  // it downloads as an attachment with the original name.
-  const safeName = filename ? filename.replace(/["\\]/g, "") : undefined;
-  const disposition = inline
-    ? safeName
-      ? `inline; filename="${safeName}"`
-      : "inline"
-    : safeName
-      ? `attachment; filename="${safeName}"`
-      : undefined;
+  // it downloads as an attachment with the original name. Use a Content-
+  // Disposition that survives spaces / unicode: an ASCII fallback PLUS an
+  // RFC 5987 filename* with the exact (encoded) name, so the browser uses the
+  // document's real name rather than the random storage key.
+  let disposition: string | undefined;
+  if (filename) {
+    const ascii = filename.replace(/["\\]/g, "").replace(/[^\x20-\x7E]/g, "_");
+    const encoded = encodeURIComponent(filename).replace(/['()*]/g, (c) => "%" + c.charCodeAt(0).toString(16).toUpperCase());
+    const type = inline ? "inline" : "attachment";
+    disposition = `${type}; filename="${ascii}"; filename*=UTF-8''${encoded}`;
+  } else if (inline) {
+    disposition = "inline";
+  }
   const cmd = new GetObjectCommand({
     Bucket: bucket(),
     Key: key,

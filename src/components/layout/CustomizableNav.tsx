@@ -230,41 +230,43 @@ export function CustomizableNav({
     <div className="flex-1 flex flex-col min-h-0">
       {/* Search + edit toolbar — hidden when the rail is collapsed to icons */}
       <div className="sidebar-when-expanded px-3 pt-3 pb-1 space-y-2">
-        <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none" />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search modules…"
-            disabled={editing}
-            className="w-full rounded-lg border border-border bg-secondary/40 pl-8 pr-7 py-1.5 text-xs focus:outline-none focus:border-brand-cyan focus:ring-2 focus:ring-brand-cyan/15 disabled:opacity-50"
-          />
-          {query && (
-            <button type="button" onClick={() => setQuery("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" aria-label="Clear">
-              <X className="size-3.5" />
-            </button>
-          )}
-        </div>
-        <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1.5">
+          <div className="relative flex-1 min-w-0">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search modules…"
+              disabled={editing}
+              className="w-full rounded-lg border border-border bg-secondary/40 pl-8 pr-7 py-1.5 text-xs focus:outline-none focus:border-brand-cyan focus:ring-2 focus:ring-brand-cyan/15 disabled:opacity-50"
+            />
+            {query && (
+              <button type="button" onClick={() => setQuery("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" aria-label="Clear">
+                <X className="size-3.5" />
+              </button>
+            )}
+          </div>
+          {/* Customize toggle — icon only, sits next to the search box. */}
           <button
             type="button"
             onClick={() => { setEditing((e) => !e); setQuery(""); }}
-            className={`inline-flex items-center gap-1.5 text-[11px] font-semibold px-2 py-1 rounded-md transition-colors ${editing ? "bg-brand-cyan-light text-brand-cyan-deep" : "text-muted-foreground hover:bg-secondary"}`}
+            title={editing ? "Done customizing" : "Customize sidebar"}
+            aria-label={editing ? "Done customizing" : "Customize sidebar"}
+            className={`shrink-0 inline-grid place-items-center size-[34px] rounded-lg transition-colors ${editing ? "bg-brand-cyan-light text-brand-cyan-deep" : "text-muted-foreground hover:bg-secondary border border-border"}`}
           >
-            {editing ? <Check className="size-3.5" /> : <Pencil className="size-3.5" />}
-            {editing ? "Done" : "Customize"}
+            {editing ? <Check className="size-4" /> : <Pencil className="size-4" />}
           </button>
-          {editing && (
-            <div className="flex items-center gap-1">
-              <button type="button" onClick={addGroup} className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-md text-brand-cyan-deep hover:bg-brand-cyan-light/60" title="Add a group">
-                <Plus className="size-3.5" /> Group
-              </button>
-              <button type="button" onClick={resetLayout} className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-md text-muted-foreground hover:bg-secondary" title="Reset to default">
-                <RotateCcw className="size-3" /> Reset
-              </button>
-            </div>
-          )}
         </div>
+        {editing && (
+          <div className="flex items-center gap-1">
+            <button type="button" onClick={addGroup} className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-md text-brand-cyan-deep hover:bg-brand-cyan-light/60" title="Add a group">
+              <Plus className="size-3.5" /> Group
+            </button>
+            <button type="button" onClick={resetLayout} className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-md text-muted-foreground hover:bg-secondary" title="Reset to default">
+              <RotateCcw className="size-3" /> Reset
+            </button>
+          </div>
+        )}
       </div>
 
       <nav className="flex-1 overflow-y-auto overflow-x-hidden px-3 pb-4 pt-2 space-y-5 scrollbar-thin">
@@ -277,7 +279,7 @@ export function CustomizableNav({
               <div className="px-2 py-6 text-center text-xs text-muted-foreground">No modules match “{query}”.</div>
             ) : (
               searchResults.map((it) => (
-                <NavRow key={it.href} item={it} active={isActive(it.href)} />
+                <NavRow key={it.href} item={it} active={isActive(it.href)} onNavigate={() => setQuery("")} />
               ))
             )}
           </div>
@@ -326,7 +328,7 @@ export function CustomizableNav({
 
                 {/* Items stay mounted; when the section is collapsed we hide them
                     via CSS so the icon-rail still shows every glyph. */}
-                <div className={`space-y-0.5 min-h-[8px] ${isCollapsed ? "nav-sec-collapsed" : ""}`}>
+                <div className={`nav-sec-body space-y-0.5 min-h-[8px] ${isCollapsed ? "nav-sec-collapsed" : ""}`}>
                   {g.items.map((href) => {
                     const it = itemMap.get(href);
                     if (!it) return null;
@@ -337,6 +339,7 @@ export function CustomizableNav({
                         active={isActive(href)}
                         editing={editing}
                         dragging={dragHref === href}
+                        onNavigate={() => setQuery("")}
                         onDragStart={() => setDragHref(href)}
                         onDragEnd={() => setDragHref(null)}
                         onDropBefore={() => { if (dragHref) moveItem(dragHref, g.id, href); setDragHref(null); }}
@@ -363,6 +366,7 @@ function NavRow({
   active,
   editing,
   dragging,
+  onNavigate,
   onDragStart,
   onDragEnd,
   onDropBefore,
@@ -371,6 +375,7 @@ function NavRow({
   active: boolean;
   editing?: boolean;
   dragging?: boolean;
+  onNavigate?: () => void;
   onDragStart?: () => void;
   onDragEnd?: () => void;
   onDropBefore?: () => void;
@@ -400,7 +405,7 @@ function NavRow({
   }
 
   return (
-    <Link href={item.href} className={`group nav-link ${active ? "nav-link-active" : ""}`} aria-current={active ? "page" : undefined}>
+    <Link href={item.href} onClick={onNavigate} className={`group nav-link ${active ? "nav-link-active" : ""}`} aria-current={active ? "page" : undefined}>
       {content}
     </Link>
   );

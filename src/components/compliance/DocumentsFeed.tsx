@@ -21,6 +21,7 @@ import { formatDate, formatRelative } from "@/lib/utils";
 import { DocumentViewerModal, type ViewerDoc } from "@/components/documents/DocumentViewerModal";
 import { Avatar } from "@/components/ui/Avatar";
 import { SelectField } from "@/components/ui/SelectField";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
 type DocRow = {
   id: string;
@@ -82,9 +83,11 @@ export function DocumentsFeed({
   const [deletingGroup, setDeletingGroup] = useState<string | null>(null);
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const [viewer, setViewer] = useState<ViewerDoc | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<
+    { kind: "single"; id: string; name: string } | { kind: "group"; group: Group } | null
+  >(null);
 
   async function handleDelete(id: string) {
-    if (!confirm("Permanently delete this document from storage and the database?")) return;
     setDeletingId(id);
     try {
       const res = await fetch(`/api/compliance/documents?id=${encodeURIComponent(id)}`, { method: "DELETE" });
@@ -112,7 +115,6 @@ export function DocumentsFeed({
   }
 
   async function deleteAll(g: Group) {
-    if (!confirm(`Permanently delete all ${g.docs.length} document(s) for "${g.clientName}"? This cannot be undone.`)) return;
     setDeletingGroup(g.key);
     try {
       const ids = g.docs.map((d) => d.id);
@@ -297,7 +299,7 @@ export function DocumentsFeed({
                     </button>
                     <button
                       type="button"
-                      onClick={() => deleteAll(g)}
+                      onClick={() => setPendingDelete({ kind: "group", group: g })}
                       disabled={deletingGroup === g.key}
                       title="Delete all documents in this group"
                       className="size-8 rounded-lg hover:bg-rose-50 border border-border/40 grid place-items-center text-muted-foreground hover:text-rose-600 hover:border-rose-200 transition-colors disabled:opacity-50"
@@ -372,7 +374,7 @@ export function DocumentsFeed({
                               </a>
                               <button
                                 type="button"
-                                onClick={() => handleDelete(d.id)}
+                                onClick={() => setPendingDelete({ kind: "single", id: d.id, name: d.name })}
                                 disabled={deletingId != null}
                                 title="Delete"
                                 className="size-8 rounded-lg hover:bg-rose-50 border border-border/40 grid place-items-center text-muted-foreground hover:text-rose-600 hover:border-rose-200 transition-colors disabled:opacity-50"
@@ -393,6 +395,27 @@ export function DocumentsFeed({
       )}
 
       <DocumentViewerModal doc={viewer} onClose={() => setViewer(null)} />
+
+      <ConfirmDialog
+        open={!!pendingDelete}
+        title={pendingDelete?.kind === "group" ? "Delete all documents?" : "Delete document?"}
+        message={
+          pendingDelete?.kind === "group"
+            ? `Permanently delete all ${pendingDelete.group.docs.length} document(s) for "${pendingDelete.group.clientName}"? This can't be undone.`
+            : pendingDelete?.kind === "single"
+              ? `Permanently delete "${pendingDelete.name}" from storage and the database? This can't be undone.`
+              : ""
+        }
+        confirmLabel="Delete"
+        tone="danger"
+        onConfirm={() => {
+          if (!pendingDelete) return;
+          if (pendingDelete.kind === "group") deleteAll(pendingDelete.group);
+          else handleDelete(pendingDelete.id);
+          setPendingDelete(null);
+        }}
+        onCancel={() => setPendingDelete(null)}
+      />
     </div>
   );
 }

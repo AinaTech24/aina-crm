@@ -10,6 +10,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Save, Check, TrendingUp } from "lucide-react";
+import { SelectField } from "@/components/ui/SelectField";
 import {
   CROSS_SELL_PRODUCTS,
   CROSS_SELL_STATUSES,
@@ -77,16 +78,16 @@ export function CrossSellCard({
         {CROSS_SELL_PRODUCTS.map(([key, label]) => (
           <div key={key} className="flex items-center justify-between gap-2">
             <span className="text-sm">{label}</span>
-            <select
+            <SelectField
               value={map[key] ?? ""}
               onChange={(e) => setProduct(key, e.target.value)}
-              className="input-base text-xs w-40"
+              className="text-xs w-40"
             >
               <option value="">—</option>
               {CROSS_SELL_STATUSES.map(([v, l]) => (
                 <option key={v} value={v}>{l}</option>
               ))}
-            </select>
+            </SelectField>
           </div>
         ))}
       </div>
