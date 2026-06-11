@@ -24,12 +24,17 @@ import { StpComprehensivePlanner } from "./StpComprehensivePlanner";
 import { EmiSipRecoveryPlanner } from "./EmiSipRecoveryPlanner";
 import { FvAnnualLumpsumPlanner } from "./FvAnnualLumpsumPlanner";
 import { DebtFundBenefitCalculator } from "./DebtFundBenefitCalculator";
+import { AssetAllocationFvPlanner } from "./AssetAllocationFvPlanner";
 import { ReviewOfInvestments } from "./ReviewOfInvestments";
 import { HumanLifeValueCalculator } from "./HumanLifeValueCalculator";
 import { GoalPlannerCalculator } from "./GoalPlannerCalculator";
 import { CapitalGainsTaxCalculator } from "./CapitalGainsTaxCalculator";
 import { OpmHousePlanner } from "./OpmHousePlanner";
 import { AnnualLumpsumRequiredCalculator } from "./AnnualLumpsumRequiredCalculator";
+import { TaxRegimeOptimizer } from "./TaxRegimeOptimizer";
+import { RealReturnCalculator } from "./RealReturnCalculator";
+import { NpsPlanner } from "./NpsPlanner";
+import { TaxHarvestingCalculator } from "./TaxHarvestingCalculator";
 import {
   fvSip,
   fvLumpsum,
@@ -64,6 +69,7 @@ type TabKey =
   | "emisip"
   | "fvannual"
   | "debtfund"
+  | "assetalloc"
   | "review"
   | "vacation"
   | "hlv"
@@ -71,6 +77,10 @@ type TabKey =
   | "captax"
   | "opm"
   | "annualreq"
+  | "taxregime"
+  | "realreturn"
+  | "nps"
+  | "harvest"
   | "sip"
   | "lumpsum"
   | "goal"
@@ -99,6 +109,7 @@ const TABS: Array<{ key: TabKey; label: string }> = [
   { key: "emisip", label: "★ EMI → SIP" },
   { key: "fvannual", label: "★ FV Annual Lumpsum" },
   { key: "debtfund", label: "★ Debt Fund Hold/Sell" },
+  { key: "assetalloc", label: "★ Asset Allocation FV" },
   { key: "review", label: "★ Review of Investments" },
   { key: "vacation", label: "★ Vacation Planner" },
   { key: "hlv", label: "★ Human Life Value" },
@@ -106,6 +117,10 @@ const TABS: Array<{ key: TabKey; label: string }> = [
   { key: "captax", label: "★ Capital Gains Tax" },
   { key: "opm", label: "★ OPM House (SWP)" },
   { key: "annualreq", label: "★ Annual Lumpsum (Target)" },
+  { key: "taxregime", label: "🛡 Old vs New Regime" },
+  { key: "realreturn", label: "🛡 Real Return (tax+inflation)" },
+  { key: "nps", label: "🛡 NPS Retirement & Tax" },
+  { key: "harvest", label: "🛡 LTCG Tax-Harvesting" },
   { key: "sip", label: "1. SIP" },
   { key: "lumpsum", label: "2. Lumpsum" },
   { key: "goal", label: "3. Goal" },
@@ -158,6 +173,7 @@ export function CalculatorsApp() {
       {tab === "emisip" && <EmiSipRecoveryPlanner />}
       {tab === "fvannual" && <FvAnnualLumpsumPlanner />}
       {tab === "debtfund" && <DebtFundBenefitCalculator />}
+      {tab === "assetalloc" && <AssetAllocationFvPlanner />}
       {tab === "review" && <ReviewOfInvestments />}
       {tab === "vacation" && <VacationPlannerCalc />}
       {tab === "hlv" && <HumanLifeValueCalculator />}
@@ -165,6 +181,10 @@ export function CalculatorsApp() {
       {tab === "captax" && <CapitalGainsTaxCalculator />}
       {tab === "opm" && <OpmHousePlanner />}
       {tab === "annualreq" && <AnnualLumpsumRequiredCalculator />}
+      {tab === "taxregime" && <TaxRegimeOptimizer />}
+      {tab === "realreturn" && <RealReturnCalculator />}
+      {tab === "nps" && <NpsPlanner />}
+      {tab === "harvest" && <TaxHarvestingCalculator />}
       {tab === "sip" && <SipCalc />}
       {tab === "lumpsum" && <LumpsumCalc />}
       {tab === "goal" && <GoalCalc />}

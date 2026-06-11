@@ -15,6 +15,7 @@ import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { proposals } from "@/db/schema";
+import { proposalTotals } from "@/lib/proposals/projections";
 
 export const dynamic = "force-dynamic";
 
@@ -93,33 +94,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
       // If products are updated, compute the new totals.
       if (patch.products) {
-        let inv = 0;
-        let corpus = 0;
-        for (const it of patch.products) {
-          if (it.kind === "mf") {
-            inv += Number(it.lumpsum ?? 0);
-            if (it.monthlyAmount && it.sipTermYears) {
-              inv += Number(it.monthlyAmount) * 12 * Number(it.sipTermYears);
-            }
-            corpus += Number(it.projectedCorpus ?? 0);
-          } else if (it.kind === "insurance") {
-            inv += Number(it.annualPremium ?? 0);
-          } else if (it.kind === "pms") {
-            const amt = Number(it.proposedAmount ?? 0);
-            inv += amt;
-            if (amt && it.expectedReturn && it.termYears) {
-              corpus += amt * Math.pow(1 + Number(it.expectedReturn) / 100, Number(it.termYears));
-            }
-          } else if (it.kind === "aif") {
-            const amt = Number(it.proposedAmount ?? 0);
-            inv += amt;
-            if (amt && it.targetIrr && it.lockInYears) {
-              corpus += amt * Math.pow(1 + Number(it.targetIrr) / 100, Number(it.lockInYears));
-            }
-          }
-        }
-        patch.totalInvestment = String(inv);
-        patch.expectedCorpus = String(corpus);
+        const totals = proposalTotals(patch.products);
+        patch.totalInvestment = String(totals.totalInvestment ?? 0);
+        patch.expectedCorpus = String(totals.expectedCorpus ?? 0);
       } else {
         if (patch.totalInvestment != null) patch.totalInvestment = String(patch.totalInvestment);
         if (patch.expectedCorpus != null) patch.expectedCorpus = String(patch.expectedCorpus);

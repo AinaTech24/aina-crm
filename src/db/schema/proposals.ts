@@ -173,4 +173,15 @@ export type ProposalLineItem =
       lockInYears?: number;
       targetIrr?: number;
       notes?: string;
+    }
+  | {
+      // Non-MF / non-market products — bank FD, bonds, NPS, post-office, etc.
+      kind: "other";
+      productName: string;
+      company?: string;
+      amount?: number;
+      expectedReturn?: number;
+      termYears?: number;
+      remarks?: string;
+      notes?: string;
     };

@@ -26,6 +26,7 @@ import {
   Shield,
   Briefcase,
   Sparkles,
+  Landmark,
 } from "lucide-react";
 import { InvestorLookup } from "@/components/common/InvestorLookup";
 import { SchemeAutocomplete } from "@/components/mf/SchemeAutocomplete";
@@ -33,6 +34,7 @@ import { SelectField } from "@/components/ui/SelectField";
 import { DateField } from "@/components/ui/DateField";
 import { RiskAlignmentBanner } from "@/components/proposals/RiskAlignmentBanner";
 import { formatINR } from "@/lib/utils";
+import { proposalTotals } from "@/lib/proposals/projections";
 
 type Recipient = { type: "investor" | "lead" | "family"; id: string; name: string };
 
@@ -81,7 +83,17 @@ type AIF = {
   targetIrr?: number;
   notes?: string;
 };
-type Item = MF | Ins | PMS | AIF;
+type Other = {
+  kind: "other";
+  productName: string;
+  company?: string;
+  amount?: number;
+  expectedReturn?: number;
+  termYears?: number;
+  remarks?: string;
+  notes?: string;
+};
+type Item = MF | Ins | PMS | AIF | Other;
 
 const DEFAULT_DISCLAIMER =
   "Mutual Fund investments are subject to market risks. Read all scheme-related documents carefully. Past performance is not indicative of future returns. Insurance is the subject matter of solicitation. The information provided here is for illustrative purposes only.";
@@ -227,6 +239,7 @@ export default function NewProposalPage() {
       insurance: { kind: "insurance", policyName: "" },
       pms: { kind: "pms", strategyName: "" },
       aif: { kind: "aif", fundName: "" },
+      other: { kind: "other", productName: "" },
     };
     setItems((s) => [...s, defaults[kind]]);
     // Auto-pick "mixed" if multiple kinds present
@@ -242,32 +255,8 @@ export default function NewProposalPage() {
   }
 
   const totals = useMemo(() => {
-    let inv = 0;
-    let corpus = 0;
-    for (const it of items) {
-      if (it.kind === "mf") {
-        inv += Number(it.lumpsum ?? 0);
-        if (it.monthlyAmount && it.sipTermYears) {
-          inv += Number(it.monthlyAmount) * 12 * Number(it.sipTermYears);
-        }
-        corpus += Number(it.projectedCorpus ?? 0);
-      } else if (it.kind === "insurance") {
-        inv += Number(it.annualPremium ?? 0);
-      } else if (it.kind === "pms") {
-        const amt = Number(it.proposedAmount ?? 0);
-        inv += amt;
-        if (amt && it.expectedReturn && it.termYears) {
-          corpus += amt * Math.pow(1 + Number(it.expectedReturn) / 100, Number(it.termYears));
-        }
-      } else if (it.kind === "aif") {
-        const amt = Number(it.proposedAmount ?? 0);
-        inv += amt;
-        if (amt && it.targetIrr && it.lockInYears) {
-          corpus += amt * Math.pow(1 + Number(it.targetIrr) / 100, Number(it.lockInYears));
-        }
-      }
-    }
-    return { inv, corpus };
+    const t = proposalTotals(items);
+    return { inv: t.totalInvestment ?? 0, corpus: t.expectedCorpus ?? 0 };
   }, [items]);
 
   async function save() {
@@ -299,6 +288,10 @@ export default function NewProposalPage() {
       }
       if (it.kind === "aif" && !it.fundName.trim()) {
         setErr("Every AIF item needs a fund name.");
+        return;
+      }
+      if (it.kind === "other" && !it.productName.trim()) {
+        setErr("Every other-product item needs a product name.");
         return;
       }
     }
@@ -707,6 +700,9 @@ export default function NewProposalPage() {
             <button type="button" onClick={() => addItem("aif")} className="btn-secondary text-xs">
               <TrendingUp className="size-3.5" /> Add AIF
             </button>
+            <button type="button" onClick={() => addItem("other")} className="btn-secondary text-xs">
+              <Landmark className="size-3.5" /> Add Other (FD / Bonds)
+            </button>
           </div>
         </div>
 
@@ -729,6 +725,8 @@ export default function NewProposalPage() {
                           ? "bg-blue-50 text-blue-700"
                           : it.kind === "pms"
                           ? "bg-amber-50 text-amber-700"
+                          : it.kind === "other"
+                          ? "bg-slate-100 text-slate-700"
                           : "bg-rose-50 text-rose-700"
                       }`}
                     >
@@ -738,6 +736,8 @@ export default function NewProposalPage() {
                         ? "Insurance"
                         : it.kind === "pms"
                         ? "PMS"
+                        : it.kind === "other"
+                        ? "Other Product"
                         : "AIF"}
                     </span>
                     <span className="text-xs text-muted-foreground">Item #{i + 1}</span>
@@ -762,6 +762,9 @@ export default function NewProposalPage() {
                 )}
                 {it.kind === "aif" && (
                   <AIFRow item={it} onPatch={(p) => patchItem(i, p)} />
+                )}
+                {it.kind === "other" && (
+                  <OtherRow item={it} onPatch={(p) => patchItem(i, p)} />
                 )}
               </li>
             ))}
@@ -1225,6 +1228,66 @@ function AIFRow({ item, onPatch }: { item: AIF; onPatch: (p: Partial<AIF>) => vo
           value={item.notes ?? ""}
           setValue={(v) => onPatch({ notes: v })}
           placeholder="₹1cr min; 3-yr lock-in; suitable only for accredited investors."
+        />
+      </div>
+    </div>
+  );
+}
+
+function OtherRow({ item, onPatch }: { item: Other; onPatch: (p: Partial<Other>) => void }) {
+  const projected = useMemo(() => {
+    const amt = Number(item.amount ?? 0);
+    const ret = Number(item.expectedReturn ?? 0);
+    const yrs = Number(item.termYears ?? 0);
+    return amt > 0 && ret > 0 && yrs > 0 ? amt * Math.pow(1 + ret / 100, yrs) : 0;
+  }, [item.amount, item.expectedReturn, item.termYears]);
+
+  return (
+    <div className="grid grid-cols-3 gap-3">
+      <div className="col-span-2">
+        <TextInput
+          label="Product name"
+          required
+          value={item.productName}
+          setValue={(v) => onPatch({ productName: v })}
+          placeholder="Bank Fixed Deposit / Sovereign Gold Bond / NPS Tier-I"
+        />
+      </div>
+      <TextInput
+        label="Company / Issuer"
+        value={item.company ?? ""}
+        setValue={(v) => onPatch({ company: v })}
+        placeholder="SBI / RBI / NSDL"
+      />
+      <NumberInput
+        label="Amount"
+        unit="₹"
+        value={item.amount}
+        setValue={(n) => onPatch({ amount: n })}
+      />
+      <NumberInput
+        label="Expected return"
+        unit="% p.a."
+        value={item.expectedReturn}
+        setValue={(n) => onPatch({ expectedReturn: n })}
+      />
+      <NumberInput
+        label="Term"
+        unit="yrs"
+        value={item.termYears}
+        setValue={(n) => onPatch({ termYears: n })}
+      />
+      {projected > 0 && (
+        <div className="col-span-3 text-[11px] text-emerald-600 font-semibold px-1 py-0.5 bg-emerald-50/50 rounded-md">
+          Expected future value: {formatINR(projected)} after {item.termYears} years
+        </div>
+      )}
+      <div className="col-span-3">
+        <TextInput
+          label="Remarks"
+          value={item.remarks ?? ""}
+          setValue={(v) => onPatch({ remarks: v })}
+          placeholder="5-yr tax-saver FD; auto-renew on maturity."
         />
       </div>
     </div>

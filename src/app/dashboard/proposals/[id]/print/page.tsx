@@ -16,6 +16,8 @@ import { proposals, tenants, users } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { formatDate, formatINR } from "@/lib/utils";
 import { ProposalPrintHelper } from "@/components/proposals/ProposalPrintHelper";
+import { fvLumpAnnual } from "@/lib/proposals/projections";
+import { fvSip } from "@/lib/goal-planning/calc";
 
 export const dynamic = "force-dynamic";
 
@@ -33,9 +35,12 @@ const KIND_TITLE: Record<string, string> = {
   insurance: "Insurance Recommendations",
   pms: "Portfolio Management Services",
   aif: "Alternative Investment Funds",
+  other: "Other Investment Products",
 };
 
-const KIND_ORDER = ["mf", "insurance", "pms", "aif"] as const;
+// MF is rendered first as split Lumpsum/SIP tables; `other` is rendered last.
+// This loop covers the remaining kinds in between.
+const KIND_ORDER = ["insurance", "pms", "aif"] as const;
 
 export default async function ProposalPrintPage({
   params,
@@ -225,46 +230,127 @@ export default async function ProposalPrintPage({
           </div>
         )}
 
-        {/* Products — one section per kind */}
+        {/* Mutual Funds — split into Lumpsum & SIP vehicle tables */}
+        {(() => {
+          const mf = grouped["mf"] ?? [];
+          const lump = mf.filter((it: any) => Number(it.lumpsum ?? 0) > 0);
+          const sip = mf.filter((it: any) => Number(it.monthlyAmount ?? 0) > 0);
+          const mfNotes = mf.filter((it: any) => it.notes);
+          if (mf.length === 0) return null;
+          return (
+            <>
+              {lump.length > 0 && (
+                <div className="pp-section" style={{ marginTop: 28 }}>
+                  <div className="pp-h2">Mutual Fund — Lumpsum</div>
+                  <div style={{ marginTop: 8 }}>
+                    <table className="pp-table">
+                      <thead>
+                        <tr>
+                          <th style={{ width: "32%" }}>Scheme</th>
+                          <th>AMC / Category</th>
+                          <th style={{ textAlign: "right" }}>Lumpsum</th>
+                          <th style={{ textAlign: "right" }}>Period</th>
+                          <th style={{ textAlign: "right" }}>Assumed Return</th>
+                          <th style={{ textAlign: "right" }}>Expected Future Value</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {lump.map((it: any, i: number) => {
+                          const years = Number(it.sipTermYears ?? 0);
+                          const fv = fvLumpAnnual(Number(it.lumpsum ?? 0), Number(it.expectedReturn ?? 0), years);
+                          return (
+                            <tr key={i}>
+                              <td style={{ fontWeight: 700 }}>{it.schemeName}</td>
+                              <td>
+                                {it.amcName ?? "—"}
+                                {it.category && (
+                                  <div className="pp-muted" style={{ fontSize: 11 }}>{it.category}</div>
+                                )}
+                              </td>
+                              <td style={{ textAlign: "right" }}>{formatINR(Number(it.lumpsum))}</td>
+                              <td style={{ textAlign: "right" }}>{years ? `${years} yrs` : "—"}</td>
+                              <td style={{ textAlign: "right" }}>{it.expectedReturn ? `${it.expectedReturn}%` : "—"}</td>
+                              <td style={{ textAlign: "right", color: "#059669", fontWeight: 700 }}>
+                                {fv > 0 ? formatINR(Math.round(fv)) : "—"}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {sip.length > 0 && (
+                <div className="pp-section" style={{ marginTop: 28 }}>
+                  <div className="pp-h2">Mutual Fund — SIP</div>
+                  <div style={{ marginTop: 8 }}>
+                    <table className="pp-table">
+                      <thead>
+                        <tr>
+                          <th style={{ width: "30%" }}>Scheme</th>
+                          <th>AMC / Category</th>
+                          <th style={{ textAlign: "right" }}>Monthly SIP</th>
+                          <th style={{ textAlign: "right" }}>Period</th>
+                          <th style={{ textAlign: "right" }}>Assumed Return</th>
+                          <th style={{ textAlign: "right" }}>Total Invested</th>
+                          <th style={{ textAlign: "right" }}>Expected Future Value</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {sip.map((it: any, i: number) => {
+                          const years = Number(it.sipTermYears ?? 0);
+                          const monthly = Number(it.monthlyAmount ?? 0);
+                          const invested = monthly * 12 * years;
+                          const fv = fvSip(monthly, Number(it.expectedReturn ?? 0), Math.round(years * 12));
+                          return (
+                            <tr key={i}>
+                              <td style={{ fontWeight: 700 }}>{it.schemeName}</td>
+                              <td>
+                                {it.amcName ?? "—"}
+                                {it.category && (
+                                  <div className="pp-muted" style={{ fontSize: 11 }}>{it.category}</div>
+                                )}
+                              </td>
+                              <td style={{ textAlign: "right" }}>{formatINR(monthly)}/mo</td>
+                              <td style={{ textAlign: "right" }}>{years ? `${years} yrs` : "—"}</td>
+                              <td style={{ textAlign: "right" }}>{it.expectedReturn ? `${it.expectedReturn}%` : "—"}</td>
+                              <td style={{ textAlign: "right" }}>{invested > 0 ? formatINR(invested) : "—"}</td>
+                              <td style={{ textAlign: "right", color: "#059669", fontWeight: 700 }}>
+                                {fv > 0 ? formatINR(Math.round(fv)) : "—"}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {mfNotes.length > 0 && (
+                <div className="pp-section" style={{ marginTop: 8 }}>
+                  {mfNotes.map((it: any, i: number) => (
+                    <div
+                      key={i}
+                      style={{ fontSize: 11, color: "#475569", marginTop: 4, paddingLeft: 8, borderLeft: `2px solid ${accent}` }}
+                    >
+                      <strong>{it.schemeName}: </strong>
+                      {it.notes}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          );
+        })()}
+
+        {/* Products — one section per kind (insurance / pms / aif) */}
         {KIND_ORDER.filter((k) => grouped[k]).map((kind) => (
           <div className="pp-section" key={kind} style={{ marginTop: 28 }}>
             <div className="pp-h2">{KIND_TITLE[kind]}</div>
             <div style={{ marginTop: 8 }}>
-              {kind === "mf" && (
-                <table className="pp-table">
-                  <thead>
-                    <tr>
-                      <th style={{ width: "30%" }}>Scheme</th>
-                      <th>AMC / Category</th>
-                      <th style={{ textAlign: "right" }}>Lumpsum</th>
-                      <th style={{ textAlign: "right" }}>Monthly SIP</th>
-                      <th style={{ textAlign: "right" }}>Term</th>
-                      <th style={{ textAlign: "right" }}>Exp. Return</th>
-                      <th style={{ textAlign: "right" }}>Projected</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {grouped[kind].map((it: any, i: number) => (
-                      <tr key={i}>
-                        <td style={{ fontWeight: 700 }}>{it.schemeName}</td>
-                        <td>
-                          {it.amcName ?? "—"}
-                          {it.category && (
-                            <div className="pp-muted" style={{ fontSize: 11 }}>{it.category}</div>
-                          )}
-                        </td>
-                        <td style={{ textAlign: "right" }}>{it.lumpsum ? formatINR(Number(it.lumpsum)) : "—"}</td>
-                        <td style={{ textAlign: "right" }}>{it.monthlyAmount ? formatINR(Number(it.monthlyAmount)) + "/mo" : "—"}</td>
-                        <td style={{ textAlign: "right" }}>{it.sipTermYears ? `${it.sipTermYears} yrs` : "—"}</td>
-                        <td style={{ textAlign: "right" }}>{it.expectedReturn ? `${it.expectedReturn}%` : "—"}</td>
-                        <td style={{ textAlign: "right", color: "#059669", fontWeight: 700 }}>
-                          {it.projectedCorpus ? formatINR(Number(it.projectedCorpus)) : "—"}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
               {kind === "insurance" && (
                 <table className="pp-table">
                   <thead>
@@ -393,6 +479,49 @@ export default async function ProposalPrintPage({
           </div>
         ))}
 
+        {/* Other Investment Products — bank FD, bonds, NPS, etc. */}
+        {grouped["other"] && grouped["other"].length > 0 && (
+          <div className="pp-section" style={{ marginTop: 28 }}>
+            <div className="pp-h2">{KIND_TITLE.other}</div>
+            <div style={{ marginTop: 8 }}>
+              <table className="pp-table">
+                <thead>
+                  <tr>
+                    <th style={{ width: "28%" }}>Product</th>
+                    <th>Company / Issuer</th>
+                    <th style={{ textAlign: "right" }}>Amount</th>
+                    <th style={{ textAlign: "right" }}>Assumed Return</th>
+                    <th style={{ textAlign: "right" }}>Period</th>
+                    <th style={{ textAlign: "right" }}>Expected Future Value</th>
+                    <th>Remarks</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {grouped["other"].map((it: any, i: number) => {
+                    const amt = Number(it.amount ?? 0);
+                    const r = Number(it.expectedReturn ?? 0);
+                    const y = Number(it.termYears ?? 0);
+                    const fv = amt > 0 && r > 0 && y > 0 ? fvLumpAnnual(amt, r, y) : 0;
+                    return (
+                      <tr key={i}>
+                        <td style={{ fontWeight: 700 }}>{it.productName}</td>
+                        <td>{it.company ?? "—"}</td>
+                        <td style={{ textAlign: "right" }}>{amt > 0 ? formatINR(amt) : "—"}</td>
+                        <td style={{ textAlign: "right" }}>{r > 0 ? `${r}%` : "—"}</td>
+                        <td style={{ textAlign: "right" }}>{y > 0 ? `${y} yrs` : "—"}</td>
+                        <td style={{ textAlign: "right", color: "#059669", fontWeight: 700 }}>
+                          {fv > 0 ? formatINR(Math.round(fv)) : "—"}
+                        </td>
+                        <td className="pp-muted">{it.remarks ?? "—"}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
         {/* Disclaimer */}
         {p.disclaimer && (
           <div className="pp-section" style={{ marginTop: 32 }}>
@@ -434,24 +563,42 @@ export default async function ProposalPrintPage({
           </div>
         </div>
 
-        {/* Footer line — ARN, page */}
-        <div
-          className="pp-muted"
-          style={{
-            marginTop: 32,
-            paddingTop: 12,
-            borderTop: "1px solid #e2e8f0",
-            fontSize: 9,
-            display: "flex",
-            justifyContent: "space-between",
-          }}
-        >
-          <div>
-            {tenant?.legalName ?? tenant?.displayName} · ARN-{(tenant?.arn ?? "").replace(/^ARN-?/i, "")}
-            {(tenant as any)?.address && ` · ${(tenant as any).address}`}
-          </div>
-          <div>Proposal {p.proposalNumber}</div>
-        </div>
+        {/* Footer — firm credentials + contact (AMFI / BIF / ARN) */}
+        {(() => {
+          const bareArn = (tenant?.arn ?? "").replace(/^ARN-?/i, "");
+          const contacts = [
+            (tenant as any)?.email,
+            (tenant as any)?.phone,
+            (tenant as any)?.website,
+          ].filter(Boolean);
+          return (
+            <div
+              style={{
+                marginTop: 32,
+                paddingTop: 12,
+                borderTop: "1px solid #e2e8f0",
+                textAlign: "center",
+              }}
+            >
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#0f172a" }}>
+                {tenant?.legalName ?? tenant?.displayName ?? ""}
+              </div>
+              <div className="pp-muted" style={{ fontSize: 9.5, marginTop: 2 }}>
+                AMFI-Registered Mutual Fund Distributor · BIF Distributor
+                {bareArn && ` | ARN-${bareArn}`}
+                {(tenant as any)?.principalEuin && ` · EUIN ${(tenant as any).principalEuin}`}
+              </div>
+              {contacts.length > 0 && (
+                <div className="pp-muted" style={{ fontSize: 9.5, marginTop: 2 }}>
+                  {contacts.join("  ·  ")}
+                </div>
+              )}
+              <div className="pp-muted" style={{ fontSize: 9, marginTop: 6 }}>
+                {(tenant as any)?.address ? `${(tenant as any).address} · ` : ""}Proposal {p.proposalNumber}
+              </div>
+            </div>
+          );
+        })()}
       </div>
     </>
   );

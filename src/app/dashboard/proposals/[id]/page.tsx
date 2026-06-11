@@ -44,6 +44,7 @@ const KIND_LABEL: Record<string, string> = {
   insurance: "Insurance",
   pms: "PMS",
   aif: "AIF",
+  other: "Other Product",
 };
 
 export const dynamic = "force-dynamic";
@@ -251,13 +252,15 @@ export default async function ProposalDetailPage({
                         ? "bg-blue-50 text-blue-700"
                         : it.kind === "pms"
                         ? "bg-amber-50 text-amber-700"
+                        : it.kind === "other"
+                        ? "bg-slate-100 text-slate-700"
                         : "bg-rose-50 text-rose-700"
                     }`}
                   >
                     {KIND_LABEL[it.kind] ?? it.kind}
                   </span>
                   <span className="font-semibold text-sm">
-                    {it.schemeName ?? it.policyName ?? it.strategyName ?? it.fundName}
+                    {it.schemeName ?? it.policyName ?? it.strategyName ?? it.fundName ?? it.productName}
                   </span>
                 </div>
                 <ProductDetails it={it} />
@@ -314,6 +317,17 @@ function ProductDetails({ it }: { it: any }) {
     if (it.targetIrr) kv.push(["Target IRR", `${it.targetIrr}% p.a.`]);
     const aifProj = Number(it.proposedAmount ?? 0) * Math.pow(1 + Number(it.targetIrr ?? 0) / 100, Number(it.lockInYears ?? 0));
     if (aifProj) kv.push(["Projected", formatINR(Math.round(aifProj))]);
+  } else if (it.kind === "other") {
+    if (it.company) kv.push(["Company", it.company]);
+    if (it.amount) kv.push(["Amount", formatINR(Number(it.amount))]);
+    if (it.expectedReturn) kv.push(["Expected return", `${it.expectedReturn}% p.a.`]);
+    if (it.termYears) kv.push(["Term", `${it.termYears} yrs`]);
+    const otherProj =
+      Number(it.amount ?? 0) > 0 && Number(it.expectedReturn ?? 0) > 0 && Number(it.termYears ?? 0) > 0
+        ? Number(it.amount) * Math.pow(1 + Number(it.expectedReturn) / 100, Number(it.termYears))
+        : 0;
+    if (otherProj) kv.push(["Expected FV", formatINR(Math.round(otherProj))]);
+    if (it.remarks) kv.push(["Remarks", it.remarks]);
   }
   if (kv.length === 0) return null;
   return (

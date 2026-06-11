@@ -16,6 +16,7 @@ import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { autoAdvance, resolveLeadIdForInvestor } from "@/lib/blueprints/auto-advance";
 import { proposals, investors, leads, families } from "@/db/schema";
+import { proposalTotals } from "@/lib/proposals/projections";
 
 export const dynamic = "force-dynamic";
 
@@ -74,7 +75,18 @@ const LineAIF = z.object({
   notes: z.string().max(500).optional(),
 });
 
-const LineItem = z.discriminatedUnion("kind", [LineMF, LineInsurance, LinePMS, LineAIF]);
+const LineOther = z.object({
+  kind: z.literal("other"),
+  productName: z.string().min(1).max(200),
+  company: z.string().max(120).optional(),
+  amount: z.number().min(0).optional(),
+  expectedReturn: z.number().min(0).max(60).optional(),
+  termYears: z.number().min(0).max(99).optional(),
+  remarks: z.string().max(300).optional(),
+  notes: z.string().max(500).optional(),
+});
+
+const LineItem = z.discriminatedUnion("kind", [LineMF, LineInsurance, LinePMS, LineAIF, LineOther]);
 
 const CreateBody = z
   .object({
@@ -116,41 +128,6 @@ const CreateBody = z
       path: ["recipientType"],
     }
   );
-
-/**
- * Compute totals over the line items.
- *   totalInvestment ≈ sum of lump-sum-like amounts (lumpsum + proposedAmount + annualPremium)
- *                     + 12 * monthlyAmount * sipTermYears for MF SIPs
- *   expectedCorpus  ≈ sum of projectedCorpus where set
- */
-function computeTotals(items: any[]) {
-  let inv = 0;
-  let corpus = 0;
-  for (const it of items) {
-    if (it.kind === "mf") {
-      inv += Number(it.lumpsum ?? 0);
-      if (it.monthlyAmount && it.sipTermYears) {
-        inv += Number(it.monthlyAmount) * 12 * Number(it.sipTermYears);
-      }
-      corpus += Number(it.projectedCorpus ?? 0);
-    } else if (it.kind === "insurance") {
-      inv += Number(it.annualPremium ?? 0);
-    } else if (it.kind === "pms") {
-      const amt = Number(it.proposedAmount ?? 0);
-      inv += amt;
-      if (amt && it.expectedReturn && it.termYears) {
-        corpus += amt * Math.pow(1 + Number(it.expectedReturn) / 100, Number(it.termYears));
-      }
-    } else if (it.kind === "aif") {
-      const amt = Number(it.proposedAmount ?? 0);
-      inv += amt;
-      if (amt && it.targetIrr && it.lockInYears) {
-        corpus += amt * Math.pow(1 + Number(it.targetIrr) / 100, Number(it.lockInYears));
-      }
-    }
-  }
-  return { totalInvestment: inv || null, expectedCorpus: corpus || null };
-}
 
 /** Generate the next PROP-YYYY-#### identifier for this tenant. */
 async function nextProposalNumber(tx: any, tenantId: string) {
@@ -276,7 +253,7 @@ export async function POST(req: NextRequest) {
       }
 
       const proposalNumber = await nextProposalNumber(tx, session.tenantId);
-      const totals = computeTotals(body.products);
+      const totals = proposalTotals(body.products);
 
       await tx.insert(proposals).values({
         id,

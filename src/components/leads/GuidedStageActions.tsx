@@ -129,9 +129,15 @@ export function GuidedStageActions({
           return;
         }
 
-        // Zoho Blueprint check: if there are missing required fields or if this is a direct advance_only,
-        // show the Zoho CRM Transition Modal to gather remarks and required fields.
-        if ((pre.missingFields && pre.missingFields.length > 0) || action.behaviour.kind === "advance_only") {
+        // Show the generic transition modal ONLY for direct "advance_only" jumps —
+        // those have no dialog of their own, so the modal is where we collect any
+        // remarks / required fields. Dialog-backed actions (Call Done → log_call,
+        // Meeting Done → log_past_meeting, …) must open their OWN richer dialog
+        // (e.g. the Log Activity panel) where the user records the call/meeting;
+        // saving that artefact auto-advances the stage and fills required fields
+        // like LastContactAt. So we deliberately do NOT intercept them here even
+        // when the target stage lists missing fields — the dialog supplies them.
+        if (action.behaviour.kind === "advance_only") {
           setTransitioningAction(action);
           setMissingFields(pre.missingFields ?? []);
           setFieldValues({});
