@@ -24,6 +24,7 @@ import { withSystem, withTenant } from "@/db/client";
 import { communications, eventsOutbox, leads } from "@/db/schema";
 import { applyMonotonicStatus } from "@/lib/comms/webhook-status";
 import { autoTriageInbound } from "@/lib/comms/auto-responder";
+import { captureError } from "@/lib/observability/capture";
 
 export const dynamic = "force-dynamic";
 
@@ -48,6 +49,7 @@ export async function POST(req: NextRequest) {
   if (secret) {
     const got = req.headers.get("x-webhook-secret") ?? req.headers.get("x-api-key") ?? "";
     if (got !== secret) {
+      captureError("webhook.signature_failed", null, { source: "wapi" });
       return NextResponse.json({ error: "invalid signature" }, { status: 401 });
     }
   }

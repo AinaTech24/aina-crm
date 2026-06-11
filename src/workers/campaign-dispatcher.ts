@@ -16,6 +16,7 @@ import { withTenant, withSystem } from "@/db/client";
 import { campaigns, segments, segmentMemberships, investors, leads, templates, communications } from "@/db/schema";
 import { dispatch } from "@/lib/comms/pipeline";
 import { isBroadcastCampaign } from "@/lib/campaigns/broadcast";
+import { captureError } from "@/lib/observability/capture";
 
 /** Tick cadence (15s) → 4 ticks/minute. Batch size = throttlePerMinute / 4 so
  *  the configured per-minute rate is actually respected. */
@@ -35,7 +36,7 @@ export async function processActiveCampaigns(): Promise<number> {
       const completed = await processOneCampaign(c.tenantId, c.id);
       if (completed) completedCount++;
     } catch (err: any) {
-      console.error(`[campaign-dispatcher] failed for campaign ${c.id}:`, err?.message);
+      captureError("[campaign-dispatcher] campaign run failed", err, { campaignId: c.id });
     }
   }
   return completedCount;
@@ -199,7 +200,7 @@ export async function promoteDueScheduledCampaigns(): Promise<number> {
       });
       if (ok) promoted++;
     } catch (err: any) {
-      console.error(`[campaign-dispatcher] promote failed for ${row.id}:`, err?.message);
+      captureError("[campaign-dispatcher] scheduled-campaign promote failed", err, { campaignId: row.id });
     }
   }
   return promoted;
@@ -275,7 +276,7 @@ export function startCampaignDispatcherWorker() {
         console.log(`[campaign-dispatcher] completed ${processed} campaign(s)`);
       }
     } catch (err: any) {
-      console.error("[campaign-dispatcher] tick error:", err?.message);
+      captureError("[campaign-dispatcher] tick error", err);
     } finally {
       running = false;
     }

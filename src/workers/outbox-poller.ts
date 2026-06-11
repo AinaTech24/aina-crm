@@ -21,8 +21,14 @@ import { Q, getConnection } from "./queues";
 import { runRulesForEvent, cancelScheduledJobsForSubject } from "@/lib/workflow-rules/runner";
 import { MODULES } from "@/lib/workflow-rules/modules";
 import { handleBlueprintStageEvent } from "@/lib/blueprints/event-consumers";
+import { captureError } from "@/lib/observability/capture";
 
 const BATCH_SIZE = 200;
+/** After this many failed attempts an event is dead-lettered: it stays in the
+ *  table (processed_at NULL, attempts >= cap) but is never claimed again, so a
+ *  poison event can't burn a retry slot forever. Ops query:
+ *  SELECT * FROM events_outbox WHERE processed_at IS NULL AND attempts >= 8. */
+const MAX_ATTEMPTS = 8;
 
 export async function pollOutboxOnce(): Promise<{ processed: number; errors: number }> {
   let processed = 0;
@@ -43,6 +49,7 @@ export async function pollOutboxOnce(): Promise<{ processed: number; errors: num
       WITH cte AS (
         SELECT id FROM events_outbox
         WHERE processed_at IS NULL
+          AND COALESCE(attempts, 0) < ${MAX_ATTEMPTS}
           AND (claimed_at IS NULL OR claimed_at < now() - interval '5 minutes')
         ORDER BY id
         LIMIT ${BATCH_SIZE}
@@ -67,18 +74,31 @@ export async function pollOutboxOnce(): Promise<{ processed: number; errors: num
     } catch (err) {
       errors++;
       const msg = (err as Error).message;
-      await withSystem(async (tx) => {
+      const updated = await withSystem(async (tx) => {
         // `attempts` is integer (migration 0016); SET … = attempts + 1 is
         // atomic now so concurrent retries can't race past each other.
-        await tx.execute(
+        const r = await tx.execute(
           sql`UPDATE events_outbox
               SET attempts = COALESCE(attempts, 0) + 1,
                   last_error = ${msg},
                   claimed_at = NULL
-              WHERE id = ${event.id}`
+              WHERE id = ${event.id}
+              RETURNING attempts`
         );
+        return (r.rows as any[])[0];
       });
-      console.error(`[outbox] event ${event.id} failed:`, msg);
+      const attempts = Number(updated?.attempts ?? 0);
+      if (attempts >= MAX_ATTEMPTS) {
+        // Crossed the dead-letter threshold — it will never be claimed again.
+        captureError("[outbox] event dead-lettered", err, {
+          eventId: event.id,
+          kind: event.kind,
+          tenantId: event.tenant_id,
+          attempts,
+        });
+      } else {
+        console.error(`[outbox] event ${event.id} failed (attempt ${attempts}/${MAX_ATTEMPTS}):`, msg);
+      }
     }
   }
 
@@ -244,7 +264,7 @@ export function startOutboxPollerWorker() {
         console.log(`[outbox] processed=${processed} errors=${errors}`);
       }
     } catch (err) {
-      console.error("[outbox] tick error:", (err as Error).message);
+      captureError("[outbox] tick error", err);
     } finally {
       running = false;
     }

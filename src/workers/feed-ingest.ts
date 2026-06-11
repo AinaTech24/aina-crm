@@ -155,7 +155,10 @@ CAMS|12345678|ABCDE1234F|Anil Mehta|INF209K01UN1|Aditya Birla Sun Life Frontline
         filesFound++;
         filesFailed++;
         console.warn(`[feed-ingest] ${tenantId}: unrecognised file name '${fileName}' (need <source>__<kind>__...)`);
-        await moveTo(full, path.join(root, tenantId, "failed")).catch(() => {});
+        // If the quarantine move ALSO fails the file will retry every tick — log it.
+        await moveTo(full, path.join(root, tenantId, "failed")).catch((e) =>
+          console.error(`[feed-ingest] ${tenantId}: could not quarantine '${fileName}':`, (e as Error)?.message)
+        );
         continue;
       }
       filesFound++;
@@ -185,7 +188,9 @@ CAMS|12345678|ABCDE1234F|Anil Mehta|INF209K01UN1|Aditya Birla Sun Life Frontline
         }
       } catch (err: any) {
         filesFailed++;
-        await moveTo(full, path.join(root, tenantId, "failed")).catch(() => {});
+        await moveTo(full, path.join(root, tenantId, "failed")).catch((e) =>
+          console.error(`[feed-ingest] ${tenantId}: could not quarantine '${fileName}':`, (e as Error)?.message)
+        );
         console.error(`[feed-ingest] ${tenantId}: ${fileName} errored — ${err?.message ?? err}`);
       }
     }

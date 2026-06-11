@@ -23,6 +23,7 @@ import { communications, investors, leads } from "@/db/schema";
 import { maybeRouteEmailToTicket } from "@/lib/comms/email-to-ticket";
 import { refreshAccessToken, getProviderDef, type OAuthProvider } from "@/lib/comms/oauth";
 import { sql } from "drizzle-orm";
+import { captureError } from "@/lib/observability/capture";
 
 async function ingest(
   tenantId: string,
@@ -196,7 +197,7 @@ export function startImapPollerWorker() {
               accessToken: t.accessToken,
             };
           } catch (e) {
-            console.error(`[imap] ${row.tenantId} OAuth refresh failed:`, (e as Error).message);
+            captureError("[imap] OAuth refresh failed — mailbox disconnected", e, { tenantId: row.tenantId, userId: row.userId ?? "firm" });
             continue;
           }
         } else if (imap.host && imap.user && imap.pass) {

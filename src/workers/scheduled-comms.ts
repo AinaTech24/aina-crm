@@ -15,6 +15,7 @@ import { sql } from "drizzle-orm";
 import { withSystem } from "@/db/client";
 import { communications } from "@/db/schema";
 import { sendScheduledEmail } from "@/lib/comms/compose";
+import { captureError } from "@/lib/observability/capture";
 
 const BATCH = 200;
 
@@ -66,7 +67,7 @@ export async function runScheduledCommsDrain(): Promise<{ picked: number; sent: 
 export function startScheduledCommsWorker(): () => void {
   const interval = setInterval(() => {
     void runScheduledCommsDrain().catch((err) =>
-      console.error("[scheduled-comms] tick failed:", (err as Error).message)
+      captureError("[scheduled-comms] tick failed", err)
     );
   }, 60 * 1000);
   interval.unref?.();

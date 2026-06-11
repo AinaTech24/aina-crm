@@ -64,18 +64,27 @@ const PUBLIC_API_PREFIXES = [
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
+  // Correlation id — one per request; surfaced on the response and (via the
+  // middleware header-merge) readable by route handlers through headers(), so
+  // an error's referenceId can be matched to the exact request that caused it.
+  const requestId = crypto.randomUUID();
+  const tag = (res: NextResponse) => {
+    res.headers.set("x-request-id", requestId);
+    return res;
+  };
+
   // Public marketing pages
-  if (PUBLIC_PATHS.has(pathname)) return NextResponse.next();
+  if (PUBLIC_PATHS.has(pathname)) return tag(NextResponse.next());
   // Public form routes — clients click WA/email links without logging in
-  if (PUBLIC_PATH_PREFIXES.some((p) => pathname.startsWith(p))) return NextResponse.next();
-  if (PUBLIC_API_PREFIXES.some((p) => pathname.startsWith(p))) return NextResponse.next();
+  if (PUBLIC_PATH_PREFIXES.some((p) => pathname.startsWith(p))) return tag(NextResponse.next());
+  if (PUBLIC_API_PREFIXES.some((p) => pathname.startsWith(p))) return tag(NextResponse.next());
 
   // Dev escape hatch — set NO_AUTH=1 to bypass and inject the demo session.
   // Useful for previewing the UI before a real auth wiring lands.
   // HARD-DISABLED in production builds: an accidentally-set env var would
   // hand any unauthenticated visitor an owner+rm+compliance session.
   if (process.env.NO_AUTH === "1" && process.env.NODE_ENV !== "production") {
-    const res = NextResponse.next();
+    const res = tag(NextResponse.next());
     // Point the demo session at the seeded demo owner (tenant that actually
     // holds the demo book) so every tenant-scoped page renders populated.
     // Overridable via DEMO_* env vars for a reseeded DB with fresh ids.
@@ -104,7 +113,7 @@ export async function middleware(req: NextRequest) {
 
   if (!session) {
     if (pathname.startsWith("/api/")) {
-      const res = NextResponse.json({ error: "not authenticated" }, { status: 401 });
+      const res = tag(NextResponse.json({ error: "not authenticated" }, { status: 401 }));
       // Self-heal: a present-but-invalid/expired token would otherwise be re-sent
       // on every request and keep failing — delete it so the next login is clean
       // (fixes the "had to clear cookies before login worked" symptom).
@@ -144,7 +153,7 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(new URL("/super-admin", req.url));
   }
 
-  const res = NextResponse.next();
+  const res = tag(NextResponse.next());
   res.headers.set("x-mfd-session", JSON.stringify(session));
   // Expose the request pathname so server components can do path-aware
   // logic (e.g. license-restricted carve-out for /dashboard/billing).

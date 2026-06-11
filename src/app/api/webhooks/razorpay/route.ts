@@ -14,6 +14,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { sql } from "drizzle-orm";
 import { withSystem } from "@/db/client";
 import { verifyRazorpayWebhook } from "@/lib/billing/razorpay";
+import { captureError } from "@/lib/observability/capture";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +22,8 @@ export async function POST(req: NextRequest) {
   const rawBody = await req.text();
   const sig = req.headers.get("x-razorpay-signature") ?? "";
   if (!verifyRazorpayWebhook(rawBody, sig)) {
+    // Forensics: a bad signature is either misconfiguration or someone probing.
+    captureError("webhook.signature_failed", null, { source: "razorpay" });
     return NextResponse.json({ error: "invalid signature" }, { status: 401 });
   }
 

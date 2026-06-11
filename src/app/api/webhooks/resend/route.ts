@@ -9,6 +9,7 @@ import { withSystem } from "@/db/client";
 import { emailAdapter } from "@/lib/comms/adapters/resend";
 import { applyMonotonicStatus } from "@/lib/comms/webhook-status";
 import { communications, emailSuppressions } from "@/db/schema";
+import { captureError } from "@/lib/observability/capture";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +19,7 @@ export async function POST(req: NextRequest) {
   req.headers.forEach((v, k) => (headers[k] = v));
 
   if (!emailAdapter.verifyWebhookSignature(rawBody, headers)) {
+    captureError("webhook.signature_failed", null, { source: "resend" });
     return NextResponse.json({ error: "invalid signature" }, { status: 401 });
   }
 

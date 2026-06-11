@@ -11,6 +11,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { withTenant, withSystem } from "@/db/client";
 import { eventsOutbox, segmentMemberships, segments } from "@/db/schema";
 import { compileToSelect, bindCompiled } from "@/lib/filter/compiler";
+import { captureError } from "@/lib/observability/capture";
 
 /** Keep every multi-row statement well under Postgres' 65,535 bind-param cap. */
 const WRITE_CHUNK = 1000;
@@ -170,7 +171,7 @@ export function startSegmentMaterializerWorker() {
           const out = await materializeSegment(r.tenant_id, r.id);
           console.log(`[seg] materialized ${r.id}: +${out.added} -${out.removed} total=${out.total}`);
         } catch (err) {
-          console.error(`[seg] ${r.id} failed:`, (err as Error).message);
+          captureError("[seg] segment materialization failed", err, { segmentId: r.id });
         }
       }
     } finally {

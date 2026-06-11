@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
+import { headers } from "next/headers";
 import { v4 as uuid } from "uuid";
+import { captureError } from "@/lib/observability/capture";
 
 /**
  * Global API error handling helper.
@@ -7,10 +9,19 @@ import { v4 as uuid } from "uuid";
  * Masks internal database and execution errors, while safely passing
  * user-facing validation (400), auth (401), license (402), or permission (403) errors.
  * Generates a unique reference ID for any masked internal error so developers
- * can search server logs.
+ * can search server logs. When the middleware minted an `x-request-id`, that id
+ * is reused as the reference — so the client-visible response header, the server
+ * log line, and the alert all correlate to the same request.
  */
-export function handleApiError(err: unknown): NextResponse {
-  const errorId = uuid();
+export async function handleApiError(err: unknown): Promise<NextResponse> {
+  let errorId: string | null = null;
+  try {
+    const h = await headers();
+    errorId = h.get("x-request-id");
+  } catch {
+    /* outside a request context (worker/test) — fall through to a fresh id */
+  }
+  if (!errorId) errorId = uuid();
 
   // Extract HTTP status if present on the error object
   const status =
@@ -32,12 +43,14 @@ export function handleApiError(err: unknown): NextResponse {
       originalMessage.includes("violates unique constraint") ||
       originalMessage.includes("syntax error at or near") ||
       originalMessage.includes("database");
-    
+
     const safeMsg = isPgLeak ? "invalid request" : originalMessage;
     return NextResponse.json({ error: safeMsg }, { status });
   }
 
-  // Internal/DB errors (500) return a generic message + tracking ID
+  // Internal/DB errors (500): alert (webhook when ERROR_WEBHOOK_URL is set)
+  // with the same reference ID the caller sees, then return a generic message.
+  captureError("api.unhandled_500", err, { errorId });
   return NextResponse.json(
     { error: "internal", referenceId: errorId },
     { status: 500 }
