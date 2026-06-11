@@ -46,7 +46,7 @@ type Prereq = {
 type Outcome =
   | { kind: "advanced" }
   | { kind: "needs_action"; items: Prereq[]; targetStage: string }
-  | { kind: "sent"; message: string; waMeUrl?: string | null }
+  | { kind: "sent"; ok?: boolean; message: string; waMeUrl?: string | null }
   | { kind: "error"; message: string };
 
 export function GuidedStageActions({
@@ -117,6 +117,13 @@ export function GuidedStageActions({
   async function handleClick(action: StageAction) {
     setBusy(action.key);
     setOutcome(null);
+    // Reserve a tab for the WhatsApp deep-link *synchronously* (inside the click
+    // gesture) so it isn't popup-blocked after the async send. We redirect it to
+    // wa.me if the platform couldn't auto-deliver WhatsApp, else close it.
+    const isDocChecklist =
+      action.behaviour.kind === "call_api" && action.behaviour.endpoint.includes("send-doc-checklist");
+    const waWin = isDocChecklist ? window.open("", "_blank") : null;
+    let waWinUsed = false;
     try {
       // 1. If the action targets a *forward* stage, check prereqs first.
       const forwardJump = action.targetStage && action.targetStage !== currentStage;
@@ -182,8 +189,16 @@ export function GuidedStageActions({
           });
           const data = await res.json().catch(() => ({}));
           if (!res.ok) {
+            if (waWin) { waWin.close(); waWinUsed = true; }
             setOutcome({ kind: "error", message: data?.error ?? "The action could not be completed." });
             break;
+          }
+          // doc-checklist: deliver WhatsApp via the reserved tab when the platform
+          // couldn't auto-send it (Meta's 24h rule), else close the tab.
+          if (waWin) {
+            if (data?.waMeUrl && !data?.whatsapp?.sent) waWin.location.href = data.waMeUrl;
+            else waWin.close();
+            waWinUsed = true;
           }
           if (action.behaviour.afterStage) {
             await advance(action.behaviour.afterStage);
@@ -193,7 +208,7 @@ export function GuidedStageActions({
           onAfterAdvance?.();
           // If the endpoint reports what it did (e.g. email + WhatsApp sent), show it.
           if (typeof data?.summary === "string") {
-            setOutcome({ kind: "sent", message: data.summary, waMeUrl: data.waMeUrl ?? null });
+            setOutcome({ kind: "sent", ok: data.ok !== false, message: data.summary, waMeUrl: data.waMeUrl ?? null });
           } else {
             setOutcome({ kind: "advanced" });
           }
@@ -213,6 +228,7 @@ export function GuidedStageActions({
       }
     } finally {
       setBusy(null);
+      if (waWin && !waWinUsed) waWin.close();
     }
   }
 
@@ -352,29 +368,36 @@ export function GuidedStageActions({
         </div>
       )}
 
-      {/* Sent panel — the link went out (email + WhatsApp). */}
-      {outcome?.kind === "sent" && (
-        <div className="rounded-xl border-2 border-emerald-300 bg-emerald-50/70 p-4">
-          <div className="flex items-start gap-3">
-            <div className="size-9 rounded-lg bg-emerald-100 grid place-items-center flex-shrink-0">
-              <CheckCircle2 className="size-4 text-emerald-700" />
+      {/* Sent panel — honest per-channel result (green if something went out,
+          amber if nothing could be auto-sent). */}
+      {outcome?.kind === "sent" && (() => {
+        const ok = outcome.ok !== false;
+        const c = ok
+          ? { border: "border-emerald-300", bg: "bg-emerald-50/70", chip: "bg-emerald-100", icon: "text-emerald-700", title: "text-emerald-900", body: "text-emerald-800/90", link: "text-emerald-800" }
+          : { border: "border-amber-300", bg: "bg-amber-50/70", chip: "bg-amber-100", icon: "text-amber-700", title: "text-amber-900", body: "text-amber-800/90", link: "text-amber-800" };
+        return (
+          <div className={`rounded-xl border-2 ${c.border} ${c.bg} p-4`}>
+            <div className="flex items-start gap-3">
+              <div className={`size-9 rounded-lg ${c.chip} grid place-items-center flex-shrink-0`}>
+                {ok ? <CheckCircle2 className={`size-4 ${c.icon}`} /> : <AlertTriangle className={`size-4 ${c.icon}`} />}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className={`text-sm font-semibold ${c.title}`}>{ok ? "Document link sent" : "Couldn’t auto-send — use the WhatsApp link"}</div>
+                <p className={`text-xs ${c.body} mt-0.5`}>{outcome.message}</p>
+                {outcome.waMeUrl && (
+                  <a href={outcome.waMeUrl} target="_blank" rel="noopener noreferrer"
+                    className={`text-xs ${c.link} underline mt-1 inline-block font-medium`}>
+                    📲 Send the link on WhatsApp →
+                  </a>
+                )}
+              </div>
+              <button type="button" onClick={() => setOutcome(null)} className={`text-xs ${c.link} hover:underline flex-shrink-0`}>
+                Dismiss
+              </button>
             </div>
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-semibold text-emerald-900">Document link sent</div>
-              <p className="text-xs text-emerald-800/90 mt-0.5">{outcome.message}</p>
-              {outcome.waMeUrl && (
-                <a href={outcome.waMeUrl} target="_blank" rel="noopener noreferrer"
-                  className="text-xs text-emerald-800 underline mt-1 inline-block">
-                  WhatsApp not delivered? Send from your phone →
-                </a>
-              )}
-            </div>
-            <button type="button" onClick={() => setOutcome(null)} className="text-xs text-emerald-800 hover:underline flex-shrink-0">
-              Dismiss
-            </button>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Error panel — transport failure checking prerequisites */}
       {outcome?.kind === "error" && (
