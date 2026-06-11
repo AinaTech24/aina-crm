@@ -35,6 +35,10 @@ import { TaxRegimeOptimizer } from "./TaxRegimeOptimizer";
 import { RealReturnCalculator } from "./RealReturnCalculator";
 import { NpsPlanner } from "./NpsPlanner";
 import { TaxHarvestingCalculator } from "./TaxHarvestingCalculator";
+import { CrashStressTest } from "./CrashStressTest";
+import { FireNumberCalculator } from "./FireNumberCalculator";
+import { ChildEducationProjector } from "./ChildEducationProjector";
+import { GoalCollisionTimeline } from "./GoalCollisionTimeline";
 import {
   fvSip,
   fvLumpsum,
@@ -81,6 +85,10 @@ type TabKey =
   | "realreturn"
   | "nps"
   | "harvest"
+  | "crash"
+  | "fire"
+  | "childedu"
+  | "collision"
   | "sip"
   | "lumpsum"
   | "goal"
@@ -121,6 +129,10 @@ const TABS: Array<{ key: TabKey; label: string }> = [
   { key: "realreturn", label: "🛡 Real Return (tax+inflation)" },
   { key: "nps", label: "🛡 NPS Retirement & Tax" },
   { key: "harvest", label: "🛡 LTCG Tax-Harvesting" },
+  { key: "crash", label: "🔥 Market-Crash Stress Test" },
+  { key: "fire", label: "🔥 FIRE Number" },
+  { key: "childedu", label: "🔥 Child Education" },
+  { key: "collision", label: "🔥 Goal-Collision Timeline" },
   { key: "sip", label: "1. SIP" },
   { key: "lumpsum", label: "2. Lumpsum" },
   { key: "goal", label: "3. Goal" },
@@ -185,6 +197,10 @@ export function CalculatorsApp() {
       {tab === "realreturn" && <RealReturnCalculator />}
       {tab === "nps" && <NpsPlanner />}
       {tab === "harvest" && <TaxHarvestingCalculator />}
+      {tab === "crash" && <CrashStressTest />}
+      {tab === "fire" && <FireNumberCalculator />}
+      {tab === "childedu" && <ChildEducationProjector />}
+      {tab === "collision" && <GoalCollisionTimeline />}
       {tab === "sip" && <SipCalc />}
       {tab === "lumpsum" && <LumpsumCalc />}
       {tab === "goal" && <GoalCalc />}
