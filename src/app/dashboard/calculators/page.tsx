@@ -1,6 +1,6 @@
 /**
  * MF Investment Calculators — Network FP "3.5 MF Investment Calculators"
- * parity (extended). All 10 calculators on one page, no DB writes. RM uses
+ * parity (extended). Searchable calculator gallery, no DB writes. RM uses
  * these during client meetings to demonstrate scenarios live.
  *
  * Print/PDF output carries the SAME branded letterhead + footer as the proposal
