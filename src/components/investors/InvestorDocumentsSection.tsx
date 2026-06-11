@@ -71,27 +71,23 @@ export function InvestorDocumentsSection({ investorId, investorName, investorPho
           continue;
         }
         const ct = file.type || "application/octet-stream";
-        // 1. presigned PUT
-        const up = await fetch("/api/compliance/upload-url", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ filename: file.name, contentType: ct, kind: "kyc" }),
-        }).then((r) => r.json()).catch(() => ({}));
-        if (!up?.url || !up?.key) {
-          toast.error(up?.error ?? "Could not start upload", "Upload failed");
+        // 1. Upload through our server to S3 (no bucket CORS, no presigned
+        //    signed-header replay). Returns the storage key.
+        const fd = new FormData();
+        fd.append("file", file);
+        fd.append("kind", "kyc");
+        const up = await fetch("/api/compliance/upload", { method: "POST", body: fd })
+          .then((r) => r.json())
+          .catch(() => ({}));
+        if (!up?.key) {
+          toast.error(up?.error ?? "Could not upload", "Upload failed");
           continue;
         }
-        // 2. PUT the file
-        const put = await fetch(up.url, { method: "PUT", body: file, headers: { "content-type": ct } });
-        if (!put.ok) {
-          toast.error(`Could not upload ${file.name}`, "Upload failed");
-          continue;
-        }
-        // 3. register against this client
+        // 2. register against this client
         const reg = await fetch(`/api/investors/${investorId}/documents`, {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ name: file.name, storageKey: up.key, mimeType: ct, sizeBytes: file.size, category: "kyd" }),
+          body: JSON.stringify({ name: file.name, storageKey: up.key, mimeType: up.contentType ?? ct, sizeBytes: up.sizeBytes ?? file.size, category: "kyd" }),
         });
         if (reg.ok) ok += 1;
         else {

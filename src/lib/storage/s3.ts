@@ -44,11 +44,17 @@ export async function presignedPutUrl(key: string, contentType: string, ttlSecon
   if (!isS3Configured()) {
     return `/api/upload-local/${key}`;
   }
+  // NOTE: do NOT set ServerSideEncryption here. When it's part of the signed
+  // PutObjectCommand, AWS adds `x-amz-server-side-encryption` to the request's
+  // signed headers, which means the *browser* must replay that exact header on
+  // its PUT — our client only sends Content-Type, so S3 rejects every upload
+  // with 403 SignatureDoesNotMatch. Encryption at rest is still enforced by the
+  // bucket's default encryption (SSE-S3/AES256 is on by default for all S3
+  // buckets since Jan 2023), so objects remain encrypted without the header.
   const cmd = new PutObjectCommand({
     Bucket: bucket(),
     Key: key,
     ContentType: contentType,
-    ServerSideEncryption: "AES256",
   });
   return getSignedUrl(client(), cmd, { expiresIn: ttlSeconds });
 }

@@ -45,26 +45,20 @@ export default function UploadDocumentPage() {
     setBusy(true);
     setErr(null);
     try {
-      // 1. Get presigned URL
-      const urlRes = await fetch("/api/compliance/upload-url", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ filename: file.name, contentType: file.type, kind: "compliance" }),
-      });
-      const urlJson = await urlRes.json();
-      if (!urlRes.ok) {
-        setErr(urlJson.error ?? "Failed to get upload URL — is S3 configured?");
+      // 1. Upload the file THROUGH our server to S3 (server→S3, so no bucket
+      //    CORS and no presigned signed-header replay to get wrong). Returns the
+      //    storage key we then register below.
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("kind", "compliance");
+      const upRes = await fetch("/api/compliance/upload", { method: "POST", body: fd });
+      const upJson = await upRes.json().catch(() => ({}));
+      if (!upRes.ok || !upJson.key) {
+        setErr(upJson.error ?? `Upload failed (HTTP ${upRes.status})`);
         return;
       }
 
-      // 2. Upload directly to S3
-      const putRes = await fetch(urlJson.url, { method: "PUT", body: file, headers: { "content-type": file.type } });
-      if (!putRes.ok) {
-        setErr("S3 upload failed");
-        return;
-      }
-
-      // 3. Register in compliance_documents
+      // 2. Register in compliance_documents
       const regRes = await fetch("/api/compliance/documents", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -72,20 +66,25 @@ export default function UploadDocumentPage() {
           name: form.name || file.name,
           category: form.category,
           description: form.description,
-          storageKey: urlJson.key,
-          mimeType: file.type,
-          sizeBytes: file.size,
+          storageKey: upJson.key,
+          mimeType: upJson.contentType ?? file.type,
+          sizeBytes: upJson.sizeBytes ?? file.size,
           expiresOn: form.expiresOn || undefined,
           relatedEntityType: client ? "investor" : undefined,
           relatedEntityId: client?.id,
         }),
       });
-      const regJson = await regRes.json();
+      const regJson = await regRes.json().catch(() => ({}));
       if (!regRes.ok) {
         setErr(regJson.error ?? "Register failed");
         return;
       }
       router.push("/dashboard/documents");
+      router.refresh();
+    } catch (e: any) {
+      // Without this catch, a network/upload error left the spinner stopping
+      // with no message — the user saw nothing.
+      setErr(e?.message ? `Upload error: ${e.message}` : "Upload failed unexpectedly");
     } finally {
       setBusy(false);
     }
