@@ -8,7 +8,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { FileText, Upload, Download, Trash2, Loader2, FolderOpen, UserCheck, Send, Link as LinkIcon, Copy, ExternalLink, CheckCircle2 } from "lucide-react";
+import { FileText, Upload, Download, Trash2, Loader2, FolderOpen, UserCheck, Send, Link as LinkIcon, Copy, ExternalLink, CheckCircle2, Eye, Cloud, HardDrive } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
@@ -44,6 +44,7 @@ export function InvestorDocumentsSection({ investorId, investorName, investorPho
   const [uploading, setUploading] = useState(false);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [storage, setStorage] = useState<{ configured: boolean; bucket: string; region: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   async function load() {
@@ -59,6 +60,14 @@ export function InvestorDocumentsSection({ investorId, investorName, investorPho
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [investorId]);
+
+  // Tell the user where uploads actually land (S3 vs local disk on the server).
+  useEffect(() => {
+    fetch("/api/diagnostics/storage")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((s) => s && setStorage({ configured: !!s.configured, bucket: s.bucket, region: s.region }))
+      .catch(() => {});
+  }, []);
 
   async function onFiles(files: FileList | null) {
     if (!files || files.length === 0) return;
@@ -112,6 +121,20 @@ export function InvestorDocumentsSection({ investorId, investorName, investorPho
       const j = await res.json().catch(() => ({}));
       if (res.ok && j.url) window.open(j.url, "_blank", "noopener,noreferrer");
       else toast.error(j.error ?? "Could not open document", "Download failed");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  // View opens the file inline in a new tab (PDF/image preview) rather than
+  // forcing a download.
+  async function view(d: Doc) {
+    setBusyId(d.id);
+    try {
+      const res = await fetch(`/api/investors/${investorId}/documents/download?docId=${d.id}&inline=1`);
+      const j = await res.json().catch(() => ({}));
+      if (res.ok && j.url) window.open(j.url, "_blank", "noopener,noreferrer");
+      else toast.error(j.error ?? "Could not open document", "View failed");
     } finally {
       setBusyId(null);
     }
@@ -196,11 +219,27 @@ export function InvestorDocumentsSection({ investorId, investorName, investorPho
   const teamDocs = docs.filter((d) => !d.clientUploaded);
 
   return (
-    <div className="card-surface p-5">
+    <div id="documents" className="card-surface p-5 scroll-mt-24">
       <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
         <h3 className="font-semibold flex items-center gap-2">
           <FolderOpen className="size-4 text-brand-cyan" /> Documents &amp; attachments
           {docs.length > 0 && <span className="chip text-[10px] bg-secondary">{docs.length}</span>}
+          {storage &&
+            (storage.configured ? (
+              <span
+                className="chip text-[9px] bg-emerald-50 text-emerald-700 inline-flex items-center gap-1"
+                title={`Uploads are stored in S3 bucket "${storage.bucket}" (${storage.region})`}
+              >
+                <Cloud className="size-3" /> S3
+              </span>
+            ) : (
+              <span
+                className="chip text-[9px] bg-amber-50 text-amber-700 inline-flex items-center gap-1"
+                title="S3 is not configured on the server — files save to local disk. Set S3 env vars + redeploy."
+              >
+                <HardDrive className="size-3" /> Local disk
+              </span>
+            ))}
         </h3>
         <div className="flex items-center gap-2">
           <input
@@ -327,6 +366,7 @@ export function InvestorDocumentsSection({ investorId, investorName, investorPho
               icon={UserCheck}
               docs={clientDocs}
               busyId={busyId}
+              onView={view}
               onDownload={download}
               onDelete={(id) => setConfirmId(id)}
             />
@@ -337,6 +377,7 @@ export function InvestorDocumentsSection({ investorId, investorName, investorPho
             docs={teamDocs}
             emptyHint={teamDocs.length === 0 ? "Nothing added by the team yet." : undefined}
             busyId={busyId}
+            onView={view}
             onDownload={download}
             onDelete={(id) => setConfirmId(id)}
           />
@@ -363,6 +404,7 @@ function DocGroup({
   docs,
   emptyHint,
   busyId,
+  onView,
   onDownload,
   onDelete,
 }: {
@@ -371,6 +413,7 @@ function DocGroup({
   docs: Doc[];
   emptyHint?: string;
   busyId: string | null;
+  onView: (d: Doc) => void;
   onDownload: (d: Doc) => void;
   onDelete: (id: string) => void;
 }) {
@@ -397,12 +440,21 @@ function DocGroup({
               </div>
               <button
                 type="button"
+                onClick={() => onView(d)}
+                disabled={busyId === d.id}
+                className="size-8 grid place-items-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors disabled:opacity-50"
+                title="View"
+              >
+                {busyId === d.id ? <Loader2 className="size-4 animate-spin" /> : <Eye className="size-4" />}
+              </button>
+              <button
+                type="button"
                 onClick={() => onDownload(d)}
                 disabled={busyId === d.id}
                 className="size-8 grid place-items-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors disabled:opacity-50"
                 title="Download"
               >
-                {busyId === d.id ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
+                <Download className="size-4" />
               </button>
               <button
                 type="button"

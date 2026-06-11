@@ -13,24 +13,68 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import fs from "fs";
 import path from "path";
 
+// Accept BOTH our own S3_* names and the standard AWS_* names. A very common
+// reason "S3 is configured but files still land on local disk" is that the keys
+// were exported under AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY (the AWS CLI /
+// SDK convention) while this code only looked at S3_*.
+function accessKeyId(): string | undefined {
+  return process.env.S3_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID || undefined;
+}
+function secretAccessKey(): string | undefined {
+  return process.env.S3_SECRET_ACCESS_KEY || process.env.AWS_SECRET_ACCESS_KEY || undefined;
+}
+function region(): string {
+  return process.env.S3_REGION || process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || "ap-south-1";
+}
+
 export function isS3Configured(): boolean {
-  return !!(process.env.S3_ACCESS_KEY_ID && process.env.S3_SECRET_ACCESS_KEY);
+  return !!(accessKeyId() && secretAccessKey());
 }
 
 function client(): S3Client {
+  const akid = accessKeyId();
   return new S3Client({
-    region: process.env.S3_REGION ?? "ap-south-1",
-    credentials: process.env.S3_ACCESS_KEY_ID
+    region: region(),
+    credentials: akid
       ? {
-          accessKeyId: process.env.S3_ACCESS_KEY_ID,
-          secretAccessKey: process.env.S3_SECRET_ACCESS_KEY!,
+          accessKeyId: akid,
+          secretAccessKey: secretAccessKey()!,
         }
       : undefined, // falls back to IAM role on EC2/ECS
   });
 }
 
 export function bucket(): string {
-  return process.env.S3_BUCKET ?? "mfd-platform-docs";
+  return process.env.S3_BUCKET || process.env.AWS_S3_BUCKET || "mfd-platform-docs";
+}
+
+/**
+ * Non-secret snapshot of the storage configuration, for the diagnostics
+ * endpoint + upload-page badge. Never returns the secret key; the access key id
+ * is masked to first-4…last-4 so it can be eyeballed against the AWS console.
+ */
+export function storageStatus(): {
+  configured: boolean;
+  driver: "s3" | "local";
+  bucket: string;
+  region: string;
+  accessKeyIdMasked: string | null;
+  source: "S3_*" | "AWS_*" | "none";
+} {
+  const akid = accessKeyId();
+  const configured = isS3Configured();
+  return {
+    configured,
+    driver: configured ? "s3" : "local",
+    bucket: bucket(),
+    region: region(),
+    accessKeyIdMasked: akid && akid.length >= 8 ? `${akid.slice(0, 4)}…${akid.slice(-4)}` : akid ? "****" : null,
+    source: process.env.S3_ACCESS_KEY_ID
+      ? "S3_*"
+      : process.env.AWS_ACCESS_KEY_ID
+        ? "AWS_*"
+        : "none",
+  };
 }
 
 /** Returns a tenant-scoped key like "tenants/<tenantId>/compliance/<uuid>-filename.pdf". */

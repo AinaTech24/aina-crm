@@ -21,7 +21,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   try {
     const session = await requireSession();
     requireCap(session.roles, "document.view", session.permissions);
-    const docId = new URL(req.url).searchParams.get("docId");
+    const sp = new URL(req.url).searchParams;
+    const docId = sp.get("docId");
+    const inline = sp.get("inline") === "1";
     if (!docId) return NextResponse.json({ error: "docId required" }, { status: 400 });
 
     const doc = await withTenant(session.tenantId, async (tx) => {
@@ -41,7 +43,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     });
 
     if (!doc || !doc.storageKey) return NextResponse.json({ error: "document not found" }, { status: 404 });
-    const url = await presignedGetUrl(doc.storageKey, 600, doc.name ?? undefined);
+    const url = await presignedGetUrl(doc.storageKey, 600, doc.name ?? undefined, inline);
     return NextResponse.json({ url });
   } catch (err: any) {
     return handleApiError(err);

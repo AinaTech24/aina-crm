@@ -263,10 +263,10 @@ export function DocumentsFeed({
                     </button>
                     {!isFirm && g.clientId && (
                       <a
-                        href={`/dashboard/investors/${g.clientId}`}
+                        href={`/dashboard/investors/${g.clientId}#documents`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        title="View all in the client's profile"
+                        title="Open this client's Documents & attachments"
                         className="size-8 rounded-lg hover:bg-secondary/40 border border-border/40 grid place-items-center text-muted-foreground hover:text-brand-cyan transition-colors"
                       >
                         <ExternalLink className="size-4" />
