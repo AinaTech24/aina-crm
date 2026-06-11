@@ -17,10 +17,11 @@ import { and, eq } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
-import { leads, tenants } from "@/db/schema";
+import { leads, tenants, templates, templateVersions } from "@/db/schema";
 import { createShareToken } from "@/lib/share-tokens";
 import { emailAdapter } from "@/lib/comms/adapters/resend";
 import { resolveEmailSender } from "@/lib/comms/sender";
+import { emailLogoHeaderHtml } from "@/lib/comms/email-logo";
 import { dispatch } from "@/lib/comms/pipeline";
 import { getChecklist, type ClientType } from "@/lib/onboarding/doc-checklists";
 
@@ -59,6 +60,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const phone = (ctx.lead as any).phone as string | null;
     const investorId = (ctx.lead as any).convertedInvestorId as string | null;
     const firmName = (ctx.tenant as any)?.displayName ?? (ctx.tenant as any)?.legalName ?? "Your advisor";
+    const logoUrl = (ctx.tenant as any)?.logoUrl as string | null;
+    const arn = (ctx.tenant as any)?.arn as string | null;
 
     if (!email && !phone) {
       return NextResponse.json({ error: "This client has no email or phone on file — add a contact first." }, { status: 400 });
@@ -91,11 +94,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     } else {
       try {
         const html = `<div style="font-family:Arial,Helvetica,sans-serif;max-width:600px;margin:0 auto;color:#0f172a;">
-          <p>Hi ${escapeHtml(name)},</p>
-          <p>To complete your account setup, please upload your KYC documents using this secure, single-use link:</p>
-          <p style="margin:18px 0;"><a href="${escapeAttr(url)}" style="background:#0e2557;color:#fff;text-decoration:none;padding:11px 20px;border-radius:8px;font-weight:600;display:inline-block;">Upload documents</a></p>
-          <p style="font-size:13px;color:#475569;">Required: ${DOCS_LINE}.</p>
-          <p style="font-size:11px;color:#94a3b8;margin-top:20px;border-top:1px solid #e2e8f0;padding-top:10px;">The link is single-use and expires in 7 days. Mutual fund investments are subject to market risks.</p>
+          ${emailLogoHeaderHtml(logoUrl, firmName)}
+          <div style="padding:4px 4px 0;">
+            <p>Hi ${escapeHtml(name)},</p>
+            <p>To complete your account setup, please upload your KYC documents using this secure, single-use link:</p>
+            <p style="margin:18px 0;"><a href="${escapeAttr(url)}" style="background:#0e2557;color:#fff;text-decoration:none;padding:11px 20px;border-radius:8px;font-weight:600;display:inline-block;">Upload documents</a></p>
+            <p style="font-size:13px;color:#475569;">Required: ${DOCS_LINE}.</p>
+            <p style="margin-top:18px;">Warm regards,<br/><strong>${escapeHtml(firmName)}</strong></p>
+          </div>
+          <div style="margin-top:22px;padding-top:12px;border-top:1px solid #e2e8f0;font-size:11px;color:#94a3b8;line-height:1.6;">
+            <div><strong style="color:#64748b;">${escapeHtml(firmName)}</strong>${arn ? ` &middot; ${escapeHtml(arn)}` : ""}</div>
+            <div>The link is single-use and expires in 7 days. Mutual fund investments are subject to market risks; read all scheme-related documents carefully.</div>
+          </div>
         </div>`;
         await emailAdapter.send({
           tenantId: session.tenantId,
@@ -120,25 +130,52 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       }
     }
 
-    // 3. WhatsApp via the comms pipeline (WAina). Free-form delivers only inside
-    //    the 24h window; otherwise it's skipped and the wa.me fallback is used.
+    // 3. WhatsApp. A Meta-APPROVED template is the only way to message a client
+    //    outside the 24h window safely, so prefer a document/KYC template; only
+    //    fall back to free-form (which delivers only inside the window) when none
+    //    exists. Either way the wa.me fallback covers non-delivery.
     let waStatus = "no phone on file";
     let whatsapped = false;
+    let waUsedTemplate = false;
     if (phone) {
+      const tmpl = await withTenant(session.tenantId, async (tx) => {
+        const rows = await tx
+          .select({ key: templates.key, name: templates.name, vars: templateVersions.variables })
+          .from(templates)
+          .innerJoin(templateVersions, eq(templateVersions.id, templates.currentVersionId))
+          .where(and(
+            eq(templates.tenantId, session.tenantId),
+            eq(templates.channel as any, "whatsapp" as any),
+            eq(templates.status, "approved"),
+          ));
+        return rows.find((r) => /doc|kyc|onboard|document|collect|upload|checklist/i.test(`${r.key} ${r.name}`)) ?? null;
+      });
+
       try {
         waStatus = await withTenant(session.tenantId, async (tx) => {
+          if (tmpl) {
+            waUsedTemplate = true;
+            const varKeys = ((tmpl.vars as any[]) ?? []).map((v) => v?.key).filter(Boolean);
+            const linkKey = varKeys.find((k: string) => /url|link|doc|upload/i.test(k)) ?? varKeys[0];
+            const nameKey = varKeys.find((k: string) => /name|client|investor/i.test(k));
+            const variables: Record<string, string> = {};
+            if (linkKey) variables[linkKey] = url;
+            if (nameKey) variables[nameKey] = name;
+            const r = await dispatch(tx, {
+              tenantId: session.tenantId, channel: "whatsapp", templateKey: tmpl.key,
+              recipient: phone, variables, category: "utility",
+              investorId: investorId ?? undefined, leadId: investorId ? undefined : id,
+            } as any);
+            return String((r as any)?.status ?? "queued");
+          }
           const r = await dispatch(tx, {
-            tenantId: session.tenantId,
-            channel: "whatsapp",
-            freeformText: waText,
-            recipient: phone,
-            category: "utility",
-            investorId: investorId ?? undefined,
-            leadId: investorId ? undefined : id,
+            tenantId: session.tenantId, channel: "whatsapp", freeformText: waText,
+            recipient: phone, category: "utility",
+            investorId: investorId ?? undefined, leadId: investorId ? undefined : id,
           } as any);
           return String((r as any)?.status ?? "queued");
         });
-        whatsapped = ["sent", "delivered"].includes(waStatus);
+        whatsapped = ["sent", "delivered", "queued"].includes(waStatus);
       } catch (e: any) {
         waStatus = "failed";
       }
