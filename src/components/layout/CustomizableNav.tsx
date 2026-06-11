@@ -304,7 +304,7 @@ export function CustomizableNav({
                       value={g.title}
                       onChange={(e) => renameGroup(g.id, e.target.value)}
                       placeholder="Group name"
-                      className="flex-1 min-w-0 bg-transparent text-[10px] font-bold uppercase tracking-[0.1em] text-foreground/70 border-b border-dashed border-border focus:outline-none focus:border-brand-cyan"
+                      className="flex-1 min-w-0 bg-transparent text-[10px] font-bold uppercase tracking-[0.1em] text-foreground/70 border-b border-dashed border-border focus:outline-none focus:ring-0 focus:border-brand-cyan"
                     />
                     {layout.length > 1 && (
                       <button type="button" onClick={() => deleteGroup(g.id)} className="text-muted-foreground hover:text-rose-600" title="Delete group (items move to the first group)">
@@ -353,6 +353,15 @@ export function CustomizableNav({
               </div>
             );
           })
+        )}
+        {editing && !searchResults && (
+          <button
+            type="button"
+            onClick={addGroup}
+            className="w-full mt-1 flex items-center justify-center gap-1.5 rounded-lg border border-dashed border-border text-[11px] font-semibold text-muted-foreground hover:text-brand-cyan-deep hover:border-brand-cyan/50 hover:bg-brand-cyan-light/30 py-2.5 transition-colors"
+          >
+            <Plus className="size-3.5" /> Add new group
+          </button>
         )}
       </nav>
     </div>

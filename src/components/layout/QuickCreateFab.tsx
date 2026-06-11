@@ -98,7 +98,7 @@ export function QuickCreateFab() {
   }, [open]);
 
   return (
-    <div ref={ref} className="fixed bottom-6 right-6 z-40 print:hidden">
+    <div ref={ref} className="fixed bottom-6 right-6 z-40 print:hidden flex flex-col items-end">
       {open && (
         <div className="mb-3 w-72 rounded-2xl bg-card border border-border shadow-2xl overflow-hidden animate-fade-in">
           <div className="px-4 py-3 border-b border-border/70 bg-gradient-to-br from-brand-navy to-brand-cyan-deep">
