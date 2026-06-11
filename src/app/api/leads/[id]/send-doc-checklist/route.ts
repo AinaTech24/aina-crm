@@ -24,6 +24,7 @@ import { resolveEmailSender } from "@/lib/comms/sender";
 import { emailLogoHeaderHtml } from "@/lib/comms/email-logo";
 import { dispatch } from "@/lib/comms/pipeline";
 import { getChecklist, type ClientType } from "@/lib/onboarding/doc-checklists";
+import { ensureDocCollectionTemplate } from "@/lib/onboarding/doc-template";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -181,14 +182,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       }
     }
 
+    // If WhatsApp couldn't go via an approved template, self-provision one and
+    // submit it to Meta so future sends deliver automatically (best-effort).
+    let templateNote: string | null = null;
+    if (!waUsedTemplate) {
+      const prov = await ensureDocCollectionTemplate(session.tenantId, session.userId);
+      if (prov.submitted || prov.status === "pending_approval") templateNote = "WhatsApp template submitted to Meta — auto-sends once approved (1–24h)";
+      else if (prov.status === "approved") templateNote = null;
+    }
+
     const waMeUrl = phone ? `https://wa.me/${phone.replace(/[^\d]/g, "")}?text=${encodeURIComponent(waText)}` : null;
     const ok = emailed || whatsapped;
     const summary = [
       emailed ? "📧 Email sent" : `📧 Email — ${emailError ?? "not sent"}`,
       whatsapped ? "💬 WhatsApp sent" : phone ? `💬 WhatsApp — ${waStatus.replace(/_/g, " ")} (use the link below)` : "💬 no phone on file",
-    ].join("  ·  ");
+      templateNote ? `⏳ ${templateNote}` : "",
+    ].filter(Boolean).join("  ·  ");
 
-    return NextResponse.json({ ok, url, summary, emailed, emailError, whatsapp: { status: waStatus, sent: whatsapped }, waMeUrl });
+    return NextResponse.json({ ok, url, summary, emailed, emailError, whatsapp: { status: waStatus, sent: whatsapped }, templateNote, waMeUrl });
   } catch (err: any) {
     return handleApiError(err);
   }
