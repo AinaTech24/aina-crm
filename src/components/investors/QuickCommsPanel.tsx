@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Loader2, Send, X, MessageSquare, Mail, MessageSquarePlus } from "lucide-react";
+import { SelectField } from "@/components/ui/SelectField";
 
 type TemplateInfo = {
   id: string;
@@ -188,10 +189,10 @@ export function QuickCommsPanel({
                     <span className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
                       Choose Template
                     </span>
-                    <select
+                    <SelectField
                       value={selectedKey}
                       onChange={(e) => setSelectedKey(e.target.value)}
-                      className="w-full border rounded-md px-3 py-2 text-sm bg-background text-foreground"
+                      className="w-full"
                     >
                       <option value="">— Select an approved template —</option>
                       {channelTemplates.map((t) => (
@@ -199,7 +200,7 @@ export function QuickCommsPanel({
                           {t.name} ({t.key})
                         </option>
                       ))}
-                    </select>
+                    </SelectField>
                   </label>
                   {selectedTemplate && selectedTemplate.description && (
                     <p className="text-[11px] text-muted-foreground mt-1.5">

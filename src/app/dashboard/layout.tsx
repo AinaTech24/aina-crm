@@ -458,15 +458,6 @@ export default async function DashboardLayout({ children }: { children: React.Re
           </div>
           <GlobalSearch />
           <div className="flex items-center gap-3 text-sm">
-            {license.status === "trial" && license.trialEndsAt && (
-              <span className="chip bg-brand-cyan-light text-brand-cyan-deep font-semibold chip-dot">
-                Trial ends{" "}
-                {license.trialEndsAt.toLocaleDateString("en-IN", {
-                  day: "numeric",
-                  month: "short",
-                })}
-              </span>
-            )}
             <Link
               href="/dashboard/help"
               className="size-9 rounded-full bg-secondary/70 hover:bg-secondary text-muted-foreground hover:text-foreground grid place-items-center transition-colors"
@@ -487,6 +478,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
               avatarUrl={avatarUrl}
               packageKey={license.packageKey}
               licenseStatus={license.status}
+              trialEndsLabel={
+                license.status === "trial" && license.trialEndsAt
+                  ? license.trialEndsAt.toLocaleDateString("en-IN", { day: "numeric", month: "short" })
+                  : null
+              }
             />
           </div>
         </div>

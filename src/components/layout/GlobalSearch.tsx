@@ -88,7 +88,7 @@ export function GlobalSearch() {
       {/* Input shell — styled like a search field, focus-within highlights it */}
       <div
         className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 shadow-sm
-                   transition-colors duration-150 focus-within:border-brand-cyan/50"
+                   transition-colors duration-150 focus-within:border-brand-cyan/40"
       >
         <Search className="size-3.5 text-brand-cyan shrink-0" />
         <input
@@ -100,7 +100,7 @@ export function GlobalSearch() {
           }}
           onFocus={() => setOpen(true)}
           placeholder="Search investors, leads, folios…"
-          className="flex-1 min-w-0 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+          className="flex-1 min-w-0 bg-transparent text-sm outline-none focus:ring-0 focus-visible:ring-0 focus:shadow-none placeholder:text-muted-foreground"
           aria-label="Global search"
         />
         {busy ? (
@@ -117,11 +117,7 @@ export function GlobalSearch() {
           >
             <X className="size-3.5" />
           </button>
-        ) : (
-          <kbd className="hidden md:inline shrink-0 border border-border rounded px-1.5 py-0.5 text-[10px] bg-secondary/60 font-mono text-muted-foreground">
-            Ctrl K
-          </kbd>
-        )}
+        ) : null}
       </div>
 
       {/* Results popover — anchored directly under the input */}

@@ -73,7 +73,6 @@ const INVESTOR_DETAIL_SECTIONS: RelatedListDef[] = [
   { key: "documents", label: "Documents & attachments" },
   { key: "emails", label: "Emails" },
   { key: "whatsapp", label: "WhatsApp" },
-  { key: "activity", label: "Activity timeline" },
   { key: "blueprint", label: "Onboarding blueprint" },
   { key: "edit_panel", label: "Inline-editable details" },
   { key: "master", label: "Master record (full read-only view)" },
@@ -530,15 +529,6 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
         <WhatsAppRelatedList entityType="investor" entityId={inv.id} entityName={inv.name} entityPhone={inv.whatsappPhone ?? inv.phone} />
       </RelatedListSection>
 
-      <RelatedListSection moduleKey="investors-detail" sectionKey="activity">
-        <ActivityTimeline
-          communications={data.communications}
-          tasks={data.tasks}
-          serviceRequests={data.serviceRequests}
-          reviewMeetings={data.reviewMeetings}
-        />
-      </RelatedListSection>
-
       {/* Client-phase onboarding bar — stages 13-15: Operations → Portal
           Welcome → Active Client. Auto-hides for investors that weren't
           created from a lead (no source blueprint). */}
@@ -904,16 +894,21 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
             {data.tasks.filter((t) => t.status === "open").length === 0 ? (
               <EmptyRow text="No open tasks." />
             ) : (
-              <ul className="space-y-2">
+              <ul className="space-y-1">
                 {data.tasks
                   .filter((t) => t.status === "open")
                   .slice(0, 5)
                   .map((t) => (
-                    <li key={t.id} className="text-sm">
-                      <div className="font-medium">{t.title}</div>
-                      <div className="text-xs text-muted-foreground mt-0.5">
-                        {t.priority} · {t.dueAt ? formatRelative(t.dueAt) : "no due"}
-                      </div>
+                    <li key={t.id}>
+                      <Link
+                        href={`/dashboard/tasks?focus=${t.id}`}
+                        className="block rounded-md -mx-2 px-2 py-1.5 text-sm hover:bg-accent/40 transition-colors"
+                      >
+                        <div className="font-medium">{t.title}</div>
+                        <div className="text-xs text-muted-foreground mt-0.5">
+                          {t.priority} · {t.dueAt ? formatRelative(t.dueAt) : "no due"}
+                        </div>
+                      </Link>
                     </li>
                   ))}
               </ul>
