@@ -3,6 +3,8 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Check, Camera, Trash2 } from "lucide-react";
+import { useToast } from "@/components/ui/Toast";
+import { PasswordInput } from "@/components/ui/PasswordInput";
 
 export default function ProfileForm({
   initialName,
@@ -14,6 +16,7 @@ export default function ProfileForm({
   initialAvatarUrl?: string | null;
 }) {
   const router = useRouter();
+  const toast = useToast();
   const [name, setName] = useState(initialName);
   const [phone, setPhone] = useState(initialPhone);
   const [savingProfile, setSavingProfile] = useState(false);
@@ -29,7 +32,6 @@ export default function ProfileForm({
   const [newPw, setNewPw] = useState("");
   const [confirmPw, setConfirmPw] = useState("");
   const [savingPw, setSavingPw] = useState(false);
-  const [pwMsg, setPwMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
 
   const initials =
     (name || "?")
@@ -141,9 +143,8 @@ export default function ProfileForm({
   }
 
   async function changePassword() {
-    setPwMsg(null);
-    if (newPw.length < 8) return setPwMsg({ kind: "err", text: "New password must be at least 8 characters" });
-    if (newPw !== confirmPw) return setPwMsg({ kind: "err", text: "Passwords don't match" });
+    if (newPw.length < 8) return toast.error("New password must be at least 8 characters.", "Check your password");
+    if (newPw !== confirmPw) return toast.error("The new passwords don't match.", "Check your password");
     setSavingPw(true);
     try {
       const res = await fetch("/api/me/password", {
@@ -151,14 +152,14 @@ export default function ProfileForm({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ currentPassword: curPw, newPassword: newPw }),
       });
-      const data = await res.json();
-      if (!res.ok) setPwMsg({ kind: "err", text: data?.error ?? "Could not change password" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) toast.error(data?.error ?? "Could not change password.", "Password not changed");
       else {
-        setPwMsg({ kind: "ok", text: "Password changed." });
+        toast.success("Your password has been updated.", "Password changed");
         setCurPw(""); setNewPw(""); setConfirmPw("");
       }
     } catch {
-      setPwMsg({ kind: "err", text: "Network error" });
+      toast.error("Network error. Please try again.", "Password not changed");
     } finally {
       setSavingPw(false);
     }
@@ -255,15 +256,15 @@ export default function ProfileForm({
           <h3 className="font-semibold text-sm">Change password</h3>
           <div>
             <label className={label}>Current password</label>
-            <input type="password" autoComplete="current-password" className={field} value={curPw} onChange={(e) => setCurPw(e.target.value)} />
+            <PasswordInput autoComplete="current-password" className={field} value={curPw} onChange={(e) => setCurPw(e.target.value)} />
           </div>
           <div>
             <label className={label}>New password</label>
-            <input type="password" autoComplete="new-password" className={field} value={newPw} onChange={(e) => setNewPw(e.target.value)} />
+            <PasswordInput autoComplete="new-password" className={field} value={newPw} onChange={(e) => setNewPw(e.target.value)} />
           </div>
           <div>
             <label className={label}>Confirm new password</label>
-            <input type="password" autoComplete="new-password" className={field} value={confirmPw} onChange={(e) => setConfirmPw(e.target.value)} />
+            <PasswordInput autoComplete="new-password" className={field} value={confirmPw} onChange={(e) => setConfirmPw(e.target.value)} />
           </div>
           <button
             onClick={changePassword}
@@ -272,9 +273,6 @@ export default function ProfileForm({
           >
             {savingPw && <Loader2 className="size-3.5 animate-spin" />} Update password
           </button>
-          {pwMsg && (
-            <p className={`text-sm ${pwMsg.kind === "ok" ? "text-emerald-600" : "text-red-600"}`}>{pwMsg.text}</p>
-          )}
         </div>
       </div>
     </div>

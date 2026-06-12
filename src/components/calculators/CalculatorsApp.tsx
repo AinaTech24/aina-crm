@@ -9,7 +9,7 @@
 import { useRef, useState } from "react";
 import { useToast } from "@/components/ui/Toast";
 import {
-  ChevronLeft, Search, X, Mail, MessageCircle,
+  ChevronLeft, Search, X, Mail, MessageCircle, Download, Printer,
   // group icons
   TrendingUp, Target, HandCoins, ShieldCheck, Receipt, Building2, Wrench, Flame,
   // per-calculator icons (each used exactly once — no duplicates)
@@ -335,6 +335,38 @@ export function CalculatorsApp({ firmName }: { firmName?: string } = {}) {
     } finally { setBusy(false); }
   }
 
+  // Download the same branded, multi-page PDF (with the firm logo) that the
+  // email/WhatsApp share sends — built server-side so it's identical.
+  async function downloadPdf(calcName: string) {
+    const root = calcRef.current;
+    if (!root) return;
+    setBusy(true);
+    try {
+      const { blocks } = captureCalcResults(root);
+      const res = await fetch("/api/calculators/pdf", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ calcName, clientName, blocks }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        toast.error(j.error || "Couldn't generate the PDF.");
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${clientName || "Client"}-${calcName}`.replace(/[^A-Za-z0-9_-]+/g, "_").slice(0, 60) + ".pdf";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      toast.success("PDF downloaded", `${calcName} illustration saved with your firm's branding.`);
+    } catch {
+      toast.error("Couldn't generate the PDF — please try again.");
+    } finally { setBusy(false); }
+  }
+
   if (tab === null) {
     return <CalcGallery query={query} setQuery={setQuery} onPick={setTab} />;
   }
@@ -364,6 +396,12 @@ export function CalculatorsApp({ firmName }: { firmName?: string } = {}) {
           </button>
           <button onClick={() => { setShareMode(shareMode === "whatsapp" ? null : "whatsapp"); setRecipient(""); }} className="btn-ghost text-xs" title="Share on WhatsApp">
             <MessageCircle className="size-3.5" /> WhatsApp
+          </button>
+          <button onClick={() => downloadPdf(calcName)} disabled={busy} className="btn-ghost text-xs disabled:opacity-60" title="Download the branded PDF">
+            <Download className="size-3.5" /> PDF
+          </button>
+          <button onClick={() => window.print()} className="btn-ghost text-xs" title="Print this illustration">
+            <Printer className="size-3.5" /> Print
           </button>
           <ScenarioControls calculatorKey={tab} calculatorName={calcName} clientName={clientName} containerRef={calcRef} />
         </div>

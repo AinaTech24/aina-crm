@@ -18,6 +18,7 @@ import { requireSession } from "@/lib/auth/session";
 import { tenants } from "@/db/schema";
 import { renderCalcPdf, type PdfBlock } from "@/lib/calculators/calc-pdf";
 import { fetchBrandLogoBytes, normalizeWaPhone } from "@/lib/calculators/share-helpers";
+import { pickLogo } from "@/lib/branding/logo";
 import { emailAdapter } from "@/lib/comms/adapters/resend";
 import { resolveEmailSender } from "@/lib/comms/sender";
 import { emailLogoHeaderHtml } from "@/lib/comms/email-logo";
@@ -52,7 +53,10 @@ export async function POST(req: NextRequest) {
     const tenant = ctx.tenant as any;
     const firmName = tenant?.displayName ?? tenant?.legalName ?? "Your advisor";
 
-    const logoBytes = await fetchBrandLogoBytes(tenant?.logoUrl);
+    const proto = req.headers.get("x-forwarded-proto") ?? "https";
+    const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? "";
+    const origin = host ? `${proto}://${host}` : null;
+    const logoBytes = await fetchBrandLogoBytes(pickLogo(tenant, "full"), origin);
     const pdf = await renderCalcPdf({
       firmName: tenant?.legalName ?? tenant?.displayName ?? "Your firm",
       arn: tenant?.arn ?? null,

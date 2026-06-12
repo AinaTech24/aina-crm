@@ -14,6 +14,7 @@ import { requireSession } from "@/lib/auth/session";
 import { tenants } from "@/db/schema";
 import { renderCalcPdf, type PdfBlock } from "@/lib/calculators/calc-pdf";
 import { fetchBrandLogoBytes } from "@/lib/calculators/share-helpers";
+import { pickLogo } from "@/lib/branding/logo";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -35,7 +36,10 @@ export async function POST(req: NextRequest) {
       (await tx.select().from(tenants).where(eq(tenants.id, session.tenantId)).limit(1))[0] ?? null
     );
 
-    const logoBytes = await fetchBrandLogoBytes((tenant as any)?.logoUrl);
+    const proto = req.headers.get("x-forwarded-proto") ?? "https";
+    const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? "";
+    const origin = host ? `${proto}://${host}` : null;
+    const logoBytes = await fetchBrandLogoBytes(pickLogo(tenant as any, "full"), origin);
     const pdf = await renderCalcPdf({
       firmName: tenant?.legalName ?? tenant?.displayName ?? "Your firm",
       arn: tenant?.arn ?? null,

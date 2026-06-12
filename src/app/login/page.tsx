@@ -4,6 +4,8 @@ import { useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Loader2, ArrowRight, ShieldCheck } from "lucide-react";
+import { ToastProvider, useToast } from "@/components/ui/Toast";
+import { PasswordInput } from "@/components/ui/PasswordInput";
 
 function LoginForm() {
   const params = useSearchParams();
@@ -18,9 +20,9 @@ function LoginForm() {
     if (isAdmin) return next.startsWith("/super-admin") ? next : "/super-admin";
     return next.startsWith("/super-admin") ? "/dashboard" : next;
   }
+  const toast = useToast();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   // 2FA step: set once the password leg returns a challenge.
   const [challenge, setChallenge] = useState<string | null>(null);
@@ -28,7 +30,6 @@ function LoginForm() {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    setErr(null);
     setBusy(true);
     try {
       const res = await fetch("/api/auth/login", {
@@ -38,29 +39,29 @@ function LoginForm() {
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setErr(j.error ?? "Sign-in failed");
+        toast.error(j.error ?? "Check your email and password and try again.", "Sign-in failed");
+        setBusy(false);
         return;
       }
       if (j.require2fa) {
         // Password OK — switch to the second-factor step.
         setChallenge(j.challenge);
+        setBusy(false);
         return;
       }
+      toast.success("Signed in successfully — taking you in…", "Welcome back");
       // Hard navigation (not router.push): forces a fresh request that carries
-      // the new session cookie and bypasses the Next.js Router Cache, which may
-      // still hold the unauthenticated /dashboard render. This is what makes
-      // sign-in land on the dashboard in one click, every time — no stale-cookie
-      // loop, no manual cookie clearing.
-      window.location.assign(destFor(j.user?.roles));
-      return; // keep the spinner up while the browser navigates away
-    } finally {
+      // the new session cookie and bypasses the Next.js Router Cache. Small delay
+      // so the success toast is visible before we leave the page.
+      setTimeout(() => window.location.assign(destFor(j.user?.roles)), 650);
+    } catch {
+      toast.error("Something went wrong. Please try again.", "Sign-in failed");
       setBusy(false);
     }
   }
 
   async function submit2fa(e: React.FormEvent) {
     e.preventDefault();
-    setErr(null);
     setBusy(true);
     try {
       const res = await fetch("/api/auth/2fa/verify", {
@@ -70,17 +71,14 @@ function LoginForm() {
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setErr(j.error ?? "Verification failed");
+        toast.error(j.error ?? "That code didn't match. Try again.", "Verification failed");
+        setBusy(false);
         return;
       }
-      // Hard navigation (not router.push): forces a fresh request that carries
-      // the new session cookie and bypasses the Next.js Router Cache, which may
-      // still hold the unauthenticated /dashboard render. This is what makes
-      // sign-in land on the dashboard in one click, every time — no stale-cookie
-      // loop, no manual cookie clearing.
-      window.location.assign(destFor(j.user?.roles));
-      return; // keep the spinner up while the browser navigates away
-    } finally {
+      toast.success("Verified — taking you in…", "Welcome back");
+      setTimeout(() => window.location.assign(destFor(j.user?.roles)), 650);
+    } catch {
+      toast.error("Something went wrong. Please try again.", "Verification failed");
       setBusy(false);
     }
   }
@@ -168,12 +166,6 @@ function LoginForm() {
                 </p>
               </div>
 
-              {err && (
-                <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-                  {err}
-                </div>
-              )}
-
               <button disabled={busy} className="btn-primary w-full mt-2">
                 {busy ? (
                   <>
@@ -190,7 +182,6 @@ function LoginForm() {
                 onClick={() => {
                   setChallenge(null);
                   setTwoFaCode("");
-                  setErr(null);
                 }}
                 className="text-xs text-muted-foreground hover:underline w-full text-center"
               >
@@ -219,22 +210,14 @@ function LoginForm() {
                   Forgot?
                 </Link>
               </div>
-              <input
-                type="password"
+              <PasswordInput
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 autoComplete="current-password"
                 required
                 placeholder="••••••••"
-                className="input-base"
               />
             </div>
-
-            {err && (
-              <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-                {err}
-              </div>
-            )}
 
             <button disabled={busy} className="btn-primary w-full mt-2">
               {busy ? (
@@ -277,14 +260,16 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="min-h-screen grid place-items-center brand-soft">
-          <Loader2 className="size-6 animate-spin text-brand-cyan" />
-        </div>
-      }
-    >
-      <LoginForm />
-    </Suspense>
+    <ToastProvider>
+      <Suspense
+        fallback={
+          <div className="min-h-screen grid place-items-center brand-soft">
+            <Loader2 className="size-6 animate-spin text-brand-cyan" />
+          </div>
+        }
+      >
+        <LoginForm />
+      </Suspense>
+    </ToastProvider>
   );
 }

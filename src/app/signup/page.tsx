@@ -4,20 +4,21 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Loader2, ArrowRight, Check, ShieldCheck } from "lucide-react";
+import { ToastProvider, useToast } from "@/components/ui/Toast";
+import { PasswordInput } from "@/components/ui/PasswordInput";
 
-export default function SignupPage() {
+function SignupForm() {
   const router = useRouter();
+  const toast = useToast();
   const [firmName, setFirmName] = useState("");
   const [arn, setArn] = useState("");
   const [ownerName, setOwnerName] = useState("");
   const [ownerEmail, setOwnerEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    setErr(null);
     setBusy(true);
     try {
       const res = await fetch("/api/auth/signup", {
@@ -27,11 +28,17 @@ export default function SignupPage() {
       });
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
-        setErr(j.detail ? `${j.error ?? "Signup failed"} — ${j.detail}` : j.error ?? "Signup failed");
+        toast.error(
+          j.detail ? `${j.error ?? "Signup failed"} — ${j.detail}` : j.error ?? "Please check your details and try again.",
+          "Couldn't create workspace"
+        );
+        setBusy(false);
         return;
       }
-      router.push("/dashboard");
-    } finally {
+      toast.success("Workspace created — setting things up…", "You're all set");
+      setTimeout(() => router.push("/dashboard"), 650);
+    } catch {
+      toast.error("Something went wrong. Please try again.", "Couldn't create workspace");
       setBusy(false);
     }
   }
@@ -93,12 +100,6 @@ export default function SignupPage() {
             <Field label="Work email" value={ownerEmail} setValue={setOwnerEmail} type="email" autoComplete="email" placeholder="you@yourfirm.com" />
             <Field label="Password" value={password} setValue={setPassword} type="password" autoComplete="new-password" placeholder="8+ characters" />
 
-            {err && (
-              <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-                {err}
-              </div>
-            )}
-
             <button disabled={busy} className="btn-primary w-full mt-2">
               {busy ? (
                 <><Loader2 className="size-4 animate-spin" /> Creating…</>
@@ -123,6 +124,14 @@ export default function SignupPage() {
   );
 }
 
+export default function SignupPage() {
+  return (
+    <ToastProvider>
+      <SignupForm />
+    </ToastProvider>
+  );
+}
+
 function Field({
   label, value, setValue, type = "text", placeholder, autoComplete,
 }: {
@@ -132,15 +141,25 @@ function Field({
   return (
     <div>
       <label className="text-xs font-semibold text-foreground/80 block mb-1.5">{label}</label>
-      <input
-        type={type}
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        placeholder={placeholder}
-        autoComplete={autoComplete}
-        required
-        className="input-base"
-      />
+      {type === "password" ? (
+        <PasswordInput
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          placeholder={placeholder}
+          autoComplete={autoComplete}
+          required
+        />
+      ) : (
+        <input
+          type={type}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          placeholder={placeholder}
+          autoComplete={autoComplete}
+          required
+          className="input-base"
+        />
+      )}
     </div>
   );
 }
