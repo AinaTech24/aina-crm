@@ -1,39 +1,33 @@
 /**
  * Zoho CRM API client — OAuth token handling + record upsert.
  *
- * Access tokens last ~1 hour and Zoho blocks minting more than 10 per refresh
- * token per 10 minutes, so we cache the access token per tenant in-process and
- * only refresh when it's near expiry.
+ * Credentials are per-tenant (each MFD registers their own Zoho OAuth app), so
+ * the client id/secret travel with the call rather than coming from env.
  *
- * Idempotency: we UPSERT by an external-id field (the MFD must add a custom
- * single-line field, default name "Aina_Record_ID", to each synced Zoho module).
- * Re-pushing the same record updates the existing Zoho record instead of
- * duplicating it — so retries are safe.
+ * Access tokens last ~1 hour and Zoho blocks minting more than 10 per refresh
+ * token per 10 minutes, so we cache the access token per tenant in-process.
+ *
+ * Idempotency: we UPSERT by an external-id field (the MFD adds a custom
+ * single-line field, default "Aina_Record_ID", to each synced Zoho module), so
+ * re-pushing a record updates the existing Zoho record instead of duplicating it.
  */
 import { accountsServer, apiDomain, type ZohoDataCenter } from "./datacenters";
 import type { ZohoConnection } from "./credentials";
 
 const ZOHO_API_VERSION = "v8";
 
-export function zohoAppCredentials(): { clientId: string; clientSecret: string } | null {
-  const clientId = process.env.ZOHO_CLIENT_ID;
-  const clientSecret = process.env.ZOHO_CLIENT_SECRET;
-  if (!clientId || !clientSecret) return null;
-  return { clientId, clientSecret };
-}
-
 /** Exchange an authorization code (OAuth callback) for a long-lived refresh token. */
 export async function exchangeCodeForTokens(
   dc: ZohoDataCenter,
   code: string,
-  redirectUri: string
+  redirectUri: string,
+  clientId: string,
+  clientSecret: string
 ): Promise<{ refreshToken: string; apiDomain?: string } | { error: string }> {
-  const app = zohoAppCredentials();
-  if (!app) return { error: "ZOHO_CLIENT_ID / ZOHO_CLIENT_SECRET are not set on the server." };
   const body = new URLSearchParams({
     grant_type: "authorization_code",
-    client_id: app.clientId,
-    client_secret: app.clientSecret,
+    client_id: clientId,
+    client_secret: clientSecret,
     redirect_uri: redirectUri,
     code,
   });
@@ -56,12 +50,10 @@ async function accessTokenFor(conn: ZohoConnection): Promise<string> {
   const cached = tokenCache.get(conn.tenantId);
   if (cached && cached.expiresAt > Date.now() + 60_000) return cached.token;
 
-  const app = zohoAppCredentials();
-  if (!app) throw new Error("ZOHO_CLIENT_ID / ZOHO_CLIENT_SECRET are not set on the server.");
   const body = new URLSearchParams({
     grant_type: "refresh_token",
-    client_id: app.clientId,
-    client_secret: app.clientSecret,
+    client_id: conn.clientId,
+    client_secret: conn.clientSecret,
     refresh_token: conn.refreshToken,
   });
   const res = await fetch(`${accountsServer(conn.dataCenter)}/oauth/v2/token`, {
@@ -87,7 +79,7 @@ export type ZohoUpsertResult = {
 
 /**
  * Upsert up to 100 records into a Zoho module, keyed by `externalIdField`.
- * Returns one result per input record (aligned to `duplicate_check_fields`).
+ * Returns one result per input record.
  */
 export async function upsertRecords(
   conn: ZohoConnection,
