@@ -7,8 +7,9 @@
  */
 
 import { useRef, useState } from "react";
+import { useToast } from "@/components/ui/Toast";
 import {
-  Printer, ChevronLeft, Search, X, Download, Mail, MessageCircle,
+  ChevronLeft, Search, X, Mail, MessageCircle,
   // group icons
   TrendingUp, Target, HandCoins, ShieldCheck, Receipt, Building2, Wrench, Flame,
   // per-calculator icons (each used exactly once — no duplicates)
@@ -300,42 +301,19 @@ const ALL_CALCS: CalcMeta[] = CATALOG.flatMap((g) => g.items);
 const CALC_META: Record<string, CalcMeta> = Object.fromEntries(ALL_CALCS.map((c) => [c.key, c]));
 
 export function CalculatorsApp({ firmName }: { firmName?: string } = {}) {
+  const toast = useToast();
   const [tab, setTab] = useState<TabKey | null>(null);
   const [query, setQuery] = useState("");
   const [clientName, setClientName] = useState("");
   const [shareMode, setShareMode] = useState<null | "email" | "whatsapp">(null);
   const [recipient, setRecipient] = useState("");
   const [busy, setBusy] = useState(false);
-  const [shareMsg, setShareMsg] = useState<string | null>(null);
   const calcRef = useRef<HTMLDivElement>(null);
-
-  async function downloadServerPdf(calcName: string) {
-    const root = calcRef.current;
-    if (!root) { window.print(); return; }
-    setBusy(true); setShareMsg(null);
-    try {
-      const { blocks } = captureCalcResults(root);
-      const res = await fetch("/api/calculators/pdf", {
-        method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ calcName, clientName, blocks }),
-      });
-      if (!res.ok) throw new Error("pdf");
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${clientName || "Client"}-${calcName}.pdf`.replace(/[^A-Za-z0-9_.-]+/g, "_");
-      document.body.appendChild(a); a.click(); a.remove();
-      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-    } catch {
-      window.print(); // fall back to the branded print → Save-as-PDF
-    } finally { setBusy(false); }
-  }
 
   async function doShare(channel: "email" | "whatsapp", calcName: string) {
     const root = calcRef.current;
     if (!root) return;
-    setBusy(true); setShareMsg(null);
+    setBusy(true);
     try {
       const { blocks } = captureCalcResults(root);
       const res = await fetch("/api/calculators/share", {
@@ -343,17 +321,17 @@ export function CalculatorsApp({ firmName }: { firmName?: string } = {}) {
         body: JSON.stringify({ channel, to: recipient, calcName, clientName, blocks }),
       });
       const j = await res.json().catch(() => ({}));
-      if (!res.ok) { setShareMsg(j.error || "Couldn't share."); return; }
+      if (!res.ok) { toast.error(j.error || "Couldn't share."); return; }
       if (channel === "whatsapp" && j.waLink) {
         window.open(j.waLink, "_blank");
-        setShareMsg(j.hosted ? "WhatsApp opened with the PDF link ✓" : "WhatsApp opened (sent as text — PDF hosting off).");
+        toast.success(j.hosted ? "WhatsApp opened with the PDF link" : "WhatsApp opened (sent as text — PDF hosting off).");
         setShareMode(null);
       } else if (channel === "email") {
-        setShareMsg("Emailed to the client ✓");
+        toast.success("Emailed to the client", `${calcName} illustration sent with the branded PDF attached.`);
         setShareMode(null);
       }
     } catch {
-      setShareMsg("Couldn't share — try again.");
+      toast.error("Couldn't share — please try again.");
     } finally { setBusy(false); }
   }
 
@@ -366,7 +344,7 @@ export function CalculatorsApp({ firmName }: { firmName?: string } = {}) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3 flex-wrap print:hidden">
-        <button onClick={() => { setTab(null); setQuery(""); setShareMode(null); setShareMsg(null); }} className="btn-ghost text-xs">
+        <button onClick={() => { setTab(null); setQuery(""); setShareMode(null); }} className="btn-ghost text-xs">
           <ChevronLeft className="size-3.5" /> All calculators
         </button>
         {meta && (
@@ -381,16 +359,12 @@ export function CalculatorsApp({ firmName }: { firmName?: string } = {}) {
             placeholder="Client name"
             className="h-8 rounded-md border border-border bg-card px-2.5 text-xs w-36 focus:outline-none focus:border-brand-cyan focus:ring-2 focus:ring-brand-cyan/15"
           />
-          <button onClick={() => downloadServerPdf(calcName)} disabled={busy} className="btn-primary text-xs disabled:opacity-60" title="Branded PDF">
-            <Download className="size-3.5" /> {busy ? "…" : "PDF"}
-          </button>
-          <button onClick={() => { setShareMode(shareMode === "email" ? null : "email"); setShareMsg(null); setRecipient(""); }} className="btn-ghost text-xs" title="Email to client">
+          <button onClick={() => { setShareMode(shareMode === "email" ? null : "email"); setRecipient(""); }} className="btn-primary text-xs" title="Email the branded PDF to the client">
             <Mail className="size-3.5" /> Email
           </button>
-          <button onClick={() => { setShareMode(shareMode === "whatsapp" ? null : "whatsapp"); setShareMsg(null); setRecipient(""); }} className="btn-ghost text-xs" title="Share on WhatsApp">
+          <button onClick={() => { setShareMode(shareMode === "whatsapp" ? null : "whatsapp"); setRecipient(""); }} className="btn-ghost text-xs" title="Share on WhatsApp">
             <MessageCircle className="size-3.5" /> WhatsApp
           </button>
-          <button onClick={() => window.print()} className="btn-ghost text-xs" title="Print"><Printer className="size-3.5" /></button>
           <ScenarioControls calculatorKey={tab} calculatorName={calcName} clientName={clientName} containerRef={calcRef} />
         </div>
       </div>
@@ -407,10 +381,8 @@ export function CalculatorsApp({ firmName }: { firmName?: string } = {}) {
           <button onClick={() => doShare(shareMode, calcName)} disabled={busy} className="btn-primary text-xs disabled:opacity-60">
             {busy ? "Sending…" : shareMode === "email" ? "Send email" : "Open WhatsApp"}
           </button>
-          {shareMsg && <span className="text-xs text-muted-foreground">{shareMsg}</span>}
         </div>
       )}
-      {shareMsg && !shareMode && <div className="text-xs text-emerald-700 print:hidden">{shareMsg}</div>}
 
       {/* Print-only — client line under the firm letterhead. */}
       {clientName && (

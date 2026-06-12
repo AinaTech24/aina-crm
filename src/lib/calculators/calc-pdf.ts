@@ -1,8 +1,10 @@
 /**
- * calc-pdf — render a branded, one-page-or-more PDF from a captured calculator
+ * calc-pdf — render a branded, single-page PDF from a captured calculator
  * result (title + ordered blocks of stats / tables / insights). Built with
- * pdf-lib (Node runtime). Used by the calculator Download / Email / WhatsApp
- * share paths so a calculator illustration looks like an official firm document.
+ * pdf-lib (Node runtime). Used by the calculator Email / WhatsApp share paths
+ * so a calculator illustration looks like an official firm document. The layout
+ * is deliberately capped to one A4 page — long projection tables are truncated
+ * with a "+N more row(s)" note rather than spilling onto a second sheet.
  */
 
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage, type PDFImage } from "pdf-lib";
@@ -79,11 +81,14 @@ export async function renderCalcPdf(input: CalcPdfInput): Promise<Buffer> {
 
   const W = A4[0], H = A4[1];
   const contentW = W - MARGIN * 2;
-  let page: PDFPage = doc.addPage(A4);
+  const page: PDFPage = doc.addPage(A4);
   let y = H - MARGIN;
 
-  const newPage = () => { page = doc.addPage(A4); y = H - MARGIN; };
-  const need = (h: number) => { if (y - h < MARGIN + 28) newPage(); };
+  // Single-page document: we never call addPage(). `bottomLimit` is the lowest
+  // y content may reach before it would collide with the footer; once a block
+  // won't fit above it we stop rendering (tables get a "+N more rows" note) so
+  // the illustration always stays exactly one page.
+  const bottomLimit = MARGIN + 46;
 
   // ── Letterhead ──
   if (logo) {
@@ -109,30 +114,30 @@ export async function renderCalcPdf(input: CalcPdfInput): Promise<Buffer> {
   }
   y -= 4;
 
-  // ── Blocks ──
+  // ── Blocks (single page — stop cleanly when out of vertical room) ──
   let i = 0;
-  while (i < input.blocks.length) {
+  outer: while (i < input.blocks.length) {
     const b = input.blocks[i];
     if (b.type === "stat") {
       // Batch consecutive stats into rows of 3 cards.
       const group: { label: string; value: string }[] = [];
       while (i < input.blocks.length && input.blocks[i].type === "stat") { group.push(input.blocks[i] as any); i++; }
-      const cols = 3, cw = contentW / cols, ch = 40;
+      const cols = 3, cw = contentW / cols, ch = 38;
       for (let g = 0; g < group.length; g += cols) {
-        need(ch + 8);
+        if (y - (ch + 8) < bottomLimit) { break outer; }
         const row = group.slice(g, g + cols);
         row.forEach((s, c) => {
           const x = MARGIN + c * cw;
           page.drawRectangle({ x, y: y - ch, width: cw - 8, height: ch, borderColor: rgb(0.89, 0.91, 0.94), borderWidth: 1, color: rgb(0.98, 0.99, 1) });
-          page.drawText(ascii(s.label).slice(0, 34), { x: x + 8, y: y - 14, size: 7.5, font, color: slate });
-          page.drawText(ascii(s.value).slice(0, 22), { x: x + 8, y: y - 30, size: 12, font: bold, color: ink });
+          page.drawText(ascii(s.label).slice(0, 34), { x: x + 8, y: y - 13, size: 7.5, font, color: slate });
+          page.drawText(ascii(s.value).slice(0, 22), { x: x + 8, y: y - 29, size: 12, font: bold, color: ink });
         });
         y -= ch + 8;
       }
       continue;
     }
     if (b.type === "section") {
-      need(24);
+      if (y - 26 < bottomLimit) break;
       y -= 6;
       page.drawText(ascii(b.text), { x: MARGIN, y: y - 10, size: 11, font: bold, color: primary });
       y -= 20;
@@ -140,8 +145,8 @@ export async function renderCalcPdf(input: CalcPdfInput): Promise<Buffer> {
     }
     if (b.type === "insight") {
       const lines = wrap(ascii(b.text), font, 9, contentW - 16);
-      need(lines.length * 12 + 12);
       const boxH = lines.length * 12 + 10;
+      if (y - (boxH + 8) < bottomLimit) break;
       page.drawRectangle({ x: MARGIN, y: y - boxH, width: contentW, height: boxH, color: rgb(0.94, 0.99, 0.96), borderColor: rgb(0.78, 0.92, 0.83), borderWidth: 1 });
       lines.forEach((ln, k) => page.drawText(ln, { x: MARGIN + 8, y: y - 14 - k * 12, size: 9, font, color: rgb(0.1, 0.3, 0.18) }));
       y -= boxH + 8;
@@ -150,18 +155,26 @@ export async function renderCalcPdf(input: CalcPdfInput): Promise<Buffer> {
     if (b.type === "table") {
       const head = b.head.map(ascii);
       const colW = contentW / Math.max(1, head.length);
-      need(18);
-      // header
+      // Need at least the header + one row to bother starting the table.
+      if (y - 30 < bottomLimit) break;
       page.drawRectangle({ x: MARGIN, y: y - 16, width: contentW, height: 16, color: rgb(0.95, 0.96, 0.98) });
       head.forEach((h, c) => page.drawText(ascii(h).slice(0, 26), { x: MARGIN + 4 + c * colW, y: y - 12, size: 7.5, font: bold, color: slate }));
       y -= 16;
-      for (const row of b.rows) {
-        need(14);
-        row.slice(0, head.length).forEach((cell, c) => {
+      let r = 0;
+      for (; r < b.rows.length; r++) {
+        if (y - 14 < bottomLimit) break;
+        b.rows[r].slice(0, head.length).forEach((cell, c) => {
           page.drawText(ascii(cell).slice(0, 26), { x: MARGIN + 4 + c * colW, y: y - 11, size: 8, font, color: ink });
         });
         page.drawLine({ start: { x: MARGIN, y: y - 14 }, end: { x: W - MARGIN, y: y - 14 }, thickness: 0.3, color: rgb(0.9, 0.92, 0.95) });
         y -= 14;
+      }
+      if (r < b.rows.length) {
+        // Ran out of room mid-table — note the remainder if a line still fits.
+        if (y - 12 >= bottomLimit) {
+          page.drawText(ascii(`+ ${b.rows.length - r} more row(s)`), { x: MARGIN + 4, y: y - 10, size: 7.5, font, color: slate });
+        }
+        break;
       }
       y -= 8;
       i++; continue;
@@ -169,15 +182,12 @@ export async function renderCalcPdf(input: CalcPdfInput): Promise<Buffer> {
     i++;
   }
 
-  // ── Footer disclaimer on every page ──
+  // ── Footer disclaimer (single page) ──
   const disc = "Illustration only; not a guarantee of returns. Mutual fund investments are subject to market risks. Read all scheme related documents carefully.";
-  const pages = doc.getPages();
-  pages.forEach((p, idx) => {
-    p.drawLine({ start: { x: MARGIN, y: MARGIN + 18 }, end: { x: W - MARGIN, y: MARGIN + 18 }, thickness: 0.5, color: rgb(0.89, 0.91, 0.94) });
-    wrap(disc, font, 7, contentW).forEach((ln, k) => p.drawText(ln, { x: MARGIN, y: MARGIN + 8 - k * 8, size: 7, font, color: slate }));
-    p.drawText(ascii(`${input.firmName} - ARN ${input.arn ?? "-"}`), { x: MARGIN, y: MARGIN + 24, size: 7, font, color: slate });
-    p.drawText(`${idx + 1}/${pages.length}`, { x: W - MARGIN - 20, y: MARGIN + 24, size: 7, font, color: slate });
-  });
+  const p = doc.getPage(0);
+  p.drawLine({ start: { x: MARGIN, y: MARGIN + 18 }, end: { x: W - MARGIN, y: MARGIN + 18 }, thickness: 0.5, color: rgb(0.89, 0.91, 0.94) });
+  wrap(disc, font, 7, contentW).forEach((ln, k) => p.drawText(ln, { x: MARGIN, y: MARGIN + 8 - k * 8, size: 7, font, color: slate }));
+  p.drawText(ascii(`${input.firmName} - ARN ${input.arn ?? "-"}`), { x: MARGIN, y: MARGIN + 24, size: 7, font, color: slate });
 
   return Buffer.from(await doc.save());
 }

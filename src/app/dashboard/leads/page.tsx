@@ -103,8 +103,11 @@ export default async function LeadsPage({
   const sourceFilter = (sp.source ?? "").split(",").filter(Boolean);
   const ownerFilter = (sp.owner ?? "").split(",").filter(Boolean);
   const view = sp.view === "table" ? "table" : "kanban";
-  // Table sort: "score" (default — hottest first) or "recent".
+  // Table sort: "score" (default — hottest first) or "recent". Both default to
+  // descending; an explicit `dir` (set by re-clicking the column header) flips
+  // to ascending so the user can see coldest leads / oldest-created first.
   const sortKey = sp.sort === "recent" ? "recent" : "score";
+  const dir: "asc" | "desc" = sp.dir === "asc" ? "asc" : "desc";
   // Pagination (table view). The kanban shows a bounded top-N slice.
   const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
   const PAGE_SIZE = 50;
@@ -176,10 +179,11 @@ export default async function LeadsPage({
       .leftJoin(users, eq(users.id, leads.ownerId));
     // Default ordering: hottest (highest persisted score) first, recency as
     // tiebreaker. Index-backed via leads_score_idx (tenant_id, lead_score DESC).
+    const dirSql = sql.raw(dir === "asc" ? "ASC" : "DESC");
     const orderBy =
       sortKey === "recent"
-        ? sql`leads.updated_at DESC`
-        : sql`leads.lead_score DESC, leads.updated_at DESC`;
+        ? sql`leads.updated_at ${dirSql}`
+        : sql`leads.lead_score ${dirSql}, leads.updated_at DESC`;
     const isTable = view === "table";
     // Total matching count (for the table pager) — same predicate + join.
     const totalRes = await tx
@@ -296,7 +300,7 @@ export default async function LeadsPage({
       score: l.leadScore ?? 0,
     };
   });
-  if (sortKey === "score") tableRows.sort((a, b) => b.score - a.score);
+  if (sortKey === "score") tableRows.sort((a, b) => (dir === "asc" ? a.score - b.score : b.score - a.score));
 
   return (
     <div className="space-y-6">
@@ -540,7 +544,7 @@ export default async function LeadsPage({
         </div>
       ) : (
         <div>
-          <LeadsTable rows={tableRows} sort={sortKey} />
+          <LeadsTable rows={tableRows} sort={sortKey} dir={dir} />
           <Pager page={page} totalPages={Math.ceil(data.total / PAGE_SIZE)} total={data.total} pageSize={PAGE_SIZE} />
         </div>
       )}

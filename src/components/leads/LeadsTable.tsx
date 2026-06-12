@@ -72,7 +72,7 @@ const STAGE_OPTIONS = [
   ["won_lead", "Won Lead"],
 ] as const;
 
-export function LeadsTable({ rows, sort }: { rows: Row[]; sort: string }) {
+export function LeadsTable({ rows, sort, dir = "desc" }: { rows: Row[]; sort: string; dir?: "asc" | "desc" }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -106,6 +106,14 @@ export function LeadsTable({ rows, sort }: { rows: Row[]; sort: string }) {
     params.set("view", "table");
     if (next === "recent") params.delete("sort");
     else params.set("sort", next);
+    // Re-clicking the active column flips ascending ↔ descending; switching to
+    // a different column resets to that column's default (descending).
+    if (sort === next) {
+      params.set("dir", dir === "asc" ? "desc" : "asc");
+    } else {
+      params.delete("dir");
+    }
+    params.delete("page");
     router.push(`${pathname}?${params.toString()}`);
   }
 
@@ -139,7 +147,7 @@ export function LeadsTable({ rows, sort }: { rows: Row[]; sort: string }) {
     }
   }
 
-  const sortArrow = (key: string) => (sort === key ? "↓" : "");
+  const sortArrow = (key: string) => (sort === key ? (dir === "asc" ? "↑" : "↓") : "");
 
   return (
     <div className="card-surface overflow-hidden">
@@ -203,7 +211,7 @@ export function LeadsTable({ rows, sort }: { rows: Row[]; sort: string }) {
               <th data-col="owner" className="py-2.5 font-medium">Owner (RM)</th>
               <th data-col="createdAt" className="py-2.5 font-medium">
                 <button onClick={() => setSort("recent")} className="inline-flex items-center gap-1 hover:text-foreground">
-                  Created {sortArrow("recent") || (sort !== "score" ? "↓" : "")}
+                  Created <ArrowUpDown className="size-3" /> {sortArrow("recent")}
                 </button>
               </th>
               <th data-col="actions" className="px-4 py-2.5"></th>

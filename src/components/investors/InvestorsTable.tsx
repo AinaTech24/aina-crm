@@ -75,10 +75,12 @@ const categoryColors: Record<string, string> = {
 export function InvestorsTable({
   rows,
   sort,
+  dir = "desc",
   flags,
 }: {
   rows: InvestorTableRow[];
   sort: string;
+  dir?: "asc" | "desc";
   flags: InvestorTableFlags;
 }) {
   const router = useRouter();
@@ -115,6 +117,13 @@ export function InvestorsTable({
     params.set("view", "table");
     if (next === "aum") params.delete("sort");
     else params.set("sort", next);
+    // Clicking the already-active column flips direction; switching to a new
+    // column starts from that column's natural default.
+    if (sort === next) {
+      params.set("dir", dir === "asc" ? "desc" : "asc");
+    } else {
+      params.delete("dir");
+    }
     // Re-sorting starts from the top of the new ordering.
     params.delete("page");
     router.push(`${pathname}?${params.toString()}`);
@@ -180,7 +189,7 @@ export function InvestorsTable({
     }
   }
 
-  const arrow = (key: string) => (sort === key ? "↓" : "");
+  const arrow = (key: string) => (sort === key ? (dir === "asc" ? "↑" : "↓") : "");
 
   return (
     <div className="card-surface overflow-hidden">
@@ -249,7 +258,7 @@ export function InvestorsTable({
             {flags.showSegment && <th data-col="segment" className="text-left py-2 font-medium">Segment</th>}
             {flags.showAum && (
               <th data-col="aum" className="text-right py-2 font-medium">
-                <button onClick={() => setSort("aum")} className="inline-flex items-center gap-1 hover:text-foreground">AUM <ArrowUpDown className="size-3" />{arrow("aum") || (sort === "aum" ? "↓" : "")}</button>
+                <button onClick={() => setSort("aum")} className="inline-flex items-center gap-1 hover:text-foreground">AUM <ArrowUpDown className="size-3" />{arrow("aum")}</button>
               </th>
             )}
             {flags.showSip && (

@@ -81,7 +81,7 @@ export default async function InvestorsPage({
   // same buildInvestorWhere helper). Drop view/sort — they don't affect rows.
   const exportQs = new URLSearchParams(
     Object.entries(sp).filter(
-      ([k, v]) => v != null && v !== "" && k !== "view" && k !== "sort"
+      ([k, v]) => v != null && v !== "" && k !== "view" && k !== "sort" && k !== "dir"
     ) as [string, string][]
   ).toString();
 
@@ -92,6 +92,20 @@ export default async function InvestorsPage({
   const sortKey = ["name", "sip", "review", "health"].includes(sp.sort ?? "")
     ? (sp.sort as string)
     : "aum";
+
+  // Sort direction. Each column has a sensible default (largest AUM/SIP first,
+  // A→Z names, soonest review, worst health for triage); an explicit `dir`
+  // query param (set by clicking the column header again) overrides it so the
+  // user can flip ascending ↔ descending on any column.
+  const DEFAULT_DIR: Record<string, "asc" | "desc"> = {
+    name: "asc",
+    aum: "desc",
+    sip: "desc",
+    review: "asc",
+    health: "asc",
+  };
+  const dir: "asc" | "desc" =
+    sp.dir === "asc" || sp.dir === "desc" ? sp.dir : DEFAULT_DIR[sortKey] ?? "desc";
 
   // Table pagination — 50/page. Kanban shows a larger single window (it's a
   // pipeline board, not a paged list). `page` is 1-based.
@@ -109,14 +123,14 @@ export default async function InvestorsPage({
       .where(where as any)
       .orderBy(
         sortKey === "name"
-          ? asc(investors.name)
+          ? (dir === "asc" ? asc(investors.name) : desc(investors.name))
           : sortKey === "sip"
-          ? desc(investors.activeSipAmount)
+          ? (dir === "asc" ? asc(investors.activeSipAmount) : desc(investors.activeSipAmount))
           : sortKey === "review"
-          ? sql`${investors.nextReviewAt} asc nulls last`
+          ? sql`${investors.nextReviewAt} ${sql.raw(dir)} nulls last`
           : sortKey === "health"
-          ? asc(investors.healthScore) // worst (lowest) health first, for triage
-          : desc(investors.aum)
+          ? (dir === "asc" ? asc(investors.healthScore) : desc(investors.healthScore))
+          : (dir === "asc" ? asc(investors.aum) : desc(investors.aum))
       )
       .limit(view === "kanban" ? 300 : PAGE_SIZE)
       .offset(view === "kanban" ? 0 : (page - 1) * PAGE_SIZE);
@@ -410,6 +424,7 @@ export default async function InvestorsPage({
           <InvestorsTable
             rows={tableRows}
             sort={sortKey}
+            dir={dir}
             flags={{ showPan, showCategory: true, showTier, showSegment, showAum, showSip, showKyc, showStatus }}
           />
           <Pager
