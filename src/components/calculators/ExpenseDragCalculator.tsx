@@ -59,7 +59,7 @@ export function ExpenseDragCalculator() {
             { key: "a", name: `Higher ER (${fmtPct(expenseRatioAPct)})`, color: "#ef4444" },
           ]}
         />
-        <div className="max-h-96 overflow-y-auto print:max-h-none">
+        <div className="max-h-96 overflow-y-auto print:max-h-none print:overflow-visible">
           <Table
             head={["Year", `A (${fmtPct(expenseRatioAPct)} ER)`, `B (${fmtPct(expenseRatioBPct)} ER)`, "Gap"]}
             rows={r.series.filter((p) => p.year % Math.max(1, Math.round(years / 20)) === 0 || p.year === years).map((p) => [

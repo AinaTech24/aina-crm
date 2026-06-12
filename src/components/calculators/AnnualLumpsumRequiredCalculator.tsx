@@ -95,7 +95,7 @@ export function AnnualLumpsumRequiredCalculator() {
           xKey="year"
           series={[{ key: "value", name: "Corpus", color: "#0ea5e9" }]}
         />
-        <div className="max-h-96 overflow-y-auto print:max-h-none">
+        <div className="max-h-96 overflow-y-auto print:max-h-none print:overflow-visible">
           <Table
             head={["Year", "Investment", "Corpus at year-end"]}
             rows={s1.schedule.map((r) => [

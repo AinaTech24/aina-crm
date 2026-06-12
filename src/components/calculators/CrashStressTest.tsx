@@ -72,7 +72,7 @@ export function CrashStressTest() {
             { key: "panic", name: "Panic-sold", color: "#ef4444" },
           ]}
         />
-        <div className="max-h-96 overflow-y-auto print:max-h-none">
+        <div className="max-h-96 overflow-y-auto print:max-h-none print:overflow-visible">
           <Table
             head={["Year", "Stayed invested", "No crash", "Panic-sold"]}
             rows={r.series.filter((p) => p.month % 12 === 0).map((p) => [

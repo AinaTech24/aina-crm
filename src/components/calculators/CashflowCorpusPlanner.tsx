@@ -137,7 +137,7 @@ export function CashflowCorpusPlanner() {
       {/* 1. Fund value projection */}
       {result.fundProjection && result.fundProjection.length > 0 && (
         <Section n={1} title="Fund value projection (no withdrawals)">
-          <div className="max-h-96 overflow-y-auto print:max-h-none">
+          <div className="max-h-96 overflow-y-auto print:max-h-none print:overflow-visible">
             <Table
               head={["Age", "Years", "Invested", "Fund value"]}
               rows={result.fundProjection.map((r) => [

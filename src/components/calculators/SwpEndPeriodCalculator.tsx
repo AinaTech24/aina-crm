@@ -159,7 +159,7 @@ export function SwpEndPeriodCalculator() {
             xKey="year"
             series={[{ key: "balance", name: "Corpus balance", color: "#0ea5e9" }]}
           />
-          <div className="max-h-96 overflow-y-auto print:max-h-none">
+          <div className="max-h-96 overflow-y-auto print:max-h-none print:overflow-visible">
             <Table
               head={["Year", "Monthly withdrawal", "Withdrawn that year", "Balance at year-end"]}
               rows={result.yearRows.map((r) => [

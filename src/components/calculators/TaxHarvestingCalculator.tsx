@@ -49,7 +49,7 @@ export function TaxHarvestingCalculator() {
       </div>
 
       <Section n="✓" title="Year-by-year harvesting">
-        <div className="max-h-96 overflow-y-auto print:max-h-none">
+        <div className="max-h-96 overflow-y-auto print:max-h-none print:overflow-visible">
           <Table
             head={["Year", "Value", "Unrealised gain", "Harvested (tax-free)", "Stepped-up cost"]}
             rows={r.rows.map((row) => [
