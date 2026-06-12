@@ -26,7 +26,20 @@ export type CalcPdfInput = {
 
 const A4: [number, number] = [595.28, 841.89];
 const MARGIN = 40;
-const ascii = (s: string) => (s ?? "").replace(/[^\x20-\x7E₹]/g, (c) => (c === "₹" ? "Rs " : "")).replace(/\s+/g, " ").trim();
+// pdf-lib's standard fonts are WinAnsi-encoded and can't draw ₹ (U+20B9) — the
+// old regex KEPT ₹ (it was in the negated class) so drawText threw. Convert
+// ₹ → "Rs " FIRST, normalise a few punctuation glyphs, then strip non-ASCII.
+const ascii = (s: string) =>
+  (s ?? "")
+    .replace(/₹/g, "Rs ")
+    .replace(/[•]/g, "-")
+    .replace(/[–—]/g, "-")
+    .replace(/[‘’]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/·/g, "-")
+    .replace(/[^\x20-\x7E]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 
 function hexToRgb(hex?: string | null) {
   const h = (hex ?? "#0e2557").replace("#", "");
@@ -126,7 +139,7 @@ export async function renderCalcPdf(input: CalcPdfInput): Promise<Buffer> {
       i++; continue;
     }
     if (b.type === "insight") {
-      const lines = wrap(b.text, font, 9, contentW - 16);
+      const lines = wrap(ascii(b.text), font, 9, contentW - 16);
       need(lines.length * 12 + 12);
       const boxH = lines.length * 12 + 10;
       page.drawRectangle({ x: MARGIN, y: y - boxH, width: contentW, height: boxH, color: rgb(0.94, 0.99, 0.96), borderColor: rgb(0.78, 0.92, 0.83), borderWidth: 1 });
@@ -140,7 +153,7 @@ export async function renderCalcPdf(input: CalcPdfInput): Promise<Buffer> {
       need(18);
       // header
       page.drawRectangle({ x: MARGIN, y: y - 16, width: contentW, height: 16, color: rgb(0.95, 0.96, 0.98) });
-      head.forEach((h, c) => page.drawText(h.slice(0, 26), { x: MARGIN + 4 + c * colW, y: y - 12, size: 7.5, font: bold, color: slate }));
+      head.forEach((h, c) => page.drawText(ascii(h).slice(0, 26), { x: MARGIN + 4 + c * colW, y: y - 12, size: 7.5, font: bold, color: slate }));
       y -= 16;
       for (const row of b.rows) {
         need(14);
