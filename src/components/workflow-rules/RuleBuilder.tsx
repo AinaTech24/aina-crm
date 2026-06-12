@@ -15,6 +15,8 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronLeft, ChevronRight, ChevronDown, Search, Plus, Trash2, Save, AlertTriangle, Workflow } from "lucide-react";
 import { SelectField } from "@/components/ui/SelectField";
+import { MultiSelectField } from "@/components/ui/MultiSelectField";
+import { TimeField } from "@/components/ui/TimeField";
 
 type ModuleField = {
   key: string;
@@ -223,7 +225,7 @@ export function RuleBuilder({ modules }: { modules: Module[] }) {
   }
 
   return (
-    <div className="max-w-5xl space-y-6">
+    <div className="max-w-4xl mx-auto w-full space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="page-title">
@@ -456,7 +458,7 @@ function TriggerStep({
             <SelectField
               value={trig.when}
               onChange={(e) => onChange({ ...trigger, when: e.target.value as any } as any)}
-              className="input-base mt-1 w-full"
+              className="input-base mt-1 w-full max-w-sm"
             >
               <option value="create">Create</option>
               <option value="edit">Edit</option>
@@ -470,25 +472,16 @@ function TriggerStep({
               <label className="text-xs font-semibold text-muted-foreground">
                 Only when these fields change (max 5)
               </label>
-              <select
-                multiple
-                value={trig.fields ?? []}
-                onChange={(e) =>
-                  onChange({
-                    ...trigger,
-                    fields: Array.from(e.target.selectedOptions).map((o) => o.value).slice(0, 5),
-                  } as any)
-                }
-                className="input-base mt-1 w-full h-32"
-              >
-                {(mod?.fields ?? []).map((f) => (
-                  <option key={f.key} value={f.key}>
-                    {f.label}
-                  </option>
-                ))}
-              </select>
+              <MultiSelectField
+                values={trig.fields ?? []}
+                onChange={(vals) => onChange({ ...trigger, fields: vals.slice(0, 5) } as any)}
+                options={(mod?.fields ?? []).map((f) => ({ value: f.key, label: f.label }))}
+                max={5}
+                placeholder="Any field change — tick fields to narrow…"
+                className="mt-1 w-full max-w-lg"
+              />
               <p className="text-[11px] text-muted-foreground mt-1">
-                Leave empty to fire on any field change. Cmd/Ctrl-click to select multiple.
+                Leave empty to fire on <strong>any</strong> field change. Tick the fields to watch.
               </p>
             </div>
           )}
@@ -545,12 +538,10 @@ function TriggerStep({
 
             <div className="grid grid-cols-1 sm:grid-cols-[230px_1fr] sm:items-center gap-1.5 sm:gap-3">
               <label className="text-xs font-medium text-muted-foreground sm:text-right">Execution time</label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="time"
+              <div className="flex items-center gap-2 flex-wrap">
+                <TimeField
                   value={trig.time ?? "09:00"}
-                  onChange={(e) => onChange({ ...trigger, time: e.target.value } as any)}
-                  className="input-base w-32"
+                  onChange={(v) => onChange({ ...trigger, time: v } as any)}
                 />
                 <span className="text-xs text-muted-foreground">in the firm&rsquo;s timezone</span>
               </div>
