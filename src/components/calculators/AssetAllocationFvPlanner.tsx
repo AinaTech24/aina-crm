@@ -94,7 +94,7 @@ export function AssetAllocationFvPlanner() {
           <summary className="cursor-pointer select-none px-4 py-2.5 text-xs font-semibold bg-slate-50 hover:bg-slate-100">
             Year-wise projected portfolio value ({result.scenario1.schedule.length} years)
           </summary>
-          <div className="max-h-72 overflow-y-auto scrollbar-thin">
+          <div className="max-h-72 overflow-y-auto scrollbar-thin print:max-h-none print:overflow-visible">
             <table data-pdf="table" className="w-full text-xs">
               <thead className="sticky top-0 bg-background border-b">
                 <tr className="text-left text-muted-foreground">

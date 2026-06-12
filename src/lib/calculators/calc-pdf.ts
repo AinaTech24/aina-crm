@@ -90,14 +90,19 @@ export async function renderCalcPdf(input: CalcPdfInput): Promise<Buffer> {
   const newPage = () => { page = doc.addPage(A4); y = H - MARGIN; };
   const need = (h: number) => { if (y - h < MARGIN + 30) newPage(); };
 
-  // ── Letterhead ──
+  // ── Letterhead ── The logo already carries the firm's name, so when it's
+  // present we show ONLY the logo here (no redundant text beside it). The firm
+  // name + ARN still appear once, in the footer. Without a logo we fall back to
+  // the firm name + ARN as text.
   if (logo) {
-    const lw = 40, lh = (logo.height / logo.width) * lw;
-    page.drawImage(logo, { x: MARGIN, y: y - lh, width: lw, height: Math.min(lh, 44) });
+    const boxW = 175, boxH = 40;
+    const scale = Math.min(boxW / logo.width, boxH / logo.height);
+    const w = logo.width * scale, h = logo.height * scale;
+    page.drawImage(logo, { x: MARGIN, y: y - h, width: w, height: h });
+  } else {
+    page.drawText(ascii(input.firmName), { x: MARGIN, y: y - 14, size: 14, font: bold, color: ink });
+    page.drawText(ascii(`ARN ${input.arn ?? "-"}`), { x: MARGIN, y: y - 28, size: 9, font, color: slate });
   }
-  const headX = MARGIN + (logo ? 50 : 0);
-  page.drawText(ascii(input.firmName), { x: headX, y: y - 14, size: 14, font: bold, color: ink });
-  page.drawText(ascii(`ARN ${input.arn ?? "-"}`), { x: headX, y: y - 28, size: 9, font, color: slate });
   page.drawText("Investment Illustration", { x: W - MARGIN - 130, y: y - 14, size: 11, font: bold, color: primary });
   const dt = new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
   page.drawText(ascii(`Prepared ${dt}`), { x: W - MARGIN - 130, y: y - 27, size: 9, font, color: slate });
