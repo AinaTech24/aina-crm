@@ -101,7 +101,7 @@ const JSON_LD = {
       operatingSystem: "Web",
       description:
         "Mutual fund software for Indian distributors (MFDs): CAMS/KFintech auto-import, live AUM & family XIRR, SIP bounce recovery on WhatsApp, AMFI/SEBI-compliant messaging, 60+ financial calculators, branded reports and MIS.",
-      offers: { "@type": "Offer", price: "14999", priceCurrency: "INR", priceValidUntil: "2026-12-31" },
+      offers: { "@type": "Offer", price: "9999", priceCurrency: "INR", priceValidUntil: "2026-12-31" },
       featureList: [
         "Dynamic CAMS & KFintech file import with 3-way reconciliation",
         "Live AUM, portfolio valuation and family XIRR from daily AMFI NAVs",
@@ -214,23 +214,20 @@ export default function Home() {
               </Link>
             </div>
 
-            <div className="mt-9 pt-7 border-t border-border/60 w-full flex flex-col sm:flex-row items-start sm:items-center gap-6 text-sm text-muted-foreground">
-              <div className="flex -space-x-3">
-                <div className="size-9 rounded-full bg-brand-navy border-2 border-background flex items-center justify-center text-[10px] font-bold text-white">RM</div>
-                <div className="size-9 rounded-full bg-brand-cyan border-2 border-background flex items-center justify-center text-[10px] font-bold text-white">OP</div>
-                <div className="size-9 rounded-full bg-brand-violet border-2 border-background flex items-center justify-center text-[10px] font-bold text-white">M</div>
-                <div className="size-9 rounded-full bg-brand-mint border-2 border-background flex items-center justify-center text-[10px] font-bold text-white">AN</div>
-              </div>
-              <div className="flex flex-col">
-                <div className="flex items-center gap-1">
-                  <span className="flex text-amber-500">
-                    {Array.from({ length: 5 }).map((_, i) => (
-                      <Star key={i} className="size-4 fill-current stroke-amber-500" />
-                    ))}
-                  </span>
-                  <span className="font-bold text-foreground ml-1">Loved by early adopters</span>
-                </div>
-                <span>Built with working ARN holders — for owners, RMs and back-office teams</span>
+            <div className="mt-9 pt-7 border-t border-border/60 w-full">
+              <div className="flex flex-wrap items-center gap-x-7 gap-y-3 text-xs font-semibold text-muted-foreground">
+                <span className="inline-flex items-center gap-2">
+                  <ShieldCheck className="size-4 text-emerald-600" /> AMFI &amp; SEBI-aware by design
+                </span>
+                <span className="inline-flex items-center gap-2">
+                  <Lock className="size-4 text-brand-cyan-deep" /> Row-level data isolation (DPDP-ready)
+                </span>
+                <span className="inline-flex items-center gap-2">
+                  <Users2 className="size-4 text-brand-navy" /> Built alongside working ARN holders
+                </span>
+                <span className="inline-flex items-center gap-2">
+                  <Clock className="size-4 text-amber-600" /> Most firms live within a day
+                </span>
               </div>
             </div>
           </div>
@@ -238,6 +235,18 @@ export default function Home() {
           {/* Live dashboard mock */}
           <div className="lg:col-span-5 relative w-full flex justify-center">
             <div className="absolute -inset-1 rounded-2xl bg-gradient-to-tr from-brand-navy to-brand-cyan opacity-20 blur-xl pointer-events-none" />
+
+            {/* Floating proof toast — depth + story */}
+            <div className="hidden lg:flex absolute -left-8 -bottom-5 z-20 items-center gap-2.5 rounded-xl border border-border/60 bg-card/95 backdrop-blur px-3.5 py-2.5 shadow-xl animate-fade-in">
+              <span className="size-8 rounded-full bg-emerald-500/10 grid place-items-center">
+                <CheckCircle2 className="size-4 text-emerald-600" />
+              </span>
+              <div className="leading-tight">
+                <div className="text-[11px] font-bold text-foreground">Sharma family review ready</div>
+                <div className="text-[10px] text-muted-foreground">Branded PDF · 16.9% family XIRR</div>
+              </div>
+            </div>
+
             <div className="glass-card rounded-2xl w-full max-w-[460px] p-5 relative border border-white/20 shadow-2xl flex flex-col gap-4">
               <div className="flex items-center justify-between border-b border-border/40 pb-3">
                 <div className="flex items-center gap-2">
@@ -326,12 +335,17 @@ export default function Home() {
       </section>
 
       {/* ───────────────────── Stats strip ───────────────────── */}
-      <section className="border-y border-border/40 bg-secondary/20 relative z-10 py-10">
-        <div className="max-w-7xl mx-auto px-6 grid grid-cols-2 md:grid-cols-4 gap-8">
-          <Stat value="60+" label="Client-ready financial calculators" />
-          <Stat value="13,900+" label="AMFI schemes valued daily" />
-          <Stat value="40+" label="Ready-made automation recipes" />
-          <Stat value="11 rules" label="Compliance checks on every send" />
+      <section className="border-y border-border/40 bg-secondary/20 relative z-10 py-12">
+        <div className="max-w-7xl mx-auto px-6">
+          <p className="text-center text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground mb-8">
+            Purpose-built for the Indian MFD practice
+          </p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-y-8 md:divide-x md:divide-border/50">
+            <Stat value="60+" label="Client-ready financial calculators" />
+            <Stat value="13,900+" label="AMFI schemes valued daily" />
+            <Stat value="40+" label="Ready-made automation recipes" />
+            <Stat value="11 rules" label="Compliance checks on every send" />
+          </div>
         </div>
       </section>
 
@@ -339,9 +353,7 @@ export default function Home() {
       <section id="pain-points" className="py-20 lg:py-28 relative z-10 bg-background/50">
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center max-w-3xl mx-auto">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-brand-navy-light px-3 py-1 text-xs font-semibold text-brand-navy-deep">
-              Does this sound like your week?
-            </span>
+            <span className="chip bg-brand-navy-light text-brand-navy-deep">Does this sound like your week?</span>
             <h2 className="mt-4 text-3xl sm:text-4xl font-extrabold tracking-tight text-foreground">
               The hidden cost of running an MFD practice on Excel and memory
             </h2>
@@ -635,12 +647,12 @@ export default function Home() {
             Flat, honest pricing — your bill doesn&apos;t grow with your AUM
           </h2>
           <p className="mt-3 text-muted-foreground">
-            One-time setup gets your firm fully live, then a flat ₹14,999 per user / year.
+            A one-time setup gets your firm fully live, then a flat per-user yearly fee — from ₹9,999.
             No per-client charges. No AUM-linked fees. No surprises.
           </p>
         </div>
 
-        <div className="mt-16 grid sm:grid-cols-2 gap-8 items-stretch max-w-4xl mx-auto">
+        <div className="mt-16 grid sm:grid-cols-2 lg:grid-cols-3 gap-6 items-stretch max-w-6xl mx-auto">
           {PLANS.map((p) => (
             <div
               key={p.name}
@@ -660,30 +672,26 @@ export default function Home() {
 
               <div className="mt-4 pt-4 border-t border-border/40">
                 <div className="flex items-baseline gap-1.5">
-                  <span className="text-3xl font-extrabold text-foreground">{p.setup}</span>
-                  <span className="text-sm text-muted-foreground font-semibold">one-time setup</span>
+                  <span className="text-3xl font-extrabold text-foreground">{p.price}</span>
+                  <span className="text-sm text-muted-foreground font-semibold">{p.unit}</span>
                 </div>
                 <div className="mt-1.5 text-sm text-muted-foreground font-medium">
-                  then <span className="font-bold text-foreground">{p.price}</span> {p.unit}
+                  + <span className="font-bold text-foreground">{p.setup}</span> one-time setup (per firm)
+                </div>
+                <div className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-secondary/70 border border-border/50 px-2 py-1 text-[11px] font-semibold text-muted-foreground tabular-nums">
+                  <Users2 className="size-3" /> {p.seats}
                 </div>
               </div>
 
-              {p.featured && <p className="mt-5 text-sm font-bold text-foreground">Everything in Starter, plus:</p>}
-              <div className="mt-5 flex flex-col gap-4 flex-grow">
-                {p.groups.map((g) => (
-                  <div key={g.title}>
-                    <div className="text-[11px] font-bold uppercase tracking-wider text-foreground/70 mb-2">{g.title}</div>
-                    <ul className="flex flex-col gap-2">
-                      {g.items.map((f) => (
-                        <li key={f} className="flex items-start gap-2.5 text-xs text-muted-foreground font-medium">
-                          <Check className="size-3.5 text-emerald-600 mt-0.5 shrink-0" />
-                          <span>{f}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
+              {p.inherits && <p className="mt-5 text-sm font-bold text-foreground">{p.inherits}</p>}
+              <ul className="mt-5 flex flex-col gap-2.5 flex-grow">
+                {p.items.map((f) => (
+                  <li key={f} className="flex items-start gap-2.5 text-xs text-muted-foreground font-medium">
+                    <Check className="size-3.5 text-emerald-600 mt-0.5 shrink-0" />
+                    <span>{f}</span>
+                  </li>
                 ))}
-              </div>
+              </ul>
 
               <Link href="/signup" className={`mt-8 w-full ${p.featured ? "btn-primary" : "btn-secondary"} font-bold py-3 text-center justify-center shadow-md`}>
                 {p.cta}
@@ -692,8 +700,20 @@ export default function Home() {
           ))}
         </div>
 
-        <p className="text-center text-xs text-muted-foreground mt-8 max-w-lg mx-auto">
-          * Supports all standard CAMS/KFintech exports. Compliance rules stay current with AMFI/SEBI guidance. Taxes as applicable.
+        <div className="mt-10 rounded-2xl border border-border/50 bg-secondary/20 px-6 py-5 max-w-4xl mx-auto">
+          <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground text-center mb-3.5">
+            Every plan includes
+          </div>
+          <div className="flex flex-wrap justify-center gap-x-7 gap-y-2.5 text-xs font-semibold text-foreground/80">
+            <span className="inline-flex items-center gap-1.5"><Lock className="size-3.5 text-brand-cyan-deep" /> Row-level data isolation</span>
+            <span className="inline-flex items-center gap-1.5"><ShieldCheck className="size-3.5 text-emerald-600" /> AMFI/SEBI compliance gate</span>
+            <span className="inline-flex items-center gap-1.5"><MessageSquare className="size-3.5 text-brand-navy" /> Your own WhatsApp / email accounts — no per-message markup</span>
+            <span className="inline-flex items-center gap-1.5"><Zap className="size-3.5 text-amber-600" /> Free product updates</span>
+          </div>
+        </div>
+
+        <p className="text-center text-xs text-muted-foreground mt-6 max-w-xl mx-auto">
+          * Billed annually, minimum 3 users. Setup is a one-time, per-firm fee. Training, customisation &amp; marketing services are quoted separately. Taxes as applicable.
         </p>
       </section>
 
@@ -744,6 +764,11 @@ export default function Home() {
             <Link href="/dashboard" className="rounded-xl border border-white/20 bg-white/5 text-white hover:bg-white/10 px-8 py-3 text-base font-bold transition-all shadow-sm">
               Explore Demo
             </Link>
+          </div>
+          <div className="mt-7 flex flex-wrap justify-center gap-x-6 gap-y-2 text-xs font-semibold text-white/70">
+            <span className="inline-flex items-center gap-1.5"><CheckCircle2 className="size-3.5" /> Free trial — no card needed</span>
+            <span className="inline-flex items-center gap-1.5"><CheckCircle2 className="size-3.5" /> Your RTA exports are the migration</span>
+            <span className="inline-flex items-center gap-1.5"><CheckCircle2 className="size-3.5" /> Live within a day</span>
           </div>
         </div>
       </section>
@@ -909,137 +934,82 @@ const CORE_FEATURES = [
 const PLANS = [
   {
     name: "Starter",
-    for: "Everything a growing MFD firm needs to run day-to-day — clients, money, service, compliance & marketing in one organised place.",
+    for: "Everything an established MFD firm needs to run day-to-day — clients, money, service & basics in one organised place.",
     setup: "₹49,000",
-    price: "₹14,999",
+    price: "₹9,999",
     unit: "/ user / year",
+    seats: "3 users = ₹29,997 / year",
     featured: false,
     cta: "Start Free Trial",
-    groups: [
-      {
-        title: "Run your day",
-        items: [
-          "Role-based home screen for owner, RMs & back-office",
-          "A daily 'what to do next' list for every team member",
-          "Shared calendar for tasks, meetings & client reviews",
-          "Live team performance at a glance",
-        ],
-      },
-      {
-        title: "Know every client",
-        items: [
-          "Complete 360° client records with health scoring & full ledger",
-          "Group households to see total family wealth",
-          "Capture, score & convert every lead from enquiry to client",
-          "Risk profiles on file; never miss a birthday or anniversary",
-        ],
-      },
-      {
-        title: "Advise & track money",
-        items: [
-          "60+ SIP, goal, tax & retirement calculators built in",
-          "Generate proposals with a built-in suitability check",
-          "Full transaction history with live value & returns (XIRR)",
-          "Track every SIP and catch bounced / failed instalments",
-          "Insurance policies, claims & renewals tracked end-to-end",
-        ],
-      },
-      {
-        title: "Serve & communicate",
-        items: [
-          "Log every interaction; one-click WhatsApp / email / SMS",
-          "Resolve service requests on time with satisfaction tracking",
-          "SEBI-ready complaint register",
-          "One unified inbox & outbox for all client conversations",
-        ],
-      },
-      {
-        title: "Market your practice",
-        items: [
-          "Approved WhatsApp / Email / SMS templates",
-          "Run marketing campaigns & plan your social content",
-          "Simple rules that auto-create tasks & send messages",
-          "Build client segments and monitor every automation run",
-        ],
-      },
-      {
-        title: "Stay compliant & organised",
-        items: [
-          "Inspection-ready compliance center & full audit trail",
-          "Secure document vault, team announcements & duplicate clean-up",
-          "Cyber-readiness register for RBI / SEBI expectations",
-        ],
-      },
-      {
-        title: "Run the firm",
-        items: [
-          "Manage employees & sub-distributors",
-          "Legal registrations, AMC empanelments & scheme master",
-          "Standard reports, MIS & trail-income forecast",
-          "Firm profile, billing, settings & integrations (WAina, etc.)",
-        ],
-      },
+    inherits: null,
+    items: [
+      "Dashboard",
+      "Tasks, Meetings & Calendar",
+      "Leads & Clients",
+      "Family Mapping",
+      "Risk Profile",
+      "10 Calculators",
+      "Insurance — policies, claims & renewal alerts",
+      "Business entries for all products",
+      "Email automation",
+      "Product master",
+      "User management",
+      "Reports & MIS",
+      "Basic support",
+      "CRM onboarding & training",
     ],
   },
   {
     name: "Growth",
-    for: "Everything in Starter — plus automation, AI & analytics to scale AUM without adding headcount.",
+    for: "Automation, AI alerts & team tools to scale your AUM without adding headcount.",
     setup: "₹79,000",
-    price: "₹14,999",
+    price: "₹12,999",
     unit: "/ user / year",
+    seats: "3 users = ₹38,997 / year",
     featured: true,
     cta: "Start Free Trial",
-    groups: [
-      {
-        title: "Automate the busywork",
-        items: [
-          "A firm-wide command center that surfaces the day's actions",
-          "Advanced no-code workflow builder + sales-ops rules",
-          "Time-based triggers: mandate/KYC expiry & recurring reviews",
-        ],
-      },
-      {
-        title: "Win & keep more clients with AI",
-        items: [
-          "Live buying-intent signals on every lead",
-          "Churn radar that flags clients about to leave — before they go",
-          "Cross-sell & top-up opportunity finder across your whole book",
-          "Tax-harvesting suggestions, ready to act on",
-          "An AI assistant for instant client briefs & answers",
-        ],
-      },
-      {
-        title: "Deeper planning & insight",
-        items: [
-          "Goal-based planning & complete financial plans",
-          "Visual deal pipeline board",
-          "Portfolio intelligence & analytics",
-        ],
-      },
-      {
-        title: "Stronger operations",
-        items: [
-          "Auto-import CAMS / KFintech feeds with 3-way reconciliation",
-          "Early-warning radar for SIPs at risk",
-        ],
-      },
-      {
-        title: "Capture every rupee you're owed",
-        items: [
-          "Insurance protection-gap radar & commission tracking",
-          "MF commission reconciliation",
-          "Practice P&L, expenses & monthly targets",
-        ],
-      },
-      {
-        title: "Premium content & deeper compliance",
-        items: [
-          "Ready-made, co-branded creatives library",
-          "AMFI DDQ readiness checklist + circular digests",
-          "Nomination tracker & SOP library",
-          "Team attendance & leave management",
-        ],
-      },
+    inherits: "Everything in Starter, plus:",
+    items: [
+      "Command Center — AI alerts",
+      "Next Best Action — AI alerts",
+      "20 Calculators",
+      "Goal Planning",
+      "Service Requests",
+      "Proposals",
+      "Insurance Commission Tracker",
+      "WhatsApp Automation",
+      "Attendance & Leave Tracker",
+      "Sub-Distributor Module",
+      "Workflow Rules & Basic Automation",
+      "AINA Content Library",
+      "Personalised training",
+    ],
+  },
+  {
+    name: "Premium",
+    for: "Full AI, compliance & practice management for firms scaling seriously.",
+    setup: "₹97,000",
+    price: "₹14,999",
+    unit: "/ user / year",
+    seats: "3 users = ₹44,997 / year",
+    featured: false,
+    cta: "Start Free Trial",
+    inherits: "Everything in Starter & Growth, plus:",
+    items: [
+      "AI Assistant",
+      "RTA File Import",
+      "Advanced Goal Planning",
+      "Brokerage Management",
+      "DDQ Compliance Management & Audit",
+      "Portfolio Intelligence",
+      "Practice & Finance",
+      "Advanced Automation",
+      "Website Management",
+      "Social Media Management",
+      "Custom CRM customisation",
+      "AI tool training",
+      "IT-related training & support",
+      "Custom presentation & tools",
     ],
   },
 ];
