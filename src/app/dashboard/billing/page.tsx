@@ -5,6 +5,7 @@ import { subscriptions, packages, subscriptionEvents } from "@/db/schema";
 import { desc } from "drizzle-orm";
 import { requireSession } from "@/lib/auth/session";
 import { formatDate, formatRelative } from "@/lib/utils";
+import { BillingCycleChooser } from "@/components/billing/BillingCycleChooser";
 
 const STATUS_COLORS: Record<string, string> = {
   trial: "bg-blue-50 text-blue-700",
@@ -57,16 +58,25 @@ export default async function BillingPage() {
             </div>
             <div className="grid grid-cols-3 gap-4 mt-4 pt-4 border-t text-sm">
               <Row label="Billing cycle" value={sub.billingCycle ?? "—"} />
-              <Row label="Monthly" value={`₹${(pkg.monthlyPricePaise / 100).toLocaleString("en-IN")}`} />
-              <Row label="Yearly" value={`₹${(pkg.yearlyPricePaise / 100).toLocaleString("en-IN")}`} />
-              <Row label="Max users" value={String(pkg.maxUsers)} />
+              <Row label="Setup (one-time)" value={`₹${(pkg.setupCostPaise / 100).toLocaleString("en-IN")}`} />
+              <Row label="Users" value={String(sub.seatsOverride ?? pkg.maxUsers)} />
               <Row label="Max investors" value={String(pkg.maxInvestors)} />
               <Row label="Storage" value={`${pkg.storageLimitGb} GB`} />
+              <Row label="Next renewal" value={sub.nextRenewalAt ? formatDate(sub.nextRenewalAt) : "—"} />
               <Row label="License start" value={sub.licenseStartAt ? formatDate(sub.licenseStartAt) : "—"} />
               <Row label="License end" value={sub.licenseEndAt ? formatDate(sub.licenseEndAt) : "—"} />
-              <Row label="Next renewal" value={sub.nextRenewalAt ? formatDate(sub.nextRenewalAt) : "—"} />
             </div>
           </div>
+
+          <BillingCycleChooser
+            current={sub.billingCycle ?? null}
+            seats={sub.seatsOverride ?? pkg.maxUsers}
+            monthlyPaise={pkg.monthlyPricePaise}
+            yearlyPaise={pkg.yearlyPricePaise}
+            perUserMonthlyPaise={pkg.perUserMonthlyPaise}
+            perUserYearlyPaise={pkg.perUserYearlyPaise}
+            canManage={(session.roles ?? []).includes("owner")}
+          />
 
           <div className="border rounded-lg bg-card p-6">
             <h2 className="font-semibold">Modules enabled</h2>
