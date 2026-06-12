@@ -6,6 +6,8 @@ import { desc } from "drizzle-orm";
 import { requireSession } from "@/lib/auth/session";
 import { formatDate, formatRelative } from "@/lib/utils";
 import { BillingCycleChooser } from "@/components/billing/BillingCycleChooser";
+import { AutoPaySetup } from "@/components/billing/AutoPaySetup";
+import { computeAnnualAmountPaise, razorpayConfigured } from "@/lib/billing/razorpay";
 
 const STATUS_COLORS: Record<string, string> = {
   trial: "bg-blue-50 text-blue-700",
@@ -75,6 +77,15 @@ export default async function BillingPage() {
             yearlyPaise={pkg.yearlyPricePaise}
             perUserMonthlyPaise={pkg.perUserMonthlyPaise}
             perUserYearlyPaise={pkg.perUserYearlyPaise}
+            canManage={(session.roles ?? []).includes("owner")}
+          />
+
+          <AutoPaySetup
+            configured={razorpayConfigured()}
+            mandateStatus={(sub as any).mandateStatus ?? "none"}
+            status={sub.status}
+            amountPaise={computeAnnualAmountPaise(pkg as any, sub as any).amountPaise}
+            seats={computeAnnualAmountPaise(pkg as any, sub as any).seats}
             canManage={(session.roles ?? []).includes("owner")}
           />
 

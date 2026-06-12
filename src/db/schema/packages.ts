@@ -139,9 +139,14 @@ export const subscriptions = pgTable(
      */
     allowedDashboardWidgets: jsonb("allowed_dashboard_widgets").$type<string[]>(),
 
-    /** Billing — minimal scaffold; real Razorpay integration extends this */
+    /** Billing — Razorpay recurring auto-debit. */
     razorpayCustomerId: text("razorpay_customer_id"),
     razorpaySubscriptionId: text("razorpay_subscription_id"),
+    razorpayPlanId: text("razorpay_plan_id"),
+    /** e-mandate state: none | pending | active | failed */
+    mandateStatus: text("mandate_status").notNull().default("none"),
+    /** Consecutive auto-debit failures — drives retry-then-suspend dunning. */
+    failedPaymentCount: integer("failed_payment_count").notNull().default(0),
     lastPaymentAt: timestamp("last_payment_at", { withTimezone: true }),
     lastPaymentPaise: integer("last_payment_paise"),
 
