@@ -47,6 +47,10 @@ export type ModuleFieldType =
 
 export interface ModuleField {
   key: string;
+  /** Real DB column to query for date/score scans when it differs from `key`
+   *  (e.g. a "Last Activity" catalog field backed by the `updated_at` column).
+   *  Defaults to `key`. */
+  column?: string;
   label: string;
   type: ModuleFieldType;
   /** Allowed in criteria (default true) */
@@ -147,7 +151,7 @@ export const MODULES: Record<ModuleKey, ModuleCatalog> = {
       },
       { key: "owner_id", label: "Owner", type: "uuid", writable: true },
       { key: "score", label: "Lead Score", type: "integer", writable: true, scoreField: true },
-      { key: "last_activity_at", label: "Last Activity Time", type: "datetime", dateAnchor: true },
+      { key: "last_activity_at", column: "updated_at", label: "Last Activity Time", type: "datetime", dateAnchor: true },
       // ── Client / prospect details ──
       { key: "pan", label: "PAN", type: "string", writable: true },
       { key: "city", label: "City", type: "string", writable: true },
@@ -211,8 +215,8 @@ export const MODULES: Record<ModuleKey, ModuleCatalog> = {
       { key: "aum", label: "AUM", type: "currency", writable: false, scoreField: true },
       { key: "active_sip_amount", label: "Active SIP Amount", type: "currency", scoreField: true },
       { key: "rm_id", label: "Relationship Manager", type: "uuid", writable: true },
-      { key: "date_of_birth", label: "Date of Birth", type: "date", dateAnchor: true },
-      { key: "kyc_expires_at", label: "KYC Expiry", type: "date", dateAnchor: true },
+      { key: "date_of_birth", column: "dob", label: "Date of Birth", type: "date", dateAnchor: true },
+      { key: "kyc_expires_at", column: "ckyc_expiry_at", label: "KYC Expiry", type: "date", dateAnchor: true },
       { key: "next_review_at", label: "Next Review Date", type: "date", dateAnchor: true },
       { key: "last_review_at", label: "Last Review Date", type: "datetime", dateAnchor: true },
       CREATED(),

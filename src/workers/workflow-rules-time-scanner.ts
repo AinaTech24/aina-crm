@@ -80,6 +80,13 @@ async function scanDateRule(rule: any): Promise<number> {
   // Whitelist the anchor column against the catalog — config is tenant-supplied,
   // so never interpolate it into SQL unless it's a known dateAnchor field.
   if (!mod || !fieldDef?.dateAnchor) return 0;
+  // The REAL DB column may differ from the catalog key (e.g. "last_activity_at"
+  // is backed by the table's `updated_at`). Guard against any non-identifier.
+  const colName = String((fieldDef as any).column ?? cfg.field);
+  if (!/^[a-z_][a-z0-9_]*$/i.test(colName)) {
+    console.warn(`[rules-time] rule "${rule.name}": invalid anchor column "${colName}" — skipped`);
+    return 0;
+  }
 
   const nowClock = istClock();
 
@@ -101,7 +108,7 @@ async function scanDateRule(rule: any): Promise<number> {
   const todayStr = istDateStr(nowClock);
 
   // Anchor expressed as an IST calendar date (timestamps shift via AT TIME ZONE).
-  const col = sql.raw(`"${cfg.field}"`);
+  const col = sql.raw(`"${colName}"`);
   const dateExpr =
     fieldDef.type === "datetime"
       ? sql`((${col} AT TIME ZONE 'Asia/Kolkata')::date)`
