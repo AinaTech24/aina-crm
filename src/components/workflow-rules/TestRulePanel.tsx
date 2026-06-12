@@ -8,11 +8,12 @@
  */
 
 import { useEffect, useState } from "react";
-import { FlaskConical, Loader2, CheckCircle2, XCircle, Zap, Clock } from "lucide-react";
+import { FlaskConical, Loader2, CheckCircle2, XCircle, Zap, Clock, Send, AlertTriangle } from "lucide-react";
 import { SelectField } from "@/components/ui/SelectField";
 
 type TestResult = {
   matched: boolean;
+  live?: boolean;
   totalBranches?: number;
   branchIndex?: number;
   branchName?: string;
@@ -20,6 +21,7 @@ type TestResult = {
   note?: string;
   wouldRunInstant?: Array<{ type: string; label?: string }>;
   wouldQueueScheduled?: Array<{ type: string; label?: string; delay?: { amount: number; unit: string } }>;
+  ranInstant?: Array<{ type: string; status: string; detail?: string }>;
 };
 
 const ACTION_LABELS: Record<string, string> = {
@@ -56,8 +58,9 @@ export function TestRulePanel({ ruleId }: { ruleId: string }) {
       .finally(() => setLoadingRecords(false));
   }, [ruleId]);
 
-  async function runTest() {
+  async function runTest(live = false) {
     if (!subjectId) return;
+    if (live && !confirm("Run this rule LIVE for the selected record? Its instant actions (e.g. the email) will actually be sent.")) return;
     setBusy(true);
     setErr(null);
     setResult(null);
@@ -65,7 +68,7 @@ export function TestRulePanel({ ruleId }: { ruleId: string }) {
       const r = await fetch(`/api/workflow-rules/${ruleId}/test`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ subjectId }),
+        body: JSON.stringify({ subjectId, live }),
       });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`);
@@ -81,7 +84,7 @@ export function TestRulePanel({ ruleId }: { ruleId: string }) {
     <div className="card-surface p-4 space-y-3">
       <h3 className="font-semibold flex items-center gap-2 text-sm">
         <FlaskConical className="size-4 text-brand-cyan" /> Test this rule
-        <span className="text-[10px] font-normal text-muted-foreground">dry run — nothing is sent or saved</span>
+        <span className="text-[10px] font-normal text-muted-foreground">Dry run = preview · Run live = actually send</span>
       </h3>
 
       <div className="flex items-center gap-2 flex-wrap">
@@ -103,11 +106,20 @@ export function TestRulePanel({ ruleId }: { ruleId: string }) {
         </SelectField>
         <button
           type="button"
-          onClick={runTest}
+          onClick={() => runTest(false)}
+          disabled={busy || !subjectId}
+          className="btn-secondary text-xs disabled:opacity-50"
+        >
+          {busy ? <Loader2 className="size-3.5 animate-spin" /> : <FlaskConical className="size-3.5" />} Dry run
+        </button>
+        <button
+          type="button"
+          onClick={() => runTest(true)}
           disabled={busy || !subjectId}
           className="btn-primary text-xs disabled:opacity-50"
+          title="Actually execute the rule's instant actions (sends the email for real)"
         >
-          {busy ? <Loader2 className="size-3.5 animate-spin" /> : <FlaskConical className="size-3.5" />} Run test
+          <Send className="size-3.5" /> Run live (send)
         </button>
       </div>
 
@@ -127,7 +139,33 @@ export function TestRulePanel({ ruleId }: { ruleId: string }) {
           </div>
           {result.message && <p className="text-xs text-amber-800">{result.message}</p>}
 
-          {result.matched && (
+          {result.matched && result.live && (
+            <div className="text-xs">
+              <div className="font-semibold flex items-center gap-1 text-foreground/80 mb-1">
+                <Send className="size-3" /> Executed now (live)
+              </div>
+              <ul className="space-y-1">
+                {(result.ranInstant ?? []).map((a, i) => {
+                  const ok = a.status === "succeeded";
+                  const skip = a.status === "skipped";
+                  return (
+                    <li key={i} className="flex items-start gap-1.5">
+                      {ok ? <CheckCircle2 className="size-3.5 text-emerald-600 mt-px shrink-0" />
+                        : skip ? <AlertTriangle className="size-3.5 text-amber-600 mt-px shrink-0" />
+                        : <XCircle className="size-3.5 text-rose-600 mt-px shrink-0" />}
+                      <span>
+                        <strong>{ACTION_LABELS[a.type] ?? a.type}</strong> — {ok ? "sent ✓" : a.status}
+                        {a.detail ? <span className="text-muted-foreground"> ({a.detail})</span> : ""}
+                      </span>
+                    </li>
+                  );
+                })}
+                {(result.ranInstant ?? []).length === 0 && <li className="text-muted-foreground italic">no instant actions on this rule</li>}
+              </ul>
+            </div>
+          )}
+
+          {result.matched && !result.live && (
             <>
               <div className="text-xs">
                 <div className="font-semibold flex items-center gap-1 text-foreground/80 mb-1">
