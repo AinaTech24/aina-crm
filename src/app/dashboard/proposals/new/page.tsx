@@ -326,7 +326,10 @@ export default function NewProposalPage() {
       });
       const j = await res.json();
       if (!res.ok) {
-        setErr(j.error ?? `Save failed (${res.status})`);
+        // Surface which field failed so "invalid body" is never a dead end.
+        const issue = Array.isArray(j.issues) ? j.issues[0] : null;
+        const detail = issue ? ` — ${(issue.path ?? []).join(".") || "field"}: ${issue.message}` : "";
+        setErr((j.error ?? `Save failed (${res.status})`) + detail);
         return;
       }
       router.push(`/dashboard/proposals/${j.id}`);
@@ -336,7 +339,7 @@ export default function NewProposalPage() {
   }
 
   return (
-    <div className="space-y-4 max-w-5xl">
+    <div className="space-y-4 max-w-5xl mx-auto w-full">
       <Link
         href="/dashboard/proposals"
         className="text-sm text-muted-foreground hover:underline hover:text-foreground flex items-center gap-1 transition-colors"
@@ -933,8 +936,8 @@ function MFRow({ item, onPatch }: { item: MF; onPatch: (p: Partial<MF>) => void 
   }, [item.lumpsum, item.monthlyAmount, item.sipTermYears, item.expectedReturn]);
 
   return (
-    <div className="grid grid-cols-3 gap-3">
-      <div className="col-span-2">
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="sm:col-span-2">
         <div className="text-[11px] font-medium mb-1 text-muted-foreground">
           Scheme name <span className="text-rose-500">*</span>
         </div>
@@ -1007,7 +1010,7 @@ function MFRow({ item, onPatch }: { item: MF; onPatch: (p: Partial<MF>) => void 
           <option value="very_high">Very High</option>
         </SelectField>
       </label>
-      <div className="col-span-3">
+      <div className="sm:col-span-3">
         <TextInput
           label="Notes / rationale"
           value={item.notes ?? ""}
@@ -1021,8 +1024,8 @@ function MFRow({ item, onPatch }: { item: MF; onPatch: (p: Partial<MF>) => void 
 
 function InsRow({ item, onPatch }: { item: Ins; onPatch: (p: Partial<Ins>) => void }) {
   return (
-    <div className="grid grid-cols-3 gap-3">
-      <div className="col-span-2">
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="sm:col-span-2">
         <TextInput
           label="Policy name"
           required
@@ -1071,7 +1074,7 @@ function InsRow({ item, onPatch }: { item: Ins; onPatch: (p: Partial<Ins>) => vo
         value={item.termYears}
         setValue={(n) => onPatch({ termYears: n })}
       />
-      <div className="col-span-3">
+      <div className="sm:col-span-3">
         <TextInput
           label="Notes / rationale"
           value={item.notes ?? ""}
@@ -1095,8 +1098,8 @@ function PMSRow({ item, onPatch }: { item: PMS; onPatch: (p: Partial<PMS>) => vo
   }, [item.proposedAmount, item.expectedReturn, item.termYears]);
 
   return (
-    <div className="grid grid-cols-3 gap-3">
-      <div className="col-span-2">
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="sm:col-span-2">
         <TextInput
           label="Strategy name"
           required
@@ -1136,11 +1139,11 @@ function PMSRow({ item, onPatch }: { item: PMS; onPatch: (p: Partial<PMS>) => vo
         setValue={(n) => onPatch({ termYears: n })}
       />
       {projectedPMS > 0 && (
-        <div className="col-span-3 text-[11px] text-emerald-600 font-semibold px-1 py-0.5 bg-emerald-50/50 rounded-md">
+        <div className="sm:col-span-3 text-[11px] text-emerald-600 font-semibold px-1 py-0.5 bg-emerald-50/50 rounded-md">
           Projected value: {formatINR(projectedPMS)} after {item.termYears} years
         </div>
       )}
-      <div className="col-span-3">
+      <div className="sm:col-span-3">
         <TextInput
           label="Notes / rationale"
           value={item.notes ?? ""}
@@ -1164,8 +1167,8 @@ function AIFRow({ item, onPatch }: { item: AIF; onPatch: (p: Partial<AIF>) => vo
   }, [item.proposedAmount, item.targetIrr, item.lockInYears]);
 
   return (
-    <div className="grid grid-cols-3 gap-3">
-      <div className="col-span-2">
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="sm:col-span-2">
         <TextInput
           label="Fund name"
           required
@@ -1218,11 +1221,11 @@ function AIFRow({ item, onPatch }: { item: AIF; onPatch: (p: Partial<AIF>) => vo
         setValue={(n) => onPatch({ targetIrr: n })}
       />
       {projectedAIF > 0 && (
-        <div className="col-span-3 text-[11px] text-emerald-600 font-semibold px-1 py-0.5 bg-emerald-50/50 rounded-md">
+        <div className="sm:col-span-3 text-[11px] text-emerald-600 font-semibold px-1 py-0.5 bg-emerald-50/50 rounded-md">
           Projected value: {formatINR(projectedAIF)} after {item.lockInYears} years
         </div>
       )}
-      <div className="col-span-3">
+      <div className="sm:col-span-3">
         <TextInput
           label="Notes / rationale"
           value={item.notes ?? ""}
@@ -1243,8 +1246,8 @@ function OtherRow({ item, onPatch }: { item: Other; onPatch: (p: Partial<Other>)
   }, [item.amount, item.expectedReturn, item.termYears]);
 
   return (
-    <div className="grid grid-cols-3 gap-3">
-      <div className="col-span-2">
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="sm:col-span-2">
         <TextInput
           label="Product name"
           required
@@ -1278,11 +1281,11 @@ function OtherRow({ item, onPatch }: { item: Other; onPatch: (p: Partial<Other>)
         setValue={(n) => onPatch({ termYears: n })}
       />
       {projected > 0 && (
-        <div className="col-span-3 text-[11px] text-emerald-600 font-semibold px-1 py-0.5 bg-emerald-50/50 rounded-md">
+        <div className="sm:col-span-3 text-[11px] text-emerald-600 font-semibold px-1 py-0.5 bg-emerald-50/50 rounded-md">
           Expected future value: {formatINR(projected)} after {item.termYears} years
         </div>
       )}
-      <div className="col-span-3">
+      <div className="sm:col-span-3">
         <TextInput
           label="Remarks"
           value={item.remarks ?? ""}

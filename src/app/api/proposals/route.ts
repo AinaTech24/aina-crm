@@ -88,6 +88,28 @@ const LineOther = z.object({
 
 const LineItem = z.discriminatedUnion("kind", [LineMF, LineInsurance, LinePMS, LineAIF, LineOther]);
 
+/**
+ * Strip null / "" / non-finite-number values from a product item so OPTIONAL
+ * fields fall back to `undefined` (which the schema accepts) instead of failing.
+ * Two real-world sources of these: JSON.stringify turns NaN→null (e.g. a number
+ * input that received a comma-formatted "2,29,80,000" → Number(...) === NaN),
+ * and empty <select>s emit "" for optional enums. Required string fields
+ * (schemeName/policyName/…) are not "", so they still validate as before.
+ */
+function cleanProductItem(it: unknown): unknown {
+  if (!it || typeof it !== "object") return it;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(it as Record<string, unknown>)) {
+    if (v === null || v === "") continue;
+    if (typeof v === "number" && !Number.isFinite(v)) continue;
+    out[k] = v;
+  }
+  return out;
+}
+const ProductsField = z
+  .preprocess((a) => (Array.isArray(a) ? a.map(cleanProductItem) : a), z.array(LineItem))
+  .default([]);
+
 const CreateBody = z
   .object({
     recipientType: z.enum(["investor", "lead", "family"]),
@@ -108,7 +130,7 @@ const CreateBody = z
     coverLetter: z.string().max(4000).optional(),
     disclaimer: z.string().max(2000).optional(),
 
-    products: z.array(LineItem).default([]),
+    products: ProductsField,
     riskRating: z
       .enum(["conservative", "moderate", "aggressive", "mixed"])
       .optional(),

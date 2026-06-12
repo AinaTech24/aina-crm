@@ -172,13 +172,14 @@ export default async function ProposalDetailPage({
             >
               Recommendation →
             </Link>
-            <Link
-              href={`/dashboard/proposals/${p.id}/print`}
-              target="_blank"
+            {/* Real PDF (Content-Disposition: attachment) — saves directly, no new tab. */}
+            <a
+              href={`/api/proposals/${p.id}/pdf?download=1`}
+              download={`Proposal_${String(p.proposalNumber ?? p.id).replace(/[^a-z0-9]+/gi, "_")}.pdf`}
               className="btn-secondary text-xs"
             >
               <Download className="size-3.5" /> Download PDF
-            </Link>
+            </a>
             <ProposalStatusActions id={p.id} status={p.status} />
           </div>
         </div>
