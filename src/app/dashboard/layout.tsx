@@ -3,7 +3,7 @@ import { headers } from "next/headers";
 import {
   LayoutDashboard,
   Users,
-  GitBranch,
+  Workflow,
   FileText,
   MessageSquare,
   ListChecks,
@@ -172,7 +172,7 @@ const NAV: NavSection[] = [
   {
     title: "Automation",
     items: [
-      { href: "/dashboard/workflows/rules", label: "Workflow Rules", icon: GitBranch, module: "automation_workflows" },
+      { href: "/dashboard/workflows/rules", label: "Workflow Rules", icon: Workflow, module: "automation_workflows" },
       { href: "/dashboard/workflows/runs", label: "Automation Monitor", icon: Activity, module: "automation_workflows",
         roles: ["owner", "compliance", "back_office", "ops"] },
       { href: "/dashboard/templates", label: "Templates", icon: FileText, module: "broadcasts" },

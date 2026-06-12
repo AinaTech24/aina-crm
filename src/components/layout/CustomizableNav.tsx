@@ -28,7 +28,7 @@ import {
   FileSignature, FileText, FolderArchive, GitBranch, HeartHandshake, Image as ImageIcon,
   Inbox, LayoutDashboard, ListChecks, Megaphone, MessageSquare, PhoneCall, PieChart,
   Radio, Repeat, Scale, ScrollText, Shield, ShieldCheck, Sparkles, Target, TrendingUp,
-  UserCog, Users, Users2, Wallet, XOctagon,
+  UserCog, Users, Users2, Wallet, Workflow, XOctagon,
   type LucideIcon,
 } from "lucide-react";
 
@@ -45,7 +45,7 @@ const ICONS: Record<string, LucideIcon> = {
   FileSignature, FileText, FolderArchive, GitBranch, HeartHandshake, Image: ImageIcon,
   Inbox, LayoutDashboard, ListChecks, Megaphone, MessageSquare, PhoneCall, PieChart,
   Radio, Repeat, Scale, ScrollText, Shield, ShieldCheck, Sparkles, Target, TrendingUp,
-  UserCog, Users, Users2, Wallet, XOctagon,
+  UserCog, Users, Users2, Wallet, Workflow, XOctagon,
 };
 
 export type NavItemData = {

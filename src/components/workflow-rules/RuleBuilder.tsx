@@ -13,7 +13,7 @@
 
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, ChevronRight, ChevronDown, Search, Plus, Trash2, Save, AlertTriangle, Sparkles } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronDown, Search, Plus, Trash2, Save, AlertTriangle, Workflow } from "lucide-react";
 import { SelectField } from "@/components/ui/SelectField";
 
 type ModuleField = {
@@ -227,7 +227,7 @@ export function RuleBuilder({ modules }: { modules: Module[] }) {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="page-title">
-            <Sparkles className="size-6 text-brand-cyan" /> Create Workflow Rule
+            <Workflow className="size-6 text-brand-cyan" /> Create Workflow Rule
           </h1>
           <p className="page-subtitle">
             Trigger → Criteria → Actions · same flow as Zoho CRM.
@@ -416,7 +416,7 @@ function TriggerStep({
         <label className="text-xs font-semibold text-muted-foreground">
           Execute this workflow rule based on
         </label>
-        <select
+        <SelectField
           value={trigger.kind}
           onChange={(e) => {
             const k = e.target.value;
@@ -446,14 +446,14 @@ function TriggerStep({
             Record Score
           </option>
           <option value="recurrence">Recurring schedule</option>
-        </select>
+        </SelectField>
       </div>
 
       {trigger.kind === "record_action" && (
         <div className="space-y-3">
           <div>
             <label className="text-xs font-semibold text-muted-foreground">When</label>
-            <select
+            <SelectField
               value={trig.when}
               onChange={(e) => onChange({ ...trigger, when: e.target.value as any } as any)}
               className="input-base mt-1 w-full"
@@ -463,7 +463,7 @@ function TriggerStep({
               <option value="create_or_edit">Create or Edit</option>
               <option value="field_update">Field Update (specific fields)</option>
               <option value="delete">Delete</option>
-            </select>
+            </SelectField>
           </div>
           {(trig.when === "edit" || trig.when === "field_update") && (
             <div>
@@ -507,11 +507,11 @@ function TriggerStep({
         const dfLabel = dateFields.find((f) => f.key === trig.field)?.label ?? "the date";
         return (
           <div className="space-y-3 max-w-2xl">
-            <div className="grid grid-cols-[230px_1fr] items-center gap-3">
-              <label className="text-xs font-medium text-muted-foreground text-right leading-tight">
+            <div className="grid grid-cols-1 sm:grid-cols-[230px_1fr] sm:items-center gap-1.5 sm:gap-3">
+              <label className="text-xs font-medium text-muted-foreground sm:text-right leading-tight">
                 Based on which Date/Time field this rule should execute
               </label>
-              <select
+              <SelectField
                 value={trig.field}
                 onChange={(e) => onChange({ ...trigger, field: e.target.value } as any)}
                 className="input-base w-64"
@@ -519,13 +519,13 @@ function TriggerStep({
                 {dateFields.map((f) => (
                   <option key={f.key} value={f.key}>{f.label}</option>
                 ))}
-              </select>
+              </SelectField>
             </div>
 
-            <div className="grid grid-cols-[230px_1fr] items-center gap-3">
-              <label className="text-xs font-medium text-muted-foreground text-right">Define execution date</label>
+            <div className="grid grid-cols-1 sm:grid-cols-[230px_1fr] sm:items-center gap-1.5 sm:gap-3">
+              <label className="text-xs font-medium text-muted-foreground sm:text-right">Define execution date</label>
               <div className="flex flex-wrap items-center gap-2">
-                <select
+                <SelectField
                   value={presetKeyFor(trig)}
                   onChange={(e) => {
                     const p = DATE_PRESETS.find((x) => x.key === e.target.value)!;
@@ -536,15 +536,15 @@ function TriggerStep({
                   {DATE_PRESETS.map((p) => (
                     <option key={p.key} value={p.key}>{p.label}</option>
                   ))}
-                </select>
+                </SelectField>
                 <span className="text-xs text-muted-foreground">
                   the date in <strong>{dfLabel}</strong> field
                 </span>
               </div>
             </div>
 
-            <div className="grid grid-cols-[230px_1fr] items-center gap-3">
-              <label className="text-xs font-medium text-muted-foreground text-right">Execution time</label>
+            <div className="grid grid-cols-1 sm:grid-cols-[230px_1fr] sm:items-center gap-1.5 sm:gap-3">
+              <label className="text-xs font-medium text-muted-foreground sm:text-right">Execution time</label>
               <div className="flex items-center gap-2">
                 <input
                   type="time"
@@ -556,9 +556,9 @@ function TriggerStep({
               </div>
             </div>
 
-            <div className="grid grid-cols-[230px_1fr] items-center gap-3">
-              <label className="text-xs font-medium text-muted-foreground text-right">Recur</label>
-              <select
+            <div className="grid grid-cols-1 sm:grid-cols-[230px_1fr] sm:items-center gap-1.5 sm:gap-3">
+              <label className="text-xs font-medium text-muted-foreground sm:text-right">Recur</label>
+              <SelectField
                 value={trig.recurrence}
                 onChange={(e) => onChange({ ...trigger, recurrence: e.target.value } as any)}
                 className="input-base w-44"
@@ -566,7 +566,7 @@ function TriggerStep({
                 <option value="once">Once</option>
                 <option value="every_month">Every Month</option>
                 <option value="every_year">Every Year</option>
-              </select>
+              </SelectField>
             </div>
           </div>
         );
@@ -574,9 +574,9 @@ function TriggerStep({
 
       {trigger.kind === "score_change" && (
         <div className="space-y-3 max-w-2xl">
-          <div className="grid grid-cols-[230px_1fr] items-center gap-3">
-            <label className="text-xs font-medium text-muted-foreground text-right">Record score</label>
-            <select
+          <div className="grid grid-cols-1 sm:grid-cols-[230px_1fr] sm:items-center gap-1.5 sm:gap-3">
+            <label className="text-xs font-medium text-muted-foreground sm:text-right">Record score</label>
+            <SelectField
               value={trig.direction}
               onChange={(e) => onChange({ ...trigger, direction: e.target.value } as any)}
               className="input-base w-48"
@@ -584,11 +584,11 @@ function TriggerStep({
               <option value="increase">Increased</option>
               <option value="decrease">Decreased</option>
               <option value="updated">Updated</option>
-            </select>
+            </SelectField>
           </div>
-          <div className="grid grid-cols-[230px_1fr] items-center gap-3">
-            <label className="text-xs font-medium text-muted-foreground text-right">This rule should be applied for</label>
-            <select
+          <div className="grid grid-cols-1 sm:grid-cols-[230px_1fr] sm:items-center gap-1.5 sm:gap-3">
+            <label className="text-xs font-medium text-muted-foreground sm:text-right">This rule should be applied for</label>
+            <SelectField
               value={trig.field}
               onChange={(e) => onChange({ ...trigger, field: e.target.value } as any)}
               className="input-base w-64"
@@ -596,10 +596,10 @@ function TriggerStep({
               {scoreFields.map((f) => (
                 <option key={f.key} value={f.key}>{f.label}</option>
               ))}
-            </select>
+            </SelectField>
           </div>
-          <div className="grid grid-cols-[230px_1fr] items-center gap-3">
-            <label className="text-xs font-medium text-muted-foreground text-right">Threshold (optional)</label>
+          <div className="grid grid-cols-1 sm:grid-cols-[230px_1fr] sm:items-center gap-1.5 sm:gap-3">
+            <label className="text-xs font-medium text-muted-foreground sm:text-right">Threshold (optional)</label>
             <input
               type="number"
               value={trig.threshold ?? ""}
@@ -860,7 +860,7 @@ function CriteriaStep({
                   onChange={(key) => update(i, { field: key, operator: "is", value: "" })}
                   className="w-52"
                 />
-                <select
+                <SelectField
                   value={row.operator}
                   onChange={(e) => update(i, { operator: e.target.value })}
                   className="input-base text-xs w-40"
@@ -868,7 +868,7 @@ function CriteriaStep({
                   {ops.map((o) => (
                     <option key={o.key} value={o.key}>{o.label}</option>
                   ))}
-                </select>
+                </SelectField>
                 {!noValue ? (
                   <CriteriaValueInput field={field} op={row.operator} value={row.value} onChange={(v) => update(i, { value: v })} />
                 ) : (
@@ -943,20 +943,20 @@ function CriteriaValueInput({ field, op, value, onChange }: { field: ModuleField
   if (!field) return <input className="input-base text-xs flex-1" value={value ?? ""} onChange={(e) => onChange(e.target.value)} />;
   if (field.type === "enum" && field.enumValues) {
     return (
-      <select className="input-base text-xs flex-1" value={value ?? ""} onChange={(e) => onChange(e.target.value)}>
+      <SelectField className="input-base text-xs flex-1" value={value ?? ""} onChange={(e) => onChange(e.target.value)}>
         <option value="">—</option>
         {field.enumValues.map((v) => (
           <option key={v} value={v}>{v}</option>
         ))}
-      </select>
+      </SelectField>
     );
   }
   if (field.type === "boolean") {
     return (
-      <select className="input-base text-xs flex-1" value={String(value ?? "")} onChange={(e) => onChange(e.target.value === "true")}>
+      <SelectField className="input-base text-xs flex-1" value={String(value ?? "")} onChange={(e) => onChange(e.target.value === "true")}>
         <option value="true">true</option>
         <option value="false">false</option>
-      </select>
+      </SelectField>
     );
   }
   if (field.type === "date" || field.type === "datetime") {
@@ -1202,7 +1202,7 @@ function ScheduledActionRow({
         </div>
         <div className="col-span-1">
           <label className="text-[10px] text-muted-foreground">Unit</label>
-          <select
+          <SelectField
             value={action.delay.unit}
             onChange={(e) => onChange({ ...action, delay: { ...action.delay, unit: e.target.value as any } })}
             className="input-base text-xs w-full"
@@ -1211,11 +1211,11 @@ function ScheduledActionRow({
             <option value="hour">Hours</option>
             <option value="day">Days</option>
             <option value="week">Weeks</option>
-          </select>
+          </SelectField>
         </div>
         <div className="col-span-2">
           <label className="text-[10px] text-muted-foreground">Anchor</label>
-          <select
+          <SelectField
             value={action.delay.anchor}
             onChange={(e) =>
               onChange({ ...action, delay: { ...action.delay, anchor: e.target.value as any } })
@@ -1224,12 +1224,12 @@ function ScheduledActionRow({
           >
             <option value="trigger">After rule fires (default)</option>
             {dateFields.length > 0 && <option value="date_field">Relative to a date field</option>}
-          </select>
+          </SelectField>
         </div>
         {action.delay.anchor === "date_field" && (
           <div className="col-span-4">
             <label className="text-[10px] text-muted-foreground">Date field</label>
-            <select
+            <SelectField
               value={action.delay.anchorField ?? dateFields[0]?.key ?? ""}
               onChange={(e) =>
                 onChange({ ...action, delay: { ...action.delay, anchorField: e.target.value } })
@@ -1239,7 +1239,7 @@ function ScheduledActionRow({
               {dateFields.map((f) => (
                 <option key={f.key} value={f.key}>{f.label}</option>
               ))}
-            </select>
+            </SelectField>
           </div>
         )}
       </div>
@@ -1290,7 +1290,7 @@ function ActionConfigEditor({
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="text-[10px] text-muted-foreground">Template</label>
-                  <select
+                  <SelectField
                     value={chosen}
                     onChange={(e) => set({ templateKey: e.target.value })}
                     className="input-base text-xs w-full"
@@ -1302,11 +1302,11 @@ function ActionConfigEditor({
                       </option>
                     ))}
                     {!knownKey && <option value={chosen}>{chosen} (custom)</option>}
-                  </select>
+                  </SelectField>
                 </div>
                 <div>
                   <label className="text-[10px] text-muted-foreground">Category</label>
-                  <select
+                  <SelectField
                     value={String(c.category ?? "transactional")}
                     onChange={(e) => set({ category: e.target.value })}
                     className="input-base text-xs w-full"
@@ -1314,20 +1314,20 @@ function ActionConfigEditor({
                     <option value="transactional">Transactional</option>
                     <option value="utility">Utility</option>
                     <option value="marketing">Marketing</option>
-                  </select>
+                  </SelectField>
                 </div>
               </div>
               {action.type === "send_email" && (
                 <div>
                   <label className="text-[10px] text-muted-foreground">Send from</label>
-                  <select
+                  <SelectField
                     value={String(c.fromAddress ?? "organization")}
                     onChange={(e) => set({ fromAddress: e.target.value })}
                     className="input-base text-xs w-full"
                   >
                     <option value="organization">Organization email (firm default)</option>
                     <option value="record_owner">Record owner — the client&apos;s RM</option>
-                  </select>
+                  </SelectField>
                 </div>
               )}
               <p className="text-[10px] text-muted-foreground">
@@ -1349,12 +1349,12 @@ function ActionConfigEditor({
             placeholder="Task title"
             className="input-base text-xs col-span-2"
           />
-          <select value={String(c.priority ?? "normal")} onChange={(e) => set({ priority: e.target.value })} className="input-base text-xs">
+          <SelectField value={String(c.priority ?? "normal")} onChange={(e) => set({ priority: e.target.value })} className="input-base text-xs">
             <option value="urgent">Urgent</option>
             <option value="high">High</option>
             <option value="normal">Normal</option>
             <option value="low">Low</option>
-          </select>
+          </SelectField>
           <input
             value={String(c.assignee ?? "subject.rm_id")}
             onChange={(e) => set({ assignee: e.target.value })}
@@ -1366,17 +1366,17 @@ function ActionConfigEditor({
     case "schedule_meeting":
       return (
         <div className="grid grid-cols-2 gap-2">
-          <select value={String(c.category ?? "review")} onChange={(e) => set({ category: e.target.value })} className="input-base text-xs">
+          <SelectField value={String(c.category ?? "review")} onChange={(e) => set({ category: e.target.value })} className="input-base text-xs">
             <option value="review">Review</option>
             <option value="new">New</option>
             <option value="follow_up">Follow-up</option>
-          </select>
-          <select value={String(c.mode ?? "online")} onChange={(e) => set({ mode: e.target.value })} className="input-base text-xs">
+          </SelectField>
+          <SelectField value={String(c.mode ?? "online")} onChange={(e) => set({ mode: e.target.value })} className="input-base text-xs">
             <option value="online">Online</option>
             <option value="office">Office</option>
             <option value="client_place">Client place</option>
             <option value="phone">Phone</option>
-          </select>
+          </SelectField>
         </div>
       );
     case "update_field":
@@ -1406,11 +1406,11 @@ function ActionConfigEditor({
             placeholder="https://example.com/webhook"
             className="input-base text-xs col-span-2"
           />
-          <select value={String(c.method ?? "POST")} onChange={(e) => set({ method: e.target.value })} className="input-base text-xs">
+          <SelectField value={String(c.method ?? "POST")} onChange={(e) => set({ method: e.target.value })} className="input-base text-xs">
             <option value="POST">POST</option>
             <option value="PUT">PUT</option>
             <option value="GET">GET</option>
-          </select>
+          </SelectField>
         </div>
       );
     case "create_notification":
@@ -1487,18 +1487,18 @@ function UpdateFieldEditor({
         const field = writable.find((f) => f.key === k);
         return (
           <div key={k} className="flex items-center gap-1">
-            <select value={k} onChange={(e) => update(k, e.target.value, v)} className="input-base text-xs flex-1">
+            <SelectField value={k} onChange={(e) => update(k, e.target.value, v)} className="input-base text-xs flex-1">
               {writable.map((f) => (
                 <option key={f.key} value={f.key}>{f.label}</option>
               ))}
-            </select>
+            </SelectField>
             {field?.type === "enum" && field.enumValues ? (
-              <select value={String(v ?? "")} onChange={(e) => update(k, k, e.target.value)} className="input-base text-xs flex-1">
+              <SelectField value={String(v ?? "")} onChange={(e) => update(k, k, e.target.value)} className="input-base text-xs flex-1">
                 <option value="">—</option>
                 {field.enumValues.map((opt) => (
                   <option key={opt} value={opt}>{opt}</option>
                 ))}
-              </select>
+              </SelectField>
             ) : (
               <input value={String(v ?? "")} onChange={(e) => update(k, k, e.target.value)} className="input-base text-xs flex-1" />
             )}
