@@ -25,9 +25,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(settingsUrl);
   }
 
-  const proto = req.headers.get("x-forwarded-proto") ?? "https";
   const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? "";
-  const redirectUri = `${proto}://${host}/api/integrations/zoho/callback`;
+  const proto = req.headers.get("x-forwarded-proto") ?? (/^(localhost|127\.0\.0\.1)/i.test(host) ? "http" : "https");
+  const redirectUri = host ? `${proto}://${host}/api/integrations/zoho/callback` : `${req.nextUrl.origin}/api/integrations/zoho/callback`;
 
   const url = new URL(`${accountsServer(creds.dataCenter)}/oauth/v2/auth`);
   url.searchParams.set("response_type", "code");

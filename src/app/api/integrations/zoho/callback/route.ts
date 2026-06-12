@@ -17,7 +17,14 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   const session = await requireSession();
   const sp = req.nextUrl.searchParams;
-  const settingsUrl = new URL("/dashboard/settings/integrations", req.url);
+
+  // Build the public origin from the forwarded host (behind Caddy `req.url` is
+  // the container's internal http://localhost — never redirect users there).
+  // localhost dev has no TLS, so use http for it; everything else is https.
+  const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? "";
+  const proto = req.headers.get("x-forwarded-proto") ?? (/^(localhost|127\.0\.0\.1)/i.test(host) ? "http" : "https");
+  const origin = host ? `${proto}://${host}` : req.nextUrl.origin;
+  const settingsUrl = new URL("/dashboard/settings/integrations", origin);
 
   const code = sp.get("code");
   if (sp.get("error") || !code) {
@@ -33,9 +40,7 @@ export async function GET(req: NextRequest) {
 
   // Zoho returns the user's DC in `location`; fall back to the saved DC.
   const dc = sp.get("location") ? dcFromLocation(sp.get("location")) : creds.dataCenter;
-  const proto = req.headers.get("x-forwarded-proto") ?? "https";
-  const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? "";
-  const redirectUri = `${proto}://${host}/api/integrations/zoho/callback`;
+  const redirectUri = `${origin}/api/integrations/zoho/callback`;
 
   const result = await exchangeCodeForTokens(dc, code, redirectUri, creds.clientId, creds.clientSecret);
   if ("error" in result) {
