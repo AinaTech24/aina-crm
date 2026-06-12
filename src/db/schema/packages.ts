@@ -27,7 +27,14 @@ export const packages = pgTable(
     /** Pricing — in paise (₹1 = 100 paise) to avoid float issues. */
     monthlyPricePaise: integer("monthly_price_paise").notNull().default(0),
     yearlyPricePaise: integer("yearly_price_paise").notNull().default(0),
+    /** One-time onboarding / setup fee charged once at tenant creation. */
     setupCostPaise: integer("setup_cost_paise").notNull().default(0),
+
+    /** Per-user (per-seat) recurring fee — what an MFD pays to add one staff
+     *  seat beyond the base. Monthly + yearly variants so each billing cycle
+     *  can carry its own rate (e.g. ₹2,500/user/month vs ₹15,000/user/year). */
+    perUserMonthlyPaise: integer("per_user_monthly_paise").notNull().default(0),
+    perUserYearlyPaise: integer("per_user_yearly_paise").notNull().default(0),
 
     /** Limits */
     maxUsers: integer("max_users").notNull().default(1),

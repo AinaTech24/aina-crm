@@ -25,6 +25,8 @@ const Body = z.object({
   monthlyPricePaise: z.number().int().nonnegative().default(0),
   yearlyPricePaise: z.number().int().nonnegative().default(0),
   setupCostPaise: z.number().int().nonnegative().default(0),
+  perUserMonthlyPaise: z.number().int().nonnegative().default(0),
+  perUserYearlyPaise: z.number().int().nonnegative().default(0),
   maxUsers: z.number().int().positive().default(1),
   maxInvestors: z.number().int().positive().default(100),
   storageLimitGb: z.number().int().positive().default(5),

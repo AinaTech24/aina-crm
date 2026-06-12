@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
+import { PerUserPricing } from "@/components/super-admin/PackageEditor";
 
 const ALL_MODULES = [
   "crm", "lead_management", "client_master", "family_mapping", "onboarding",
@@ -23,6 +24,8 @@ export default function NewPackagePage() {
     monthlyPriceRupees: 0,
     yearlyPriceRupees: 0,
     setupCostRupees: 0,
+    perUserMonthlyRupees: 0,
+    perUserYearlyRupees: 0,
     maxUsers: 1,
     maxInvestors: 200,
     storageLimitGb: 5,
@@ -55,6 +58,8 @@ export default function NewPackagePage() {
           monthlyPricePaise: Math.round(form.monthlyPriceRupees * 100),
           yearlyPricePaise: Math.round(form.yearlyPriceRupees * 100),
           setupCostPaise: Math.round(form.setupCostRupees * 100),
+          perUserMonthlyPaise: Math.round(form.perUserMonthlyRupees * 100),
+          perUserYearlyPaise: Math.round(form.perUserYearlyRupees * 100),
         }),
       });
       const j = await res.json();
@@ -112,6 +117,15 @@ export default function NewPackagePage() {
             <span className="text-sm">Publicly listed</span>
           </label>
         </div>
+
+        <PerUserPricing
+          perUserMonthlyRupees={form.perUserMonthlyRupees}
+          perUserYearlyRupees={form.perUserYearlyRupees}
+          setupCostRupees={form.setupCostRupees}
+          maxUsers={form.maxUsers}
+          onMonthly={(v) => setForm({ ...form, perUserMonthlyRupees: v })}
+          onYearly={(v) => setForm({ ...form, perUserYearlyRupees: v })}
+        />
 
         <div className="border-t pt-3">
           <div className="text-xs font-medium mb-2">Modules enabled ({form.enabledModules.length}/{ALL_MODULES.length})</div>

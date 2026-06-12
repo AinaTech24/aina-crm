@@ -27,6 +27,8 @@ type Pkg = {
   monthlyPricePaise: number;
   yearlyPricePaise: number;
   setupCostPaise: number;
+  perUserMonthlyPaise: number;
+  perUserYearlyPaise: number;
   maxUsers: number;
   maxInvestors: number;
   storageLimitGb: number;
@@ -46,6 +48,8 @@ export function PackageEditor({ pkg }: { pkg: Pkg }) {
     monthlyPriceRupees: pkg.monthlyPricePaise / 100,
     yearlyPriceRupees: pkg.yearlyPricePaise / 100,
     setupCostRupees: pkg.setupCostPaise / 100,
+    perUserMonthlyRupees: pkg.perUserMonthlyPaise / 100,
+    perUserYearlyRupees: pkg.perUserYearlyPaise / 100,
     maxUsers: pkg.maxUsers,
     maxInvestors: pkg.maxInvestors,
     storageLimitGb: pkg.storageLimitGb,
@@ -87,6 +91,8 @@ export function PackageEditor({ pkg }: { pkg: Pkg }) {
           monthlyPricePaise: Math.round(form.monthlyPriceRupees * 100),
           yearlyPricePaise: Math.round(form.yearlyPriceRupees * 100),
           setupCostPaise: Math.round(form.setupCostRupees * 100),
+          perUserMonthlyPaise: Math.round(form.perUserMonthlyRupees * 100),
+          perUserYearlyPaise: Math.round(form.perUserYearlyRupees * 100),
           maxUsers: form.maxUsers,
           maxInvestors: form.maxInvestors,
           storageLimitGb: form.storageLimitGb,
@@ -194,6 +200,15 @@ export function PackageEditor({ pkg }: { pkg: Pkg }) {
         </label>
       </div>
 
+      <PerUserPricing
+        perUserMonthlyRupees={form.perUserMonthlyRupees}
+        perUserYearlyRupees={form.perUserYearlyRupees}
+        setupCostRupees={form.setupCostRupees}
+        maxUsers={form.maxUsers}
+        onMonthly={(v) => setForm({ ...form, perUserMonthlyRupees: v })}
+        onYearly={(v) => setForm({ ...form, perUserYearlyRupees: v })}
+      />
+
       <div className="border-t pt-3">
         <div className="flex items-center justify-between mb-2">
           <div className="text-xs font-medium">
@@ -267,5 +282,55 @@ function NumberField({
         className="w-full border rounded-md px-3 py-2 text-sm bg-background tabular-nums"
       />
     </label>
+  );
+}
+
+const inr = (n: number) => `₹${Math.round(n).toLocaleString("en-IN")}`;
+
+/**
+ * Per-user (per-seat) pricing block — shared by the editor and the new-package
+ * form. The two fields define what an MFD pays to add ONE extra staff seat;
+ * the live preview shows the running total so the cost model is obvious.
+ */
+export function PerUserPricing({
+  perUserMonthlyRupees,
+  perUserYearlyRupees,
+  setupCostRupees,
+  maxUsers,
+  onMonthly,
+  onYearly,
+}: {
+  perUserMonthlyRupees: number;
+  perUserYearlyRupees: number;
+  setupCostRupees: number;
+  maxUsers: number;
+  onMonthly: (v: number) => void;
+  onYearly: (v: number) => void;
+}) {
+  const seats = Math.max(1, Number(maxUsers) || 1);
+  return (
+    <div className="border-t pt-3">
+      <div className="text-xs font-medium mb-1">Per-user pricing (add-on seats)</div>
+      <p className="text-[11px] text-muted-foreground mb-2">
+        One-time setup is charged once. When an MFD wants more staff logins, each extra user costs this much —
+        billed per their cycle.
+      </p>
+      <div className="grid grid-cols-2 gap-3">
+        <NumberField label="Per user / year ₹" value={perUserYearlyRupees} onChange={onYearly} />
+        <NumberField label="Per user / month ₹" value={perUserMonthlyRupees} onChange={onMonthly} />
+      </div>
+      <div className="mt-2 rounded-md bg-muted/40 border px-3 py-2 text-[11px] text-muted-foreground space-y-0.5">
+        <div>
+          <span className="font-medium text-foreground">1 extra user</span> ={" "}
+          {inr(perUserYearlyRupees)}/yr <span className="opacity-60">or</span> {inr(perUserMonthlyRupees)}/mo
+        </div>
+        <div>
+          <span className="font-medium text-foreground">{seats} users</span> ={" "}
+          {inr(seats * perUserYearlyRupees)}/yr <span className="opacity-60">or</span>{" "}
+          {inr(seats * perUserMonthlyRupees)}/mo
+          {setupCostRupees > 0 && <> + {inr(setupCostRupees)} one-time setup</>}
+        </div>
+      </div>
+    </div>
   );
 }

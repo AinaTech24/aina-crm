@@ -32,6 +32,8 @@ const PatchBody = z.object({
   monthlyPricePaise: z.number().int().nonnegative().optional(),
   yearlyPricePaise: z.number().int().nonnegative().optional(),
   setupCostPaise: z.number().int().nonnegative().optional(),
+  perUserMonthlyPaise: z.number().int().nonnegative().optional(),
+  perUserYearlyPaise: z.number().int().nonnegative().optional(),
   maxUsers: z.number().int().positive().optional(),
   maxInvestors: z.number().int().positive().optional(),
   storageLimitGb: z.number().int().positive().optional(),

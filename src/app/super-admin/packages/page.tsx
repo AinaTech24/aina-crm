@@ -74,7 +74,15 @@ export default async function PackagesPage() {
               <div className="mt-3 pt-3 border-t space-y-1 text-sm">
                 <Row label="Monthly" value={`₹${(p.monthlyPricePaise / 100).toLocaleString("en-IN")}`} />
                 <Row label="Yearly" value={`₹${(p.yearlyPricePaise / 100).toLocaleString("en-IN")}`} />
-                <Row label="Setup" value={`₹${(p.setupCostPaise / 100).toLocaleString("en-IN")}`} />
+                <Row label="Setup (one-time)" value={`₹${(p.setupCostPaise / 100).toLocaleString("en-IN")}`} />
+                <Row
+                  label="Per user / year"
+                  value={`₹${(p.perUserYearlyPaise / 100).toLocaleString("en-IN")}`}
+                />
+                <Row
+                  label="Per user / month"
+                  value={`₹${(p.perUserMonthlyPaise / 100).toLocaleString("en-IN")}`}
+                />
                 <Row label="Max users" value={String(p.maxUsers)} />
                 <Row label="Max investors" value={String(p.maxInvestors)} />
                 <Row label="Storage" value={`${p.storageLimitGb} GB`} />
