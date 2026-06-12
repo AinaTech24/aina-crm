@@ -126,7 +126,7 @@ export function PropertyYieldCalculator() {
             Year-by-year breakdown ({result.schedule.length} years)
           </summary>
           <div className="max-h-72 overflow-y-auto scrollbar-thin">
-            <table className="w-full text-xs">
+            <table data-pdf="table" className="w-full text-xs">
               <thead className="sticky top-0 bg-background border-b">
                 <tr className="text-left text-muted-foreground">
                   <th className="px-3 py-2 font-medium">Year</th>

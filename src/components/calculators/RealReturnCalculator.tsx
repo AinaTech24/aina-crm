@@ -56,7 +56,7 @@ export function RealReturnCalculator() {
       </div>
 
       <div className="overflow-x-auto">
-        <table className="w-full text-sm border-collapse min-w-[640px]">
+        <table data-pdf="table" className="w-full text-sm border-collapse min-w-[640px]">
           <thead>
             <tr className="text-left">
               {["Instrument", "Nominal %", "Tax %", "Post-tax %", "Real return %", `Real value in ${years}y`, ""].map((h, i) => (

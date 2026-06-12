@@ -2,10 +2,12 @@
 
 /**
  * View switcher for the Tasks page — a branded custom dropdown (replaces the old
- * row of tabs). Navigates to ?view=<key> on change.
+ * row of tabs). Sets ?view=<key> while PRESERVING the other query params
+ * (search, status, priority, sort…) so "Assigned to me / by me" compose with the
+ * active filters instead of resetting the page.
  */
 
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { Select } from "@/components/ui/Select";
 
 const VIEWS = [
@@ -17,14 +19,22 @@ const VIEWS = [
 
 export function TaskViewSelect({ current }: { current: string }) {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  function onChange(v: string) {
+    const params = new URLSearchParams(searchParams.toString());
+    if (v) params.set("view", v);
+    else params.delete("view");
+    // Re-scoping restarts from the first page of the new result set.
+    params.delete("page");
+    const qs = params.toString();
+    router.push(qs ? `${pathname}?${qs}` : pathname);
+  }
+
   return (
     <div className="w-52">
-      <Select
-        value={current}
-        ariaLabel="View"
-        options={VIEWS}
-        onChange={(v) => router.push(v ? `/dashboard/tasks?view=${v}` : "/dashboard/tasks")}
-      />
+      <Select value={current} ariaLabel="View" options={VIEWS} onChange={onChange} />
     </div>
   );
 }

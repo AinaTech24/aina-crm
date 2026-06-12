@@ -207,6 +207,12 @@ export function LeadsKanban({
           )
         );
         setError(j.error ?? `Failed to move lead (${res.status})`);
+      } else {
+        // Persisted server-side (leads.stage is mirrored from the blueprint).
+        // Refresh the route so Next's client cache for /dashboard/leads is
+        // re-fetched — otherwise opening a lead and hitting "back" would serve
+        // the stale pre-drag payload and the card would snap to its old column.
+        router.refresh();
       }
     } catch (err: any) {
       setRows((prev) =>

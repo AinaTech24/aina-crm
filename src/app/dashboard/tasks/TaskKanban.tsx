@@ -110,7 +110,7 @@ export function TaskKanban({ initialRows, currentUserId }: { initialRows: TaskRo
                 <span className="text-xs text-muted-foreground tabular-nums">{col.items.length}</span>
               </div>
 
-              <div className="space-y-2 min-h-[3rem]">
+              <div className="space-y-2 min-h-[3rem] max-h-[60vh] overflow-y-auto scrollbar-thin pr-0.5">
                 {col.items.map((row) => {
                   const t = row.task;
                   const due = fmtDue(t.dueAt);

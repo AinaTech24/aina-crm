@@ -29,6 +29,10 @@ import {
   Inbox, LayoutDashboard, ListChecks, Megaphone, MessageSquare, PhoneCall, PieChart,
   Radio, Repeat, Scale, ScrollText, Shield, ShieldCheck, Sparkles, Target, TrendingUp,
   UserCog, Users, Users2, Wallet, Workflow, XOctagon,
+  // ── unique-icon replacements for the de-duplicated sidebar ──
+  UserPlus, Presentation, CalendarClock, ShieldAlert, LayoutTemplate, Library, Gauge,
+  FileCheck, UserCheck, ClipboardList, Newspaper, Stamp, BellRing, Package, FolderOpen,
+  LineChart, Scissors, Shuffle, Building2, TrendingDown, Network, IndianRupee,
   type LucideIcon,
 } from "lucide-react";
 
@@ -46,6 +50,9 @@ const ICONS: Record<string, LucideIcon> = {
   Inbox, LayoutDashboard, ListChecks, Megaphone, MessageSquare, PhoneCall, PieChart,
   Radio, Repeat, Scale, ScrollText, Shield, ShieldCheck, Sparkles, Target, TrendingUp,
   UserCog, Users, Users2, Wallet, Workflow, XOctagon,
+  UserPlus, Presentation, CalendarClock, ShieldAlert, LayoutTemplate, Library, Gauge,
+  FileCheck, UserCheck, ClipboardList, Newspaper, Stamp, BellRing, Package, FolderOpen,
+  LineChart, Scissors, Shuffle, Building2, TrendingDown, Network, IndianRupee,
 };
 
 export type NavItemData = {

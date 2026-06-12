@@ -256,7 +256,7 @@ export function TaskList({ initialRows, currentUserId }: TaskListProps) {
           />
           <span className="text-[11px] text-muted-foreground">{allSelected ? "Deselect all" : "Select all"}</span>
         </div>
-        <ul className="divide-y divide-slate-100">
+        <ul className="divide-y divide-slate-100 max-h-[60vh] overflow-y-auto scrollbar-thin">
           {rows.map((row) => {
             const t = row.task;
             const assigneeName = row.assignee;

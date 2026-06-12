@@ -3,6 +3,7 @@ import { eq, sql, inArray, isNull } from "drizzle-orm";
 import {
   Plus,
   Sparkles,
+  UserPlus,
   Users,
   Target,
   TrendingUp,
@@ -308,7 +309,7 @@ export default async function LeadsPage({
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="page-title">
-            <Sparkles className="size-6 text-brand-cyan" /> Leads
+            <UserPlus className="size-6 text-brand-cyan" /> Leads
           </h1>
           <p className="page-subtitle">
             Drip-nurtured, UTM-tagged, owner-attributed pipeline · 10 stages · pipeline ₹{" "}

@@ -48,7 +48,7 @@ export function RebalanceCalculator() {
       <NumberField label="New money to invest (₹, optional)" value={newMoney} setValue={setNewMoney} step={50000} />
 
       <div className="overflow-x-auto">
-        <table className="w-full text-sm border-collapse min-w-[680px]">
+        <table data-pdf="table" className="w-full text-sm border-collapse min-w-[680px]">
           <thead>
             <tr className="text-left">
               {["Asset class", "Current ₹", "Current %", "Target %", "Target ₹", "Action", "From new money", ""].map((h, i) => (
