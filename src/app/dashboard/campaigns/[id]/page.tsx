@@ -97,6 +97,17 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
         </div>
       </div>
 
+      {isBroadcastCampaign(c) && !c.segmentId && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 text-amber-800 px-4 py-3 text-sm flex items-start gap-2">
+          <span aria-hidden>⚠</span>
+          <div>
+            <strong>No audience attached</strong> — this campaign has no recipients, so it can&apos;t send. Create a new
+            campaign and, in the Audience step, pick <em>All clients</em>, <em>All leads</em>, or <em>By criteria</em> (you
+            should see a green “N recipients will receive this”), then launch.
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
         <Stat label="Recipients" value={recipients} />
         <Stat label="Sent" value={sent} />

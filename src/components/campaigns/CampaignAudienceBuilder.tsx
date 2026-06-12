@@ -54,10 +54,11 @@ export function CampaignAudienceBuilder({
     { key: "existing", label: "Existing segment", icon: Layers, hide: existingSegments.length === 0 },
   ];
 
-  async function setAudience() {
+  async function setAudience(overrideMode?: Mode) {
+    const m = overrideMode ?? mode;
     setBusy(true);
     try {
-      if (mode === "existing") {
+      if (m === "existing") {
         const seg = existingSegments.find((s) => s.id === existingId);
         if (!seg) {
           toast.error("Pick a segment first.");
@@ -69,15 +70,15 @@ export function CampaignAudienceBuilder({
 
       const criteriaLabel = `${subject === "lead" ? "Leads" : "Clients"} by criteria`;
       const body =
-        mode === "all_clients"
+        m === "all_clients"
           ? { subjectType: "investor", mode: "all", name: "All clients" }
-          : mode === "all_leads"
+          : m === "all_leads"
             ? { subjectType: "lead", mode: "all", name: "All leads" }
-            : mode === "criteria"
+            : m === "criteria"
               ? { subjectType: subject, mode: "filter", ast: group, name: criteriaLabel }
               : { subjectType: "investor", mode: "manual", subjectIds: picked.map((p) => p.id), name: "Selected clients" };
 
-      if (mode === "specific" && picked.length === 0) {
+      if (m === "specific" && picked.length === 0) {
         toast.error("Add at least one client.");
         return;
       }
@@ -93,9 +94,9 @@ export function CampaignAudienceBuilder({
         return;
       }
       const label =
-        mode === "all_clients" ? "All clients"
-        : mode === "all_leads" ? "All leads"
-        : mode === "criteria" ? criteriaLabel
+        m === "all_clients" ? "All clients"
+        : m === "all_leads" ? "All leads"
+        : m === "criteria" ? criteriaLabel
         : `${picked.length} selected client${picked.length === 1 ? "" : "s"}`;
       onSelect({ segmentId: j.segmentId, count: j.memberCount, label });
       toast.success(`Audience set — ${Number(j.memberCount).toLocaleString("en-IN")} recipient${j.memberCount === 1 ? "" : "s"}.`);
@@ -132,8 +133,14 @@ export function CampaignAudienceBuilder({
             <button
               key={m.key}
               type="button"
-              onClick={() => setMode(m.key)}
-              className={`rounded-md border px-2.5 py-1.5 text-xs font-medium flex items-center gap-1.5 transition ${
+              onClick={() => {
+                setMode(m.key);
+                // "All clients"/"All leads" need no extra input — apply on click so
+                // selecting them IS setting the audience (no easy-to-miss 2nd step).
+                if (m.key === "all_clients" || m.key === "all_leads") void setAudience(m.key);
+              }}
+              disabled={busy}
+              className={`rounded-md border px-2.5 py-1.5 text-xs font-medium flex items-center gap-1.5 transition disabled:opacity-60 ${
                 active ? "border-brand-cyan bg-brand-cyan/5 ring-1 ring-brand-cyan/20" : "hover:bg-secondary"
               }`}
             >
@@ -204,7 +211,7 @@ export function CampaignAudienceBuilder({
 
       <button
         type="button"
-        onClick={setAudience}
+        onClick={() => setAudience()}
         disabled={busy}
         className="btn-secondary text-xs disabled:opacity-50"
       >

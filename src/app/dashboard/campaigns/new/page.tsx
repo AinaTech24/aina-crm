@@ -278,6 +278,12 @@ export default function NewCampaignPage() {
                   setSegmentId(sel?.segmentId ?? "");
                 }}
               />
+              {templateId && !segmentId && (
+                <p className="text-[11px] text-amber-700 mt-1.5">
+                  ⚠ No audience set yet — pick one above (you should see a green “N recipients will receive this”). Without it
+                  the campaign has no recipients and can only be saved as a draft.
+                </p>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-3">
               <label className="block">
