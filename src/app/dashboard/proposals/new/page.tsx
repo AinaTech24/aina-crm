@@ -241,7 +241,8 @@ export default function NewProposalPage() {
       aif: { kind: "aif", fundName: "" },
       other: { kind: "other", productName: "" },
     };
-    setItems((s) => [...s, defaults[kind]]);
+    // Prepend — the newest product shows at the TOP of the list.
+    setItems((s) => [defaults[kind], ...s]);
     // Auto-pick "mixed" if multiple kinds present
     if (items.length >= 1 && items[0].kind !== kind) setType("mixed");
   }
@@ -340,24 +341,47 @@ export default function NewProposalPage() {
 
   return (
     <div className="space-y-4 max-w-5xl mx-auto w-full">
-      <Link
-        href="/dashboard/proposals"
-        className="text-sm text-muted-foreground hover:underline hover:text-foreground flex items-center gap-1 transition-colors"
-      >
-        <ChevronLeft className="size-4" /> Back to proposals
-      </Link>
-
-      <div className="flex items-end justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="page-title">
-            <FileSignature className="size-6 text-brand-cyan" /> New proposal
+      {/* Sticky header — title on the left, actions pinned on the right so Save
+          is always one click away while filling a long form (sits just below
+          the app topbar, which is h-16). */}
+      <div className="sticky top-16 z-30 bg-background/95 backdrop-blur border-b border-border/60 py-3 flex items-center justify-between gap-3 flex-wrap">
+        <div className="min-w-0">
+          <Link
+            href="/dashboard/proposals"
+            className="text-xs text-muted-foreground hover:underline hover:text-foreground flex items-center gap-1 mb-0.5 transition-colors"
+          >
+            <ChevronLeft className="size-3.5" /> Back to proposals
+          </Link>
+          <h1 className="text-xl font-bold tracking-tight flex items-center gap-2 text-foreground">
+            <FileSignature className="size-5 text-brand-cyan" /> New proposal
           </h1>
-          <p className="page-subtitle">
-            Pick a recipient, add the products you want to recommend, then save & download the
-            branded PDF.
-          </p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <Link href="/dashboard/proposals" className="btn-secondary text-sm">
+            Cancel
+          </Link>
+          <button
+            type="button"
+            onClick={save}
+            disabled={busy || !recipient || !title || items.length === 0}
+            className="btn-primary text-sm"
+          >
+            {busy ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+            {busy ? "Saving…" : "Save proposal"}
+          </button>
         </div>
       </div>
+      <p className="page-subtitle">
+        Pick a recipient, add the products you want to recommend, then save &amp; download the
+        branded PDF.
+      </p>
+
+      {/* Save errors surface here (top) so they're visible from the sticky Save button. */}
+      {err && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 text-destructive text-sm px-3 py-2">
+          {err}
+        </div>
+      )}
 
       {/* ─── Recipient ─── */}
       <div className="card-surface p-5 space-y-3">
@@ -743,7 +767,6 @@ export default function NewProposalPage() {
                         ? "Other Product"
                         : "AIF"}
                     </span>
-                    <span className="text-xs text-muted-foreground">Item #{i + 1}</span>
                   </div>
                   <button
                     type="button"
@@ -825,27 +848,9 @@ export default function NewProposalPage() {
           rows={3}
           className="input-base text-xs"
         />
-
-        {err && (
-          <div className="rounded-lg border border-destructive/30 bg-destructive/5 text-destructive text-sm px-3 py-2">
-            {err}
-          </div>
-        )}
-
-        <div className="flex justify-end gap-2 pt-2 border-t border-border">
-          <Link href="/dashboard/proposals" className="btn-secondary">
-            Cancel
-          </Link>
-          <button
-            type="button"
-            onClick={save}
-            disabled={busy || !recipient || !title || items.length === 0}
-            className="btn-primary"
-          >
-            {busy ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
-            {busy ? "Saving…" : "Save proposal"}
-          </button>
-        </div>
+        <p className="text-[11px] text-muted-foreground pt-1">
+          Use <strong>Save proposal</strong> at the top to save &amp; continue to the branded PDF.
+        </p>
       </div>
     </div>
   );
