@@ -13,12 +13,31 @@ import { z } from "zod";
 // Trigger configs (per triggerType)
 // ---------------------------------------------------------------------------
 
+/**
+ * Zoho's "When [field] is modified to [operator] [value]" row. `operator: "any"`
+ * means "modified to any value" (just changed). Otherwise the field must have
+ * changed AND the NEW value must satisfy the operator/value (reuses the criteria
+ * operator engine).
+ */
+export const FieldConditionSchema = z.object({
+  field: z.string(),
+  operator: z.string().default("any"),
+  value: z.unknown().optional(),
+});
+
+export type FieldCondition = z.infer<typeof FieldConditionSchema>;
+
 export const RecordActionTriggerSchema = z.object({
   /** Zoho's "Create" / "Edit" / "Create or Edit" / "Delete" / "Field Update" */
   when: z.enum(["create", "edit", "create_or_edit", "delete", "field_update"]),
+  /** Zoho's Edit modifier: 'any' field gets modified vs 'specific' field(s). */
+  editMode: z.enum(["any", "specific"]).optional(),
   /** For "Edit" + "Field Update": only fire when these fields change.
    *  Empty = any field. Max 5 (matches Zoho). */
   fields: z.array(z.string()).max(5).default([]),
+  /** Zoho's "When [field] is modified to [operator][value]" rows (editMode='specific').
+   *  ALL rows must hold: the field changed AND the new value matches the operator. */
+  fieldConditions: z.array(FieldConditionSchema).max(10).optional(),
   /** Zoho's "Repeat this workflow every time a record is edited" toggle. */
   repeat: z.boolean().default(false),
 });

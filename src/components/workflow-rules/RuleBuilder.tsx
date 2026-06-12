@@ -11,9 +11,10 @@
  * Mirrors https://help.zoho.com/portal/en/kb/crm/automate-business-processes/workflows
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, ChevronRight, Plus, Trash2, Save, AlertTriangle, Sparkles } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronDown, Search, Plus, Trash2, Save, AlertTriangle, Sparkles } from "lucide-react";
+import { SelectField } from "@/components/ui/SelectField";
 
 type ModuleField = {
   key: string;
@@ -27,7 +28,7 @@ type ModuleField = {
 type Module = { key: string; label: string; fields: ModuleField[] };
 
 type Trigger =
-  | { kind: "record_action"; when: "create" | "edit" | "create_or_edit" | "delete" | "field_update"; fields: string[]; repeat: boolean }
+  | { kind: "record_action"; when: "create" | "edit" | "create_or_edit" | "delete" | "field_update"; editMode?: "any" | "specific"; fields: string[]; fieldConditions?: Array<{ field: string; operator: string; value: any }>; repeat: boolean }
   | { kind: "date_field"; field: string; when: "before" | "on" | "after"; offset: number; unit: "day" | "week" | "month"; recurrence: "once" | "every_month" | "every_year"; time: string }
   | { kind: "score_change"; field: string; direction: "increase" | "decrease" | "updated"; threshold?: number }
   | { kind: "recurrence"; cron: string }
@@ -67,6 +68,33 @@ const ACTION_TYPES: Array<{ key: string; label: string; description: string; ins
   { key: "create_notification", label: "In-app Notification", description: "Send an in-app bell notification." },
 ];
 
+/** Zoho-style grouped "Instant Actions" menu — top-level items + flyout submenus. */
+type ActionMenuNode = { key?: string; label: string; items?: Array<{ key: string; label: string }> };
+const ACTION_MENU: ActionMenuNode[] = [
+  { key: "update_field", label: "Field Update" },
+  {
+    label: "Tags",
+    items: [
+      { key: "add_tag", label: "Add Tag(s)" },
+      { key: "remove_tag", label: "Remove Tag(s)" },
+    ],
+  },
+  {
+    label: "Notify",
+    items: [
+      { key: "send_email", label: "Email Notification" },
+      { key: "send_sms", label: "SMS Notification" },
+      { key: "send_whatsapp", label: "WhatsApp Message" },
+      { key: "create_notification", label: "In-app Notification" },
+    ],
+  },
+  { key: "create_task", label: "Task" },
+  { key: "schedule_meeting", label: "Meeting" },
+  { key: "schedule_call", label: "Call" },
+  { key: "webhook", label: "Webhook" },
+  { key: "convert_lead", label: "Convert Lead" },
+];
+
 const OPERATORS: Array<{ key: string; label: string; types: string[] }> = [
   { key: "is", label: "is", types: ["string", "enum", "boolean", "uuid", "integer", "number", "currency"] },
   { key: "is_not", label: "is not", types: ["string", "enum", "boolean", "uuid", "integer", "number", "currency"] },
@@ -90,6 +118,28 @@ const OPERATORS: Array<{ key: string; label: string; types: string[] }> = [
 
 function opsForType(type: string) {
   return OPERATORS.filter((o) => o.types.includes("*") || o.types.includes(type));
+}
+
+/** Zoho's "Define execution date" presets → our {when, offset, unit}. */
+const DATE_PRESETS: Array<{ key: string; label: string; when: "before" | "on" | "after"; offset: number; unit: "day" | "week" | "month" }> = [
+  { key: "on", label: "On", when: "on", offset: 0, unit: "day" },
+  { key: "1d_before", label: "1 day before", when: "before", offset: 1, unit: "day" },
+  { key: "2d_before", label: "2 days before", when: "before", offset: 2, unit: "day" },
+  { key: "3d_before", label: "3 days before", when: "before", offset: 3, unit: "day" },
+  { key: "1w_before", label: "1 week before", when: "before", offset: 1, unit: "week" },
+  { key: "2w_before", label: "2 weeks before", when: "before", offset: 2, unit: "week" },
+  { key: "1m_before", label: "1 month before", when: "before", offset: 1, unit: "month" },
+  { key: "1d_after", label: "1 day after", when: "after", offset: 1, unit: "day" },
+  { key: "2d_after", label: "2 days after", when: "after", offset: 2, unit: "day" },
+  { key: "3d_after", label: "3 days after", when: "after", offset: 3, unit: "day" },
+  { key: "1w_after", label: "1 week after", when: "after", offset: 1, unit: "week" },
+  { key: "1m_after", label: "1 month after", when: "after", offset: 1, unit: "month" },
+];
+
+function presetKeyFor(t: { when?: string; offset?: number; unit?: string }): string {
+  if (t.when === "on") return "on";
+  const hit = DATE_PRESETS.find((p) => p.when === t.when && p.offset === Number(t.offset) && p.unit === t.unit);
+  return hit?.key ?? "on";
 }
 
 export function RuleBuilder({ modules }: { modules: Module[] }) {
@@ -217,13 +267,13 @@ export function RuleBuilder({ modules }: { modules: Module[] }) {
         </div>
       )}
 
-      {/* Step body */}
-      <div className="card-surface p-6 space-y-5">
+      {/* Step body — key={step} re-triggers the slide-up animation on each step change */}
+      <div key={step} className="card-surface p-6 space-y-5 animate-slide-up">
         {step === 1 && (
           <>
             <div>
               <label className="text-xs font-semibold text-muted-foreground">Module *</label>
-              <select
+              <SelectField
                 value={moduleKey}
                 onChange={(e) => setModuleKey(e.target.value)}
                 className="input-base mt-1 w-full"
@@ -231,7 +281,7 @@ export function RuleBuilder({ modules }: { modules: Module[] }) {
                 {modules.map((m) => (
                   <option key={m.key} value={m.key}>{m.label}</option>
                 ))}
-              </select>
+              </SelectField>
               <p className="text-[11px] text-muted-foreground mt-1">
                 This rule will apply to records in the selected module.
               </p>
@@ -259,27 +309,34 @@ export function RuleBuilder({ modules }: { modules: Module[] }) {
         )}
 
         {step === 2 && (
-          <TriggerStep
-            trigger={trigger}
-            onChange={setTrigger}
-            mod={mod}
-            dateFields={dateFields}
-            scoreFields={scoreFields}
-          />
+          <div className="space-y-4">
+            <PhaseBadge label="WHEN" />
+            <TriggerStep
+              trigger={trigger}
+              onChange={setTrigger}
+              mod={mod}
+              dateFields={dateFields}
+              scoreFields={scoreFields}
+            />
+          </div>
         )}
 
         {step === 3 && (
-          <CriteriaStep
-            mod={mod}
-            rows={criteriaRows}
-            setRows={setCriteriaRows}
-            pattern={criteriaPattern}
-            setPattern={setCriteriaPattern}
-          />
+          <div className="space-y-4">
+            <PhaseBadge label="CONDITION" />
+            <CriteriaStep
+              mod={mod}
+              rows={criteriaRows}
+              setRows={setCriteriaRows}
+              pattern={criteriaPattern}
+              setPattern={setCriteriaPattern}
+            />
+          </div>
         )}
 
         {step === 4 && (
           <>
+            <PhaseBadge label="ACTIONS" />
             <ActionsStep
               mod={mod}
               instantActions={instantActions}
@@ -299,8 +356,9 @@ export function RuleBuilder({ modules }: { modules: Module[] }) {
         )}
       </div>
 
-      {/* Nav */}
-      <div className="flex items-center justify-between">
+      {/* Nav — extra right padding so the primary button clears the floating
+          quick-create (+) button pinned to the bottom-right of the viewport. */}
+      <div className="flex items-center justify-between gap-3 pr-16 sm:pr-20 pb-2">
         <button
           type="button"
           disabled={step === 1}
@@ -358,19 +416,16 @@ function TriggerStep({
   return (
     <div className="space-y-5">
       <div>
-        <label className="text-xs font-semibold text-muted-foreground">Execute the rule based on</label>
-        <div className="grid grid-cols-2 gap-2 mt-2">
-          <RadioCard
-            checked={trigger.kind === "record_action"}
-            onClick={() =>
-              onChange({ kind: "record_action", when: "create", fields: [], repeat: false })
-            }
-            title="A record action"
-            desc="Run when a record is created, edited, or deleted."
-          />
-          <RadioCard
-            checked={trigger.kind === "date_field"}
-            onClick={() =>
+        <label className="text-xs font-semibold text-muted-foreground">
+          Execute this workflow rule based on
+        </label>
+        <select
+          value={trigger.kind}
+          onChange={(e) => {
+            const k = e.target.value;
+            if (k === "record_action")
+              onChange({ kind: "record_action", when: "create", editMode: "any", fields: [], fieldConditions: [], repeat: false });
+            else if (k === "date_field")
               onChange({
                 kind: "date_field",
                 field: dateFields[0]?.key ?? "",
@@ -379,197 +434,257 @@ function TriggerStep({
                 unit: "day",
                 recurrence: "once",
                 time: "09:00",
-              })
-            }
-            title="A date field"
-            desc="Run before / on / after a date stored on the record."
-            disabled={dateFields.length === 0}
-          />
-          <RadioCard
-            checked={trigger.kind === "score_change"}
-            onClick={() =>
-              onChange({ kind: "score_change", field: scoreFields[0]?.key ?? "", direction: "updated" })
-            }
-            title="A score change"
-            desc="Run when a numeric score field increases / decreases."
-            disabled={scoreFields.length === 0}
-          />
-          <RadioCard
-            checked={trigger.kind === "recurrence"}
-            onClick={() => onChange({ kind: "recurrence", cron: "0 9 * * 1" })}
-            title="A recurring schedule"
-            desc="Run on a cron schedule (e.g. every Monday at 9am)."
-          />
-        </div>
+              });
+            else if (k === "score_change")
+              onChange({ kind: "score_change", field: scoreFields[0]?.key ?? "", direction: "updated" });
+            else if (k === "recurrence") onChange({ kind: "recurrence", cron: "0 9 * * 1" });
+          }}
+          className="input-base mt-1.5 w-full md:w-80"
+        >
+          <option value="record_action">Record action</option>
+          <option value="date_field" disabled={dateFields.length === 0}>
+            Date/Time field
+          </option>
+          <option value="score_change" disabled={scoreFields.length === 0}>
+            Record Score
+          </option>
+          <option value="recurrence">Recurring schedule</option>
+        </select>
       </div>
 
-      {trigger.kind === "record_action" && (
-        <div className="space-y-3">
-          <div>
-            <label className="text-xs font-semibold text-muted-foreground">When</label>
-            <select
-              value={trig.when}
-              onChange={(e) =>
-                onChange({ ...trigger, when: e.target.value as any } as any)
-              }
-              className="input-base mt-1 w-full"
-            >
-              <option value="create">Create</option>
-              <option value="edit">Edit</option>
-              <option value="create_or_edit">Create or Edit</option>
-              <option value="field_update">Field Update (specific fields)</option>
-              <option value="delete">Delete</option>
-            </select>
-          </div>
-          {(trig.when === "edit" || trig.when === "field_update") && (
-            <div>
-              <label className="text-xs font-semibold text-muted-foreground">
-                Only when these fields change (max 5)
-              </label>
-              <select
-                multiple
-                value={trig.fields ?? []}
-                onChange={(e) =>
-                  onChange({
-                    ...trigger,
-                    fields: Array.from(e.target.selectedOptions).map((o) => o.value).slice(0, 5),
-                  } as any)
-                }
-                className="input-base mt-1 w-full h-32"
-              >
-                {(mod?.fields ?? []).map((f) => (
-                  <option key={f.key} value={f.key}>
-                    {f.label}
-                  </option>
-                ))}
-              </select>
-              <p className="text-[11px] text-muted-foreground mt-1">
-                Leave empty to fire on any field change. Cmd/Ctrl-click to select multiple.
-              </p>
-            </div>
-          )}
-          <label className="flex items-center gap-2 text-xs">
-            <input
-              type="checkbox"
-              checked={trig.repeat ?? false}
-              onChange={(e) => onChange({ ...trigger, repeat: e.target.checked } as any)}
-            />
-            Repeat this rule every time a matching edit happens (Zoho's "Recurrence" toggle)
-          </label>
-        </div>
-      )}
-
-      {trigger.kind === "date_field" && (
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-xs font-semibold text-muted-foreground">Date field</label>
-            <select
-              value={trig.field}
-              onChange={(e) => onChange({ ...trigger, field: e.target.value } as any)}
-              className="input-base mt-1 w-full"
-            >
-              {dateFields.map((f) => (
-                <option key={f.key} value={f.key}>{f.label}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="text-xs font-semibold text-muted-foreground">When</label>
-            <select
-              value={trig.when}
-              onChange={(e) => onChange({ ...trigger, when: e.target.value } as any)}
-              className="input-base mt-1 w-full"
-            >
-              <option value="before">Before</option>
-              <option value="on">On the day</option>
-              <option value="after">After</option>
-            </select>
-          </div>
-          {trig.when !== "on" && (
-            <>
+      {trigger.kind === "record_action" && (() => {
+        const editish = trig.when === "edit" || trig.when === "field_update" || trig.when === "create_or_edit";
+        const conds: Array<{ field: string; operator: string; value: any }> = trig.fieldConditions ?? [];
+        return (
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-end gap-3">
               <div>
-                <label className="text-xs font-semibold text-muted-foreground">Offset</label>
-                <input
-                  type="number"
-                  min={0}
-                  value={trig.offset ?? 0}
-                  onChange={(e) => onChange({ ...trigger, offset: Number(e.target.value) } as any)}
-                  className="input-base mt-1 w-full"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-muted-foreground">Unit</label>
+                <label className="text-xs font-semibold text-muted-foreground">Record action</label>
                 <select
-                  value={trig.unit}
-                  onChange={(e) => onChange({ ...trigger, unit: e.target.value } as any)}
-                  className="input-base mt-1 w-full"
+                  value={trig.when === "field_update" ? "edit" : trig.when}
+                  onChange={(e) => {
+                    const w = e.target.value;
+                    onChange({
+                      ...trigger,
+                      when: w,
+                      editMode: w === "edit" ? (trig.editMode ?? "any") : undefined,
+                    } as any);
+                  }}
+                  className="input-base mt-1 w-56"
                 >
-                  <option value="day">Days</option>
-                  <option value="week">Weeks</option>
-                  <option value="month">Months</option>
+                  <option value="create">Create</option>
+                  <option value="create_or_edit">Create or Edit</option>
+                  <option value="edit">Edit</option>
+                  <option value="delete">Delete</option>
                 </select>
               </div>
-            </>
-          )}
-          <div>
-            <label className="text-xs font-semibold text-muted-foreground">Recurrence</label>
-            <select
-              value={trig.recurrence}
-              onChange={(e) => onChange({ ...trigger, recurrence: e.target.value } as any)}
-              className="input-base mt-1 w-full"
-            >
-              <option value="once">Once</option>
-              <option value="every_month">Every month</option>
-              <option value="every_year">Every year</option>
-            </select>
+
+              {(trig.when === "edit" || trig.when === "field_update") && (
+                <div>
+                  <label className="text-xs font-semibold text-muted-foreground">Modification</label>
+                  <select
+                    value={trig.editMode ?? "any"}
+                    onChange={(e) => {
+                      const m = e.target.value as "any" | "specific";
+                      onChange({
+                        ...trigger,
+                        editMode: m,
+                        fieldConditions:
+                          m === "specific" && conds.length === 0
+                            ? [{ field: mod?.fields?.[0]?.key ?? "", operator: "any", value: "" }]
+                            : conds,
+                      } as any);
+                    }}
+                    className="input-base mt-1 w-72"
+                  >
+                    <option value="any">Any field gets modified</option>
+                    <option value="specific">Specific field(s) gets modified</option>
+                  </select>
+                </div>
+              )}
+            </div>
+
+            {editish && (
+              <label className="flex items-center gap-2 text-xs">
+                <input
+                  type="checkbox"
+                  checked={trig.repeat ?? false}
+                  onChange={(e) => onChange({ ...trigger, repeat: e.target.checked } as any)}
+                />
+                Repeat this workflow whenever a record is edited
+              </label>
+            )}
+
+            {(trig.when === "edit" || trig.when === "field_update") && trig.editMode === "specific" && (
+              <div className="rounded-lg border border-border bg-secondary/20 p-3 space-y-2">
+                {conds.map((c, i) => {
+                  const f = mod?.fields?.find((x) => x.key === c.field);
+                  const ops = [{ key: "any", label: "any value" }, ...opsForType(f?.type ?? "string")];
+                  const noValue =
+                    c.operator === "any" ||
+                    c.operator === "is_empty" ||
+                    c.operator === "is_not_empty" ||
+                    ["today", "yesterday", "tomorrow"].includes(c.operator);
+                  const setRow = (patch: Partial<{ field: string; operator: string; value: any }>) => {
+                    const next = conds.map((r, idx) => (idx === i ? { ...r, ...patch } : r));
+                    onChange({ ...trigger, fieldConditions: next } as any);
+                  };
+                  return (
+                    <div key={i} className="flex flex-wrap items-center gap-2">
+                      <span className="text-xs text-muted-foreground">When</span>
+                      <SearchableFieldSelect
+                        fields={mod?.fields ?? []}
+                        value={c.field}
+                        onChange={(key) => setRow({ field: key, operator: "any", value: "" })}
+                        className="w-48"
+                      />
+                      <span className="text-xs text-muted-foreground">is modified to</span>
+                      <select
+                        value={c.operator}
+                        onChange={(e) => setRow({ operator: e.target.value, value: "" })}
+                        className="input-base h-9 w-44"
+                      >
+                        {ops.map((o) => (
+                          <option key={o.key} value={o.key}>{o.label}</option>
+                        ))}
+                      </select>
+                      {!noValue && (
+                        <CriteriaValueInput field={f} op={c.operator} value={c.value} onChange={(v) => setRow({ value: v })} />
+                      )}
+                      <button
+                        onClick={() => onChange({ ...trigger, fieldConditions: conds.filter((_, idx) => idx !== i) } as any)}
+                        className="btn-icon h-8 text-rose-600"
+                        title="Remove condition"
+                      >
+                        <Trash2 className="size-3.5" />
+                      </button>
+                    </div>
+                  );
+                })}
+                <button
+                  onClick={() =>
+                    onChange({
+                      ...trigger,
+                      fieldConditions: [...conds, { field: mod?.fields?.[0]?.key ?? "", operator: "any", value: "" }],
+                    } as any)
+                  }
+                  className="btn-ghost text-xs"
+                >
+                  <Plus className="size-3.5" /> Add field condition
+                </button>
+                <p className="text-[11px] text-muted-foreground">
+                  Fires only when every condition holds — the field changed <em>and</em> its new value matches.
+                </p>
+              </div>
+            )}
           </div>
-          <div>
-            <label className="text-xs font-semibold text-muted-foreground">Time of day</label>
-            <input
-              type="time"
-              value={trig.time ?? "09:00"}
-              onChange={(e) => onChange({ ...trigger, time: e.target.value } as any)}
-              className="input-base mt-1 w-full"
-            />
+        );
+      })()}
+
+      {trigger.kind === "date_field" && (() => {
+        const dfLabel = dateFields.find((f) => f.key === trig.field)?.label ?? "the date";
+        return (
+          <div className="space-y-3 max-w-2xl">
+            <div className="grid grid-cols-[230px_1fr] items-center gap-3">
+              <label className="text-xs font-medium text-muted-foreground text-right leading-tight">
+                Based on which Date/Time field this rule should execute
+              </label>
+              <select
+                value={trig.field}
+                onChange={(e) => onChange({ ...trigger, field: e.target.value } as any)}
+                className="input-base w-64"
+              >
+                {dateFields.map((f) => (
+                  <option key={f.key} value={f.key}>{f.label}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="grid grid-cols-[230px_1fr] items-center gap-3">
+              <label className="text-xs font-medium text-muted-foreground text-right">Define execution date</label>
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  value={presetKeyFor(trig)}
+                  onChange={(e) => {
+                    const p = DATE_PRESETS.find((x) => x.key === e.target.value)!;
+                    onChange({ ...trigger, when: p.when, offset: p.offset, unit: p.unit } as any);
+                  }}
+                  className="input-base w-44"
+                >
+                  {DATE_PRESETS.map((p) => (
+                    <option key={p.key} value={p.key}>{p.label}</option>
+                  ))}
+                </select>
+                <span className="text-xs text-muted-foreground">
+                  the date in <strong>{dfLabel}</strong> field
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-[230px_1fr] items-center gap-3">
+              <label className="text-xs font-medium text-muted-foreground text-right">Execution time</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="time"
+                  value={trig.time ?? "09:00"}
+                  onChange={(e) => onChange({ ...trigger, time: e.target.value } as any)}
+                  className="input-base w-32"
+                />
+                <span className="text-xs text-muted-foreground">in the firm&rsquo;s timezone</span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-[230px_1fr] items-center gap-3">
+              <label className="text-xs font-medium text-muted-foreground text-right">Recur</label>
+              <select
+                value={trig.recurrence}
+                onChange={(e) => onChange({ ...trigger, recurrence: e.target.value } as any)}
+                className="input-base w-44"
+              >
+                <option value="once">Once</option>
+                <option value="every_month">Every Month</option>
+                <option value="every_year">Every Year</option>
+              </select>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {trigger.kind === "score_change" && (
-        <div className="grid grid-cols-3 gap-3">
-          <div>
-            <label className="text-xs font-semibold text-muted-foreground">Score field</label>
+        <div className="space-y-3 max-w-2xl">
+          <div className="grid grid-cols-[230px_1fr] items-center gap-3">
+            <label className="text-xs font-medium text-muted-foreground text-right">Record score</label>
+            <select
+              value={trig.direction}
+              onChange={(e) => onChange({ ...trigger, direction: e.target.value } as any)}
+              className="input-base w-48"
+            >
+              <option value="increase">Increased</option>
+              <option value="decrease">Decreased</option>
+              <option value="updated">Updated</option>
+            </select>
+          </div>
+          <div className="grid grid-cols-[230px_1fr] items-center gap-3">
+            <label className="text-xs font-medium text-muted-foreground text-right">This rule should be applied for</label>
             <select
               value={trig.field}
               onChange={(e) => onChange({ ...trigger, field: e.target.value } as any)}
-              className="input-base mt-1 w-full"
+              className="input-base w-64"
             >
               {scoreFields.map((f) => (
                 <option key={f.key} value={f.key}>{f.label}</option>
               ))}
             </select>
           </div>
-          <div>
-            <label className="text-xs font-semibold text-muted-foreground">Direction</label>
-            <select
-              value={trig.direction}
-              onChange={(e) => onChange({ ...trigger, direction: e.target.value } as any)}
-              className="input-base mt-1 w-full"
-            >
-              <option value="increase">Increase</option>
-              <option value="decrease">Decrease</option>
-              <option value="updated">Either</option>
-            </select>
-          </div>
-          <div>
-            <label className="text-xs font-semibold text-muted-foreground">Threshold (optional)</label>
+          <div className="grid grid-cols-[230px_1fr] items-center gap-3">
+            <label className="text-xs font-medium text-muted-foreground text-right">Threshold (optional)</label>
             <input
               type="number"
               value={trig.threshold ?? ""}
               onChange={(e) =>
                 onChange({ ...trigger, threshold: e.target.value === "" ? undefined : Number(e.target.value) } as any)
               }
-              className="input-base mt-1 w-full"
+              className="input-base w-40"
               placeholder="e.g. 75"
             />
           </div>
@@ -633,6 +748,124 @@ function RadioCard({
 // STEP 3 — Criteria
 // =============================================================================
 
+/** Zoho-style phase badge (the navy WHEN / CONDITION / ACTIONS pill). */
+function PhaseBadge({ label }: { label: string }) {
+  return (
+    <div className="inline-flex items-center rounded-full bg-slate-900 text-white text-[11px] font-bold tracking-widest px-3 py-1 dark:bg-slate-700">
+      {label}
+    </div>
+  );
+}
+
+/** Zoho-style searchable field dropdown (search box + filtered list). */
+function SearchableFieldSelect({
+  fields,
+  value,
+  onChange,
+  placeholder = "None",
+  className,
+}: {
+  fields: ModuleField[];
+  value: string;
+  onChange: (key: string) => void;
+  placeholder?: string;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const selected = fields.find((f) => f.key === value);
+  const filtered = q.trim() ? fields.filter((f) => f.label.toLowerCase().includes(q.trim().toLowerCase())) : fields;
+  return (
+    <div className={`relative ${className ?? ""}`}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="input-base text-xs w-full flex items-center justify-between gap-2"
+      >
+        <span className={selected ? "" : "text-muted-foreground"}>{selected?.label ?? placeholder}</span>
+        <ChevronDown className="size-3.5 opacity-60 shrink-0" />
+      </button>
+      {open && (
+        <>
+          <button type="button" className="fixed inset-0 z-20 cursor-default" aria-hidden onClick={() => setOpen(false)} />
+          <div className="absolute z-30 mt-1 w-full min-w-[200px] card-elevated overflow-hidden">
+            <div className="p-2 border-b border-border flex items-center gap-1.5">
+              <Search className="size-3.5 text-muted-foreground shrink-0" />
+              <input
+                autoFocus
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Search…"
+                className="bg-transparent outline-none text-xs w-full"
+              />
+            </div>
+            <ul className="max-h-52 overflow-y-auto scrollbar-thin py-1">
+              {filtered.map((f) => (
+                <li key={f.key}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onChange(f.key);
+                      setOpen(false);
+                      setQ("");
+                    }}
+                    className={`w-full text-left px-3 py-1.5 text-xs hover:bg-brand-cyan-light/40 ${
+                      f.key === value ? "font-semibold text-brand-cyan-deep" : ""
+                    }`}
+                  >
+                    {f.label}
+                  </button>
+                </li>
+              ))}
+              {filtered.length === 0 && (
+                <li className="px-3 py-2 text-[11px] text-muted-foreground">No fields match.</li>
+              )}
+            </ul>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// --- AND / OR / NOT joiner helpers (drive the optional pattern string) -------
+type Joiner = "AND" | "OR" | "NOT";
+/** Derive the connector for each gap between rows from the pattern string.
+ *  Empty/trivial pattern → all AND. Tolerant of parentheses (flattened). */
+function parseJoiners(pattern: string, n: number): Joiner[] {
+  const gaps = Math.max(0, n - 1);
+  const out: Joiner[] = Array(gaps).fill("AND");
+  if (!pattern || !pattern.trim()) return out;
+  const toks = pattern.toUpperCase().replace(/[()]/g, " ").split(/\s+/).filter(Boolean);
+  let seen = 0;
+  let conn: Joiner = "AND";
+  let neg = false;
+  for (const t of toks) {
+    if (t === "AND" || t === "OR") conn = t;
+    else if (t === "NOT") neg = true;
+    else if (/^\d+$/.test(t)) {
+      if (seen >= 1) {
+        const g = seen - 1;
+        if (g < gaps) out[g] = neg ? "NOT" : conn;
+      }
+      seen++;
+      conn = "AND";
+      neg = false;
+    }
+  }
+  return out;
+}
+/** Rebuild a canonical pattern string from per-gap joiners ("NOT" ⇒ AND NOT). */
+function buildPattern(joiners: Joiner[], n: number): string {
+  if (n <= 1) return "";
+  let s = "1";
+  for (let i = 1; i < n; i++) {
+    const j = joiners[i - 1] ?? "AND";
+    s += j === "NOT" ? ` AND NOT ${i + 1}` : ` ${j} ${i + 1}`;
+  }
+  return s;
+}
+
 function CriteriaStep({
   mod,
   rows,
@@ -658,82 +891,135 @@ function CriteriaStep({
     setRows(rows.filter((_, ix) => ix !== i));
   }
 
+  // AND/OR/NOT joiner buttons between rows — derived from (and writing back to)
+  // the optional pattern string, so the manual Pattern field stays in sync.
+  const joiners = parseJoiners(pattern, rows.length);
+  function setJoiner(gap: number, op: Joiner) {
+    const next = [...joiners];
+    next[gap] = op;
+    // All-AND collapses to "" so the field stays clean (server defaults to AND).
+    setPattern(next.every((j) => j === "AND") ? "" : buildPattern(next, rows.length));
+  }
+
+  const subject = mod?.label ?? "records";
+  const mode: "all" | "conditions" = rows.length > 0 ? "conditions" : "all";
+
   return (
-    <div className="space-y-3">
-      <div className="text-xs text-muted-foreground">
-        Add conditions to narrow when this rule fires. Leave empty to run for every record.
-        Each row is numbered — combine them with a pattern like <code className="bg-secondary px-1 rounded">1 AND (2 OR 3)</code> below.
+    <div className="space-y-4">
+      <div className="text-sm font-medium">Which {subject.toLowerCase()} would you like to apply the rule to?</div>
+      <div className="flex flex-wrap items-center gap-6">
+        <label className="flex items-center gap-2 text-sm cursor-pointer">
+          <input
+            type="radio"
+            checked={mode === "conditions"}
+            onChange={() => {
+              if (rows.length === 0) addRow();
+            }}
+            className="accent-brand-cyan"
+          />
+          Records matching certain conditions
+        </label>
+        <label className="flex items-center gap-2 text-sm cursor-pointer">
+          <input type="radio" checked={mode === "all"} onChange={() => setRows([])} className="accent-brand-cyan" />
+          All records
+        </label>
       </div>
 
-      {rows.length === 0 ? (
-        <div className="card-surface p-6 text-center text-xs text-muted-foreground border-dashed border-2">
-          No conditions yet. The rule will fire for <strong>every</strong> record that triggers it.
-          <div className="mt-3">
-            <button onClick={addRow} className="btn-secondary text-xs">
-              <Plus className="size-3.5" /> Add condition
-            </button>
-          </div>
-        </div>
-      ) : (
+      {mode === "conditions" ? (
         <div className="space-y-2">
           {rows.map((row, i) => {
             const field = mod?.fields.find((f) => f.key === row.field);
             const ops = opsForType(field?.type ?? "string");
-            const noValue = row.operator === "is_empty" || row.operator === "is_not_empty" || ["today", "yesterday", "tomorrow"].includes(row.operator);
+            const noValue =
+              row.operator === "is_empty" ||
+              row.operator === "is_not_empty" ||
+              ["today", "yesterday", "tomorrow"].includes(row.operator);
             return (
-              <div key={i} className="flex items-center gap-2">
-                <span className="text-[11px] font-mono w-6 text-muted-foreground">{i + 1}.</span>
-                <select
+              <Fragment key={i}>
+              <div className="flex items-center gap-2">
+                <span className="grid place-items-center size-6 rounded-full bg-secondary text-[11px] font-semibold text-muted-foreground shrink-0">
+                  {i + 1}
+                </span>
+                <SearchableFieldSelect
+                  fields={mod?.fields ?? []}
                   value={row.field}
-                  onChange={(e) => update(i, { field: e.target.value, operator: "is", value: "" })}
-                  className="input-base text-xs flex-1"
-                >
-                  {(mod?.fields ?? []).map((f) => (
-                    <option key={f.key} value={f.key}>{f.label}</option>
-                  ))}
-                </select>
+                  onChange={(key) => update(i, { field: key, operator: "is", value: "" })}
+                  className="w-52"
+                />
                 <select
                   value={row.operator}
                   onChange={(e) => update(i, { operator: e.target.value })}
-                  className="input-base text-xs flex-1"
+                  className="input-base text-xs w-40"
                 >
                   {ops.map((o) => (
                     <option key={o.key} value={o.key}>{o.label}</option>
                   ))}
                 </select>
-                {!noValue && (
-                  <CriteriaValueInput
-                    field={field}
-                    op={row.operator}
-                    value={row.value}
-                    onChange={(v) => update(i, { value: v })}
-                  />
+                {!noValue ? (
+                  <CriteriaValueInput field={field} op={row.operator} value={row.value} onChange={(v) => update(i, { value: v })} />
+                ) : (
+                  <div className="flex-1" />
                 )}
-                <button onClick={() => removeRow(i)} className="btn-icon h-7 text-rose-600">
-                  <Trash2 className="size-3.5" />
+                <button onClick={addRow} className="btn-icon h-7 text-brand-cyan" title="Add condition">
+                  <Plus className="size-4" />
                 </button>
+                {rows.length > 1 && (
+                  <button onClick={() => removeRow(i)} className="btn-icon h-7 text-rose-600" title="Remove">
+                    <Trash2 className="size-3.5" />
+                  </button>
+                )}
               </div>
+              {/* Joiner to the next row — AND / OR / NOT; active shows a ✔. */}
+              {i < rows.length - 1 && (
+                <div className="flex items-center gap-1.5 pl-8 py-0.5">
+                  {(["AND", "OR", "NOT"] as const).map((op) => {
+                    const isActive = joiners[i] === op;
+                    return (
+                      <button
+                        key={op}
+                        type="button"
+                        onClick={() => setJoiner(i, op)}
+                        className={`text-[11px] font-semibold rounded-md px-2.5 py-1 border transition-colors ${
+                          isActive
+                            ? "bg-brand-cyan text-white border-brand-cyan"
+                            : "bg-secondary/40 text-muted-foreground border-border hover:bg-secondary"
+                        }`}
+                      >
+                        {isActive ? "✔ " : ""}
+                        {op}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              </Fragment>
             );
           })}
-          <button onClick={addRow} className="btn-ghost text-xs">
-            <Plus className="size-3.5" /> Add condition
-          </button>
-        </div>
-      )}
+          {rows.length === 0 && (
+            <button onClick={addRow} className="btn-secondary text-xs">
+              <Plus className="size-3.5" /> Add condition
+            </button>
+          )}
 
-      {rows.length >= 2 && (
-        <div className="mt-4">
-          <label className="text-xs font-semibold text-muted-foreground">Pattern (optional)</label>
-          <input
-            value={pattern}
-            onChange={(e) => setPattern(e.target.value)}
-            placeholder={`e.g. 1 AND (2 OR 3)`}
-            className="input-base text-xs mt-1 w-full font-mono"
-          />
-          <p className="text-[11px] text-muted-foreground mt-1">
-            Use AND, OR, NOT and parentheses with the row numbers above. Empty defaults to AND of all rows.
-          </p>
+          {rows.length >= 2 && (
+            <div className="mt-3">
+              <label className="text-xs font-semibold text-muted-foreground">Pattern (optional)</label>
+              <input
+                value={pattern}
+                onChange={(e) => setPattern(e.target.value)}
+                placeholder={`e.g. 1 AND (2 OR 3)`}
+                className="input-base text-xs mt-1 w-full max-w-md font-mono"
+              />
+              <p className="text-[11px] text-muted-foreground mt-1">
+                Use AND, OR, NOT and parentheses with the row numbers. Empty defaults to AND of all rows.
+              </p>
+            </div>
+          )}
         </div>
+      ) : (
+        <p className="text-xs text-muted-foreground">
+          The rule will run for <strong>every</strong> {subject.toLowerCase()} record that triggers it.
+        </p>
       )}
     </div>
   );
@@ -866,6 +1152,19 @@ function ActionsStep({
 
 function ActionTypePicker({ onPick, excludeKeys = [] }: { onPick: (k: string) => void; excludeKeys?: string[] }) {
   const [open, setOpen] = useState(false);
+  const [sub, setSub] = useState<string | null>(null);
+
+  const pick = (k: string) => {
+    onPick(k);
+    setOpen(false);
+    setSub(null);
+  };
+
+  // Build the grouped menu, dropping excluded keys (and empty groups).
+  const groups = ACTION_MENU.map((g) =>
+    g.items ? { ...g, items: g.items.filter((it) => !excludeKeys.includes(it.key)) } : g,
+  ).filter((g) => (g.items ? g.items.length > 0 : !excludeKeys.includes(g.key!)));
+
   return (
     <div className="relative">
       <button onClick={() => setOpen((v) => !v)} className="btn-secondary text-xs">
@@ -873,21 +1172,50 @@ function ActionTypePicker({ onPick, excludeKeys = [] }: { onPick: (k: string) =>
       </button>
       {open && (
         <>
-          <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-full mt-1 z-30 card-elevated w-72 max-h-72 overflow-y-auto">
-            {ACTION_TYPES.filter((a) => !excludeKeys.includes(a.key)).map((a) => (
-              <button
-                key={a.key}
-                onClick={() => {
-                  onPick(a.key);
-                  setOpen(false);
-                }}
-                className="w-full text-left px-3 py-2 hover:bg-brand-cyan-light/40 border-b last:border-0"
-              >
-                <div className="font-medium text-xs">{a.label}</div>
-                <div className="text-[10px] text-muted-foreground">{a.description}</div>
-              </button>
-            ))}
+          <div className="fixed inset-0 z-20" onClick={() => { setOpen(false); setSub(null); }} />
+          <div className="absolute right-0 top-full mt-1 z-30 card-elevated w-56 py-1">
+            {groups.map((g) =>
+              g.items ? (
+                <div
+                  key={g.label}
+                  className="relative"
+                  onMouseEnter={() => setSub(g.label)}
+                  onMouseLeave={() => setSub((s) => (s === g.label ? null : s))}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setSub((s) => (s === g.label ? null : g.label))}
+                    className="w-full text-left px-3 py-2 text-xs hover:bg-brand-cyan-light/40 flex items-center justify-between"
+                  >
+                    {g.label}
+                    <ChevronRight className="size-3.5 opacity-60" />
+                  </button>
+                  {sub === g.label && (
+                    <div className="absolute left-full top-0 -ml-1 z-40 card-elevated w-56 py-1">
+                      {g.items.map((it) => (
+                        <button
+                          key={it.key}
+                          type="button"
+                          onClick={() => pick(it.key)}
+                          className="w-full text-left px-3 py-2 text-xs hover:bg-brand-cyan-light/40"
+                        >
+                          {it.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <button
+                  key={g.key}
+                  type="button"
+                  onClick={() => pick(g.key!)}
+                  className="w-full text-left px-3 py-2 text-xs hover:bg-brand-cyan-light/40"
+                >
+                  {g.label}
+                </button>
+              ),
+            )}
           </div>
         </>
       )}
@@ -1302,6 +1630,15 @@ function defaultConfigFor(typeKey: string, mod: Module | undefined): Record<stri
 
 function triggerConfigFromState(t: Trigger): Record<string, any> {
   const { kind, ...rest } = t as any;
+  if (kind === "record_action") {
+    const editish = rest.when === "edit" || rest.when === "field_update" || rest.when === "create_or_edit";
+    if (!editish) return { when: rest.when, repeat: false };
+    if (rest.editMode === "specific") {
+      const fieldConditions = (rest.fieldConditions ?? []).filter((c: any) => c.field);
+      return { when: rest.when, editMode: "specific", fieldConditions, repeat: !!rest.repeat };
+    }
+    return { when: rest.when, editMode: "any", repeat: !!rest.repeat };
+  }
   return rest;
 }
 

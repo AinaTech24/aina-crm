@@ -41,6 +41,21 @@ function evaluateRow(row: CriteriaRow, record: RecordSnapshot): boolean {
   return applyOperator(row.operator, fieldValue, row.value);
 }
 
+/** Read a field from a record snapshot, tolerant of snake_case ↔ camelCase. */
+export function readRecordField(record: RecordSnapshot, key: string): unknown {
+  return readField(record, key);
+}
+
+/**
+ * Public wrapper over the operator engine — used by the rule runner to evaluate
+ * "field is modified to [operator][value]" trigger conditions. `"any"` matches
+ * anything (the field merely changed).
+ */
+export function operatorMatches(operator: string, left: unknown, right: unknown): boolean {
+  if (!operator || operator === "any") return true;
+  return applyOperator(operator as CriteriaOperator, left, right);
+}
+
 function readField(record: RecordSnapshot, key: string): unknown {
   if (key in record) return record[key];
   // Try snake → camel

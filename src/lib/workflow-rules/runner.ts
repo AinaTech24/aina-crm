@@ -22,7 +22,7 @@ import { withTenant } from "@/db/client";
 import { workflowRules, workflowRuleExecutions, workflowRuleScheduledJobs } from "@/db/schema";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { getModule, type ModuleKey } from "./modules";
-import { evaluateCriteria } from "./criteria";
+import { evaluateCriteria, operatorMatches, readRecordField } from "./criteria";
 import { executeAction, type ActionResult } from "./actions";
 import type { CriteriaRow, Action, ScheduledAction } from "./types";
 
@@ -134,7 +134,11 @@ async function runOneRule(tx: any, rule: any, event: RuleEvent): Promise<RunResu
     }
   } else {
     // record_action
-    const cfg = (rule.triggerConfig ?? {}) as { when?: string; fields?: string[] };
+    const cfg = (rule.triggerConfig ?? {}) as {
+      when?: string;
+      fields?: string[];
+      fieldConditions?: Array<{ field: string; operator?: string; value?: unknown }>;
+    };
     const when = cfg.when ?? "create_or_edit";
 
     // Step 1 — does the event's recordAction match the rule's `when`?
@@ -148,12 +152,32 @@ async function runOneRule(tx: any, rule: any, event: RuleEvent): Promise<RunResu
       return { ruleId: rule.id, matched: false, reason: "trigger.when mismatch", instantOutcomes: [], scheduledQueued: 0 };
     }
 
-    // Step 2 — for "edit" with specific fields, check they changed
-    if ((when === "edit" || when === "field_update") && (cfg.fields?.length ?? 0) > 0) {
+    // Step 2 — for edits, honour the field-level trigger config.
+    if (when === "edit" || when === "field_update") {
       const changedFields = diffChangedFields(event.before, event.after);
-      const anyMatch = cfg.fields!.some((f) => changedFields.includes(f));
-      if (!anyMatch) {
-        return { ruleId: rule.id, matched: false, reason: "no watched field changed", instantOutcomes: [], scheduledQueued: 0 };
+      const after = (event.after ?? {}) as Record<string, unknown>;
+      // Tolerant membership: a field "changed" if its key OR its camelCase
+      // variant is in the diff (catalog keys may be snake_case).
+      const didChange = (key: string) => {
+        if (changedFields.includes(key)) return true;
+        const camel = key.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+        return changedFields.includes(camel);
+      };
+
+      if (cfg.fieldConditions && cfg.fieldConditions.length > 0) {
+        // Zoho "When [field] is modified to [operator][value]" — ALL rows must hold.
+        const allOk = cfg.fieldConditions.every((c) => {
+          if (!didChange(c.field)) return false;
+          return operatorMatches(c.operator ?? "any", readRecordField(after, c.field), c.value);
+        });
+        if (!allOk) {
+          return { ruleId: rule.id, matched: false, reason: "field condition not met", instantOutcomes: [], scheduledQueued: 0 };
+        }
+      } else if ((cfg.fields?.length ?? 0) > 0) {
+        // Legacy: any of the watched fields changed.
+        if (!cfg.fields!.some((f) => didChange(f))) {
+          return { ruleId: rule.id, matched: false, reason: "no watched field changed", instantOutcomes: [], scheduledQueued: 0 };
+        }
       }
     }
   }
