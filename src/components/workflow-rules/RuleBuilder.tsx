@@ -310,7 +310,6 @@ export function RuleBuilder({ modules }: { modules: Module[] }) {
 
         {step === 2 && (
           <div className="space-y-4">
-            <PhaseBadge label="WHEN" />
             <TriggerStep
               trigger={trigger}
               onChange={setTrigger}
@@ -323,7 +322,6 @@ export function RuleBuilder({ modules }: { modules: Module[] }) {
 
         {step === 3 && (
           <div className="space-y-4">
-            <PhaseBadge label="CONDITION" />
             <CriteriaStep
               mod={mod}
               rows={criteriaRows}
@@ -336,7 +334,6 @@ export function RuleBuilder({ modules }: { modules: Module[] }) {
 
         {step === 4 && (
           <>
-            <PhaseBadge label="ACTIONS" />
             <ActionsStep
               mod={mod}
               instantActions={instantActions}
@@ -452,134 +449,59 @@ function TriggerStep({
         </select>
       </div>
 
-      {trigger.kind === "record_action" && (() => {
-        const editish = trig.when === "edit" || trig.when === "field_update" || trig.when === "create_or_edit";
-        const conds: Array<{ field: string; operator: string; value: any }> = trig.fieldConditions ?? [];
-        return (
-          <div className="space-y-3">
-            <div className="flex flex-wrap items-end gap-3">
-              <div>
-                <label className="text-xs font-semibold text-muted-foreground">Record action</label>
-                <select
-                  value={trig.when === "field_update" ? "edit" : trig.when}
-                  onChange={(e) => {
-                    const w = e.target.value;
-                    onChange({
-                      ...trigger,
-                      when: w,
-                      editMode: w === "edit" ? (trig.editMode ?? "any") : undefined,
-                    } as any);
-                  }}
-                  className="input-base mt-1 w-56"
-                >
-                  <option value="create">Create</option>
-                  <option value="create_or_edit">Create or Edit</option>
-                  <option value="edit">Edit</option>
-                  <option value="delete">Delete</option>
-                </select>
-              </div>
-
-              {(trig.when === "edit" || trig.when === "field_update") && (
-                <div>
-                  <label className="text-xs font-semibold text-muted-foreground">Modification</label>
-                  <select
-                    value={trig.editMode ?? "any"}
-                    onChange={(e) => {
-                      const m = e.target.value as "any" | "specific";
-                      onChange({
-                        ...trigger,
-                        editMode: m,
-                        fieldConditions:
-                          m === "specific" && conds.length === 0
-                            ? [{ field: mod?.fields?.[0]?.key ?? "", operator: "any", value: "" }]
-                            : conds,
-                      } as any);
-                    }}
-                    className="input-base mt-1 w-72"
-                  >
-                    <option value="any">Any field gets modified</option>
-                    <option value="specific">Specific field(s) gets modified</option>
-                  </select>
-                </div>
-              )}
-            </div>
-
-            {editish && (
-              <label className="flex items-center gap-2 text-xs">
-                <input
-                  type="checkbox"
-                  checked={trig.repeat ?? false}
-                  onChange={(e) => onChange({ ...trigger, repeat: e.target.checked } as any)}
-                />
-                Repeat this workflow whenever a record is edited
-              </label>
-            )}
-
-            {(trig.when === "edit" || trig.when === "field_update") && trig.editMode === "specific" && (
-              <div className="rounded-lg border border-border bg-secondary/20 p-3 space-y-2">
-                {conds.map((c, i) => {
-                  const f = mod?.fields?.find((x) => x.key === c.field);
-                  const ops = [{ key: "any", label: "any value" }, ...opsForType(f?.type ?? "string")];
-                  const noValue =
-                    c.operator === "any" ||
-                    c.operator === "is_empty" ||
-                    c.operator === "is_not_empty" ||
-                    ["today", "yesterday", "tomorrow"].includes(c.operator);
-                  const setRow = (patch: Partial<{ field: string; operator: string; value: any }>) => {
-                    const next = conds.map((r, idx) => (idx === i ? { ...r, ...patch } : r));
-                    onChange({ ...trigger, fieldConditions: next } as any);
-                  };
-                  return (
-                    <div key={i} className="flex flex-wrap items-center gap-2">
-                      <span className="text-xs text-muted-foreground">When</span>
-                      <SearchableFieldSelect
-                        fields={mod?.fields ?? []}
-                        value={c.field}
-                        onChange={(key) => setRow({ field: key, operator: "any", value: "" })}
-                        className="w-48"
-                      />
-                      <span className="text-xs text-muted-foreground">is modified to</span>
-                      <select
-                        value={c.operator}
-                        onChange={(e) => setRow({ operator: e.target.value, value: "" })}
-                        className="input-base h-9 w-44"
-                      >
-                        {ops.map((o) => (
-                          <option key={o.key} value={o.key}>{o.label}</option>
-                        ))}
-                      </select>
-                      {!noValue && (
-                        <CriteriaValueInput field={f} op={c.operator} value={c.value} onChange={(v) => setRow({ value: v })} />
-                      )}
-                      <button
-                        onClick={() => onChange({ ...trigger, fieldConditions: conds.filter((_, idx) => idx !== i) } as any)}
-                        className="btn-icon h-8 text-rose-600"
-                        title="Remove condition"
-                      >
-                        <Trash2 className="size-3.5" />
-                      </button>
-                    </div>
-                  );
-                })}
-                <button
-                  onClick={() =>
-                    onChange({
-                      ...trigger,
-                      fieldConditions: [...conds, { field: mod?.fields?.[0]?.key ?? "", operator: "any", value: "" }],
-                    } as any)
-                  }
-                  className="btn-ghost text-xs"
-                >
-                  <Plus className="size-3.5" /> Add field condition
-                </button>
-                <p className="text-[11px] text-muted-foreground">
-                  Fires only when every condition holds — the field changed <em>and</em> its new value matches.
-                </p>
-              </div>
-            )}
+      {trigger.kind === "record_action" && (
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs font-semibold text-muted-foreground">When</label>
+            <select
+              value={trig.when}
+              onChange={(e) => onChange({ ...trigger, when: e.target.value as any } as any)}
+              className="input-base mt-1 w-full"
+            >
+              <option value="create">Create</option>
+              <option value="edit">Edit</option>
+              <option value="create_or_edit">Create or Edit</option>
+              <option value="field_update">Field Update (specific fields)</option>
+              <option value="delete">Delete</option>
+            </select>
           </div>
-        );
-      })()}
+          {(trig.when === "edit" || trig.when === "field_update") && (
+            <div>
+              <label className="text-xs font-semibold text-muted-foreground">
+                Only when these fields change (max 5)
+              </label>
+              <select
+                multiple
+                value={trig.fields ?? []}
+                onChange={(e) =>
+                  onChange({
+                    ...trigger,
+                    fields: Array.from(e.target.selectedOptions).map((o) => o.value).slice(0, 5),
+                  } as any)
+                }
+                className="input-base mt-1 w-full h-32"
+              >
+                {(mod?.fields ?? []).map((f) => (
+                  <option key={f.key} value={f.key}>
+                    {f.label}
+                  </option>
+                ))}
+              </select>
+              <p className="text-[11px] text-muted-foreground mt-1">
+                Leave empty to fire on any field change. Cmd/Ctrl-click to select multiple.
+              </p>
+            </div>
+          )}
+          <label className="flex items-center gap-2 text-xs">
+            <input
+              type="checkbox"
+              checked={trig.repeat ?? false}
+              onChange={(e) => onChange({ ...trigger, repeat: e.target.checked } as any)}
+            />
+            Repeat this rule every time a matching edit happens (Zoho's "Recurrence" toggle)
+          </label>
+        </div>
+      )}
 
       {trigger.kind === "date_field" && (() => {
         const dfLabel = dateFields.find((f) => f.key === trig.field)?.label ?? "the date";
@@ -749,14 +671,6 @@ function RadioCard({
 // =============================================================================
 
 /** Zoho-style phase badge (the navy WHEN / CONDITION / ACTIONS pill). */
-function PhaseBadge({ label }: { label: string }) {
-  return (
-    <div className="inline-flex items-center rounded-full bg-slate-900 text-white text-[11px] font-bold tracking-widest px-3 py-1 dark:bg-slate-700">
-      {label}
-    </div>
-  );
-}
-
 /** Zoho-style searchable field dropdown (search box + filtered list). */
 function SearchableFieldSelect({
   fields,
@@ -1191,7 +1105,9 @@ function ActionTypePicker({ onPick, excludeKeys = [] }: { onPick: (k: string) =>
                     <ChevronRight className="size-3.5 opacity-60" />
                   </button>
                   {sub === g.label && (
-                    <div className="absolute left-full top-0 -ml-1 z-40 card-elevated w-56 py-1">
+                    // Open submenus to the LEFT — the parent menu is anchored to
+                    // the right edge, so a right-opening submenu runs off-screen.
+                    <div className="absolute right-full top-0 -mr-1 z-40 card-elevated w-56 py-1">
                       {g.items.map((it) => (
                         <button
                           key={it.key}
@@ -1629,16 +1545,10 @@ function defaultConfigFor(typeKey: string, mod: Module | undefined): Record<stri
 }
 
 function triggerConfigFromState(t: Trigger): Record<string, any> {
+  // Pass the full state through — for record_action this carries the old
+  // `fields[]` watch-list (Cmd/Ctrl-click multi-select); the runner honours it
+  // via the legacy cfg.fields path.
   const { kind, ...rest } = t as any;
-  if (kind === "record_action") {
-    const editish = rest.when === "edit" || rest.when === "field_update" || rest.when === "create_or_edit";
-    if (!editish) return { when: rest.when, repeat: false };
-    if (rest.editMode === "specific") {
-      const fieldConditions = (rest.fieldConditions ?? []).filter((c: any) => c.field);
-      return { when: rest.when, editMode: "specific", fieldConditions, repeat: !!rest.repeat };
-    }
-    return { when: rest.when, editMode: "any", repeat: !!rest.repeat };
-  }
   return rest;
 }
 
