@@ -4,16 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
-import { PerUserPricing } from "@/components/super-admin/PackageEditor";
-
-const ALL_MODULES = [
-  "crm", "lead_management", "client_master", "family_mapping", "onboarding",
-  "risk_profile", "goal_planning", "transactions", "sip_tracker", "sip_rejection",
-  "review_meetings", "service_requests", "complaints", "ddq", "marketing_campaigns",
-  "content_calendar", "tasks", "employees", "reports", "documents", "cybersecurity",
-  "ai_assistant", "automation_workflows", "broadcasts", "white_label", "audit_log",
-  "sub_distributor",
-];
+import { PerUserPricing, ModuleAccessGrid, type AddonUI } from "@/components/super-admin/PackageEditor";
 
 export default function NewPackagePage() {
   const router = useRouter();
@@ -31,19 +22,13 @@ export default function NewPackagePage() {
     storageLimitGb: 5,
     trialDays: 14,
     enabledModules: [] as string[],
+    addons: [] as AddonUI[],
     isActive: true,
     isPublic: true,
     badge: "",
   });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-
-  function toggleMod(m: string) {
-    setForm((s) => ({
-      ...s,
-      enabledModules: s.enabledModules.includes(m) ? s.enabledModules.filter((x) => x !== m) : [...s.enabledModules, m],
-    }));
-  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -60,6 +45,11 @@ export default function NewPackagePage() {
           setupCostPaise: Math.round(form.setupCostRupees * 100),
           perUserMonthlyPaise: Math.round(form.perUserMonthlyRupees * 100),
           perUserYearlyPaise: Math.round(form.perUserYearlyRupees * 100),
+          addonModules: form.addons.map((a) => ({
+            module: a.module,
+            monthlyPaise: Math.round(a.monthlyRupees * 100),
+            yearlyPaise: Math.round(a.yearlyRupees * 100),
+          })),
         }),
       });
       const j = await res.json();
@@ -99,7 +89,7 @@ export default function NewPackagePage() {
         <div className="grid grid-cols-3 gap-3 border-t pt-3">
           <NumberField label="Monthly ₹" value={form.monthlyPriceRupees} onChange={(v) => setForm({ ...form, monthlyPriceRupees: v })} />
           <NumberField label="Yearly ₹" value={form.yearlyPriceRupees} onChange={(v) => setForm({ ...form, yearlyPriceRupees: v })} />
-          <NumberField label="Setup ₹" value={form.setupCostRupees} onChange={(v) => setForm({ ...form, setupCostRupees: v })} />
+          <NumberField label="Setup ₹ (one-time / org)" value={form.setupCostRupees} onChange={(v) => setForm({ ...form, setupCostRupees: v })} />
           <NumberField label="Max users" value={form.maxUsers} onChange={(v) => setForm({ ...form, maxUsers: v })} />
           <NumberField label="Max investors" value={form.maxInvestors} onChange={(v) => setForm({ ...form, maxInvestors: v })} />
           <NumberField label="Storage GB" value={form.storageLimitGb} onChange={(v) => setForm({ ...form, storageLimitGb: v })} />
@@ -127,17 +117,11 @@ export default function NewPackagePage() {
           onYearly={(v) => setForm({ ...form, perUserYearlyRupees: v })}
         />
 
-        <div className="border-t pt-3">
-          <div className="text-xs font-medium mb-2">Modules enabled ({form.enabledModules.length}/{ALL_MODULES.length})</div>
-          <div className="grid grid-cols-3 gap-1.5 max-h-64 overflow-y-auto border rounded p-2 bg-muted/30">
-            {ALL_MODULES.map((m) => (
-              <label key={m} className="flex items-center gap-1.5 text-xs px-1.5 py-1 hover:bg-background rounded cursor-pointer">
-                <input type="checkbox" checked={form.enabledModules.includes(m)} onChange={() => toggleMod(m)} />
-                <span className="font-mono">{m}</span>
-              </label>
-            ))}
-          </div>
-        </div>
+        <ModuleAccessGrid
+          enabledModules={form.enabledModules}
+          addons={form.addons}
+          onChange={(enabledModules, addons) => setForm({ ...form, enabledModules, addons })}
+        />
 
         {err && <div className="text-sm text-rose-600">{err}</div>}
         <div className="flex justify-end gap-2 pt-2 border-t">

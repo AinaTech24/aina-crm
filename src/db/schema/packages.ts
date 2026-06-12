@@ -51,6 +51,17 @@ export const packages = pgTable(
      */
     enabledModules: jsonb("enabled_modules").$type<string[]>().notNull().default([]),
 
+    /**
+     * Modules offered as a PAID ADD-ON (not free with the base package). Each
+     * carries its own recurring price. A module here is purchasable on top of
+     * the package; a module in `enabledModules` is free; a module in neither is
+     * not offered. Prices in paise.
+     */
+    addonModules: jsonb("addon_modules")
+      .$type<Array<{ module: string; monthlyPaise: number; yearlyPaise: number }>>()
+      .notNull()
+      .default([]),
+
     /** Feature flags within enabled modules (e.g. ai_tier: 'tier1' | 'tier2' | 'tier3') */
     featureFlags: jsonb("feature_flags").$type<Record<string, any>>().default({}),
 

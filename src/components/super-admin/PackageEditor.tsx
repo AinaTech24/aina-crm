@@ -34,6 +34,7 @@ type Pkg = {
   storageLimitGb: number;
   trialDays: number;
   enabledModules: string[];
+  addonModules: Array<{ module: string; monthlyPaise: number; yearlyPaise: number }>;
   isActive: boolean;
   isPublic: boolean;
   badge: string | null;
@@ -55,6 +56,11 @@ export function PackageEditor({ pkg }: { pkg: Pkg }) {
     storageLimitGb: pkg.storageLimitGb,
     trialDays: pkg.trialDays,
     enabledModules: pkg.enabledModules ?? [],
+    addons: (pkg.addonModules ?? []).map((a) => ({
+      module: a.module,
+      monthlyRupees: a.monthlyPaise / 100,
+      yearlyRupees: a.yearlyPaise / 100,
+    })),
     isActive: pkg.isActive,
     isPublic: pkg.isPublic,
     badge: pkg.badge ?? "",
@@ -63,19 +69,6 @@ export function PackageEditor({ pkg }: { pkg: Pkg }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
-
-  function toggleMod(m: string) {
-    setForm((s) => ({
-      ...s,
-      enabledModules: s.enabledModules.includes(m)
-        ? s.enabledModules.filter((x) => x !== m)
-        : [...s.enabledModules, m],
-    }));
-  }
-
-  function toggleAll(value: boolean) {
-    setForm((s) => ({ ...s, enabledModules: value ? [...ALL_MODULES] : [] }));
-  }
 
   async function save() {
     setBusy(true);
@@ -98,6 +91,11 @@ export function PackageEditor({ pkg }: { pkg: Pkg }) {
           storageLimitGb: form.storageLimitGb,
           trialDays: form.trialDays,
           enabledModules: form.enabledModules,
+          addonModules: form.addons.map((a) => ({
+            module: a.module,
+            monthlyPaise: Math.round(a.monthlyRupees * 100),
+            yearlyPaise: Math.round(a.yearlyRupees * 100),
+          })),
           isActive: form.isActive,
           isPublic: form.isPublic,
           badge: form.badge || null,
@@ -184,7 +182,7 @@ export function PackageEditor({ pkg }: { pkg: Pkg }) {
       <div className="grid grid-cols-3 gap-3 border-t pt-3">
         <NumberField label="Monthly ₹" value={form.monthlyPriceRupees} onChange={(v) => setForm({ ...form, monthlyPriceRupees: v })} />
         <NumberField label="Yearly ₹" value={form.yearlyPriceRupees} onChange={(v) => setForm({ ...form, yearlyPriceRupees: v })} />
-        <NumberField label="Setup ₹" value={form.setupCostRupees} onChange={(v) => setForm({ ...form, setupCostRupees: v })} />
+        <NumberField label="Setup ₹ (one-time / org)" value={form.setupCostRupees} onChange={(v) => setForm({ ...form, setupCostRupees: v })} />
         <NumberField label="Max users" value={form.maxUsers} onChange={(v) => setForm({ ...form, maxUsers: v })} />
         <NumberField label="Max investors" value={form.maxInvestors} onChange={(v) => setForm({ ...form, maxInvestors: v })} />
         <NumberField label="Storage GB" value={form.storageLimitGb} onChange={(v) => setForm({ ...form, storageLimitGb: v })} />
@@ -209,44 +207,11 @@ export function PackageEditor({ pkg }: { pkg: Pkg }) {
         onYearly={(v) => setForm({ ...form, perUserYearlyRupees: v })}
       />
 
-      <div className="border-t pt-3">
-        <div className="flex items-center justify-between mb-2">
-          <div className="text-xs font-medium">
-            Modules enabled ({form.enabledModules.length}/{ALL_MODULES.length})
-          </div>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => toggleAll(true)}
-              className="text-xs underline text-muted-foreground hover:text-foreground"
-            >
-              Enable all
-            </button>
-            <button
-              type="button"
-              onClick={() => toggleAll(false)}
-              className="text-xs underline text-muted-foreground hover:text-foreground"
-            >
-              Disable all
-            </button>
-          </div>
-        </div>
-        <div className="grid grid-cols-3 gap-1.5 max-h-72 overflow-y-auto border rounded p-2 bg-muted/30">
-          {ALL_MODULES.map((m) => (
-            <label
-              key={m}
-              className="flex items-center gap-1.5 text-xs px-1.5 py-1 hover:bg-background rounded cursor-pointer"
-            >
-              <input
-                type="checkbox"
-                checked={form.enabledModules.includes(m)}
-                onChange={() => toggleMod(m)}
-              />
-              <span className="font-mono">{m}</span>
-            </label>
-          ))}
-        </div>
-      </div>
+      <ModuleAccessGrid
+        enabledModules={form.enabledModules}
+        addons={form.addons}
+        onChange={(enabledModules, addons) => setForm((s) => ({ ...s, enabledModules, addons }))}
+      />
 
       {err && <div className="text-sm text-rose-600">{err}</div>}
       {ok && <div className="text-sm text-emerald-700">{ok}</div>}
@@ -287,6 +252,124 @@ function NumberField({
 
 const inr = (n: number) => `₹${Math.round(n).toLocaleString("en-IN")}`;
 
+export type AddonUI = { module: string; monthlyRupees: number; yearlyRupees: number };
+type ModuleState = "off" | "included" | "addon";
+
+/**
+ * Module access grid — every module is in one of three states for a package:
+ *   • Included — free with the package (goes into enabledModules)
+ *   • Add-on   — purchasable on top, carries its own ₹/mo + ₹/yr (goes into addons)
+ *   • Off      — not offered
+ * Shared by the editor and the new-package form.
+ */
+export function ModuleAccessGrid({
+  enabledModules,
+  addons,
+  onChange,
+}: {
+  enabledModules: string[];
+  addons: AddonUI[];
+  onChange: (enabledModules: string[], addons: AddonUI[]) => void;
+}) {
+  const stateOf = (m: string): ModuleState =>
+    enabledModules.includes(m) ? "included" : addons.some((a) => a.module === m) ? "addon" : "off";
+
+  function setState(m: string, next: ModuleState) {
+    const enabled = enabledModules.filter((x) => x !== m);
+    const adds = addons.filter((a) => a.module !== m);
+    if (next === "included") enabled.push(m);
+    if (next === "addon") adds.push({ module: m, monthlyRupees: 0, yearlyRupees: 0 });
+    onChange(enabled, adds);
+  }
+
+  function setPrice(m: string, field: "monthlyRupees" | "yearlyRupees", v: number) {
+    onChange(
+      enabledModules,
+      addons.map((a) => (a.module === m ? { ...a, [field]: v } : a))
+    );
+  }
+
+  function bulk(next: ModuleState) {
+    if (next === "included") onChange([...ALL_MODULES], []);
+    else onChange([], []); // "off"
+  }
+
+  return (
+    <div className="border-t pt-3">
+      <div className="flex items-center justify-between mb-1">
+        <div className="text-xs font-medium">
+          Module access ·{" "}
+          <span className="text-emerald-700">{enabledModules.length} included</span>
+          {addons.length > 0 && <span className="text-amber-700"> · {addons.length} add-on</span>}
+        </div>
+        <div className="flex gap-2">
+          <button type="button" onClick={() => bulk("included")} className="text-xs underline text-muted-foreground hover:text-foreground">
+            Include all
+          </button>
+          <button type="button" onClick={() => bulk("off")} className="text-xs underline text-muted-foreground hover:text-foreground">
+            Turn all off
+          </button>
+        </div>
+      </div>
+      <p className="text-[11px] text-muted-foreground mb-2">
+        <span className="font-medium text-emerald-700">Included</span> = free with the package ·{" "}
+        <span className="font-medium text-amber-700">Add-on</span> = the MFD can buy it for the price you set.
+      </p>
+      <div className="max-h-80 overflow-y-auto border rounded divide-y bg-muted/20">
+        {ALL_MODULES.map((m) => {
+          const st = stateOf(m);
+          const addon = addons.find((a) => a.module === m);
+          return (
+            <div key={m} className="flex items-center gap-2 px-2.5 py-1.5">
+              <span className="font-mono text-xs flex-1 truncate" title={m}>{m}</span>
+              <div className="inline-flex rounded-md border overflow-hidden text-[11px] shrink-0">
+                {(["off", "included", "addon"] as ModuleState[]).map((opt) => (
+                  <button
+                    key={opt}
+                    type="button"
+                    onClick={() => setState(m, opt)}
+                    className={`px-2 py-1 capitalize transition-colors ${
+                      st === opt
+                        ? opt === "included"
+                          ? "bg-emerald-600 text-white"
+                          : opt === "addon"
+                            ? "bg-amber-500 text-white"
+                            : "bg-gray-500 text-white"
+                        : "bg-background hover:bg-muted text-muted-foreground"
+                    }`}
+                  >
+                    {opt === "addon" ? "Add-on" : opt}
+                  </button>
+                ))}
+              </div>
+              {st === "addon" && (
+                <div className="flex items-center gap-1 shrink-0">
+                  <PriceMini placeholder="₹/yr" value={addon?.yearlyRupees ?? 0} onChange={(v) => setPrice(m, "yearlyRupees", v)} />
+                  <PriceMini placeholder="₹/mo" value={addon?.monthlyRupees ?? 0} onChange={(v) => setPrice(m, "monthlyRupees", v)} />
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function PriceMini({ value, onChange, placeholder }: { value: number; onChange: (v: number) => void; placeholder: string }) {
+  return (
+    <input
+      type="number"
+      min={0}
+      value={value || ""}
+      placeholder={placeholder}
+      onChange={(e) => onChange(Number(e.target.value))}
+      className="w-20 border rounded px-1.5 py-1 text-[11px] bg-background tabular-nums"
+      title={placeholder}
+    />
+  );
+}
+
 /**
  * Per-user (per-seat) pricing block — shared by the editor and the new-package
  * form. The two fields define what an MFD pays to add ONE extra staff seat;
@@ -312,8 +395,8 @@ export function PerUserPricing({
     <div className="border-t pt-3">
       <div className="text-xs font-medium mb-1">Per-user pricing (add-on seats)</div>
       <p className="text-[11px] text-muted-foreground mb-2">
-        One-time setup is charged once. When an MFD wants more staff logins, each extra user costs this much —
-        billed per their cycle.
+        Setup is a one-time fee charged once <span className="font-medium">per organisation</span>. When an MFD wants
+        more staff logins, each extra user costs this much — billed per their cycle.
       </p>
       <div className="grid grid-cols-2 gap-3">
         <NumberField label="Per user / year ₹" value={perUserYearlyRupees} onChange={onYearly} />
@@ -328,7 +411,7 @@ export function PerUserPricing({
           <span className="font-medium text-foreground">{seats} users</span> ={" "}
           {inr(seats * perUserYearlyRupees)}/yr <span className="opacity-60">or</span>{" "}
           {inr(seats * perUserMonthlyRupees)}/mo
-          {setupCostRupees > 0 && <> + {inr(setupCostRupees)} one-time setup</>}
+          {setupCostRupees > 0 && <> + {inr(setupCostRupees)} one-time setup (per org)</>}
         </div>
       </div>
     </div>

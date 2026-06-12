@@ -32,6 +32,15 @@ const Body = z.object({
   storageLimitGb: z.number().int().positive().default(5),
   trialDays: z.number().int().nonnegative().default(14),
   enabledModules: z.array(z.enum(ALL_MODULES as any)),
+  addonModules: z
+    .array(
+      z.object({
+        module: z.enum(ALL_MODULES as any),
+        monthlyPaise: z.number().int().nonnegative().default(0),
+        yearlyPaise: z.number().int().nonnegative().default(0),
+      })
+    )
+    .default([]),
   featureFlags: z.record(z.string(), z.any()).optional(),
   isActive: z.boolean().default(true),
   isPublic: z.boolean().default(true),

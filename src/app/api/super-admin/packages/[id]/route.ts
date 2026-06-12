@@ -39,6 +39,15 @@ const PatchBody = z.object({
   storageLimitGb: z.number().int().positive().optional(),
   trialDays: z.number().int().nonnegative().optional(),
   enabledModules: z.array(z.enum(ALL_MODULES as any)).optional(),
+  addonModules: z
+    .array(
+      z.object({
+        module: z.enum(ALL_MODULES as any),
+        monthlyPaise: z.number().int().nonnegative().default(0),
+        yearlyPaise: z.number().int().nonnegative().default(0),
+      })
+    )
+    .optional(),
   featureFlags: z.record(z.string(), z.any()).optional(),
   isActive: z.boolean().optional(),
   isPublic: z.boolean().optional(),
