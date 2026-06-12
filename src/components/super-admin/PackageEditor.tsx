@@ -9,15 +9,10 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Save } from "lucide-react";
-
-const ALL_MODULES = [
-  "crm", "lead_management", "client_master", "family_mapping", "onboarding",
-  "risk_profile", "goal_planning", "transactions", "sip_tracker", "sip_rejection",
-  "review_meetings", "service_requests", "complaints", "ddq", "marketing_campaigns",
-  "content_calendar", "tasks", "employees", "reports", "documents", "cybersecurity",
-  "ai_assistant", "automation_workflows", "broadcasts", "white_label", "audit_log",
-  "sub_distributor",
-];
+// Single source of truth for the module list — keeps the editor in sync with
+// the API's z.enum validation and the MFD-side gating. (Previously a stale
+// hardcoded 27-item copy here dropped `proposals` + `insurance`.)
+import { ALL_MODULES, MODULE_LABELS } from "@/lib/platform";
 
 type Pkg = {
   id: string;
@@ -321,7 +316,10 @@ export function ModuleAccessGrid({
           const addon = addons.find((a) => a.module === m);
           return (
             <div key={m} className="flex items-center gap-2 px-2.5 py-1.5">
-              <span className="font-mono text-xs flex-1 truncate" title={m}>{m}</span>
+              <span className="flex-1 min-w-0" title={m}>
+                <span className="block text-xs font-medium truncate">{MODULE_LABELS[m] ?? m}</span>
+                <span className="block font-mono text-[10px] text-muted-foreground truncate">{m}</span>
+              </span>
               <div className="inline-flex rounded-md border overflow-hidden text-[11px] shrink-0">
                 {(["off", "included", "addon"] as ModuleState[]).map((opt) => (
                   <button
