@@ -16,14 +16,17 @@
  */
 
 import { useState } from "react";
-import { Users, UserPlus, Loader2, Check, X, Layers } from "lucide-react";
+import { Users, UserPlus, Loader2, Check, X, Layers, SlidersHorizontal } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 import { InvestorLookup } from "@/components/common/InvestorLookup";
+import { FilterBuilder } from "@/components/filter/FilterBuilder";
 
 type ExistingSegment = { id: string; name: string; memberCount?: number };
 export type AudienceSelection = { segmentId: string; count: number; label: string };
 
-type Mode = "all_clients" | "all_leads" | "specific" | "existing";
+type Mode = "all_clients" | "all_leads" | "criteria" | "specific" | "existing";
+type FilterGroup = { type: "group"; op: "AND" | "OR"; not?: boolean; children: any[] };
+const EMPTY_GROUP: FilterGroup = { type: "group", op: "AND", children: [] };
 
 export function CampaignAudienceBuilder({
   existingSegments,
@@ -39,10 +42,14 @@ export function CampaignAudienceBuilder({
   const [picked, setPicked] = useState<{ id: string; name: string }[]>([]);
   const [existingId, setExistingId] = useState("");
   const [busy, setBusy] = useState(false);
+  // "By criteria" mode — target Clients or Leads by a filter.
+  const [subject, setSubject] = useState<"investor" | "lead">("investor");
+  const [group, setGroup] = useState<FilterGroup>(EMPTY_GROUP);
 
   const MODES: { key: Mode; label: string; icon: any; hide?: boolean }[] = [
     { key: "all_clients", label: "All clients", icon: Users },
     { key: "all_leads", label: "All leads", icon: Users },
+    { key: "criteria", label: "By criteria", icon: SlidersHorizontal },
     { key: "specific", label: "Specific clients", icon: UserPlus },
     { key: "existing", label: "Existing segment", icon: Layers, hide: existingSegments.length === 0 },
   ];
@@ -60,12 +67,15 @@ export function CampaignAudienceBuilder({
         return;
       }
 
+      const criteriaLabel = `${subject === "lead" ? "Leads" : "Clients"} by criteria`;
       const body =
         mode === "all_clients"
           ? { subjectType: "investor", mode: "all", name: "All clients" }
           : mode === "all_leads"
             ? { subjectType: "lead", mode: "all", name: "All leads" }
-            : { subjectType: "investor", mode: "manual", subjectIds: picked.map((p) => p.id), name: "Selected clients" };
+            : mode === "criteria"
+              ? { subjectType: subject, mode: "filter", ast: group, name: criteriaLabel }
+              : { subjectType: "investor", mode: "manual", subjectIds: picked.map((p) => p.id), name: "Selected clients" };
 
       if (mode === "specific" && picked.length === 0) {
         toast.error("Add at least one client.");
@@ -83,7 +93,10 @@ export function CampaignAudienceBuilder({
         return;
       }
       const label =
-        mode === "all_clients" ? "All clients" : mode === "all_leads" ? "All leads" : `${picked.length} selected client${picked.length === 1 ? "" : "s"}`;
+        mode === "all_clients" ? "All clients"
+        : mode === "all_leads" ? "All leads"
+        : mode === "criteria" ? criteriaLabel
+        : `${picked.length} selected client${picked.length === 1 ? "" : "s"}`;
       onSelect({ segmentId: j.segmentId, count: j.memberCount, label });
       toast.success(`Audience set — ${Number(j.memberCount).toLocaleString("en-IN")} recipient${j.memberCount === 1 ? "" : "s"}.`);
     } catch (e: any) {
@@ -150,6 +163,31 @@ export function CampaignAudienceBuilder({
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {mode === "criteria" && (
+        <div className="space-y-2">
+          <div className="inline-flex rounded-lg border border-border bg-card p-0.5 text-xs font-medium">
+            {([["investor", "Clients"], ["lead", "Leads"]] as const).map(([val, lbl]) => (
+              <button
+                key={val}
+                type="button"
+                onClick={() => {
+                  setSubject(val);
+                  setGroup(EMPTY_GROUP); // conditions reference the subject's fields — reset on switch
+                }}
+                className={`px-3 py-1 rounded-md transition-colors ${subject === val ? "bg-brand-navy text-white" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                {lbl}
+              </button>
+            ))}
+          </div>
+          <FilterBuilder subject={subject} value={group} onChange={setGroup} />
+          <p className="text-[11px] text-muted-foreground">
+            No conditions = everyone in {subject === "lead" ? "Leads" : "Clients"}. Add conditions to narrow it (e.g. segment,
+            city, AUM, stage…).
+          </p>
         </div>
       )}
 

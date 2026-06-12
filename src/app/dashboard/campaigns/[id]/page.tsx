@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { ChevronLeft, Send, MessageCircle, Mail, MessageSquare } from "lucide-react";
 import { withTenant } from "@/db/client";
-import { campaigns, segments, templates } from "@/db/schema";
+import { campaigns, communications, segments, templates } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { isBroadcastCampaign } from "@/lib/campaigns/broadcast";
@@ -36,11 +36,34 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
     const tpl = c.templateId
       ? (await tx.select().from(templates).where(and(eq(templates.id, c.templateId), eq(templates.tenantId, session.tenantId))).limit(1))[0]
       : null;
-    return { c, seg, tpl };
+    // Authoritative per-message funnel — aggregate the campaign's communications
+    // rows by status (status is monotonic, so "delivered"/"opened" must count
+    // anything that progressed past them).
+    const statusRows = await tx
+      .select({ status: communications.status, n: sql<number>`count(*)::int` })
+      .from(communications)
+      .where(and(eq(communications.campaignId, id), eq(communications.tenantId, session.tenantId)))
+      .groupBy(communications.status);
+    return { c, seg, tpl, statusRows };
   });
   if (!data) notFound();
-  const { c, seg, tpl } = data;
+  const { c, seg, tpl, statusRows } = data;
   const Icon = ICONS[c.channel] ?? Send;
+
+  // ── Funnel + rates from the status aggregate ──
+  const sc: Record<string, number> = {};
+  for (const r of statusRows) sc[r.status] = Number(r.n);
+  const g = (s: string) => sc[s] ?? 0;
+  const opened = g("read") + g("replied");
+  const delivered = g("delivered") + opened; // delivered or beyond
+  const bounced = g("bounced");
+  const failed = g("failed");
+  const sent = g("sent") + delivered + bounced; // anything that left our system
+  const skipped = Object.entries(sc)
+    .filter(([k]) => k.startsWith("skipped_"))
+    .reduce((a, [, v]) => a + v, 0);
+  const recipients = c.totalRecipients ?? Object.values(sc).reduce((a, b) => a + b, 0);
+  const pct = (n: number, d: number) => (d > 0 ? `${Math.round((n / d) * 100)}%` : "—");
 
   return (
     <div className="space-y-6 max-w-5xl">
@@ -74,12 +97,14 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
         </div>
       </div>
 
-      <div className="grid grid-cols-5 gap-3">
-        <Stat label="Recipients" value={c.totalRecipients ?? 0} />
-        <Stat label="Sent" value={c.sentCount ?? 0} />
-        <Stat label="Delivered" value={c.deliveredCount ?? 0} tone="emerald" />
-        <Stat label="Read" value={c.readCount ?? 0} tone="blue" />
-        <Stat label="Failed" value={c.failedCount ?? 0} tone={Number(c.failedCount ?? 0) > 0 ? "rose" : "muted"} />
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+        <Stat label="Recipients" value={recipients} />
+        <Stat label="Sent" value={sent} />
+        <Stat label="Delivered" value={delivered} tone="emerald" sub={`${pct(delivered, sent)} of sent`} />
+        <Stat label="Opened" value={opened} tone="blue" sub={`${pct(opened, delivered)} of delivered`} />
+        <Stat label="Bounced" value={bounced} tone={bounced > 0 ? "rose" : "muted"} sub={`${pct(bounced, sent)} of sent`} />
+        <Stat label="Failed" value={failed} tone={failed > 0 ? "rose" : "muted"} />
+        <Stat label="Blocked / Skipped" value={skipped} tone={skipped > 0 ? "amber" : "muted"} sub="no contact / consent" />
       </div>
 
       <div className="grid grid-cols-2 gap-4">
@@ -112,12 +137,13 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
   );
 }
 
-function Stat({ label, value, tone }: { label: string; value: number; tone?: "rose" | "emerald" | "blue" | "muted" }) {
-  const color = { rose: "text-rose-600", emerald: "text-emerald-600", blue: "text-blue-600", muted: "text-foreground" }[tone ?? "muted"];
+function Stat({ label, value, tone, sub }: { label: string; value: number; tone?: "rose" | "emerald" | "blue" | "amber" | "muted"; sub?: string }) {
+  const color = { rose: "text-rose-600", emerald: "text-emerald-600", blue: "text-blue-600", amber: "text-amber-600", muted: "text-foreground" }[tone ?? "muted"];
   return (
     <div className="border rounded-lg p-4 bg-card">
       <div className="text-xs text-muted-foreground">{label}</div>
-      <div className={`text-2xl font-bold mt-1 ${color}`}>{value}</div>
+      <div className={`text-2xl font-bold mt-1 ${color}`}>{value.toLocaleString("en-IN")}</div>
+      {sub && <div className="text-[10px] text-muted-foreground mt-0.5">{sub}</div>}
     </div>
   );
 }
