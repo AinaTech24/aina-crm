@@ -114,7 +114,19 @@ export async function middleware(req: NextRequest) {
   const onAdminSurface = isAdminSurface(pathname);
   const cookieName = sessionCookieForPath(pathname);
   const token = req.cookies.get(cookieName)?.value;
-  const session = token ? await verifySession(token) : null;
+  let session = token ? await verifySession(token) : null;
+
+  // Dual-auth API routes: the shared AINA content library is READ by MFD users
+  // (mfd_session) but WRITTEN by AINA platform admins (aina_session). If the
+  // path's primary cookie has no valid session, fall back to the other cookie so
+  // a platform admin can upload/save — the route handler still does the actual
+  // capability check (isPlatformAdmin || template.edit).
+  if (!session && pathname.startsWith("/api/content-library")) {
+    const altToken = req.cookies.get(
+      cookieName === ADMIN_SESSION_COOKIE ? SESSION_COOKIE : ADMIN_SESSION_COOKIE
+    )?.value;
+    session = altToken ? await verifySession(altToken) : null;
+  }
 
   if (!session) {
     if (pathname.startsWith("/api/")) {
