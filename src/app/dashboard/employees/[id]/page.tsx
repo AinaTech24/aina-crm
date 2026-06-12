@@ -207,6 +207,7 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
         tenantNavKeys={tenantAccessibleNavKeys({
           allowedNav: license.allowedNav,
           enabledModules: license.enabledModules,
+          enabledFeatures: license.enabledFeatures,
         })}
         teammates={teammates.filter((t) => t.id !== id)}
         docs={data.docs}

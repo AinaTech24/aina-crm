@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
-import { PerUserPricing, ModuleAccessGrid, type AddonUI } from "@/components/super-admin/PackageEditor";
+import { PerUserPricing, FeatureAccessGrid, type AddonFeatureUI } from "@/components/super-admin/PackageEditor";
 
 export default function NewPackagePage() {
   const router = useRouter();
@@ -22,7 +22,8 @@ export default function NewPackagePage() {
     storageLimitGb: 5,
     trialDays: 14,
     enabledModules: [] as string[],
-    addons: [] as AddonUI[],
+    enabledFeatures: [] as string[],
+    addonFeatures: [] as AddonFeatureUI[],
     isActive: true,
     isPublic: true,
     badge: "",
@@ -45,8 +46,9 @@ export default function NewPackagePage() {
           setupCostPaise: Math.round(form.setupCostRupees * 100),
           perUserMonthlyPaise: Math.round(form.perUserMonthlyRupees * 100),
           perUserYearlyPaise: Math.round(form.perUserYearlyRupees * 100),
-          addonModules: form.addons.map((a) => ({
-            module: a.module,
+          enabledFeatures: form.enabledFeatures,
+          addonFeatures: form.addonFeatures.map((a) => ({
+            key: a.key,
             monthlyPaise: Math.round(a.monthlyRupees * 100),
             yearlyPaise: Math.round(a.yearlyRupees * 100),
           })),
@@ -117,10 +119,10 @@ export default function NewPackagePage() {
           onYearly={(v) => setForm({ ...form, perUserYearlyRupees: v })}
         />
 
-        <ModuleAccessGrid
-          enabledModules={form.enabledModules}
-          addons={form.addons}
-          onChange={(enabledModules, addons) => setForm({ ...form, enabledModules, addons })}
+        <FeatureAccessGrid
+          enabledFeatures={form.enabledFeatures}
+          addons={form.addonFeatures}
+          onChange={(enabledFeatures, addonFeatures) => setForm({ ...form, enabledFeatures, addonFeatures })}
         />
 
         {err && <div className="text-sm text-rose-600">{err}</div>}

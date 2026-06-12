@@ -21,6 +21,8 @@ export type LicenseState = {
   status: "trial" | "active" | "past_due" | "suspended" | "expired" | "cancelled" | "no_subscription";
   packageKey: string | null;
   enabledModules: string[];
+  /** Package GRANULAR feature grant (nav hrefs). null/[] = use coarse modules. */
+  enabledFeatures: string[] | null;
   allowedFields: string[] | null;
   /** Admin → MFD sidebar nav grant (hrefs). null = package-module default. */
   allowedNav: string[] | null;
@@ -53,6 +55,7 @@ async function loadTenantLicenseImpl(tenantId: string, roles?: string[]): Promis
       status: "active",
       packageKey: "platform_admin",
       enabledModules: [],
+      enabledFeatures: null,
       allowedFields: null,
       allowedNav: null,
       allowedDashboardWidgets: null,
@@ -82,6 +85,7 @@ async function loadTenantLicenseImpl(tenantId: string, roles?: string[]): Promis
       status: "no_subscription",
       packageKey: null,
       enabledModules: [],
+      enabledFeatures: null,
       allowedFields: null,
       allowedNav: null,
       allowedDashboardWidgets: null,
@@ -112,6 +116,10 @@ async function loadTenantLicenseImpl(tenantId: string, roles?: string[]): Promis
   const enabledModules = sub.modulesOverride
     ? (sub.modulesOverride as string[])
     : ((pkg?.enabledModules as string[]) ?? []);
+  // Granular per-feature grant — only when the package was saved in the new
+  // all-features editor (non-empty). Null otherwise so coarse modules apply.
+  const pkgFeatures = (pkg?.enabledFeatures as string[] | undefined) ?? [];
+  const enabledFeatures = pkgFeatures.length > 0 ? pkgFeatures : null;
   const allowedFields = (sub.allowedFields as string[]) ?? null;
   const allowedNav = (sub.allowedNav as string[]) ?? null;
   const allowedDashboardWidgets = (sub.allowedDashboardWidgets as string[]) ?? null;
@@ -120,6 +128,7 @@ async function loadTenantLicenseImpl(tenantId: string, roles?: string[]): Promis
     status: effectiveStatus as LicenseState["status"],
     packageKey: sub.packageKey,
     enabledModules,
+    enabledFeatures,
     allowedFields,
     allowedNav,
     allowedDashboardWidgets,

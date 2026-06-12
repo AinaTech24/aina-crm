@@ -15,6 +15,14 @@ import { requireSession } from "@/lib/auth/session";
 import { requirePlatform } from "@/lib/auth/rbac";
 import { packages } from "@/db/schema";
 import { ALL_MODULES } from "@/lib/platform";
+import { isGatableNav, coarseModulesFromFeatures } from "@/config/nav-access";
+
+/** Granular per-feature access fields (shared POST/PATCH shape). */
+const AddonFeature = z.object({
+  key: z.string(),
+  monthlyPaise: z.number().int().nonnegative().default(0),
+  yearlyPaise: z.number().int().nonnegative().default(0),
+});
 
 export const dynamic = "force-dynamic";
 
@@ -41,6 +49,9 @@ const Body = z.object({
       })
     )
     .default([]),
+  /** Granular per-feature access (nav keys) + per-feature add-on pricing. */
+  enabledFeatures: z.array(z.string()).default([]),
+  addonFeatures: z.array(AddonFeature).default([]),
   featureFlags: z.record(z.string(), z.any()).optional(),
   isActive: z.boolean().default(true),
   isPublic: z.boolean().default(true),
@@ -70,10 +81,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "invalid body", issues: parse.error.issues }, { status: 400 });
     }
     const id = uuid();
+    // Drop unknown nav keys; when granular features are set, derive the coarse
+    // enabled_modules from them so hasModule() feature checks stay correct.
+    const enabledFeatures = parse.data.enabledFeatures.filter(isGatableNav);
+    const addonFeatures = parse.data.addonFeatures.filter((a) => isGatableNav(a.key));
+    const enabledModules =
+      enabledFeatures.length > 0 ? coarseModulesFromFeatures(enabledFeatures) : parse.data.enabledModules;
+
     await withPlatformAdmin(session.userId, async (tx) => {
       await tx.insert(packages).values({
         id,
         ...parse.data,
+        enabledFeatures,
+        addonFeatures,
+        enabledModules,
       } as any);
     });
     return NextResponse.json({ id }, { status: 201 });

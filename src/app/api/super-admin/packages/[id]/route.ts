@@ -21,6 +21,7 @@ import { requireSession } from "@/lib/auth/session";
 import { requirePlatform } from "@/lib/auth/rbac";
 import { packages, subscriptions } from "@/db/schema";
 import { ALL_MODULES } from "@/lib/platform";
+import { isGatableNav, coarseModulesFromFeatures } from "@/config/nav-access";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { PLATFORM_TENANT_ID } from "@/lib/platform";
 
@@ -43,6 +44,16 @@ const PatchBody = z.object({
     .array(
       z.object({
         module: z.enum(ALL_MODULES as any),
+        monthlyPaise: z.number().int().nonnegative().default(0),
+        yearlyPaise: z.number().int().nonnegative().default(0),
+      })
+    )
+    .optional(),
+  enabledFeatures: z.array(z.string()).optional(),
+  addonFeatures: z
+    .array(
+      z.object({
+        key: z.string(),
         monthlyPaise: z.number().int().nonnegative().default(0),
         yearlyPaise: z.number().int().nonnegative().default(0),
       })
@@ -83,6 +94,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const patch = parse.data;
     if (Object.keys(patch).length === 0) {
       return NextResponse.json({ error: "nothing to update" }, { status: 400 });
+    }
+
+    // Granular features: drop unknown nav keys and, when a feature set is given,
+    // keep the coarse enabled_modules in sync (hasModule() reads it).
+    if (patch.enabledFeatures !== undefined) {
+      patch.enabledFeatures = patch.enabledFeatures.filter(isGatableNav);
+      if (patch.enabledFeatures.length > 0) {
+        patch.enabledModules = coarseModulesFromFeatures(patch.enabledFeatures) as any;
+      }
+    }
+    if (patch.addonFeatures !== undefined) {
+      patch.addonFeatures = patch.addonFeatures.filter((a) => isGatableNav(a.key));
     }
 
     const clientMeta = clientMetaFromHeaders(req.headers);

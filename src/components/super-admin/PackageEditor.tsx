@@ -9,10 +9,11 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Save } from "lucide-react";
-// Single source of truth for the module list — keeps the editor in sync with
-// the API's z.enum validation and the MFD-side gating. (Previously a stale
-// hardcoded 27-item copy here dropped `proposals` + `insurance`.)
-import { ALL_MODULES, MODULE_LABELS } from "@/lib/platform";
+// Granular per-feature access: the package editor lists every sidebar feature
+// (grouped like the sidebar) from the single nav-access catalog, so AINA can
+// set each Off / Included / Add-on individually. defaultFeaturesForModules
+// pre-fills the grid for a legacy package from its old coarse module set.
+import { NAV_ACCESS_GROUPS, defaultFeaturesForModules } from "@/config/nav-access";
 
 type Pkg = {
   id: string;
@@ -30,6 +31,8 @@ type Pkg = {
   trialDays: number;
   enabledModules: string[];
   addonModules: Array<{ module: string; monthlyPaise: number; yearlyPaise: number }>;
+  enabledFeatures: string[];
+  addonFeatures: Array<{ key: string; monthlyPaise: number; yearlyPaise: number }>;
   isActive: boolean;
   isPublic: boolean;
   badge: string | null;
@@ -50,9 +53,12 @@ export function PackageEditor({ pkg }: { pkg: Pkg }) {
     maxInvestors: pkg.maxInvestors,
     storageLimitGb: pkg.storageLimitGb,
     trialDays: pkg.trialDays,
-    enabledModules: pkg.enabledModules ?? [],
-    addons: (pkg.addonModules ?? []).map((a) => ({
-      module: a.module,
+    enabledFeatures:
+      pkg.enabledFeatures && pkg.enabledFeatures.length > 0
+        ? pkg.enabledFeatures
+        : defaultFeaturesForModules(pkg.enabledModules ?? []),
+    addonFeatures: (pkg.addonFeatures ?? []).map((a) => ({
+      key: a.key,
       monthlyRupees: a.monthlyPaise / 100,
       yearlyRupees: a.yearlyPaise / 100,
     })),
@@ -85,9 +91,9 @@ export function PackageEditor({ pkg }: { pkg: Pkg }) {
           maxInvestors: form.maxInvestors,
           storageLimitGb: form.storageLimitGb,
           trialDays: form.trialDays,
-          enabledModules: form.enabledModules,
-          addonModules: form.addons.map((a) => ({
-            module: a.module,
+          enabledFeatures: form.enabledFeatures,
+          addonFeatures: form.addonFeatures.map((a) => ({
+            key: a.key,
             monthlyPaise: Math.round(a.monthlyRupees * 100),
             yearlyPaise: Math.round(a.yearlyRupees * 100),
           })),
@@ -202,10 +208,10 @@ export function PackageEditor({ pkg }: { pkg: Pkg }) {
         onYearly={(v) => setForm({ ...form, perUserYearlyRupees: v })}
       />
 
-      <ModuleAccessGrid
-        enabledModules={form.enabledModules}
-        addons={form.addons}
-        onChange={(enabledModules, addons) => setForm((s) => ({ ...s, enabledModules, addons }))}
+      <FeatureAccessGrid
+        enabledFeatures={form.enabledFeatures}
+        addons={form.addonFeatures}
+        onChange={(enabledFeatures, addonFeatures) => setForm((s) => ({ ...s, enabledFeatures, addonFeatures }))}
       />
 
       {err && <div className="text-sm text-rose-600">{err}</div>}
@@ -247,55 +253,59 @@ function NumberField({
 
 const inr = (n: number) => `₹${Math.round(n).toLocaleString("en-IN")}`;
 
-export type AddonUI = { module: string; monthlyRupees: number; yearlyRupees: number };
-type ModuleState = "off" | "included" | "addon";
+export type AddonFeatureUI = { key: string; monthlyRupees: number; yearlyRupees: number };
+type FeatureState = "off" | "included" | "addon";
+
+const ALL_FEATURE_KEYS = NAV_ACCESS_GROUPS.flatMap((g) => g.items.map((i) => i.key));
 
 /**
- * Module access grid — every module is in one of three states for a package:
- *   • Included — free with the package (goes into enabledModules)
- *   • Add-on   — purchasable on top, carries its own ₹/mo + ₹/yr (goes into addons)
- *   • Off      — not offered
- * Shared by the editor and the new-package form.
+ * Feature access grid — every sidebar feature (~65, grouped like the sidebar)
+ * is in one of three states for a package:
+ *   • Included — free with the package (goes into enabledFeatures)
+ *   • Add-on   — purchasable on top, carries its own ₹/mo + ₹/yr (addonFeatures)
+ *   • Off      — not offered (hidden from the firm's sidebar)
+ * Shared by the editor and the new-package form. Keyed by nav href.
  */
-export function ModuleAccessGrid({
-  enabledModules,
+export function FeatureAccessGrid({
+  enabledFeatures,
   addons,
   onChange,
 }: {
-  enabledModules: string[];
-  addons: AddonUI[];
-  onChange: (enabledModules: string[], addons: AddonUI[]) => void;
+  enabledFeatures: string[];
+  addons: AddonFeatureUI[];
+  onChange: (enabledFeatures: string[], addons: AddonFeatureUI[]) => void;
 }) {
-  const stateOf = (m: string): ModuleState =>
-    enabledModules.includes(m) ? "included" : addons.some((a) => a.module === m) ? "addon" : "off";
+  const stateOf = (k: string): FeatureState =>
+    enabledFeatures.includes(k) ? "included" : addons.some((a) => a.key === k) ? "addon" : "off";
 
-  function setState(m: string, next: ModuleState) {
-    const enabled = enabledModules.filter((x) => x !== m);
-    const adds = addons.filter((a) => a.module !== m);
-    if (next === "included") enabled.push(m);
-    if (next === "addon") adds.push({ module: m, monthlyRupees: 0, yearlyRupees: 0 });
+  function setState(k: string, next: FeatureState) {
+    const enabled = enabledFeatures.filter((x) => x !== k);
+    const adds = addons.filter((a) => a.key !== k);
+    if (next === "included") enabled.push(k);
+    if (next === "addon") adds.push({ key: k, monthlyRupees: 0, yearlyRupees: 0 });
     onChange(enabled, adds);
   }
 
-  function setPrice(m: string, field: "monthlyRupees" | "yearlyRupees", v: number) {
+  function setPrice(k: string, field: "monthlyRupees" | "yearlyRupees", v: number) {
     onChange(
-      enabledModules,
-      addons.map((a) => (a.module === m ? { ...a, [field]: v } : a))
+      enabledFeatures,
+      addons.map((a) => (a.key === k ? { ...a, [field]: v } : a))
     );
   }
 
-  function bulk(next: ModuleState) {
-    if (next === "included") onChange([...ALL_MODULES], []);
-    else onChange([], []); // "off"
+  function bulk(next: "included" | "off") {
+    if (next === "included") onChange([...ALL_FEATURE_KEYS], []);
+    else onChange([], []);
   }
 
   return (
     <div className="border-t pt-3">
       <div className="flex items-center justify-between mb-1">
         <div className="text-xs font-medium">
-          Module access ·{" "}
-          <span className="text-emerald-700">{enabledModules.length} included</span>
+          Feature access ·{" "}
+          <span className="text-emerald-700">{enabledFeatures.length} included</span>
           {addons.length > 0 && <span className="text-amber-700"> · {addons.length} add-on</span>}
+          <span className="text-muted-foreground"> · {ALL_FEATURE_KEYS.length} total</span>
         </div>
         <div className="flex gap-2">
           <button type="button" onClick={() => bulk("included")} className="text-xs underline text-muted-foreground hover:text-foreground">
@@ -308,47 +318,56 @@ export function ModuleAccessGrid({
       </div>
       <p className="text-[11px] text-muted-foreground mb-2">
         <span className="font-medium text-emerald-700">Included</span> = free with the package ·{" "}
-        <span className="font-medium text-amber-700">Add-on</span> = the MFD can buy it for the price you set.
+        <span className="font-medium text-amber-700">Add-on</span> = the MFD can buy it for the price you set ·{" "}
+        <span className="font-medium">Off</span> = hidden from this firm.
       </p>
-      <div className="max-h-80 overflow-y-auto border rounded divide-y bg-muted/20">
-        {ALL_MODULES.map((m) => {
-          const st = stateOf(m);
-          const addon = addons.find((a) => a.module === m);
-          return (
-            <div key={m} className="flex items-center gap-2 px-2.5 py-1.5">
-              <span className="flex-1 min-w-0" title={m}>
-                <span className="block text-xs font-medium truncate">{MODULE_LABELS[m] ?? m}</span>
-                <span className="block font-mono text-[10px] text-muted-foreground truncate">{m}</span>
-              </span>
-              <div className="inline-flex rounded-md border overflow-hidden text-[11px] shrink-0">
-                {(["off", "included", "addon"] as ModuleState[]).map((opt) => (
-                  <button
-                    key={opt}
-                    type="button"
-                    onClick={() => setState(m, opt)}
-                    className={`px-2 py-1 capitalize transition-colors ${
-                      st === opt
-                        ? opt === "included"
-                          ? "bg-emerald-600 text-white"
-                          : opt === "addon"
-                            ? "bg-amber-500 text-white"
-                            : "bg-gray-500 text-white"
-                        : "bg-background hover:bg-muted text-muted-foreground"
-                    }`}
-                  >
-                    {opt === "addon" ? "Add-on" : opt}
-                  </button>
-                ))}
-              </div>
-              {st === "addon" && (
-                <div className="flex items-center gap-1 shrink-0">
-                  <PriceMini placeholder="₹/yr" value={addon?.yearlyRupees ?? 0} onChange={(v) => setPrice(m, "yearlyRupees", v)} />
-                  <PriceMini placeholder="₹/mo" value={addon?.monthlyRupees ?? 0} onChange={(v) => setPrice(m, "monthlyRupees", v)} />
-                </div>
-              )}
+      <div className="max-h-96 overflow-y-auto border rounded bg-muted/20">
+        {NAV_ACCESS_GROUPS.map((group) => (
+          <div key={group.title}>
+            <div className="sticky top-0 z-10 bg-secondary/90 backdrop-blur px-3 py-1 text-[10px] font-bold uppercase tracking-wide text-muted-foreground border-y">
+              {group.title}
             </div>
-          );
-        })}
+            <div className="divide-y">
+              {group.items.map((item) => {
+                const st = stateOf(item.key);
+                const addon = addons.find((a) => a.key === item.key);
+                return (
+                  <div key={item.key} className="flex items-center gap-2 px-2.5 py-1.5">
+                    <span className="flex-1 min-w-0" title={item.key}>
+                      <span className="block text-xs font-medium truncate">{item.label}</span>
+                    </span>
+                    <div className="inline-flex rounded-md border overflow-hidden text-[11px] shrink-0">
+                      {(["off", "included", "addon"] as FeatureState[]).map((opt) => (
+                        <button
+                          key={opt}
+                          type="button"
+                          onClick={() => setState(item.key, opt)}
+                          className={`px-2 py-1 capitalize transition-colors ${
+                            st === opt
+                              ? opt === "included"
+                                ? "bg-emerald-600 text-white"
+                                : opt === "addon"
+                                  ? "bg-amber-500 text-white"
+                                  : "bg-gray-500 text-white"
+                              : "bg-background hover:bg-muted text-muted-foreground"
+                          }`}
+                        >
+                          {opt === "addon" ? "Add-on" : opt}
+                        </button>
+                      ))}
+                    </div>
+                    {st === "addon" && (
+                      <div className="flex items-center gap-1 shrink-0">
+                        <PriceMini placeholder="₹/yr" value={addon?.yearlyRupees ?? 0} onChange={(v) => setPrice(item.key, "yearlyRupees", v)} />
+                        <PriceMini placeholder="₹/mo" value={addon?.monthlyRupees ?? 0} onChange={(v) => setPrice(item.key, "monthlyRupees", v)} />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );

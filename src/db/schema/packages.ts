@@ -62,6 +62,20 @@ export const packages = pgTable(
       .notNull()
       .default([]),
 
+    /**
+     * GRANULAR per-feature access — keyed by sidebar-feature key (nav href, see
+     * src/config/nav-access.ts). When non-empty, this is the source of truth for
+     * what the package unlocks (takes precedence over the coarse enabled_modules
+     * in nav gating). Empty = legacy package, coarse modules apply.
+     */
+    enabledFeatures: jsonb("enabled_features").$type<string[]>().notNull().default([]),
+
+    /** Features offered as a PAID ADD-ON, each with its own recurring price. */
+    addonFeatures: jsonb("addon_features")
+      .$type<Array<{ key: string; monthlyPaise: number; yearlyPaise: number }>>()
+      .notNull()
+      .default([]),
+
     /** Feature flags within enabled modules (e.g. ai_tier: 'tier1' | 'tier2' | 'tier3') */
     featureFlags: jsonb("feature_flags").$type<Record<string, any>>().default({}),
 

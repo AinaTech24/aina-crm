@@ -274,7 +274,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // Admin → MFD sidebar access: the exact set of nav hrefs the firm can open
   // (the platform admin's explicit grant, else the package-module default).
   const tenantAllowedSet = new Set(
-    tenantAccessibleNavKeys({ allowedNav: license.allowedNav, enabledModules: license.enabledModules })
+    tenantAccessibleNavKeys({
+      allowedNav: license.allowedNav,
+      enabledModules: license.enabledModules,
+      enabledFeatures: license.enabledFeatures,
+    })
   );
 
   // Read the current path from the middleware-set header so we can carve out

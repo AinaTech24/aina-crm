@@ -142,19 +142,56 @@ export function areKnownNavKeys(keys: string[] | null | undefined): boolean {
 }
 
 /**
- * The sidebar hrefs a TENANT can access:
- *   - explicit admin grant (subscriptions.allowed_nav) when set, else
- *   - the package-module default: items with no module, or whose module the
- *     tenant's package enables (matches the legacy `i.module` sidebar gate).
+ * The sidebar hrefs a TENANT can access. Resolution order (first that applies):
+ *   1. explicit admin grant — subscriptions.allowed_nav
+ *   2. package GRANULAR feature set — packages.enabled_features (per-feature
+ *      Off/Included chosen in the AINA package editor)
+ *   3. package COARSE module default (legacy) — items with no module, or whose
+ *      module the package enables (the original `i.module` sidebar gate)
+ *
+ * Granular takes precedence over coarse so a package edited in the new
+ * all-65-features editor controls the sidebar exactly; packages never touched
+ * since the granular rollout keep their existing coarse behaviour unchanged.
  */
 export function tenantAccessibleNavKeys(opts: {
   allowedNav: string[] | null;
   enabledModules: string[];
+  enabledFeatures?: string[] | null;
 }): string[] {
   if (opts.allowedNav) return opts.allowedNav.filter((k) => NAV_KEY_SET.has(k));
+  if (opts.enabledFeatures && opts.enabledFeatures.length > 0) {
+    return opts.enabledFeatures.filter((k) => NAV_KEY_SET.has(k));
+  }
   const modSet = new Set(opts.enabledModules);
   const noGating = modSet.size === 0; // demo/dev with no package = allow all
   return ALL_NAV_ITEMS.filter((i) => !i.module || noGating || modSet.has(i.module)).map((i) => i.key);
+}
+
+/**
+ * The granular included-feature list equivalent to a coarse `enabledModules`
+ * set — every always-on item (no module) plus every item whose module is
+ * enabled. Used to PRE-FILL the granular editor for a legacy package and as the
+ * gating fallback. Mirrors the coarse branch of `tenantAccessibleNavKeys`.
+ */
+export function defaultFeaturesForModules(enabledModules: string[]): string[] {
+  const modSet = new Set(enabledModules);
+  const noGating = modSet.size === 0;
+  return ALL_NAV_ITEMS.filter((i) => !i.module || noGating || modSet.has(i.module)).map((i) => i.key);
+}
+
+/**
+ * Derive the coarse module set implied by a granular feature list — a module
+ * is "on" if at least one of its features is included. Lets us keep
+ * packages.enabled_modules (consumed by hasModule() feature checks) in sync
+ * when a package is saved granularly.
+ */
+export function coarseModulesFromFeatures(features: string[]): string[] {
+  const keySet = new Set(features);
+  const mods = new Set<string>();
+  for (const item of ALL_NAV_ITEMS) {
+    if (item.module && keySet.has(item.key)) mods.add(item.module);
+  }
+  return [...mods];
 }
 
 /**

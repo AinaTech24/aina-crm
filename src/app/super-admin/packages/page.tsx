@@ -87,9 +87,20 @@ export default async function PackagesPage() {
                 <Row label="Max investors" value={String(p.maxInvestors)} />
                 <Row label="Storage" value={`${p.storageLimitGb} GB`} />
                 <Row label="Trial" value={`${p.trialDays} days`} />
-                <Row label="Modules included" value={`${(p.enabledModules ?? []).length} of all`} />
-                {((p.addonModules as any[]) ?? []).length > 0 && (
-                  <Row label="Add-on modules" value={String((p.addonModules as any[]).length)} />
+                {((p.enabledFeatures as any[]) ?? []).length > 0 ? (
+                  <>
+                    <Row label="Features included" value={String((p.enabledFeatures as any[]).length)} />
+                    {((p.addonFeatures as any[]) ?? []).length > 0 && (
+                      <Row label="Add-on features" value={String((p.addonFeatures as any[]).length)} />
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <Row label="Modules included" value={`${(p.enabledModules ?? []).length} of all`} />
+                    {((p.addonModules as any[]) ?? []).length > 0 && (
+                      <Row label="Add-on modules" value={String((p.addonModules as any[]).length)} />
+                    )}
+                  </>
                 )}
               </div>
               <div className="mt-auto pt-3 border-t text-xs text-primary">Edit →</div>
