@@ -83,15 +83,15 @@ export function TestRulePanel({ ruleId }: { ruleId: string }) {
   return (
     <div className="card-surface p-4 space-y-3">
       <h3 className="font-semibold flex items-center gap-2 text-sm">
-        <FlaskConical className="size-4 text-brand-cyan" /> Test this rule
-        <span className="text-[10px] font-normal text-muted-foreground">Dry run = preview · Run live = actually send</span>
+        <FlaskConical className="size-4 text-brand-cyan" /> Run this rule
+        <span className="text-[10px] font-normal text-muted-foreground">executes the rule&rsquo;s instant actions for the chosen record</span>
       </h3>
 
       <div className="flex items-center gap-2 flex-wrap">
         <SelectField
           value={subjectId}
           onChange={(e) => setSubjectId(e.target.value)}
-          className="text-sm min-w-[260px] flex-1"
+          className="text-sm w-full sm:w-72"
           disabled={loadingRecords || records.length === 0}
         >
           {records.length === 0 ? (
@@ -106,20 +106,12 @@ export function TestRulePanel({ ruleId }: { ruleId: string }) {
         </SelectField>
         <button
           type="button"
-          onClick={() => runTest(false)}
-          disabled={busy || !subjectId}
-          className="btn-secondary text-xs disabled:opacity-50"
-        >
-          {busy ? <Loader2 className="size-3.5 animate-spin" /> : <FlaskConical className="size-3.5" />} Dry run
-        </button>
-        <button
-          type="button"
           onClick={() => runTest(true)}
           disabled={busy || !subjectId}
           className="btn-primary text-xs disabled:opacity-50"
           title="Actually execute the rule's instant actions (sends the email for real)"
         >
-          <Send className="size-3.5" /> Run live (send)
+          {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />} Run live (send)
         </button>
       </div>
 

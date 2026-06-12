@@ -59,6 +59,11 @@ const PUBLIC_API_PREFIXES = [
   "/api/health",
   "/api/auth/",
   "/api/employees/accept-invite",
+  // File reads — the route fail-closes itself (only public asset classes like
+  // tenant logos / marketing serve without auth; private docs still require a
+  // same-tenant session). Whitelisting lets email clients load the firm logo
+  // (no session) instead of being bounced to /login → broken <img>.
+  "/api/upload-local/",
 ];
 
 export async function middleware(req: NextRequest) {
