@@ -16,10 +16,13 @@
     "check:rls": "node scripts/check-rls.mjs",
     "check:migrations": "node scripts/check-migration-dups.mjs",
     "check:colors": "node scripts/check-hardcoded-colors.mjs",
+    "check:asany": "node scripts/check-as-any.mjs",
+    "check:mathimports": "node scripts/check-math-imports.mjs",
+    "test:unit": "vitest run",
     "check:calc": "tsx scripts/check-calc-math.ts",
     "check:finance": "tsx scripts/check-finance-math.ts",
     "check:spine": "tsx scripts/check-spine.ts",
-    "test": "tsx scripts/check-finance-math.ts && tsx scripts/check-calc-math.ts && tsx scripts/check-spine.ts && node scripts/check-migration-dups.mjs",
+    "test": "tsx scripts/check-finance-math.ts && tsx scripts/check-calc-math.ts && tsx scripts/check-spine.ts && node scripts/check-migration-dups.mjs && vitest run",
     "db:provision-app-role": "node scripts/provision-app-role.mjs",
     "migrate:all": "tsx scripts/migrate-all.ts",
     "db:generate": "drizzle-kit generate",
@@ -114,7 +117,8 @@
     "postcss": "^8.0.0",
     "tailwindcss": "^3.4.0",
     "tsx": "^4.0.0",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "vitest": "^4.1.8"
   },
   "engines": {
     "node": ">=20"

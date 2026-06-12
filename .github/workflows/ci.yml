@@ -26,6 +26,10 @@ jobs:
         run: npm run check:calc
       - name: Hardcoded-color ratchet (shared components stay themeable)
         run: npm run check:colors
+      - name: as-any ratchet (type-safety doesn't regress)
+        run: npm run check:asany
+      - name: Math-convention import guard (no file mixes nominal + effective)
+        run: npm run check:mathimports
       - name: Unit tests (money math + central spine)
         run: npm test
 

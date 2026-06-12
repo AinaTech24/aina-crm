@@ -12,7 +12,6 @@
 
 import { Resend } from "resend";
 import nodemailer from "nodemailer";
-import { renderEmailTemplate } from "../email_renderer";
 import { describeMailError } from "../connection-error";
 import type { TemplateVersion } from "@/db/schema";
 
@@ -75,10 +74,13 @@ export const emailAdapter = {
 
     const from = args.fromNameOverride ? `${args.fromNameOverride} <${baseFrom}>` : baseFrom;
 
+    // Lazy import: the renderer is a .tsx module (React Email JSX) — loading it
+    // only on the template path keeps this adapter importable from plain-TS
+    // contexts (unit tests, scripts) without a JSX transform.
     const html =
       args.inlineHtml ??
       (args.templateVersion
-        ? renderEmailTemplate(args.templateVersion.body as any, args.tokens)
+        ? (await import("../email_renderer")).renderEmailTemplate(args.templateVersion.body as any, args.tokens)
         : `<p>${args.rendered.text.replace(/\n/g, "<br/>")}</p>`);
 
     // Template-level attachments (factsheet, KYC form, …) — Resend fetches by URL.

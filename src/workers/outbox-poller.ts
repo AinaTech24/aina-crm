@@ -164,7 +164,9 @@ async function processEvent(event: any) {
       triggerId: trig.id,
       subjectType: cfg.subjectType ?? event.entity_type,
       subjectId: cfg.subjectIdFrom === "event.entity_id" ? event.entity_id : event.entity_id,
-      contextSnapshot: { before: event.before, after: event.after, meta: event.meta, kind: event.kind },
+      // correlationId = the outbox event id — lets one client journey be traced
+      // across outbox → run → steps → comms in logs and captureError alerts.
+      contextSnapshot: { before: event.before, after: event.after, meta: event.meta, kind: event.kind, correlationId: event.id },
       event: event,
     });
   }
