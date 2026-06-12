@@ -1,6 +1,8 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { ChevronLeft, Webhook, Check, AlertCircle, ExternalLink } from "lucide-react";
 import WainaConnectCard from "./WainaConnectCard";
+import { ZohoIntegrationCard } from "@/components/integrations/ZohoIntegrationCard";
 
 const INTEGRATIONS = [
   {
@@ -58,6 +60,11 @@ export default function IntegrationsPage() {
 
       {/* Self-serve: the firm connects its own WhatsApp sender once. */}
       <WainaConnectCard />
+
+      {/* Self-serve: connect the firm's Zoho CRM (one-way record sync). */}
+      <Suspense fallback={null}>
+        <ZohoIntegrationCard />
+      </Suspense>
 
       <div className="grid grid-cols-1 gap-3">
         {INTEGRATIONS.map((i) => {

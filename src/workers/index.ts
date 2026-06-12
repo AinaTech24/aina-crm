@@ -19,6 +19,7 @@ import { startReportSchedulerWorker } from "./report-scheduler";
 import { startWapiTemplateSyncWorker } from "./wapi-template-sync";
 import { startCampaignDispatcherWorker } from "./campaign-dispatcher";
 import { startImapPollerWorker } from "./imap-poller";
+import { startZohoSyncWorker } from "./zoho-sync";
 import { runDailyOpsScan } from "./daily-ops-scanner";
 import { runMonthlyComplianceSweep } from "./monthly-compliance-seeder";
 import { runReconciliationScan } from "./reconciliation-scanner";
@@ -31,7 +32,7 @@ import { syncMfSchemeCatalog, enrichMfSchemes } from "@/lib/finance/mfapi";
 import { getLastRun, recordRun } from "./scheduler-state";
 import { captureError } from "@/lib/observability/capture";
 
-const groups = (process.env.WORKER_GROUPS ?? "outbox,wf,seg,sched,wa_sync,mail,ops,monthly,nav,recon,market,feed,statements")
+const groups = (process.env.WORKER_GROUPS ?? "outbox,wf,seg,sched,wa_sync,mail,ops,monthly,nav,recon,market,feed,statements,zoho")
   .split(",")
   .map((s) => s.trim());
 // 'sched' covers the scheduled-comms drain too (kept with the other schedulers).
@@ -112,6 +113,7 @@ if (groups.includes("sched")) {
 }
 if (groups.includes("wa_sync")) stops.push(startWapiTemplateSyncWorker());
 if (groups.includes("mail")) stops.push(startImapPollerWorker());
+if (groups.includes("zoho")) stops.push(startZohoSyncWorker());
 
 /**
  * Daily ops scanner — fires once a day at 06:30 local time. Scans every
