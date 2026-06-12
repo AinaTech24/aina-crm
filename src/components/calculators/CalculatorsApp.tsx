@@ -9,7 +9,7 @@
 import { useRef, useState } from "react";
 import { useToast } from "@/components/ui/Toast";
 import {
-  ChevronLeft, Search, X, Mail, MessageCircle, Download, Printer,
+  ChevronLeft, Search, X, Mail, MessageCircle, Printer,
   // group icons
   TrendingUp, Target, HandCoins, ShieldCheck, Receipt, Building2, Wrench, Flame,
   // per-calculator icons (each used exactly once — no duplicates)
@@ -397,10 +397,7 @@ export function CalculatorsApp({ firmName }: { firmName?: string } = {}) {
           <button onClick={() => { setShareMode(shareMode === "whatsapp" ? null : "whatsapp"); setRecipient(""); }} className="btn-ghost text-xs" title="Share on WhatsApp">
             <MessageCircle className="size-3.5" /> WhatsApp
           </button>
-          <button onClick={() => downloadPdf(calcName)} disabled={busy} className="btn-ghost text-xs disabled:opacity-60" title="Download the branded PDF">
-            <Download className="size-3.5" /> PDF
-          </button>
-          <button onClick={() => window.print()} className="btn-ghost text-xs" title="Print this illustration">
+          <button onClick={() => downloadPdf(calcName)} disabled={busy} className="btn-ghost text-xs disabled:opacity-60" title="Download the branded PDF illustration">
             <Printer className="size-3.5" /> Print
           </button>
           <ScenarioControls calculatorKey={tab} calculatorName={calcName} clientName={clientName} containerRef={calcRef} />
