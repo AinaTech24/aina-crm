@@ -39,7 +39,7 @@ export function RuleToggle({
       onClick={toggle}
       title={locked ? "Rule is locked — cannot toggle" : on ? "Disable rule" : "Enable rule"}
       className={`inline-flex h-5 w-9 items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-        on ? "bg-emerald-500" : "bg-gray-300"
+        on ? "bg-brand-cyan" : "bg-secondary border border-border"
       }`}
     >
       <span

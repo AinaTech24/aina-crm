@@ -116,7 +116,7 @@ export default async function WorkflowRulesPage({
                       <th className="text-left py-2 font-medium">Criteria</th>
                       <th className="text-center py-2 font-medium">Instant</th>
                       <th className="text-center py-2 font-medium">Scheduled</th>
-                      <th className="text-right py-2 font-medium">Executions</th>
+                      <th className="text-center py-2 font-medium">Executions</th>
                       <th className="text-center py-2 font-medium">Active</th>
                       <th className="text-right py-2 font-medium pr-4">Last run</th>
                     </tr>
@@ -162,7 +162,7 @@ export default async function WorkflowRulesPage({
                           <td className="py-3 text-center tabular-nums">
                             {((r.scheduledActions ?? []) as any[]).length}
                           </td>
-                          <td className="py-3 text-right tabular-nums text-muted-foreground">
+                          <td className="py-3 text-center tabular-nums text-muted-foreground">
                             {r.executionCount ?? 0}
                           </td>
                           <td className="py-3 text-center">
