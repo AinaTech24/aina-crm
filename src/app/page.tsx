@@ -401,8 +401,11 @@ export default function Home() {
           </div>
 
           <div className="mt-12 grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {CORE_FEATURES.map((f) => (
-              <article key={f.title} className="glass-card hover-glow-cyan rounded-xl p-6 border border-border/40 hover:shadow-lg transition-all flex flex-col justify-between">
+            {CORE_FEATURES.map((f, i) => (
+              <article key={f.title} className="group glass-card hover-glow-cyan rounded-xl p-6 border border-border/40 hover:shadow-lg transition-all flex flex-col justify-between relative overflow-hidden">
+                <span className="absolute top-3 right-4 text-3xl font-black tabular-nums text-foreground/[0.06] group-hover:text-brand-cyan/15 transition-colors select-none">
+                  {String(i + 1).padStart(2, "0")}
+                </span>
                 <div>
                   <div className={`size-11 rounded-lg grid place-items-center ${f.bg} shrink-0`}>
                     <f.icon className={`size-5.5 ${f.fg}`} />
@@ -422,6 +425,36 @@ export default function Home() {
               </article>
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* ───────────────────── Integrations strip ───────────────────── */}
+      <section className="py-16 relative z-10 border-b border-border/40">
+        <div className="max-w-6xl mx-auto px-6 text-center">
+          <span className="chip bg-brand-cyan-light text-brand-cyan-deep">Works with the rails you already run on</span>
+          <h2 className="mt-4 text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground">
+            Plugs into your RTAs, WhatsApp and payments — no rip-and-replace
+          </h2>
+          <p className="mt-3 text-sm text-muted-foreground max-w-2xl mx-auto">
+            AINA reads your existing exports and connects to the channels Indian MFDs already use, so you keep your stack and just add the brain on top.
+          </p>
+          <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
+            {[
+              "CAMS", "KFintech", "AMFI NAV feed", "WhatsApp (AiSensy)", "MSG91 SMS",
+              "Email (Resend)", "Razorpay", "NSE NMF II", "BSE STAR MF",
+            ].map((name) => (
+              <span
+                key={name}
+                className="inline-flex items-center gap-2 rounded-xl border border-border/60 bg-card px-4 py-2.5 text-sm font-semibold text-foreground/80 shadow-sm hover:border-brand-cyan/40 hover:text-foreground transition-colors"
+              >
+                <span className="size-1.5 rounded-full bg-brand-cyan" />
+                {name}
+              </span>
+            ))}
+          </div>
+          <p className="mt-6 text-[11px] text-muted-foreground">
+            You connect your own WhatsApp / SMS / email accounts — so messaging stays in your name, at your cost, with no per-message markup from us.
+          </p>
         </div>
       </section>
 
@@ -633,6 +666,40 @@ export default function Home() {
                 </div>
               ))}
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ───────────────────── Why AINA ───────────────────── */}
+      <section className="py-20 lg:py-28 relative z-10">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="text-center max-w-2xl mx-auto">
+            <span className="chip bg-brand-navy-light text-brand-navy-deep">Why MFDs pick AINA</span>
+            <h2 className="mt-4 text-3xl sm:text-4xl font-extrabold tracking-tight text-foreground">
+              Not another generic CRM bent to fit mutual funds
+            </h2>
+            <p className="mt-3 text-muted-foreground">
+              Six reasons AINA feels built for your desk on day one — because it was.
+            </p>
+          </div>
+
+          <div className="mt-14 grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {[
+              { icon: Users2, title: "Built only for Indian MFDs", body: "Folios, families, SIPs and trail — not generic “deals” and “tickets”. Nothing to customise, nothing irrelevant to wade through." },
+              { icon: ShieldCheck, title: "Compliance you can’t bypass", body: "Every WhatsApp, email and SMS clears an 11-rule AMFI/SEBI gate before it sends — consent, ARN, disclaimer, opt-out. There is no override switch." },
+              { icon: Brain, title: "AI that protects your AUM", body: "A churn radar, cross-sell finder and AI copilot surface the client about to leave and the next opportunity to act on — before the redemption form is signed." },
+              { icon: Rocket, title: "Live in a day, not a quarter", body: "Your RTA exports are the migration. Drop the files, switch on the ready-made recipes, and your AUM, SIP book and families are ready the same day." },
+              { icon: Lock, title: "Your data stays yours", body: "Row-level isolation locks every query to your firm; role-based access keeps each RM inside their own book. Designed for India’s DPDP expectations." },
+              { icon: IndianRupee, title: "Flat, honest pricing", body: "A one-time setup, then a flat per-user yearly fee. No per-client charges, no AUM-linked fees — your software bill never grows just because your book did." },
+            ].map((w) => (
+              <article key={w.title} className="glass-card rounded-2xl border border-border/50 p-6 hover-glow-cyan transition-all flex flex-col gap-3">
+                <div className="size-11 rounded-xl bg-brand-cyan/10 text-brand-cyan-deep grid place-items-center shrink-0">
+                  <w.icon className="size-5.5" />
+                </div>
+                <h3 className="font-bold text-[15px] text-foreground">{w.title}</h3>
+                <p className="text-xs text-muted-foreground leading-relaxed">{w.body}</p>
+              </article>
+            ))}
           </div>
         </div>
       </section>
