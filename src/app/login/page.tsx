@@ -11,7 +11,7 @@ export default function LoginPage() {
       <Suspense
         fallback={
           <div className="min-h-screen grid place-items-center bg-secondary/20">
-            <Loader2 className="size-6 animate-spin text-brand-cyan" />
+            <Loader2 className="size-6 animate-spin text-primary" />
           </div>
         }
       >

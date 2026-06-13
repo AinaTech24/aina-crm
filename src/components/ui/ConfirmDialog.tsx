@@ -14,6 +14,7 @@
  */
 
 import { useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { AlertTriangle } from "lucide-react";
 
 export function ConfirmDialog({
@@ -62,9 +63,11 @@ export function ConfirmDialog({
     };
   }, [open]);
 
-  if (!open) return null;
+  if (!open || typeof document === "undefined") return null;
   const danger = tone === "danger";
-  return (
+  // Portal to <body> so no transformed/backdrop-filtered ancestor (e.g. the
+  // dashboard header) becomes the containing block and pins this off-centre.
+  return createPortal(
     <div className="fixed inset-0 z-[90] flex items-center justify-center p-4 print:hidden">
       <div
         className="absolute inset-0 bg-black/40 backdrop-blur-[1px]"
@@ -81,7 +84,7 @@ export function ConfirmDialog({
             className={`size-10 rounded-xl grid place-items-center shrink-0 ${
               danger
                 ? "bg-rose-50 text-rose-600 dark:bg-rose-950/60 dark:text-rose-400"
-                : "bg-brand-cyan-light text-brand-cyan-deep"
+                : "bg-brand-navy-light text-primary"
             }`}
           >
             <AlertTriangle className="size-5" />
@@ -107,13 +110,14 @@ export function ConfirmDialog({
             disabled={busy}
             aria-live="polite"
             className={`text-sm rounded-lg px-3.5 py-2 font-medium text-white transition-colors disabled:opacity-50 ${
-              danger ? "bg-rose-600 hover:bg-rose-700" : "bg-brand-cyan hover:opacity-90"
+              danger ? "bg-rose-600 hover:bg-rose-700" : "bg-primary hover:opacity-90"
             }`}
           >
             {busy ? "Please wait…" : confirmLabel}
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

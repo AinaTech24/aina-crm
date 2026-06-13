@@ -158,7 +158,7 @@ export default function Home() {
       </header>
 
       {/* ───────────────────────── Hero ───────────────────────── */}
-      <section className="relative pt-12 pb-20 lg:pt-20 lg:pb-28 z-10">
+      <section className="relative pt-4 pb-20 lg:pt-8 lg:pb-28 z-10">
         <div className="max-w-7xl mx-auto px-6 grid lg:grid-cols-12 gap-12 lg:gap-8 items-center">
           {/* Copy */}
           <div className="lg:col-span-7 flex flex-col items-start text-left">
@@ -210,7 +210,7 @@ export default function Home() {
                   <ShieldCheck className="size-4 text-emerald-600" /> AMFI &amp; SEBI-aware by design
                 </span>
                 <span className="inline-flex items-center gap-2">
-                  <Lock className="size-4 text-brand-cyan-deep" /> Row-level data isolation (DPDP-ready)
+                  <Lock className="size-4 text-primary" /> Row-level data isolation (DPDP-ready)
                 </span>
                 <span className="inline-flex items-center gap-2">
                   <Users2 className="size-4 text-brand-navy" /> Built alongside working ARN holders
@@ -266,8 +266,8 @@ export default function Home() {
                     </linearGradient>
                     <linearGradient id="gradient-line" x1="0" y1="0" x2="1" y2="0">
                       <stop offset="0%" stopColor="hsl(var(--brand-navy))" />
-                      <stop offset="50%" stopColor="hsl(var(--brand-cyan))" />
-                      <stop offset="100%" stopColor="hsl(var(--brand-cyan))" />
+                      <stop offset="50%" stopColor="hsl(var(--primary))" />
+                      <stop offset="100%" stopColor="hsl(var(--primary))" />
                     </linearGradient>
                   </defs>
                   <line x1="0" y1="20" x2="400" y2="20" stroke="rgba(0,0,0,0.03)" strokeWidth="1" />
@@ -275,8 +275,8 @@ export default function Home() {
                   <line x1="0" y1="80" x2="400" y2="80" stroke="rgba(0,0,0,0.03)" strokeWidth="1" />
                   <path d="M0,90 C50,85 70,60 100,65 C130,70 160,40 190,45 C220,50 250,25 280,30 C310,35 340,10 400,5 L400,100 L0,100 Z" fill="url(#gradient-area)" />
                   <path d="M0,90 C50,85 70,60 100,65 C130,70 160,40 190,45 C220,50 250,25 280,30 C310,35 340,10 400,5" fill="none" stroke="url(#gradient-line)" strokeWidth="3.5" strokeLinecap="round" />
-                  <circle cx="400" cy="5" r="5" fill="hsl(var(--brand-cyan))" />
-                  <circle cx="400" cy="5" r="10" fill="none" stroke="hsl(var(--brand-cyan))" strokeOpacity="0.4" strokeWidth="2" />
+                  <circle cx="400" cy="5" r="5" fill="hsl(var(--primary))" />
+                  <circle cx="400" cy="5" r="10" fill="none" stroke="hsl(var(--primary))" strokeOpacity="0.4" strokeWidth="2" />
                 </svg>
               </div>
 
@@ -341,7 +341,7 @@ export default function Home() {
       <section id="features" className="py-20 bg-secondary/15 border-y border-border/40 relative z-10">
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center max-w-2xl mx-auto">
-            <span className="chip bg-brand-cyan-light text-brand-cyan-deep">Your whole practice, one system</span>
+            <span className="chip bg-brand-navy-light text-primary">Your whole practice, one system</span>
             <h2 className="mt-4 text-3xl font-extrabold tracking-tight text-foreground">
               The practice operating system for Mutual Fund Distributors
             </h2>
@@ -354,7 +354,7 @@ export default function Home() {
           <div className="mt-12 grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {CORE_FEATURES.map((f, i) => (
               <article key={f.title} className="group glass-card hover-glow-cyan rounded-xl p-6 border border-border/40 hover:shadow-lg transition-all flex flex-col justify-between relative overflow-hidden">
-                <span className="absolute top-3 right-4 text-3xl font-black tabular-nums text-foreground/[0.06] group-hover:text-brand-cyan/15 transition-colors select-none">
+                <span className="absolute top-3 right-4 text-3xl font-black tabular-nums text-foreground/[0.06] group-hover:text-primary/15 transition-colors select-none">
                   {String(i + 1).padStart(2, "0")}
                 </span>
                 <div>
@@ -382,7 +382,7 @@ export default function Home() {
       {/* ───────────────────── Integrations strip ───────────────────── */}
       <section className="py-16 relative z-10 border-b border-border/40">
         <div className="max-w-6xl mx-auto px-6 text-center">
-          <span className="chip bg-brand-cyan-light text-brand-cyan-deep">Works with the rails you already run on</span>
+          <span className="chip bg-brand-navy-light text-primary">Works with the rails you already run on</span>
           <h2 className="mt-4 text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground">
             Plugs into your RTAs, WhatsApp and payments — no rip-and-replace
           </h2>
@@ -396,9 +396,9 @@ export default function Home() {
             ].map((name) => (
               <span
                 key={name}
-                className="inline-flex items-center gap-2 rounded-xl border border-border/60 bg-card px-4 py-2.5 text-sm font-semibold text-foreground/80 shadow-sm hover:border-brand-cyan/40 hover:text-foreground transition-colors"
+                className="inline-flex items-center gap-2 rounded-xl border border-border/60 bg-card px-4 py-2.5 text-sm font-semibold text-foreground/80 shadow-sm hover:border-primary/40 hover:text-foreground transition-colors"
               >
-                <span className="size-1.5 rounded-full bg-brand-cyan" />
+                <span className="size-1.5 rounded-full bg-primary" />
                 {name}
               </span>
             ))}
@@ -433,7 +433,7 @@ export default function Home() {
             ].map(([name, hook]) => (
               <div key={name} className="rounded-xl border border-border/50 bg-background/80 dark:bg-card p-3 shadow-sm">
                 <div className="flex items-center gap-1.5">
-                  <Calculator className="size-3.5 text-brand-cyan-deep shrink-0" />
+                  <Calculator className="size-3.5 text-primary shrink-0" />
                   <span className="text-[11px] font-bold text-foreground leading-tight">{name}</span>
                 </div>
                 <p className="text-[10px] text-muted-foreground mt-1 leading-snug">{hook}</p>
@@ -447,7 +447,7 @@ export default function Home() {
       <section id="how-it-works" className="py-20 lg:py-28 bg-secondary/15 border-y border-border/40 relative z-10">
         <div className="max-w-6xl mx-auto px-6">
           <div className="text-center max-w-2xl mx-auto">
-            <span className="chip bg-brand-cyan-light text-brand-cyan-deep">Live in a day, not a quarter</span>
+            <span className="chip bg-brand-navy-light text-primary">Live in a day, not a quarter</span>
             <h2 className="mt-4 text-3xl font-extrabold tracking-tight text-foreground">How your firm moves to AINA</h2>
             <p className="mt-3 text-muted-foreground text-sm">
               No migration project, no consultants. Your RTA exports are the migration.
@@ -477,8 +477,8 @@ export default function Home() {
             ].map((s) => (
               <div key={s.step} className="glass-card rounded-xl p-6 flex flex-col gap-3 border border-border/50 hover-glow-cyan transition-all">
                 <div className="flex items-center gap-3">
-                  <div className="size-9 rounded-lg bg-brand-cyan/15 text-accent font-extrabold text-sm flex items-center justify-center border border-brand-cyan/30">{s.step}</div>
-                  <s.icon className="size-5 text-brand-cyan-deep" />
+                  <div className="size-9 rounded-lg bg-primary/15 text-accent font-extrabold text-sm flex items-center justify-center border border-primary/30">{s.step}</div>
+                  <s.icon className="size-5 text-primary" />
                 </div>
                 <h3 className="font-bold text-[15px] text-foreground">{s.title}</h3>
                 <p className="text-xs text-muted-foreground leading-relaxed">{s.body}</p>
@@ -509,7 +509,7 @@ export default function Home() {
               key={p.name}
               className={`glass-card rounded-2xl p-6 sm:p-8 flex flex-col relative border ${
                 p.featured
-                  ? "border-brand-cyan/40 bg-brand-cyan/[0.03] shadow-xl md:-translate-y-2 ring-1 ring-brand-cyan/30"
+                  ? "border-primary/40 bg-primary/[0.03] shadow-xl md:-translate-y-2 ring-1 ring-primary/30"
                   : "border-border/60"
               }`}
             >
@@ -556,7 +556,7 @@ export default function Home() {
             Every plan includes
           </div>
           <div className="flex flex-wrap justify-center gap-x-7 gap-y-2.5 text-xs font-semibold text-foreground/80">
-            <span className="inline-flex items-center gap-1.5"><Lock className="size-3.5 text-brand-cyan-deep" /> Row-level data isolation</span>
+            <span className="inline-flex items-center gap-1.5"><Lock className="size-3.5 text-primary" /> Row-level data isolation</span>
             <span className="inline-flex items-center gap-1.5"><ShieldCheck className="size-3.5 text-emerald-600" /> AMFI/SEBI compliance gate</span>
             <span className="inline-flex items-center gap-1.5"><MessageSquare className="size-3.5 text-brand-navy" /> Your own WhatsApp / email accounts — no per-message markup</span>
             <span className="inline-flex items-center gap-1.5"><Zap className="size-3.5 text-amber-600" /> Free product updates</span>
@@ -572,7 +572,7 @@ export default function Home() {
       <section id="faq" className="py-20 lg:py-28 bg-secondary/10 border-t border-border/40 relative z-10">
         <div className="max-w-4xl mx-auto px-6">
           <div className="text-center max-w-2xl mx-auto mb-14">
-            <span className="chip bg-brand-cyan-light text-brand-cyan-deep">Questions MFDs ask us</span>
+            <span className="chip bg-brand-navy-light text-primary">Questions MFDs ask us</span>
             <h2 className="mt-4 text-3xl font-extrabold tracking-tight text-foreground">
               Mutual fund distributor software — FAQs
             </h2>
@@ -588,7 +588,7 @@ export default function Home() {
       {/* ───────────────────── Who is it for ───────────────────── */}
       <section className="py-16 lg:py-20 relative z-10 max-w-5xl mx-auto px-6">
         <div className="text-center max-w-2xl mx-auto">
-          <span className="chip bg-brand-cyan-light text-brand-cyan-deep">Who it&apos;s for</span>
+          <span className="chip bg-brand-navy-light text-primary">Who it&apos;s for</span>
           <h2 className="mt-4 text-3xl font-extrabold tracking-tight text-foreground">
             Built for MFDs at every stage of growth
           </h2>
@@ -612,7 +612,7 @@ export default function Home() {
 
       {/* ───────────────────────── Final CTA ───────────────────────── */}
       <section className="py-20 max-w-6xl mx-auto px-6 relative z-10">
-        <div className="rounded-2xl bg-brand-cyan-deep p-8 sm:p-14 text-center relative overflow-hidden shadow-2xl">
+        <div className="rounded-2xl bg-primary p-8 sm:p-14 text-center relative overflow-hidden shadow-2xl">
           <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-white">
             Ready to build a more system-driven MFD practice?
           </h2>
@@ -734,8 +734,8 @@ const CORE_FEATURES = [
     icon: Users2,
     title: "Client data management",
     benefit: "Clean masters with de-dup and family mapping, missing PAN / nominee / KYC reports, and AUM / SIP / goal segmentation — plus dormant, inactive-SIP and redemption-prone lists.",
-    bg: "bg-brand-cyan-light/70",
-    fg: "text-brand-cyan-deep",
+    bg: "bg-brand-navy-light/70",
+    fg: "text-primary",
     impact: "One clean source of truth",
   },
   {
@@ -758,8 +758,8 @@ const CORE_FEATURES = [
     icon: MessageSquare,
     title: "Client servicing & retention",
     benefit: "Review calendar, portfolio & goal reviews, reactivation and redemption-prevention campaigns, KYC / nominee / bank-update drives, feedback and referral systems.",
-    bg: "bg-brand-cyan-light/70",
-    fg: "text-brand-cyan-deep",
+    bg: "bg-brand-navy-light/70",
+    fg: "text-primary",
     impact: "Protect your AUM",
   },
   {
@@ -915,7 +915,7 @@ function Spotlight({
   return (
     <div className={`grid lg:grid-cols-2 gap-10 lg:gap-16 items-center ${reverse ? "lg:[&>*:first-child]:order-2" : ""}`}>
       <div>
-        <span className="chip bg-brand-cyan-light text-brand-cyan-deep">{eyebrow}</span>
+        <span className="chip bg-brand-navy-light text-primary">{eyebrow}</span>
         <h2 className="mt-4 text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground leading-tight">{title}</h2>
         <p className="mt-4 text-muted-foreground leading-relaxed">{body}</p>
         <ul className="mt-6 flex flex-col gap-3">

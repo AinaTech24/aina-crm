@@ -158,9 +158,9 @@ export function AuthScreen({ initialMode }: { initialMode: Mode }) {
   const panel = PANEL[mode];
 
   return (
-    <main className="min-h-screen grid grid-cols-1 lg:grid-cols-2 bg-background">
+    <main className="h-screen overflow-hidden grid grid-rows-1 grid-cols-1 lg:grid-cols-2 bg-background">
       {/* ── Left: brand panel (single logo, animated content) ── */}
-      <div className="hidden lg:flex relative flex-col justify-between p-12 overflow-hidden text-white bg-brand-cyan-deep">
+      <div className="hidden lg:flex relative flex-col justify-between p-12 overflow-hidden text-white bg-gradient-to-br from-[#D8434B] via-[#C21F28] to-[#B71A20]">
         <div className="absolute inset-0 opacity-[0.06] bg-[radial-gradient(circle_at_1px_1px,white_1px,transparent_0)] [background-size:22px_22px]" />
 
         <Link href="/" className="relative z-10 inline-flex w-fit items-center" aria-label="Aina CRM home">
@@ -169,7 +169,7 @@ export function AuthScreen({ initialMode }: { initialMode: Mode }) {
         </Link>
 
         <div key={`panel-${mode}`} className="auth-swap relative z-10 max-w-md">
-          <span className="inline-block text-[11px] font-bold uppercase tracking-[0.22em] text-brand-cyan-light/90">
+          <span className="inline-block text-[11px] font-bold uppercase tracking-[0.22em] text-white/80">
             {panel.eyebrow}
           </span>
           <h2 className="mt-4 text-[2.6rem] leading-[1.08] font-extrabold tracking-tight">
@@ -180,7 +180,7 @@ export function AuthScreen({ initialMode }: { initialMode: Mode }) {
             {panel.points.map((t) => (
               <li key={t} className="flex items-center gap-3 text-[15px] text-white/90">
                 <span className="size-5 rounded-full bg-white/15 grid place-items-center shrink-0">
-                  <Check className="size-3 text-brand-cyan-light" />
+                  <Check className="size-3 text-white" />
                 </span>
                 {t}
               </li>
@@ -197,8 +197,13 @@ export function AuthScreen({ initialMode }: { initialMode: Mode }) {
         </div>
       </div>
 
-      {/* ── Right: form (single mobile wordmark, animated swap) ── */}
-      <div className="flex items-center justify-center p-6 sm:p-10 bg-secondary/20">
+      {/* ── Right: form (single mobile wordmark, animated swap) ──
+          Outer is the scroll container; the inner min-h-full centers the form
+          when it fits and lets it scroll from the top when it doesn't — so a
+          taller signup never adds a PAGE scrollbar (which would shift the
+          column widths and make the swap look like it stutters). */}
+      <div className="overflow-y-auto bg-secondary/20">
+        <div className="min-h-full flex items-center justify-center p-6 sm:p-10">
         <div className="w-full max-w-sm">
           {/* Mobile-only logo (desktop uses the left panel — never both) */}
           <div className="lg:hidden mb-8 flex justify-center">
@@ -239,7 +244,7 @@ export function AuthScreen({ initialMode }: { initialMode: Mode }) {
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
                     <label className="text-xs font-semibold text-foreground/80">Password</label>
-                    <Link href="/forgot-password" className="text-xs text-brand-cyan hover:underline font-medium">
+                    <Link href="/forgot-password" className="text-xs text-primary hover:underline font-medium">
                       Forgot?
                     </Link>
                   </div>
@@ -278,7 +283,7 @@ export function AuthScreen({ initialMode }: { initialMode: Mode }) {
 
             {/* ── SIGNUP ── */}
             {mode === "signup" && (
-              <form onSubmit={submitSignup} className="mt-8 space-y-4">
+              <form onSubmit={submitSignup} className="mt-6 space-y-3">
                 <FieldShell label="Firm name">
                   <input value={firmName} onChange={(e) => setFirmName(e.target.value)} required placeholder="Acme Wealth Advisors" className="input-base" />
                 </FieldShell>
@@ -305,14 +310,14 @@ export function AuthScreen({ initialMode }: { initialMode: Mode }) {
               {mode === "login" ? (
                 <>
                   Don&apos;t have a workspace yet?{" "}
-                  <button type="button" onClick={() => switchMode("signup")} className="text-brand-cyan font-semibold hover:underline">
+                  <button type="button" onClick={() => switchMode("signup")} className="text-primary font-semibold hover:underline">
                     Create one
                   </button>
                 </>
               ) : (
                 <>
                   Already have an account?{" "}
-                  <button type="button" onClick={() => switchMode("login")} className="text-brand-cyan font-semibold hover:underline">
+                  <button type="button" onClick={() => switchMode("login")} className="text-primary font-semibold hover:underline">
                     Sign in
                   </button>
                 </>
@@ -320,12 +325,13 @@ export function AuthScreen({ initialMode }: { initialMode: Mode }) {
             </div>
 
             {mode === "signup" && (
-              <p className="mt-6 text-[11px] text-muted-foreground text-center leading-relaxed">
+              <p className="mt-4 text-[11px] text-muted-foreground text-center leading-relaxed">
                 By creating a workspace you agree that mutual fund investments are subject to market risks; read all
                 scheme related documents carefully.
               </p>
             )}
           </div>
+        </div>
         </div>
       </div>
     </main>

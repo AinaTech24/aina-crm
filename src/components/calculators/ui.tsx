@@ -80,7 +80,13 @@ export function Segmented<T extends string>({
       )}
       {/* data-calc-seg + data-active let the scenario save/restore snapshot the
           selected mode generically (see ScenarioControls). */}
-      <div data-calc-seg={label ?? ""} className="inline-flex flex-wrap rounded-lg border border-border bg-secondary/30 p-0.5 gap-0.5">
+      <div
+        data-calc-seg={label ?? ""}
+        data-pdf-input=""
+        data-pdf-input-label={label ?? ""}
+        data-pdf-input-value={options.find((o) => o.value === value)?.label ?? String(value)}
+        className="inline-flex flex-wrap rounded-lg border border-border bg-secondary/30 p-0.5 gap-0.5"
+      >
         {options.map((o) => (
           <button
             key={o.value}
