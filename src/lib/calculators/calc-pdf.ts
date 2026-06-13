@@ -32,7 +32,7 @@ export type CalcPdfInput = {
   clientEmail?: string | null;
   clientMobile?: string | null;
   calcName: string;
-  inputs?: { label: string; value: string }[];
+  inputs?: { label: string; value: string; group?: string }[];
   blocks: PdfBlock[];
   logoBytes?: Uint8Array | null;
   primaryHex?: string | null;
@@ -42,7 +42,7 @@ export type CalcPdfInput = {
 
 const A4: [number, number] = [595.28, 841.89];
 const MARGIN = 40;
-const HEADER_H = 74; // reserved top band (header drawn here, every page)
+const HEADER_H = 86; // reserved top band (header drawn here, every page)
 const FOOTER_H = 50; // reserved bottom band (footer drawn here, every page)
 
 // pdf-lib's standard fonts are WinAnsi-encoded and can't draw ₹ (U+20B9) — map
@@ -158,13 +158,9 @@ export async function renderCalcPdf(input: CalcPdfInput): Promise<Buffer> {
     ["Firm:", input.firmName],
     ["Advisor:", input.preparedBy || ""],
     ["ARN:", input.arn || ""],
-    ["Phone:", input.firmPhone || ""],
-    ["Email:", input.firmEmail || ""],
   ];
   const clientPairs: [string, string][] = [
     ["Name:", input.clientName || "-"],
-    ["Email:", input.clientEmail || ""],
-    ["Mobile:", input.clientMobile || ""],
     ["Report date:", input.generatedAt || new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })],
   ];
   const boxRows = Math.max(advisorPairs.filter((p) => p[1]).length, clientPairs.filter((p) => p[1]).length);
@@ -259,10 +255,25 @@ export async function renderCalcPdf(input: CalcPdfInput): Promise<Buffer> {
     y -= ih + 8;
   };
 
-  // 3. Input details
+  // 3. Input details — grouped under their category headings so identically
+  //    labelled fields (e.g. Debt/Hybrid/Equity allocation vs returns) are clear.
   if (input.inputs && input.inputs.length) {
     sectionHead("Input Details");
-    drawTable(["Field", "Value"], input.inputs.map((i) => [i.label, i.value]));
+    const order: string[] = [];
+    const byGroup = new Map<string, { label: string; value: string }[]>();
+    for (const it of input.inputs) {
+      const g = it.group || "";
+      if (!byGroup.has(g)) { byGroup.set(g, []); order.push(g); }
+      byGroup.get(g)!.push(it);
+    }
+    for (const g of order) {
+      if (g) {
+        need(18);
+        page.drawText(ascii(g), { x: MARGIN, y: y - 10, size: 9, font: bold, color: primary });
+        y -= 16;
+      }
+      drawTable(["Field", "Value"], byGroup.get(g)!.map((i) => [i.label, i.value]));
+    }
   }
 
   // 4. Results — render blocks in order, batching consecutive stat cards.
@@ -298,26 +309,24 @@ export async function renderCalcPdf(input: CalcPdfInput): Promise<Buffer> {
 
   // ════════════════ HEADER + FOOTER on EVERY page ════════════════
   const dt = input.generatedAt || new Date().toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" });
-  const ctx = ascii(
-    `${input.calcName} Report` +
-      (input.clientName ? `  -  ${input.clientName}` : "") +
-      (input.clientEmail ? `  -  ${input.clientEmail}` : "")
-  );
+  const ctx = ascii(`${input.calcName} Report` + (input.clientName ? `  -  ${input.clientName}` : ""));
+  const ruleY = H - 54; // header divider; logo sits above it, context below it
   const pages = doc.getPages();
   pages.forEach((p, idx) => {
-    // header band
+    // header band — logo top-left (capped so it never reaches the divider),
+    // firm/ARN/date top-right, divider, then a single context line below it.
     if (logo) {
-      const boxW = 150, boxH2 = 30;
+      const boxW = 150, boxH2 = 26;
       const scale = Math.min(boxW / logo.width, boxH2 / logo.height);
-      p.drawImage(logo, { x: MARGIN, y: H - 24 - logo.height * scale, width: logo.width * scale, height: logo.height * scale });
+      p.drawImage(logo, { x: MARGIN, y: H - 18 - logo.height * scale, width: logo.width * scale, height: logo.height * scale });
     } else {
-      p.drawText(ascii(input.firmName), { x: MARGIN, y: H - 26, size: 12, font: bold, color: ink });
+      p.drawText(ascii(input.firmName), { x: MARGIN, y: H - 30, size: 12, font: bold, color: ink });
     }
-    drawRight(p, input.firmName, W - MARGIN, H - 22, 9.5, bold, ink);
-    drawRight(p, `ARN: ${input.arn ?? "-"}`, W - MARGIN, H - 34, 8, font, slate);
-    drawRight(p, `Generated: ${dt}`, W - MARGIN, H - 45, 8, font, slate);
-    p.drawLine({ start: { x: MARGIN, y: H - HEADER_H + 14 }, end: { x: W - MARGIN, y: H - HEADER_H + 14 }, thickness: 1, color: primary });
-    p.drawText(clip(ctx, font, 8, contentW), { x: MARGIN, y: H - HEADER_H + 18, size: 8, font, color: slate });
+    drawRight(p, input.firmName, W - MARGIN, H - 20, 9.5, bold, ink);
+    drawRight(p, `ARN: ${input.arn ?? "-"}`, W - MARGIN, H - 31, 8, font, slate);
+    drawRight(p, `Generated: ${dt}`, W - MARGIN, H - 42, 8, font, slate);
+    p.drawLine({ start: { x: MARGIN, y: ruleY }, end: { x: W - MARGIN, y: ruleY }, thickness: 1, color: primary });
+    p.drawText(clip(ctx, font, 8, contentW), { x: MARGIN, y: ruleY - 12, size: 8, font, color: slate });
 
     // footer band
     p.drawLine({ start: { x: MARGIN, y: FOOTER_H - 2 }, end: { x: W - MARGIN, y: FOOTER_H - 2 }, thickness: 0.6, color: line });

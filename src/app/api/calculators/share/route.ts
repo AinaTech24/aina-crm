@@ -36,7 +36,7 @@ const Body = z.object({
   clientName: z.string().max(120).optional().nullable(),
   clientEmail: z.string().max(160).optional().nullable(),
   clientMobile: z.string().max(40).optional().nullable(),
-  inputs: z.array(z.object({ label: z.string(), value: z.string() })).max(200).optional(),
+  inputs: z.array(z.object({ label: z.string(), value: z.string(), group: z.string().optional() })).max(200).optional(),
   blocks: z.array(z.any()).max(400),
 });
 

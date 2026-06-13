@@ -24,7 +24,7 @@ export type PdfBlock =
 
 export type CalcCapture = {
   title: string;
-  inputs: { label: string; value: string }[];
+  inputs: { label: string; value: string; group: string }[];
   blocks: PdfBlock[];
 };
 
@@ -107,31 +107,45 @@ function readTable(table: HTMLTableElement): { head: string[]; rows: string[][] 
 export function captureCalcResults(root: HTMLElement): CalcCapture {
   const title = txt(root.querySelector("h2")) || "Calculator";
 
-  // ── Inputs ──────────────────────────────────────────────────────────────
-  const inputs: { label: string; value: string }[] = [];
+  // ── Inputs (grouped) ──────────────────────────────────────────────────────
+  // Walk inputs in document order, tracking the current group heading so inputs
+  // sit under their category in the PDF. A "group heading" is a small UPPERCASE
+  // bold caption (e.g. "Asset allocation", "Assumed return per class") — that's
+  // how a calculator disambiguates two sets of identically-labelled fields like
+  // Debt % / Hybrid % / Equity % (allocation vs returns). Input labels use
+  // font-medium, headings use font-semibold, so they never collide.
+  const inputs: { label: string; value: string; group: string }[] = [];
   const seenIn = new Set<string>();
+  let group = "";
   const pushInput = (rawLabel: string, rawValue: string) => {
     const label = rawLabel.replace(/\s+/g, " ").trim();
     const value = rawValue.replace(/\s+/g, " ").trim();
-    const key = `${label} :: ${value}`;
+    const key = `${group} :: ${label} :: ${value}`;
     if (!label || seenIn.has(key)) return;
     seenIn.add(key);
-    inputs.push({ label, value: value || "-" });
+    inputs.push({ label, value: value || "-", group });
   };
 
-  root.querySelectorAll<HTMLLabelElement>("label").forEach((label) => {
-    if (label.closest("table")) return; // editable-table cells are caught as table data
-    const control = label.querySelector<HTMLElement>("input, select, textarea");
-    if (!control) return;
-    const labelText = txt(label.querySelector("span"));
-    if (!labelText) return;
-    if (control instanceof HTMLInputElement && control.type === "radio" && !control.checked) return;
-    pushInput(labelText, controlValue(control));
-  });
-  // Segmented button-groups have no form control, so they carry a marker.
-  root.querySelectorAll<HTMLElement>("[data-pdf-input]").forEach((el) => {
-    if (el.matches("input, select, textarea")) return;
-    pushInput(el.getAttribute("data-pdf-input-label") || "", el.getAttribute("data-pdf-input-value") || "");
+  root.querySelectorAll<HTMLElement>("label, .uppercase.font-semibold, [data-pdf-input]").forEach((el) => {
+    if (el.tagName !== "LABEL" && el.classList.contains("uppercase") && el.classList.contains("font-semibold") && !el.closest("label")) {
+      const t = txt(el);
+      if (t && t.length <= 48) group = t; // new category
+      return;
+    }
+    if (el.tagName === "LABEL") {
+      if (el.closest("table")) return; // editable-table cells are caught as table data
+      const control = el.querySelector<HTMLElement>("input, select, textarea");
+      if (!control) return;
+      const labelText = txt(el.querySelector("span"));
+      if (!labelText) return;
+      if (control instanceof HTMLInputElement && control.type === "radio" && !control.checked) return;
+      pushInput(labelText, controlValue(control));
+      return;
+    }
+    // Segmented button-groups have no form control, so they carry a marker.
+    if (el.matches("[data-pdf-input]") && !el.matches("input, select, textarea")) {
+      pushInput(el.getAttribute("data-pdf-input-label") || "", el.getAttribute("data-pdf-input-value") || "");
+    }
   });
 
   // ── Outputs (document order: sections, result cards, tables, notes) ───────

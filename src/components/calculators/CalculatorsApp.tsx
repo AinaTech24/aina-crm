@@ -305,8 +305,6 @@ export function CalculatorsApp({ firmName }: { firmName?: string } = {}) {
   const [tab, setTab] = useState<TabKey | null>(null);
   const [query, setQuery] = useState("");
   const [clientName, setClientName] = useState("");
-  const [clientEmail, setClientEmail] = useState("");
-  const [clientMobile, setClientMobile] = useState("");
   const [shareMode, setShareMode] = useState<null | "email" | "whatsapp">(null);
   const [recipient, setRecipient] = useState("");
   const [busy, setBusy] = useState(false);
@@ -320,7 +318,7 @@ export function CalculatorsApp({ firmName }: { firmName?: string } = {}) {
       const { inputs, blocks } = captureCalcResults(root);
       const res = await fetch("/api/calculators/share", {
         method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ channel, to: recipient, calcName, clientName, clientEmail, clientMobile, inputs, blocks }),
+        body: JSON.stringify({ channel, to: recipient, calcName, clientName, inputs, blocks }),
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) { toast.error(j.error || "Couldn't share."); return; }
@@ -347,7 +345,7 @@ export function CalculatorsApp({ firmName }: { firmName?: string } = {}) {
       const { inputs, blocks } = captureCalcResults(root);
       const res = await fetch("/api/calculators/pdf", {
         method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ calcName, clientName, clientEmail, clientMobile, inputs, blocks }),
+        body: JSON.stringify({ calcName, clientName, inputs, blocks }),
       });
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
@@ -391,20 +389,7 @@ export function CalculatorsApp({ firmName }: { firmName?: string } = {}) {
             value={clientName}
             onChange={(e) => setClientName(e.target.value)}
             placeholder="Client name"
-            className="h-8 rounded-md border border-border bg-card px-2.5 text-xs w-32 focus:outline-none focus:border-brand-cyan focus:ring-2 focus:ring-brand-cyan/15"
-          />
-          <input
-            value={clientEmail}
-            onChange={(e) => setClientEmail(e.target.value)}
-            placeholder="Client email"
-            type="email"
             className="h-8 rounded-md border border-border bg-card px-2.5 text-xs w-40 focus:outline-none focus:border-brand-cyan focus:ring-2 focus:ring-brand-cyan/15"
-          />
-          <input
-            value={clientMobile}
-            onChange={(e) => setClientMobile(e.target.value)}
-            placeholder="Client mobile"
-            className="h-8 rounded-md border border-border bg-card px-2.5 text-xs w-28 focus:outline-none focus:border-brand-cyan focus:ring-2 focus:ring-brand-cyan/15"
           />
           <button onClick={() => { setShareMode(shareMode === "email" ? null : "email"); setRecipient(""); }} className="btn-primary text-xs" title="Email the branded PDF to the client">
             <Mail className="size-3.5" /> Email
