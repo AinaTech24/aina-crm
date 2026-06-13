@@ -4,21 +4,14 @@ import {
   Plus,
   Sparkles,
   UserPlus,
-  Users,
-  Target,
-  TrendingUp,
   UploadCloud,
   Filter,
-  Flame,
-  AlertCircle,
-  IndianRupee,
   LayoutGrid,
   List,
 } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { leads, users } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
-import { formatINR, formatDate } from "@/lib/utils";
 import { WorkSwitcher } from "@/components/layout/WorkSwitcher";
 
 const PIPELINE_VIEWS = [
@@ -28,7 +21,6 @@ const PIPELINE_VIEWS = [
 import { LeadsKanban } from "@/components/leads/LeadsKanban";
 import { LeadsTable } from "@/components/leads/LeadsTable";
 // import { LeadQuickFilters } from "@/components/leads/LeadQuickFilters";
-import { LeadInsightsSection } from "@/components/leads/LeadInsightsSection";
 import { FilterBar } from "@/components/common/FilterBar";
 import { Pager } from "@/components/common/Pager";
 import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
@@ -198,70 +190,6 @@ export default async function LeadsPage({
       .orderBy(orderBy as any)
       .limit(isTable ? PAGE_SIZE : KANBAN_CAP)
       .offset(isTable ? (page - 1) * PAGE_SIZE : 0);
-    const stats = await tx.execute(sql`
-      SELECT
-        COUNT(*) FILTER (
-          WHERE stage IN (
-            'new', 'call_done', 'contacted', 'first_call_pending', 'call_back_later',
-            'call_not_connected', 'contact_in_future', 'follow_up', 'meeting_scheduled',
-            'appointment_scheduled', 'qualified', 'meeting_pending', 'meeting_done',
-            'won_lead', 'post_meeting_qualified'
-          ) AND converted_investor_id IS NULL
-        )::int AS open_count,
-        COUNT(*) FILTER (
-          WHERE created_at >= now() - interval '7 days' AND converted_investor_id IS NULL
-        )::int AS new_this_week,
-        COUNT(*) FILTER (
-          WHERE converted_investor_id IS NOT NULL AND converted_at >= date_trunc('month', now())
-        )::int AS converted_mtd,
-        COUNT(*)::int AS total,
-        COUNT(*) FILTER (
-          WHERE converted_investor_id IS NOT NULL
-        )::int AS converted_total,
-        ROUND(
-          100.0 * COUNT(*) FILTER (
-            WHERE converted_investor_id IS NOT NULL
-          )
-          / NULLIF(COUNT(*), 0),
-        1) AS conv_pct,
-        COALESCE(SUM(
-          COALESCE(
-            expected_business_amount,
-            NULLIF(regexp_replace(COALESCE(intended_amount, ''), '[^0-9.]', '', 'g'), '')::numeric
-          )
-        ) FILTER (
-          WHERE converted_investor_id IS NULL
-            AND stage = ANY(ARRAY[
-              'new','call_done','contacted','first_call_pending','call_back_later',
-              'call_not_connected','contact_in_future','follow_up','meeting_scheduled',
-              'appointment_scheduled','qualified','meeting_pending','meeting_done',
-              'won_lead','post_meeting_qualified'
-            ])
-        ), 0)::numeric AS pipeline_value,
-        COUNT(*) FILTER (
-          WHERE converted_investor_id IS NULL
-            AND stage IN (
-              'meeting_scheduled','meeting_done','won_lead','post_meeting_qualified',
-              'proposal_shared','proposal_approved','risk_profiled','docs_received'
-            )
-            AND (last_contact_at IS NULL OR last_contact_at >= now() - interval '7 days')
-        )::int AS hot_count,
-        COUNT(*) FILTER (
-          WHERE converted_investor_id IS NULL
-            AND next_follow_up_at IS NOT NULL
-            AND next_follow_up_at < now()
-        )::int AS overdue_count,
-        (
-          SELECT ROUND(AVG(EXTRACT(EPOCH FROM (converted_at - created_at)) / 86400)::numeric, 1)
-          FROM leads
-          WHERE tenant_id = ${session.tenantId}::uuid
-            AND converted_investor_id IS NOT NULL
-            AND converted_at >= now() - interval '90 days'
-        ) AS avg_days_to_convert
-      FROM leads
-      WHERE tenant_id = ${session.tenantId}::uuid
-        AND lost_reason IS DISTINCT FROM '__deleted__'
-    `);
     // Roster for the "Owner (RM)" filter — so owners/managers can slice the
     // pipeline by the RM who owns each lead.
     const rmRows = await tx.execute(sql`
@@ -269,7 +197,7 @@ export default async function LeadsPage({
       WHERE tenant_id = ${session.tenantId}::uuid AND status = 'active'
       ORDER BY name ASC
     `);
-    return { rows, s: stats.rows[0] as any, rms: rmRows.rows as any[], total };
+    return { rows, rms: rmRows.rows as any[], total };
   });
 
   const rmOptions = (data.rms ?? []).map((r: any) => ({ value: String(r.id), label: r.name ?? "—" }));
@@ -311,10 +239,6 @@ export default async function LeadsPage({
           <h1 className="page-title">
             <UserPlus className="size-6 text-brand-cyan" /> Leads
           </h1>
-          <p className="page-subtitle">
-            Drip-nurtured, UTM-tagged, owner-attributed pipeline · 10 stages · pipeline ₹{" "}
-            {formatINR(Number(data.s.pipeline_value ?? 0))}.
-          </p>
         </div>
         <div className="flex gap-2 items-center">
           <WorkSwitcher current="/dashboard/leads" options={PIPELINE_VIEWS} label="Module" />
@@ -351,73 +275,6 @@ export default async function LeadsPage({
             <Plus className="size-4" /> New lead
           </Link>
         </div>
-      </div>
-
-      {/* KPI strip — original 4 + 4 new (pipeline / hot / overdue / avg days) */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <KpiTile
-          label="Open Leads"
-          value={String(data.s.open_count ?? 0)}
-          sub={`${data.s.total ?? 0} all-time`}
-          icon={Users}
-          accent="cyan"
-        />
-        <KpiTile
-          label="New this Week"
-          value={String(data.s.new_this_week ?? 0)}
-          sub="last 7 days"
-          icon={Sparkles}
-          accent="violet"
-        />
-        <KpiTile
-          label="Converted MTD"
-          value={String(data.s.converted_mtd ?? 0)}
-          sub={`${data.s.converted_total ?? 0} lifetime`}
-          icon={Target}
-          accent="emerald"
-        />
-        <KpiTile
-          label="Conversion %"
-          value={data.s.conv_pct != null ? `${Number(data.s.conv_pct).toFixed(1)}%` : "—"}
-          sub="overall"
-          icon={TrendingUp}
-          accent="emerald"
-        />
-      </div>
-
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <KpiTile
-          label="Pipeline value"
-          value={formatINR(Number(data.s.pipeline_value ?? 0))}
-          sub="open leads · expected ₹"
-          icon={IndianRupee}
-          accent="emerald"
-        />
-        <KpiTile
-          label="🔥 Hot leads"
-          value={String(data.s.hot_count ?? 0)}
-          sub="late funnel + active"
-          icon={Flame}
-          accent="amber"
-        />
-        <KpiTile
-          label="Overdue follow-ups"
-          value={String(data.s.overdue_count ?? 0)}
-          sub={data.s.overdue_count > 0 ? "action needed" : "all clear"}
-          icon={AlertCircle}
-          accent="amber"
-        />
-        <KpiTile
-          label="Avg days to convert"
-          value={
-            data.s.avg_days_to_convert != null
-              ? `${Number(data.s.avg_days_to_convert).toFixed(1)}d`
-              : "—"
-          }
-          sub="last 90 days"
-          icon={Target}
-          accent="cyan"
-        />
       </div>
 
       {/* Quick-filter chip strip — server-side counts, deep links into same page */}
@@ -550,43 +407,6 @@ export default async function LeadsPage({
         </div>
       )}
 
-      {/* ---------- Lead Insights — pipeline analytics ---------- */}
-      <LeadInsightsSection session={session} />
-    </div>
-  );
-}
-
-function KpiTile({
-  label,
-  value,
-  sub,
-  icon: Icon,
-  accent,
-}: {
-  label: string;
-  value: string;
-  sub?: string;
-  icon: any;
-  accent: "cyan" | "violet" | "emerald" | "amber";
-}) {
-  const bg: Record<string, string> = {
-    cyan: "bg-brand-cyan-light text-brand-cyan-deep",
-    violet: "bg-violet-50 text-violet-600",
-    emerald: "bg-emerald-50 text-emerald-600",
-    amber: "bg-amber-50 text-amber-600",
-  };
-  return (
-    <div className="kpi-card">
-      <div className="flex items-center justify-between">
-        <span className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">
-          {label}
-        </span>
-        <div className={`size-8 rounded-lg grid place-items-center ${bg[accent]}`}>
-          <Icon className="size-4" />
-        </div>
-      </div>
-      <div className="text-2xl font-bold mt-2 tabular-nums tracking-tight">{value}</div>
-      {sub && <div className="text-[11px] text-muted-foreground mt-1">{sub}</div>}
     </div>
   );
 }
