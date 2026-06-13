@@ -66,7 +66,7 @@ export function GoalCollisionTimeline() {
         </div>
       </div>
 
-      {clientName && <div className="text-sm font-medium">Prepared for <span className="text-brand-cyan-deep">{clientName}</span></div>}
+      {clientName && <div className="text-sm font-medium">Prepared for <span className="text-primary">{clientName}</span></div>}
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         <Stat label="Peak monthly commitment" value={inr(result.peakMonthly)} tone="rose" />
@@ -97,7 +97,7 @@ export function GoalCollisionTimeline() {
               <div key={y.year} className="flex items-center gap-2 text-xs">
                 <span className="w-10 text-right text-muted-foreground">Y{y.year}</span>
                 <div className="flex-1 h-5 bg-secondary/40 rounded overflow-hidden">
-                  <div className={`h-full ${isPeak ? "bg-rose-500" : "bg-brand-cyan"}`} style={{ width: `${pct}%` }} />
+                  <div className={`h-full ${isPeak ? "bg-rose-500" : "bg-primary"}`} style={{ width: `${pct}%` }} />
                 </div>
                 <span className="w-28 tabular-nums text-right font-medium">{inr(y.totalMonthly)}/mo</span>
               </div>

@@ -315,7 +315,7 @@ export function CalculatorsApp({ firmName }: { firmName?: string } = {}) {
     if (!root) return;
     setBusy(true);
     try {
-      const { inputs, blocks } = captureCalcResults(root);
+      const { inputs, blocks } = await captureCalcResults(root);
       const res = await fetch("/api/calculators/share", {
         method: "POST", headers: { "content-type": "application/json" },
         body: JSON.stringify({ channel, to: recipient, calcName, clientName, inputs, blocks }),
@@ -342,7 +342,7 @@ export function CalculatorsApp({ firmName }: { firmName?: string } = {}) {
     if (!root) return;
     setBusy(true);
     try {
-      const { inputs, blocks } = captureCalcResults(root);
+      const { inputs, blocks } = await captureCalcResults(root);
       const res = await fetch("/api/calculators/pdf", {
         method: "POST", headers: { "content-type": "application/json" },
         body: JSON.stringify({ calcName, clientName, inputs, blocks }),
@@ -381,7 +381,7 @@ export function CalculatorsApp({ firmName }: { firmName?: string } = {}) {
         </button>
         {meta && (
           <span className="text-sm font-semibold flex items-center gap-1.5 truncate">
-            <meta.icon className="size-4 text-brand-cyan-deep shrink-0" /> {meta.name}
+            <meta.icon className="size-4 text-primary shrink-0" /> {meta.name}
           </span>
         )}
         <div className="flex items-center gap-2 flex-wrap">
@@ -389,7 +389,7 @@ export function CalculatorsApp({ firmName }: { firmName?: string } = {}) {
             value={clientName}
             onChange={(e) => setClientName(e.target.value)}
             placeholder="Client name"
-            className="h-8 rounded-md border border-border bg-card px-2.5 text-xs w-40 focus:outline-none focus:border-brand-cyan focus:ring-2 focus:ring-brand-cyan/15"
+            className="h-8 rounded-md border border-border bg-card px-2.5 text-xs w-40 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/15"
           />
           <button onClick={() => { setShareMode(shareMode === "email" ? null : "email"); setRecipient(""); }} className="btn-primary text-xs" title="Email the branded PDF to the client">
             <Mail className="size-3.5" /> Email
@@ -411,7 +411,7 @@ export function CalculatorsApp({ firmName }: { firmName?: string } = {}) {
             value={recipient}
             onChange={(e) => setRecipient(e.target.value)}
             placeholder={shareMode === "email" ? "Client email address" : "Client WhatsApp number (optional)"}
-            className="h-8 rounded-md border border-border bg-card px-2.5 text-xs w-56 focus:outline-none focus:border-brand-cyan"
+            className="h-8 rounded-md border border-border bg-card px-2.5 text-xs w-56 focus:outline-none focus:border-primary"
           />
           <button onClick={() => doShare(shareMode, calcName)} disabled={busy} className="btn-primary text-xs disabled:opacity-60">
             {busy ? "Sending…" : shareMode === "email" ? "Send email" : "Open WhatsApp"}
@@ -521,7 +521,7 @@ function CalcGallery({
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search calculators by name…"
           autoFocus
-          className="w-full rounded-lg border border-border bg-card pl-9 pr-9 py-2 text-sm focus:outline-none focus:border-brand-cyan focus:ring-2 focus:ring-brand-cyan/15"
+          className="w-full rounded-lg border border-border bg-card pl-9 pr-9 py-2 text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/15"
         />
         {query && (
           <button type="button" onClick={() => setQuery("")} aria-label="Clear search"
@@ -543,7 +543,7 @@ function CalcGallery({
         CATALOG.map((g) => (
           <div key={g.title} className="space-y-2.5 break-inside-avoid">
             <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-              <g.icon className="size-3.5 text-brand-cyan-deep" /> {g.title}
+              <g.icon className="size-3.5 text-primary" /> {g.title}
               <span className="text-muted-foreground/60 font-medium normal-case tracking-normal">· {g.items.length}</span>
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
@@ -561,13 +561,13 @@ function CalcCard({ c, onPick }: { c: CalcMeta; onPick: (k: TabKey) => void }) {
     <button
       type="button"
       onClick={() => onPick(c.key)}
-      className="group text-left rounded-xl border border-border bg-card p-3.5 flex gap-3 items-start hover:border-brand-cyan/50 hover:shadow-md hover:-translate-y-0.5 transition-all"
+      className="group text-left rounded-xl border border-border bg-card p-3.5 flex gap-3 items-start hover:border-primary/50 hover:shadow-md hover:-translate-y-0.5 transition-all"
     >
-      <span className="shrink-0 grid place-items-center size-9 rounded-lg bg-brand-cyan/10 text-brand-cyan-deep group-hover:bg-brand-cyan/15 transition-colors">
+      <span className="shrink-0 grid place-items-center size-9 rounded-lg bg-primary/10 text-primary group-hover:bg-primary/15 transition-colors">
         <c.icon className="size-5" />
       </span>
       <span className="min-w-0">
-        <span className="block font-semibold text-sm leading-tight group-hover:text-brand-cyan-deep">{c.name}</span>
+        <span className="block font-semibold text-sm leading-tight group-hover:text-primary">{c.name}</span>
         <span className="block text-xs text-muted-foreground mt-1 leading-snug">{c.desc}</span>
       </span>
     </button>
@@ -1440,7 +1440,7 @@ function StpCalc() {
           <p className="text-[10px] text-muted-foreground">Un-transferred balance earning {sourceReturn}%</p>
         </div>
         <div className="border border-slate-200 rounded-md p-3 space-y-1.5">
-          <div className="text-[10px] uppercase tracking-wide text-brand-cyan font-semibold">
+          <div className="text-[10px] uppercase tracking-wide text-primary font-semibold">
             Equity fund value
           </div>
           <div className="text-base font-semibold">{inr(res.targetFinalValue)}</div>

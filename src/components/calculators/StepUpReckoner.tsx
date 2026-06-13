@@ -128,7 +128,7 @@ export function StepUpReckoner() {
       </Field>
       {clientName && (
         <div className="text-sm font-medium">
-          Prepared for <span className="text-brand-cyan-deep">{clientName}</span>
+          Prepared for <span className="text-primary">{clientName}</span>
         </div>
       )}
 

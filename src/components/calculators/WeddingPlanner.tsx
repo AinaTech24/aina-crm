@@ -41,7 +41,7 @@ export function WeddingPlanner() {
 
       <div className="flex flex-wrap gap-1.5">
         {PRESETS.map((p) => (
-          <button key={p.label} type="button" onClick={() => setCost(p.cost)} className="chip text-xs bg-slate-100 hover:bg-brand-cyan-light/40">
+          <button key={p.label} type="button" onClick={() => setCost(p.cost)} className="chip text-xs bg-slate-100 hover:bg-primary/10">
             {p.label} · {inrShort(p.cost)}
           </button>
         ))}

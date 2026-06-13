@@ -62,11 +62,11 @@ export function InflationTimeMachine() {
         <NumberField label="Inflation (% p.a.)" value={inflation} setValue={setInflation} step={0.5} />
       </div>
 
-      <div className="rounded-xl border border-brand-cyan/30 bg-brand-cyan-light/30 p-5 text-center">
-        <div className="text-[11px] uppercase tracking-wider font-semibold text-brand-cyan-deep">
+      <div className="rounded-xl border border-primary/30 bg-primary/10 p-5 text-center">
+        <div className="text-[11px] uppercase tracking-wider font-semibold text-primary">
           {inr(amount)} in {fromYear} {forward ? "will need to be" : "had the buying power of"}
         </div>
-        <div className="text-3xl font-extrabold text-brand-cyan-deep mt-1">{inr(Math.round(res.equivalent))}</div>
+        <div className="text-3xl font-extrabold text-primary mt-1">{inr(Math.round(res.equivalent))}</div>
         <div className="text-xs text-muted-foreground mt-1">
           to buy the same things in {toYear} ({Math.abs(res.years)} years {forward ? "later" : "earlier"})
         </div>

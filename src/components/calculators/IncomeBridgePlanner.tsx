@@ -132,7 +132,7 @@ export function IncomeBridgePlanner() {
       <div className="grid md:grid-cols-2 gap-4">
         {/* Accumulation */}
         <section className="border border-slate-200 rounded-lg p-4 space-y-3">
-          <div className="text-[11px] uppercase tracking-wider font-semibold text-brand-cyan-deep">
+          <div className="text-[11px] uppercase tracking-wider font-semibold text-primary">
             ① Accumulation — build the corpus
           </div>
           <div className="grid grid-cols-2 gap-3">

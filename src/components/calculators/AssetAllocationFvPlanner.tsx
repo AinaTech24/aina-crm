@@ -61,7 +61,7 @@ export function AssetAllocationFvPlanner() {
         <Num label="Investment period (years)" value={years} setValue={setYears} step={1} />
       </div>
 
-      <ScenarioEditor title="Scenario 1" rows={s1} setRows={setS1} result={result.scenario1} toneClass="text-brand-cyan-deep" />
+      <ScenarioEditor title="Scenario 1" rows={s1} setRows={setS1} result={result.scenario1} toneClass="text-primary" />
 
       <div>
         <label className="flex items-center gap-2 text-sm cursor-pointer">

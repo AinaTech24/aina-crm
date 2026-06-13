@@ -119,7 +119,7 @@ export function SwpPeriodicPlanner() {
       <div className="grid md:grid-cols-2 gap-4">
         <section className="border border-slate-200 rounded-lg p-4 space-y-2">
           <div className="flex items-center justify-between">
-            <div className="text-[11px] uppercase tracking-wider font-semibold text-brand-cyan-deep">Asset allocation</div>
+            <div className="text-[11px] uppercase tracking-wider font-semibold text-primary">Asset allocation</div>
             <div className={`text-[11px] font-semibold ${allocTotal === 100 ? "text-emerald-600" : "text-rose-600"}`}>Total {allocTotal}%</div>
           </div>
           <div className="grid grid-cols-3 gap-2">

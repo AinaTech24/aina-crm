@@ -52,7 +52,7 @@ export function FireNumberCalculator() {
         <NumberField label="Life expectancy" value={lifeExpectancy} setValue={setLifeExpectancy} step={1} />
       </div>
 
-      {clientName && <div className="text-sm font-medium">Prepared for <span className="text-brand-cyan-deep">{clientName}</span></div>}
+      {clientName && <div className="text-sm font-medium">Prepared for <span className="text-primary">{clientName}</span></div>}
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Stat label="FIRE number (today's terms)" value={inr(r.fireNumberToday)} tone="cyan" />

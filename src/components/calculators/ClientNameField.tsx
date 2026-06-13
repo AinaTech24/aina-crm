@@ -76,7 +76,7 @@ export function ClientNameField({
                     setResults([]);
                     setOpen(false);
                   }}
-                  className="w-full text-left px-3 py-1.5 hover:bg-brand-cyan-light/40 transition-colors"
+                  className="w-full text-left px-3 py-1.5 hover:bg-primary/10 transition-colors"
                 >
                   <span className="font-medium text-sm">{r.name}</span>
                   <span className="text-[11px] text-muted-foreground ml-2 font-mono">

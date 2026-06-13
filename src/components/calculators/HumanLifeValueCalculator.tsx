@@ -104,7 +104,7 @@ export function HumanLifeValueCalculator() {
           />
 
           {clientName && (
-            <div className="text-sm font-medium">Prepared for <span className="text-brand-cyan-deep">{clientName}</span> · income protection for {ir.years} years</div>
+            <div className="text-sm font-medium">Prepared for <span className="text-primary">{clientName}</span> · income protection for {ir.years} years</div>
           )}
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

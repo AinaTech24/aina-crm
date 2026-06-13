@@ -136,7 +136,7 @@ export function ReviewOfInvestments() {
               type="checkbox"
               checked={visible[p.key]}
               onChange={(e) => setVisible((prev) => ({ ...prev, [p.key]: e.target.checked }))}
-              className="size-3.5 rounded border-border accent-brand-cyan"
+              className="size-3.5 rounded border-border accent-primary"
             />
             {p.label}
           </label>
@@ -145,7 +145,7 @@ export function ReviewOfInvestments() {
 
       {clientName && (
         <div className="text-sm font-medium">
-          Investment review for <span className="text-brand-cyan-deep">{clientName}</span>
+          Investment review for <span className="text-primary">{clientName}</span>
         </div>
       )}
 

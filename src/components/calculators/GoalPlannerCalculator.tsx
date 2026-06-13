@@ -86,7 +86,7 @@ export function GoalPlannerCalculator() {
 
       {/* Portfolio roll-up */}
       {goals.length > 1 && (
-        <div className="rounded-lg border border-brand-cyan/30 bg-brand-cyan-light/30 p-3 grid grid-cols-2 md:grid-cols-3 gap-3 print:bg-transparent">
+        <div className="rounded-lg border border-primary/30 bg-primary/10 p-3 grid grid-cols-2 md:grid-cols-3 gap-3 print:bg-transparent">
           <div>
             <div className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium">All goals — total lumpsum</div>
             <div className="text-lg font-semibold">{inr(totalLumpsum)}</div>

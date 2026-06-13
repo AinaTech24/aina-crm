@@ -131,7 +131,7 @@ export function SwpEndPeriodCalculator() {
       </div>
 
       {clientName && (
-        <div className="text-sm font-medium">Prepared for <span className="text-brand-cyan-deep">{clientName}</span></div>
+        <div className="text-sm font-medium">Prepared for <span className="text-primary">{clientName}</span></div>
       )}
 
       {/* Summary */}

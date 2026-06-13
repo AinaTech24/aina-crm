@@ -78,7 +78,7 @@ export function GoalFeasibilityScore() {
         </div>
       </div>
 
-      {clientName && <div className="text-sm font-medium">Prepared for <span className="text-brand-cyan-deep">{clientName}</span></div>}
+      {clientName && <div className="text-sm font-medium">Prepared for <span className="text-primary">{clientName}</span></div>}
 
       {/* Score dial */}
       <div className="flex items-center gap-5 rounded-xl border border-border p-4">

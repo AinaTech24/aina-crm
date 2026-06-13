@@ -94,7 +94,7 @@ export function Segmented<T extends string>({
             data-active={value === o.value ? "1" : undefined}
             onClick={() => onChange(o.value)}
             className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-              value === o.value ? "bg-brand-cyan text-white shadow-sm" : "text-muted-foreground hover:text-foreground"
+              value === o.value ? "bg-primary text-white shadow-sm" : "text-muted-foreground hover:text-foreground"
             }`}
           >
             {o.label}
@@ -132,7 +132,7 @@ export function Toggle({
         type="checkbox"
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
-        className="size-4 rounded border-border accent-brand-cyan"
+        className="size-4 rounded border-border accent-primary"
       />
       <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium">{label}</span>
     </label>
@@ -143,7 +143,7 @@ export function Section({ n, title, children }: { n: number | string; title: str
   return (
     <div className="space-y-2 break-inside-avoid">
       <h3 data-pdf="section" data-pdf-title={title} className="text-sm font-semibold flex items-center gap-2">
-        <span className="inline-grid place-items-center size-5 rounded-md bg-brand-cyan-light text-brand-cyan-deep text-[11px] font-bold">{n}</span>
+        <span className="inline-grid place-items-center size-5 rounded-md bg-primary/10 text-primary text-[11px] font-bold">{n}</span>
         {title}
       </h3>
       {children}
@@ -153,7 +153,7 @@ export function Section({ n, title, children }: { n: number | string; title: str
 
 export function Stat({ label, value, tone }: { label: string; value: string; tone?: "cyan" | "emerald" | "amber" | "rose" }) {
   const t =
-    tone === "cyan" ? "border-brand-cyan/30 bg-brand-cyan-light/30"
+    tone === "cyan" ? "border-primary/30 bg-primary/10"
       : tone === "emerald" ? "border-emerald-200 bg-emerald-50/60"
         : tone === "amber" ? "border-amber-200 bg-amber-50/60"
           : tone === "rose" ? "border-rose-200 bg-rose-50/60"
@@ -216,7 +216,7 @@ export function Insight({ children, tone = "emerald" }: { children: React.ReactN
   const cls =
     tone === "amber" ? "text-amber-800 bg-amber-50/70 border-amber-200"
       : tone === "rose" ? "text-rose-800 bg-rose-50/70 border-rose-200"
-        : tone === "cyan" ? "text-brand-cyan-deep bg-brand-cyan-light/40 border-brand-cyan/30"
+        : tone === "cyan" ? "text-primary bg-primary/10 border-primary/30"
           : "text-emerald-800 bg-emerald-50/70 border-emerald-200";
   return <div data-pdf="insight" className={`text-xs rounded-md border px-3 py-2 ${cls}`}>{children}</div>;
 }

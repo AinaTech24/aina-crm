@@ -19,7 +19,8 @@ export type PdfBlock =
   | { type: "stat"; label: string; value: string }
   | { type: "section"; text: string }
   | { type: "table"; head: string[]; rows: string[][] }
-  | { type: "insight"; text: string };
+  | { type: "insight"; text: string }
+  | { type: "image"; dataUrl: string; w?: number; h?: number };
 
 export type CalcPdfInput = {
   firmName: string;
@@ -317,6 +318,22 @@ export async function renderCalcPdf(input: CalcPdfInput): Promise<Buffer> {
     }
     if (b.type === "table") { drawTable(b.head, b.rows); i++; continue; }
     if (b.type === "insight") { drawInsight(b.text); i++; continue; }
+    if (b.type === "image") {
+      try {
+        const b64 = (b.dataUrl.split(",")[1] || "");
+        if (b64) {
+          const png = await doc.embedPng(Buffer.from(b64, "base64"));
+          let w = contentW;
+          let h = (png.height / png.width) * contentW;
+          const maxH = fullPageH - 16;
+          if (h > maxH) { const s = maxH / h; w *= s; h *= s; }
+          keepTogether(h + 10); // never split a chart across pages
+          page.drawImage(png, { x: MARGIN + (contentW - w) / 2, y: y - h, width: w, height: h });
+          y -= h + 10;
+        }
+      } catch { /* skip an unembeddable image */ }
+      i++; continue;
+    }
     i++;
   }
 

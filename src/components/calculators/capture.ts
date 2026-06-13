@@ -20,7 +20,8 @@ export type PdfBlock =
   | { type: "stat"; label: string; value: string }
   | { type: "section"; text: string }
   | { type: "table"; head: string[]; rows: string[][] }
-  | { type: "insight"; text: string };
+  | { type: "insight"; text: string }
+  | { type: "image"; dataUrl: string; w: number; h: number };
 
 export type CalcCapture = {
   title: string;
@@ -50,6 +51,65 @@ function controlValue(c: Element): string {
 function cellText(td: Element): string {
   const ctrl = td.querySelector("input, select, textarea");
   return ctrl ? controlValue(ctrl) : txt(td);
+}
+
+/** Is this <svg> a data chart (vs a small lucide UI icon)? */
+function isChartSvg(svg: SVGSVGElement): boolean {
+  if (svg.classList.contains("lucide")) return false;
+  if (svg.closest("button")) return false;
+  if (svg.getAttribute("role") === "img") return true;
+  const r = svg.getBoundingClientRect();
+  return r.width >= 220 && r.height >= 70;
+}
+
+/**
+ * Rasterise a chart <svg> to a PNG data URL via canvas. Computed colours are
+ * inlined onto the clone first so class-/currentColor-based strokes & text
+ * (gridlines, axis labels) survive when the SVG is drawn standalone.
+ */
+async function svgToPng(svg: SVGSVGElement): Promise<{ dataUrl: string; w: number; h: number } | null> {
+  try {
+    const rect = svg.getBoundingClientRect();
+    const w = Math.round(rect.width) || 600;
+    const h = Math.round(rect.height) || 300;
+    const clone = svg.cloneNode(true) as SVGSVGElement;
+    const srcEls = [svg, ...Array.from(svg.querySelectorAll<SVGElement>("*"))];
+    const dstEls = [clone, ...Array.from(clone.querySelectorAll<SVGElement>("*"))];
+    srcEls.forEach((s, i) => {
+      const d = dstEls[i];
+      if (!d) return;
+      const cs = getComputedStyle(s);
+      d.style.fill = cs.fill;
+      d.style.stroke = cs.stroke;
+      d.style.color = cs.color;
+      if (cs.fontSize) d.style.fontSize = cs.fontSize;
+      if (cs.fontFamily) d.style.fontFamily = cs.fontFamily;
+      if (cs.fontWeight) d.style.fontWeight = cs.fontWeight;
+    });
+    clone.setAttribute("width", String(w));
+    clone.setAttribute("height", String(h));
+    clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+    const xml = new XMLSerializer().serializeToString(clone);
+    const src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(xml);
+    const img = new Image();
+    await new Promise<void>((res, rej) => {
+      img.onload = () => res();
+      img.onerror = () => rej(new Error("svg load failed"));
+      img.src = src;
+    });
+    const scale = 2;
+    const canvas = document.createElement("canvas");
+    canvas.width = w * scale;
+    canvas.height = h * scale;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    return { dataUrl: canvas.toDataURL("image/png"), w, h };
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -104,7 +164,7 @@ function readTable(table: HTMLTableElement): { head: string[]; rows: string[][] 
   return { head, rows };
 }
 
-export function captureCalcResults(root: HTMLElement): CalcCapture {
+export async function captureCalcResults(root: HTMLElement): Promise<CalcCapture> {
   const title = txt(root.querySelector("h2")) || "Calculator";
 
   // ── Inputs (grouped) ──────────────────────────────────────────────────────
@@ -162,8 +222,19 @@ export function captureCalcResults(root: HTMLElement): CalcCapture {
     blocks.push({ type: "stat", label, value });
   };
 
-  const SEL = 'h3, table, [data-pdf="insight"], .text-lg.font-semibold, .justify-between.text-xs';
+  // Chart <svg>s are captured in document order as placeholder image blocks,
+  // then rasterised to PNG after the walk (rasterising is async).
+  const pendingCharts: { idx: number; svg: SVGSVGElement }[] = [];
+
+  const SEL = 'h3, table, [data-pdf="insight"], .text-lg.font-semibold, .justify-between.text-xs, svg';
   root.querySelectorAll<HTMLElement>(SEL).forEach((el) => {
+    if (el instanceof SVGSVGElement) {
+      if (isChartSvg(el)) {
+        pendingCharts.push({ idx: blocks.length, svg: el });
+        blocks.push({ type: "image", dataUrl: "", w: 0, h: 0 }); // filled in below
+      }
+      return;
+    }
     if (el.tagName === "H3") {
       const t = el.getAttribute("data-pdf-title") || txt(el);
       if (t) blocks.push({ type: "section", text: t });
@@ -186,5 +257,14 @@ export function captureCalcResults(root: HTMLElement): CalcCapture {
     }
   });
 
-  return { title, inputs, blocks };
+  // Rasterise charts; drop any that fail so a bad chart never breaks the PDF.
+  for (const pc of pendingCharts) {
+    const r = await svgToPng(pc.svg);
+    blocks[pc.idx] = r
+      ? { type: "image", dataUrl: r.dataUrl, w: r.w, h: r.h }
+      : ({ type: "section", text: "" } as PdfBlock); // harmless placeholder, filtered next
+  }
+  const finalBlocks = blocks.filter((b) => !(b.type === "section" && !b.text) && !(b.type === "image" && !b.dataUrl));
+
+  return { title, inputs, blocks: finalBlocks };
 }

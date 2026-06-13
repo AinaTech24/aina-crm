@@ -150,7 +150,7 @@ export function MoneyPersonalityQuiz() {
                   onClick={() => pick(qi, oi)}
                   className={`text-left rounded-md border px-2.5 py-1.5 text-xs transition ${
                     answers[qi] === oi
-                      ? "border-brand-cyan bg-brand-cyan-light/40 text-brand-cyan-deep font-medium"
+                      ? "border-primary bg-primary/10 text-primary font-medium"
                       : "border-border hover:bg-secondary"
                   }`}
                 >
@@ -177,7 +177,7 @@ export function MoneyPersonalityQuiz() {
                 : profile.tone === "amber"
                   ? "border-amber-200 bg-amber-50/60"
                   : profile.tone === "cyan"
-                    ? "border-brand-cyan/30 bg-brand-cyan-light/30"
+                    ? "border-primary/30 bg-primary/10"
                     : "border-emerald-200 bg-emerald-50/60"
             }`}
           >

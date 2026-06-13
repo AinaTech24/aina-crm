@@ -121,7 +121,7 @@ export function CashflowCorpusPlanner() {
           {reportHeader && <div className="text-base font-semibold">{reportHeader}</div>}
           {beneficiary && (
             <div className="text-sm text-muted-foreground">
-              Prepared for <span className="text-brand-cyan-deep font-medium">{beneficiary}</span> · age {currentAge} · {fmtPct(ratePct)} assumed return · till age {reportTillAge}
+              Prepared for <span className="text-primary font-medium">{beneficiary}</span> · age {currentAge} · {fmtPct(ratePct)} assumed return · till age {reportTillAge}
             </div>
           )}
         </div>

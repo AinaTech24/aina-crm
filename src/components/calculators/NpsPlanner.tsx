@@ -52,7 +52,7 @@ export function NpsPlanner() {
         <NumberField label="Tax slab (% for 80CCD-1B)" value={taxSlabPct} setValue={setTaxSlabPct} step={5} />
       </div>
 
-      {clientName && <div className="text-sm font-medium">Prepared for <span className="text-brand-cyan-deep">{clientName}</span></div>}
+      {clientName && <div className="text-sm font-medium">Prepared for <span className="text-primary">{clientName}</span></div>}
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Stat label={`Corpus at ${retirementAge}`} value={inr(r.corpus)} tone="cyan" />

@@ -56,7 +56,7 @@ export function AnnualLumpsumRequiredCalculator() {
         <NumberField label="Scenario 1 return (%)" value={scenario1Pct} setValue={setScenario1Pct} step={0.5} />
         <div className="flex flex-col justify-end gap-1">
           <label className="flex items-center gap-2 cursor-pointer select-none">
-            <input type="checkbox" checked={useScenario2} onChange={(e) => setUseScenario2(e.target.checked)} className="size-4 rounded border-border accent-brand-cyan" />
+            <input type="checkbox" checked={useScenario2} onChange={(e) => setUseScenario2(e.target.checked)} className="size-4 rounded border-border accent-primary" />
             <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium">Compare scenario 2</span>
           </label>
           {useScenario2 && <NumberField label="Scenario 2 return (%)" value={scenario2Pct} setValue={setScenario2Pct} step={0.5} />}
@@ -64,7 +64,7 @@ export function AnnualLumpsumRequiredCalculator() {
       </div>
 
       {clientName && (
-        <div className="text-sm font-medium">Prepared for <span className="text-brand-cyan-deep">{clientName}</span> · target {inr(targetAmount)} in {investmentYears} years</div>
+        <div className="text-sm font-medium">Prepared for <span className="text-primary">{clientName}</span> · target {inr(targetAmount)} in {investmentYears} years</div>
       )}
 
       {/* Required amount(s) */}

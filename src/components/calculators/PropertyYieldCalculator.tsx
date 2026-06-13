@@ -64,7 +64,7 @@ export function PropertyYieldCalculator() {
       <div className="grid md:grid-cols-2 gap-4">
         {/* Property */}
         <section className="border border-slate-200 rounded-lg p-4 space-y-3">
-          <div className="text-[11px] uppercase tracking-wider font-semibold text-brand-cyan-deep">① The property</div>
+          <div className="text-[11px] uppercase tracking-wider font-semibold text-primary">① The property</div>
           <div className="grid grid-cols-2 gap-3">
             <Num label="Current market value (₹)" value={marketValue} setValue={setMarketValue} />
             <Num label="Expected appreciation (% p.a.)" value={appreciationPct} setValue={setAppreciationPct} step={0.5} />
@@ -85,7 +85,7 @@ export function PropertyYieldCalculator() {
           <div className="text-[11px] text-muted-foreground flex items-center gap-2 flex-wrap">
             <span>Net surplus = rent − maintenance = <strong>{inr(netSurplus)}</strong>/mo.</span>
             {investibleSurplus !== netSurplus && (
-              <button type="button" onClick={() => setInvestibleSurplus(netSurplus)} className="text-brand-cyan-deep hover:underline font-medium">
+              <button type="button" onClick={() => setInvestibleSurplus(netSurplus)} className="text-primary hover:underline font-medium">
                 Use net surplus
               </button>
             )}

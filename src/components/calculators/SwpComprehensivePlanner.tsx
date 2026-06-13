@@ -180,7 +180,7 @@ export function SwpComprehensivePlanner() {
         </div>
       </div>
 
-      {clientName && <div className="text-sm font-medium">Prepared for <span className="text-brand-cyan-deep">{clientName}</span></div>}
+      {clientName && <div className="text-sm font-medium">Prepared for <span className="text-primary">{clientName}</span></div>}
 
       {/* Summary */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
