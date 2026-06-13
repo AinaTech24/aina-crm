@@ -22,7 +22,10 @@ export const dynamic = "force-dynamic";
 const Body = z.object({
   calcName: z.string().min(1).max(120),
   clientName: z.string().max(120).optional().nullable(),
-  blocks: z.array(z.any()).max(300),
+  clientEmail: z.string().max(160).optional().nullable(),
+  clientMobile: z.string().max(40).optional().nullable(),
+  inputs: z.array(z.object({ label: z.string(), value: z.string() })).max(200).optional(),
+  blocks: z.array(z.any()).max(400),
 });
 
 export async function POST(req: NextRequest) {
@@ -30,7 +33,7 @@ export async function POST(req: NextRequest) {
     const session = await requireSession();
     const parsed = Body.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) return NextResponse.json({ error: "Invalid body" }, { status: 400 });
-    const { calcName, clientName, blocks } = parsed.data;
+    const { calcName, clientName, clientEmail, clientMobile, inputs, blocks } = parsed.data;
 
     const tenant = await withTenant(session.tenantId, async (tx) =>
       (await tx.select().from(tenants).where(eq(tenants.id, session.tenantId)).limit(1))[0] ?? null
@@ -40,15 +43,23 @@ export async function POST(req: NextRequest) {
     const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? "";
     const origin = host ? `${proto}://${host}` : null;
     const logoBytes = await fetchBrandLogoBytes(pickLogo(tenant as any, "full"), origin);
+    const generatedAt = new Date().toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Kolkata" });
     const pdf = await renderCalcPdf({
       firmName: tenant?.legalName ?? tenant?.displayName ?? "Your firm",
       arn: tenant?.arn ?? null,
       preparedBy: session.name,
+      firmPhone: tenant?.phone ?? null,
+      firmEmail: tenant?.email ?? null,
+      firmWebsite: tenant?.website ?? null,
       clientName: clientName ?? null,
+      clientEmail: clientEmail ?? null,
+      clientMobile: clientMobile ?? null,
       calcName,
+      inputs: inputs ?? [],
       blocks: blocks as PdfBlock[],
       logoBytes,
       primaryHex: (tenant as any)?.primaryColor ?? null,
+      generatedAt,
     });
 
     const fname = `${clientName || "Client"}-${calcName}`.replace(/[^A-Za-z0-9_-]+/g, "_").slice(0, 60) + ".pdf";

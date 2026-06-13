@@ -1,8 +1,19 @@
 /**
- * captureCalcResults — read the rendered calculator's inputs and `data-pdf`-
- * tagged output blocks (stats, sections, tables, insights) into a structured
- * payload the server turns into a branded PDF. Order follows the DOM, so the
- * PDF mirrors the page: an "Inputs & assumptions" table first, then the results.
+ * captureCalcResults — read the FULL rendered calculator (every input, every
+ * result, every table) into a structured payload the server turns into a
+ * branded multi-page PDF report. This is deliberately exhaustive:
+ *
+ *  - inputs : every labelled control (Field/NumberField/date/select/checkbox)
+ *             plus Segmented button-groups — even ones scrolled off-screen.
+ *  - blocks : every result card, section heading, insight/note AND every
+ *             <table> in the calculator — the WHOLE table (all rows + columns),
+ *             not just what's visible in a scroll area. React renders all rows
+ *             into the DOM (no virtualisation), so reading <tbody> captures the
+ *             complete dataset, including rows hidden behind an overflow scroll.
+ *
+ * Capture is structure-driven (not marker-driven) so it works across all ~60
+ * calculators regardless of whether they use the shared primitives or raw
+ * markup.
  */
 
 export type PdfBlock =
@@ -11,83 +22,155 @@ export type PdfBlock =
   | { type: "table"; head: string[]; rows: string[][] }
   | { type: "insight"; text: string };
 
+export type CalcCapture = {
+  title: string;
+  inputs: { label: string; value: string }[];
+  blocks: PdfBlock[];
+};
+
 const txt = (el: Element | null) => (el?.textContent || "").replace(/\s+/g, " ").trim();
 
-export function captureCalcResults(root: HTMLElement): { title: string; blocks: PdfBlock[] } {
-  const title = txt(root.querySelector("h2")) || "Calculator";
-  const blocks: PdfBlock[] = [];
+/** Current value of a single form control, formatted for display. */
+function controlValue(c: Element): string {
+  if (c instanceof HTMLSelectElement) return c.selectedOptions[0]?.text ?? c.value;
+  if (c instanceof HTMLTextAreaElement) return c.value;
+  if (c instanceof HTMLInputElement) {
+    if (c.type === "checkbox") return c.checked ? "Yes" : "No";
+    if (c.type === "radio") return c.checked ? c.value : "";
+    if (c.type === "number") {
+      const n = Number(c.value);
+      return c.value !== "" && Number.isFinite(n) ? n.toLocaleString("en-IN") : c.value;
+    }
+    return c.value;
+  }
+  return "";
+}
 
-  // Inputs & assumptions — so the client sees the exact figures the
-  // illustration was built from, not just the result. Calculators wrap every
-  // control in `<label><span>Label</span><control/></label>` (the Field
-  // primitive + raw selects/dates all follow this), so one generic label scan
-  // covers NumberField, TextField, dates, selects and checkboxes. Segmented is
-  // a button-group with no form control, so it carries a data-pdf-input marker.
-  const seen = new Set<string>();
-  const inputRows: string[][] = [];
+/** Read a cell: an input/select inside it wins over its text (editable tables). */
+function cellText(td: Element): string {
+  const ctrl = td.querySelector("input, select, textarea");
+  return ctrl ? controlValue(ctrl) : txt(td);
+}
+
+/**
+ * Flatten a <thead> (which may use colSpan/rowSpan group headers) into one
+ * label per leaf column, e.g. ["Year", "Regular SIP Corpus", "Regular SIP
+ * Invested", …]. Falls back to a single header row when there's no grouping.
+ */
+function readHead(table: HTMLTableElement): string[] {
+  const headRows = Array.from(table.querySelectorAll(":scope > thead > tr"));
+  if (headRows.length === 0) return [];
+  if (headRows.length === 1) return Array.from(headRows[0].children).map((c) => txt(c));
+
+  const grid: string[][] = [];
+  headRows.forEach((tr, r) => {
+    grid[r] = grid[r] || [];
+    let c = 0;
+    Array.from(tr.children).forEach((cell) => {
+      while (grid[r][c] !== undefined) c++;
+      const cs = parseInt(cell.getAttribute("colspan") || "1", 10) || 1;
+      const rs = parseInt(cell.getAttribute("rowspan") || "1", 10) || 1;
+      const t = txt(cell);
+      for (let i = 0; i < rs; i++) {
+        for (let j = 0; j < cs; j++) {
+          grid[r + i] = grid[r + i] || [];
+          grid[r + i][c + j] = t;
+        }
+      }
+      c += cs;
+    });
+  });
+  const ncols = Math.max(...grid.map((row) => row.length));
+  const head: string[] = [];
+  for (let col = 0; col < ncols; col++) {
+    const parts: string[] = [];
+    for (let r = 0; r < grid.length; r++) {
+      const v = grid[r]?.[col];
+      if (v && !parts.includes(v)) parts.push(v);
+    }
+    head.push(parts.join(" "));
+  }
+  return head;
+}
+
+function readTable(table: HTMLTableElement): { head: string[]; rows: string[][] } {
+  const head = readHead(table);
+  const bodyRows = table.querySelectorAll(":scope > tbody > tr").length
+    ? Array.from(table.querySelectorAll(":scope > tbody > tr"))
+    : Array.from(table.querySelectorAll(":scope > tr")); // tables without an explicit tbody
+  const rows = bodyRows
+    .map((tr) => Array.from(tr.children).map((td) => cellText(td)))
+    .filter((r) => r.some((c) => c !== ""));
+  return { head, rows };
+}
+
+export function captureCalcResults(root: HTMLElement): CalcCapture {
+  const title = txt(root.querySelector("h2")) || "Calculator";
+
+  // ── Inputs ──────────────────────────────────────────────────────────────
+  const inputs: { label: string; value: string }[] = [];
+  const seenIn = new Set<string>();
   const pushInput = (rawLabel: string, rawValue: string) => {
     const label = rawLabel.replace(/\s+/g, " ").trim();
     const value = rawValue.replace(/\s+/g, " ").trim();
     const key = `${label} :: ${value}`;
-    if (!label || seen.has(key)) return; // skip unlabelled + exact-duplicate rows
-    seen.add(key);
-    inputRows.push([label, value || "-"]);
+    if (!label || seenIn.has(key)) return;
+    seenIn.add(key);
+    inputs.push({ label, value: value || "-" });
   };
 
   root.querySelectorAll<HTMLLabelElement>("label").forEach((label) => {
+    if (label.closest("table")) return; // editable-table cells are caught as table data
     const control = label.querySelector<HTMLElement>("input, select, textarea");
     if (!control) return;
     const labelText = txt(label.querySelector("span"));
     if (!labelText) return;
-    let value = "";
-    if (control instanceof HTMLSelectElement) {
-      value = control.selectedOptions[0]?.text ?? control.value;
-    } else if (control instanceof HTMLInputElement) {
-      if (control.type === "checkbox") value = control.checked ? "Yes" : "No";
-      else if (control.type === "radio") {
-        if (!control.checked) return;
-        value = control.value;
-      } else if (control.type === "number") {
-        const n = Number(control.value);
-        value = control.value !== "" && Number.isFinite(n) ? n.toLocaleString("en-IN") : control.value;
-      } else value = control.value;
-    } else if (control instanceof HTMLTextAreaElement) {
-      value = control.value;
-    }
-    pushInput(labelText, value);
+    if (control instanceof HTMLInputElement && control.type === "radio" && !control.checked) return;
+    pushInput(labelText, controlValue(control));
   });
-
-  // Segmented button-groups (no form control to read) carry data-pdf-input.
+  // Segmented button-groups have no form control, so they carry a marker.
   root.querySelectorAll<HTMLElement>("[data-pdf-input]").forEach((el) => {
-    if (el.matches("input, select, textarea")) return; // already handled above
+    if (el.matches("input, select, textarea")) return;
     pushInput(el.getAttribute("data-pdf-input-label") || "", el.getAttribute("data-pdf-input-value") || "");
   });
 
-  if (inputRows.length) {
-    blocks.push({ type: "section", text: "Inputs & assumptions" });
-    blocks.push({ type: "table", head: ["Field", "Value"], rows: inputRows });
-  }
+  // ── Outputs (document order: sections, result cards, tables, notes) ───────
+  const blocks: PdfBlock[] = [];
+  const seenStat = new Set<string>();
+  const pushStat = (rawLabel: string, rawValue: string, requireDigit = false) => {
+    const label = rawLabel.replace(/\s+/g, " ").trim();
+    const value = rawValue.replace(/\s+/g, " ").trim();
+    if (!label || !value || label === value) return;
+    if (requireDigit && !/\d/.test(value)) return;
+    const key = `${label} :: ${value}`;
+    if (seenStat.has(key)) return;
+    seenStat.add(key);
+    blocks.push({ type: "stat", label, value });
+  };
 
-  root.querySelectorAll<HTMLElement>("[data-pdf]").forEach((el) => {
-    const kind = el.getAttribute("data-pdf");
-    if (kind === "stat") {
-      blocks.push({
-        type: "stat",
-        label: el.getAttribute("data-pdf-label") || "",
-        value: el.getAttribute("data-pdf-value") || "",
-      });
-    } else if (kind === "section") {
-      blocks.push({ type: "section", text: el.getAttribute("data-pdf-title") || txt(el) });
-    } else if (kind === "insight") {
-      blocks.push({ type: "insight", text: txt(el) });
-    } else if (kind === "table") {
-      const head = Array.from(el.querySelectorAll("thead th")).map((th) => txt(th));
-      const rows = Array.from(el.querySelectorAll("tbody tr"))
-        .map((tr) => Array.from(tr.querySelectorAll("td")).map((td) => txt(td)))
-        .filter((r) => r.length > 0);
+  const SEL = 'h3, table, [data-pdf="insight"], .text-lg.font-semibold, .justify-between.text-xs';
+  root.querySelectorAll<HTMLElement>(SEL).forEach((el) => {
+    if (el.tagName === "H3") {
+      const t = el.getAttribute("data-pdf-title") || txt(el);
+      if (t) blocks.push({ type: "section", text: t });
+    } else if (el.tagName === "TABLE") {
+      const { head, rows } = readTable(el as HTMLTableElement);
       if (head.length || rows.length) blocks.push({ type: "table", head, rows });
+    } else if (el.getAttribute("data-pdf") === "insight") {
+      const t = txt(el);
+      if (t) blocks.push({ type: "insight", text: t });
+    } else if (el.classList.contains("text-lg")) {
+      // Result card value (shared across every calculator's result cards + the
+      // Stat primitive). Prefer the explicit data-pdf-* attrs when present.
+      const card = el.closest<HTMLElement>('[data-pdf="stat"]');
+      if (card) pushStat(card.getAttribute("data-pdf-label") || "", card.getAttribute("data-pdf-value") || txt(el));
+      else pushStat(txt(el.previousElementSibling), txt(el));
+    } else {
+      // Row (k/v) inside comparison boxes — intermediate values.
+      const kids = Array.from(el.children);
+      if (kids.length === 2) pushStat(txt(kids[0]), txt(kids[1]), true);
     }
   });
 
-  return { title, blocks };
+  return { title, inputs, blocks };
 }

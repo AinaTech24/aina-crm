@@ -1,10 +1,16 @@
 /**
- * calc-pdf — render a branded PDF from a captured calculator result (title +
- * ordered blocks of stats / tables / insights). Built with pdf-lib (Node
- * runtime). Used by the calculator Email / WhatsApp share paths so an
- * illustration looks like an official firm document. The layout paginates:
- * every captured stat/row/insight is rendered, spilling onto a 2nd/3rd A4 page
- * when needed, and long projection tables repeat their header after a break.
+ * calc-pdf — render a complete, professional A4 calculator report from a
+ * captured calculator (title + inputs + result blocks). Built with pdf-lib
+ * (Node runtime). Used by the calculator Download / Email / WhatsApp paths.
+ *
+ * The report is fully paginated and EVERY page carries the firm header band
+ * (logo, firm, ARN, generated date, calculator + client context) and the
+ * footer band (firm/ARN, disclaimer, "Page X of Y"). Content flows strictly
+ * between the two bands so nothing overlaps. Long result tables continue onto
+ * the next page and repeat their column header. Sections rendered in order:
+ *   1. Report title (centred)         4. Input details (table)
+ *   2. Client & advisor details box   5. Results (cards / sections / tables)
+ *   3. (header/footer on every page)  6. Notes & assumptions
  */
 
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage, type PDFImage } from "pdf-lib";
@@ -19,18 +25,28 @@ export type CalcPdfInput = {
   firmName: string;
   arn?: string | null;
   preparedBy?: string | null;
+  firmPhone?: string | null;
+  firmEmail?: string | null;
+  firmWebsite?: string | null;
   clientName?: string | null;
+  clientEmail?: string | null;
+  clientMobile?: string | null;
   calcName: string;
+  inputs?: { label: string; value: string }[];
   blocks: PdfBlock[];
   logoBytes?: Uint8Array | null;
   primaryHex?: string | null;
+  /** Human-readable generated timestamp (server builds it in IST). */
+  generatedAt?: string | null;
 };
 
 const A4: [number, number] = [595.28, 841.89];
 const MARGIN = 40;
-// pdf-lib's standard fonts are WinAnsi-encoded and can't draw ₹ (U+20B9) — the
-// old regex KEPT ₹ (it was in the negated class) so drawText threw. Convert
-// ₹ → "Rs " FIRST, normalise a few punctuation glyphs, then strip non-ASCII.
+const HEADER_H = 74; // reserved top band (header drawn here, every page)
+const FOOTER_H = 50; // reserved bottom band (footer drawn here, every page)
+
+// pdf-lib's standard fonts are WinAnsi-encoded and can't draw ₹ (U+20B9) — map
+// it to "Rs ", normalise a few punctuation glyphs, then strip non-ASCII.
 const ascii = (s: string) =>
   (s ?? "")
     .replace(/₹/g, "Rs ")
@@ -46,7 +62,16 @@ const ascii = (s: string) =>
 function hexToRgb(hex?: string | null) {
   const h = (hex ?? "#0e2557").replace("#", "");
   const n = parseInt(h.length === 3 ? h.split("").map((c) => c + c).join("") : h, 16);
+  if (!Number.isFinite(n)) return rgb(0.06, 0.09, 0.16);
   return rgb(((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255);
+}
+
+/** Trim `text` to fit `maxWidth` at `size`, adding an ellipsis if cut. */
+function clip(text: string, font: PDFFont, size: number, maxWidth: number): string {
+  let s = ascii(text);
+  if (font.widthOfTextAtSize(s, size) <= maxWidth) return s;
+  while (s.length > 1 && font.widthOfTextAtSize(s + "...", size) > maxWidth) s = s.slice(0, -1);
+  return s + "...";
 }
 
 /** Word-wrap `text` to `maxWidth` at `size`, returns lines. */
@@ -63,134 +88,244 @@ function wrap(text: string, font: PDFFont, size: number, maxWidth: number): stri
   return lines;
 }
 
+const DISCLAIMER =
+  "This report is for illustration purposes only and is not a guarantee of returns. " +
+  "Calculations are based on the inputs and assumptions provided. Mutual fund investments are " +
+  "subject to market risks; read all scheme related documents carefully.";
+
 export async function renderCalcPdf(input: CalcPdfInput): Promise<Buffer> {
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
   const primary = hexToRgb(input.primaryHex);
-  const slate = rgb(0.39, 0.45, 0.55);
-  const ink = rgb(0.06, 0.09, 0.16);
+  const slate = rgb(0.42, 0.47, 0.55);
+  const ink = rgb(0.1, 0.13, 0.18);
+  const line = rgb(0.85, 0.87, 0.9);
+  const zebra = rgb(0.97, 0.98, 0.99);
 
   let logo: PDFImage | null = null;
   if (input.logoBytes && input.logoBytes.length) {
-    try { logo = await doc.embedPng(input.logoBytes); } catch { try { logo = await doc.embedJpg(input.logoBytes); } catch { logo = null; } }
+    try { logo = await doc.embedPng(input.logoBytes); }
+    catch { try { logo = await doc.embedJpg(input.logoBytes); } catch { logo = null; } }
   }
 
-  doc.setTitle(ascii(`${input.clientName || "Client"} - ${input.calcName} - ${input.firmName}`));
+  doc.setTitle(ascii(`${input.calcName} Report - ${input.clientName || "Client"} - ${input.firmName}`));
   doc.setProducer("Aina CRM");
 
   const W = A4[0], H = A4[1];
   const contentW = W - MARGIN * 2;
+  const TOP = H - HEADER_H;       // content ceiling (just below header band)
+  const BOTTOM = FOOTER_H;        // content floor (just above footer band)
+
   let page: PDFPage = doc.addPage(A4);
-  let y = H - MARGIN;
+  let y = TOP;
 
-  // Multi-page: when a block won't fit above the footer band we spill onto a
-  // fresh page so EVERY captured row/stat/insight makes it into the PDF (the
-  // calculators with long year-by-year tables need 2-3 pages — that's fine).
-  const newPage = () => { page = doc.addPage(A4); y = H - MARGIN; };
-  const need = (h: number) => { if (y - h < MARGIN + 30) newPage(); };
+  const newPage = () => { page = doc.addPage(A4); y = TOP; };
+  const need = (h: number) => { if (y - h < BOTTOM) newPage(); };
+  const drawRight = (p: PDFPage, t: string, xRight: number, yy: number, size: number, f: PDFFont, c = ink) => {
+    const s = ascii(t);
+    p.drawText(s, { x: xRight - f.widthOfTextAtSize(s, size), y: yy, size, font: f, color: c });
+  };
+  const drawCenter = (p: PDFPage, t: string, yy: number, size: number, f: PDFFont, c = ink) => {
+    const s = ascii(t);
+    p.drawText(s, { x: (W - f.widthOfTextAtSize(s, size)) / 2, y: yy, size, font: f, color: c });
+  };
 
-  // ── Letterhead ── The logo already carries the firm's name, so when it's
-  // present we show ONLY the logo here (no redundant text beside it). The firm
-  // name + ARN still appear once, in the footer. Without a logo we fall back to
-  // the firm name + ARN as text.
-  if (logo) {
-    const boxW = 175, boxH = 40;
-    const scale = Math.min(boxW / logo.width, boxH / logo.height);
-    const w = logo.width * scale, h = logo.height * scale;
-    page.drawImage(logo, { x: MARGIN, y: y - h, width: w, height: h });
-  } else {
-    page.drawText(ascii(input.firmName), { x: MARGIN, y: y - 14, size: 14, font: bold, color: ink });
-    page.drawText(ascii(`ARN ${input.arn ?? "-"}`), { x: MARGIN, y: y - 28, size: 9, font, color: slate });
-  }
-  page.drawText("Investment Illustration", { x: W - MARGIN - 130, y: y - 14, size: 11, font: bold, color: primary });
-  const dt = new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
-  page.drawText(ascii(`Prepared ${dt}`), { x: W - MARGIN - 130, y: y - 27, size: 9, font, color: slate });
-  y -= 46;
-  page.drawRectangle({ x: MARGIN, y, width: contentW, height: 3, color: primary });
+  // ── helper: a label/value mini-table cell grid for the details box ──
+  const kvLines = (pairs: [string, string][], x: number, startY: number, colW: number) => {
+    let yy = startY;
+    for (const [k, v] of pairs) {
+      if (!v) continue;
+      page.drawText(ascii(k), { x, y: yy, size: 8, font: bold, color: slate });
+      const kW = bold.widthOfTextAtSize(ascii(k) + " ", 8);
+      page.drawText(clip(v, font, 9, colW - kW), { x: x + kW, y: yy, size: 9, font, color: ink });
+      yy -= 14;
+    }
+    return yy;
+  };
+
+  // ════════════════ PAGE 1 CONTENT ════════════════
+
+  // 1. Report title (centred)
+  need(34);
+  drawCenter(page, `${input.calcName} Report`, y - 16, 18, bold, ink);
+  y -= 26;
+  drawCenter(page, ascii(input.firmName), y, 9.5, font, slate);
   y -= 18;
 
-  // ── Title + client ──
-  page.drawText(ascii(input.calcName), { x: MARGIN, y: y - 6, size: 16, font: bold, color: ink });
-  y -= 22;
-  if (input.clientName) {
-    page.drawText(ascii(`Prepared for: ${input.clientName}`), { x: MARGIN, y, size: 11, font, color: slate });
-    y -= 18;
-  }
-  y -= 4;
+  // 2. Client & Advisor details box (two columns)
+  const advisorPairs: [string, string][] = [
+    ["Firm:", input.firmName],
+    ["Advisor:", input.preparedBy || ""],
+    ["ARN:", input.arn || ""],
+    ["Phone:", input.firmPhone || ""],
+    ["Email:", input.firmEmail || ""],
+  ];
+  const clientPairs: [string, string][] = [
+    ["Name:", input.clientName || "-"],
+    ["Email:", input.clientEmail || ""],
+    ["Mobile:", input.clientMobile || ""],
+    ["Report date:", input.generatedAt || new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })],
+  ];
+  const boxRows = Math.max(advisorPairs.filter((p) => p[1]).length, clientPairs.filter((p) => p[1]).length);
+  const boxH = 22 + boxRows * 14;
+  need(boxH + 10);
+  page.drawRectangle({ x: MARGIN, y: y - boxH, width: contentW, height: boxH, borderColor: line, borderWidth: 1, color: rgb(0.985, 0.99, 0.995) });
+  const colW = (contentW - 24) / 2;
+  page.drawText("ADVISOR", { x: MARGIN + 12, y: y - 14, size: 8, font: bold, color: primary });
+  page.drawText("CLIENT", { x: MARGIN + 12 + colW + 12, y: y - 14, size: 8, font: bold, color: primary });
+  kvLines(advisorPairs, MARGIN + 12, y - 30, colW - 12);
+  kvLines(clientPairs, MARGIN + 12 + colW + 12, y - 30, colW - 12);
+  y -= boxH + 16;
 
-  // ── Blocks (paginates — every row/stat/insight always makes it in) ──
+  // ── section / stats / table / insight drawers ──
+  const sectionHead = (text: string) => {
+    need(26);
+    y -= 4;
+    page.drawRectangle({ x: MARGIN, y: y - 14, width: 3, height: 13, color: primary });
+    page.drawText(ascii(text), { x: MARGIN + 9, y: y - 11, size: 11, font: bold, color: ink });
+    y -= 22;
+  };
+
+  const drawStats = (group: { label: string; value: string }[]) => {
+    const cols = 3, cw = contentW / cols, ch = 40;
+    for (let g = 0; g < group.length; g += cols) {
+      need(ch + 8);
+      const row = group.slice(g, g + cols);
+      row.forEach((s, c) => {
+        const x = MARGIN + c * cw;
+        page.drawRectangle({ x, y: y - ch, width: cw - 8, height: ch, borderColor: line, borderWidth: 1, color: rgb(0.985, 0.99, 1) });
+        page.drawText(clip(s.label, font, 7.5, cw - 24), { x: x + 8, y: y - 14, size: 7.5, font, color: slate });
+        page.drawText(clip(s.value, bold, 12, cw - 24), { x: x + 8, y: y - 30, size: 12, font: bold, color: ink });
+      });
+      y -= ch + 8;
+    }
+  };
+
+  const drawTable = (head: string[], rows: string[][]) => {
+    const ncol = Math.max(head.length, ...rows.map((r) => r.length), 1);
+    // First column (labels) is wider for narrow tables (Field/Value), near-even
+    // for many-column data tables so every column has room.
+    const weights = Array.from({ length: ncol }, (_, i) => (i === 0 ? (ncol <= 3 ? 1.6 : 1.15) : 1));
+    const wsum = weights.reduce((a, b) => a + b, 0);
+    const colX: number[] = [];
+    let acc = MARGIN;
+    const colW2 = weights.map((w) => (w / wsum) * contentW);
+    colW2.forEach((w) => { colX.push(acc); acc += w; });
+    const cellPad = 4;
+    const rowH = 15;
+
+    // Wrap header labels to ≤2 lines so wide tables don't crop column names.
+    const hSize = 7;
+    const headLines = head.map((h, c) => wrap(h, bold, hSize, colW2[c] - cellPad * 2).slice(0, 2));
+    const headH = head.length ? Math.max(rowH, Math.max(1, ...headLines.map((l) => l.length)) * 9 + 6) : 0;
+
+    const drawHeader = () => {
+      need(headH + 4);
+      page.drawRectangle({ x: MARGIN, y: y - headH, width: contentW, height: headH, color: rgb(0.93, 0.95, 0.97) });
+      headLines.forEach((lines, c) => {
+        const align = c === 0 ? "left" : "right";
+        lines.forEach((s, li) => {
+          const tx = align === "left" ? colX[c] + cellPad : colX[c] + colW2[c] - cellPad - bold.widthOfTextAtSize(s, hSize);
+          page.drawText(s, { x: tx, y: y - 11 - li * 9, size: hSize, font: bold, color: slate });
+        });
+      });
+      y -= headH;
+    };
+
+    if (head.length) drawHeader();
+    rows.forEach((row, ri) => {
+      if (y - rowH < BOTTOM) { newPage(); if (head.length) drawHeader(); }
+      if (ri % 2 === 1) page.drawRectangle({ x: MARGIN, y: y - rowH, width: contentW, height: rowH, color: zebra });
+      for (let c = 0; c < ncol; c++) {
+        const cell = row[c] ?? "";
+        const align = c === 0 ? "left" : "right";
+        const s = clip(cell, font, 8, colW2[c] - cellPad * 2);
+        const tx = align === "left" ? colX[c] + cellPad : colX[c] + colW2[c] - cellPad - font.widthOfTextAtSize(s, 8);
+        page.drawText(s, { x: tx, y: y - 11, size: 8, font, color: ink });
+      }
+      page.drawLine({ start: { x: MARGIN, y: y - rowH }, end: { x: W - MARGIN, y: y - rowH }, thickness: 0.3, color: line });
+      y -= rowH;
+    });
+    y -= 8;
+  };
+
+  const drawInsight = (text: string) => {
+    const lines = wrap(text, font, 8.5, contentW - 16);
+    const ih = lines.length * 11 + 10;
+    need(ih + 6);
+    page.drawRectangle({ x: MARGIN, y: y - ih, width: contentW, height: ih, color: rgb(0.95, 0.985, 0.97), borderColor: rgb(0.8, 0.92, 0.85), borderWidth: 1 });
+    lines.forEach((ln, k) => page.drawText(ln, { x: MARGIN + 8, y: y - 13 - k * 11, size: 8.5, font, color: rgb(0.1, 0.3, 0.18) }));
+    y -= ih + 8;
+  };
+
+  // 3. Input details
+  if (input.inputs && input.inputs.length) {
+    sectionHead("Input Details");
+    drawTable(["Field", "Value"], input.inputs.map((i) => [i.label, i.value]));
+  }
+
+  // 4. Results — render blocks in order, batching consecutive stat cards.
+  let resultsHeaderDrawn = false;
   let i = 0;
   while (i < input.blocks.length) {
     const b = input.blocks[i];
     if (b.type === "stat") {
-      // Batch consecutive stats into rows of 3 cards.
+      if (!resultsHeaderDrawn) { sectionHead("Results & Summary"); resultsHeaderDrawn = true; }
       const group: { label: string; value: string }[] = [];
-      while (i < input.blocks.length && input.blocks[i].type === "stat") { group.push(input.blocks[i] as any); i++; }
-      const cols = 3, cw = contentW / cols, ch = 38;
-      for (let g = 0; g < group.length; g += cols) {
-        need(ch + 8);
-        const row = group.slice(g, g + cols);
-        row.forEach((s, c) => {
-          const x = MARGIN + c * cw;
-          page.drawRectangle({ x, y: y - ch, width: cw - 8, height: ch, borderColor: rgb(0.89, 0.91, 0.94), borderWidth: 1, color: rgb(0.98, 0.99, 1) });
-          page.drawText(ascii(s.label).slice(0, 34), { x: x + 8, y: y - 13, size: 7.5, font, color: slate });
-          page.drawText(ascii(s.value).slice(0, 22), { x: x + 8, y: y - 29, size: 12, font: bold, color: ink });
-        });
-        y -= ch + 8;
+      while (i < input.blocks.length && input.blocks[i].type === "stat") {
+        const s = input.blocks[i] as Extract<PdfBlock, { type: "stat" }>;
+        group.push({ label: s.label, value: s.value });
+        i++;
       }
+      drawStats(group);
       continue;
     }
-    if (b.type === "section") {
-      need(26);
-      y -= 6;
-      page.drawText(ascii(b.text), { x: MARGIN, y: y - 10, size: 11, font: bold, color: primary });
-      y -= 20;
-      i++; continue;
-    }
-    if (b.type === "insight") {
-      const lines = wrap(ascii(b.text), font, 9, contentW - 16);
-      const boxH = lines.length * 12 + 10;
-      need(boxH + 8);
-      page.drawRectangle({ x: MARGIN, y: y - boxH, width: contentW, height: boxH, color: rgb(0.94, 0.99, 0.96), borderColor: rgb(0.78, 0.92, 0.83), borderWidth: 1 });
-      lines.forEach((ln, k) => page.drawText(ln, { x: MARGIN + 8, y: y - 14 - k * 12, size: 9, font, color: rgb(0.1, 0.3, 0.18) }));
-      y -= boxH + 8;
-      i++; continue;
-    }
-    if (b.type === "table") {
-      const head = b.head.map(ascii);
-      const colW = contentW / Math.max(1, head.length);
-      // Draw (or redraw, after a page break) the header band, then rows. A long
-      // table that crosses a page boundary repeats its header on the next page.
-      const drawHeader = () => {
-        page.drawRectangle({ x: MARGIN, y: y - 16, width: contentW, height: 16, color: rgb(0.95, 0.96, 0.98) });
-        head.forEach((h, c) => page.drawText(ascii(h).slice(0, 26), { x: MARGIN + 4 + c * colW, y: y - 12, size: 7.5, font: bold, color: slate }));
-        y -= 16;
-      };
-      need(30);
-      drawHeader();
-      for (const row of b.rows) {
-        if (y - 14 < MARGIN + 30) { newPage(); drawHeader(); }
-        row.slice(0, head.length).forEach((cell, c) => {
-          page.drawText(ascii(cell).slice(0, 26), { x: MARGIN + 4 + c * colW, y: y - 11, size: 8, font, color: ink });
-        });
-        page.drawLine({ start: { x: MARGIN, y: y - 14 }, end: { x: W - MARGIN, y: y - 14 }, thickness: 0.3, color: rgb(0.9, 0.92, 0.95) });
-        y -= 14;
-      }
-      y -= 8;
-      i++; continue;
-    }
+    if (b.type === "section") { sectionHead(b.text); i++; continue; }
+    if (b.type === "table") { drawTable(b.head, b.rows); i++; continue; }
+    if (b.type === "insight") { drawInsight(b.text); i++; continue; }
     i++;
   }
 
-  // ── Footer disclaimer on every page ──
-  const disc = "Illustration only; not a guarantee of returns. Mutual fund investments are subject to market risks. Read all scheme related documents carefully.";
+  // 5. Notes & assumptions
+  need(40);
+  sectionHead("Notes & Assumptions");
+  wrap(
+    "All figures are projections based on the inputs above and the stated rate of return, which is not assured. " +
+      "Actual results will vary with market performance, fund selection, costs and taxes.",
+    font, 8.5, contentW
+  ).forEach((ln) => { page.drawText(ln, { x: MARGIN, y: y - 4, size: 8.5, font, color: slate }); y -= 12; });
+
+  // ════════════════ HEADER + FOOTER on EVERY page ════════════════
+  const dt = input.generatedAt || new Date().toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" });
+  const ctx = ascii(
+    `${input.calcName} Report` +
+      (input.clientName ? `  -  ${input.clientName}` : "") +
+      (input.clientEmail ? `  -  ${input.clientEmail}` : "")
+  );
   const pages = doc.getPages();
   pages.forEach((p, idx) => {
-    p.drawLine({ start: { x: MARGIN, y: MARGIN + 18 }, end: { x: W - MARGIN, y: MARGIN + 18 }, thickness: 0.5, color: rgb(0.89, 0.91, 0.94) });
-    wrap(disc, font, 7, contentW).forEach((ln, k) => p.drawText(ln, { x: MARGIN, y: MARGIN + 8 - k * 8, size: 7, font, color: slate }));
-    p.drawText(ascii(`${input.firmName} - ARN ${input.arn ?? "-"}`), { x: MARGIN, y: MARGIN + 24, size: 7, font, color: slate });
-    p.drawText(`${idx + 1}/${pages.length}`, { x: W - MARGIN - 20, y: MARGIN + 24, size: 7, font, color: slate });
+    // header band
+    if (logo) {
+      const boxW = 150, boxH2 = 30;
+      const scale = Math.min(boxW / logo.width, boxH2 / logo.height);
+      p.drawImage(logo, { x: MARGIN, y: H - 24 - logo.height * scale, width: logo.width * scale, height: logo.height * scale });
+    } else {
+      p.drawText(ascii(input.firmName), { x: MARGIN, y: H - 26, size: 12, font: bold, color: ink });
+    }
+    drawRight(p, input.firmName, W - MARGIN, H - 22, 9.5, bold, ink);
+    drawRight(p, `ARN: ${input.arn ?? "-"}`, W - MARGIN, H - 34, 8, font, slate);
+    drawRight(p, `Generated: ${dt}`, W - MARGIN, H - 45, 8, font, slate);
+    p.drawLine({ start: { x: MARGIN, y: H - HEADER_H + 14 }, end: { x: W - MARGIN, y: H - HEADER_H + 14 }, thickness: 1, color: primary });
+    p.drawText(clip(ctx, font, 8, contentW), { x: MARGIN, y: H - HEADER_H + 18, size: 8, font, color: slate });
+
+    // footer band
+    p.drawLine({ start: { x: MARGIN, y: FOOTER_H - 2 }, end: { x: W - MARGIN, y: FOOTER_H - 2 }, thickness: 0.6, color: line });
+    p.drawText(ascii(`${input.firmName} - ARN ${input.arn ?? "-"}`), { x: MARGIN, y: FOOTER_H - 14, size: 7, font, color: slate });
+    drawRight(p, `Page ${idx + 1} of ${pages.length}`, W - MARGIN, FOOTER_H - 14, 7.5, bold, slate);
+    wrap(DISCLAIMER, font, 6.5, contentW).slice(0, 2).forEach((ln, k) =>
+      p.drawText(ln, { x: MARGIN, y: FOOTER_H - 24 - k * 8, size: 6.5, font, color: slate })
+    );
   });
 
   return Buffer.from(await doc.save());
