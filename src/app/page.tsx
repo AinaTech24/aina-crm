@@ -7,6 +7,8 @@ import {
   ShieldAlert, Zap, CheckCircle2, ChevronRight, Upload, Cog, Rocket,
   Users2,
 } from "lucide-react";
+import { CountUp } from "@/components/landing/CountUp";
+import { FaqAccordion } from "@/components/landing/FaqAccordion";
 
 /** WhatsApp community — primary "Join Our Community" CTA across the page. */
 const COMMUNITY_URL = "https://chat.whatsapp.com/Fqv4YlnPibN0r4BRQJ2DSX?s=cl&p=a&ilr=4&amv=2";
@@ -127,14 +129,8 @@ const JSON_LD = {
 
 export default function Home() {
   return (
-    <main className="min-h-screen flex flex-col bg-background relative overflow-x-hidden">
+    <main className="min-h-screen flex flex-col bg-background relative overflow-x-clip">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(JSON_LD) }} />
-
-      {/* Ambient background mesh */}
-      <div className="absolute top-0 left-0 right-0 h-[60rem] pointer-events-none overflow-hidden z-0">
-        <div className="absolute -top-[30%] -left-[20%] w-[80%] h-[80%] rounded-full bg-gradient-to-tr from-brand-navy-light/70 to-transparent blur-3xl opacity-60" />
-        <div className="absolute -top-[20%] -right-[15%] w-[60%] h-[70%] rounded-full bg-gradient-to-bl from-brand-cyan-light/50 to-transparent blur-3xl opacity-50" />
-      </div>
 
       {/* ───────────────────────── Nav ───────────────────────── */}
       <header className="sticky top-0 z-50 border-b border-border/40 bg-background/75 backdrop-blur-xl">
@@ -173,7 +169,7 @@ export default function Home() {
 
             <h1 className="text-4xl sm:text-5xl lg:text-[3.6rem] font-extrabold tracking-tight leading-[1.08] text-foreground">
               Run your MFD practice with{" "}
-              <span className="text-gradient">more control, less manual work</span>.
+              <span className="text-primary">more control, less manual work</span>.
             </h1>
 
             <p className="mt-6 text-lg text-muted-foreground leading-relaxed max-w-2xl">
@@ -228,8 +224,6 @@ export default function Home() {
 
           {/* Live dashboard mock */}
           <div className="lg:col-span-5 relative w-full flex justify-center">
-            <div className="absolute -inset-1 rounded-2xl bg-gradient-to-tr from-brand-navy to-brand-cyan opacity-20 blur-xl pointer-events-none" />
-
             {/* Floating proof toast — depth + story */}
             <div className="hidden lg:flex absolute -left-8 -bottom-5 z-20 items-center gap-2.5 rounded-xl border border-border/60 bg-card/95 backdrop-blur px-3.5 py-2.5 shadow-xl animate-fade-in">
               <span className="size-8 rounded-full bg-emerald-500/10 grid place-items-center">
@@ -335,10 +329,10 @@ export default function Home() {
             Purpose-built for the Indian MFD practice
           </p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-y-8 md:divide-x md:divide-border/50">
-            <Stat value="60+" label="Client-ready financial calculators" />
-            <Stat value="13,900+" label="AMFI schemes valued daily" />
-            <Stat value="40+" label="Ready-made automation recipes" />
-            <Stat value="11 rules" label="Compliance checks on every send" />
+            <Stat value={60} suffix="+" label="Client-ready financial calculators" />
+            <Stat value={13900} suffix="+" label="AMFI schemes valued daily" />
+            <Stat value={40} suffix="+" label="Ready-made automation recipes" />
+            <Stat value={11} suffix=" rules" label="Compliance checks on every send" />
           </div>
         </div>
       </section>
@@ -397,8 +391,8 @@ export default function Home() {
           </p>
           <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
             {[
-              "CAMS", "KFintech", "AMFI NAV feed", "WhatsApp (AiSensy)", "MSG91 SMS",
-              "Email (Resend)", "Razorpay", "NSE NMF II", "BSE STAR MF",
+              "CAMS", "KFintech", "AMFI NAV feed", "WhatsApp (AiSensy)",
+              "MSG91 SMS", "Email (Resend)", "Razorpay",
             ].map((name) => (
               <span
                 key={name}
@@ -520,7 +514,7 @@ export default function Home() {
               }`}
             >
               {p.featured && (
-                <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-gradient-to-r from-brand-navy to-brand-cyan text-white text-[10px] uppercase font-bold tracking-widest px-3 py-1 rounded-full shadow-md">
+                <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-primary text-white text-[10px] uppercase font-bold tracking-widest px-3 py-1 rounded-full shadow-md">
                   Most popular with MFD firms
                 </span>
               )}
@@ -587,19 +581,7 @@ export default function Home() {
             </p>
           </div>
 
-          <div className="space-y-4">
-            {FAQS.map((faq, idx) => (
-              <details key={idx} className="group glass-card rounded-xl border border-border/40 p-4 [&_summary::-webkit-details-marker]:hidden">
-                <summary className="flex justify-between items-center font-bold text-sm sm:text-base cursor-pointer select-none text-foreground gap-3">
-                  <span>{faq.q}</span>
-                  <ChevronRight className="size-5 transition-transform group-open:rotate-90 text-muted-foreground shrink-0" />
-                </summary>
-                <div className="mt-3 pt-3 border-t border-border/30 text-xs sm:text-sm text-muted-foreground leading-relaxed">
-                  {faq.a}
-                </div>
-              </details>
-            ))}
-          </div>
+          <FaqAccordion items={FAQS} />
         </div>
       </section>
 
@@ -630,8 +612,7 @@ export default function Home() {
 
       {/* ───────────────────────── Final CTA ───────────────────────── */}
       <section className="py-20 max-w-6xl mx-auto px-6 relative z-10">
-        <div className="rounded-2xl brand-mesh p-8 sm:p-14 text-center relative overflow-hidden shadow-2xl">
-          <div className="absolute top-0 right-0 size-80 rounded-full bg-white/5 blur-3xl pointer-events-none" />
+        <div className="rounded-2xl bg-brand-cyan-deep p-8 sm:p-14 text-center relative overflow-hidden shadow-2xl">
           <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-white">
             Ready to build a more system-driven MFD practice?
           </h2>
@@ -661,7 +642,7 @@ export default function Home() {
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-10">
             <div>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/aina-wordmark.png" alt="AINA CRM" className="h-8 w-auto object-contain shrink-0" />
+              <img src="/aina-logo.png" alt="Aina CRM" className="h-9 w-auto object-contain shrink-0" />
               <p className="text-xs text-muted-foreground mt-4 leading-relaxed max-w-xs">
                 AINA CRM is mutual fund software for distributors in India — client CRM, CAMS/KFintech
                 import, SIP &amp; AUM tracking, AMFI-compliant WhatsApp, 60+ financial calculators,
@@ -674,7 +655,18 @@ export default function Home() {
           </div>
 
           <div className="mt-14 pt-8 border-t border-border/40 flex flex-col lg:flex-row justify-between gap-4 text-[11px] text-muted-foreground leading-relaxed">
-            <span>© {new Date().getFullYear()} Aina Tech Services LLP. All rights reserved.</span>
+            <span>
+              © {new Date().getFullYear()}{" "}
+              <a
+                href="https://ainatech.in"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-semibold text-foreground/70 hover:text-primary transition-colors"
+              >
+                Aina Tech Services LLP
+              </a>
+              . All rights reserved.
+            </span>
             <span className="max-w-2xl lg:text-right">
               Disclaimer: Mutual fund investments are subject to market risks. Read all scheme-related
               documents carefully. AINA CRM provides practice-management, analytics and communication
@@ -892,10 +884,12 @@ const PLANS = [
 
 /* ───────────────────────── Helper components ───────────────────────── */
 
-function Stat({ value, label }: { value: string; label: string }) {
+function Stat({ value, suffix, label }: { value: number; suffix?: string; label: string }) {
   return (
     <div className="text-center flex flex-col items-center justify-center">
-      <div className="text-2xl sm:text-3xl font-extrabold tracking-tight text-gradient">{value}</div>
+      <div className="text-2xl sm:text-3xl font-extrabold tracking-tight text-primary tabular-nums">
+        <CountUp value={value} suffix={suffix} />
+      </div>
       <div className="text-xs text-muted-foreground font-semibold mt-1.5 max-w-[180px]">{label}</div>
     </div>
   );
@@ -933,7 +927,7 @@ function Spotlight({
           ))}
         </ul>
       </div>
-      <div className={`relative rounded-2xl bg-gradient-to-br ${accent} p-6 sm:p-10 flex items-center justify-center border border-border/30`}>
+      <div className={`relative rounded-2xl bg-secondary/40 p-6 sm:p-10 flex items-center justify-center border border-border/30`}>
         {children}
       </div>
     </div>

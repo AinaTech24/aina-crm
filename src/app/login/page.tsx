@@ -10,7 +10,7 @@ export default function LoginPage() {
     <ToastProvider>
       <Suspense
         fallback={
-          <div className="min-h-screen grid place-items-center brand-soft">
+          <div className="min-h-screen grid place-items-center bg-secondary/20">
             <Loader2 className="size-6 animate-spin text-brand-cyan" />
           </div>
         }

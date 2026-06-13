@@ -160,9 +160,7 @@ export function AuthScreen({ initialMode }: { initialMode: Mode }) {
   return (
     <main className="min-h-screen grid grid-cols-1 lg:grid-cols-2 bg-background">
       {/* ── Left: brand panel (single logo, animated content) ── */}
-      <div className="hidden lg:flex relative flex-col justify-between p-12 overflow-hidden text-white bg-gradient-to-br from-brand-navy via-brand-navy-deep to-brand-cyan-deep">
-        <div className="absolute -top-40 -left-32 size-[28rem] rounded-full bg-white/10 blur-3xl" />
-        <div className="absolute -bottom-40 -right-32 size-[28rem] rounded-full bg-brand-cyan/25 blur-3xl" />
+      <div className="hidden lg:flex relative flex-col justify-between p-12 overflow-hidden text-white bg-brand-cyan-deep">
         <div className="absolute inset-0 opacity-[0.06] bg-[radial-gradient(circle_at_1px_1px,white_1px,transparent_0)] [background-size:22px_22px]" />
 
         <Link href="/" className="relative z-10 inline-flex w-fit items-center" aria-label="Aina CRM home">
@@ -200,7 +198,7 @@ export function AuthScreen({ initialMode }: { initialMode: Mode }) {
       </div>
 
       {/* ── Right: form (single mobile wordmark, animated swap) ── */}
-      <div className="flex items-center justify-center p-6 sm:p-10 brand-soft">
+      <div className="flex items-center justify-center p-6 sm:p-10 bg-secondary/20">
         <div className="w-full max-w-sm">
           {/* Mobile-only logo (desktop uses the left panel — never both) */}
           <div className="lg:hidden mb-8 flex justify-center">
