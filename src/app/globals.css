@@ -643,6 +643,15 @@
     }
   }
 
+  /* Auth screen — smooth swap when toggling login ↔ signup (keyed re-mount) */
+  @keyframes authSwap {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .auth-swap {
+    animation: authSwap 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
   /* Interactive smooth scale utility */
   .hover-lift {
     transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
