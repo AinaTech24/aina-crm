@@ -114,14 +114,23 @@ export async function renderCalcPdf(input: CalcPdfInput): Promise<Buffer> {
 
   const W = A4[0], H = A4[1];
   const contentW = W - MARGIN * 2;
-  const TOP = H - HEADER_H;       // content ceiling (just below header band)
-  const BOTTOM = FOOTER_H;        // content floor (just above footer band)
+  // Header band appears on page 1 ONLY. Page 1 content starts below it; pages
+  // 2+ have no header, so content starts at the top margin and uses that space.
+  const TOP1 = H - HEADER_H;       // page 1 ceiling (below header band)
+  const TOP2 = H - MARGIN;         // page 2+ ceiling (no header)
+  const BOTTOM = FOOTER_H;         // content floor (above footer band, every page)
+  const fullPageH = TOP2 - BOTTOM; // max content height on a header-less page
 
   let page: PDFPage = doc.addPage(A4);
-  let y = TOP;
+  let y = TOP1;
 
-  const newPage = () => { page = doc.addPage(A4); y = TOP; };
+  const newPage = () => { page = doc.addPage(A4); y = TOP2; };
   const need = (h: number) => { if (y - h < BOTTOM) newPage(); };
+  // Move to a fresh page if `h` won't fit here but WOULD fit on a full page —
+  // keeps a small table (or a section + its table) from being split awkwardly.
+  const keepTogether = (h: number) => { if (h <= fullPageH && y - h < BOTTOM) newPage(); };
+  const estTableHeight = (head: string[], rows: string[][]) =>
+    (head.length ? 24 : 0) + rows.length * 15 + 10;
   const drawRight = (p: PDFPage, t: string, xRight: number, yy: number, size: number, f: PDFFont, c = ink) => {
     const s = ascii(t);
     p.drawText(s, { x: xRight - f.widthOfTextAtSize(s, size), y: yy, size, font: f, color: c });
@@ -146,18 +155,17 @@ export async function renderCalcPdf(input: CalcPdfInput): Promise<Buffer> {
 
   // ════════════════ PAGE 1 CONTENT ════════════════
 
-  // 1. Report title (centred)
-  need(34);
+  // 1. Report title (centred). Firm name is already in the logo/header, so no
+  //    duplicate subtitle here.
+  need(30);
   drawCenter(page, `${input.calcName} Report`, y - 16, 18, bold, ink);
-  y -= 26;
-  drawCenter(page, ascii(input.firmName), y, 9.5, font, slate);
-  y -= 18;
+  y -= 30;
 
   // 2. Client & Advisor details box (two columns)
   const advisorPairs: [string, string][] = [
     ["Firm:", input.firmName],
     ["Advisor:", input.preparedBy || ""],
-    ["ARN:", input.arn || ""],
+    ["ARN:", (input.arn || "").replace(/^ARN[-\s]*/i, "")],
   ];
   const clientPairs: [string, string][] = [
     ["Name:", input.clientName || "-"],
@@ -216,6 +224,10 @@ export async function renderCalcPdf(input: CalcPdfInput): Promise<Buffer> {
     const headLines = head.map((h, c) => wrap(h, bold, hSize, colW2[c] - cellPad * 2).slice(0, 2));
     const headH = head.length ? Math.max(rowH, Math.max(1, ...headLines.map((l) => l.length)) * 9 + 6) : 0;
 
+    // Keep the whole table on one page when it fits; only tables taller than a
+    // full page are split (and then the header repeats on each continuation).
+    keepTogether(headH + rows.length * rowH + 8);
+
     const drawHeader = () => {
       need(headH + 4);
       page.drawRectangle({ x: MARGIN, y: y - headH, width: contentW, height: headH, color: rgb(0.93, 0.95, 0.97) });
@@ -267,12 +279,14 @@ export async function renderCalcPdf(input: CalcPdfInput): Promise<Buffer> {
       byGroup.get(g)!.push(it);
     }
     for (const g of order) {
+      const gRows = byGroup.get(g)!.map((i) => [i.label, i.value]);
       if (g) {
-        need(18);
+        // keep the category heading with (at least the top of) its table
+        keepTogether(16 + Math.min(estTableHeight(["Field", "Value"], gRows), fullPageH - 16));
         page.drawText(ascii(g), { x: MARGIN, y: y - 10, size: 9, font: bold, color: primary });
         y -= 16;
       }
-      drawTable(["Field", "Value"], byGroup.get(g)!.map((i) => [i.label, i.value]));
+      drawTable(["Field", "Value"], gRows);
     }
   }
 
@@ -292,7 +306,15 @@ export async function renderCalcPdf(input: CalcPdfInput): Promise<Buffer> {
       drawStats(group);
       continue;
     }
-    if (b.type === "section") { sectionHead(b.text); i++; continue; }
+    if (b.type === "section") {
+      // keep a section heading together with the table/cards that follow it
+      const next = input.blocks[i + 1];
+      let withH = 22;
+      if (next?.type === "table") withH += estTableHeight(next.head, next.rows);
+      else if (next?.type === "stat") withH += 48;
+      keepTogether(Math.min(withH, fullPageH));
+      sectionHead(b.text); i++; continue;
+    }
     if (b.type === "table") { drawTable(b.head, b.rows); i++; continue; }
     if (b.type === "insight") { drawInsight(b.text); i++; continue; }
     i++;
@@ -313,24 +335,25 @@ export async function renderCalcPdf(input: CalcPdfInput): Promise<Buffer> {
   const ruleY = H - 54; // header divider; logo sits above it, context below it
   const pages = doc.getPages();
   pages.forEach((p, idx) => {
-    // header band — logo top-left (capped so it never reaches the divider),
-    // firm/ARN/date top-right, divider, then a single context line below it.
-    if (logo) {
-      const boxW = 150, boxH2 = 26;
-      const scale = Math.min(boxW / logo.width, boxH2 / logo.height);
-      p.drawImage(logo, { x: MARGIN, y: H - 18 - logo.height * scale, width: logo.width * scale, height: logo.height * scale });
-    } else {
-      p.drawText(ascii(input.firmName), { x: MARGIN, y: H - 30, size: 12, font: bold, color: ink });
+    // ── Header band — PAGE 1 ONLY. The logo already carries the firm name, so
+    //    the right column shows just the ARN (value already includes "ARN-",
+    //    so no "ARN:" prefix) and the generated timestamp — no duplication.
+    if (idx === 0) {
+      if (logo) {
+        const boxW = 160, boxH2 = 32;
+        const scale = Math.min(boxW / logo.width, boxH2 / logo.height);
+        p.drawImage(logo, { x: MARGIN, y: H - 16 - logo.height * scale, width: logo.width * scale, height: logo.height * scale });
+      } else {
+        p.drawText(ascii(input.firmName), { x: MARGIN, y: H - 30, size: 13, font: bold, color: ink });
+      }
+      drawRight(p, ascii(input.arn ?? "-"), W - MARGIN, H - 22, 9, bold, ink);
+      drawRight(p, `Generated: ${dt}`, W - MARGIN, H - 35, 8, font, slate);
+      p.drawLine({ start: { x: MARGIN, y: ruleY }, end: { x: W - MARGIN, y: ruleY }, thickness: 1, color: primary });
+      p.drawText(clip(ctx, font, 8, contentW), { x: MARGIN, y: ruleY - 12, size: 8, font, color: slate });
     }
-    drawRight(p, input.firmName, W - MARGIN, H - 20, 9.5, bold, ink);
-    drawRight(p, `ARN: ${input.arn ?? "-"}`, W - MARGIN, H - 31, 8, font, slate);
-    drawRight(p, `Generated: ${dt}`, W - MARGIN, H - 42, 8, font, slate);
-    p.drawLine({ start: { x: MARGIN, y: ruleY }, end: { x: W - MARGIN, y: ruleY }, thickness: 1, color: primary });
-    p.drawText(clip(ctx, font, 8, contentW), { x: MARGIN, y: ruleY - 12, size: 8, font, color: slate });
 
-    // footer band
+    // ── Footer band — every page: page number + disclaimer (no firm/ARN dup).
     p.drawLine({ start: { x: MARGIN, y: FOOTER_H - 2 }, end: { x: W - MARGIN, y: FOOTER_H - 2 }, thickness: 0.6, color: line });
-    p.drawText(ascii(`${input.firmName} - ARN ${input.arn ?? "-"}`), { x: MARGIN, y: FOOTER_H - 14, size: 7, font, color: slate });
     drawRight(p, `Page ${idx + 1} of ${pages.length}`, W - MARGIN, FOOTER_H - 14, 7.5, bold, slate);
     wrap(DISCLAIMER, font, 6.5, contentW).slice(0, 2).forEach((ln, k) =>
       p.drawText(ln, { x: MARGIN, y: FOOTER_H - 24 - k * 8, size: 6.5, font, color: slate })
