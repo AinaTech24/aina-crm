@@ -69,24 +69,12 @@ const FAQS = [
     a: "Yes — when done with consent and the right disclosures. Every message sent from AINA passes an 11-rule compliance gate before dispatch: client consent is verified, your ARN/EUIN identification is stamped, the market-risk disclaimer and opt-out are appended, and the full trail is logged. Meta-approved WhatsApp templates are managed inside the platform.",
   },
   {
-    q: "Does AINA calculate live portfolio value and XIRR for client reviews?",
-    a: "Yes. Daily AMFI NAVs across 13,900+ schemes value every folio automatically, and AINA computes cash-flow-adjusted XIRR per folio, per client and per family. A client review that took an evening of Excel becomes a one-click, white-labelled report with your firm's logo and ARN.",
-  },
-  {
-    q: "What financial calculators do MFDs get in AINA?",
-    a: "60+ client-ready calculators: SIP, step-up SIP, lumpsum, goal planning, retirement, SWP/STP (periodic, comprehensive, end-period), insurance IRR vs mutual funds, HLV, capital gains tax with CII indexation, old-vs-new tax regime, FIRE number, child education, EMI-vs-SIP, real returns after tax & inflation, XIRR and many more. Every calculator prints as a branded PDF with the client's name, can be saved as a scenario, and shared on WhatsApp or email.",
-  },
-  {
     q: "Is my client data safe? Who can see it?",
     a: "Your data is isolated at the database level with row-level security — every query is locked to your firm. Inside the firm, role-based access ensures an RM sees only their own book while the owner sees everything. The platform is designed for India's DPDP data-protection expectations, with audit logs on every sensitive action.",
   },
   {
-    q: "How long does it take to move my MFD book to AINA?",
-    a: "Most firms are live within a day. Export your client list, folios and transactions from your RTA back office, drop the files into AINA, and the importer maps them automatically. Your AUM, SIP book, families and ledgers appear ready-to-use — no re-typing.",
-  },
-  {
     q: "What does MFD software cost in India?",
-    a: "AINA keeps it simple: a one-time setup (₹49,000 Starter / ₹79,000 Growth) and then a flat ₹14,999 per user per year. No per-client charges, no AUM-linked fees, no hidden costs — your software bill doesn't grow just because your AUM does.",
+    a: "AINA keeps it simple: a one-time setup per firm, then a flat per-user yearly fee — from ₹9,999 (Starter) to ₹14,999 (Premium), billed annually with a 3-user minimum. No per-client charges and no AUM-linked fees — your software bill doesn't grow just because your AUM does.",
   },
 ];
 
@@ -149,7 +137,6 @@ export default function Home() {
             <img src="/aina-logo.png" alt="AINA CRM — mutual fund software for distributors" className="h-8 w-auto object-contain shrink-0" />
           </Link>
           <nav className="hidden md:flex items-center gap-7 text-sm font-semibold text-muted-foreground">
-            <a href="#pain-points" className="hover:text-primary transition-colors">Your Day</a>
             <a href="#features" className="hover:text-primary transition-colors">Features</a>
             <a href="#calculators" className="hover:text-primary transition-colors">Calculators</a>
             <a href="#how-it-works" className="hover:text-primary transition-colors">How It Works</a>
@@ -349,43 +336,6 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ───────────────────── Pain points — the MFD's day ───────────────────── */}
-      <section id="pain-points" className="py-20 lg:py-28 relative z-10 bg-background/50">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="text-center max-w-3xl mx-auto">
-            <span className="chip bg-brand-navy-light text-brand-navy-deep">Does this sound like your week?</span>
-            <h2 className="mt-4 text-3xl sm:text-4xl font-extrabold tracking-tight text-foreground">
-              The hidden cost of running an MFD practice on Excel and memory
-            </h2>
-            <p className="mt-4 text-lg text-muted-foreground leading-relaxed">
-              Most distributors lose AUM not to markets, but to operations — bounced SIPs found late,
-              silent redemptions, missed reviews, compliance anxiety. Here is what that looks like, and
-              exactly how AINA removes each one.
-            </p>
-          </div>
-
-          <div className="mt-14 grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {PAIN_POINTS.map((p) => (
-              <article key={p.pain} className="glass-card rounded-2xl border border-border/50 p-6 flex flex-col gap-4 hover-glow-cyan transition-all">
-                <div className="flex items-start gap-3">
-                  <div className="size-10 rounded-xl bg-rose-500/10 text-rose-500 grid place-items-center shrink-0">
-                    <p.icon className="size-5" />
-                  </div>
-                  <p className="text-[15px] font-bold text-foreground leading-snug">“{p.pain}”</p>
-                </div>
-                <p className="text-xs text-muted-foreground leading-relaxed -mt-1">{p.cost}</p>
-                <div className="mt-auto rounded-xl bg-emerald-500/[0.06] border border-emerald-500/15 p-3.5">
-                  <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
-                    <Zap className="size-3.5" /> How AINA fixes it
-                  </div>
-                  <p className="text-xs text-foreground/90 mt-1.5 leading-relaxed">{p.fix}</p>
-                </div>
-              </article>
-            ))}
-          </div>
-        </div>
-      </section>
-
       {/* ───────────────────── Core features ───────────────────── */}
       <section id="features" className="py-20 bg-secondary/15 border-y border-border/40 relative z-10">
         <div className="max-w-7xl mx-auto px-6">
@@ -458,59 +408,20 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ───────────────────── Deep dives ───────────────────── */}
-      <section className="py-20 lg:py-28 max-w-7xl mx-auto px-6 space-y-24 lg:space-y-32 relative z-10">
-
-        {/* 1 — Live valuation & reviews */}
+      {/* ───────────────────── Calculators spotlight ───────────────────── */}
+      <section id="calculators" className="py-20 lg:py-28 max-w-7xl mx-auto px-6 relative z-10">
         <Spotlight
-          eyebrow="Portfolio & AUM tracking"
-          title="Live AUM, folio value and true family XIRR — every morning, automatically"
-          body="Daily AMFI NAVs across 13,900+ schemes value every folio while you sleep. AINA computes cash-flow-adjusted XIRR per folio, per client and per household — so a client review that used to take an evening of Excel becomes a one-click, white-labelled report carrying your logo and ARN."
-          points={[
-            "Daily automated AMFI NAV sync — no manual valuation ever again",
-            "Family/household grouping shows total relationship wealth in one view",
-            "Branded review reports and proposals your clients can actually read",
-          ]}
-          accent="from-brand-cyan/10 to-brand-cyan/2"
-        >
-          <div className="w-full flex flex-col gap-3.5 bg-background/80 dark:bg-card p-4 sm:p-5 rounded-xl border border-border/50 shadow-md">
-            <div className="flex justify-between items-center border-b border-border/60 pb-2">
-              <span className="text-xs font-bold text-foreground">Sharma family — review</span>
-              <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded">Consolidated</span>
-            </div>
-            <div className="space-y-3">
-              {[
-                ["Nippon India Large Cap", "₹12,45,600 · 15.8% XIRR"],
-                ["Parag Parikh Flexi Cap", "₹18,12,000 · 17.2% XIRR"],
-                ["SBI Small Cap Fund", "₹6,88,400 · 19.4% XIRR"],
-              ].map(([name, val]) => (
-                <div key={name} className="flex items-center justify-between text-xs">
-                  <span className="font-semibold text-muted-foreground">{name}</span>
-                  <span className="font-mono tabular-nums text-foreground">{val}</span>
-                </div>
-              ))}
-            </div>
-            <div className="border-t border-border/60 pt-2 flex items-center justify-between text-xs font-bold mt-1">
-              <span className="text-foreground">Total family portfolio</span>
-              <span className="text-gradient">₹37,46,000 · 16.9% XIRR</span>
-            </div>
-          </div>
-        </Spotlight>
-
-        {/* 2 — Calculators (differentiator) */}
-        <Spotlight
-          reverse
           eyebrow="60+ financial calculators for MFDs"
           title="Win the meeting with calculators clients remember"
-          body="SIP, step-up, goal, retirement, SWP/STP, insurance-IRR vs mutual funds, capital gains with CII indexation, old-vs-new tax regime, FIRE number, child education at real education inflation, EMI-vs-SIP, real returns after tax — every illustration prints as a branded PDF with the client's name, saves as a scenario for the next review, and shares to WhatsApp or email in one click."
+          body="SIP, step-up, goal, retirement, SWP/STP, insurance-IRR vs mutual funds, capital gains with CII indexation, old-vs-new tax regime, FIRE number and more — every illustration prints as a branded PDF with the client's name, saves as a scenario, and shares to WhatsApp or email in one click."
           points={[
-            "Scheme returns prefill live from MFAPI — illustrations grounded in real funds",
+            "Scheme returns prefill live — illustrations grounded in real funds",
             "Save scenarios per client and reload them at the next review",
             "Branded PDF with your logo, ARN and the market-risk disclaimer built in",
           ]}
           accent="from-amber-500/10 to-amber-500/2"
         >
-          <div id="calculators" className="w-full grid grid-cols-2 gap-2.5">
+          <div className="w-full grid grid-cols-2 gap-2.5">
             {[
               ["SIP 360° Planner", "₹25k/mo → ₹2.3 Cr in 20y"],
               ["Step-Up SIP", "10%/yr step-up = 2.5× corpus"],
@@ -527,75 +438,6 @@ export default function Home() {
                 <p className="text-[10px] text-muted-foreground mt-1 leading-snug">{hook}</p>
               </div>
             ))}
-          </div>
-        </Spotlight>
-
-        {/* 3 — Compliance */}
-        <Spotlight
-          eyebrow="AMFI / SEBI compliance, automated"
-          title="Sleep through inspections: every message passes an 11-rule gate"
-          body="Every WhatsApp, email and SMS leaving AINA is checked before dispatch — client consent verified, ARN/EUIN stamped, market-risk disclaimer and opt-out appended, the full trail logged. Meta-approved WhatsApp templates are created and tracked inside the platform, and your audit pack is ready in minutes, not weeks."
-          points={[
-            "11 deterministic checks on every outbound message — no bypass switch exists",
-            "Auto-injected ARN, disclaimers and opt-out on WhatsApp, email & SMS",
-            "Permanent audit log + DDQ readiness checklist for inspection day",
-          ]}
-          accent="from-emerald-500/10 to-emerald-500/2"
-        >
-          <div className="w-full max-w-[280px] bg-emerald-500/5 rounded-2xl border border-emerald-500/20 p-4 shadow-lg flex flex-col gap-3">
-            <div className="flex items-center gap-2 border-b border-emerald-500/10 pb-2">
-              <ShieldCheck className="size-5 text-emerald-600" />
-              <span className="text-xs font-bold text-emerald-800 dark:text-emerald-400">Compliance gate</span>
-            </div>
-            <div className="rounded-lg bg-card border border-border p-2.5 shadow-sm text-[10px]">
-              <p className="text-foreground">
-                Dear Sunil, your monthly portfolio report is ready. Live XIRR: 15.6%.
-              </p>
-              <div className="mt-2 pt-2 border-t border-border text-[8px] text-muted-foreground leading-tight">
-                ARN-123456 | AMFI-registered Mutual Fund Distributor | Mutual fund investments are subject to market risks. Read all scheme-related documents carefully. Reply STOP to opt out.
-              </div>
-            </div>
-            <div className="flex items-center justify-between text-[10px] font-bold text-emerald-600">
-              <span className="flex items-center gap-1"><CheckCircle2 className="size-3" /> Gate passed</span>
-              <span>Trail logged</span>
-            </div>
-          </div>
-        </Spotlight>
-
-        {/* 4 — Retention */}
-        <Spotlight
-          reverse
-          eyebrow="Keep the AUM you worked years for"
-          title="See redemptions coming — before the money leaves"
-          body="AINA watches the signals you can't: stopped SIPs, unusual partial redemptions, fading engagement, portfolios drifting from goals. At-risk clients surface on a churn radar with an explainable score and a ready-to-send retention play — so your RM calls before the redemption form is signed, not after."
-          points={[
-            "Churn radar scores every client with the reasons spelled out",
-            "Cross-sell & top-up finder spots the next opportunity across your book",
-            "Birthday, anniversary and review-due nudges keep relationships warm automatically",
-          ]}
-          accent="from-rose-500/10 to-rose-500/2"
-        >
-          <div className="w-full flex flex-col gap-4 bg-background/80 dark:bg-card p-4 sm:p-5 rounded-xl border border-border/50 shadow-md">
-            <div className="flex justify-between items-center">
-              <span className="text-xs font-bold text-foreground">RM retention worklist</span>
-              <span className="text-[9px] bg-rose-500 text-white px-2 py-0.5 rounded font-bold">Act today</span>
-            </div>
-            <div className="space-y-3">
-              <div className="p-2.5 rounded-lg bg-rose-500/5 border border-rose-500/10 flex items-center justify-between text-xs">
-                <div>
-                  <strong className="text-foreground block">Rajesh Mehta</strong>
-                  <span className="text-[10px] text-muted-foreground mt-0.5 block">2 SIPs stopped · 84% risk score</span>
-                </div>
-                <span className="text-[10px] font-bold bg-rose-500 text-white px-2.5 py-1 rounded">Open play</span>
-              </div>
-              <div className="p-2.5 rounded-lg bg-amber-500/5 border border-amber-500/10 flex items-center justify-between text-xs">
-                <div>
-                  <strong className="text-foreground block">Pooja Sharma</strong>
-                  <span className="text-[10px] text-muted-foreground mt-0.5 block">Unusual partial redemption · 62% risk</span>
-                </div>
-                <span className="text-[10px] font-bold bg-amber-500 text-white px-2.5 py-1 rounded">Open play</span>
-              </div>
-            </div>
           </div>
         </Spotlight>
       </section>
@@ -640,65 +482,6 @@ export default function Home() {
                 <h3 className="font-bold text-[15px] text-foreground">{s.title}</h3>
                 <p className="text-xs text-muted-foreground leading-relaxed">{s.body}</p>
               </div>
-            ))}
-          </div>
-
-          {/* The signature automation story */}
-          <div className="mt-16 rounded-2xl border border-border/50 bg-background/70 dark:bg-card p-6 sm:p-8">
-            <h3 className="text-lg font-extrabold text-foreground text-center">
-              Example: a bounced SIP, recovered without you touching anything
-            </h3>
-            <div className="mt-8 grid md:grid-cols-4 gap-5">
-              {[
-                ["1", "SIP bounces at the bank", "The RTA feed reports a failed instalment. AINA spots it on import — the same day, not next month.", "rose"],
-                ["2", "Compliance gate runs", "Consent verified, ARN stamped, disclaimer + opt-out appended. Nothing non-compliant can leave.", "cyan"],
-                ["3", "WhatsApp goes out", "The client gets a polite, personalised reminder with what to do next — from your firm's identity.", "cyan"],
-                ["4", "SIP restarts", "The instalment resumes, the RM sees it closed in their worklist, and your future trail keeps compounding.", "emerald"],
-              ].map(([n, title, body, tone]) => (
-                <div key={n} className="flex flex-col gap-2.5">
-                  <div className={`size-8 rounded-lg font-bold text-sm flex items-center justify-center border ${
-                    tone === "rose" ? "bg-rose-500/10 text-rose-500 border-rose-500/20"
-                    : tone === "emerald" ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
-                    : "bg-brand-cyan/15 text-accent border-brand-cyan/30"
-                  }`}>{n}</div>
-                  <h4 className="font-bold text-sm text-foreground">{title}</h4>
-                  <p className="text-xs text-muted-foreground leading-relaxed">{body}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ───────────────────── Why AINA ───────────────────── */}
-      <section className="py-20 lg:py-28 relative z-10">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="text-center max-w-2xl mx-auto">
-            <span className="chip bg-brand-navy-light text-brand-navy-deep">Why MFDs pick AINA</span>
-            <h2 className="mt-4 text-3xl sm:text-4xl font-extrabold tracking-tight text-foreground">
-              Not another generic CRM bent to fit mutual funds
-            </h2>
-            <p className="mt-3 text-muted-foreground">
-              Six reasons AINA feels built for your desk on day one — because it was.
-            </p>
-          </div>
-
-          <div className="mt-14 grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {[
-              { icon: Users2, title: "Built only for Indian MFDs", body: "Folios, families, SIPs and trail — not generic “deals” and “tickets”. Nothing to customise, nothing irrelevant to wade through." },
-              { icon: ShieldCheck, title: "Compliance you can’t bypass", body: "Every WhatsApp, email and SMS clears an 11-rule AMFI/SEBI gate before it sends — consent, ARN, disclaimer, opt-out. There is no override switch." },
-              { icon: Brain, title: "AI that protects your AUM", body: "A churn radar, cross-sell finder and AI copilot surface the client about to leave and the next opportunity to act on — before the redemption form is signed." },
-              { icon: Rocket, title: "Live in a day, not a quarter", body: "Your RTA exports are the migration. Drop the files, switch on the ready-made recipes, and your AUM, SIP book and families are ready the same day." },
-              { icon: Lock, title: "Your data stays yours", body: "Row-level isolation locks every query to your firm; role-based access keeps each RM inside their own book. Designed for India’s DPDP expectations." },
-              { icon: IndianRupee, title: "Flat, honest pricing", body: "A one-time setup, then a flat per-user yearly fee. No per-client charges, no AUM-linked fees — your software bill never grows just because your book did." },
-            ].map((w) => (
-              <article key={w.title} className="glass-card rounded-2xl border border-border/50 p-6 hover-glow-cyan transition-all flex flex-col gap-3">
-                <div className="size-11 rounded-xl bg-brand-cyan/10 text-brand-cyan-deep grid place-items-center shrink-0">
-                  <w.icon className="size-5.5" />
-                </div>
-                <h3 className="font-bold text-[15px] text-foreground">{w.title}</h3>
-                <p className="text-xs text-muted-foreground leading-relaxed">{w.body}</p>
-              </article>
             ))}
           </div>
         </div>
@@ -853,7 +636,7 @@ export default function Home() {
                 reports and MIS for ARN holders. Built by Aina Tech Services LLP.
               </p>
             </div>
-            <FooterCol title="For MFDs" links={[["Pain points we solve", "#pain-points"], ["Feature tour", "#features"], ["Financial calculators", "#calculators"], ["How it works", "#how-it-works"]]} />
+            <FooterCol title="For MFDs" links={[["Feature tour", "#features"], ["Financial calculators", "#calculators"], ["How it works", "#how-it-works"], ["Pricing", "#pricing"]]} />
             <FooterCol title="Get started" links={[["Pricing plans", "#pricing"], ["Start free trial", "/signup"], ["Log in", "/login"], ["Live demo", "/dashboard"]]} />
             <FooterCol title="Trust & compliance" links={[["AMFI/SEBI compliance gate", "#features"], ["Data security (DPDP)", "#faq"], ["FAQs", "#faq"]]} />
           </div>
@@ -943,17 +726,6 @@ const CORE_FEATURES = [
     impact: "1-click client reviews",
   },
   {
-    icon: Calculator,
-    title: "60+ client-ready calculators",
-    benefit: "SIP, step-up, goal, retirement, SWP/STP, insurance IRR, capital gains with CII, tax regimes, FIRE — branded PDFs with the client's name, saved scenarios, WhatsApp/email sharing.",
-    bg: "bg-amber-500/10",
-    fg: "text-amber-600 dark:text-amber-400",
-    badge: "Unmatched",
-    badgeBg: "bg-amber-500/15",
-    badgeFg: "text-amber-700 dark:text-amber-300",
-    impact: "Win more meetings",
-  },
-  {
     icon: Brain,
     title: "AI churn radar & opportunity finder",
     benefit: "Stopped SIPs, odd redemptions and silence are scored into an explainable risk number with a ready retention play. Cross-sell and top-up chances surface across your whole book.",
@@ -965,28 +737,12 @@ const CORE_FEATURES = [
     impact: "Keep AUM you'd have lost",
   },
   {
-    icon: IndianRupee,
-    title: "Trail, commission & practice P&L",
-    benefit: "Reconcile MF and insurance commissions against what you were actually owed, forecast trail income, and run the firm on real MIS — net sales, SIP health, RM scorecards, EFFORTS tracking.",
-    bg: "bg-violet-500/10",
-    fg: "text-brand-violet",
-    impact: "Every rupee accounted for",
-  },
-  {
     icon: MessageSquare,
     title: "WhatsApp-first client engagement",
     benefit: "Meta-approved templates managed in-app, one unified inbox for every conversation, document-collection links clients tap to upload KYC — all consent-tracked and compliant.",
     bg: "bg-brand-cyan-light/70",
     fg: "text-brand-cyan-deep",
     impact: "Replies where clients live",
-  },
-  {
-    icon: BarChart3,
-    title: "Owner's command centre",
-    benefit: "Role-based dashboards for owner, RM, ops, compliance and marketing. A daily what-to-do-next list per person, team performance at a glance, branch and desk roll-ups.",
-    bg: "bg-brand-navy-light/70",
-    fg: "text-brand-navy",
-    impact: "Run the firm by numbers",
   },
   {
     icon: Lock,
