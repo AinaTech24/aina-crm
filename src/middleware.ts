@@ -38,7 +38,19 @@ export const config = {
   ],
 };
 
-const PUBLIC_PATHS = new Set(["/", "/login", "/signup", "/forgot-password", "/reset-password", "/accept-invite"]);
+const PUBLIC_PATHS = new Set([
+  "/",
+  "/login",
+  "/signup",
+  "/forgot-password",
+  "/reset-password",
+  "/accept-invite",
+  // Public legal pages — must be reachable without a session (Razorpay
+  // onboarding + DPDP require publicly-linkable Terms / Privacy / Refund).
+  "/terms",
+  "/privacy",
+  "/refund",
+]);
 
 /**
  * Path prefixes that should never require a session.

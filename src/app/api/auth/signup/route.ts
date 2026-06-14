@@ -9,14 +9,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { v4 as uuid } from "uuid";
-import { sql } from "drizzle-orm";
+import { sql, eq, asc } from "drizzle-orm";
 import { withSystem } from "@/db/client";
+import { packages, subscriptions, subscriptionEvents } from "@/db/schema";
 import { signSession, SESSION_COOKIE, SESSION_TTL_SECONDS } from "@/lib/auth/session";
 import { MASTER_SEEDS } from "@/lib/masters/seeds";
 import { installDefaultRecipes } from "@/lib/recipes/install-defaults";
 import { enforce } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
+
+/** Self-serve free-trial length, in days. */
+const TRIAL_DAYS = 14;
 
 export async function POST(req: NextRequest) {
   // 5 tenant creations per IP per hour. Stops drive-by spam of fake tenants
@@ -42,13 +46,15 @@ export async function POST(req: NextRequest) {
   const tenantId = uuid();
   const userId = uuid();
   const branchId = uuid();
+  const subId = uuid();
   const passwordHash = await bcrypt.hash(password, 12);
+  const trialEndsAt = new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000);
 
   try {
     await withSystem(async (tx) => {
       await tx.execute(sql`
-        INSERT INTO tenants (id, legal_name, display_name, arn, plan, status, created_at, updated_at)
-        VALUES (${tenantId}, ${firmName}, ${firmName}, ${arn}, 'starter', 'trial', now(), now())
+        INSERT INTO tenants (id, legal_name, display_name, arn, plan, status, trial_ends_at, created_at, updated_at)
+        VALUES (${tenantId}, ${firmName}, ${firmName}, ${arn}, 'starter', 'trial', ${trialEndsAt}, now(), now())
       `);
 
       await tx.execute(sql`
@@ -63,6 +69,45 @@ export async function POST(req: NextRequest) {
           ARRAY['owner', 'rm', 'compliance']::text[], 'active', now(), now(), now()
         )
       `);
+
+      // Create the trial subscription. WITHOUT this row the license gate
+      // (loadTenantLicense → "no_subscription", isRestricted) locks the brand-new
+      // tenant straight out of their own dashboard — self-serve signup dead-ends.
+      // Mirrors the AINA-admin provisioning path (super-admin/tenants/route.ts).
+      // Default to the public "starter" plan; fall back to the lowest-sorted
+      // active package so signup still works if "starter" was renamed.
+      const pkg =
+        (await tx.select().from(packages).where(eq(packages.key, "starter")).limit(1))[0] ??
+        (await tx
+          .select()
+          .from(packages)
+          .where(eq(packages.isActive, true))
+          .orderBy(asc(packages.sortOrder))
+          .limit(1))[0];
+      if (!pkg) {
+        // No package catalog → cannot grant a license. Fail loudly and roll the
+        // whole signup back rather than create a locked-out orphan tenant.
+        throw new Error("no_package_configured");
+      }
+      await tx.insert(subscriptions).values({
+        id: subId,
+        tenantId,
+        packageId: pkg.id,
+        packageKey: pkg.key,
+        status: "trial",
+        billingCycle: "monthly",
+        licenseStartAt: new Date(),
+        trialEndsAt,
+      } as any);
+      await tx.insert(subscriptionEvents).values({
+        subscriptionId: subId,
+        tenantId,
+        eventType: "created",
+        actor: "system:self_serve_signup",
+        toStatus: "trial",
+        toPackage: pkg.key,
+        notes: `Self-serve signup — ${TRIAL_DAYS}-day trial on '${pkg.key}'.`,
+      } as any);
 
       // Seed the 15 master_values defaults for this tenant.
       for (const [masterType, rows] of Object.entries(MASTER_SEEDS)) {
@@ -128,6 +173,12 @@ export async function POST(req: NextRequest) {
     if (msg.includes("ALLOW_SYSTEM_TX") || msg.includes("withSystem disabled")) {
       return NextResponse.json(
         { error: "Server config: set ALLOW_SYSTEM_TX=1 in .env (required during signup before tenant exists) and restart `npm run dev`." },
+        { status: 503 }
+      );
+    }
+    if (msg.includes("no_package_configured")) {
+      return NextResponse.json(
+        { error: "Signups are temporarily unavailable (no billing plan is configured). Please contact support." },
         { status: 503 }
       );
     }
