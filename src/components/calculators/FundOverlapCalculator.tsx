@@ -10,6 +10,8 @@ import { useMemo, useState } from "react";
 import { Trash2 } from "lucide-react";
 import { BarsChart, inrShort } from "./charts";
 import { clampNum, Field, inr, Insight, NumberField, Stat, Table } from "./ui";
+import { ClientNameField } from "./ClientNameField";
+import { SchemeAutocomplete, type SchemePick } from "../mf/SchemeAutocomplete";
 
 type Row = {
   id: number;
@@ -33,6 +35,29 @@ const CATEGORIES = [
   "Gold",
   "Other",
 ];
+
+/**
+ * Map a raw MFAPI scheme_category (e.g. "Equity Scheme - Large & Mid Cap Fund")
+ * onto one of this calculator's short category buckets. Most-specific patterns
+ * first so "Large & Mid Cap" wins over "Large Cap" / "Mid Cap".
+ */
+const CATEGORY_MATCHERS: Array<[RegExp, string]> = [
+  [/large\s*&\s*mid|large\s*and\s*mid/i, "Large & Mid Cap"],
+  [/flexi\s*cap|multi\s*cap/i, "Flexi Cap"],
+  [/large\s*cap/i, "Large Cap"],
+  [/mid\s*cap/i, "Mid Cap"],
+  [/small\s*cap/i, "Small Cap"],
+  [/elss|tax\s*saver/i, "ELSS"],
+  [/index|nifty|sensex|etf/i, "Index"],
+  [/hybrid|balanced|asset\s*alloc|arbitrage/i, "Hybrid"],
+  [/debt|bond|gilt|liquid|duration|credit|money\s*market|overnight/i, "Debt"],
+  [/gold|silver|commodit/i, "Gold"],
+];
+function mapSchemeCategory(raw: string | null): string | null {
+  if (!raw) return null;
+  for (const [re, cat] of CATEGORY_MATCHERS) if (re.test(raw)) return cat;
+  return null;
+}
 
 let nextId = 1;
 const mk = (fundName: string, category: string, value: number, overlapPct: number, underperformancePct = 0): Row => ({
@@ -112,6 +137,13 @@ export function FundOverlapCalculator() {
     setRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   }
 
+  // A real scheme was picked from the MFAPI catalog — set the fund name and,
+  // when we recognise it, auto-map the category bucket.
+  function applyScheme(id: number, s: SchemePick) {
+    const cat = mapSchemeCategory(s.category);
+    update(id, { fundName: s.schemeName, ...(cat ? { category: cat } : {}) });
+  }
+
   function addRow() {
     setRows((prev) => [...prev, mk("New fund", "Flexi Cap", 0, 0)]);
   }
@@ -130,11 +162,14 @@ export function FundOverlapCalculator() {
       </div>
 
       <div className="grid md:grid-cols-3 gap-3">
+        <Field label="Client name">
+          <ClientNameField value={clientName} onChange={setClientName} />
+        </Field>
         <NumberField label="Review threshold overlap (%)" value={reviewThreshold} setValue={setReviewThreshold} step={1} />
       </div>
 
       <div className="overflow-x-auto">
-        <table className="w-full text-sm border-collapse min-w-[780px]">
+        <table className="w-full text-sm border-collapse min-w-[880px]">
           <thead>
             <tr className="text-left">
               {["Fund", "Category", "Value", "Overlap", "Underperformance", "Signal", ""].map((h, i) => (
@@ -150,8 +185,14 @@ export function FundOverlapCalculator() {
               const risky = r.overlapPct >= reviewThreshold || r.underperformancePct >= 1 || duplicate;
               return (
                 <tr key={r.id} className="border-b border-border/50">
-                  <td className="p-1.5">
-                    <input value={r.fundName} onChange={(e) => update(r.id, { fundName: e.target.value })} className="input-base text-sm w-44" />
+                  <td className="p-1.5 align-top min-w-[240px]">
+                    <SchemeAutocomplete
+                      size="sm"
+                      defaultValue={r.fundName}
+                      placeholder="Search fund (live)…"
+                      onSelect={(s) => applyScheme(r.id, s)}
+                      onQueryChange={(q) => update(r.id, { fundName: q })}
+                    />
                   </td>
                   <td className="p-1.5">
                     <select value={r.category} onChange={(e) => update(r.id, { category: e.target.value })} className="input-base text-sm w-36">
