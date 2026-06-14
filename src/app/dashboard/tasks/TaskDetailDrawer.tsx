@@ -9,6 +9,7 @@ import { useToast } from "@/components/ui/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { taskChecklist, type Task, type TaskChecklistItem } from "@/db/schema";
 import Link from "next/link";
+import { RecordProvenance } from "@/components/common/RecordProvenance";
 
 interface TaskDetailDrawerProps {
   task: Task & {
@@ -268,6 +269,13 @@ export function TaskDetailDrawer({ task, onClose, onUpdate }: TaskDetailDrawerPr
               <span>{err}</span>
             </div>
           )}
+
+          <RecordProvenance
+            entityType="task"
+            entityId={task.id}
+            createdAt={task.createdAt}
+            updatedAt={task.updatedAt}
+          />
 
           {/* Title and Description */}
           <div className="space-y-3">

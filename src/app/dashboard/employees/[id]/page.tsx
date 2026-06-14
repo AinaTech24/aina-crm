@@ -9,6 +9,7 @@ import { loadTenantLicense } from "@/lib/auth/license";
 import { tenantAccessibleNavKeys } from "@/config/nav-access";
 import { formatINR, formatDate } from "@/lib/utils";
 import { EmployeeEditForm } from "@/components/employees/EmployeeEditForm";
+import { RecordProvenance } from "@/components/common/RecordProvenance";
 
 export const dynamic = "force-dynamic";
 
@@ -129,6 +130,13 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
             {emp.phone ? <> · {emp.phone}</> : null}
             {manager ? <> · Reports to <strong>{manager.name}</strong></> : null}
           </p>
+          <RecordProvenance
+            entityType="user"
+            entityId={emp.id}
+            createdAt={emp.createdAt}
+            updatedAt={emp.updatedAt}
+            className="mt-1.5"
+          />
         </div>
         <span
           className={`chip ${
