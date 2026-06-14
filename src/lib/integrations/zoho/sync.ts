@@ -7,15 +7,17 @@
  * It does NOT touch the shared outbox poller's `processed_at` — it tracks its
  * own position — so the two consumers never interfere.
  */
-import { and, eq, gt, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, or, sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import { withSystem } from "@/db/client";
 import { eventsOutbox, tenantIntegrations, zohoSyncLinks, zohoSyncState } from "@/db/schema";
-import { getZohoConnection } from "./credentials";
-import { mappingFor, SYNCED_ENTITY_TYPES } from "./mapping";
+import { getZohoConnection, type ZohoConnection } from "./credentials";
+import { mappingFor, SYNCED_ENTITY_TYPES, TABLE_MAPPINGS } from "./mapping";
 import { upsertRecords, type ZohoUpsertResult } from "./client";
 
 const BATCH = 200;
+/** Per-module rows pushed per tick — Zoho upsert accepts at most 100 per call. */
+const TABLE_BATCH = 100;
 
 export async function runZohoSyncOnce(): Promise<{ tenants: number; pushed: number; failed: number }> {
   const tenantIds = await withSystem(async (tx) => {
@@ -47,8 +49,11 @@ async function syncTenant(tenantId: string): Promise<{ pushed: number; failed: n
     const conn = await getZohoConnection(tx, tenantId);
     if (!conn) return { pushed: 0, failed: 0 };
 
-    const cursor = await loadCursor(tx, tenantId);
+    let pushed = 0;
+    let failed = 0;
 
+    // ── 1. Outbox-driven modules (investor, lead) ──────────────────────────
+    const cursor = await loadCursor(tx, tenantId); // also seeds the state row
     const events = await tx
       .select()
       .from(eventsOutbox)
@@ -63,43 +68,122 @@ async function syncTenant(tenantId: string): Promise<{ pushed: number; failed: n
       .orderBy(eventsOutbox.id)
       .limit(BATCH);
 
-    if (events.length === 0) return { pushed: 0, failed: 0 };
+    if (events.length > 0) {
+      // Collapse to the latest event per record so a rapidly-edited record is
+      // pushed once per tick, not once per edit.
+      const latest = new Map<string, (typeof events)[number]>();
+      for (const ev of events) latest.set(`${ev.entityType}:${ev.entityId}`, ev);
 
-    // Collapse to the latest event per record so a rapidly-edited record is
-    // pushed once per tick, not once per edit.
-    const latest = new Map<string, (typeof events)[number]>();
-    for (const ev of events) latest.set(`${ev.entityType}:${ev.entityId}`, ev);
-
-    let pushed = 0;
-    let failed = 0;
-    for (const ev of latest.values()) {
-      const mapping = mappingFor(ev.entityType);
-      const after = ev.after as Record<string, any> | null;
-      if (!mapping || !after) continue;
-      const entityId = String(ev.entityId);
-      try {
-        const [result] = await upsertRecords(conn, mapping.zohoModule, [mapping.toZoho(after)], mapping.externalIdField);
-        await recordLink(tx, tenantId, ev.entityType, entityId, mapping.zohoModule, result);
-        if (result?.ok) pushed++;
-        else failed++;
-      } catch (err) {
-        failed++;
-        await recordLink(tx, tenantId, ev.entityType, entityId, mapping.zohoModule, {
-          externalIdValue: entityId,
-          ok: false,
-          error: (err as Error).message,
-        });
+      for (const ev of latest.values()) {
+        const mapping = mappingFor(ev.entityType);
+        const after = ev.after as Record<string, any> | null;
+        if (!mapping || !after) continue;
+        const entityId = String(ev.entityId);
+        try {
+          const [result] = await upsertRecords(conn, mapping.zohoModule, [mapping.toZoho(after)], mapping.externalIdField);
+          await recordLink(tx, tenantId, ev.entityType, entityId, mapping.zohoModule, result);
+          if (result?.ok) pushed++;
+          else failed++;
+        } catch (err) {
+          failed++;
+          await recordLink(tx, tenantId, ev.entityType, entityId, mapping.zohoModule, {
+            externalIdValue: entityId,
+            ok: false,
+            error: (err as Error).message,
+          });
+        }
       }
+
+      // Advance past the whole slice. Failures are recorded on the link rows
+      // (status "error") for visibility + a future retry pass.
+      const maxId = Number(events[events.length - 1].id);
+      await tx.update(zohoSyncState).set({ lastOutboxId: maxId, updatedAt: new Date() }).where(eq(zohoSyncState.tenantId, tenantId));
     }
 
-    // Advance past the whole slice. Failures are recorded on the link rows
-    // (status "error") for visibility + a future retry pass.
-    const maxId = Number(events[events.length - 1].id);
-    await tx.update(zohoSyncState).set({ lastOutboxId: maxId, updatedAt: new Date() }).where(eq(zohoSyncState.tenantId, tenantId));
+    // ── 2. Table-polled modules (tasks, meetings, insurance, sips, …) ──────
+    const tableRes = await syncTableModules(tx, tenantId, conn);
+    pushed += tableRes.pushed;
+    failed += tableRes.failed;
 
     if (pushed || failed) console.log(`[zoho-sync] tenant ${tenantId}: pushed=${pushed} failed=${failed}`);
     return { pushed, failed };
   });
+}
+
+/**
+ * Mirror the table-polled modules. For each module we track a per-tenant cursor
+ * (`<updatedAt ISO>|<row id>`) in `zoho_sync_state.module_cursors` and push rows
+ * whose (updatedAt, id) is past it — naturally covering both creates and edits
+ * with no per-route instrumentation. On first sight we seed the cursor to "now"
+ * (forward-only) so connecting an org never mass-backfills history into Zoho.
+ */
+async function syncTableModules(
+  tx: Tx,
+  tenantId: string,
+  conn: ZohoConnection
+): Promise<{ pushed: number; failed: number }> {
+  const [state] = await tx.select().from(zohoSyncState).where(eq(zohoSyncState.tenantId, tenantId)).limit(1);
+  const cursors: Record<string, string> = { ...((state?.moduleCursors as Record<string, string> | null) ?? {}) };
+  let pushed = 0;
+  let failed = 0;
+  let changed = false;
+
+  for (const m of TABLE_MAPPINGS) {
+    const table = m.table;
+    try {
+      const cursorRaw = cursors[m.entityType];
+      if (!cursorRaw) {
+        // Forward-only seed — a full backfill is a separate, deliberate action.
+        cursors[m.entityType] = `${new Date().toISOString()}|`;
+        changed = true;
+        continue;
+      }
+
+      const [cursorAtIso, cursorId] = cursorRaw.split("|");
+      const cursorAt = new Date(cursorAtIso);
+      const newer = cursorId
+        ? or(gt(table.updatedAt, cursorAt), and(eq(table.updatedAt, cursorAt), sql`${table.id} > ${cursorId}::uuid`))!
+        : gt(table.updatedAt, cursorAt);
+
+      const rows: any[] = await tx
+        .select()
+        .from(table)
+        .where(and(eq(table.tenantId, tenantId), newer))
+        .orderBy(asc(table.updatedAt), asc(table.id))
+        .limit(TABLE_BATCH);
+      if (rows.length === 0) continue;
+
+      const results = await upsertRecords(
+        conn,
+        m.zohoModule,
+        rows.map((r) => m.toZoho(r)),
+        m.externalIdField
+      );
+      for (let i = 0; i < rows.length; i++) {
+        const entityId = String(rows[i].id);
+        const result = results[i] ?? { externalIdValue: entityId, ok: false, error: "no result returned" };
+        await recordLink(tx, tenantId, m.entityType, entityId, m.zohoModule, result);
+        if (result.ok) pushed++;
+        else failed++;
+      }
+
+      const last = rows[rows.length - 1];
+      cursors[m.entityType] = `${new Date(last.updatedAt).toISOString()}|${String(last.id)}`;
+      changed = true;
+    } catch (err) {
+      // One module failing (e.g. a missing custom Zoho module) must not abort
+      // the rest. Leave its cursor unadvanced so it retries next tick.
+      console.error(`[zoho-sync] table module ${m.entityType} failed:`, (err as Error).message);
+    }
+  }
+
+  if (changed) {
+    await tx
+      .update(zohoSyncState)
+      .set({ moduleCursors: cursors as any, updatedAt: new Date() })
+      .where(eq(zohoSyncState.tenantId, tenantId));
+  }
+  return { pushed, failed };
 }
 
 /**

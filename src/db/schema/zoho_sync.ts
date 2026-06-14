@@ -1,4 +1,4 @@
-import { bigint, index, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { bigint, index, jsonb, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { id, tenantId, timestamps } from "./_shared";
 
 /**
@@ -45,6 +45,13 @@ export const zohoSyncState = pgTable(
     tenantId,
     /** Highest events_outbox.id this tenant has already pushed to Zoho. */
     lastOutboxId: bigint("last_outbox_id", { mode: "number" }).default(0).notNull(),
+    /**
+     * Per-module cursors for the table-polled modules (Tasks, Meetings,
+     * Insurance, SIPs, …). Maps our entityType → "<updatedAt ISO>|<row id>" so
+     * the engine resumes each module exactly where it left off. Outbox-driven
+     * modules (investor, lead) keep using last_outbox_id above.
+     */
+    moduleCursors: jsonb("module_cursors").$type<Record<string, string>>().notNull().default({}),
     ...timestamps,
   },
   (t) => ({

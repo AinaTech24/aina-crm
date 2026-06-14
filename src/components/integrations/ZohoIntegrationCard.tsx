@@ -18,6 +18,25 @@ const DATA_CENTERS = [
   { value: "cn", label: "China (zoho.com.cn)" },
 ];
 
+// Modules pushed to Zoho. NATIVE modules already exist in every Zoho org; the
+// CUSTOM ones the MFD must create (Setup → Modules and Fields → New Module)
+// with the matching API name before they sync. Every target also needs the
+// Aina_Record_ID single-line field. Keep in sync with ZOHO_MAPPINGS.
+const SYNCED_MODULES: { label: string; zoho: string; native?: boolean }[] = [
+  { label: "Clients", zoho: "Contacts", native: true },
+  { label: "Leads", zoho: "Leads", native: true },
+  { label: "Tasks", zoho: "Tasks", native: true },
+  { label: "Meetings", zoho: "Meetings" },
+  { label: "Risk Profiles", zoho: "Risk_Profiles" },
+  { label: "Families", zoho: "Families" },
+  { label: "Insurance Policies", zoho: "Insurance_Policies" },
+  { label: "Insurance Claims", zoho: "Insurance_Claims" },
+  { label: "Business Entries", zoho: "Business_Entries" },
+  { label: "SIP Tracker", zoho: "SIPs" },
+  { label: "SIP Rejections", zoho: "SIP_Rejections" },
+  { label: "Scheme Master", zoho: "Schemes" },
+];
+
 type Status = {
   hasCredentials: boolean;
   connected: boolean;
@@ -142,6 +161,34 @@ export function ZohoIntegrationCard() {
         {statusChip}
       </div>
 
+      {/* What syncs + Zoho-side setup */}
+      <details className="text-xs border border-border rounded-lg bg-secondary/30">
+        <summary className="cursor-pointer select-none px-3 py-2 font-medium text-muted-foreground">
+          Synced modules ({SYNCED_MODULES.length}) &amp; Zoho setup
+        </summary>
+        <div className="px-3 pb-3 space-y-2">
+          <p className="text-[11px] text-muted-foreground leading-relaxed">
+            Each module below pushes to the named Zoho module. <strong>Native</strong> modules already exist; the
+            others are <strong>custom modules you create</strong> in Zoho (Setup → Modules and Fields → New Module)
+            using the exact API name shown. Add a single-line{" "}
+            <code className="px-1 rounded bg-secondary">Aina_Record_ID</code> field to every one — that&rsquo;s what
+            keeps the sync idempotent (no duplicate records). Until a custom module exists, that module&rsquo;s rows
+            are simply skipped.
+          </p>
+          <ul className="grid grid-cols-2 gap-x-4 gap-y-1">
+            {SYNCED_MODULES.map((m) => (
+              <li key={m.zoho} className="flex items-center justify-between gap-2">
+                <span>{m.label}</span>
+                <span className="text-[10px] text-muted-foreground font-mono">
+                  {m.zoho}
+                  {m.native ? "" : " · custom"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </details>
+
       {/* Connected — show counts + controls */}
       {!loading && status?.connected && (
         <>
@@ -240,8 +287,9 @@ export function ZohoIntegrationCard() {
 
           <div className="text-[11px] text-muted-foreground leading-relaxed rounded-lg border border-border bg-secondary/40 px-3 py-2 inline-flex items-start gap-2">
             <AlertCircle className="size-3.5 mt-0.5 shrink-0" />
-            In Zoho, add a single-line custom field named <code className="px-1 rounded bg-secondary">Aina_Record_ID</code> to the
-            Contacts and Leads modules — that&rsquo;s what stops the sync from creating duplicates.
+            In Zoho, add a single-line custom field named <code className="px-1 rounded bg-secondary">Aina_Record_ID</code> to
+            every synced module — see the <strong>Synced modules</strong> list above. That&rsquo;s what stops the sync from
+            creating duplicates.
           </div>
 
           <div className="flex items-center gap-2">
