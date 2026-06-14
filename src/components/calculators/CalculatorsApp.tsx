@@ -163,12 +163,10 @@ type TabKey =
   | "timemachine"
   | "doubling"
   | "sip"
-  | "lumpsum"
   | "goal"
   | "inflation"
   | "delay"
   | "retirement"
-  | "stepup"
   | "swp"
   | "stp"
   | "cagr";
@@ -181,13 +179,11 @@ const CATALOG: CalcGroup[] = [
     title: "SIP & Wealth Building", icon: TrendingUp, items: [
       { key: "sip360", name: "SIP 360° Planner", icon: LineChart, desc: "Deep SIP analysis — future value, step-up, delay & maturity" },
       { key: "reckoner", name: "Step-Up SIP Reckoner", icon: ArrowUpNarrowWide, desc: "Compare regular vs %/₹ step-up across timeframes" },
-      { key: "growing", name: "Growing SIP vs SIP", icon: Sprout, desc: "How a growing SIP outpaces a flat one" },
+      { key: "growing", name: "Step-up SIP vs Regular SIP", icon: ChevronsUp, desc: "Year-by-year corpus, profit % and a growth chart — step-up vs flat SIP" },
       { key: "salary", name: "Salary → Wealth", icon: Briefcase, desc: "Invest a % of salary that rises with increments" },
-      { key: "stepup", name: "Step-up SIP", icon: ChevronsUp, desc: "A SIP with a fixed yearly increase" },
       { key: "fvannual", name: "FV of Annual Lumpsum", icon: CalendarClock, desc: "Future value of a yearly lumpsum investment" },
       { key: "annualreq", name: "Annual Lumpsum for Target", icon: Crosshair, desc: "Yearly lumpsum needed to reach a goal" },
-      { key: "sip", name: "SIP Calculator", icon: Droplets, desc: "Future value of a monthly SIP" },
-      { key: "lumpsum", name: "Lumpsum Calculator", icon: Coins, desc: "Future value of a one-time investment" },
+      { key: "sip", name: "SIP + Lumpsum Calculator", icon: Droplets, desc: "Future value of a monthly SIP plus a one-time lumpsum" },
       { key: "cagr", name: "CAGR", icon: Percent, desc: "Annualised growth rate between two values" },
     ],
   },
@@ -434,6 +430,7 @@ export function CalculatorsApp({ firmName }: { firmName?: string } = {}) {
         {tab === "sip360" && <Sip360Planner />}
         {tab === "reckoner" && <StepUpReckoner />}
         {tab === "growing" && <GrowingSipCalc />}
+        {/* stepup merged into "growing" (Step-up SIP vs Regular SIP) */}
         {tab === "bridge" && <IncomeBridgePlanner />}
         {tab === "salary" && <SalaryWealthBuilder />}
         {tab === "multipurpose" && <CashflowCorpusPlanner />}
@@ -491,12 +488,10 @@ export function CalculatorsApp({ firmName }: { firmName?: string } = {}) {
         {tab === "timemachine" && <InflationTimeMachine />}
         {tab === "doubling" && <WealthDoublingCalculator />}
         {tab === "sip" && <SipCalc />}
-        {tab === "lumpsum" && <LumpsumCalc />}
         {tab === "goal" && <GoalCalc />}
         {tab === "inflation" && <InflationCalc />}
         {tab === "delay" && <DelayCalc />}
         {tab === "retirement" && <RetirementCalc />}
-        {tab === "stepup" && <StepUpCalc />}
         {tab === "swp" && <SwpCalc />}
         {tab === "stp" && <StpCalc />}
         {tab === "cagr" && <CagrCalc />}
@@ -595,8 +590,8 @@ function SipCalc() {
 
   return (
     <CalcShell
-      title="SIP Investment Calculator"
-      purpose="Future value of a monthly SIP, with optional present value."
+      title="SIP + Lumpsum Calculator"
+      purpose="Future value of a monthly SIP and a one-time lumpsum, combined — with the breakup of each."
     >
       <div className="grid grid-cols-2 gap-3">
         <Field label="Investment objective">
@@ -606,7 +601,7 @@ function SipCalc() {
             className="input-base text-sm w-full"
           />
         </Field>
-        <NumberField label="Present value (₹)" value={presentValue} setValue={setPresentValue} />
+        <NumberField label="Lumpsum amount (₹)" value={presentValue} setValue={setPresentValue} />
         <NumberField
           label="Monthly SIP (₹)"
           value={sipAmount}
@@ -623,38 +618,14 @@ function SipCalc() {
           { label: "Wealth gain", value: inr(total - invested), tone: "emerald" },
         ]}
       />
-    </CalcShell>
-  );
-}
-
-/* ───────────────────────── 2. Lumpsum ───────────────────────── */
-function LumpsumCalc() {
-  const [clientName, setClientName] = useState("");
-  const [objective, setObjective] = useState("");
-  const [amount, setAmount] = useState(100000);
-  const [years, setYears] = useState(10);
-  const [returnPct, setReturnPct] = useState(DEFAULT_EXPECTED_RETURN_PCT);
-
-  const fv = fvLumpsum(amount, returnPct, years * 12);
-
-  return (
-    <CalcShell title="Lumpsum Investment Calculator" purpose="Future value of a one-shot lumpsum.">
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Investment objective">
-          <input value={objective} onChange={(e) => setObjective(e.target.value)} className="input-base text-sm w-full" />
-        </Field>
-        <NumberField label="Investment amount (₹)" value={amount} setValue={setAmount} />
-        <NumberField label="Years" value={years} setValue={setYears} step={1} />
-        <NumberField label="Expected return (% p.a.)" value={returnPct} setValue={setReturnPct} step={0.1} />
-      </div>
-      <div className="max-w-xs"><FundReturnPicker onPick={setReturnPct} /></div>
-      <ResultRow
-        cells={[
-          { label: "Amount invested", value: inr(amount) },
-          { label: "Future value", value: inr(fv), tone: "emerald" },
-          { label: "Wealth gain", value: inr(fv - amount), tone: "emerald" },
-        ]}
-      />
+      {presentValue > 0 && sipAmount > 0 && (
+        <ResultRow
+          cells={[
+            { label: "Lumpsum grows to", value: inr(fvOfPv) },
+            { label: "SIP grows to", value: inr(fvOfSip) },
+          ]}
+        />
+      )}
     </CalcShell>
   );
 }
@@ -848,64 +819,6 @@ function RetirementCalc() {
   );
 }
 
-/* ───────────────────────── 7. Step-up SIP ───────────────────────── */
-function StepUpCalc() {
-  const [sip, setSip] = useState(10000);
-  const [stepUpPct, setStepUpPct] = useState(10);
-  const [years, setYears] = useState(15);
-  const [returnPct, setReturnPct] = useState(DEFAULT_EXPECTED_RETURN_PCT);
-
-  const months = years * 12;
-  const fvFlat = fvSip(sip, returnPct, months);
-  const fvStep = fvStepUpSip(sip, stepUpPct, returnPct, months);
-  const investedFlat = sip * months;
-  // Step-up invested
-  let investedStep = 0;
-  let cur = sip;
-  for (let y = 0; y < years; y++) {
-    investedStep += cur * 12;
-    cur *= 1 + stepUpPct / 100;
-  }
-
-  return (
-    <CalcShell title="Step-up SIP Calculator" purpose="Compare flat SIP vs SIP increased annually.">
-      <div className="grid grid-cols-2 gap-3">
-        <NumberField label="Initial monthly SIP (₹)" value={sip} setValue={setSip} />
-        <NumberField label="Annual step-up (%)" value={stepUpPct} setValue={setStepUpPct} step={1} />
-        <NumberField label="Years" value={years} setValue={setYears} step={1} />
-        <NumberField label="Expected return (% p.a.)" value={returnPct} setValue={setReturnPct} step={0.1} />
-      </div>
-      <div className="grid grid-cols-2 gap-3 mt-3">
-        <div className="border border-slate-200 rounded-md p-3 space-y-1.5">
-          <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">
-            Without step-up
-          </div>
-          <Row k="Invested" v={inr(investedFlat)} />
-          <Row k="Final value" v={inr(fvFlat)} />
-          <Row k="Gain" v={inr(fvFlat - investedFlat)} />
-        </div>
-        <div className="border border-slate-200 rounded-md p-3 space-y-1.5">
-          <div className="text-[10px] uppercase tracking-wide text-emerald-700 font-semibold">
-            With step-up
-          </div>
-          <Row k="Invested" v={inr(investedStep)} />
-          <Row k="Final value" v={inr(fvStep)} />
-          <Row k="Gain" v={inr(fvStep - investedStep)} />
-        </div>
-      </div>
-      <ResultRow
-        cells={[
-          {
-            label: "Difference (step-up advantage)",
-            value: inr(fvStep - fvFlat),
-            tone: "emerald",
-          },
-        ]}
-      />
-    </CalcShell>
-  );
-}
-
 /* ───────────────────────── 8. SWP ───────────────────────── */
 function SwpCalc() {
   const [corpus, setCorpus] = useState(500000);
@@ -971,8 +884,8 @@ function GrowingSipCalc() {
 
   return (
     <CalcShell
-      title="Growing SIP vs Regular SIP"
-      purpose="A step-up SIP that increases your monthly amount each year vs a flat SIP — year-by-year corpus, profit and profit-as-%-of-cost. Returns are treated as effective annual (compounded monthly, contributions at month start), matching the BIRD working sheet."
+      title="Step-up SIP vs Regular SIP"
+      purpose="A step-up SIP that raises your monthly amount each year vs a flat SIP — year-by-year corpus, invested, profit and profit-as-%-of-cost, with a growth chart. Returns are effective annual (compounded monthly, contributions at month start)."
     >
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <NumberField label="Monthly SIP (₹)" value={sip} setValue={setSip} />
