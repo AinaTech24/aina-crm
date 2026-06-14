@@ -195,16 +195,45 @@ export function moneyLast(p: {
   let months = 0;
   const maxMonths = Math.round((Math.max(p.lifeExpectancy, 100) - p.currentAge + 5) * 12);
   const series: { age: number; balance: number }[] = [{ age: p.currentAge, balance: bal }];
+  // Year-by-year ledger: opening balance, total withdrawn that year, growth
+  // earned, and the balance left after the year's withdrawals.
+  const schedule: { age: number; opening: number; withdrawn: number; growth: number; balance: number }[] = [];
+  let yearOpening = bal;
+  let yearWithdrawn = 0;
   while (bal > 0 && months < maxMonths) {
     if (months > 0 && months % 12 === 0) w = w * (1 + g);
+    yearWithdrawn += Math.min(w, Math.max(0, bal)); // don't count more than is left
     bal = (bal - w) * (1 + r);
     months++;
-    if (months % 12 === 0) series.push({ age: p.currentAge + months / 12, balance: Math.max(0, bal) });
+    if (months % 12 === 0) {
+      const closing = Math.max(0, bal);
+      series.push({ age: p.currentAge + months / 12, balance: closing });
+      schedule.push({
+        age: p.currentAge + months / 12,
+        opening: yearOpening,
+        withdrawn: yearWithdrawn,
+        growth: closing - yearOpening + yearWithdrawn,
+        balance: closing,
+      });
+      yearOpening = closing;
+      yearWithdrawn = 0;
+    }
+  }
+  // Capture the final partial year if the corpus ran dry mid-year.
+  if (months % 12 !== 0) {
+    const closing = Math.max(0, bal);
+    schedule.push({
+      age: p.currentAge + months / 12,
+      opening: yearOpening,
+      withdrawn: yearWithdrawn,
+      growth: closing - yearOpening + yearWithdrawn,
+      balance: closing,
+    });
   }
   const ranOut = bal <= 0 && months < maxMonths;
   const runsOutAge = ranOut ? p.currentAge + months / 12 : null;
   const lastsForLife = runsOutAge === null || runsOutAge >= p.lifeExpectancy;
-  return { runsOutAge, lastsForLife, series, yearsLasted: months / 12 };
+  return { runsOutAge, lastsForLife, series, schedule, yearsLasted: months / 12 };
 }
 
 /* ── 8. ₹1 Crore Race ── */

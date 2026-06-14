@@ -8,7 +8,7 @@
 
 import { useMemo, useState } from "react";
 import { moneyLast } from "@/lib/calculators/conversion";
-import { inr, NumberField, Field, Stat, Insight } from "./ui";
+import { inr, NumberField, Field, Stat, Insight, Table } from "./ui";
 import { LinesChart, inrShort } from "./charts";
 
 export function MoneyLastCalculator() {
@@ -94,6 +94,25 @@ export function MoneyLastCalculator() {
         fmtY={(v) => inrShort(v)}
         lines={[{ label: "Corpus balance", color: ok ? "#10b981" : "#f43f5e", values: res.series.map((p) => p.balance) }]}
       />
+
+      <div>
+        <div className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold mb-1">
+          Year-by-year — withdrawals &amp; balance left
+        </div>
+        <div className="max-h-80 overflow-y-auto scrollbar-thin print:max-h-none print:overflow-visible">
+          <Table
+            head={["Age", "Opening balance", "Withdrawn (year)", "Growth", "Balance after withdrawal"]}
+            rows={res.schedule.map((s) => [
+              `Age ${Math.round(s.age)}`,
+              inrShort(s.opening),
+              inrShort(s.withdrawn),
+              inrShort(s.growth),
+              inrShort(s.balance),
+            ])}
+            highlightLastRow
+          />
+        </div>
+      </div>
 
       <Insight tone={ok ? "emerald" : "rose"}>
         {ok ? (
