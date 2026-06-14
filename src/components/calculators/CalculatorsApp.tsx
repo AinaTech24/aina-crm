@@ -19,7 +19,7 @@ import {
   Shield, Scale, Users,
   GitCompare, TrendingDown, Landmark, Scissors, Calculator,
   Warehouse, BarChart3, Recycle, PieChart,
-  CalendarDays, SlidersHorizontal, Anchor, ClipboardList,
+  CalendarDays, SlidersHorizontal, Anchor, ClipboardList, ClipboardCheck,
   Siren, Rocket, Trophy, Coffee, PiggyBank, Home, Gauge, Layers, Wallet,
   Lightbulb, Sparkles, LifeBuoy, Wand2, Split, Umbrella, Building, Sailboat, Gem, Car, ShieldAlert, Boxes, CirclePause, Brain, History, CopyPlus,
   type LucideIcon,
@@ -43,6 +43,7 @@ import { EmiSipRecoveryPlanner } from "./EmiSipRecoveryPlanner";
 import { FvAnnualLumpsumPlanner } from "./FvAnnualLumpsumPlanner";
 import { DebtFundBenefitCalculator } from "./DebtFundBenefitCalculator";
 import { AssetAllocationFvPlanner } from "./AssetAllocationFvPlanner";
+import { AssetAllocationReview } from "./AssetAllocationReview";
 import { ReviewOfInvestments } from "./ReviewOfInvestments";
 import { HumanLifeValueCalculator } from "./HumanLifeValueCalculator";
 import { GoalPlannerCalculator } from "./GoalPlannerCalculator";
@@ -119,6 +120,7 @@ type TabKey =
   | "fvannual"
   | "debtfund"
   | "assetalloc"
+  | "allocreview"
   | "review"
   | "vacation"
   | "hlv"
@@ -259,6 +261,7 @@ const CATALOG: CalcGroup[] = [
       { key: "rebalance", name: "Portfolio Rebalancing", icon: SlidersHorizontal, desc: "Exact buy/sell to hit your target mix" },
       { key: "expensedrag", name: "Expense-Ratio Drag", icon: Anchor, desc: "What a costlier fund quietly costs you" },
       { key: "review", name: "Review of Investments", icon: ClipboardList, desc: "Compare your funds' performance side by side" },
+      { key: "allocreview", name: "Asset Allocation Review", icon: ClipboardCheck, desc: "Existing vs suggested portfolio — 5y & 10y projection + asset mix" },
     ],
   },
   {
@@ -445,6 +448,7 @@ export function CalculatorsApp({ firmName }: { firmName?: string } = {}) {
         {tab === "fvannual" && <FvAnnualLumpsumPlanner />}
         {tab === "debtfund" && <DebtFundBenefitCalculator />}
         {tab === "assetalloc" && <AssetAllocationFvPlanner />}
+        {tab === "allocreview" && <AssetAllocationReview />}
         {tab === "review" && <ReviewOfInvestments />}
         {tab === "vacation" && <VacationPlannerCalc />}
         {tab === "hlv" && <HumanLifeValueCalculator />}
