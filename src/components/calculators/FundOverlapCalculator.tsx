@@ -130,9 +130,6 @@ export function FundOverlapCalculator() {
       </div>
 
       <div className="grid md:grid-cols-3 gap-3">
-        <Field label="Client name">
-          <input value={clientName} onChange={(e) => setClientName(e.target.value)} className="input-base text-sm w-full" />
-        </Field>
         <NumberField label="Review threshold overlap (%)" value={reviewThreshold} setValue={setReviewThreshold} step={1} />
       </div>
 

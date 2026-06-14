@@ -76,9 +76,6 @@ export function SwpEndPeriodCalculator() {
       />
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        <Field label="Client name">
-          <ClientNameField value={clientName} onChange={setClientName} />
-        </Field>
         <NumberField
           label={isSip ? "Monthly SIP (₹)" : "Initial investment (₹)"}
           value={initialInvestment}

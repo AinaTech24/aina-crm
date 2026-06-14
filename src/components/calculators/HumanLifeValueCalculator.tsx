@@ -81,9 +81,6 @@ export function HumanLifeValueCalculator() {
       {method === "income_replacement" ? (
         <>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-            <Field label="Client name (optional)">
-              <ClientNameField value={clientName} onChange={setClientName} />
-            </Field>
             <NumberField label="Current age (yrs)" value={currentAge} setValue={setCurrentAge} step={1} />
             <NumberField label="Retirement age (yrs)" value={retirementAge} setValue={setRetirementAge} step={1} />
             <NumberField label="Current annual income (₹)" value={currentAnnualIncome} setValue={setCurrentAnnualIncome} step={50000} />
@@ -134,9 +131,6 @@ export function HumanLifeValueCalculator() {
       ) : (
         <>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-            <Field label="Client name (optional)">
-              <ClientNameField value={clientName} onChange={setClientName} />
-            </Field>
             <NumberField label="Outstanding liabilities / loans (₹)" value={outstandingLiabilities} setValue={setOutstandingLiabilities} step={100000} />
             <NumberField label="Future goals — education/marriage (₹)" value={futureGoals} setValue={setFutureGoals} step={100000} />
             <NumberField label="Family annual expense need (₹)" value={familyAnnualNeed} setValue={setFamilyAnnualNeed} step={50000} />

@@ -56,9 +56,6 @@ export function PropertyYieldCalculator() {
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Client name">
-          <ClientNameField value={clientName} onChange={setClientName} />
-        </Field>
       </div>
 
       <div className="grid md:grid-cols-2 gap-4">

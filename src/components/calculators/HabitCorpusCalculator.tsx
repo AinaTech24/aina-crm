@@ -63,9 +63,6 @@ export function HabitCorpusCalculator() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Field label="Client name">
-          <input value={clientName} onChange={(e) => setClientName(e.target.value)} className="input-base text-sm w-full" />
-        </Field>
         <NumberField label="Amount (₹)" value={amount} setValue={setAmount} step={50} />
         <div>
           <Segmented label="Frequency" value={freq} onChange={(v) => setFreq(v)} options={FREQ} />

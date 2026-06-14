@@ -123,9 +123,6 @@ export function StepUpReckoner() {
         </p>
       </div>
 
-      <Field label="Client name">
-        <ClientNameField value={clientName} onChange={setClientName} />
-      </Field>
       {clientName && (
         <div className="text-sm font-medium">
           Prepared for <span className="text-primary">{clientName}</span>

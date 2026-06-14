@@ -43,9 +43,6 @@ export function BtidCalculator() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        <Field label="Client name">
-          <input value={clientName} onChange={(e) => setClientName(e.target.value)} className="input-base text-sm w-full" />
-        </Field>
         <NumberField label="Yearly budget (₹)" value={annualBudget} setValue={setAnnualBudget} step={10000} />
         <NumberField label="Term plan premium / yr (₹)" value={termPremium} setValue={setTermPremium} step={1000} />
         <NumberField label="Term cover (₹)" value={termCover} setValue={setTermCover} step={500000} />

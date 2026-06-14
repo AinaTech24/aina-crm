@@ -43,9 +43,6 @@ export function NpsVsMfCalculator() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        <Field label="Client name">
-          <input value={clientName} onChange={(e) => setClientName(e.target.value)} className="input-base text-sm w-full" />
-        </Field>
         <NumberField label="Monthly contribution (₹)" value={monthly} setValue={setMonthly} step={1000} />
         <NumberField label="Years to 60" value={years} setValue={setYears} step={1} />
         <NumberField label="NPS return (% p.a.)" value={npsReturn} setValue={setNpsReturn} step={0.5} />

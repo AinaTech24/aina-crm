@@ -39,7 +39,6 @@ export function FireNumberCalculator() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        <Field label="Client name"><ClientNameField value={clientName} onChange={setClientName} /></Field>
         <NumberField label="Current age" value={currentAge} setValue={setCurrentAge} step={1} />
         <NumberField label="Monthly expenses now (₹)" value={monthlyExpenseNow} setValue={setMonthlyExpenseNow} step={5000} />
         <NumberField label="Current corpus (₹)" value={currentCorpus} setValue={setCurrentCorpus} step={100000} />

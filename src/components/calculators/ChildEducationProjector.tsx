@@ -47,7 +47,6 @@ export function ChildEducationProjector() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        <Field label="Parent / client name"><ClientNameField value={clientName} onChange={setClientName} /></Field>
         <NumberField label="Child's current age" value={childCurrentAge} setValue={setChildCurrentAge} step={1} />
         <NumberField label="Education inflation (%)" value={eduInflationPct} setValue={setEduInflationPct} step={0.5} />
         <NumberField label="Expected return (%)" value={expectedReturnPct} setValue={setExpectedReturnPct} step={0.5} />

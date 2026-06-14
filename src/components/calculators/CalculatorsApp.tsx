@@ -599,9 +599,6 @@ function SipCalc() {
       purpose="Future value of a monthly SIP, with optional present value."
     >
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Client name">
-          <ClientNameField value={clientName} onChange={setClientName} />
-        </Field>
         <Field label="Investment objective">
           <input
             value={objective}
@@ -643,9 +640,6 @@ function LumpsumCalc() {
   return (
     <CalcShell title="Lumpsum Investment Calculator" purpose="Future value of a one-shot lumpsum.">
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Client name">
-          <ClientNameField value={clientName} onChange={setClientName} />
-        </Field>
         <Field label="Investment objective">
           <input value={objective} onChange={(e) => setObjective(e.target.value)} className="input-base text-sm w-full" />
         </Field>
@@ -678,9 +672,6 @@ function GoalCalc() {
   return (
     <CalcShell title="Goal Calculator" purpose="Monthly SIP required to reach a target goal amount.">
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Client name">
-          <ClientNameField value={clientName} onChange={setClientName} />
-        </Field>
         <Field label="Goal name">
           <input value={goalName} onChange={(e) => setGoalName(e.target.value)} className="input-base text-sm w-full" />
         </Field>
@@ -713,9 +704,6 @@ function InflationCalc() {
   return (
     <CalcShell title="Inflation Calculator" purpose="Future value of an expense or goal, inflated.">
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Client name">
-          <ClientNameField value={clientName} onChange={setClientName} />
-        </Field>
         <Field label="Type of expense">
           <input value={expenseType} onChange={(e) => setExpenseType(e.target.value)} className="input-base text-sm w-full" placeholder="e.g. College fees, home cost" />
         </Field>
@@ -987,9 +975,6 @@ function GrowingSipCalc() {
       purpose="A step-up SIP that increases your monthly amount each year vs a flat SIP — year-by-year corpus, profit and profit-as-%-of-cost. Returns are treated as effective annual (compounded monthly, contributions at month start), matching the BIRD working sheet."
     >
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Field label="Client name">
-          <ClientNameField value={clientName} onChange={setClientName} />
-        </Field>
         <NumberField label="Monthly SIP (₹)" value={sip} setValue={setSip} />
         <NumberField label="Expected return (% p.a.)" value={returnPct} setValue={setReturnPct} step={0.5} />
         <NumberField label="Annual step-up (%)" value={growthPct} setValue={setGrowthPct} step={1} />
@@ -1149,9 +1134,6 @@ function VacationPlannerCalc() {
       purpose="Fund a lifetime of escalating annual vacations — the corpus you need, and the growing SIP to build the gap."
     >
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Field label="Client name">
-          <ClientNameField value={clientName} onChange={setClientName} />
-        </Field>
         <NumberField label="Initial investment (₹)" value={initial} setValue={setInitial} />
         <NumberField label="Current cost / vacation (₹)" value={vacationCost} setValue={setVacationCost} />
         <NumberField label="No. of vacations" value={numVacations} setValue={setNumVacations} step={1} />
@@ -1425,9 +1407,6 @@ function StpCalc() {
       purpose="Transfer funds systematically from a source debt fund to a target equity fund."
     >
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Client name">
-          <ClientNameField value={clientName} onChange={setClientName} />
-        </Field>
         <NumberField label="Initial lumpsum amount (₹)" value={lumpsum} setValue={setLumpsum} />
         <NumberField label="Monthly transfer amount (₹)" value={transfer} setValue={setTransfer} />
         <NumberField label="Source expected return (% p.a.)" value={sourceReturn} setValue={setSourceReturn} step={0.1} />

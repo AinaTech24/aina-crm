@@ -47,9 +47,6 @@ export function MoneyLastCalculator() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Field label="Client name">
-          <input value={clientName} onChange={(e) => setClientName(e.target.value)} className="input-base text-sm w-full" />
-        </Field>
         <NumberField label="Retirement corpus (₹)" value={corpus} setValue={setCorpus} step={500000} />
         <NumberField label="Current age" value={currentAge} setValue={setCurrentAge} step={1} />
         <NumberField label="Monthly withdrawal (₹)" value={withdrawal} setValue={setWithdrawal} step={5000} />

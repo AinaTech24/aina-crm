@@ -36,9 +36,6 @@ export function FdVsEquityGap() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        <Field label="Client name">
-          <input value={clientName} onChange={(e) => setClientName(e.target.value)} className="input-base text-sm w-full" />
-        </Field>
         <NumberField label="One-time lumpsum (₹)" value={lumpsum} setValue={setLumpsum} step={100000} />
         <NumberField label="Monthly SIP (₹)" value={sip} setValue={setSip} step={1000} />
         <NumberField label="Years" value={years} setValue={setYears} step={1} />

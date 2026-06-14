@@ -54,9 +54,6 @@ export function AssetAllocationFvPlanner() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        <Field label="Client name">
-          <ClientNameField value={clientName} onChange={setClientName} />
-        </Field>
         <Num label="Initial investment (₹)" value={initialInvestment} setValue={setInitialInvestment} />
         <Num label="Investment period (years)" value={years} setValue={setYears} step={1} />
       </div>

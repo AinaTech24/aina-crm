@@ -131,9 +131,6 @@ export function MoneyPersonalityQuiz() {
         </p>
       </div>
 
-      <Field label="Client name">
-        <input value={clientName} onChange={(e) => setClientName(e.target.value)} className="input-base text-sm w-full md:w-1/2" />
-      </Field>
 
       <div className="space-y-4">
         {QUESTIONS.map((q, qi) => (

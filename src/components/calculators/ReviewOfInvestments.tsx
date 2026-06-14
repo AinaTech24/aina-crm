@@ -120,13 +120,6 @@ export function ReviewOfInvestments() {
         </p>
       </div>
 
-      <div className="grid md:grid-cols-2 gap-3">
-        <label className="block">
-          <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium block mb-1">Client name</span>
-          <ClientNameField value={clientName} onChange={setClientName} />
-        </label>
-      </div>
-
       {/* Period visibility toggles */}
       <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border/70 p-3 bg-secondary/20 print:hidden">
         <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium">Show periods:</span>

@@ -71,9 +71,6 @@ export function SalaryWealthBuilder() {
       <Segmented label="I want to find" value={mode} onChange={(v) => setMode(v as SalaryWealthMode)} options={MODES} />
 
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Client name">
-          <ClientNameField value={clientName} onChange={setClientName} />
-        </Field>
         {isSaving && <Num label="Target wealth (₹)" value={targetWealth} setValue={setTargetWealth} />}
       </div>
 

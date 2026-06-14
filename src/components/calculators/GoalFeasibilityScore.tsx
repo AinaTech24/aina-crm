@@ -51,7 +51,6 @@ export function GoalFeasibilityScore() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        <Field label="Client name"><ClientNameField value={clientName} onChange={setClientName} /></Field>
         <NumberField label="Monthly income (₹)" value={monthlyIncome} setValue={setMonthlyIncome} step={10000} />
         <NumberField label="Current monthly SIP (₹)" value={currentMonthlySip} setValue={setCurrentMonthlySip} step={5000} />
         <NumberField label="Existing corpus (₹)" value={existingCorpus} setValue={setExistingCorpus} step={100000} />

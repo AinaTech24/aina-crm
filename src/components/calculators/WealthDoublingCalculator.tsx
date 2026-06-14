@@ -32,9 +32,6 @@ export function WealthDoublingCalculator() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Field label="Client name">
-          <input value={clientName} onChange={(e) => setClientName(e.target.value)} className="input-base text-sm w-full" />
-        </Field>
         <NumberField label="Amount (₹)" value={amount} setValue={setAmount} step={100000} />
         <NumberField label="Expected return (% p.a.)" value={returnPct} setValue={setReturnPct} step={0.5} />
         <NumberField label="How many doublings" value={doublings} setValue={setDoublings} step={1} />

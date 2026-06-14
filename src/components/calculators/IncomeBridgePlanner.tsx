@@ -120,9 +120,6 @@ export function IncomeBridgePlanner() {
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Client name">
-          <ClientNameField value={clientName} onChange={setClientName} />
-        </Field>
         <Field label="Objective">
           <input value={objective} onChange={(e) => setObjective(e.target.value)} className="input-base text-sm w-full" placeholder="e.g. Retirement income" />
         </Field>

@@ -41,9 +41,6 @@ export function LifestyleShockCalculator() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        <Field label="Client name">
-          <input value={clientName} onChange={(e) => setClientName(e.target.value)} className="input-base text-sm w-full" />
-        </Field>
         <NumberField label="Monthly expense today (₹)" value={monthlyExpense} setValue={setMonthlyExpense} step={5000} />
         <NumberField label="Inflation (% p.a.)" value={inflation} setValue={setInflation} step={0.5} />
         <NumberField label="Years to retirement" value={yearsToRetire} setValue={setYearsToRetire} step={1} />

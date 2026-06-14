@@ -92,9 +92,6 @@ export function SwpComprehensivePlanner() {
       />
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        <Field label="Client name">
-          <ClientNameField value={clientName} onChange={setClientName} />
-        </Field>
         <NumberField label="Current age (optional)" value={currentAge} setValue={setCurrentAge} step={1} />
         {needsLump && (
           <NumberField

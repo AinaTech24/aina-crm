@@ -76,9 +76,6 @@ export function SurrenderAnalyzer() {
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Client name">
-          <ClientNameField value={clientName} onChange={setClientName} />
-        </Field>
         <Field label="Policy name (optional)">
           <input value={policyName} onChange={(e) => setPolicyName(e.target.value)} className="input-base text-sm w-full" placeholder="e.g. LIC Jeevan Anand" />
         </Field>

@@ -44,7 +44,6 @@ export function GoalCollisionTimeline() {
         </p>
       </div>
 
-      <Field label="Client name"><ClientNameField value={clientName} onChange={setClientName} /></Field>
 
       <div>
         <div className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium mb-1.5">Goals</div>

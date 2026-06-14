@@ -54,9 +54,6 @@ export function RentVsBuyPlanner() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Field label="Client name">
-          <input value={clientName} onChange={(e) => setClientName(e.target.value)} className="input-base text-sm w-full" />
-        </Field>
         <NumberField label="Home price (₹)" value={homePrice} setValue={setHomePrice} step={500000} />
         <NumberField label="Down payment (%)" value={downPct} setValue={setDownPct} step={1} />
         <NumberField label="Loan rate (% p.a.)" value={loanRate} setValue={setLoanRate} step={0.1} />

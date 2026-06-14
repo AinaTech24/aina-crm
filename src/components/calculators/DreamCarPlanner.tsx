@@ -45,9 +45,6 @@ export function DreamCarPlanner() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Field label="Client name">
-          <input value={clientName} onChange={(e) => setClientName(e.target.value)} className="input-base text-sm w-full" />
-        </Field>
         <NumberField label="Car price today (₹)" value={price} setValue={setPrice} step={100000} />
         <NumberField label="Buy in (years)" value={yearsToBuy} setValue={setYearsToBuy} step={1} />
         <NumberField label="Car price inflation (% p.a.)" value={carInflation} setValue={setCarInflation} step={0.5} />

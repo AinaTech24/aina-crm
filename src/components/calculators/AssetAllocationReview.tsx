@@ -57,9 +57,6 @@ export function AssetAllocationReview() {
 
       {/* Top inputs (captured as PDF assumptions) */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Field label="Client name">
-          <ClientNameField value={clientName} onChange={setClientName} />
-        </Field>
         <Num label="Horizon A (years)" value={horizonA} setValue={setHorizonA} step={1} />
         <Num label="Horizon B (years)" value={horizonB} setValue={setHorizonB} step={1} />
       </div>

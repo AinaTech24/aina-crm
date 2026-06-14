@@ -41,9 +41,6 @@ export function PrepayVsInvestCalculator() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        <Field label="Client name">
-          <input value={clientName} onChange={(e) => setClientName(e.target.value)} className="input-base text-sm w-full" />
-        </Field>
         <NumberField label="Loan outstanding (₹)" value={outstanding} setValue={setOutstanding} step={100000} />
         <NumberField label="Loan rate (% p.a.)" value={loanRate} setValue={setLoanRate} step={0.1} />
         <NumberField label="Remaining tenure (yrs)" value={remainingYears} setValue={setRemainingYears} step={1} />

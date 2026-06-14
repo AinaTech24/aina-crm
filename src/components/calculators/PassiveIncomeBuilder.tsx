@@ -53,9 +53,6 @@ export function PassiveIncomeBuilder() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        <Field label="Client name">
-          <input value={clientName} onChange={(e) => setClientName(e.target.value)} className="input-base text-sm w-full" />
-        </Field>
         <NumberField label="Income wanted today (₹/mo)" value={targetMonthly} setValue={setTargetMonthly} step={5000} />
         <NumberField label="Years to freedom" value={yearsToFreedom} setValue={setYearsToFreedom} step={1} />
         <NumberField label="Already invested (₹)" value={existing} setValue={setExisting} step={100000} />

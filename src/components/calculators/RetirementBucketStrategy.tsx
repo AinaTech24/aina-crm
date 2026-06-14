@@ -39,9 +39,6 @@ export function RetirementBucketStrategy() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Field label="Client name">
-          <input value={clientName} onChange={(e) => setClientName(e.target.value)} className="input-base text-sm w-full" />
-        </Field>
         <NumberField label="Retirement corpus (₹)" value={corpus} setValue={setCorpus} step={500000} />
         <NumberField label="Monthly expense (₹)" value={expense} setValue={setExpense} step={5000} />
         <NumberField label="Bucket 1 — cash (yrs)" value={b1Years} setValue={setB1Years} step={1} />

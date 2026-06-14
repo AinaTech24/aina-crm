@@ -114,9 +114,6 @@ export function PortfolioHealthScore() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Field label="Client name">
-          <input value={clientName} onChange={(e) => setClientName(e.target.value)} className="input-base text-sm w-full" />
-        </Field>
         <div className="md:col-span-2">
           <Segmented
             label="Risk profile"

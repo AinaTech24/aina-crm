@@ -42,13 +42,6 @@ export function OpmHousePlanner() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        <Field label="Client name">
-          <input
-            value={clientName}
-            onChange={(e) => setClientName(e.target.value)}
-            className="input-base text-sm w-full"
-          />
-        </Field>
         <NumberField label="Loan amount = amount invested (₹)" value={loanAmount} setValue={setLoanAmount} step={500000} />
         <NumberField label="Loan interest rate (% p.a.)" value={loanRate} setValue={setLoanRate} step={0.1} />
         <NumberField label="Tenure (years)" value={tenureYears} setValue={setTenureYears} step={1} />

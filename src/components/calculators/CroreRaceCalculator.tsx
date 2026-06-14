@@ -50,9 +50,6 @@ export function CroreRaceCalculator() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Field label="Client name">
-          <input value={clientName} onChange={(e) => setClientName(e.target.value)} className="input-base text-sm w-full" />
-        </Field>
         <NumberField label="Your SIP (₹/mo)" value={yourSip} setValue={setYourSip} step={1000} />
         <NumberField label="One-time lumpsum (₹)" value={lumpsum} setValue={setLumpsum} step={50000} />
         <NumberField label="Expected return (% p.a.)" value={returnPct} setValue={setReturnPct} step={0.5} />

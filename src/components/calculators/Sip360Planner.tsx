@@ -167,9 +167,6 @@ export function Sip360Planner() {
 
       {/* ─────────── Personalisation ─────────── */}
       <div className="grid md:grid-cols-3 gap-3">
-        <Field label="Client name">
-          <ClientNameField value={clientName} onChange={setClientName} />
-        </Field>
         <Field label="Suggested schemes (optional)">
           <input value={schemes} onChange={(e) => setSchemes(e.target.value)} className="input-base text-sm w-full" placeholder="e.g. Flexi-cap + Mid-cap" />
         </Field>

@@ -49,9 +49,6 @@ export function EmergencyFundPlanner() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        <Field label="Client name">
-          <input value={clientName} onChange={(e) => setClientName(e.target.value)} className="input-base text-sm w-full" />
-        </Field>
         <NumberField label="Monthly expenses (₹)" value={expense} setValue={setExpense} step={5000} />
         <NumberField label="Already set aside (₹)" value={existing} setValue={setExisting} step={25000} />
         <NumberField label="Build over (months)" value={buildMonths} setValue={setBuildMonths} step={1} />

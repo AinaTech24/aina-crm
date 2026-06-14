@@ -79,9 +79,6 @@ export function GoalPlannerCalculator() {
       </div>
 
       <div className="grid md:grid-cols-2 gap-3">
-        <Field label="Client name">
-          <ClientNameField value={clientName} onChange={setClientName} />
-        </Field>
       </div>
 
       {/* Portfolio roll-up */}

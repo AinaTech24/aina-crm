@@ -79,9 +79,6 @@ export function SwpPeriodicPlanner() {
 
       {/* Header + client */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        <Field label="Client name">
-          <ClientNameField value={clientName} onChange={setClientName} />
-        </Field>
         <Num label="Current age (optional)" value={currentAge} setValue={setCurrentAge} step={1} />
         <div>
           <label className="flex items-center gap-2 text-sm cursor-pointer mt-5">

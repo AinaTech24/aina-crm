@@ -47,9 +47,6 @@ export function AnnualLumpsumRequiredCalculator() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        <Field label="Client name">
-          <ClientNameField value={clientName} onChange={setClientName} />
-        </Field>
         <NumberField label="Target amount (₹)" value={targetAmount} setValue={setTargetAmount} step={100000} />
         <NumberField label="Investment period (yrs)" value={investmentYears} setValue={setInvestmentYears} step={1} />
         <NumberField label="Payment period (yrs)" value={paymentYears} setValue={setPaymentYears} step={1} />

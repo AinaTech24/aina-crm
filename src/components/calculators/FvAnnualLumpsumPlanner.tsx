@@ -51,9 +51,6 @@ export function FvAnnualLumpsumPlanner() {
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Client name">
-          <ClientNameField value={clientName} onChange={setClientName} />
-        </Field>
       </div>
 
       {/* Inputs */}

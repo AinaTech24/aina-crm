@@ -40,7 +40,6 @@ export function NpsPlanner() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        <Field label="Client name"><ClientNameField value={clientName} onChange={setClientName} /></Field>
         <NumberField label="Current age" value={currentAge} setValue={setCurrentAge} step={1} />
         <NumberField label="Retirement age" value={retirementAge} setValue={setRetirementAge} step={1} />
         <NumberField label="Monthly contribution (₹)" value={monthlyContribution} setValue={setMonthlyContribution} step={500} />
