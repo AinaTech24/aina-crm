@@ -73,6 +73,7 @@ export const NAV_ACCESS_GROUPS: NavAccessGroup[] = [
     title: "Automation",
     items: [
       { key: "/dashboard/workflows/rules", label: "Workflow Rules", module: "automation_workflows" },
+      { key: "/dashboard/workflows/actions", label: "Workflow Actions", module: "automation_workflows" },
       { key: "/dashboard/workflows/runs", label: "Automation Monitor", module: "automation_workflows" },
       { key: "/dashboard/templates", label: "Templates", module: "broadcasts" },
       { key: "/dashboard/campaigns", label: "Marketing Campaigns", module: "marketing_campaigns" },

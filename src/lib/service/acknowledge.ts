@@ -93,7 +93,7 @@ export async function acknowledgeServiceRequest(
       if (client) {
         try {
           const res = await client.emails.send({
-            from: process.env.EMAIL_FROM_TRANSACTIONAL ?? "no-reply@example.com",
+            from: process.env.EMAIL_FROM_TRANSACTIONAL ?? "Aina CRM <connect@ainatech.in>",
             to: [inv.email],
             subject: `We've received your request — ${args.ticketNo}`,
             html: `<p>${lines.map((l) => l).join("<br/>")}</p><p style="color:#64748b;font-size:12px">${signoff}</p>`,

@@ -113,14 +113,13 @@ export async function fireDueScheduledRuleJobs(): Promise<{ processed: number; f
               )
             );
           processed++;
-        } else {
-          // Action failed or was skipped
+        } else if (result.status === "skipped") {
           await tx
             .update(workflowRuleScheduledJobs)
             .set({
-              status: result.status === "skipped" ? "cancelled" : "failed",
+              status: "cancelled",
               lastError: result.error ?? result.detail ?? "Unknown error",
-              cancelReason: result.status === "skipped" ? (result.detail ?? null) : null,
+              cancelReason: result.detail ?? null,
               attempts: sql`attempts + 1`,
               updatedAt: new Date(),
             })
@@ -130,11 +129,10 @@ export async function fireDueScheduledRuleJobs(): Promise<{ processed: number; f
                 eq(workflowRuleScheduledJobs.tenantId, job.tenant_id)
               )
             );
-          if (result.status === "failed") {
-            failed++;
-          } else {
-            processed++; // skipped counts as processed
-          }
+          processed++;
+        } else {
+          await markScheduledJobForRetry(tx, job.id, result.error ?? result.detail ?? "Unknown error");
+          failed++;
         }
       });
     } catch (err) {
@@ -149,21 +147,25 @@ export async function fireDueScheduledRuleJobs(): Promise<{ processed: number; f
       // room instead of hammering. SET expressions read the pre-update row,
       // so `attempts` here is the count BEFORE this failure.
       await withSystem(async (tx) => {
-        await tx
-          .update(workflowRuleScheduledJobs)
-          .set({
-            status: sql`CASE WHEN attempts + 1 >= 5 THEN 'failed'::text ELSE 'pending'::text END` as any,
-            lastError: (err as Error).message,
-            attempts: sql`attempts + 1`,
-            runAt: sql`now() + (interval '1 minute' * power(2, LEAST(attempts, 6)))` as any,
-            updatedAt: new Date(),
-          })
-          .where(eq(workflowRuleScheduledJobs.id, job.id));
+        await markScheduledJobForRetry(tx, job.id, (err as Error).message);
       });
     }
   }
 
   return { processed, failed };
+}
+
+async function markScheduledJobForRetry(tx: any, jobId: string, error: string) {
+  await tx
+    .update(workflowRuleScheduledJobs)
+    .set({
+      status: sql`CASE WHEN attempts + 1 >= 5 THEN 'failed'::text ELSE 'pending'::text END` as any,
+      lastError: error,
+      attempts: sql`attempts + 1`,
+      runAt: sql`now() + (interval '1 minute' * power(2, LEAST(attempts, 6)))` as any,
+      updatedAt: new Date(),
+    })
+    .where(eq(workflowRuleScheduledJobs.id, jobId));
 }
 
 function subjectTypeToModule(subjectType: string): string | undefined {

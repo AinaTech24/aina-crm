@@ -154,7 +154,7 @@ export async function sendInvestorStatement(
       } else if (resendKey) {
         const client = new Resend(resendKey);
         const result = await client.emails.send({
-          from: from || "no-reply@example.com",
+          from: from || "Aina CRM <connect@ainatech.in>",
           to: [inv.email],
           subject,
           html,

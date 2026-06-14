@@ -1,15 +1,17 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { and, eq, desc } from "drizzle-orm";
-import { ChevronLeft, Lock, Workflow, Sparkles, Clock, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { ChevronLeft, Lock, Workflow, Sparkles, Clock, AlertTriangle, CheckCircle2, Pencil } from "lucide-react";
 import { withTenant } from "@/db/client";
-import { workflowRules, workflowRuleExecutions } from "@/db/schema";
+import { workflowRules, workflowRuleExecutions, workflowRuleScheduledJobs } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { MODULES } from "@/lib/workflow-rules/modules";
 import { RuleToggle } from "@/components/workflow-rules/RuleToggle";
 import { LockButton } from "@/components/workflow-rules/LockButton";
 import { DeleteRuleButton } from "@/components/workflow-rules/DeleteRuleButton";
+import { CloneRuleButton } from "@/components/workflow-rules/CloneRuleButton";
 import { TestRulePanel } from "@/components/workflow-rules/TestRulePanel";
+import { RetryButton } from "@/components/automation/RetryButton";
 import { formatDate, formatRelative } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -53,11 +55,17 @@ export default async function RuleDetailPage({
       )
       .orderBy(desc(workflowRuleExecutions.executedAt))
       .limit(50);
-    return { rule, execs };
+    const scheduledJobs = await tx
+      .select()
+      .from(workflowRuleScheduledJobs)
+      .where(and(eq(workflowRuleScheduledJobs.ruleId, id), eq(workflowRuleScheduledJobs.tenantId, session.tenantId)))
+      .orderBy(desc(workflowRuleScheduledJobs.createdAt))
+      .limit(50);
+    return { rule, execs, scheduledJobs };
   });
   if (!data) notFound();
 
-  const { rule, execs } = data;
+  const { rule, execs, scheduledJobs } = data;
   const mod = MODULES[rule.module as keyof typeof MODULES];
   const cfg = (rule.triggerConfig ?? {}) as any;
   const instant = (rule.instantActions ?? []) as any[];
@@ -94,6 +102,10 @@ export default async function RuleDetailPage({
           <div className="flex items-center gap-2">
             <RuleToggle id={rule.id} enabled={rule.enabled} locked={rule.locked} />
             <LockButton id={rule.id} locked={rule.locked} lockReason={rule.lockReason} />
+            <Link href={`/dashboard/workflows/rules/${rule.id}/edit`} className="btn-secondary text-xs">
+              <Pencil className="size-3.5" /> Edit
+            </Link>
+            <CloneRuleButton id={rule.id} name={rule.name} />
             <DeleteRuleButton id={rule.id} name={rule.name} />
           </div>
         </div>
@@ -257,6 +269,53 @@ export default async function RuleDetailPage({
       {/* Dry-run tester */}
       <TestRulePanel ruleId={rule.id} />
 
+      {/* Scheduled jobs monitor */}
+      <div className="card-surface overflow-hidden">
+        <div className="border-b border-border px-4 py-2.5 font-semibold text-sm">
+          Scheduled action queue ({scheduledJobs.length})
+        </div>
+        {scheduledJobs.length === 0 ? (
+          <div className="p-6 text-xs text-center text-muted-foreground italic">
+            No scheduled jobs have been queued for this rule yet.
+          </div>
+        ) : (
+          <table className="w-full text-xs">
+            <thead className="text-muted-foreground border-b">
+              <tr>
+                <th className="text-left px-4 py-2 font-medium">Run at</th>
+                <th className="text-left py-2 font-medium">Subject</th>
+                <th className="text-left py-2 font-medium">Action</th>
+                <th className="text-left py-2 font-medium">Status</th>
+                <th className="text-left py-2 font-medium">Attempts</th>
+                <th className="text-right py-2 font-medium pr-4">Retry</th>
+              </tr>
+            </thead>
+            <tbody>
+              {scheduledJobs.map((j) => (
+                <tr key={j.id} className="border-b last:border-0 hover:bg-secondary/40">
+                  <td className="px-4 py-2 tabular-nums">{formatDate(j.runAt)}</td>
+                  <td className="py-2 font-mono text-[10px]">{j.subjectType}/{(j.subjectId ?? "").slice(0, 8)}</td>
+                  <td className="py-2">{ACTION_LABELS[j.actionType] ?? j.actionType}</td>
+                  <td className="py-2">
+                    <span className={`chip ${jobStatusClass(j.status)}`} title={j.lastError ?? j.cancelReason ?? undefined}>
+                      {j.status}
+                    </span>
+                  </td>
+                  <td className="py-2 tabular-nums">{j.attempts ?? 0}</td>
+                  <td className="py-2 text-right pr-4">
+                    {j.status === "failed" ? (
+                      <RetryButton endpoint={`/api/workflow-rules/scheduled-jobs/${j.id}/retry`} />
+                    ) : (
+                      <span className="text-muted-foreground">-</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
       {/* Recent executions */}
       <div className="card-surface overflow-hidden">
         <div className="border-b border-border px-4 py-2.5 font-semibold text-sm">Recent executions ({execs.length})</div>
@@ -317,6 +376,14 @@ function summarizeAction(a: any): string {
   if (a.type === "create_notification") return a.config.title ?? "";
   if (a.type === "add_tag" || a.type === "remove_tag") return a.config.tag ?? "";
   return "";
+}
+
+function jobStatusClass(status: string): string {
+  if (status === "completed") return "bg-emerald-50 text-emerald-700";
+  if (status === "failed") return "bg-rose-50 text-rose-700";
+  if (status === "cancelled") return "bg-slate-100 text-slate-600";
+  if (status === "running") return "bg-brand-cyan-light text-brand-cyan-deep";
+  return "bg-amber-50 text-amber-700";
 }
 
 function Tile({ label, value, tone }: { label: string; value: string; tone?: "rose" | "amber" | "emerald" | "muted" }) {

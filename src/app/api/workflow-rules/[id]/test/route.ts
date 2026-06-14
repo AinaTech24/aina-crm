@@ -81,9 +81,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const { id } = await params;
     const body = await req.json().catch(() => ({}));
     const subjectId = String(body?.subjectId ?? "");
-    // live=true actually EXECUTES the matched branch's instant actions (really
-    // sends the email/SMS/etc.) so an owner can verify delivery on demand.
-    const live = body?.live === true;
     if (!subjectId) return NextResponse.json({ error: "subjectId required" }, { status: 400 });
 
     const out = await withTenant(session.tenantId, async (tx) => {
@@ -110,31 +107,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         };
       }
       const branchName = branch.name ?? (branch.idx === 0 ? "Main conditions" : `Condition ${branch.idx + 1}`);
-
-      // LIVE: actually execute the instant actions (real email/SMS send + log).
-      if (live) {
-        const { executeAction } = await import("@/lib/workflow-rules/actions");
-        const ran: Array<{ type: string; status: string; detail?: string }> = [];
-        for (const action of branch.instantActions) {
-          const r = await executeAction(action as any, {
-            tenantId: session.tenantId,
-            subjectType: mod.entityType,
-            subjectId,
-            record,
-            tx,
-          });
-          ran.push({ type: action.type, status: r.status, detail: r.detail ?? r.error });
-        }
-        return {
-          matched: true,
-          live: true,
-          totalBranches,
-          branchIndex: branch.idx,
-          branchName,
-          ranInstant: ran,
-          note: "Instant actions executed for real. Scheduled actions are not queued from a manual test.",
-        };
-      }
 
       return {
         matched: true,

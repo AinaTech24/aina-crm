@@ -13,7 +13,7 @@ import { SelectField } from "@/components/ui/SelectField";
 
 type TestResult = {
   matched: boolean;
-  live?: boolean;
+  manualRun?: boolean;
   totalBranches?: number;
   branchIndex?: number;
   branchName?: string;
@@ -21,7 +21,8 @@ type TestResult = {
   note?: string;
   wouldRunInstant?: Array<{ type: string; label?: string }>;
   wouldQueueScheduled?: Array<{ type: string; label?: string; delay?: { amount: number; unit: string } }>;
-  ranInstant?: Array<{ type: string; status: string; detail?: string }>;
+  instantOutcomes?: Array<{ type: string; status: string; detail?: string; error?: string }>;
+  scheduledQueued?: number;
 };
 
 const ACTION_LABELS: Record<string, string> = {
@@ -58,9 +59,8 @@ export function TestRulePanel({ ruleId }: { ruleId: string }) {
       .finally(() => setLoadingRecords(false));
   }, [ruleId]);
 
-  async function runTest(live = false) {
+  async function runTest() {
     if (!subjectId) return;
-    if (live && !confirm("Run this rule LIVE for the selected record? Its instant actions (e.g. the email) will actually be sent.")) return;
     setBusy(true);
     setErr(null);
     setResult(null);
@@ -68,7 +68,7 @@ export function TestRulePanel({ ruleId }: { ruleId: string }) {
       const r = await fetch(`/api/workflow-rules/${ruleId}/test`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ subjectId, live }),
+        body: JSON.stringify({ subjectId }),
       });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`);
@@ -80,11 +80,33 @@ export function TestRulePanel({ ruleId }: { ruleId: string }) {
     }
   }
 
+  async function runNow() {
+    if (!subjectId) return;
+    if (!confirm("Run this rule now for the selected record? Instant actions will execute and scheduled actions may be queued.")) return;
+    setBusy(true);
+    setErr(null);
+    setResult(null);
+    try {
+      const r = await fetch(`/api/workflow-rules/${ruleId}/run-now`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ subjectId }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`);
+      setResult({ ...(j as TestResult), manualRun: true });
+    } catch (e: any) {
+      setErr(e?.message ?? "Run failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="card-surface p-4 space-y-3">
       <h3 className="font-semibold flex items-center gap-2 text-sm">
-        <FlaskConical className="size-4 text-brand-cyan" /> Run this rule
-        <span className="text-[10px] font-normal text-muted-foreground">executes the rule&rsquo;s instant actions for the chosen record</span>
+        <FlaskConical className="size-4 text-brand-cyan" /> Test this rule
+        <span className="text-[10px] font-normal text-muted-foreground">dry-run first; run now only when you want real actions</span>
       </h3>
 
       <div className="flex items-center gap-2 flex-wrap">
@@ -106,12 +128,21 @@ export function TestRulePanel({ ruleId }: { ruleId: string }) {
         </SelectField>
         <button
           type="button"
-          onClick={() => runTest(true)}
+          onClick={runTest}
+          disabled={busy || !subjectId}
+          className="btn-secondary text-xs disabled:opacity-50"
+          title="Preview which branch and actions would run without executing anything"
+        >
+          {busy ? <Loader2 className="size-3.5 animate-spin" /> : <FlaskConical className="size-3.5" />} Dry run
+        </button>
+        <button
+          type="button"
+          onClick={runNow}
           disabled={busy || !subjectId}
           className="btn-primary text-xs disabled:opacity-50"
-          title="Actually execute the rule's instant actions (sends the email for real)"
+          title="Execute the matched branch and queue scheduled actions"
         >
-          {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />} Run live (send)
+          {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />} Run now
         </button>
       </div>
 
@@ -131,13 +162,13 @@ export function TestRulePanel({ ruleId }: { ruleId: string }) {
           </div>
           {result.message && <p className="text-xs text-amber-800">{result.message}</p>}
 
-          {result.matched && result.live && (
+          {result.matched && result.manualRun && (
             <div className="text-xs">
               <div className="font-semibold flex items-center gap-1 text-foreground/80 mb-1">
-                <Send className="size-3" /> Executed now (live)
+                <Send className="size-3" /> Executed now
               </div>
               <ul className="space-y-1">
-                {(result.ranInstant ?? []).map((a, i) => {
+                {(result.instantOutcomes ?? []).map((a, i) => {
                   const ok = a.status === "succeeded";
                   const skip = a.status === "skipped";
                   return (
@@ -147,17 +178,20 @@ export function TestRulePanel({ ruleId }: { ruleId: string }) {
                         : <XCircle className="size-3.5 text-rose-600 mt-px shrink-0" />}
                       <span>
                         <strong>{ACTION_LABELS[a.type] ?? a.type}</strong> — {ok ? "sent ✓" : a.status}
-                        {a.detail ? <span className="text-muted-foreground"> ({a.detail})</span> : ""}
+                        {a.detail || a.error ? <span className="text-muted-foreground"> ({a.detail ?? a.error})</span> : ""}
                       </span>
                     </li>
                   );
                 })}
-                {(result.ranInstant ?? []).length === 0 && <li className="text-muted-foreground italic">no instant actions on this rule</li>}
+                {(result.instantOutcomes ?? []).length === 0 && <li className="text-muted-foreground italic">no instant actions on this rule</li>}
               </ul>
+              <div className="mt-2 text-muted-foreground">
+                Scheduled actions queued: <strong>{result.scheduledQueued ?? 0}</strong>
+              </div>
             </div>
           )}
 
-          {result.matched && !result.live && (
+          {result.matched && !result.manualRun && (
             <>
               <div className="text-xs">
                 <div className="font-semibold flex items-center gap-1 text-foreground/80 mb-1">

@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { desc, eq } from "drizzle-orm";
-import { Plus, Workflow, Lock } from "lucide-react";
+import { ListChecks, Plus, Workflow, Lock } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { workflowRules } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { MODULES, type ModuleKey } from "@/lib/workflow-rules/modules";
 import { RuleToggle } from "@/components/workflow-rules/RuleToggle";
+import { MoveRuleButton } from "@/components/workflow-rules/MoveRuleButton";
 import { formatRelative } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -20,6 +21,35 @@ const TRIGGER_LABEL: Record<string, string> = {
   recurrence: "Recurring",
 };
 
+function conditionSets(rule: any) {
+  return [
+    {
+      criteriaRows: (rule.criteriaRows ?? []) as any[],
+      instantActions: (rule.instantActions ?? []) as any[],
+      scheduledActions: (rule.scheduledActions ?? []) as any[],
+    },
+    ...(((rule.branches ?? []) as any[]).map((b) => ({
+      criteriaRows: (b.criteriaRows ?? []) as any[],
+      instantActions: (b.instantActions ?? []) as any[],
+      scheduledActions: (b.scheduledActions ?? []) as any[],
+    }))),
+  ];
+}
+
+function ruleStats(rule: any) {
+  const sets = conditionSets(rule);
+  return {
+    conditions: sets.length,
+    criteriaRows: sets.reduce((sum, s) => sum + s.criteriaRows.length, 0),
+    instant: sets.reduce((sum, s) => sum + s.instantActions.length, 0),
+    scheduled: sets.reduce((sum, s) => sum + s.scheduledActions.length, 0),
+    fieldUpdates: sets.reduce(
+      (sum, s) => sum + [...s.instantActions, ...s.scheduledActions].filter((a: any) => a.type === "update_field").length,
+      0
+    ),
+  };
+}
+
 export default async function WorkflowRulesPage({
   searchParams,
 }: {
@@ -28,6 +58,7 @@ export default async function WorkflowRulesPage({
   const session = await requireSession();
   const sp = await searchParams;
   const moduleFilter = sp.module ?? "";
+  const view = sp.view === "summary" ? "summary" : "list";
 
   const rules = await withTenant(session.tenantId, async (tx) => {
     const all = await tx.select().from(workflowRules).where(eq(workflowRules.tenantId, session.tenantId)).orderBy(workflowRules.module, workflowRules.executionOrder, desc(workflowRules.createdAt));
@@ -54,6 +85,15 @@ export default async function WorkflowRulesPage({
           </p>
         </div>
         <div className="flex gap-2">
+          <Link href="/dashboard/workflows/actions" className="btn-secondary">
+            <ListChecks className="size-4" /> Actions
+          </Link>
+          <Link
+            href={`/dashboard/workflows/rules${moduleFilter ? `?module=${moduleFilter}&` : "?"}view=${view === "summary" ? "list" : "summary"}`}
+            className="btn-secondary"
+          >
+            {view === "summary" ? "List View" : "Summary View"}
+          </Link>
           <Link href="/dashboard/workflows/rules/new" className="btn-primary">
             <Plus className="size-4" /> Create Rule
           </Link>
@@ -111,19 +151,22 @@ export default async function WorkflowRulesPage({
                 <table className="w-full text-sm">
                   <thead className="text-xs text-muted-foreground border-b">
                     <tr>
+                      <th className="text-left px-4 py-2 font-medium">Order</th>
                       <th className="text-left px-4 py-2 font-medium">Rule</th>
                       <th className="text-left py-2 font-medium">Trigger</th>
-                      <th className="text-left py-2 font-medium">Criteria</th>
+                      <th className="text-left py-2 font-medium">{view === "summary" ? "Summary" : "Criteria"}</th>
                       <th className="text-center py-2 font-medium">Instant</th>
                       <th className="text-center py-2 font-medium">Scheduled</th>
+                      {view === "summary" && <th className="text-center py-2 font-medium">Field updates</th>}
                       <th className="text-center py-2 font-medium">Executions</th>
                       <th className="text-center py-2 font-medium">Active</th>
                       <th className="text-right py-2 font-medium pr-4">Last run</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {items.map((r) => {
+                    {items.map((r, index) => {
                       const triggerLabel = TRIGGER_LABEL[r.triggerType] ?? r.triggerType;
+                      const stats = ruleStats(r);
                       const sub =
                         r.triggerType === "record_action"
                           ? String((r.triggerConfig as any)?.when ?? "")
@@ -132,6 +175,12 @@ export default async function WorkflowRulesPage({
                             : "";
                       return (
                         <tr key={r.id} className="border-b last:border-0 hover:bg-secondary/40">
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-1">
+                              <MoveRuleButton id={r.id} direction="up" disabled={index === 0} />
+                              <MoveRuleButton id={r.id} direction="down" disabled={index === items.length - 1} />
+                            </div>
+                          </td>
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-2">
                               {r.locked && <Lock className="size-3 text-amber-600" />}
@@ -150,18 +199,27 @@ export default async function WorkflowRulesPage({
                             <div className="text-muted-foreground capitalize">{sub.replace(/_/g, " ")}</div>
                           </td>
                           <td className="py-3 text-xs text-muted-foreground">
-                            {((r.criteriaRows ?? []) as any[]).length === 0 ? (
+                            {view === "summary" ? (
+                              <span>
+                                {stats.conditions} condition set{stats.conditions === 1 ? "" : "s"} · {stats.criteriaRows === 0 ? "all records" : `${stats.criteriaRows} criteria row${stats.criteriaRows === 1 ? "" : "s"}`}
+                              </span>
+                            ) : stats.criteriaRows === 0 ? (
                               <span className="italic">all records</span>
                             ) : (
-                              <span>{((r.criteriaRows ?? []) as any[]).length} condition(s)</span>
+                              <span>{stats.criteriaRows} condition row{stats.criteriaRows === 1 ? "" : "s"} across {stats.conditions} set{stats.conditions === 1 ? "" : "s"}</span>
                             )}
                           </td>
                           <td className="py-3 text-center tabular-nums">
-                            {((r.instantActions ?? []) as any[]).length}
+                            {stats.instant}
                           </td>
                           <td className="py-3 text-center tabular-nums">
-                            {((r.scheduledActions ?? []) as any[]).length}
+                            {stats.scheduled}
                           </td>
+                          {view === "summary" && (
+                            <td className="py-3 text-center tabular-nums">
+                              {stats.fieldUpdates}
+                            </td>
+                          )}
                           <td className="py-3 text-center tabular-nums text-muted-foreground">
                             {r.executionCount ?? 0}
                           </td>

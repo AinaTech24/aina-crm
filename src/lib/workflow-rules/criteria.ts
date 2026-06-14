@@ -33,6 +33,7 @@ export function evaluateCriteria(
   if (!pattern || !pattern.trim()) {
     return results.every(Boolean);
   }
+  assertValidCriteriaPattern(pattern, rows.length);
   return evaluatePattern(pattern, results);
 }
 
@@ -169,6 +170,16 @@ type Token =
   | { kind: "ref"; index: number }
   | { kind: "and" | "or" | "not" | "lparen" | "rparen" };
 
+export type CriteriaPatternValidation = {
+  valid: boolean;
+  errors: string[];
+};
+
+type PatternAst =
+  | { kind: "ref"; index: number }
+  | { kind: "not"; value: PatternAst }
+  | { kind: "and" | "or"; left: PatternAst; right: PatternAst };
+
 function tokenize(pattern: string): Token[] {
   const tokens: Token[] = [];
   const src = pattern.toUpperCase();
@@ -217,57 +228,99 @@ function tokenize(pattern: string): Token[] {
 }
 
 // Recursive-descent: expr → or-list, or → and-list, and → not, not → primary
-function evaluatePattern(pattern: string, results: boolean[]): boolean {
-  try {
-    const tokens = tokenize(pattern);
-    let pos = 0;
+function parsePattern(pattern: string, rowCount: number): PatternAst {
+  const tokens = tokenize(pattern);
+  if (tokens.length === 0) throw new Error("Pattern cannot be empty.");
+  let pos = 0;
 
-    function peek(): Token | undefined {
-      return tokens[pos];
-    }
-    function eat(kind: Token["kind"]): boolean {
-      if (peek()?.kind === kind) {
-        pos++;
-        return true;
-      }
-      return false;
-    }
-
-    function primary(): boolean {
-      const t = peek();
-      if (!t) throw new Error("Unexpected end of pattern");
-      if (t.kind === "lparen") {
-        pos++;
-        const v = orExpr();
-        if (!eat("rparen")) throw new Error("Missing )");
-        return v;
-      }
-      if (t.kind === "ref") {
-        pos++;
-        const idx = t.index - 1;
-        return results[idx] ?? false;
-      }
-      throw new Error("Unexpected token");
-    }
-    function notExpr(): boolean {
-      if (eat("not")) return !notExpr();
-      return primary();
-    }
-    function andExpr(): boolean {
-      let v = notExpr();
-      while (eat("and")) v = notExpr() && v;
-      return v;
-    }
-    function orExpr(): boolean {
-      let v = andExpr();
-      while (eat("or")) v = andExpr() || v;
-      return v;
-    }
-
-    const result = orExpr();
-    return result;
-  } catch {
-    // Fall back to AND of all
-    return results.every(Boolean);
+  function peek(): Token | undefined {
+    return tokens[pos];
   }
+  function eat(kind: Token["kind"]): boolean {
+    if (peek()?.kind === kind) {
+      pos++;
+      return true;
+    }
+    return false;
+  }
+
+  function primary(): PatternAst {
+    const t = peek();
+    if (!t) throw new Error("Unexpected end of pattern.");
+    if (t.kind === "lparen") {
+      pos++;
+      if (peek()?.kind === "rparen") throw new Error("Empty parentheses are not allowed.");
+      const v = orExpr();
+      if (!eat("rparen")) throw new Error("Missing closing parenthesis.");
+      return v;
+    }
+    if (t.kind === "ref") {
+      pos++;
+      if (t.index < 1 || t.index > rowCount) {
+        throw new Error(`Condition ${t.index} does not exist.`);
+      }
+      return { kind: "ref", index: t.index - 1 };
+    }
+    throw new Error(`Expected a condition number or "(", found ${t.kind}.`);
+  }
+  function notExpr(): PatternAst {
+    if (eat("not")) return { kind: "not", value: notExpr() };
+    return primary();
+  }
+  function andExpr(): PatternAst {
+    let v = notExpr();
+    while (eat("and")) v = { kind: "and", left: v, right: notExpr() };
+    return v;
+  }
+  function orExpr(): PatternAst {
+    let v = andExpr();
+    while (eat("or")) v = { kind: "or", left: v, right: andExpr() };
+    return v;
+  }
+
+  const result = orExpr();
+  if (pos < tokens.length) {
+    const t = tokens[pos];
+    throw new Error(`Unexpected ${t.kind} at token ${pos + 1}.`);
+  }
+  return result;
+}
+
+export function validateCriteriaPattern(
+  pattern: string | null | undefined,
+  rowCount: number
+): CriteriaPatternValidation {
+  if (!pattern || !pattern.trim()) return { valid: true, errors: [] };
+  if (rowCount === 0) {
+    return { valid: false, errors: ["Pattern cannot be used without condition rows."] };
+  }
+  try {
+    parsePattern(pattern, rowCount);
+    return { valid: true, errors: [] };
+  } catch (e: any) {
+    return { valid: false, errors: [e?.message ?? String(e)] };
+  }
+}
+
+export function assertValidCriteriaPattern(pattern: string | null | undefined, rowCount: number): void {
+  const validation = validateCriteriaPattern(pattern, rowCount);
+  if (!validation.valid) throw new Error(validation.errors.join(" "));
+}
+
+function evalPatternAst(ast: PatternAst, results: boolean[]): boolean {
+  switch (ast.kind) {
+    case "ref":
+      return results[ast.index] ?? false;
+    case "not":
+      return !evalPatternAst(ast.value, results);
+    case "and":
+      return evalPatternAst(ast.left, results) && evalPatternAst(ast.right, results);
+    case "or":
+      return evalPatternAst(ast.left, results) || evalPatternAst(ast.right, results);
+  }
+}
+
+function evaluatePattern(pattern: string, results: boolean[]): boolean {
+  const ast = parsePattern(pattern, results.length);
+  return evalPatternAst(ast, results);
 }

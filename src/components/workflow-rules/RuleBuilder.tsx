@@ -52,6 +52,20 @@ type Branch = {
   scheduledActions: ScheduledAction[];
 };
 
+type SavedRule = {
+  id: string;
+  module: string;
+  name: string;
+  description?: string | null;
+  triggerType: string;
+  triggerConfig: Record<string, any>;
+  criteriaPattern?: string | null;
+  criteriaRows?: CriteriaRow[] | null;
+  instantActions?: Action[] | null;
+  scheduledActions?: ScheduledAction[] | null;
+  branches?: Array<Partial<Branch>> | null;
+};
+
 const ACTION_TYPES: Array<{ key: string; label: string; description: string; instantOnly?: boolean }> = [
   { key: "send_email", label: "Email Notification", description: "Send a templated email to the subject or recipient list." },
   { key: "send_whatsapp", label: "WhatsApp Message", description: "Send a Meta-approved WhatsApp template." },
@@ -144,29 +158,81 @@ function presetKeyFor(t: { when?: string; offset?: number; unit?: string }): str
   return hit?.key ?? "on";
 }
 
-export function RuleBuilder({ modules }: { modules: Module[] }) {
+function triggerFromRule(rule?: SavedRule): Trigger {
+  if (!rule) return { kind: "record_action", when: "create", fields: [], repeat: false };
+  const cfg = rule.triggerConfig ?? {};
+  if (rule.triggerType === "date_field") {
+    return {
+      kind: "date_field",
+      field: String(cfg.field ?? ""),
+      when: (cfg.when as any) ?? "on",
+      offset: Number(cfg.offset ?? 0),
+      unit: (cfg.unit as any) ?? "day",
+      recurrence: (cfg.recurrence as any) ?? "once",
+      time: String(cfg.time ?? "09:00"),
+    };
+  }
+  if (rule.triggerType === "score_change") {
+    return {
+      kind: "score_change",
+      field: String(cfg.field ?? ""),
+      direction: (cfg.direction as any) ?? "updated",
+      threshold: cfg.threshold === undefined ? undefined : Number(cfg.threshold),
+    };
+  }
+  if (rule.triggerType === "recurrence") return { kind: "recurrence", cron: String(cfg.cron ?? "0 9 * * 1") };
+  if (rule.triggerType === "note") return { kind: "note", when: (cfg.when as any) ?? "added" };
+  return {
+    kind: "record_action",
+    when: (cfg.when as any) ?? "create",
+    editMode: cfg.editMode as any,
+    fields: Array.isArray(cfg.fields) ? cfg.fields : [],
+    fieldConditions: Array.isArray(cfg.fieldConditions) ? cfg.fieldConditions : [],
+    repeat: !!cfg.repeat,
+  };
+}
+
+function branchesFromRule(rule?: SavedRule): Branch[] {
+  return ((rule?.branches ?? []) as Array<Partial<Branch>>).map((b, i) => ({
+    name: String(b.name ?? `Condition ${i + 2}`),
+    criteriaPattern: String(b.criteriaPattern ?? ""),
+    criteriaRows: (b.criteriaRows ?? []) as CriteriaRow[],
+    instantActions: (b.instantActions ?? []) as Action[],
+    scheduledActions: (b.scheduledActions ?? []) as ScheduledAction[],
+  }));
+}
+
+export function RuleBuilder({
+  modules,
+  initialRule,
+  mode = "create",
+}: {
+  modules: Module[];
+  initialRule?: SavedRule;
+  mode?: "create" | "edit";
+}) {
   const router = useRouter();
   const [step, setStep] = useState(1);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Step 1
-  const [moduleKey, setModuleKey] = useState(modules[0]?.key ?? "");
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
+  const [moduleKey, setModuleKey] = useState(initialRule?.module ?? modules[0]?.key ?? "");
+  const [name, setName] = useState(initialRule?.name ?? "");
+  const [description, setDescription] = useState(initialRule?.description ?? "");
 
   // Step 2
-  const [trigger, setTrigger] = useState<Trigger>({ kind: "record_action", when: "create", fields: [], repeat: false });
+  const [trigger, setTrigger] = useState<Trigger>(() => triggerFromRule(initialRule));
 
   // Step 3
-  const [criteriaRows, setCriteriaRows] = useState<CriteriaRow[]>([]);
-  const [criteriaPattern, setCriteriaPattern] = useState<string>("");
+  const [criteriaRows, setCriteriaRows] = useState<CriteriaRow[]>((initialRule?.criteriaRows ?? []) as CriteriaRow[]);
+  const [criteriaPattern, setCriteriaPattern] = useState<string>(initialRule?.criteriaPattern ?? "");
 
   // Step 4
-  const [instantActions, setInstantActions] = useState<Action[]>([]);
-  const [scheduledActions, setScheduledActions] = useState<ScheduledAction[]>([]);
+  const [instantActions, setInstantActions] = useState<Action[]>((initialRule?.instantActions ?? []) as Action[]);
+  const [scheduledActions, setScheduledActions] = useState<ScheduledAction[]>((initialRule?.scheduledActions ?? []) as ScheduledAction[]);
   // Extra condition branches (optional) — first match wins, top-down.
-  const [branches, setBranches] = useState<Branch[]>([]);
+  const [branches, setBranches] = useState<Branch[]>(() => branchesFromRule(initialRule));
 
   const mod = useMemo(() => modules.find((m) => m.key === moduleKey), [moduleKey, modules]);
   const dateFields = mod?.fields.filter((f) => f.dateAnchor) ?? [];
@@ -187,7 +253,7 @@ export function RuleBuilder({ modules }: { modules: Module[] }) {
     setSubmitting(true);
     setError(null);
     try {
-      const body = {
+      const rulePayload = {
         module: moduleKey,
         name: name.trim(),
         description: description.trim() || undefined,
@@ -204,11 +270,10 @@ export function RuleBuilder({ modules }: { modules: Module[] }) {
           instantActions: b.instantActions,
           scheduledActions: b.scheduledActions,
         })),
-        enabled: true,
-        executionOrder: 100,
       };
-      const r = await fetch("/api/workflow-rules", {
-        method: "POST",
+      const body = mode === "edit" ? rulePayload : { ...rulePayload, enabled: true, executionOrder: 100 };
+      const r = await fetch(mode === "edit" ? `/api/workflow-rules/${initialRule?.id}` : "/api/workflow-rules", {
+        method: mode === "edit" ? "PATCH" : "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body),
       });
@@ -216,7 +281,7 @@ export function RuleBuilder({ modules }: { modules: Module[] }) {
         const data = await r.json().catch(() => ({}));
         throw new Error(data?.error ?? `HTTP ${r.status}`);
       }
-      router.push("/dashboard/workflows/rules");
+      router.push(mode === "edit" && initialRule?.id ? `/dashboard/workflows/rules/${initialRule.id}` : "/dashboard/workflows/rules");
     } catch (e: any) {
       setError(e?.message ?? "Failed to save rule");
     } finally {
@@ -229,7 +294,7 @@ export function RuleBuilder({ modules }: { modules: Module[] }) {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="page-title">
-            <Workflow className="size-6 text-brand-cyan" /> Create Workflow Rule
+            <Workflow className="size-6 text-brand-cyan" /> {mode === "edit" ? "Edit Workflow Rule" : "Create Workflow Rule"}
           </h1>
           <p className="page-subtitle">
             Trigger → Criteria → Actions · same flow as Zoho CRM.
@@ -386,7 +451,7 @@ export function RuleBuilder({ modules }: { modules: Module[] }) {
             onClick={submit}
             className="btn-primary text-sm disabled:opacity-40"
           >
-            <Save className="size-4" /> {submitting ? "Saving…" : "Save Rule"}
+            <Save className="size-4" /> {submitting ? "Saving…" : mode === "edit" ? "Update Rule" : "Save Rule"}
           </button>
         )}
       </div>

@@ -3,12 +3,13 @@ import type { Metadata } from "next";
 import {
   ShieldCheck, TrendingUp, Brain, GitBranch,
   MessageSquare, BarChart3, Lock, ArrowRight, Check, Calculator,
-  Clock, Star, IndianRupee, Bell, FileSpreadsheet,
+  Clock, Star,
   ShieldAlert, Zap, CheckCircle2, ChevronRight, Upload, Cog, Rocket,
   Users2,
 } from "lucide-react";
 import { CountUp } from "@/components/landing/CountUp";
 import { FaqAccordion } from "@/components/landing/FaqAccordion";
+import { MobileNav } from "@/components/landing/MobileNav";
 
 /** WhatsApp community — primary "Join Our Community" CTA across the page. */
 const COMMUNITY_URL = "https://chat.whatsapp.com/Fqv4YlnPibN0r4BRQJ2DSX?s=cl&p=a&ilr=4&amv=2";
@@ -93,12 +94,12 @@ const JSON_LD = {
   "@graph": [
     {
       "@type": "SoftwareApplication",
-      name: "AINA CRM",
+      name: "Aina CRM",
       applicationCategory: "BusinessApplication",
       operatingSystem: "Web",
       description:
         "Mutual fund software for Indian distributors (MFDs): CAMS/KFintech auto-import, live AUM & family XIRR, SIP bounce recovery on WhatsApp, AMFI/SEBI-compliant messaging, 60+ financial calculators, branded reports and MIS.",
-      offers: { "@type": "Offer", price: "9999", priceCurrency: "INR", priceValidUntil: "2026-12-31" },
+      offers: { "@type": "AggregateOffer", priceCurrency: "INR", lowPrice: "9999", highPrice: "14999", offerCount: "3", priceValidUntil: "2026-12-31" },
       featureList: [
         "Dynamic CAMS & KFintech file import with 3-way reconciliation",
         "Live AUM, portfolio valuation and family XIRR from daily AMFI NAVs",
@@ -113,8 +114,8 @@ const JSON_LD = {
     {
       "@type": "Organization",
       name: "Aina Tech Services LLP",
-      description: "Maker of AINA CRM — the practice-management and automation platform for Mutual Fund Distributors in India.",
-      brand: "AINA CRM",
+      description: "Maker of Aina CRM — the practice-management and automation platform for Mutual Fund Distributors in India.",
+      brand: "Aina CRM",
     },
     {
       "@type": "FAQPage",
@@ -137,7 +138,7 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-6 flex items-center justify-between h-16">
           <Link href="/" className="inline-flex items-center hover:opacity-90 transition-opacity">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/aina-logo.png" alt="AINA CRM — mutual fund software for distributors" className="h-8 w-auto object-contain shrink-0" />
+            <img src="/aina-logo.png" alt="Aina CRM — mutual fund software for distributors" className="h-8 w-auto object-contain shrink-0" />
           </Link>
           <nav className="hidden md:flex items-center gap-7 text-sm font-semibold text-muted-foreground">
             <a href="#features" className="hover:text-primary transition-colors">Features</a>
@@ -146,7 +147,7 @@ export default function Home() {
             <a href="#pricing" className="hover:text-primary transition-colors">Pricing</a>
             <a href="#faq" className="hover:text-primary transition-colors">FAQ</a>
           </nav>
-          <div className="flex items-center gap-3">
+          <div className="hidden md:flex items-center gap-3">
             <Link href="/login" className="text-sm font-semibold px-4 py-2 rounded-lg hover:bg-secondary text-foreground/80 hover:text-foreground transition-all">
               Log in
             </Link>
@@ -154,6 +155,7 @@ export default function Home() {
               Join Community <ArrowRight className="size-4" />
             </a>
           </div>
+          <MobileNav communityUrl={COMMUNITY_URL} />
         </div>
       </header>
 
@@ -200,7 +202,7 @@ export default function Home() {
                 Join Our Community <ArrowRight className="size-5" />
               </a>
               <Link href="/signup" className="btn-secondary text-base px-7 py-3 w-full sm:w-auto justify-center">
-                Book a Demo
+                Start free trial
               </Link>
             </div>
 
@@ -387,7 +389,7 @@ export default function Home() {
             Plugs into your RTAs, WhatsApp and payments — no rip-and-replace
           </h2>
           <p className="mt-3 text-sm text-muted-foreground max-w-2xl mx-auto">
-            AINA reads your existing exports and connects to the channels Indian MFDs already use, so you keep your stack and just add the brain on top.
+            Aina reads your existing exports and connects to the channels Indian MFDs already use, so you keep your stack and just add the brain on top.
           </p>
           <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
             {[
@@ -448,7 +450,7 @@ export default function Home() {
         <div className="max-w-6xl mx-auto px-6">
           <div className="text-center max-w-2xl mx-auto">
             <span className="chip bg-brand-navy-light text-primary">Live in a day, not a quarter</span>
-            <h2 className="mt-4 text-3xl font-extrabold tracking-tight text-foreground">How your firm moves to AINA</h2>
+            <h2 className="mt-4 text-3xl font-extrabold tracking-tight text-foreground">How your firm moves to Aina</h2>
             <p className="mt-3 text-muted-foreground text-sm">
               No migration project, no consultants. Your RTA exports are the migration.
             </p>
@@ -477,7 +479,7 @@ export default function Home() {
             ].map((s) => (
               <div key={s.step} className="glass-card rounded-xl p-6 flex flex-col gap-3 border border-border/50 hover-glow-cyan transition-all">
                 <div className="flex items-center gap-3">
-                  <div className="size-9 rounded-lg bg-primary/15 text-accent font-extrabold text-sm flex items-center justify-center border border-primary/30">{s.step}</div>
+                  <div className="size-9 rounded-lg bg-primary/15 text-primary font-extrabold text-sm flex items-center justify-center border border-primary/30">{s.step}</div>
                   <s.icon className="size-5 text-primary" />
                 </div>
                 <h3 className="font-bold text-[15px] text-foreground">{s.title}</h3>
@@ -610,6 +612,57 @@ export default function Home() {
         </div>
       </section>
 
+      {/* ───────────────────── Why MFDs choose Aina ───────────────────── */}
+      <section className="py-16 lg:py-20 bg-secondary/15 border-y border-border/40 relative z-10">
+        <div className="max-w-6xl mx-auto px-6">
+          <div className="text-center max-w-2xl mx-auto">
+            <span className="chip bg-brand-navy-light text-primary">Why MFDs choose Aina</span>
+            <h2 className="mt-4 text-3xl font-extrabold tracking-tight text-foreground">
+              Not a generic CRM bent to fit — built for the MFD practice
+            </h2>
+          </div>
+          <div className="mt-12 grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {WHY_AINA.map((w) => (
+              <div key={w.title} className="glass-card rounded-xl p-6 border border-border/40 flex flex-col gap-3">
+                <div className="size-11 rounded-lg grid place-items-center bg-primary/10 text-primary shrink-0">
+                  <w.icon className="size-5.5" />
+                </div>
+                <h3 className="font-bold text-[15px] text-foreground">{w.title}</h3>
+                <p className="text-xs text-muted-foreground leading-relaxed">{w.body}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ───────────────────── Testimonials (real quotes only) ─────────────────────
+          Renders only when TESTIMONIALS has entries — we never ship fabricated
+          social proof. Populate the array with real, attributable MFD quotes. */}
+      {TESTIMONIALS.length > 0 && (
+        <section className="py-16 lg:py-20 relative z-10 max-w-6xl mx-auto px-6">
+          <div className="text-center max-w-2xl mx-auto">
+            <span className="chip bg-brand-navy-light text-primary">What MFDs say</span>
+            <h2 className="mt-4 text-3xl font-extrabold tracking-tight text-foreground">
+              Trusted by distributors who run on Aina
+            </h2>
+          </div>
+          <div className="mt-12 grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {TESTIMONIALS.map((t) => (
+              <figure key={t.name} className="glass-card rounded-xl p-6 border border-border/40 flex flex-col gap-4">
+                <div className="flex gap-0.5 text-amber-500">
+                  {Array.from({ length: 5 }).map((_, i) => <Star key={i} className="size-4 fill-current" />)}
+                </div>
+                <blockquote className="text-sm text-foreground/85 leading-relaxed flex-grow">“{t.quote}”</blockquote>
+                <figcaption className="text-xs">
+                  <span className="font-bold text-foreground">{t.name}</span>
+                  <span className="text-muted-foreground"> · {t.detail}</span>
+                </figcaption>
+              </figure>
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* ───────────────────────── Final CTA ───────────────────────── */}
       <section className="py-20 max-w-6xl mx-auto px-6 relative z-10">
         <div className="rounded-2xl bg-primary p-8 sm:p-14 text-center relative overflow-hidden shadow-2xl">
@@ -625,7 +678,7 @@ export default function Home() {
               Join the Aina CRM Community <ArrowRight className="size-5" />
             </a>
             <Link href="/signup" className="rounded-xl border border-white/20 bg-white/5 text-white hover:bg-white/10 px-8 py-3 text-base font-bold transition-all shadow-sm">
-              Book a Demo
+              Start free trial
             </Link>
           </div>
           <div className="mt-7 flex flex-wrap justify-center gap-x-6 gap-y-2 text-xs font-semibold text-white/70">
@@ -644,13 +697,13 @@ export default function Home() {
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src="/aina-logo.png" alt="Aina CRM" className="h-9 w-auto object-contain shrink-0" />
               <p className="text-xs text-muted-foreground mt-4 leading-relaxed max-w-xs">
-                AINA CRM is mutual fund software for distributors in India — client CRM, CAMS/KFintech
+                Aina CRM is mutual fund software for distributors in India — client CRM, CAMS/KFintech
                 import, SIP &amp; AUM tracking, AMFI-compliant WhatsApp, 60+ financial calculators,
                 reports and MIS for ARN holders. Built by Aina Tech Services LLP.
               </p>
             </div>
             <FooterCol title="For MFDs" links={[["Feature tour", "#features"], ["Financial calculators", "#calculators"], ["How it works", "#how-it-works"], ["Pricing", "#pricing"]]} />
-            <FooterCol title="Get started" links={[["Pricing plans", "#pricing"], ["Start free trial", "/signup"], ["Log in", "/login"], ["Live demo", "/dashboard"]]} />
+            <FooterCol title="Get started" links={[["Pricing plans", "#pricing"], ["Start free trial", "/signup"], ["Log in", "/login"]]} />
             <FooterCol title="Trust & compliance" links={[["AMFI/SEBI compliance gate", "#features"], ["Data security (DPDP)", "#faq"], ["FAQs", "#faq"]]} />
           </div>
 
@@ -669,7 +722,7 @@ export default function Home() {
             </span>
             <span className="max-w-2xl lg:text-right">
               Disclaimer: Mutual fund investments are subject to market risks. Read all scheme-related
-              documents carefully. AINA CRM provides practice-management, analytics and communication
+              documents carefully. Aina CRM provides practice-management, analytics and communication
               tools for distributors and does not execute mutual fund transactions.
             </span>
           </div>
@@ -680,46 +733,6 @@ export default function Home() {
 }
 
 /* ───────────────────────── Static data ───────────────────────── */
-
-/** First-person pains MFDs recognise instantly — each mapped to the fix. */
-const PAIN_POINTS = [
-  {
-    icon: FileSpreadsheet,
-    pain: "My evenings disappear into CAMS and KFintech Excel files.",
-    cost: "Manual imports break every time the RTA shifts a column. Reconciliation slips, the book goes stale, and you're doing data entry at 11 pm instead of planning tomorrow's meetings.",
-    fix: "Drop the file — AINA's dynamic header-mapping reads any standard CAMS/KFintech export even when columns move, and the Growth plan auto-ingests feeds with 3-way reconciliation. Your book updates itself.",
-  },
-  {
-    icon: Bell,
-    pain: "I find out about SIP bounces weeks after they happen.",
-    cost: "Every silent bounce breaks a client's saving habit and quietly stops your future trail from compounding. Multiply that across a book and it's lakhs of lost AUM a year.",
-    fix: "Bounces are flagged the day they hit the feed. AINA alerts the RM, and the automation sends the client a compliant WhatsApp nudge with what to do next — most SIPs restart before the next cycle.",
-  },
-  {
-    icon: TrendingUp,
-    pain: "Clients redeem without ever telling me first.",
-    cost: "By the time a redemption shows up in the feed, the money — and often the relationship — is gone. There was a window to talk; you never knew it was open.",
-    fix: "The churn radar watches stopped SIPs, unusual redemptions and fading engagement, scores every client's risk with reasons, and queues a retention play — so your RM calls before the form is signed.",
-  },
-  {
-    icon: ShieldAlert,
-    pain: "Every WhatsApp broadcast makes me nervous about AMFI and SEBI.",
-    cost: "One missing ARN line or disclaimer in a forwarded message can turn an inspection into a nightmare. Reconstructing communication logs for an audit takes weeks.",
-    fix: "You can't send a non-compliant message from AINA — an 11-rule gate verifies consent, stamps ARN/EUIN, appends disclaimers and opt-out, and logs everything. Your audit pack assembles itself.",
-  },
-  {
-    icon: Clock,
-    pain: "A single client review takes me half a day to prepare.",
-    cost: "Pulling valuations, computing returns, formatting a deck — for one family. So reviews get postponed, and postponed reviews are how relationships (and AUM) drift away.",
-    fix: "Daily AMFI NAVs keep every folio valued. One click produces a branded family review — total wealth, XIRR, SIP health — plus 60+ calculators to make the next recommendation land.",
-  },
-  {
-    icon: Users2,
-    pain: "My practice lives in six different apps and nobody sees the whole picture.",
-    cost: "Excel for AUM, WhatsApp for clients, a diary for tasks, the RTA portal for transactions, email for proposals. Handoffs leak, juniors can't be trusted with the full book, and you are the bottleneck.",
-    fix: "One platform: client 360° with family grouping, tasks and reviews, comms inbox, proposals, service requests, compliance and MIS — with role-based access so each RM sees exactly their own book.",
-  },
-];
 
 const CORE_FEATURES = [
   {
@@ -849,7 +862,7 @@ const PLANS = [
       "Attendance & Leave Tracker",
       "Sub-Distributor Module",
       "Workflow Rules & Basic Automation",
-      "AINA Content Library",
+      "Aina Content Library",
       "Personalised training",
     ],
   },
@@ -881,6 +894,33 @@ const PLANS = [
     ],
   },
 ];
+
+/** Honest differentiators (real product facts — not fabricated proof). */
+const WHY_AINA = [
+  {
+    icon: ShieldCheck,
+    title: "Compliance built in, not bolted on",
+    body: "Every WhatsApp, email and SMS passes an 11-rule AMFI/SEBI gate — ARN/EUIN, disclaimers, consent and opt-out — so your audit pack assembles itself.",
+  },
+  {
+    icon: MessageSquare,
+    title: "Your WhatsApp, your cost",
+    body: "Connect your own WhatsApp, SMS and email. Messaging stays in your name with no per-message markup from us.",
+  },
+  {
+    icon: Lock,
+    title: "Your data stays yours",
+    body: "Row-level isolation (DPDP-ready), 2FA, backups and staff-exit access removal — each RM sees only their own book.",
+  },
+  {
+    icon: Users2,
+    title: "Built with working ARN holders",
+    body: "Designed around the real MFD day — CAMS/KFintech imports, family reviews, SIP recovery — not a generic CRM bent to fit.",
+  },
+];
+
+/** Real, attributable client quotes only — leave empty until you have them. */
+const TESTIMONIALS: { quote: string; name: string; detail: string }[] = [];
 
 /* ───────────────────────── Helper components ───────────────────────── */
 

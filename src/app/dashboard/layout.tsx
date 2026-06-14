@@ -196,6 +196,7 @@ const NAV: NavSection[] = [
     title: "Automation",
     items: [
       { href: "/dashboard/workflows/rules", label: "Workflow Rules", icon: Workflow, module: "automation_workflows" },
+      { href: "/dashboard/workflows/actions", label: "Workflow Actions", icon: ListChecks, module: "automation_workflows" },
       { href: "/dashboard/workflows/runs", label: "Automation Monitor", icon: Activity, module: "automation_workflows",
         roles: ["owner", "compliance", "back_office", "ops"] },
       { href: "/dashboard/templates", label: "Templates", icon: LayoutTemplate, module: "broadcasts" },
