@@ -24,6 +24,7 @@ import { formatINR, formatDate, formatRelative } from "@/lib/utils";
 import { InvestorEditPanel } from "@/components/investors/InvestorEditPanel";
 import { CheckInButton, LogActivityButton } from "@/components/activities/ActivityLogger";
 import { ChangeLogButton } from "@/components/common/ChangeLog";
+import { RecordProvenance } from "@/components/common/RecordProvenance";
 import { RowActions } from "@/components/common/RowActions";
 import { VerifyContact } from "@/components/investors/VerifyContact";
 import { RecommendedActions } from "@/components/investors/RecommendedActions";
@@ -406,6 +407,13 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
                 itemName={inv.name}
                 verb="Delete"
                 redirectTo="/dashboard/investors"
+              />
+              <RecordProvenance
+                entityType="investor"
+                entityId={inv.id}
+                createdAt={inv.createdAt}
+                updatedAt={inv.updatedAt}
+                className="basis-full mt-1"
               />
               <VerifyContact
                 investorId={inv.id}

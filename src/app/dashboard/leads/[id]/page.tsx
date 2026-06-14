@@ -22,6 +22,7 @@ import { WhatsAppRelatedList } from "@/components/comms/WhatsAppRelatedList";
 import { SectionNav } from "@/components/common/SectionNav";
 import { CheckInButton, LogActivityButton } from "@/components/activities/ActivityLogger";
 import { ChangeLogButton } from "@/components/common/ChangeLog";
+import { RecordProvenance } from "@/components/common/RecordProvenance";
 import { RowActions } from "@/components/common/RowActions";
 import { RecordAutomations } from "@/components/sales-ops/RecordAutomations";
 import { SignalScoreCard } from "@/components/leads/SignalScoreCard";
@@ -166,6 +167,13 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
               <LogActivityButton subject={{ type: "lead", id: l.id, name: l.name, phone: l.phone }} label="Log call / visit" variant="secondary" />
               <ChangeLogButton entityType="lead" entityId={l.id} />
               <RecordAutomations subject={{ type: "lead", id: l.id }} />
+              <RecordProvenance
+                entityType="lead"
+                entityId={l.id}
+                createdAt={l.createdAt}
+                updatedAt={l.updatedAt}
+                className="basis-full mt-1"
+              />
             </div>
           </div>
           <div className="flex flex-col items-end gap-2">

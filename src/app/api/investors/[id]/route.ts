@@ -13,6 +13,7 @@ import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap, can } from "@/lib/auth/rbac";
+import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { healthFields } from "@/lib/investors/health";
 import { recomputeFamilyHealthForInvestor } from "@/lib/families/health-persist";
 import {
@@ -245,6 +246,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         after: after[0] as any,
         meta: { userId: session.userId } as any,
       } as any);
+
+      // Attribute the edit on the audit trail so "last modified by" reflects it
+      // (the change-log drawer + RecordProvenance read this).
+      await recordAudit(tx, {
+        tenantId: session.tenantId,
+        actorUserId: session.userId,
+        action: "investor.update",
+        entityType: "investor",
+        entityId: id,
+        before: before as any,
+        after: after[0] as any,
+        ...clientMetaFromHeaders(req.headers),
+      });
 
       // A member's KYC/nominee/risk/etc. feeds its family's health too —
       // re-score the family this investor belongs to (no-op if unlinked).
