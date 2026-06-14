@@ -104,8 +104,11 @@ function payoutCashflows(input: SurrenderInput): CashflowPoint[] {
 function continueNpv(input: SurrenderInput, r: number): number {
   // Opportunity cost: keeping the policy forgoes taking the surrender value now.
   let npv = -input.currentSurrenderValue;
-  // Premiums paid at the start of each remaining year (t = 0 … n−1).
-  for (let t = 0; t < input.premiumYearsLeft; t++) npv -= input.annualPremium / Math.pow(1 + r, t);
+  // Premiums paid at the start of each remaining year (t = 0 … n−1). Clamp to the
+  // policy term — you never pay premiums beyond maturity, and leaving it unclamped
+  // made the IRR disagree with the summary card (which uses the clamped count).
+  const premYears = Math.min(input.premiumYearsLeft, input.policyYearsLeft);
+  for (let t = 0; t < premYears; t++) npv -= input.annualPremium / Math.pow(1 + r, t);
   // Payouts (if any) at their years.
   for (const p of payoutCashflows(input)) npv += p.amount / Math.pow(1 + r, p.year);
   // Maturity at the end of the policy term.
@@ -116,7 +119,9 @@ function continueNpv(input: SurrenderInput, r: number): number {
 /** Policy IRR — the rate that zeroes the continue-scenario NPV (bisection). */
 function solvePolicyIrr(input: SurrenderInput): number | null {
   if (input.policyYearsLeft <= 0) return null;
-  let lo = -0.9;
+  // Floor at -99.99% so deeply loss-making policies (the worst case this tool
+  // exists to flag) still produce an IRR instead of returning "—".
+  let lo = -0.9999;
   let hi = 1.0;
   const fLo = continueNpv(input, lo);
   const fHi = continueNpv(input, hi);

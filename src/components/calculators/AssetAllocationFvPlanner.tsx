@@ -68,8 +68,8 @@ export function AssetAllocationFvPlanner() {
           <input type="checkbox" checked={s2enabled} onChange={(e) => setS2enabled(e.target.checked)} /> Compare with Scenario 2
         </label>
       </div>
-      {s2enabled && (
-        <ScenarioEditor title="Scenario 2" rows={s2} setRows={setS2} result={result.scenario2!} toneClass="text-emerald-700" />
+      {s2enabled && result.scenario2 && (
+        <ScenarioEditor title="Scenario 2" rows={s2} setRows={setS2} result={result.scenario2} toneClass="text-emerald-700" />
       )}
 
       {/* Comparison */}

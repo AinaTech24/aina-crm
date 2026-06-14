@@ -51,20 +51,25 @@ export function computeChildEducation(input: ChildEducationInput): ChildEducatio
   const nearestYears = sorted.length ? Math.max(0, sorted[0].childAgeAtStart - input.childCurrentAge) : 0;
   const existingSavingsFutureValue = input.existingSavings * Math.pow(1 + r, nearestYears);
 
-  let remainingOffset = existingSavingsFutureValue;
+  // Earmarked savings are applied nearest-milestone first. Track the UNUSED
+  // portion in TODAY's rupees and grow it to EACH milestone's own date, so a
+  // later milestone's offset earns the extra years of compounding (the previous
+  // code grew everything only to the nearest milestone, understating later offsets).
+  let remainingSavingsToday = input.existingSavings;
   const milestones: EduMilestoneResult[] = sorted.map((mlt) => {
     const yearsAway = Math.max(0, mlt.childAgeAtStart - input.childCurrentAge);
+    const grow = Math.pow(1 + r, yearsAway);
     const grossFuture = mlt.currentCost * Math.pow(1 + g, yearsAway);
-    // Apply earmarked savings to the nearest milestone(s) first.
-    const offset = Math.min(remainingOffset, grossFuture);
-    remainingOffset -= offset;
+    const availableAtMilestone = remainingSavingsToday * grow;
+    const offset = Math.min(availableAtMilestone, grossFuture);
+    remainingSavingsToday -= offset / grow; // consume in present-value terms
     const netFuture = Math.max(0, grossFuture - offset);
     return {
       name: mlt.name,
       yearsAway,
       futureCost: grossFuture,
       monthlySip: requiredMonthlySip(netFuture, input.expectedReturnPct, yearsAway),
-      lumpsum: yearsAway > 0 ? netFuture / Math.pow(1 + r, yearsAway) : netFuture,
+      lumpsum: yearsAway > 0 ? netFuture / grow : netFuture,
     };
   });
 

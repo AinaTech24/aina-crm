@@ -25,13 +25,17 @@ export const CESS_PCT = 4; // health & education cess
 export type AssetType = "immovable" | "movable" | "gold" | "unlisted_shares" | "other";
 export type AcquisitionBasis = "after_2001" | "before_2001";
 
-/** Months threshold for long-term classification, by asset type (pre-2024 rules). */
+/**
+ * Months threshold for long-term classification, by asset type.
+ * Budget 2024 (w.e.f. 23-Jul-2024) abolished the 36-month bucket: listed
+ * securities qualify as long-term at 12 months, every OTHER asset at 24 months.
+ */
 export const LT_THRESHOLD_MONTHS: Record<AssetType, number> = {
   immovable: 24,
   unlisted_shares: 24,
-  movable: 36,
-  gold: 36,
-  other: 36,
+  movable: 24,
+  gold: 24,
+  other: 24,
 };
 
 /** FY start year for an ISO date (India FY = 1 Apr–31 Mar). */

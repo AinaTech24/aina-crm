@@ -91,10 +91,12 @@ export function InflationTimeMachine() {
         </div>
       </div>
 
-      <div className="text-xs rounded-md border px-3 py-2 text-amber-800 bg-amber-50/70 border-amber-200">
-        At {inflation}% inflation, money kept idle loses roughly half its value every ~{Math.round(72 / inflation)} years. Beating
-        inflation isn&rsquo;t optional — it&rsquo;s the whole point of investing.
-      </div>
+      {inflation > 0 && (
+        <div className="text-xs rounded-md border px-3 py-2 text-amber-800 bg-amber-50/70 border-amber-200">
+          At {inflation}% inflation, money kept idle loses roughly half its value every ~{Math.round(72 / inflation)} years. Beating
+          inflation isn&rsquo;t optional — it&rsquo;s the whole point of investing.
+        </div>
+      )}
     </div>
   );
 }
