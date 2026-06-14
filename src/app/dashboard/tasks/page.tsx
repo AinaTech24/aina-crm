@@ -121,20 +121,37 @@ export default async function TasksPage({
       .limit(isKanban ? 300 : PAGE_SIZE)
       .offset(isKanban ? 0 : (page - 1) * PAGE_SIZE);
 
-    const viewScope = canViewAll
-      ? sql``
-      : sql` AND (assignee_id = ${session.userId}::uuid OR created_by_id = ${session.userId}::uuid)`;
-    const stats = await tx.execute(sql`
-      SELECT
-        COUNT(*) FILTER (WHERE status = 'open')::int AS open,
-        COUNT(*) FILTER (WHERE status = 'open' AND due_at::date = current_date)::int AS due_today,
-        COUNT(*) FILTER (WHERE status = 'open' AND due_at < now())::int AS overdue,
-        COUNT(*) FILTER (WHERE status = 'open' AND sla_due_at IS NOT NULL AND sla_due_at < now() + interval '24 hours')::int AS sla_at_risk
-      FROM tasks
-      WHERE tenant_id = ${session.tenantId}::uuid${viewScope}
-    `);
-    
-    const s = (stats.rows[0] as any) ?? { open: 0, due_today: 0, overdue: 0, sla_at_risk: 0 };
+    // Stats ribbon — must honour the SAME scope as the list (View tab, created
+    // range, search, priority/department/assignee) so switching "Assigned to
+    // me" / "Assigned by me" or applying a filter actually moves the numbers.
+    // We deliberately do NOT apply the `status` or `due` params here, because
+    // the four cards ARE the open / due-today / overdue / SLA breakdown (each
+    // FILTER already pins status = 'open').
+    const statsConds: any[] = [eq(tasks.tenantId, session.tenantId)];
+    if (!canViewAll) statsConds.push(or(eq(tasks.assigneeId, session.userId), eq(tasks.createdById, session.userId))!);
+    if (view === "to_me") statsConds.push(eq(tasks.assigneeId, session.userId));
+    else if (view === "by_me") statsConds.push(eq(tasks.createdById, session.userId));
+    if (q) statsConds.push(or(ilike(tasks.title, `%${q}%`), ilike(tasks.description, `%${q}%`))!);
+    if (priorityFilter.length) statsConds.push(inArray(tasks.priority, priorityFilter as any));
+    if (typeFilter.length) statsConds.push(inArray(tasks.type, typeFilter as any));
+    if (deptFilter.length) statsConds.push(inArray(tasks.department, deptFilter as any));
+    if (assigneeFilter.length) statsConds.push(inArray(tasks.assigneeId, assigneeFilter as any));
+    const statsDr = dateRangeCond(sp, "created", "tasks.created_at");
+    if (statsDr) statsConds.push(statsDr);
+
+    // No join here, so the bare column names inside the FILTERs (status, due_at,
+    // sla_due_at) are unambiguously tasks columns (users also has a `status`).
+    const statsRow = await tx
+      .select({
+        open: sql<number>`count(*) filter (where status = 'open')::int`,
+        due_today: sql<number>`count(*) filter (where status = 'open' and due_at::date = current_date)::int`,
+        overdue: sql<number>`count(*) filter (where status = 'open' and due_at < now())::int`,
+        sla_at_risk: sql<number>`count(*) filter (where status = 'open' and sla_due_at is not null and sla_due_at < now() + interval '24 hours')::int`,
+      })
+      .from(tasks)
+      .where(and(...statsConds) as any);
+
+    const s = (statsRow[0] as any) ?? { open: 0, due_today: 0, overdue: 0, sla_at_risk: 0 };
     // Roster for the "Assignee" filter (so owners can see tasks by RM).
     const rmRows = await tx.execute(sql`
       SELECT id, name FROM users
@@ -145,6 +162,9 @@ export default async function TasksPage({
   });
 
   const rmOptions = (result.rms ?? []).map((r: any) => ({ value: String(r.id), label: r.name ?? "—" }));
+  // Keep the active View tab when a stat card is clicked, so the cards and the
+  // list it filters stay in the same scope.
+  const scopeQS = view === "to_me" ? "&view=to_me" : view === "by_me" ? "&view=by_me" : "";
 
   return (
     <div className="space-y-6 max-w-6xl">
@@ -176,16 +196,16 @@ export default async function TasksPage({
 
       {/* Clickable Interactive Stats Ribbon */}
       <div className="grid grid-cols-4 gap-3">
-        <Link href="/dashboard/tasks?status=open" className="block transition-transform hover:scale-[1.01]">
+        <Link href={`/dashboard/tasks?status=open${scopeQS}`} className="block transition-transform hover:scale-[1.01]">
           <Stat label="Open" value={String(result.stats.open)} active={!due && sp.status !== "completed" && sp.status !== "cancelled"} />
         </Link>
-        <Link href="/dashboard/tasks?status=open&due=today" className="block transition-transform hover:scale-[1.01]">
+        <Link href={`/dashboard/tasks?status=open&due=today${scopeQS}`} className="block transition-transform hover:scale-[1.01]">
           <Stat label="Due today" value={String(result.stats.due_today)} active={due === "today"} />
         </Link>
-        <Link href="/dashboard/tasks?status=open&due=overdue" className="block transition-transform hover:scale-[1.01]">
+        <Link href={`/dashboard/tasks?status=open&due=overdue${scopeQS}`} className="block transition-transform hover:scale-[1.01]">
           <Stat label="Overdue" value={String(result.stats.overdue)} tone="rose" active={due === "overdue"} />
         </Link>
-        <Link href="/dashboard/tasks?status=open&due=sla_risk" className="block transition-transform hover:scale-[1.01]">
+        <Link href={`/dashboard/tasks?status=open&due=sla_risk${scopeQS}`} className="block transition-transform hover:scale-[1.01]">
           <Stat label="SLA at risk" value={String(result.stats.sla_at_risk)} tone="amber" active={due === "sla_risk"} />
         </Link>
       </div>
