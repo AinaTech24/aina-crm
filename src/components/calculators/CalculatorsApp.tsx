@@ -9,7 +9,7 @@
 import { useRef, useState } from "react";
 import { useToast } from "@/components/ui/Toast";
 import {
-  ChevronLeft, Search, X, Mail, MessageCircle, Printer,
+  ChevronLeft, Search, X, Mail, MessageCircle, Printer, FilePlus2, FileText, Trash2,
   // group icons
   TrendingUp, Target, HandCoins, ShieldCheck, Receipt, Building2, Wrench, Flame,
   // per-calculator icons (each used exactly once — no duplicates)
@@ -308,6 +308,10 @@ export function CalculatorsApp({ firmName }: { firmName?: string } = {}) {
   const [recipient, setRecipient] = useState("");
   const [busy, setBusy] = useState(false);
   const calcRef = useRef<HTMLDivElement>(null);
+  // ── Combined report tray — snapshots of calculators to bundle into one PDF ──
+  type ReportItem = { calcName: string; inputs: { label: string; value: string; group?: string }[]; blocks: any[] };
+  const [report, setReport] = useState<ReportItem[]>([]);
+  const [showTray, setShowTray] = useState(false);
 
   async function doShare(channel: "email" | "whatsapp", calcName: string) {
     const root = calcRef.current;
@@ -366,8 +370,56 @@ export function CalculatorsApp({ firmName }: { firmName?: string } = {}) {
     } finally { setBusy(false); }
   }
 
+  // Snapshot the current calculator into the report tray.
+  async function addToReport(calcName: string) {
+    const root = calcRef.current;
+    if (!root) return;
+    try {
+      const { inputs, blocks } = await captureCalcResults(root);
+      setReport((r) => [...r, { calcName, inputs, blocks }]);
+      setShowTray(true);
+      toast.success("Added to report", `${calcName} — now ${report.length + 1} in the combined report.`);
+    } catch {
+      toast.error("Couldn't capture this calculator.");
+    }
+  }
+
+  // Build ONE branded PDF from all tray items and download it.
+  async function downloadCombined() {
+    if (report.length === 0) return;
+    setBusy(true);
+    try {
+      const res = await fetch("/api/calculators/pdf-combined", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ clientName, items: report }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        toast.error(j.error || "Couldn't build the combined report.");
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${clientName || "Client"}-Combined-Report`.replace(/[^A-Za-z0-9_-]+/g, "_").slice(0, 60) + ".pdf";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      toast.success("Combined report downloaded", `${report.length} calculators in one branded PDF.`);
+    } catch {
+      toast.error("Couldn't build the combined report — please try again.");
+    } finally { setBusy(false); }
+  }
+
   if (tab === null) {
-    return <CalcGallery query={query} setQuery={setQuery} onPick={setTab} />;
+    return (
+      <>
+        <CalcGallery query={query} setQuery={setQuery} onPick={setTab} />
+        <ReportTray report={report} show={showTray} setShow={setShowTray} setReport={setReport} onDownload={downloadCombined} busy={busy} clientName={clientName} />
+      </>
+    );
   }
 
   const meta = CALC_META[tab];
@@ -398,6 +450,9 @@ export function CalculatorsApp({ firmName }: { firmName?: string } = {}) {
           </button>
           <button onClick={() => downloadPdf(calcName)} disabled={busy} className="btn-ghost text-xs disabled:opacity-60" title="Download the branded PDF illustration">
             <Printer className="size-3.5" /> Print
+          </button>
+          <button onClick={() => addToReport(calcName)} disabled={busy} className="btn-ghost text-xs disabled:opacity-60" title="Add this calculator to the combined client report">
+            <FilePlus2 className="size-3.5" /> Add to report{report.length > 0 ? ` (${report.length})` : ""}
           </button>
           <ScenarioControls calculatorKey={tab} calculatorName={calcName} clientName={clientName} containerRef={calcRef} />
         </div>
@@ -496,6 +551,57 @@ export function CalculatorsApp({ firmName }: { firmName?: string } = {}) {
         {tab === "stp" && <StpCalc />}
         {tab === "cagr" && <CagrCalc />}
       </div>
+
+      <ReportTray report={report} show={showTray} setShow={setShowTray} setReport={setReport} onDownload={downloadCombined} busy={busy} clientName={clientName} />
+    </div>
+  );
+}
+
+/* ───────────────────── Combined-report tray ───────────────────── */
+function ReportTray({
+  report, show, setShow, setReport, onDownload, busy, clientName,
+}: {
+  report: { calcName: string }[];
+  show: boolean;
+  setShow: (v: boolean) => void;
+  setReport: (v: any[] | ((r: any[]) => any[])) => void;
+  onDownload: () => void;
+  busy: boolean;
+  clientName: string;
+}) {
+  if (report.length === 0) return null;
+  return (
+    <div className="print:hidden fixed bottom-5 right-5 z-40">
+      {show ? (
+        <div className="w-72 rounded-xl border border-border bg-card shadow-2xl overflow-hidden">
+          <div className="flex items-center justify-between px-3 py-2 bg-primary text-white">
+            <span className="text-xs font-bold flex items-center gap-1.5"><FileText className="size-3.5" /> Combined report ({report.length})</span>
+            <button onClick={() => setShow(false)} className="hover:opacity-80" aria-label="Collapse"><X className="size-4" /></button>
+          </div>
+          <ul className="max-h-56 overflow-y-auto scrollbar-thin p-1.5">
+            {report.map((it, i) => (
+              <li key={i} className="flex items-center gap-2 px-2 py-1.5 text-xs">
+                <span className="size-5 grid place-items-center rounded bg-secondary text-[10px] font-bold shrink-0">{i + 1}</span>
+                <span className="flex-1 truncate">{it.calcName}</span>
+                <button onClick={() => setReport((r) => r.filter((_, idx) => idx !== i))} className="text-muted-foreground hover:text-rose-600 shrink-0" aria-label="Remove">
+                  <Trash2 className="size-3.5" />
+                </button>
+              </li>
+            ))}
+          </ul>
+          <div className="border-t border-border p-2 space-y-1.5">
+            {!clientName && <p className="text-[10px] text-amber-600 px-1">Tip: set a client name (top bar) — it prints on the cover.</p>}
+            <button onClick={onDownload} disabled={busy} className="btn-primary w-full text-xs justify-center disabled:opacity-60">
+              {busy ? "Building…" : "Download combined PDF"}
+            </button>
+            <button onClick={() => setReport([])} className="btn-ghost w-full text-[11px] justify-center text-muted-foreground">Clear all</button>
+          </div>
+        </div>
+      ) : (
+        <button onClick={() => setShow(true)} className="btn-primary text-xs shadow-2xl rounded-full px-4 py-2.5">
+          <FileText className="size-4" /> Report ({report.length})
+        </button>
+      )}
     </div>
   );
 }
