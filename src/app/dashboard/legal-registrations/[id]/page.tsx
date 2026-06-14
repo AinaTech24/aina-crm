@@ -7,6 +7,7 @@ import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { legalRegistrations } from "@/db/schema";
 import { LegalRegistrationForm } from "@/components/legal-registrations/LegalRegistrationForm";
+import { RecordProvenance } from "@/components/common/RecordProvenance";
 
 export const dynamic = "force-dynamic";
 
@@ -45,6 +46,13 @@ export default async function LegalRegistrationDetailPage({
           {row.registeredInNameOf}
           {row.registrationNumber && ` · ${row.registrationNumber}`} · {row.status}
         </p>
+        <RecordProvenance
+          entityType="legal_registration"
+          entityId={row.id}
+          createdAt={row.createdAt}
+          updatedAt={row.updatedAt}
+          className="mt-1"
+        />
       </div>
       <LegalRegistrationForm
         mode="edit"

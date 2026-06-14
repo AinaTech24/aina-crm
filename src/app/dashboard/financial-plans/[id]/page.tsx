@@ -19,6 +19,7 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { formatDate, formatINR } from "@/lib/utils";
 import { financialPlans, investors, users } from "@/db/schema";
+import { RecordProvenance } from "@/components/common/RecordProvenance";
 
 export const dynamic = "force-dynamic";
 
@@ -140,6 +141,13 @@ export default async function FinancialPlanDetailPage({
             <Pencil className="size-3.5" /> Edit Plan
           </Link>
         </div>
+        <RecordProvenance
+          entityType="financial_plan"
+          entityId={plan.id}
+          createdAt={plan.createdAt}
+          updatedAt={plan.updatedAt}
+          className="basis-full mt-1"
+        />
       </div>
 
       {/* Profile & Health Score Grid */}

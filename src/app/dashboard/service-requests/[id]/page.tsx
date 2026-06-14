@@ -6,6 +6,7 @@ import { withTenant } from "@/db/client";
 import { serviceRequests, investors, users } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { ServiceRequestDetailEditor } from "@/components/service-requests/ServiceRequestDetailEditor";
+import { RecordProvenance } from "@/components/common/RecordProvenance";
 
 export const dynamic = "force-dynamic";
 
@@ -70,6 +71,13 @@ export default async function ServiceRequestDetailPage({ params }: { params: Pro
           </div>
           {sr.subject && <p className="mt-2 font-medium">{sr.subject}</p>}
           {sr.description && <p className="mt-1 text-sm text-muted-foreground whitespace-pre-wrap">{sr.description}</p>}
+          <RecordProvenance
+            entityType="service_request"
+            entityId={sr.id}
+            createdAt={sr.createdAt}
+            updatedAt={sr.updatedAt}
+            className="mt-2"
+          />
         </div>
       </div>
 

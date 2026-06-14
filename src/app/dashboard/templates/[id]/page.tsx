@@ -6,6 +6,7 @@ import { withTenant } from "@/db/client";
 import { templates, templateVersions } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
+import { RecordProvenance } from "@/components/common/RecordProvenance";
 import { TemplateActions } from "./TemplateActions";
 
 export const dynamic = "force-dynamic";
@@ -115,6 +116,14 @@ export default async function TemplateDetailPage({
             />
           </div>
         )}
+
+        <RecordProvenance
+          entityType="template"
+          entityId={tpl.id}
+          createdAt={tpl.createdAt}
+          updatedAt={tpl.updatedAt}
+          className="mt-3"
+        />
       </div>
 
       {ver && (

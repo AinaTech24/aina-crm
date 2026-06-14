@@ -3,6 +3,7 @@ import { eq, desc } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { contentPosts, campaigns } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
+import { RecordProvenance } from "@/components/common/RecordProvenance";
 import { EditContentPostForm } from "./EditContentPostForm";
 
 export const dynamic = "force-dynamic";
@@ -27,6 +28,13 @@ export default async function EditContentPostPage({ params }: { params: Promise<
   return (
     <div className="max-w-4xl mx-auto py-2">
       <EditContentPostForm initialPost={data.post} campaigns={data.campaigns} />
+      <RecordProvenance
+        entityType="content_post"
+        entityId={data.post.id}
+        createdAt={data.post.createdAt}
+        updatedAt={data.post.updatedAt}
+        className="mt-3"
+      />
     </div>
   );
 }

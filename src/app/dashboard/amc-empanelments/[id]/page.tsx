@@ -7,6 +7,7 @@ import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { amcEmpanelments } from "@/db/schema";
 import { AmcEmpanelmentForm } from "@/components/amc-empanelments/AmcEmpanelmentForm";
+import { RecordProvenance } from "@/components/common/RecordProvenance";
 
 export const dynamic = "force-dynamic";
 
@@ -53,6 +54,13 @@ export default async function AmcEmpanelmentDetailPage({
           {row.distributorCode && ` · Distributor: ${row.distributorCode}`} ·{" "}
           {row.status}
         </p>
+        <RecordProvenance
+          entityType="amc_empanelment"
+          entityId={row.id}
+          createdAt={row.createdAt}
+          updatedAt={row.updatedAt}
+          className="mt-1"
+        />
       </div>
       <AmcEmpanelmentForm
         mode="edit"

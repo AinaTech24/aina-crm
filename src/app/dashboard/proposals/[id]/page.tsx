@@ -19,6 +19,7 @@ import { formatDate, formatINR } from "@/lib/utils";
 import { ProposalStatusActions } from "@/components/proposals/ProposalStatusActions";
 import { ProposalSendActions } from "@/components/proposals/ProposalSendActions";
 import { ProposalSuitabilityPanel } from "@/components/proposals/ProposalSuitabilityPanel";
+import { RecordProvenance } from "@/components/common/RecordProvenance";
 
 const TYPE_LABEL: Record<string, string> = {
   comprehensive: "Comprehensive",
@@ -79,6 +80,14 @@ export default async function ProposalDetailPage({
       >
         <ChevronLeft className="size-4" /> Back to proposals
       </Link>
+
+      <RecordProvenance
+        entityType="proposal"
+        entityId={p.id}
+        createdAt={p.createdAt}
+        updatedAt={p.updatedAt}
+        className="mt-1"
+      />
 
       {/* Hero card */}
       <div className="card-elevated overflow-hidden">

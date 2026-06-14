@@ -9,6 +9,7 @@ import { require as requireCap } from "@/lib/auth/rbac";
 import { isBroadcastCampaign } from "@/lib/campaigns/broadcast";
 import { CampaignActions } from "@/components/campaigns/CampaignActions";
 import { CampaignRecipients } from "@/components/campaigns/CampaignRecipients";
+import { RecordProvenance } from "@/components/common/RecordProvenance";
 import { formatDate } from "@/lib/utils";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -93,6 +94,13 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
             status={c.status}
             approvalStatus={c.approvalStatus ?? "pending"}
             isBroadcast={isBroadcastCampaign(c)}
+          />
+          <RecordProvenance
+            entityType="campaign"
+            entityId={c.id}
+            createdAt={c.createdAt}
+            updatedAt={c.updatedAt}
+            className="basis-full mt-1"
           />
         </div>
       </div>

@@ -14,6 +14,7 @@ import { FamilyPortfolioAllocation } from "@/components/families/FamilyPortfolio
 import { FamilyTouchpoints } from "@/components/families/FamilyTouchpoints";
 import { EngageNextGenButton } from "@/components/families/EngageNextGenButton";
 import { FamilyTreeVisualizer } from "@/components/families/FamilyTreeVisualizer";
+import { RecordProvenance } from "@/components/common/RecordProvenance";
 import { CalendarPlus } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -142,6 +143,13 @@ export default async function FamilyDetailPage({ params }: { params: Promise<{ i
               Download household statement (PDF)
             </a>
             {data.family.notes && <p className="text-sm text-muted-foreground mt-2">{data.family.notes}</p>}
+            <RecordProvenance
+              entityType="family"
+              entityId={data.family.id}
+              createdAt={data.family.createdAt}
+              updatedAt={data.family.updatedAt}
+              className="mt-2"
+            />
           </div>
           <div className="grid grid-cols-2 gap-6 text-right">
             <div>

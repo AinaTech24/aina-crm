@@ -7,6 +7,7 @@ import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { productOfferings, users, legalRegistrations } from "@/db/schema";
 import { ProductOfferingForm } from "@/components/product-offerings/ProductOfferingForm";
+import { RecordProvenance } from "@/components/common/RecordProvenance";
 
 export const dynamic = "force-dynamic";
 
@@ -69,6 +70,13 @@ export default async function ProductOfferingDetailPage({
         <p className="text-sm text-muted-foreground mt-1">
           {row.category} · {row.regulator} · {row.status}
         </p>
+        <RecordProvenance
+          entityType="product_offering"
+          entityId={row.id}
+          createdAt={row.createdAt}
+          updatedAt={row.updatedAt}
+          className="mt-1"
+        />
       </div>
       <ProductOfferingForm
         mode="edit"

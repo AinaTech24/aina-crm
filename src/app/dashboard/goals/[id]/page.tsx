@@ -20,6 +20,7 @@ import { categoryLabel } from "@/lib/goal-planning/calc";
 import { GoalDetailCalculator } from "@/components/goal-planning/GoalDetailCalculator";
 import { LinkedInvestmentsPicker } from "@/components/goal-planning/LinkedInvestmentsPicker";
 import { GoalShareActions } from "@/components/goal-planning/GoalShareActions";
+import { RecordProvenance } from "@/components/common/RecordProvenance";
 
 export const dynamic = "force-dynamic";
 
@@ -77,6 +78,13 @@ export default async function GoalDetailPage({ params }: { params: Promise<{ id:
               </>
             )}
           </div>
+          <RecordProvenance
+            entityType="goal"
+            entityId={data.goal.id}
+            createdAt={data.goal.createdAt}
+            updatedAt={data.goal.updatedAt}
+            className="mt-1"
+          />
         </div>
         <div className="flex items-center gap-2">
           <Link

@@ -8,6 +8,7 @@ import { requireSession } from "@/lib/auth/session";
 import { formatINR } from "@/lib/utils";
 import { ASSET_CLASS_LABELS, ASSET_CLASS_ORDER, type AssetClass } from "@/lib/business/asset-class";
 import { BusinessEntryActions } from "@/components/business/BusinessEntryActions";
+import { RecordProvenance } from "@/components/common/RecordProvenance";
 
 export const dynamic = "force-dynamic";
 
@@ -62,6 +63,13 @@ export default async function BusinessEntryDetailPage({ params }: { params: Prom
           </div>
         </div>
         <BusinessEntryActions id={entry.id} status={entry.status} hasEmail={!!data.email} />
+        <RecordProvenance
+          entityType="business_entry"
+          entityId={entry.id}
+          createdAt={entry.createdAt}
+          updatedAt={entry.updatedAt}
+          className="basis-full mt-1"
+        />
       </div>
 
       {/* Summary cards */}

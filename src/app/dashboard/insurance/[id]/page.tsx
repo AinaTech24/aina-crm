@@ -15,6 +15,7 @@ import { withTenant } from "@/db/client";
 import { insurancePolicies, investors } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { formatDate, formatINR } from "@/lib/utils";
+import { RecordProvenance } from "@/components/common/RecordProvenance";
 
 const TYPE_LABEL: Record<string, string> = {
   term: "Term Life",
@@ -71,7 +72,7 @@ export default async function InsuranceDetailPage({
 
   return (
     <div className="space-y-6 max-w-5xl">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap">
         <Link
           href="/dashboard/insurance"
           className="text-sm text-muted-foreground hover:underline hover:text-foreground flex items-center gap-1 transition-colors"
@@ -84,6 +85,13 @@ export default async function InsuranceDetailPage({
         >
           <Pencil className="size-3.5" /> Edit Policy
         </Link>
+        <RecordProvenance
+          entityType="insurance_policy"
+          entityId={p.id}
+          createdAt={p.createdAt}
+          updatedAt={p.updatedAt}
+          className="basis-full mt-1"
+        />
       </div>
 
       {/* Hero */}

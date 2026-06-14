@@ -7,6 +7,7 @@ import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { subDistributors } from "@/db/schema";
 import { SubDistributorForm } from "@/components/sub-distributors/SubDistributorForm";
+import { RecordProvenance } from "@/components/common/RecordProvenance";
 
 export const dynamic = "force-dynamic";
 
@@ -45,6 +46,13 @@ export default async function SubDistributorDetailPage({
           {row.code ? `${row.code} · ` : ""}
           {row.status}
         </p>
+        <RecordProvenance
+          entityType="sub_distributor"
+          entityId={row.id}
+          createdAt={row.createdAt}
+          updatedAt={row.updatedAt}
+          className="mt-1"
+        />
       </div>
       <SubDistributorForm
         mode="edit"

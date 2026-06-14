@@ -7,6 +7,7 @@ import { reviewMeetings, investors, leads, users } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { formatINR, formatRelative } from "@/lib/utils";
 import { ReviewMeetingDetailEditor } from "@/components/review-meetings/ReviewMeetingDetailEditor";
+import { RecordProvenance } from "@/components/common/RecordProvenance";
 
 export const dynamic = "force-dynamic";
 
@@ -94,6 +95,13 @@ export default async function ReviewMeetingDetailPage({
               </>
             )}
           </div>
+          <RecordProvenance
+            entityType="review_meeting"
+            entityId={data.meeting.id}
+            createdAt={data.meeting.createdAt}
+            updatedAt={data.meeting.updatedAt}
+            className="mt-1"
+          />
         </div>
       </div>
 
