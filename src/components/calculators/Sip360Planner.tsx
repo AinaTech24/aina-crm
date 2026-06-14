@@ -15,6 +15,7 @@ import { useMemo, useState } from "react";
 import { ClientNameField } from "./ClientNameField";
 import { computeSip360, type Sip360Scenario } from "@/lib/calculators/sip360";
 import { FundReturnPicker } from "./FundReturnPicker";
+import { SchemeAutocomplete } from "../mf/SchemeAutocomplete";
 import {
   inr, clampNum, fmtPct, Field, NumberField, SmallNum, Toggle, Section, Stat, Table, Insight,
 } from "./ui";
@@ -168,7 +169,17 @@ export function Sip360Planner() {
       {/* ─────────── Personalisation ─────────── */}
       <div className="grid md:grid-cols-3 gap-3">
         <Field label="Suggested schemes (optional)">
-          <input value={schemes} onChange={(e) => setSchemes(e.target.value)} className="input-base text-sm w-full" placeholder="e.g. Flexi-cap + Mid-cap" />
+          <SchemeAutocomplete
+            size="sm"
+            placeholder="Search a real scheme to add…"
+            onSelect={(s) => setSchemes(schemes ? `${schemes}, ${s.schemeName}` : s.schemeName)}
+          />
+          {schemes && (
+            <div className="mt-1 flex items-start gap-1.5 text-[10px] text-muted-foreground">
+              <span className="flex-1">{schemes}</span>
+              <button type="button" onClick={() => setSchemes("")} className="text-rose-600 hover:underline shrink-0">clear</button>
+            </div>
+          )}
         </Field>
         <Field label="Comments (optional)">
           <input value={comments} onChange={(e) => setComments(e.target.value)} className="input-base text-sm w-full" placeholder="Notes for the client" />

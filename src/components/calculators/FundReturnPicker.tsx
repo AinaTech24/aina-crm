@@ -1,55 +1,55 @@
 "use client";
 
 /**
- * FundReturnPicker — pick a real MF scheme and prefill an expected-return field
- * with its live trailing CAGR (5Y, falling back to 3Y/1Y) from MFAPI. Lets an
- * advisor ground a projection in a real fund's actual track record.
+ * FundReturnPicker — prefill an expected-return field from a fund CATEGORY's
+ * typical long-term assumption. Deliberately category-based (no specific fund
+ * names): a return projection shouldn't be tied to a named scheme's past
+ * performance. Naming the actual recommended schemes belongs in the
+ * "Suggested schemes" field (which searches real funds from the MF API).
  */
 
 import { useState } from "react";
-import { SchemeAutocomplete, type SchemePick } from "../mf/SchemeAutocomplete";
 
-export function FundReturnPicker({
-  onPick, prefer = "y5",
-}: {
-  onPick: (pct: number) => void;
-  prefer?: "y3" | "y5";
-}) {
-  const [note, setNote] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+/** Typical long-term return assumptions by category (illustrative, not assured). */
+const CATEGORY_RETURNS: { label: string; pct: number }[] = [
+  { label: "Large Cap / Bluechip", pct: 11 },
+  { label: "Flexi / Multi Cap", pct: 12 },
+  { label: "Mid Cap", pct: 13 },
+  { label: "Small Cap", pct: 14 },
+  { label: "ELSS (Tax Saver)", pct: 12 },
+  { label: "Index (Nifty 50)", pct: 11 },
+  { label: "Aggressive Hybrid", pct: 10 },
+  { label: "Balanced Advantage", pct: 9 },
+  { label: "Conservative Hybrid", pct: 8 },
+  { label: "Gold", pct: 9 },
+  { label: "Debt — Corporate / Short", pct: 7 },
+  { label: "Liquid / Ultra-short", pct: 6 },
+];
 
-  async function handle(s: SchemePick) {
-    setBusy(true);
-    setNote(null);
-    try {
-      const res = await fetch(`/api/mf/schemes/${encodeURIComponent(s.schemeCode)}/returns`);
-      if (!res.ok) { setNote("No return history for this fund."); return; }
-      const j = await res.json();
-      const r = j?.returns ?? {};
-      const order = prefer === "y5" ? ["y5", "y3", "y1"] : ["y3", "y5", "y1"];
-      let chosen: { pct: number; label: string } | null = null;
-      for (const k of order) {
-        if (typeof r[k] === "number") { chosen = { pct: r[k], label: k === "y5" ? "5Y" : k === "y3" ? "3Y" : "1Y" }; break; }
-      }
-      if (chosen) {
-        onPick(Math.round(chosen.pct * 10) / 10);
-        setNote(`${s.schemeName} · ${chosen.pct.toFixed(1)}% (${chosen.label} CAGR, MFAPI)`);
-      } else {
-        setNote("Insufficient history to derive a return.");
-      }
-    } catch {
-      setNote("Couldn't reach MFAPI — keep the assumed return.");
-    } finally {
-      setBusy(false);
-    }
-  }
+export function FundReturnPicker({ onPick }: { onPick: (pct: number) => void }) {
+  const [sel, setSel] = useState("");
+  const chosen = CATEGORY_RETURNS.find((c) => c.label === sel);
 
   return (
     <div className="space-y-1">
-      <SchemeAutocomplete size="sm" placeholder="Prefill return from a real fund…" onSelect={handle} />
-      {(note || busy) && (
+      <select
+        value={sel}
+        onChange={(e) => {
+          const v = e.target.value;
+          setSel(v);
+          const c = CATEGORY_RETURNS.find((x) => x.label === v);
+          if (c) onPick(c.pct);
+        }}
+        className="input-base text-sm w-full h-8"
+      >
+        <option value="">Prefill return from a category…</option>
+        {CATEGORY_RETURNS.map((c) => (
+          <option key={c.label} value={c.label}>{c.label} — {c.pct}%</option>
+        ))}
+      </select>
+      {chosen && (
         <p className="text-[10px] text-muted-foreground">
-          {busy ? "Fetching the fund's track record…" : note}
+          Typical long-term assumption for {chosen.label} ({chosen.pct}%) — illustrative, not a guarantee.
         </p>
       )}
     </div>
