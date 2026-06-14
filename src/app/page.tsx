@@ -393,7 +393,7 @@ export default function Home() {
           </p>
           <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
             {[
-              "CAMS", "KFintech", "AMFI NAV feed", "WhatsApp (AiSensy)",
+              "CAMS", "KFintech", "AMFI NAV feed", "WhatsApp",
               "MSG91 SMS", "Email (Resend)", "Razorpay",
             ].map((name) => (
               <span
