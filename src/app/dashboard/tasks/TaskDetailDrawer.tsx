@@ -1,13 +1,13 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { X, Calendar, User, Sparkles, LifeBuoy, AlertCircle, Trash, Plus, CheckCircle2, Circle, ListChecks, Loader2 } from "lucide-react";
+import { X, Calendar, User, Sparkles, LifeBuoy, AlertCircle, Trash, Plus, CheckCircle2, ListChecks, Loader2 } from "lucide-react";
 import { RmSelector } from "@/components/common/RmSelector";
 import { SelectField } from "@/components/ui/SelectField";
 import { DateField } from "@/components/ui/DateField";
 import { useToast } from "@/components/ui/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
-import { taskChecklist, type Task, type TaskChecklistItem } from "@/db/schema";
+import { taskChecklist, subTaskStatus, type Task, type TaskChecklistItem, type SubTaskStatus } from "@/db/schema";
 import Link from "next/link";
 import { RecordProvenance } from "@/components/common/RecordProvenance";
 
@@ -62,7 +62,7 @@ export function TaskDetailDrawer({ task, onClose, onUpdate }: TaskDetailDrawerPr
   const [checklist, setChecklist] = useState<TaskChecklistItem[]>(() => taskChecklist(task.meta));
   const [newPoint, setNewPoint] = useState("");
   const [checklistBusy, setChecklistBusy] = useState(false);
-  const doneCount = checklist.filter((c) => c.done).length;
+  const doneCount = checklist.filter((c) => subTaskStatus(c) === "completed").length;
   const allDone = checklist.length > 0 && doneCount === checklist.length;
 
   async function persistChecklist(next: TaskChecklistItem[]) {
@@ -92,12 +92,25 @@ export function TaskDetailDrawer({ task, onClose, onUpdate }: TaskDetailDrawerPr
     if (!text) return;
     const id = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.round(performance.now())}`;
     setNewPoint("");
-    persistChecklist([...checklist, { id, text, done: false }]);
+    persistChecklist([...checklist, { id, text, done: false, status: "not_started" }]);
   }
-  function togglePoint(id: string) {
+  // Click the status dot to advance the sub-task through the DST states.
+  const SUB_STATUSES: SubTaskStatus[] = ["not_started", "in_progress", "completed", "assigned_to_other"];
+  function cycleStatus(id: string) {
     persistChecklist(
-      checklist.map((c) => (c.id === id ? { ...c, done: !c.done, doneAt: !c.done ? new Date().toISOString() : null } : c))
+      checklist.map((c) => {
+        if (c.id !== id) return c;
+        const next = SUB_STATUSES[(SUB_STATUSES.indexOf(subTaskStatus(c)) + 1) % SUB_STATUSES.length];
+        return { ...c, status: next, done: next === "completed", doneAt: next === "completed" ? new Date().toISOString() : null };
+      })
     );
+  }
+  /** Local-only update (for typing a remark) — no network round-trip per keystroke. */
+  function updateLocal(id: string, patch: Partial<TaskChecklistItem>) {
+    setChecklist((cl) => cl.map((c) => (c.id === id ? { ...c, ...patch } : c)));
+  }
+  function setPointField(id: string, patch: Partial<TaskChecklistItem>) {
+    persistChecklist(checklist.map((c) => (c.id === id ? { ...c, ...patch } : c)));
   }
   function removePoint(id: string) {
     persistChecklist(checklist.filter((c) => c.id !== id));
@@ -479,7 +492,7 @@ export function TaskDetailDrawer({ task, onClose, onUpdate }: TaskDetailDrawerPr
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <h4 className="text-[10px] uppercase font-bold text-slate-500 flex items-center gap-1.5">
-                <ListChecks className="size-3.5" /> Action points
+                <ListChecks className="size-3.5" /> Sub-tasks
                 {checklist.length > 0 && (
                   <span className="text-slate-400 normal-case font-semibold">· {doneCount}/{checklist.length} done</span>
                 )}
@@ -496,25 +509,58 @@ export function TaskDetailDrawer({ task, onClose, onUpdate }: TaskDetailDrawerPr
               </div>
             )}
 
-            <div className="space-y-1.5">
-              {checklist.map((c) => (
-                <div key={c.id} className="group flex items-start gap-2 rounded-lg border border-slate-100 bg-slate-50/60 px-2.5 py-2">
-                  <button type="button" onClick={() => togglePoint(c.id)} className="mt-0.5 shrink-0 text-slate-400 hover:text-emerald-600 transition-colors">
-                    {c.done ? <CheckCircle2 className="size-4 text-emerald-600" /> : <Circle className="size-4" />}
-                  </button>
-                  <span className={`flex-1 text-xs leading-relaxed ${c.done ? "line-through text-slate-400" : "text-slate-700"}`}>
-                    {c.text}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => removePoint(c.id)}
-                    className="shrink-0 text-slate-300 hover:text-rose-600 opacity-0 group-hover:opacity-100 transition-opacity"
-                    aria-label="Remove action point"
-                  >
-                    <Trash className="size-3.5" />
-                  </button>
-                </div>
-              ))}
+            <div className="space-y-2">
+              {checklist.map((c) => {
+                const st = subTaskStatus(c);
+                const meta = ({
+                  not_started: { label: "Not started", dot: "bg-slate-300", text: "text-slate-500" },
+                  in_progress: { label: "In progress", dot: "bg-sky-500", text: "text-sky-700" },
+                  completed: { label: "Completed", dot: "bg-emerald-500", text: "text-emerald-700" },
+                  assigned_to_other: { label: "Assigned to other", dot: "bg-violet-500", text: "text-violet-700" },
+                } as const)[st];
+                return (
+                  <div key={c.id} className="group rounded-lg border border-slate-100 bg-slate-50/60 px-2.5 py-2 space-y-1.5">
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => cycleStatus(c.id)}
+                        title="Click to advance status"
+                        className={`shrink-0 inline-flex items-center gap-1.5 rounded-full bg-white border border-slate-200 px-2 py-0.5 text-[10px] font-semibold ${meta.text}`}
+                      >
+                        <span className={`size-2 rounded-full ${meta.dot}`} /> {meta.label}
+                      </button>
+                      <span className={`flex-1 text-xs leading-relaxed ${st === "completed" ? "line-through text-slate-400" : "text-slate-700"}`}>
+                        {c.text}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => removePoint(c.id)}
+                        className="shrink-0 text-slate-300 hover:text-rose-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                        aria-label="Remove sub-task"
+                      >
+                        <Trash className="size-3.5" />
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="date"
+                        value={c.actionDate ?? ""}
+                        onChange={(e) => setPointField(c.id, { actionDate: e.target.value || null })}
+                        className="input-base h-7 text-[11px] w-[8.5rem] bg-white"
+                        aria-label="Action date"
+                      />
+                      <input
+                        value={c.remark ?? ""}
+                        onChange={(e) => updateLocal(c.id, { remark: e.target.value })}
+                        onBlur={(e) => setPointField(c.id, { remark: e.target.value })}
+                        placeholder="Remark…"
+                        className="input-base h-7 text-[11px] flex-1 bg-white"
+                        aria-label="Remark"
+                      />
+                    </div>
+                  </div>
+                );
+              })}
             </div>
 
             <div className="flex gap-2">
@@ -522,7 +568,7 @@ export function TaskDetailDrawer({ task, onClose, onUpdate }: TaskDetailDrawerPr
                 value={newPoint}
                 onChange={(e) => setNewPoint(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addPoint(); } }}
-                placeholder="Add an action point and press Enter…"
+                placeholder="Add a sub-task and press Enter…"
                 className="input-base text-xs flex-1 bg-white"
               />
               <button

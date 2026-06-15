@@ -104,12 +104,25 @@ export type NewTask = typeof tasks.$inferInsert;
  * complete it. Stored under `tasks.meta.checklist` (a JSONB grab-bag we already
  * have) so the feature needs no schema migration. Read with `taskChecklist()`.
  */
+/** DST-style sub-task status (a step can be parked with someone else). */
+export type SubTaskStatus = "not_started" | "in_progress" | "completed" | "assigned_to_other";
+
 export type TaskChecklistItem = {
   id: string;
   text: string;
-  done: boolean;
+  done: boolean; // mirrors status === "completed" — kept for back-compat
   doneAt?: string | null;
+  /** Daily-Service-Tracker per-sub-task tracking. Absent on legacy items
+   *  (those fall back to the `done` flag). */
+  status?: SubTaskStatus;
+  actionDate?: string | null; // ISO yyyy-mm-dd
+  remark?: string;
 };
+
+/** Effective status of a sub-task — falls back to the legacy `done` flag. */
+export function subTaskStatus(c: TaskChecklistItem): SubTaskStatus {
+  return c.status ?? (c.done ? "completed" : "not_started");
+}
 
 /** Safely read a task's checklist out of its `meta` JSONB (always an array). */
 export function taskChecklist(meta: unknown): TaskChecklistItem[] {
