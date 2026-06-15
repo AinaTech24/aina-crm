@@ -20,6 +20,7 @@ const PIPELINE_VIEWS = [
 ];
 import { LeadsKanban } from "@/components/leads/LeadsKanban";
 import { LeadsTable } from "@/components/leads/LeadsTable";
+import { LeadsViewPersist } from "@/components/leads/LeadsViewPersist";
 // import { LeadQuickFilters } from "@/components/leads/LeadQuickFilters";
 import { FilterBar } from "@/components/common/FilterBar";
 import { Pager } from "@/components/common/Pager";
@@ -233,6 +234,8 @@ export default async function LeadsPage({
 
   return (
     <div className="space-y-6">
+      {/* Restores the last-used view (kanban/list) when arriving with no ?view param. */}
+      <LeadsViewPersist explicitView={sp.view ?? null} />
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
@@ -245,7 +248,7 @@ export default async function LeadsPage({
           {/* View toggle — Kanban vs List */}
           <div className="inline-flex rounded-lg border border-border bg-secondary/40 p-0.5 gap-0.5 mr-1">
             <Link
-              href="/dashboard/leads"
+              href="/dashboard/leads?view=kanban"
               className={`px-2.5 py-1 rounded-md text-xs font-medium inline-flex items-center gap-1.5 transition-colors ${view === "kanban"
                 ? "bg-card shadow-sm text-foreground"
                 : "text-muted-foreground hover:text-foreground"

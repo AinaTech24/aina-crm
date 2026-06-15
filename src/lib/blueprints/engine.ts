@@ -244,7 +244,17 @@ export async function transitionTo(
   const currentStageKey = lockedRow.current_stage_key ?? inst.currentStageKey;
   const instStatus = lockedRow.status ?? inst.status;
 
-  if (currentStageKey === toStageKey) return { ok: true, fromStage: toStageKey, toStage: toStageKey };
+  if (currentStageKey === toStageKey) {
+    // The blueprint instance is already at the target, but leads.stage (the
+    // legacy column the Kanban + list read) can drift out of sync — e.g. a card
+    // shown under an alias, or a prior direct stage edit. Mirror it anyway so a
+    // drag that the board treats as a real move actually persists; otherwise the
+    // card snaps back to its old column on the next load. No-op when already equal.
+    await tx.execute(
+      sql`UPDATE leads SET stage = ${toStageKey}, updated_at = now() WHERE id = ${leadId}::uuid AND tenant_id = ${tenantId}::uuid AND stage IS DISTINCT FROM ${toStageKey}` as any
+    );
+    return { ok: true, fromStage: toStageKey, toStage: toStageKey };
+  }
 
   // ── Terminal guard ─────────────────────────────────────────────────────
   // A completed journey (Active Client) is frozen — even systemBypass/force

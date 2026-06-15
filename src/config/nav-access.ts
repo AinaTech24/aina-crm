@@ -27,7 +27,6 @@ export const NAV_ACCESS_GROUPS: NavAccessGroup[] = [
       { key: "/dashboard/boards", label: "My Dashboards" },
       { key: "/dashboard/command-center", label: "Command Center" },
       { key: "/dashboard/next-best-action", label: "Next Best Action" },
-      { key: "/dashboard/signals", label: "Sales Signals" },
       { key: "/dashboard/tasks", label: "Tasks", module: "tasks" },
       { key: "/dashboard/review-meetings", label: "Meetings", module: "review_meetings" },
       { key: "/dashboard/calendar", label: "Calendar" },
