@@ -7,7 +7,7 @@
  */
 
 import { useMemo, useState } from "react";
-import { Field, Insight } from "./ui";
+import { Insight, Section, Stat, Table } from "./ui";
 
 type Q = { q: string; options: { label: string; score: number }[] };
 
@@ -159,6 +159,22 @@ export function MoneyPersonalityQuiz() {
         ))}
       </div>
 
+      {/* Captured by the combined-report exporter (not shown) — the client's answers. */}
+      {answeredCount > 0 && (
+        <div hidden aria-hidden="true">
+          {answers.map((a, i) =>
+            a != null ? (
+              <div
+                key={i}
+                data-pdf-input
+                data-pdf-input-label={`Q${i + 1}. ${QUESTIONS[i].q}`}
+                data-pdf-input-value={QUESTIONS[i].options[a].label}
+              />
+            ) : null,
+          )}
+        </div>
+      )}
+
       {!done && (
         <div className="text-xs text-muted-foreground">
           {answeredCount}/{QUESTIONS.length} answered — finish all to reveal the profile.
@@ -166,7 +182,7 @@ export function MoneyPersonalityQuiz() {
       )}
 
       {profile && (
-        <>
+        <Section n="★" title="Your money personality">
           <div
             className={`rounded-xl border p-5 text-center ${
               profile.tone === "rose"
@@ -183,6 +199,12 @@ export function MoneyPersonalityQuiz() {
             </div>
             <div className="text-2xl font-extrabold mt-1">{profile.name}</div>
             <div className="text-xs text-muted-foreground mt-1">{profile.tagline}</div>
+          </div>
+
+          {/* Capturable result facts (Stat primitive → picked up by the PDF exporter). */}
+          <div className="grid grid-cols-2 gap-3">
+            <Stat label="Profile" value={profile.name} tone={profile.tone} />
+            <Stat label="Risk score" value={`${score} / ${QUESTIONS.length * 4}`} />
           </div>
 
           <div>
@@ -207,6 +229,9 @@ export function MoneyPersonalityQuiz() {
             </div>
           </div>
 
+          {/* Same mix as a table so it lands in the client PDF. */}
+          <Table head={["Asset", "Suggested allocation"]} rows={alloc.map((a) => [a.label, `${a.pct}%`])} />
+
           <Insight tone={profile.tone}>
             A starting point, not a prescription. The final allocation should reflect {clientName || "the client"}&rsquo;s goals,
             timelines and tax position — exactly the conversation this quiz is designed to start.
@@ -215,7 +240,7 @@ export function MoneyPersonalityQuiz() {
           <button type="button" onClick={reset} className="btn-ghost text-xs print:hidden">
             Retake quiz
           </button>
-        </>
+        </Section>
       )}
     </div>
   );
