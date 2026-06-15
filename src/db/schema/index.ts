@@ -8,6 +8,7 @@ export * from "./folios";
 export * from "./transactions";
 export * from "./leads";
 export * from "./tasks";
+export * from "./daily_trackers";
 export * from "./goals";
 export * from "./workflows";
 export * from "./segments";

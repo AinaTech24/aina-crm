@@ -1,5 +1,5 @@
 import { and, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
-import { Plus, ListChecks } from "lucide-react";
+import { Plus, ListChecks, CalendarCheck } from "lucide-react";
 import Link from "next/link";
 import { withTenant } from "@/db/client";
 import { tasks, users, investors, leads } from "@/db/schema";
@@ -189,6 +189,12 @@ export default async function TasksPage({
         </div>
         <div className="flex items-center gap-3">
           <WorkSwitcher current="/dashboard/tasks" />
+          <Link
+            href="/dashboard/tasks/daily"
+            className="rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium flex items-center gap-1.5 hover:bg-secondary/60"
+          >
+            <CalendarCheck className="size-4 text-brand-cyan" /> Daily Tracker
+          </Link>
           <Link
             href="/dashboard/tasks/new"
             className="rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-sm font-medium flex items-center gap-1.5"
