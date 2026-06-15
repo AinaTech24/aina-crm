@@ -331,7 +331,7 @@ function ReasonRow({
   tone: "orange" | "amber" | "slate";
 }) {
   const dot =
-    tone === "orange" ? "bg-orange-500" : tone === "amber" ? "bg-amber-500" : "bg-slate-400";
+    tone === "orange" ? "bg-brand-cyan" : tone === "amber" ? "bg-amber-500" : "bg-slate-400";
   const isActive = active === cat;
   return (
     <Link

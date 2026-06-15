@@ -32,7 +32,7 @@ const TYPE_TONE: Record<string, string> = {
   redemption: "bg-rose-50 text-rose-700",
   switch: "bg-purple-50 text-purple-700",
   sip: "bg-blue-50 text-blue-700",
-  sip_stop: "bg-orange-50 text-orange-700",
+  sip_stop: "bg-brand-cyan-light/50 text-brand-cyan-deep",
   sip_pause: "bg-amber-50 text-amber-700",
   stp: "bg-cyan-50 text-cyan-700",
   swp: "bg-teal-50 text-teal-700",

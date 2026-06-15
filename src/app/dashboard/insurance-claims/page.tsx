@@ -13,9 +13,9 @@ export const dynamic = "force-dynamic";
 const STATUS_META: Record<string, { label: string; tone: string }> = {
   empty: { label: "Empty", tone: "bg-slate-100 text-slate-600" },
   claim_intimated: { label: "Claim Intimated", tone: "bg-amber-50 text-amber-700" },
-  file_awaited: { label: "File Awaited", tone: "bg-orange-50 text-orange-700" },
+  file_awaited: { label: "File Awaited", tone: "bg-brand-cyan-light/50 text-brand-cyan-deep" },
   file_received: { label: "File Received", tone: "bg-cyan-50 text-cyan-700" },
-  add_info_awaited: { label: "Add Info Awaited", tone: "bg-orange-50 text-orange-700" },
+  add_info_awaited: { label: "Add Info Awaited", tone: "bg-brand-cyan-light/50 text-brand-cyan-deep" },
   query: { label: "Query", tone: "bg-violet-50 text-violet-700" },
   query_replied: { label: "Query Replied", tone: "bg-indigo-50 text-indigo-700" },
   under_process: { label: "Under Process", tone: "bg-blue-50 text-blue-700" },

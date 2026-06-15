@@ -95,7 +95,7 @@ const sourceColors: Record<string, string> = {
   meta_ads: "bg-purple-50 text-purple-700",
   google: "bg-amber-50 text-amber-700",
   google_ads: "bg-amber-50 text-amber-700",
-  cold_call: "bg-orange-50 text-orange-700",
+  cold_call: "bg-brand-cyan-light/50 text-brand-cyan-deep",
   existing_client: "bg-teal-50 text-teal-700",
   manual: "bg-gray-50 text-gray-700",
   walk_in: "bg-teal-50 text-teal-700",

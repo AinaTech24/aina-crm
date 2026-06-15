@@ -51,7 +51,7 @@ const CAT_LABEL: Record<string, string> = {
 };
 const CAT_TONE: Record<string, string> = {
   insufficient_balance: "bg-amber-50 text-amber-700 border-amber-200",
-  mandate_expired: "bg-orange-50 text-orange-700 border-orange-200",
+  mandate_expired: "bg-brand-cyan-light/50 text-brand-cyan-deep border-brand-cyan/30",
   technical: "bg-slate-50 text-slate-600 border-slate-200",
 };
 

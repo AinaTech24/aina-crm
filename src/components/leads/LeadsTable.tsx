@@ -53,7 +53,7 @@ const sourceColors: Record<string, string> = {
   social_media: "bg-purple-50 text-purple-700 border-purple-200",
   meta_ads: "bg-purple-50 text-purple-700 border-purple-200",
   google: "bg-amber-50 text-amber-700 border-amber-200",
-  cold_call: "bg-orange-50 text-orange-700 border-orange-200",
+  cold_call: "bg-brand-cyan-light/50 text-brand-cyan-deep border-brand-cyan/30",
   existing_client: "bg-teal-50 text-teal-700 border-teal-200",
   manual: "bg-gray-50 text-gray-700 border-gray-200",
   walk_in: "bg-teal-50 text-teal-700 border-teal-200",

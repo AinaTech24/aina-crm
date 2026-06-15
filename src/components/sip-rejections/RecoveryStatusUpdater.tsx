@@ -25,8 +25,8 @@ const STATUSES = [
 const TONE: Record<string, string> = {
   pending: "bg-amber-50 text-amber-700 border-amber-200",
   client_contacted: "bg-blue-50 text-blue-700 border-blue-200",
-  bank_issue: "bg-orange-50 text-orange-700 border-orange-200",
-  mandate_issue: "bg-orange-50 text-orange-700 border-orange-200",
+  bank_issue: "bg-brand-cyan-light/50 text-brand-cyan-deep border-brand-cyan/30",
+  mandate_issue: "bg-brand-cyan-light/50 text-brand-cyan-deep border-brand-cyan/30",
   reprocessed: "bg-cyan-50 text-cyan-700 border-cyan-200",
   recovered: "bg-emerald-50 text-emerald-700 border-emerald-200",
   not_recoverable: "bg-rose-50 text-rose-700 border-rose-200",

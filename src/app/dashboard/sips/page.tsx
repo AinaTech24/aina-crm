@@ -34,7 +34,7 @@ const STATUS_TONE: Record<string, string> = {
   rejected: "bg-rose-50 text-rose-700",
   completed: "bg-blue-50 text-blue-700",
   pending: "bg-amber-50 text-amber-700",
-  expired: "bg-orange-50 text-orange-700",
+  expired: "bg-brand-cyan-light/50 text-brand-cyan-deep",
 };
 
 const STATUS_LABEL: Record<string, string> = {

@@ -63,7 +63,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   sop: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/20 dark:text-amber-400 dark:border-amber-900/50",
   marketing_approval: "bg-pink-50 text-pink-700 border-pink-200 dark:bg-pink-950/20 dark:text-pink-400 dark:border-pink-900/50",
   complaint: "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/20 dark:text-rose-400 dark:border-rose-900/50",
-  audit_report: "bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-950/20 dark:text-orange-400 dark:border-orange-900/50",
+  audit_report: "bg-brand-cyan-light/50 text-brand-cyan-deep border-brand-cyan/30 dark:bg-brand-cyan/10 dark:text-brand-cyan dark:border-brand-cyan/30",
   ria_compliance: "bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-950/20 dark:text-teal-400 dark:border-teal-900/50",
   other: "bg-gray-50 text-gray-700 border-gray-200 dark:bg-slate-900 dark:text-slate-400 dark:border-slate-800",
 };
