@@ -111,6 +111,8 @@ export function parseCamsFile(rows: string[][]): {
     nom3: col("nom3_name"),
     nom3Rel: col("nom3_relation"),
     nom3Pct: col("nom3_percentage"),
+    guardPan: col("guard_pan"),
+    guardName: col("guard_name"),
   };
 
   const groups = new Map<string, RtaFolioRecord>();
@@ -160,6 +162,9 @@ export function parseCamsFile(rows: string[][]): {
           occupation: get(C.occupation) || null,
           category: mapCategory(tax),
           residency: mapResidency(tax),
+          isMinor: mapCategory(tax) === "minor",
+          guardianPan: get(C.guardPan).toUpperCase() || null,
+          guardianName: get(C.guardName) || null,
           kycVerified: !!get(C.ckyc),
           ckycNumber: get(C.ckyc) || null,
           taxStatus: tax || null,

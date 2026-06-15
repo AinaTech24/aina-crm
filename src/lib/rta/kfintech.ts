@@ -145,6 +145,8 @@ export function parseKfintechFolioMaster(rows: string[][]): {
     nom2Ratio: col("Nominee2 Ratio"),
     nom3Ratio: col("Nominee3 Ratio"),
     nomDob: col("Nominee DOB"),
+    guardName: col("GuardianName"),
+    guardPan: col("GuardPanNo"),
   };
 
   const groups = new Map<string, RtaFolioRecord>();
@@ -178,6 +180,7 @@ export function parseKfintechFolioMaster(rows: string[][]): {
       const jointNames = [get(C.joint1), get(C.joint2)].filter(Boolean);
       const line1 = [get(C.addr1), get(C.addr2), get(C.addr3)].filter(Boolean).join(", ");
 
+      const cat = mapCategory(get(C.statusDesc));
       const investor: RtaInvestor = {
         pan,
         name: get(C.name),
@@ -186,8 +189,11 @@ export function parseKfintechFolioMaster(rows: string[][]): {
         email: get(C.email) || null,
         mobile: get(C.mobile) || null,
         occupation: get(C.occupation) || null,
-        category: mapCategory(get(C.statusDesc)),
+        category: cat,
         residency: mapResidency(get(C.categoryDesc), get(C.statusDesc)),
+        isMinor: cat === "minor",
+        guardianPan: get(C.guardPan).toUpperCase() || null,
+        guardianName: get(C.guardName) || null,
         kycVerified: get(C.kyc1).toUpperCase() === "Y",
         ckycNumber: get(C.ckyc) || null,
         taxStatus: get(C.taxStatus) || null,

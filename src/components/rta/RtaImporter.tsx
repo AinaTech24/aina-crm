@@ -38,7 +38,7 @@ type Summary = {
   dryRun: boolean;
   rta: string;
   reportType: string;
-  investors: { total: number; created: number; updated: number };
+  investors: { total: number; created: number; updated: number; minors: number };
   folios: { total: number; created: number; updated: number; skippedNoPan: number };
   schemes: number;
   aum?: number;
@@ -248,7 +248,11 @@ export function RtaImporter() {
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <Stat label="Investors" value={s.investors.total} sub={`${s.investors.created} new · ${s.investors.updated} updated`} />
+            <Stat
+              label="Clients"
+              value={s.investors.total}
+              sub={`${s.investors.created} new · ${s.investors.updated} updated${s.investors.minors ? ` · ${s.investors.minors} minors` : ""}`}
+            />
             <Stat label="Folios" value={s.folios.total} sub={`${s.folios.created} new · ${s.folios.updated} updated`} />
             <Stat label="Schemes" value={s.schemes} sub={`${s.amcs.length} AMCs`} />
             <Stat

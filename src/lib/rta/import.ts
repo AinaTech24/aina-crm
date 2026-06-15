@@ -26,7 +26,7 @@ export type RtaImportSummary = {
   dryRun: boolean;
   rta: string;
   reportType: string;
-  investors: { total: number; created: number; updated: number };
+  investors: { total: number; created: number; updated: number; minors: number };
   folios: { total: number; created: number; updated: number; skippedNoPan: number };
   schemes: number;
   /** Total market value across the feed (holdings imports only). */
@@ -53,19 +53,65 @@ export async function importRtaFolios(
   const kind = opts.kind ?? "master";
   const rta = records[0]?.rta ?? "kfintech";
 
-  // ── 1. Dedupe investors by PAN (first occurrence wins; one feed is consistent
-  //       per person). Records without a PAN can't resolve an investor. ──────
-  const investorByPan = new Map<string, RtaFolioRecord["investor"]>();
+  // ── 1. Resolve each folio to a CLIENT. Adults key on PAN. A minor folio is
+  //       operated under a guardian and has no PAN of its own, so it keys on a
+  //       deterministic synthetic id (guardian PAN + minor name) — it is NEVER
+  //       merged into the guardian's own PAN. Each guardian is ensured to exist
+  //       as their own client (stubbed from name if they don't otherwise appear).
+  const slug = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const clientKeyFor = (inv: RtaFolioRecord["investor"]): { key: string | null; isMinor: boolean; guardianPan: string | null } => {
+    const isMinor = inv.category === "minor" || !!inv.isMinor;
+    if (isMinor) {
+      const gp = (inv.guardianPan ?? "").toUpperCase().trim() || null;
+      const own = inv.pan ? inv.pan.toUpperCase() : null;
+      // ALWAYS "MINOR:"-prefixed so a minor key can never equal an adult's plain
+      // PAN. Scope by guardian PAN + name when available, else the minor's own
+      // PAN; if neither exists the folio can't be identified and is skipped.
+      const key = gp && inv.name ? `MINOR:${gp}:${slug(inv.name)}` : own ? `MINOR:${own}` : null;
+      return { key, isMinor: true, guardianPan: gp };
+    }
+    return { key: inv.pan ? inv.pan.toUpperCase() : null, isMinor: false, guardianPan: null };
+  };
+
+  type ClientEntry = {
+    inv: RtaFolioRecord["investor"];
+    isMinor: boolean;
+    nominees: RtaFolioRecord["nominees"];
+    bank: RtaFolioRecord["bank"];
+  };
+  const clientByKey = new Map<string, ClientEntry>();
+  const recordKeys: (string | null)[] = []; // client key per record, by index
+  const minorGuardianPan = new Map<string, string>(); // minor key -> guardian PAN
+  const guardianNames = new Map<string, string>(); // guardian PAN -> name
   let skippedNoPan = 0;
+
   for (const r of records) {
-    const pan = r.investor.pan;
-    if (!pan) {
+    const { key, isMinor, guardianPan } = clientKeyFor(r.investor);
+    recordKeys.push(key);
+    if (!key) {
       skippedNoPan++;
       continue;
     }
-    if (!investorByPan.has(pan)) investorByPan.set(pan, r.investor);
+    if (!clientByKey.has(key)) clientByKey.set(key, { inv: r.investor, isMinor, nominees: r.nominees, bank: r.bank });
+    if (isMinor && guardianPan) {
+      minorGuardianPan.set(key, guardianPan);
+      if (r.investor.guardianName && !guardianNames.get(guardianPan)) guardianNames.set(guardianPan, r.investor.guardianName);
+      else if (!guardianNames.has(guardianPan)) guardianNames.set(guardianPan, "");
+    }
   }
-  const pans = [...investorByPan.keys()];
+  // Ensure every guardian exists as an adult client.
+  for (const [gp, gname] of guardianNames) {
+    if (!clientByKey.has(gp)) {
+      clientByKey.set(gp, {
+        inv: { pan: gp, name: gname || gp, nameAsPerPan: gname || undefined, category: "individual" },
+        isMinor: false,
+        nominees: [],
+        bank: {},
+      });
+    }
+  }
+  const pans = [...clientByKey.keys()];
+  const minorsCount = [...clientByKey.values()].filter((c) => c.isMinor).length;
 
   // ── 2. Which PANs / folios already exist (for created-vs-updated counts) ───
   const existingPans = new Set<string>();
@@ -77,7 +123,7 @@ export async function importRtaFolios(
     for (const row of rows.rows as { pan: string }[]) existingPans.add(row.pan);
   }
 
-  const folioRecords = records.filter((r) => r.investor.pan);
+  const folioRecords = records.filter((_, i) => !!recordKeys[i]);
   const folioKeys = folioRecords.map((r) => `${r.amcCode}::${r.folioNumber}`);
   const allFolioNumbers = [...new Set(folioRecords.map((r) => r.folioNumber))];
   const existingFolios = new Set<string>();
@@ -113,7 +159,7 @@ export async function importRtaFolios(
     dryRun,
     rta,
     reportType: opts.reportType ?? "",
-    investors: { total: pans.length, created: investorsCreated, updated: investorsUpdated },
+    investors: { total: pans.length, created: investorsCreated, updated: investorsUpdated, minors: minorsCount },
     folios: { total: uniqueFolioKeys.length, created: foliosCreated, updated: foliosUpdated, skippedNoPan },
     schemes,
     aum: kind !== "master" ? records.reduce((n, r) => n + (r.aum ?? 0), 0) : undefined,
@@ -160,14 +206,14 @@ export async function importRtaFolios(
   const investorSet = kind === "holdings" ? holdingsInvestorSet : masterInvestorSet;
 
   for (const part of chunk(pans, 400)) {
-    const values = part.map((pan) => {
-      const inv = investorByPan.get(pan)!;
-      const rec = records.find((r) => r.investor.pan === pan)!;
-      const firstNominee = rec.nominees[0];
+    const values = part.map((key) => {
+      const entry = clientByKey.get(key)!;
+      const inv = entry.inv;
+      const firstNominee = entry.nominees[0];
       return {
         tenantId,
-        pan,
-        name: inv.name || pan,
+        pan: key, // real PAN for adults; synthetic guardian-scoped id for minors
+        name: inv.name || key,
         nameAsPerPan: inv.nameAsPerPan ?? inv.name ?? null,
         dob: inv.dob ?? null,
         email: inv.email ?? null,
@@ -177,18 +223,18 @@ export async function importRtaFolios(
         address: inv.address ?? null,
         investorCategory: inv.category,
         residencyStatus: inv.residency ?? null,
-        isMinor: inv.category === "minor",
+        isMinor: entry.isMinor,
         kycStatus: inv.kycVerified ? ("verified" as const) : ("pending" as const),
         ckycNumber: inv.ckycNumber ?? null,
         nomineeName: firstNominee?.name ?? null,
         nomineeRelation: firstNominee?.relation ?? null,
         nomineeDob: firstNominee?.dob ?? null,
-        nominees: rec.nominees.map((n) => ({ name: n.name, relation: n.relation, dob: n.dob ?? undefined, sharePct: n.sharePct })),
-        bankName: rec.bank.bankName ?? null,
-        bankAccountNumberMasked: rec.bank.accountMasked ?? null,
-        bankIfsc: rec.bank.ifsc ?? null,
-        bankAccounts: rec.bank.bankName
-          ? [{ bankName: rec.bank.bankName, accountMasked: rec.bank.accountMasked, ifsc: rec.bank.ifsc, accountType: rec.bank.accountType }]
+        nominees: entry.nominees.map((n) => ({ name: n.name, relation: n.relation, dob: n.dob ?? undefined, sharePct: n.sharePct })),
+        bankName: entry.bank.bankName ?? null,
+        bankAccountNumberMasked: entry.bank.accountMasked ?? null,
+        bankIfsc: entry.bank.ifsc ?? null,
+        bankAccounts: entry.bank.bankName
+          ? [{ bankName: entry.bank.bankName, accountMasked: entry.bank.accountMasked, ifsc: entry.bank.ifsc, accountType: entry.bank.accountType }]
           : [],
         rmId: opts.assignRmId ?? null,
       };
@@ -204,30 +250,31 @@ export async function importRtaFolios(
   }
 
   // ── 4. Resolve PAN → investor id, then upsert folios ───────────────────────
-  const panToId = new Map<string, string>();
+  const keyToId = new Map<string, string>();
   for (const part of chunk(pans, 1000)) {
     if (!part.length) continue;
     const rows = await tx.execute(
       sql`SELECT id, pan FROM investors WHERE tenant_id = ${tenantId}::uuid AND pan = ANY(${part})`
     );
-    for (const row of rows.rows as { id: string; pan: string }[]) panToId.set(row.pan, String(row.id));
+    for (const row of rows.rows as { id: string; pan: string }[]) keyToId.set(row.pan, String(row.id));
   }
 
-  // Dedupe folios by (amcCode, folioNumber); merge schemes across rows.
-  const folioByKey = new Map<string, RtaFolioRecord>();
-  for (const r of folioRecords) {
-    const key = `${r.amcCode}::${r.folioNumber}`;
-    const existing = folioByKey.get(key);
-    if (!existing) {
-      folioByKey.set(key, { ...r, schemes: [...r.schemes] });
-    } else {
-      for (const s of r.schemes) if (!existing.schemes.some((x) => x.schemeCode === s.schemeCode)) existing.schemes.push(s);
-    }
+  // Dedupe folios by (amcCode, folioNumber); merge schemes. Carry the client key
+  // so a minor's folio attaches to the MINOR, not the guardian.
+  const folioByKey = new Map<string, { r: RtaFolioRecord; clientKey: string }>();
+  for (let i = 0; i < records.length; i++) {
+    const clientKey = recordKeys[i];
+    if (!clientKey) continue;
+    const r = records[i];
+    const fk = `${r.amcCode}::${r.folioNumber}`;
+    const existing = folioByKey.get(fk);
+    if (!existing) folioByKey.set(fk, { r: { ...r, schemes: [...r.schemes] }, clientKey });
+    else for (const s of r.schemes) if (!existing.r.schemes.some((x) => x.schemeCode === s.schemeCode)) existing.r.schemes.push(s);
   }
 
   const folioValues = [...folioByKey.values()]
-    .map((r) => {
-      const investorId = r.investor.pan ? panToId.get(r.investor.pan) : undefined;
+    .map(({ r, clientKey }) => {
+      const investorId = keyToId.get(clientKey);
       if (!investorId) return null;
       return {
         tenantId,
@@ -274,7 +321,7 @@ export async function importRtaFolios(
 
   // ── 5. Holdings/full feeds refresh the cached investor AUM + last-txn-at ────
   if (kind !== "master") {
-    const ids = [...new Set([...panToId.values()])];
+    const ids = [...new Set([...keyToId.values()])];
     for (const part of chunk(ids, 1000)) {
       if (!part.length) continue;
       await tx.execute(sql`
@@ -287,15 +334,17 @@ export async function importRtaFolios(
         WHERE i.id = sub.investor_id AND i.tenant_id = ${tenantId}::uuid
       `);
     }
-    const txnByPan = new Map<string, string>();
-    for (const r of folioRecords) {
-      if (r.investor.pan && r.lastTransactionAt) {
-        const cur = txnByPan.get(r.investor.pan);
-        if (!cur || r.lastTransactionAt > cur) txnByPan.set(r.investor.pan, r.lastTransactionAt);
+    const txnByKey = new Map<string, string>();
+    for (let i = 0; i < records.length; i++) {
+      const key = recordKeys[i];
+      const r = records[i];
+      if (key && r.lastTransactionAt) {
+        const cur = txnByKey.get(key);
+        if (!cur || r.lastTransactionAt > cur) txnByKey.set(key, r.lastTransactionAt);
       }
     }
-    const txnPairs = [...txnByPan.entries()]
-      .map(([pan, txn]) => ({ id: panToId.get(pan), txn }))
+    const txnPairs = [...txnByKey.entries()]
+      .map(([key, txn]) => ({ id: keyToId.get(key), txn }))
       .filter((x): x is { id: string; txn: string } => !!x.id);
     for (const part of chunk(txnPairs, 500)) {
       if (!part.length) continue;
@@ -305,6 +354,98 @@ export async function importRtaFolios(
         UPDATE investors i SET last_transaction_at = GREATEST(i.last_transaction_at, v.txn::timestamptz), updated_at = now()
         FROM (SELECT unnest(${idsArr}::uuid[]) AS id, unnest(${txnsArr}::date[]) AS txn) v
         WHERE i.id = v.id AND i.tenant_id = ${tenantId}::uuid
+      `);
+    }
+  }
+
+  // ── 6. Link each minor to its guardian + group them into one family. ───────
+  if (minorGuardianPan.size > 0) {
+    const linkPairs = [...minorGuardianPan.entries()]
+      .map(([minorKey, gp]) => ({ minorId: keyToId.get(minorKey), guardianId: keyToId.get(gp) }))
+      .filter((x): x is { minorId: string; guardianId: string } => !!x.minorId && !!x.guardianId);
+
+    // (a) guardian_investor_id + is_minor on each minor.
+    for (const part of chunk(linkPairs, 500)) {
+      if (!part.length) continue;
+      const mids = part.map((x) => x.minorId);
+      const gids = part.map((x) => x.guardianId);
+      await tx.execute(sql`
+        UPDATE investors m SET guardian_investor_id = v.gid::uuid, is_minor = true, updated_at = now()
+        FROM (SELECT unnest(${mids}::uuid[]) AS mid, unnest(${gids}::uuid[]) AS gid) v
+        WHERE m.id = v.mid AND m.tenant_id = ${tenantId}::uuid
+      `);
+    }
+
+    // (b) One household family per guardian — reuse the guardian's existing
+    //     family, or a family they already head (a prior import), else create one.
+    const minorsByGuardian = new Map<string, string[]>();
+    for (const { minorId, guardianId } of linkPairs) {
+      const arr = minorsByGuardian.get(guardianId) ?? [];
+      arr.push(minorId);
+      minorsByGuardian.set(guardianId, arr);
+    }
+    const guardianIds = [...minorsByGuardian.keys()];
+    const famByGuardian = new Map<string, string>();
+    const gName = new Map<string, string>();
+    const noFamily: string[] = [];
+    for (const partIds of chunk(guardianIds, 1000)) {
+      if (!partIds.length) continue;
+      const rows = await tx.execute(
+        sql`SELECT id, family_id, name FROM investors WHERE tenant_id = ${tenantId}::uuid AND id = ANY(${partIds}::uuid[])`
+      );
+      for (const row of rows.rows as any[]) {
+        const gid = String(row.id);
+        gName.set(gid, row.name ?? "");
+        if (row.family_id) famByGuardian.set(gid, String(row.family_id));
+        else noFamily.push(gid);
+      }
+    }
+    for (const partIds of chunk(noFamily, 1000)) {
+      if (!partIds.length) continue;
+      const rows = await tx.execute(
+        sql`SELECT id, primary_investor_id FROM families WHERE tenant_id = ${tenantId}::uuid AND primary_investor_id = ANY(${partIds}::uuid[])`
+      );
+      for (const row of rows.rows as any[]) famByGuardian.set(String(row.primary_investor_id), String(row.id));
+    }
+    const toCreate = noFamily.filter((gid) => !famByGuardian.has(gid));
+    for (const partIds of chunk(toCreate, 300)) {
+      if (!partIds.length) continue;
+      const names = partIds.map((gid) => (gName.get(gid) || "Family").trim() || "Family");
+      const ins = await tx.execute(sql`
+        INSERT INTO families (tenant_id, head_name, family_name, primary_investor_id)
+        SELECT ${tenantId}::uuid, v.nm, v.nm || ' Family', v.gid::uuid
+        FROM (SELECT unnest(${partIds}::uuid[]) AS gid, unnest(${names}::text[]) AS nm) v
+        RETURNING id, primary_investor_id
+      `);
+      for (const row of ins.rows as any[]) famByGuardian.set(String(row.primary_investor_id), String(row.id));
+    }
+    // Place the guardian in their family (only if they aren't already in one).
+    const gPairs = [...famByGuardian.entries()].filter(([gid]) => minorsByGuardian.has(gid));
+    for (const part of chunk(gPairs, 500)) {
+      if (!part.length) continue;
+      const gids = part.map(([gid]) => gid);
+      const fids = part.map(([, fid]) => fid);
+      await tx.execute(sql`
+        UPDATE investors g SET family_id = v.fid::uuid, family_role = coalesce(g.family_role, 'head'), updated_at = now()
+        FROM (SELECT unnest(${gids}::uuid[]) AS gid, unnest(${fids}::uuid[]) AS fid) v
+        WHERE g.id = v.gid AND g.tenant_id = ${tenantId}::uuid AND g.family_id IS NULL
+      `);
+    }
+    // Place each minor in their guardian's family.
+    const mPairs: { mid: string; fid: string }[] = [];
+    for (const [gid, minorIds] of minorsByGuardian) {
+      const fid = famByGuardian.get(gid);
+      if (!fid) continue;
+      for (const mid of minorIds) mPairs.push({ mid, fid });
+    }
+    for (const part of chunk(mPairs, 500)) {
+      if (!part.length) continue;
+      const mids = part.map((x) => x.mid);
+      const fids = part.map((x) => x.fid);
+      await tx.execute(sql`
+        UPDATE investors m SET family_id = v.fid::uuid, family_role = coalesce(m.family_role, 'minor'), updated_at = now()
+        FROM (SELECT unnest(${mids}::uuid[]) AS mid, unnest(${fids}::uuid[]) AS fid) v
+        WHERE m.id = v.mid AND m.tenant_id = ${tenantId}::uuid
       `);
     }
   }

@@ -58,6 +58,12 @@ export type RtaInvestor = {
   modeOfHolding?: string | null;
   jointNames?: string[];
   address?: { line1?: string; city?: string; state?: string; pincode?: string; country?: string };
+  /** A minor folio is operated under a guardian (the minor has no PAN of its
+   *  own). These let the importer create the minor as a SEPARATE client linked
+   *  to the guardian rather than merging it into the guardian's PAN. */
+  isMinor?: boolean;
+  guardianPan?: string | null;
+  guardianName?: string | null;
 };
 
 /** One folio (after grouping the feed's per-scheme rows by AMC + folio). */
