@@ -72,6 +72,23 @@ function num(v: any): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
+// Map our task enums onto Zoho's STOCK Tasks picklist values so the native
+// module accepts them without the MFD having to edit picklists (an unknown
+// picklist value makes Zoho reject the whole record).
+const ZOHO_TASK_STATUS: Record<string, string> = {
+  open: "Not Started",
+  in_progress: "In Progress",
+  blocked: "Waiting on someone else",
+  completed: "Completed",
+  cancelled: "Deferred",
+};
+const ZOHO_TASK_PRIORITY: Record<string, string> = {
+  low: "Low",
+  normal: "Normal",
+  high: "High",
+  urgent: "Highest",
+};
+
 export const ZOHO_MAPPINGS: ZohoMapping[] = [
   // ─────────────── Outbox-driven (Phase 1) ───────────────
   {
@@ -113,8 +130,8 @@ export const ZOHO_MAPPINGS: ZohoMapping[] = [
     toZoho: (r) =>
       clean({
         Subject: r.title || "Task",
-        Status: r.status,
-        Priority: r.priority,
+        Status: ZOHO_TASK_STATUS[r.status as string],
+        Priority: ZOHO_TASK_PRIORITY[r.priority as string],
         Due_Date: d(r.dueAt),
         Description: r.description,
         [EXTERNAL_ID_FIELD]: r.id,

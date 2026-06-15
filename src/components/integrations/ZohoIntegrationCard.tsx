@@ -172,8 +172,9 @@ export function ZohoIntegrationCard() {
             others are <strong>custom modules you create</strong> in Zoho (Setup → Modules and Fields → New Module)
             using the exact API name shown. Add a single-line{" "}
             <code className="px-1 rounded bg-secondary">Aina_Record_ID</code> field to every one — that&rsquo;s what
-            keeps the sync idempotent (no duplicate records). Until a custom module exists, that module&rsquo;s rows
-            are simply skipped.
+            keeps the sync idempotent (no duplicate records). Create the other custom fields as single-line text,
+            number or date (avoid picklists, so values are never rejected). Until a custom module exists, that
+            module&rsquo;s rows are simply skipped.
           </p>
           <ul className="grid grid-cols-2 gap-x-4 gap-y-1">
             {SYNCED_MODULES.map((m) => (
