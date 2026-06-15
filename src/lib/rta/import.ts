@@ -29,6 +29,8 @@ export type RtaImportSummary = {
   investors: { total: number; created: number; updated: number };
   folios: { total: number; created: number; updated: number; skippedNoPan: number };
   schemes: number;
+  /** Total market value across the feed (holdings imports only). */
+  aum?: number;
   amcs: { code: string; name: string; folios: number }[];
 };
 
@@ -45,9 +47,10 @@ export async function importRtaFolios(
   tx: Tx,
   tenantId: string,
   records: RtaFolioRecord[],
-  opts: { dryRun?: boolean; assignRmId?: string | null; reportType?: string } = {}
+  opts: { dryRun?: boolean; assignRmId?: string | null; reportType?: string; kind?: "master" | "holdings" } = {}
 ): Promise<RtaImportSummary> {
   const dryRun = !!opts.dryRun;
+  const kind = opts.kind ?? "master";
   const rta = records[0]?.rta ?? "kfintech";
 
   // ── 1. Dedupe investors by PAN (first occurrence wins; one feed is consistent
@@ -113,12 +116,49 @@ export async function importRtaFolios(
     investors: { total: pans.length, created: investorsCreated, updated: investorsUpdated },
     folios: { total: uniqueFolioKeys.length, created: foliosCreated, updated: foliosUpdated, skippedNoPan },
     schemes,
+    aum: kind === "holdings" ? records.reduce((n, r) => n + (r.aum ?? 0), 0) : undefined,
     amcs,
   };
 
   if (dryRun) return summary;
 
-  // ── 3. Upsert investors (fill-don't-clobber; CRM-owned fields untouched) ───
+  // ── 3. Upsert investors. The master feed fills KYC/contact/nominee/bank; the
+  //       holdings feed only refreshes contact + address (never KYC/nominee/bank
+  //       /category), so a holdings import can't degrade master data. ──────────
+  const masterInvestorSet = {
+    nameAsPerPan: sql`excluded.name_as_per_pan`,
+    dob: sql`coalesce(${investors.dob}, excluded.dob)`,
+    email: sql`coalesce(nullif(excluded.email, ''), ${investors.email})`,
+    phone: sql`coalesce(nullif(excluded.phone, ''), ${investors.phone})`,
+    whatsappPhone: sql`coalesce(nullif(excluded.whatsapp_phone, ''), ${investors.whatsappPhone})`,
+    occupation: sql`coalesce(nullif(excluded.occupation, ''), ${investors.occupation})`,
+    address: sql`case when excluded.address is not null then excluded.address else ${investors.address} end`,
+    investorCategory: sql`excluded.investor_category`,
+    residencyStatus: sql`coalesce(excluded.residency_status, ${investors.residencyStatus})`,
+    isMinor: sql`excluded.is_minor`,
+    // Only upgrade KYC to verified — never downgrade an existing status.
+    kycStatus: sql`case when excluded.kyc_status = 'verified' then 'verified' else ${investors.kycStatus} end`,
+    ckycNumber: sql`coalesce(nullif(excluded.ckyc_number, ''), ${investors.ckycNumber})`,
+    nomineeName: sql`coalesce(nullif(excluded.nominee_name, ''), ${investors.nomineeName})`,
+    nomineeRelation: sql`coalesce(nullif(excluded.nominee_relation, ''), ${investors.nomineeRelation})`,
+    nomineeDob: sql`coalesce(${investors.nomineeDob}, excluded.nominee_dob)`,
+    nominees: sql`case when jsonb_array_length(excluded.nominees) > 0 then excluded.nominees else ${investors.nominees} end`,
+    bankName: sql`coalesce(nullif(excluded.bank_name, ''), ${investors.bankName})`,
+    bankAccountNumberMasked: sql`coalesce(nullif(excluded.bank_account_masked, ''), ${investors.bankAccountNumberMasked})`,
+    bankIfsc: sql`coalesce(nullif(excluded.bank_ifsc, ''), ${investors.bankIfsc})`,
+    bankAccounts: sql`case when jsonb_array_length(excluded.bank_accounts) > 0 then excluded.bank_accounts else ${investors.bankAccounts} end`,
+    updatedAt: sql`now()`,
+  };
+  const holdingsInvestorSet = {
+    nameAsPerPan: sql`coalesce(nullif(excluded.name_as_per_pan, ''), ${investors.nameAsPerPan})`,
+    email: sql`coalesce(nullif(excluded.email, ''), ${investors.email})`,
+    phone: sql`coalesce(nullif(excluded.phone, ''), ${investors.phone})`,
+    whatsappPhone: sql`coalesce(nullif(excluded.whatsapp_phone, ''), ${investors.whatsappPhone})`,
+    address: sql`case when excluded.address is not null then excluded.address else ${investors.address} end`,
+    updatedAt: sql`now()`,
+  };
+  const investorSet = kind === "holdings" ? holdingsInvestorSet : masterInvestorSet;
+
   for (const part of chunk(pans, 400)) {
     const values = part.map((pan) => {
       const inv = investorByPan.get(pan)!;
@@ -159,30 +199,7 @@ export async function importRtaFolios(
       .values(values)
       .onConflictDoUpdate({
         target: [investors.tenantId, investors.pan],
-        set: {
-          nameAsPerPan: sql`excluded.name_as_per_pan`,
-          dob: sql`coalesce(${investors.dob}, excluded.dob)`,
-          email: sql`coalesce(nullif(excluded.email, ''), ${investors.email})`,
-          phone: sql`coalesce(nullif(excluded.phone, ''), ${investors.phone})`,
-          whatsappPhone: sql`coalesce(nullif(excluded.whatsapp_phone, ''), ${investors.whatsappPhone})`,
-          occupation: sql`coalesce(nullif(excluded.occupation, ''), ${investors.occupation})`,
-          address: sql`case when excluded.address is not null then excluded.address else ${investors.address} end`,
-          investorCategory: sql`excluded.investor_category`,
-          residencyStatus: sql`coalesce(excluded.residency_status, ${investors.residencyStatus})`,
-          isMinor: sql`excluded.is_minor`,
-          // Only upgrade KYC to verified — never downgrade an existing status.
-          kycStatus: sql`case when excluded.kyc_status = 'verified' then 'verified' else ${investors.kycStatus} end`,
-          ckycNumber: sql`coalesce(nullif(excluded.ckyc_number, ''), ${investors.ckycNumber})`,
-          nomineeName: sql`coalesce(nullif(excluded.nominee_name, ''), ${investors.nomineeName})`,
-          nomineeRelation: sql`coalesce(nullif(excluded.nominee_relation, ''), ${investors.nomineeRelation})`,
-          nomineeDob: sql`coalesce(${investors.nomineeDob}, excluded.nominee_dob)`,
-          nominees: sql`case when jsonb_array_length(excluded.nominees) > 0 then excluded.nominees else ${investors.nominees} end`,
-          bankName: sql`coalesce(nullif(excluded.bank_name, ''), ${investors.bankName})`,
-          bankAccountNumberMasked: sql`coalesce(nullif(excluded.bank_account_masked, ''), ${investors.bankAccountNumberMasked})`,
-          bankIfsc: sql`coalesce(nullif(excluded.bank_ifsc, ''), ${investors.bankIfsc})`,
-          bankAccounts: sql`case when jsonb_array_length(excluded.bank_accounts) > 0 then excluded.bank_accounts else ${investors.bankAccounts} end`,
-          updatedAt: sql`now()`,
-        },
+        set: investorSet,
       });
   }
 
@@ -220,9 +237,30 @@ export async function importRtaFolios(
         amcName: r.amcName || r.amcCode,
         rta: r.rta,
         schemes: r.schemes,
+        ...(r.aum != null ? { aum: String(r.aum) } : {}),
       };
     })
-    .filter(Boolean) as Array<{ tenantId: string; investorId: string; folioNumber: string; amcCode: string; amcName: string; rta: "kfintech" | "cams"; schemes: RtaFolioRecord["schemes"] }>;
+    .filter(Boolean) as Array<{ tenantId: string; investorId: string; folioNumber: string; amcCode: string; amcName: string; rta: "kfintech" | "cams"; schemes: RtaFolioRecord["schemes"]; aum?: string }>;
+
+  // Holdings is authoritative for valuations; the master must NOT wipe schemes a
+  // prior holdings import wrote (only set them when the folio has none yet).
+  const folioSet =
+    kind === "holdings"
+      ? {
+          investorId: sql`excluded.investor_id`,
+          amcName: sql`excluded.amc_name`,
+          rta: sql`excluded.rta`,
+          schemes: sql`excluded.schemes`,
+          aum: sql`excluded.aum`,
+          updatedAt: sql`now()`,
+        }
+      : {
+          investorId: sql`excluded.investor_id`,
+          amcName: sql`excluded.amc_name`,
+          rta: sql`excluded.rta`,
+          schemes: sql`case when jsonb_array_length(coalesce(${foliosTable.schemes}, '[]'::jsonb)) = 0 then excluded.schemes else ${foliosTable.schemes} end`,
+          updatedAt: sql`now()`,
+        };
 
   for (const part of chunk(folioValues, 400)) {
     await tx
@@ -230,14 +268,45 @@ export async function importRtaFolios(
       .values(part)
       .onConflictDoUpdate({
         target: [foliosTable.tenantId, foliosTable.amcCode, foliosTable.folioNumber],
-        set: {
-          investorId: sql`excluded.investor_id`,
-          amcName: sql`excluded.amc_name`,
-          rta: sql`excluded.rta`,
-          schemes: sql`excluded.schemes`,
-          updatedAt: sql`now()`,
-        },
+        set: folioSet,
       });
+  }
+
+  // ── 5. Holdings feeds refresh the cached investor AUM + last-transaction-at ─
+  if (kind === "holdings") {
+    const ids = [...new Set([...panToId.values()])];
+    for (const part of chunk(ids, 1000)) {
+      if (!part.length) continue;
+      await tx.execute(sql`
+        UPDATE investors i SET aum = COALESCE(sub.total, 0), updated_at = now()
+        FROM (
+          SELECT investor_id, SUM(aum) AS total FROM folios
+          WHERE tenant_id = ${tenantId}::uuid AND investor_id = ANY(${part}::uuid[])
+          GROUP BY investor_id
+        ) sub
+        WHERE i.id = sub.investor_id AND i.tenant_id = ${tenantId}::uuid
+      `);
+    }
+    const txnByPan = new Map<string, string>();
+    for (const r of folioRecords) {
+      if (r.investor.pan && r.lastTransactionAt) {
+        const cur = txnByPan.get(r.investor.pan);
+        if (!cur || r.lastTransactionAt > cur) txnByPan.set(r.investor.pan, r.lastTransactionAt);
+      }
+    }
+    const txnPairs = [...txnByPan.entries()]
+      .map(([pan, txn]) => ({ id: panToId.get(pan), txn }))
+      .filter((x): x is { id: string; txn: string } => !!x.id);
+    for (const part of chunk(txnPairs, 500)) {
+      if (!part.length) continue;
+      const idsArr = part.map((x) => x.id);
+      const txnsArr = part.map((x) => x.txn);
+      await tx.execute(sql`
+        UPDATE investors i SET last_transaction_at = GREATEST(i.last_transaction_at, v.txn::timestamptz), updated_at = now()
+        FROM (SELECT unnest(${idsArr}::uuid[]) AS id, unnest(${txnsArr}::date[]) AS txn) v
+        WHERE i.id = v.id AND i.tenant_id = ${tenantId}::uuid
+      `);
+    }
   }
 
   return summary;

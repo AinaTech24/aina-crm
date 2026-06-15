@@ -17,6 +17,10 @@ export type RtaScheme = {
   schemeCode: string;
   schemeName: string;
   category?: string;
+  /** Holdings (from a valuation report like MFSD203) — absent in master feeds. */
+  units?: number;
+  nav?: number;
+  value?: number;
 };
 
 export type RtaNominee = {
@@ -67,6 +71,10 @@ export type RtaFolioRecord = {
   investor: RtaInvestor;
   nominees: RtaNominee[];
   bank: RtaBank;
+  /** Folio market value (sum of scheme values) — holdings feeds only. */
+  aum?: number;
+  /** Latest transaction date across the folio's schemes (ISO) — holdings feeds. */
+  lastTransactionAt?: string | null;
   brokerCode?: string;
   reportDate?: string | null; // ISO
   lastUpdatedDate?: string | null; // ISO
@@ -74,6 +82,8 @@ export type RtaFolioRecord = {
 
 export type RtaParseResult = {
   source: RtaSource;
+  /** Whether this feed carries the investor/folio master or holdings valuations. */
+  kind: "master" | "holdings" | "unknown";
   /** Report code, e.g. "MFSD211". */
   reportType: string;
   /** Number of data rows in the file (pre-grouping). */

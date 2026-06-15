@@ -24,9 +24,15 @@ const RTA_OPTIONS = [
 ];
 
 const FILE_TYPES: Record<string, { value: string; label: string; disabled?: boolean }[]> = {
-  kfintech: [{ value: "MFSD211", label: "MFSD211 — Folio / Investor Master" }],
+  kfintech: [
+    { value: "MFSD211", label: "MFSD211 — Folio / Investor Master" },
+    { value: "MFSD203", label: "MFSD203 — Holdings / Valuation" },
+  ],
   cams: [{ value: "WBR2", label: "WBR2 — Holdings (coming soon)", disabled: true }],
 };
+
+const inr = (n: number) =>
+  n >= 1e7 ? `₹${(n / 1e7).toFixed(2)} Cr` : n >= 1e5 ? `₹${(n / 1e5).toFixed(2)} L` : `₹${Math.round(n).toLocaleString("en-IN")}`;
 
 type Summary = {
   dryRun: boolean;
@@ -35,6 +41,7 @@ type Summary = {
   investors: { total: number; created: number; updated: number };
   folios: { total: number; created: number; updated: number; skippedNoPan: number };
   schemes: number;
+  aum?: number;
   amcs: { code: string; name: string; folios: number }[];
 };
 type ApiResult = {
@@ -251,6 +258,13 @@ export function RtaImporter() {
               tone={s.folios.skippedNoPan ? "amber" : "muted"}
             />
           </div>
+
+          {s.aum != null && (
+            <div className="rounded-lg border border-brand-cyan/30 bg-brand-cyan-light/30 px-4 py-2.5 text-sm">
+              <span className="text-muted-foreground">Total AUM {s.dryRun ? "in file" : "synced"}</span>{" "}
+              <span className="font-bold text-brand-cyan-deep">{inr(s.aum)}</span>
+            </div>
+          )}
 
           {s.dryRun && (
             <p className="text-xs text-muted-foreground">

@@ -99,6 +99,7 @@ export async function POST(req: NextRequest) {
           dryRun,
           assignRmId: assignToMe ? session.userId : null,
           reportType: parsed.reportType,
+          kind: parsed.kind === "holdings" ? "holdings" : "master",
         }),
       { userId: session.userId, branchId: session.branchId, roles: session.roles }
     );

@@ -230,10 +230,24 @@ export function parseKfintechFolioMaster(rows: string[][]): {
   }
 
   const folios = [...groups.values()];
+  canonicalizeAmcNames(folios);
+  return { reportType: "MFSD211", folios, missingPan, warnings };
+}
 
-  // The per-scheme heuristic yields several AMC-name variants for one fund code
-  // (e.g. fund 102 → "LIC MF" / "IDBI", since LIC absorbed IDBI MF). Collapse to
-  // ONE canonical name per fund code by majority vote (ties → shortest).
+/** "1,234.56" → 1234.56 (0 on blank/garbage). */
+function num(s?: string): number {
+  const v = (s ?? "").replace(/,/g, "").trim();
+  if (!v) return 0;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/**
+ * The per-scheme heuristic yields several AMC-name variants for one fund code
+ * (e.g. fund 102 → "LIC MF" / "IDBI", since LIC absorbed IDBI MF). Collapse to
+ * ONE canonical name per fund code by majority vote (ties → shortest). Mutates.
+ */
+function canonicalizeAmcNames(folios: RtaFolioRecord[]): void {
   const counts = new Map<string, Map<string, number>>();
   for (const f of folios) {
     const m = counts.get(f.amcCode) ?? new Map<string, number>();
@@ -253,6 +267,119 @@ export function parseKfintechFolioMaster(rows: string[][]): {
     canonical.set(code, best);
   }
   for (const f of folios) f.amcName = canonical.get(f.amcCode) ?? f.amcName;
+}
 
-  return { reportType: "MFSD211", folios, missingPan, warnings };
+/* ─────────────────── MFSD203 — Holdings / Valuation ─────────────────── */
+
+/** Columns that uniquely identify an MFSD203 holdings file. */
+const HOLDINGS_SIGNATURE = ["product code", "folio number", "balance", "nav", "aum"];
+
+export function isKfintechHoldings(header: string[]): boolean {
+  const have = new Set(header.map((h) => h.trim().toLowerCase()));
+  return HOLDINGS_SIGNATURE.every((h) => have.has(h));
+}
+
+export function parseKfintechHoldings(rows: string[][]): {
+  reportType: string;
+  folios: RtaFolioRecord[];
+  missingPan: number;
+  warnings: string[];
+} {
+  const header = rows[0].map((h) => h.trim());
+  const H: Record<string, number> = {};
+  header.forEach((h, i) => (H[h.toLowerCase()] = i));
+  const col = (name: string) => (name.toLowerCase() in H ? H[name.toLowerCase()] : -1);
+
+  const C = {
+    productCode: col("Product Code"),
+    fund: col("Fund"),
+    folio: col("Folio Number"),
+    fundDesc: col("Fund Description"),
+    balance: col("Balance"),
+    txnDate: col("Transaction Date"),
+    broker: col("Broker Code"),
+    name: col("Investor Name"),
+    addr1: col("Address #1"),
+    addr2: col("Address #2"),
+    addr3: col("Address #3"),
+    city: col("City"),
+    pincode: col("Pincode"),
+    phone: col("Phone Residence"),
+    email: col("Email"),
+    aum: col("AUM"),
+    nav: col("NAV"),
+    reportDate: col("Report Date"),
+    pan: col("PAN"),
+    mobile: col("Mobile No"),
+  };
+
+  const groups = new Map<string, RtaFolioRecord & { _maxTxn: string | null }>();
+  let missingPan = 0;
+
+  for (let r = 1; r < rows.length; r++) {
+    const row = rows[r];
+    if (!row || row.length < 5) continue;
+    const get = (i: number) => (i >= 0 && i < row.length ? (row[i] ?? "").trim() : "");
+
+    const fund = get(C.fund);
+    const folio = get(C.folio);
+    if (!fund || !folio) continue;
+    const key = `${fund}::${folio}`;
+
+    let rec = groups.get(key);
+    if (!rec) {
+      const pan = get(C.pan).toUpperCase() || null;
+      if (!pan) missingPan++;
+      const line1 = [get(C.addr1), get(C.addr2), get(C.addr3)].filter(Boolean).join(", ");
+      rec = {
+        rta: "kfintech",
+        amcCode: fund,
+        amcName: amcNameFromDescription(get(C.fundDesc)),
+        folioNumber: folio,
+        schemes: [],
+        investor: {
+          pan,
+          name: get(C.name),
+          email: get(C.email) || null,
+          mobile: get(C.mobile) || null,
+          category: "individual",
+          address: {
+            line1: line1 || undefined,
+            city: get(C.city) || undefined,
+            pincode: get(C.pincode) || undefined,
+          },
+        },
+        nominees: [],
+        bank: {},
+        aum: 0,
+        lastTransactionAt: null,
+        brokerCode: get(C.broker) || undefined,
+        reportDate: dmyToIso(get(C.reportDate)),
+        _maxTxn: null,
+      };
+      groups.set(key, rec);
+    }
+
+    const productCode = get(C.productCode);
+    const value = num(get(C.aum));
+    if (productCode && !rec.schemes.some((s) => s.schemeCode === productCode)) {
+      rec.schemes.push({
+        schemeCode: productCode,
+        schemeName: get(C.fundDesc),
+        units: num(get(C.balance)) || undefined,
+        nav: num(get(C.nav)) || undefined,
+        value: value || undefined,
+      });
+      rec.aum = (rec.aum ?? 0) + value;
+    }
+    const txn = dmyToIso(get(C.txnDate));
+    if (txn && (!rec._maxTxn || txn > rec._maxTxn)) rec._maxTxn = txn;
+  }
+
+  const folios = [...groups.values()].map(({ _maxTxn, ...rec }) => {
+    rec.lastTransactionAt = _maxTxn;
+    return rec as RtaFolioRecord;
+  });
+  canonicalizeAmcNames(folios);
+  return { reportType: "MFSD203", folios, missingPan, warnings: [] };
 }
