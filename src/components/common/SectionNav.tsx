@@ -60,7 +60,7 @@ export function SectionNav({ moduleKey, sections }: { moduleKey: string; section
   if (items.length < 2) return null;
 
   return (
-    <nav className="sticky top-2 z-20 mb-1 flex gap-1.5 overflow-x-auto scrollbar-thin rounded-xl border border-border bg-card/85 px-2 py-1.5 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-card/70 print:hidden">
+    <nav className="sticky top-2 z-20 mb-1 flex gap-1.5 overflow-x-auto scrollbar-none rounded-xl border border-border bg-card/85 px-2 py-1.5 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-card/70 print:hidden">
       {items.map((s) => (
         <button
           key={s.key}

@@ -18,7 +18,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
-import { Search, X, ChevronDown, Filter as FilterIcon, Loader2 } from "lucide-react";
+import { Search, X, ChevronDown, Filter as FilterIcon, Loader2, ArrowDownUp } from "lucide-react";
 import { Select } from "@/components/ui/Select";
 import { DateRangePicker } from "@/components/ui/DateRangePicker";
 
@@ -26,6 +26,9 @@ export type FilterDef =
   | { type: "search"; key: string; placeholder?: string }
   | { type: "select"; key: string; label: string; options: { value: string; label: string }[] }
   | { type: "multi"; key: string; label: string; options: { value: string; label: string }[] }
+  // A sort control — like select, but options are directional (asc/desc) and there
+  // is no empty "All" entry (a list is always sorted by *something*).
+  | { type: "sort"; key: string; label: string; options: { value: string; label: string }[] }
   | { type: "date_range"; key: string; label: string };
 
 export function FilterBar({
@@ -83,6 +86,7 @@ export function FilterBar({
   }
 
   const activeCount = filters.reduce((n, f) => {
+    if (f.type === "sort") return n; // sort isn't a "filter" — never counts / never cleared
     if (f.type === "multi") return n + ((values[f.key] as string[]).length > 0 ? 1 : 0);
     if (f.type === "date_range")
       return n + (values[`${f.key}_from`] || values[`${f.key}_to`] ? 1 : 0);
@@ -92,6 +96,7 @@ export function FilterBar({
   function clearAll() {
     pushParams(
       filters.reduce((acc, f) => {
+        if (f.type === "sort") return acc; // leave the sort order alone
         if (f.type === "multi") acc[f.key] = [];
         else if (f.type === "date_range") {
           acc[`${f.key}_from`] = "";
@@ -141,10 +146,23 @@ export function FilterBar({
                 size="sm"
                 value={values[f.key] as string}
                 onChange={(v) => pushParams({ [f.key]: v })}
-                options={[{ value: "", label: "—" }, ...f.options]}
-                placeholder="—"
+                options={[{ value: "", label: "All" }, ...f.options]}
+                placeholder="All"
                 ariaLabel={f.label}
                 className="min-w-[7rem]"
+              />
+            </div>
+          ) : f.type === "sort" ? (
+            <div key={f.key} className="inline-flex items-center gap-1.5 text-xs">
+              <ArrowDownUp className="size-3.5 text-muted-foreground" />
+              <span className="text-muted-foreground">{f.label}</span>
+              <Select
+                size="sm"
+                value={(values[f.key] as string) || f.options[0]?.value || ""}
+                onChange={(v) => pushParams({ [f.key]: v })}
+                options={f.options}
+                ariaLabel={f.label}
+                className="min-w-[9.5rem]"
               />
             </div>
           ) : f.type === "date_range" ? (

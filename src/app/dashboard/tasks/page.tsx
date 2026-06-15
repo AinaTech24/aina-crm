@@ -36,7 +36,13 @@ export default async function TasksPage({
   // Sort + pagination (list only; the kanban shows a wide unpaged slice).
   // Default = newest-created first (recently added on top). Users can switch to
   // due-date or priority via the Sort dropdown.
-  const sortKey = sp.sort === "priority" || sp.sort === "due" ? sp.sort : "created";
+  // Sort key carries its own direction (asc/desc) so the dropdown can offer both
+  // without a separate dir param. Default = newest-created first.
+  const sortKey = (["created", "created_asc", "due", "due_desc", "priority"] as const).includes(
+    (sp.sort ?? "") as any
+  )
+    ? (sp.sort as "created" | "created_asc" | "due" | "due_desc" | "priority")
+    : "created";
   const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
   const PAGE_SIZE = 50;
 
@@ -93,6 +99,10 @@ export default async function TasksPage({
         ? sql`case ${tasks.priority} when 'urgent' then 0 when 'high' then 1 when 'normal' then 2 else 3 end asc, ${tasks.dueAt} asc nulls last, ${tasks.createdAt} desc`
         : sortKey === "created"
         ? sql`${tasks.createdAt} desc`
+        : sortKey === "created_asc"
+        ? sql`${tasks.createdAt} asc`
+        : sortKey === "due_desc"
+        ? sql`${tasks.dueAt} desc nulls last, ${tasks.createdAt} desc`
         : sql`${tasks.dueAt} asc nulls last, ${tasks.createdAt} desc`;
 
     // Total matching count (for the pager) — same predicate + join (search hits
@@ -216,13 +226,15 @@ export default async function TasksPage({
           { type: "search", key: "q", placeholder: "Search by title or description…" },
           ...(!isKanban
             ? [{
-                type: "select" as const,
+                type: "sort" as const,
                 key: "sort",
                 label: "Sort",
                 options: [
                   { value: "created", label: "Newest first" },
-                  { value: "due", label: "Due date" },
-                  { value: "priority", label: "Priority" },
+                  { value: "created_asc", label: "Oldest first" },
+                  { value: "due", label: "Due date — soonest" },
+                  { value: "due_desc", label: "Due date — latest" },
+                  { value: "priority", label: "Priority — high first" },
                 ],
               }]
             : []),
