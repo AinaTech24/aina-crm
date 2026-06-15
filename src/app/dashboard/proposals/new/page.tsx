@@ -965,6 +965,7 @@ function MFRow({ item, onPatch }: { item: MF; onPatch: (p: Partial<MF>) => void 
     for (const [re, cat] of rules) if (re.test(raw)) return cat;
     return undefined;
   };
+  const [customCat, setCustomCat] = useState(false);
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -996,19 +997,44 @@ function MFRow({ item, onPatch }: { item: MF; onPatch: (p: Partial<MF>) => void 
       />
       <div>
         <div className="text-[11px] font-medium mb-1 text-muted-foreground">Category</div>
-        <select
-          value={item.category ?? ""}
-          onChange={(e) => onPatch({ category: e.target.value })}
-          className="input-base text-sm w-full"
-        >
-          <option value="">— Select category —</option>
-          {MF_CATEGORIES.map((c) => (
-            <option key={c} value={c}>{c}</option>
-          ))}
-          {item.category && !MF_CATEGORIES.includes(item.category) && (
-            <option value={item.category}>{item.category}</option>
-          )}
-        </select>
+        {customCat || (item.category && !MF_CATEGORIES.includes(item.category)) ? (
+          <div className="flex items-center gap-1">
+            <input
+              value={item.category ?? ""}
+              onChange={(e) => onPatch({ category: e.target.value })}
+              placeholder="Type a custom category"
+              autoFocus={customCat}
+              className="input-base text-sm w-full"
+            />
+            <button
+              type="button"
+              onClick={() => { setCustomCat(false); onPatch({ category: "" }); }}
+              className="btn-ghost text-xs px-2 shrink-0"
+              title="Back to the list"
+            >
+              ↩
+            </button>
+          </div>
+        ) : (
+          <select
+            value={item.category ?? ""}
+            onChange={(e) => {
+              if (e.target.value === "__custom__") {
+                setCustomCat(true);
+                onPatch({ category: "" });
+              } else {
+                onPatch({ category: e.target.value });
+              }
+            }}
+            className="input-base text-sm w-full"
+          >
+            <option value="">— Select category —</option>
+            {MF_CATEGORIES.map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+            <option value="__custom__">+ Add custom…</option>
+          </select>
+        )}
       </div>
       <NumberInput
         label="Lumpsum"

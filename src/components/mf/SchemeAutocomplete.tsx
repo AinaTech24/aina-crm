@@ -56,6 +56,7 @@ export function SchemeAutocomplete({
     const query = q.trim();
     if (query.length < 2) {
       setResults([]);
+      setBusy(false); // clear a leftover spinner when the query is cleared back under 2 chars
       return;
     }
     const id = ++reqId.current;

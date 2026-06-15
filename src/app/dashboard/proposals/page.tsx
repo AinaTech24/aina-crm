@@ -269,8 +269,8 @@ export default async function ProposalsPage({
                   <th data-col="recipient" className="text-left py-2 font-medium">Recipient</th>
                   <th data-col="type" className="text-left py-2 font-medium">Type</th>
                   <th data-col="invest" className="text-right py-2 font-medium">Invest ₹</th>
-                  <th data-col="corpus" className="text-right py-2 font-medium">Corpus ₹</th>
-                  <th data-col="status" className="text-left py-2 font-medium">Status</th>
+                  <th data-col="corpus" className="text-right py-2 font-medium pr-6">Corpus ₹</th>
+                  <th data-col="status" className="text-left py-2 font-medium pl-3">Status</th>
                   <th data-col="valid_till" className="text-left py-2 font-medium">Valid till</th>
                   <th data-col="prepared_by" className="text-left py-2 font-medium">Prepared by</th>
                   <th data-col="created" className="text-left py-2 font-medium">Created</th>
@@ -310,10 +310,10 @@ export default async function ProposalsPage({
                     <td data-col="invest" className="py-3 text-right tabular-nums text-xs">
                       {p.total_investment ? formatINR(Number(p.total_investment)) : "—"}
                     </td>
-                    <td data-col="corpus" className="py-3 text-right tabular-nums text-xs text-emerald-700 font-medium">
+                    <td data-col="corpus" className="py-3 pr-6 text-right tabular-nums text-xs text-emerald-700 font-medium">
                       {p.expected_corpus ? formatINR(Number(p.expected_corpus)) : "—"}
                     </td>
-                    <td data-col="status" className="py-3">
+                    <td data-col="status" className="py-3 pl-3">
                       <span className={`chip capitalize ${STATUS_TONE[p.status] ?? ""}`}>
                         {p.status.replace(/_/g, " ")}
                       </span>

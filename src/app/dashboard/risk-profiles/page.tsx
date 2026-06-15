@@ -1,11 +1,11 @@
 import Link from "next/link";
 import { sql } from "drizzle-orm";
-import { ShieldCheck, AlertTriangle, Plus, ArrowRight, Download } from "lucide-react";
+import { ShieldCheck, AlertTriangle, Plus, ArrowRight } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { formatDate } from "@/lib/utils";
 import { Pager } from "@/components/common/Pager";
-import { RiskProfileName } from "@/components/risk-profile/RiskProfileName";
+import { RiskProfileName, RiskProfilePdfButtons } from "@/components/risk-profile/RiskProfileName";
 
 export const dynamic = "force-dynamic";
 
@@ -62,7 +62,7 @@ export default async function RiskProfilesPage({
   const session = await requireSession();
   const sp = await searchParams;
   const filter: FilterKey =
-    (FILTERS.find((f) => f.key === sp.filter)?.key as FilterKey) ?? "needs_review";
+    (FILTERS.find((f) => f.key === sp.filter)?.key as FilterKey) ?? "all";
   const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
 
   const data = await withTenant(session.tenantId, async (tx) => {
@@ -132,7 +132,7 @@ export default async function RiskProfilesPage({
   };
 
   const tabHref = (key: FilterKey) =>
-    key === "needs_review" ? "/dashboard/risk-profiles" : `/dashboard/risk-profiles?filter=${key}`;
+    key === "all" ? "/dashboard/risk-profiles" : `/dashboard/risk-profiles?filter=${key}`;
 
   return (
     <div className="space-y-6 max-w-7xl">
@@ -224,7 +224,6 @@ export default async function RiskProfilesPage({
                     <tr key={r.id} className="border-b last:border-0 hover:bg-secondary/40">
                       <td className="px-4 py-3">
                         <RiskProfileName
-                          investorId={r.id}
                           name={r.name}
                           pan={r.pan}
                           profileId={r.profile_id ?? null}
@@ -261,15 +260,7 @@ export default async function RiskProfilesPage({
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="inline-flex items-center gap-2">
-                          {r.profile_id && (
-                            <a
-                              href={`/api/risk-profiles/${r.profile_id}/pdf?download=1`}
-                              className="btn-secondary text-xs px-2.5 py-1"
-                              title="Download the completed Risk Profile (Q&A) as PDF"
-                            >
-                              <Download className="size-3" /> PDF
-                            </a>
-                          )}
+                          <RiskProfilePdfButtons profileId={r.profile_id ?? null} name={r.name} />
                           <Link
                             href={`/dashboard/risk-profiles/new?investorId=${r.id}`}
                             className="btn-accent text-xs px-3 py-1"
