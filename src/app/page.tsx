@@ -381,36 +381,6 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ───────────────────── Integrations strip ───────────────────── */}
-      <section className="py-16 relative z-10 border-b border-border/40">
-        <div className="max-w-6xl mx-auto px-6 text-center">
-          <span className="chip bg-brand-navy-light text-primary">Works with the rails you already run on</span>
-          <h2 className="mt-4 text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground">
-            Plugs into your RTAs, WhatsApp and payments — no rip-and-replace
-          </h2>
-          <p className="mt-3 text-sm text-muted-foreground max-w-2xl mx-auto">
-            Aina reads your existing exports and connects to the channels Indian MFDs already use, so you keep your stack and just add the brain on top.
-          </p>
-          <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
-            {[
-              "CAMS", "KFintech", "AMFI NAV feed", "WhatsApp",
-              "MSG91 SMS", "Email (Resend)", "Razorpay",
-            ].map((name) => (
-              <span
-                key={name}
-                className="inline-flex items-center gap-2 rounded-xl border border-border/60 bg-card px-4 py-2.5 text-sm font-semibold text-foreground/80 shadow-sm hover:border-primary/40 hover:text-foreground transition-colors"
-              >
-                <span className="size-1.5 rounded-full bg-primary" />
-                {name}
-              </span>
-            ))}
-          </div>
-          <p className="mt-6 text-[11px] text-muted-foreground">
-            You connect your own WhatsApp / SMS / email accounts — so messaging stays in your name, at your cost, with no per-message markup from us.
-          </p>
-        </div>
-      </section>
-
       {/* ───────────────────── Calculators spotlight ───────────────────── */}
       <section id="calculators" className="py-20 lg:py-28 max-w-7xl mx-auto px-6 relative z-10">
         <Spotlight
@@ -517,7 +487,7 @@ export default function Home() {
             >
               {p.featured && (
                 <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-primary text-white text-[10px] uppercase font-bold tracking-widest px-3 py-1 rounded-full shadow-md">
-                  Most popular with MFD firms
+                  Recommended
                 </span>
               )}
               <h3 className="font-extrabold text-xl text-foreground">{p.name}</h3>
@@ -847,7 +817,7 @@ const PLANS = [
     price: "₹12,999",
     unit: "/ user / year",
     seats: "3 users = ₹38,997 / year",
-    featured: true,
+    featured: false,
     cta: "Start Free Trial",
     inherits: "Everything in Starter, plus:",
     items: [
@@ -873,7 +843,7 @@ const PLANS = [
     price: "₹14,999",
     unit: "/ user / year",
     seats: "3 users = ₹44,997 / year",
-    featured: false,
+    featured: true,
     cta: "Start Free Trial",
     inherits: "Everything in Starter & Growth, plus:",
     items: [
