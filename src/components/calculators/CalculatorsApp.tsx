@@ -15,7 +15,7 @@ import {
   // per-calculator icons (each used exactly once — no duplicates)
   LineChart, ArrowUpNarrowWide, Sprout, Briefcase, ChevronsUp, CalendarClock, Crosshair, Droplets, Coins, Percent,
   Goal, Shuffle, TreePalm, GraduationCap, Baby, CalendarRange, BadgeCheck, Flag, Thermometer, Hourglass, Armchair,
-  Route, Repeat, Timer, ScrollText, RefreshCw, House, Banknote, ArrowLeftRight,
+  Route, Repeat, Timer, ScrollText, RefreshCw, House, Banknote, ArrowLeftRight, Infinity as InfinityIcon,
   Shield, Scale, Users,
   GitCompare, TrendingDown, Landmark, Scissors, Calculator,
   Warehouse, BarChart3, Recycle, PieChart,
@@ -58,6 +58,7 @@ import { CrashStressTest } from "./CrashStressTest";
 import { FireNumberCalculator } from "./FireNumberCalculator";
 import { ChildEducationProjector } from "./ChildEducationProjector";
 import { EarlyStartChildSip } from "./EarlyStartChildSip";
+import { ProsperityMultiplier } from "./ProsperityMultiplier";
 import { GoalCollisionTimeline } from "./GoalCollisionTimeline";
 import { XirrCalculator } from "./XirrCalculator";
 import { RebalanceCalculator } from "./RebalanceCalculator";
@@ -170,6 +171,7 @@ type TabKey =
   | "delay"
   | "retirement"
   | "swp"
+  | "prosperity"
   | "stp"
   | "cagr";
 
@@ -214,6 +216,7 @@ const CATALOG: CalcGroup[] = [
       { key: "opm", name: "OPM House (SWP)", icon: House, desc: "Fund a home using an SWP income stream" },
       { key: "swp", name: "SWP Calculator", icon: Banknote, desc: "Simple systematic withdrawal plan" },
       { key: "stp", name: "STP Calculator", icon: ArrowLeftRight, desc: "Systematic transfer plan" },
+      { key: "prosperity", name: "Prosperity Multiplier", icon: InfinityIcon, desc: "SIP → growing income for life, corpus keeps compounding" },
     ],
   },
   {
@@ -553,6 +556,7 @@ export function CalculatorsApp({ firmName }: { firmName?: string } = {}) {
         {tab === "retirement" && <RetirementCalc />}
         {tab === "swp" && <SwpCalc />}
         {tab === "stp" && <StpCalc />}
+        {tab === "prosperity" && <ProsperityMultiplier />}
         {tab === "cagr" && <CagrCalc />}
       </div>
 
