@@ -122,7 +122,7 @@ export default async function DashboardPage({
   return (
     <>
       <AnnouncementsStrip session={session} />
-      {memberBar}
+      {memberBar && <div className="mb-5 mt-1">{memberBar}</div>}
       {/* The role cockpits are async server components doing their own data
           fetching — stream them in behind a skeleton so the shell (sidebar,
           topbar, announcements) paints immediately. */}

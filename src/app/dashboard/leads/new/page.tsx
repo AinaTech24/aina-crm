@@ -205,7 +205,7 @@ export default function NewLeadPage() {
   const showReferrerLookup = REFERRAL_SOURCES.has(form.source);
 
   return (
-    <div className="space-y-4 max-w-2xl">
+    <div className="space-y-4 max-w-4xl mx-auto">
       <Link
         href="/dashboard/leads"
         className="text-sm text-muted-foreground hover:underline hover:text-foreground flex items-center gap-1 transition-colors"
@@ -222,8 +222,8 @@ export default function NewLeadPage() {
         </p>
       </div>
 
-      <form onSubmit={submit} className="card-surface p-5 space-y-4">
-        <div className="flex items-center gap-3">
+      <form onSubmit={submit} className="card-surface p-5 sm:p-6 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-4">
+        <div className="sm:col-span-2 flex items-center gap-3">
           <Avatar src={avatarPreview} name={form.name} size={56} />
           <div className="flex items-center gap-2">
             <label className="btn-secondary text-xs inline-flex items-center gap-1.5 cursor-pointer">
@@ -258,7 +258,7 @@ export default function NewLeadPage() {
             Doesn't block submission; just nudges the RM to confirm or open the
             existing lead. */}
         {duplicates.length > 0 && (
-          <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3 space-y-2">
+          <div className="sm:col-span-2 rounded-xl border border-amber-200 bg-amber-50/60 p-3 space-y-2">
             <div className="flex items-center gap-2">
               <AlertTriangle className="size-4 text-amber-700 flex-shrink-0" />
               <span className="text-sm font-semibold text-amber-900">
@@ -330,7 +330,7 @@ export default function NewLeadPage() {
 
         {/* Conditional referrer lookup — appears only for referral / existing-client sources */}
         {showReferrerLookup && (
-          <div className="rounded-xl bg-brand-cyan-light/30 border border-brand-cyan/20 p-3.5 space-y-2 animate-fade-in">
+          <div className="sm:col-span-2 rounded-xl bg-brand-cyan-light/30 border border-brand-cyan/20 p-3.5 space-y-2 animate-fade-in">
             <div className="flex items-center justify-between">
               <div className="text-xs font-semibold text-brand-cyan-deep uppercase tracking-wider">
                 Referred by (Client) <span className="text-rose-600">*</span>
@@ -361,7 +361,7 @@ export default function NewLeadPage() {
           </div>
         )}
 
-        <div>
+        <div className="sm:col-span-2">
           <div className="text-xs font-medium mb-1">
             Sub-distributor
             <span className="ml-1 text-[10px] text-muted-foreground font-normal">
@@ -388,7 +388,7 @@ export default function NewLeadPage() {
           </p>
         </div>
 
-        <div>
+        <div className="sm:col-span-2">
           <div className="text-xs font-medium mb-1">
             Assign RM
             <span className="ml-1 text-[10px] text-muted-foreground font-normal">
@@ -404,7 +404,7 @@ export default function NewLeadPage() {
         </div>
 
         {/* Qualification — type, products, expected value, first follow-up */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="sm:col-span-2 grid grid-cols-2 gap-3">
           <label className="block">
             <div className="text-xs font-medium mb-1">Lead type</div>
             <select value={form.leadType} onChange={(e) => set("leadType", e.target.value)} className="input-base">
@@ -423,7 +423,7 @@ export default function NewLeadPage() {
           </label>
         </div>
 
-        <div>
+        <div className="sm:col-span-2">
           <div className="text-xs font-medium mb-1">Products of interest</div>
           <Chips
             options={PRODUCT_OPTIONS}
@@ -432,7 +432,7 @@ export default function NewLeadPage() {
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="sm:col-span-2 grid grid-cols-2 gap-3">
           <Row
             label="Expected business (₹)"
             value={form.expectedBusinessAmount}
@@ -455,12 +455,12 @@ export default function NewLeadPage() {
         </div>
 
         <Row label="Occupation" value={form.occupation} setValue={(v) => set("occupation", v)} placeholder="e.g. Salaried · Business owner" />
-        <div className="grid grid-cols-2 gap-3">
+        <div className="sm:col-span-2 grid grid-cols-2 gap-3">
           <Row label="Alternate phone" value={form.altPhone} setValue={(v) => set("altPhone", v)} placeholder="Secondary number" />
           <Row label="Alternate email" value={form.altEmail} setValue={(v) => set("altEmail", v)} type="email" placeholder="Secondary email" />
         </div>
 
-        <div>
+        <div className="sm:col-span-2">
           <div className="text-xs font-medium mb-1">
             Current investments
             <span className="ml-1 text-[10px] text-muted-foreground font-normal">· what they already hold elsewhere</span>
@@ -472,7 +472,7 @@ export default function NewLeadPage() {
           />
         </div>
 
-        <div>
+        <div className="sm:col-span-2">
           <div className="text-xs font-medium mb-1">Notes</div>
           <textarea
             value={form.notes}
@@ -484,12 +484,12 @@ export default function NewLeadPage() {
         </div>
 
         {err && (
-          <div className="rounded-lg border border-destructive/30 bg-destructive/5 text-destructive text-sm px-3 py-2">
+          <div className="sm:col-span-2 rounded-lg border border-destructive/30 bg-destructive/5 text-destructive text-sm px-3 py-2">
             {err}
           </div>
         )}
 
-        <div className="flex justify-end gap-2 pt-2 border-t border-border">
+        <div className="sm:col-span-2 flex justify-end gap-2 pt-2 border-t border-border">
           <Link href="/dashboard/leads" className="btn-secondary">
             Cancel
           </Link>
