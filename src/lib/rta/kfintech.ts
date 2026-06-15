@@ -21,7 +21,7 @@ export function isKfintechFolioMaster(header: string[]): boolean {
 }
 
 /** "DD/MM/YYYY" → "YYYY-MM-DD" (or null on anything unparseable). */
-function dmyToIso(s?: string): string | null {
+export function dmyToIso(s?: string): string | null {
   const v = (s ?? "").trim();
   const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(v);
   if (!m) return null;
@@ -46,7 +46,7 @@ const SCHEME_WORDS = new Set([
 ]);
 
 /** Best-effort AMC name from a scheme description (no AMC-name column exists). */
-function amcNameFromDescription(desc: string): string {
+export function amcNameFromDescription(desc: string): string {
   const words = desc.trim().split(/\s+/).filter(Boolean);
   const take: string[] = [];
   for (const w of words) {
@@ -77,13 +77,13 @@ function mapResidency(categoryDesc: string, statusDesc: string): Residency | nul
 }
 
 /** Keep only the last 4 digits of a bank account number. */
-function maskAccount(s?: string): string | undefined {
+export function maskAccount(s?: string): string | undefined {
   const v = (s ?? "").replace(/\s+/g, "");
   if (!v) return undefined;
   return v.length <= 4 ? v : `••••${v.slice(-4)}`;
 }
 
-function pct(s?: string): number | undefined {
+export function pct(s?: string): number | undefined {
   const v = (s ?? "").trim();
   if (!v) return undefined;
   const n = Number(v);
@@ -235,7 +235,7 @@ export function parseKfintechFolioMaster(rows: string[][]): {
 }
 
 /** "1,234.56" → 1234.56 (0 on blank/garbage). */
-function num(s?: string): number {
+export function num(s?: string): number {
   const v = (s ?? "").replace(/,/g, "").trim();
   if (!v) return 0;
   const n = Number(v);
@@ -247,7 +247,7 @@ function num(s?: string): number {
  * (e.g. fund 102 → "LIC MF" / "IDBI", since LIC absorbed IDBI MF). Collapse to
  * ONE canonical name per fund code by majority vote (ties → shortest). Mutates.
  */
-function canonicalizeAmcNames(folios: RtaFolioRecord[]): void {
+export function canonicalizeAmcNames(folios: RtaFolioRecord[]): void {
   const counts = new Map<string, Map<string, number>>();
   for (const f of folios) {
     const m = counts.get(f.amcCode) ?? new Map<string, number>();

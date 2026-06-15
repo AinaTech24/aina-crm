@@ -14,17 +14,31 @@ import type { RtaParseResult } from "./types";
 export * from "./types";
 export { parseCsv } from "./csv";
 
+/** Parse a delimited RTA file (Kfintech CSVs). */
 export function parseRtaCsv(text: string): RtaParseResult {
-  const all = parseCsv(text);
+  return parseRtaRows(parseCsv(text));
+}
+
+/**
+ * Dispatch already-tabulated rows (from the CSV parser or the .xls reader) to
+ * the matching RTA parser by header signature.
+ */
+export function parseRtaRows(allRows: string[][]): RtaParseResult {
   // Drop fully-empty trailing lines.
-  const rows = all.filter((r) => r.length > 1 || (r.length === 1 && r[0].trim() !== ""));
+  const rows = allRows.filter((r) => r.length > 1 || (r.length === 1 && r[0].trim() !== ""));
   if (!rows.length) {
     return { source: "unknown", kind: "unknown", reportType: "", totalRows: 0, folios: [], warnings: ["Empty file"], missingPan: 0 };
   }
   const header = rows[0].map((h) => h.trim());
 
-  // Holdings is checked first: it shares some columns with the master but adds
-  // Balance / NAV / AUM, so its signature is the more specific match.
+  // CAMS folio statement (combined master + holdings).
+  if (isCamsFile(header)) {
+    const { reportType, folios, missingPan, warnings } = parseCamsFile(rows);
+    return { source: "cams", kind: "full", reportType, totalRows: rows.length - 1, folios, warnings, missingPan };
+  }
+
+  // Kfintech holdings is checked before the master: it shares some columns but
+  // adds Balance / NAV / AUM, so its signature is the more specific match.
   if (isKfintechHoldings(header)) {
     const { reportType, folios, missingPan, warnings } = parseKfintechHoldings(rows);
     return { source: "kfintech", kind: "holdings", reportType, totalRows: rows.length - 1, folios, warnings, missingPan };
@@ -33,11 +47,6 @@ export function parseRtaCsv(text: string): RtaParseResult {
   if (isKfintechFolioMaster(header)) {
     const { reportType, folios, missingPan, warnings } = parseKfintechFolioMaster(rows);
     return { source: "kfintech", kind: "master", reportType, totalRows: rows.length - 1, folios, warnings, missingPan };
-  }
-
-  if (isCamsFile(header)) {
-    const { reportType, folios, missingPan, warnings } = parseCamsFile(rows);
-    return { source: "cams", kind: "unknown", reportType, totalRows: rows.length - 1, folios, warnings, missingPan };
   }
 
   return {

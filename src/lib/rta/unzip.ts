@@ -19,22 +19,22 @@ type FileEntry = {
   getData?: (writer: unknown, options?: unknown) => Promise<Uint8Array>;
 };
 
-export async function extractRtaCsvFromZip(
+export async function extractRtaFileFromZip(
   buf: Uint8Array,
   password?: string
-): Promise<{ filename: string; text: string }> {
+): Promise<{ filename: string; data: Uint8Array }> {
   const reader = new ZipReader(new Uint8ArrayReader(buf), password ? { password } : undefined);
   try {
     const entries = (await reader.getEntries()) as unknown as FileEntry[];
     const entry =
-      entries.find((e) => !e.directory && /\.(csv|txt)$/i.test(e.filename)) ??
+      entries.find((e) => !e.directory && /\.(csv|txt|xls[xmb]?)$/i.test(e.filename)) ??
       entries.find((e) => !e.directory);
     if (!entry || typeof entry.getData !== "function") {
       throw new Error("the archive contains no readable data file");
     }
+    // Return raw bytes — the caller decodes CSV as text or reads .xls as binary.
     const data = (await entry.getData(new Uint8ArrayWriter(), password ? { password } : undefined)) as Uint8Array;
-    // RTA feeds are latin-1 (ISO-8859-1), not UTF-8.
-    return { filename: entry.filename, text: new TextDecoder("latin1").decode(data) };
+    return { filename: entry.filename, data };
   } finally {
     await reader.close();
   }

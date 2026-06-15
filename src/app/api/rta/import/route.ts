@@ -15,9 +15,10 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { handleApiError } from "@/lib/api/error-handler";
-import { parseRtaCsv } from "@/lib/rta";
+import { parseRtaCsv, parseRtaRows } from "@/lib/rta";
 import { importRtaFolios } from "@/lib/rta/import";
-import { extractRtaCsvFromZip } from "@/lib/rta/unzip";
+import { extractRtaFileFromZip } from "@/lib/rta/unzip";
+import { isSpreadsheet, readSpreadsheetToRows } from "@/lib/rta/xls";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -43,27 +44,31 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No file uploaded." }, { status: 400 });
     }
 
-    const buf = new Uint8Array(await file.arrayBuffer());
+    const uploaded = new Uint8Array(await file.arrayBuffer());
 
-    // Decode: a zip (PK magic) is unzipped with the password; otherwise treat as
-    // a raw CSV (latin-1).
-    let text: string;
-    const isZip = buf.length > 1 && buf[0] === 0x50 && buf[1] === 0x4b;
+    // A zip (PK magic) is unpacked with the password to its inner file; otherwise
+    // the upload IS the data file.
+    let data: Uint8Array = uploaded;
+    let innerName = file.name;
+    const isZip = uploaded.length > 1 && uploaded[0] === 0x50 && uploaded[1] === 0x4b;
     if (isZip) {
       try {
-        const r = await extractRtaCsvFromZip(buf, password);
-        text = r.text;
+        const r = await extractRtaFileFromZip(uploaded, password);
+        data = r.data;
+        innerName = r.filename;
       } catch (e: any) {
         return NextResponse.json(
           { error: `Could not open the zip — ${e?.message ?? "wrong password or unsupported archive"}.` },
           { status: 400 }
         );
       }
-    } else {
-      text = new TextDecoder("latin1").decode(buf);
     }
 
-    const parsed = parseRtaCsv(text);
+    // Binary Excel (.xls/.xlsx — e.g. the CAMS feed) is read via SheetJS; anything
+    // else is treated as a latin-1 CSV.
+    const parsed = isSpreadsheet(data, innerName)
+      ? parseRtaRows(readSpreadsheetToRows(data))
+      : parseRtaCsv(new TextDecoder("latin1").decode(data));
     if (parsed.source === "unknown" || parsed.folios.length === 0) {
       return NextResponse.json(
         {
@@ -99,7 +104,7 @@ export async function POST(req: NextRequest) {
           dryRun,
           assignRmId: assignToMe ? session.userId : null,
           reportType: parsed.reportType,
-          kind: parsed.kind === "holdings" ? "holdings" : "master",
+          kind: parsed.kind === "holdings" ? "holdings" : parsed.kind === "full" ? "full" : "master",
         }),
       { userId: session.userId, branchId: session.branchId, roles: session.roles }
     );

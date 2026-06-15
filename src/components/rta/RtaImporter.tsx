@@ -20,7 +20,7 @@ import { Select } from "@/components/ui/Select";
 
 const RTA_OPTIONS = [
   { value: "kfintech", label: "Kfintech (Karvy)" },
-  { value: "cams", label: "CAMS — coming soon", disabled: true },
+  { value: "cams", label: "CAMS" },
 ];
 
 const FILE_TYPES: Record<string, { value: string; label: string; disabled?: boolean }[]> = {
@@ -28,7 +28,7 @@ const FILE_TYPES: Record<string, { value: string; label: string; disabled?: bool
     { value: "MFSD211", label: "MFSD211 — Folio / Investor Master" },
     { value: "MFSD203", label: "MFSD203 — Holdings / Valuation" },
   ],
-  cams: [{ value: "WBR2", label: "WBR2 — Holdings (coming soon)", disabled: true }],
+  cams: [{ value: "R9", label: "Folio statement — holdings + master (.xls)" }],
 };
 
 const inr = (n: number) =>
@@ -148,7 +148,7 @@ export function RtaImporter() {
               {file ? <FileSpreadsheet className="size-4" /> : <Upload className="size-4" />}
             </div>
             <div className="min-w-0">
-              <div className="font-medium text-sm truncate">{file ? file.name : "Choose a .csv or .zip file"}</div>
+              <div className="font-medium text-sm truncate">{file ? file.name : "Choose a .csv, .xls or .zip file"}</div>
               <div className="text-xs text-muted-foreground">
                 {file ? `${(file.size / 1024 / 1024).toFixed(2)} MB` : "The raw CSV, or the password-protected zip from the RTA"}
               </div>
@@ -170,7 +170,7 @@ export function RtaImporter() {
             <input
               ref={inputRef}
               type="file"
-              accept=".csv,.zip,.txt"
+              accept=".csv,.zip,.txt,.xls,.xlsx"
               className="hidden"
               onChange={(e) => {
                 setFile(e.target.files?.[0] ?? null);

@@ -47,7 +47,7 @@ export async function importRtaFolios(
   tx: Tx,
   tenantId: string,
   records: RtaFolioRecord[],
-  opts: { dryRun?: boolean; assignRmId?: string | null; reportType?: string; kind?: "master" | "holdings" } = {}
+  opts: { dryRun?: boolean; assignRmId?: string | null; reportType?: string; kind?: "master" | "holdings" | "full" } = {}
 ): Promise<RtaImportSummary> {
   const dryRun = !!opts.dryRun;
   const kind = opts.kind ?? "master";
@@ -116,7 +116,7 @@ export async function importRtaFolios(
     investors: { total: pans.length, created: investorsCreated, updated: investorsUpdated },
     folios: { total: uniqueFolioKeys.length, created: foliosCreated, updated: foliosUpdated, skippedNoPan },
     schemes,
-    aum: kind === "holdings" ? records.reduce((n, r) => n + (r.aum ?? 0), 0) : undefined,
+    aum: kind !== "master" ? records.reduce((n, r) => n + (r.aum ?? 0), 0) : undefined,
     amcs,
   };
 
@@ -245,7 +245,7 @@ export async function importRtaFolios(
   // Holdings is authoritative for valuations; the master must NOT wipe schemes a
   // prior holdings import wrote (only set them when the folio has none yet).
   const folioSet =
-    kind === "holdings"
+    kind !== "master"
       ? {
           investorId: sql`excluded.investor_id`,
           amcName: sql`excluded.amc_name`,
@@ -272,8 +272,8 @@ export async function importRtaFolios(
       });
   }
 
-  // ── 5. Holdings feeds refresh the cached investor AUM + last-transaction-at ─
-  if (kind === "holdings") {
+  // ── 5. Holdings/full feeds refresh the cached investor AUM + last-txn-at ────
+  if (kind !== "master") {
     const ids = [...new Set([...panToId.values()])];
     for (const part of chunk(ids, 1000)) {
       if (!part.length) continue;
