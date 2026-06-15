@@ -17,7 +17,7 @@ import { useToast } from "@/components/ui/Toast";
 import { classifyAssetClass } from "@/lib/business/asset-class";
 
 const PRODUCT_OPTS: [string, string][] = [
-  ["mutual_fund", "Mutual Fund"], ["pms", "PMS"], ["aif", "AIF"], ["sif", "SIF"], ["bond", "Bond"], ["ncd", "NCD"], ["p2p", "P2P"], ["las", "LAS"], ["other", "Other"],
+  ["mutual_fund", "Mutual Fund"], ["direct_equity", "Direct Equity / Demat"], ["pms", "PMS"], ["aif", "AIF"], ["sif", "SIF"], ["bond", "Bond"], ["ncd", "NCD"], ["p2p", "P2P"], ["las", "LAS"], ["other", "Other"],
 ];
 
 /**
@@ -41,6 +41,8 @@ interface ProductConfig {
 const PRODUCT_CONFIG: Record<string, ProductConfig> = {
   mutual_fund: { schemeLabel: "Scheme", schemePlaceholder: "Search catalog or type a name…", catalog: true,
     txnTypes: ["lumpsum", "additional_purchase", "sip", "sip_stop", "switch", "stp", "swp", "redemption"] },
+  direct_equity: { schemeLabel: "Stock / scrip", schemePlaceholder: "Stock name or symbol (e.g. RELIANCE)…", catalog: false,
+    txnTypes: ["lumpsum", "additional_purchase", "sip", "redemption"], defaultAssetClass: "equity" },
   pms: { schemeLabel: "Strategy", schemePlaceholder: "PMS strategy name…", catalog: false,
     txnTypes: ["lumpsum", "additional_purchase", "redemption"], defaultAssetClass: "equity" },
   aif: { schemeLabel: "Scheme / fund", schemePlaceholder: "AIF scheme name…", catalog: false,

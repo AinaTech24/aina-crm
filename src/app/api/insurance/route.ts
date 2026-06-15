@@ -34,6 +34,8 @@ const CreateBody = z.object({
   livesCovered: z.number().int().min(1).max(20).optional(),
   sumAssured: z.number().min(0).optional(),
   annualPremium: z.number().min(0).optional(),
+  /** Advisor commission for this policy (rupees; 1-time or trail). */
+  commissionPaisa: z.number().min(0).optional(),
   premiumFrequency: z.enum(PREMIUM_FREQUENCIES).default("annual"),
   premiumPayingTermYears: z.number().int().min(0).max(99).optional(),
   policyTermYears: z.number().int().min(0).max(99).optional(),
@@ -119,6 +121,7 @@ export async function POST(req: NextRequest) {
         livesCovered: body.livesCovered ?? 1,
         sumAssured: body.sumAssured != null ? String(body.sumAssured) : null,
         annualPremium: body.annualPremium != null ? String(body.annualPremium) : null,
+        commissionPaisa: body.commissionPaisa != null ? String(body.commissionPaisa) : null,
         premiumFrequency: body.premiumFrequency,
         premiumPayingTermYears: body.premiumPayingTermYears ?? null,
         policyTermYears: body.policyTermYears ?? null,

@@ -15,7 +15,7 @@ import { tenants } from "./tenants";
 import { investors } from "./investors";
 import { users } from "./users";
 
-export const PRODUCT_TYPES = ["mutual_fund", "pms", "aif", "sif", "bond", "ncd", "p2p", "las", "other"] as const;
+export const PRODUCT_TYPES = ["mutual_fund", "direct_equity", "pms", "aif", "sif", "bond", "ncd", "p2p", "las", "other"] as const;
 export const BUSINESS_ENTRY_STATUSES = ["draft", "confirmed", "emailed", "cancelled"] as const;
 export const TXN_TYPES = ["sip", "sip_stop", "lumpsum", "additional_purchase", "switch", "stp", "swp", "redemption"] as const;
 export const TXN_FREQUENCIES = ["one_time", "weekly", "monthly", "quarterly", "half_yearly", "yearly"] as const;

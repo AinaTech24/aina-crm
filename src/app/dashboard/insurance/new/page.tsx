@@ -126,6 +126,7 @@ function NewInsuranceForm() {
     livesCovered: 1,
     sumAssured: "",
     annualPremium: "",
+    commission: "",
     premiumFrequency: "annual",
     premiumPayingTermYears: "",
     policyTermYears: "",
@@ -184,6 +185,7 @@ function NewInsuranceForm() {
           livesCovered: data.livesCovered || 1,
           sumAssured: data.sumAssured != null ? String(data.sumAssured) : "",
           annualPremium: data.annualPremium != null ? String(data.annualPremium) : "",
+          commission: data.commissionPaisa != null ? String(data.commissionPaisa) : "",
           premiumFrequency: data.premiumFrequency || "annual",
           premiumPayingTermYears:
             data.premiumPayingTermYears != null ? String(data.premiumPayingTermYears) : "",
@@ -341,6 +343,7 @@ function NewInsuranceForm() {
         livesCovered: Number(form.livesCovered) || 1,
         sumAssured: form.sumAssured ? Number(form.sumAssured) : undefined,
         annualPremium: form.annualPremium ? Number(form.annualPremium) : undefined,
+        commissionPaisa: form.commission ? Number(form.commission) : undefined,
         premiumFrequency: form.premiumFrequency,
         premiumPayingTermYears: form.premiumPayingTermYears
           ? Number(form.premiumPayingTermYears)
@@ -537,6 +540,13 @@ function NewInsuranceForm() {
             <option value="quarterly">Quarterly</option>
             <option value="monthly">Monthly</option>
           </Select>
+          <Field
+            label="Commission (₹)"
+            type="number"
+            placeholder="e.g. 5400"
+            value={form.commission}
+            setValue={(v) => set("commission", v)}
+          />
         </div>
         {installment != null && (
           <div className="rounded-lg bg-brand-cyan-light/30 border border-brand-cyan/20 px-3 py-2 text-xs flex items-center gap-2">
