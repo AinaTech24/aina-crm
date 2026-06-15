@@ -13,7 +13,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Pencil, Save, X, Loader2 } from "lucide-react";
+import { Pencil, Save, X, Loader2, Plus, Trash2 } from "lucide-react";
 
 const CATEGORIES = [
   ["individual", "Individual"],
@@ -83,6 +83,19 @@ export function InvestorEditPanel({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  const seedNominees: { name: string; relation?: string }[] =
+    (investor as any).nominees?.length
+      ? (investor as any).nominees
+      : investor.nomineeName
+        ? [{ name: investor.nomineeName, relation: investor.nomineeRelation ?? "" }]
+        : [];
+  const seedBanks: { bankName: string; accountMasked?: string; ifsc?: string }[] =
+    (investor as any).bankAccounts?.length
+      ? (investor as any).bankAccounts
+      : investor.bankName
+        ? [{ bankName: investor.bankName, accountMasked: investor.bankAccountNumberMasked ?? "", ifsc: investor.bankIfsc ?? "" }]
+        : [];
+
   const initial = () => ({
     name: investor.name ?? "",
     pan: investor.pan ?? "",
@@ -103,6 +116,8 @@ export function InvestorEditPanel({
     bankName: investor.bankName ?? "",
     bankAccountNumberMasked: investor.bankAccountNumberMasked ?? "",
     bankIfsc: investor.bankIfsc ?? "",
+    nominees: seedNominees,
+    bankAccounts: seedBanks,
     bseUccCode: investor.bseUccCode ?? "",
     nseCanCode: investor.nseCanCode ?? "",
     mandateStatus: investor.mandateStatus ?? "none",
@@ -158,13 +173,20 @@ export function InvestorEditPanel({
         payload.riskProfile = form.riskProfile || undefined;
       }
       if (showNominee) {
-        payload.nomineeName = form.nomineeName || undefined;
-        payload.nomineeRelation = form.nomineeRelation || undefined;
+        // Send the full list; the API mirrors the first entry into the legacy
+        // single columns. Drop blank rows.
+        payload.nominees = form.nominees
+          .map((n) => ({ name: (n.name || "").trim(), relation: (n.relation || "").trim() || undefined }))
+          .filter((n) => n.name);
       }
       if (showBank) {
-        payload.bankName = form.bankName || undefined;
-        payload.bankAccountNumberMasked = form.bankAccountNumberMasked || undefined;
-        payload.bankIfsc = form.bankIfsc || undefined;
+        payload.bankAccounts = form.bankAccounts
+          .map((b) => ({
+            bankName: (b.bankName || "").trim(),
+            accountMasked: (b.accountMasked || "").trim() || undefined,
+            ifsc: (b.ifsc || "").trim().toUpperCase() || undefined,
+          }))
+          .filter((b) => b.bankName);
       }
 
       const res = await fetch(`/api/investors/${investor.id}`, {
@@ -375,49 +397,53 @@ export function InvestorEditPanel({
       {(showNominee || showBank) && (
         <Group title="Nominee & bank">
           {showNominee && (
-            <KV label="Nominee name">
+            <div className="col-span-3">
+              <div className="text-xs text-muted-foreground mb-1">Nominees</div>
               {editing ? (
-                <input value={form.nomineeName} onChange={(e) => set("nomineeName", e.target.value)} className={inputCls} />
+                <div className="space-y-2">
+                  {form.nominees.length === 0 && <div className="text-xs text-muted-foreground">No nominees added.</div>}
+                  {form.nominees.map((n, i) => (
+                    <div key={i} className="flex gap-2 items-center">
+                      <input value={n.name} onChange={(e) => set("nominees", form.nominees.map((x, idx) => idx === i ? { ...x, name: e.target.value } : x))} placeholder="Nominee name" className={`${inputCls} flex-1`} />
+                      <input value={n.relation ?? ""} onChange={(e) => set("nominees", form.nominees.map((x, idx) => idx === i ? { ...x, relation: e.target.value } : x))} placeholder="Relation" className={`${inputCls} w-36`} />
+                      <button type="button" onClick={() => set("nominees", form.nominees.filter((_, idx) => idx !== i))} className="text-muted-foreground hover:text-rose-600 shrink-0 p-1" aria-label="Remove nominee"><Trash2 className="size-4" /></button>
+                    </div>
+                  ))}
+                  <button type="button" onClick={() => set("nominees", [...form.nominees, { name: "", relation: "" }])} className="btn-ghost text-xs"><Plus className="size-3.5" /> Add nominee</button>
+                </div>
               ) : (
-                <span>{investor.nomineeName ?? "—"}</span>
+                <div className="text-sm space-y-0.5">
+                  {form.nominees.length === 0 ? <span>—</span> : form.nominees.map((n, i) => (
+                    <div key={i}>{n.name}{n.relation ? <span className="text-muted-foreground"> · {n.relation}</span> : null}</div>
+                  ))}
+                </div>
               )}
-            </KV>
-          )}
-          {showNominee && (
-            <KV label="Nominee relation">
-              {editing ? (
-                <input value={form.nomineeRelation} onChange={(e) => set("nomineeRelation", e.target.value)} className={inputCls} />
-              ) : (
-                <span>{investor.nomineeRelation ?? "—"}</span>
-              )}
-            </KV>
-          )}
-          {showBank && (
-            <KV label="Bank">
-              {editing ? (
-                <input value={form.bankName} onChange={(e) => set("bankName", e.target.value)} className={inputCls} />
-              ) : (
-                <span>{investor.bankName ?? "—"}</span>
-              )}
-            </KV>
+            </div>
           )}
           {showBank && (
-            <KV label="Account (masked)">
+            <div className="col-span-3">
+              <div className="text-xs text-muted-foreground mb-1">Bank accounts</div>
               {editing ? (
-                <input value={form.bankAccountNumberMasked} onChange={(e) => set("bankAccountNumberMasked", e.target.value)} className={inputCls} />
+                <div className="space-y-2">
+                  {form.bankAccounts.length === 0 && <div className="text-xs text-muted-foreground">No bank accounts added.</div>}
+                  {form.bankAccounts.map((b, i) => (
+                    <div key={i} className="flex gap-2 items-center">
+                      <input value={b.bankName} onChange={(e) => set("bankAccounts", form.bankAccounts.map((x, idx) => idx === i ? { ...x, bankName: e.target.value } : x))} placeholder="Bank name" className={`${inputCls} flex-1`} />
+                      <input value={b.accountMasked ?? ""} onChange={(e) => set("bankAccounts", form.bankAccounts.map((x, idx) => idx === i ? { ...x, accountMasked: e.target.value } : x))} placeholder="A/c (masked)" className={`${inputCls} w-32 font-mono`} />
+                      <input value={b.ifsc ?? ""} onChange={(e) => set("bankAccounts", form.bankAccounts.map((x, idx) => idx === i ? { ...x, ifsc: e.target.value } : x))} placeholder="IFSC" className={`${inputCls} w-28 font-mono`} />
+                      <button type="button" onClick={() => set("bankAccounts", form.bankAccounts.filter((_, idx) => idx !== i))} className="text-muted-foreground hover:text-rose-600 shrink-0 p-1" aria-label="Remove bank account"><Trash2 className="size-4" /></button>
+                    </div>
+                  ))}
+                  <button type="button" onClick={() => set("bankAccounts", [...form.bankAccounts, { bankName: "", accountMasked: "", ifsc: "" }])} className="btn-ghost text-xs"><Plus className="size-3.5" /> Add bank account</button>
+                </div>
               ) : (
-                <span className="font-mono">{investor.bankAccountNumberMasked ?? "—"}</span>
+                <div className="text-sm space-y-0.5">
+                  {form.bankAccounts.length === 0 ? <span>—</span> : form.bankAccounts.map((b, i) => (
+                    <div key={i}>{b.bankName}{b.accountMasked ? <span className="font-mono text-muted-foreground"> · {b.accountMasked}</span> : null}{b.ifsc ? <span className="font-mono text-muted-foreground"> · {b.ifsc}</span> : null}</div>
+                  ))}
+                </div>
               )}
-            </KV>
-          )}
-          {showBank && (
-            <KV label="IFSC">
-              {editing ? (
-                <input value={form.bankIfsc} onChange={(e) => set("bankIfsc", e.target.value)} className={inputCls} />
-              ) : (
-                <span className="font-mono">{investor.bankIfsc ?? "—"}</span>
-              )}
-            </KV>
+            </div>
           )}
         </Group>
       )}

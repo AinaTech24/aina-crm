@@ -134,15 +134,23 @@ export const investors = pgTable(
     fatcaStatus: text("fatca_status", { enum: ["pending", "verified", "expired"] }),
     fatcaExpiryAt: date("fatca_expiry_at"),
 
-    /** Nominees */
+    /** Nominees — legacy single fields mirror nominees[0] for back-compat. */
     nomineeName: text("nominee_name"),
     nomineeRelation: text("nominee_relation"),
     nomineeDob: date("nominee_dob"),
+    /** Multiple nominees. The legacy nominee_* columns mirror the first entry. */
+    nominees: jsonb("nominees")
+      .$type<{ name: string; relation?: string; dob?: string; sharePct?: number }[]>()
+      .default([]),
 
-    /** Bank (mandate) */
+    /** Bank (mandate) — legacy single fields mirror bankAccounts[0]. */
     bankName: text("bank_name"),
     bankAccountNumberMasked: text("bank_account_masked"),
     bankIfsc: text("bank_ifsc"),
+    /** Multiple bank accounts. The legacy bank_* columns mirror the first entry. */
+    bankAccounts: jsonb("bank_accounts")
+      .$type<{ bankName: string; accountMasked?: string; ifsc?: string; accountType?: string }[]>()
+      .default([]),
 
     /** Risk profile */
     riskProfileScore: integer("risk_profile_score"),

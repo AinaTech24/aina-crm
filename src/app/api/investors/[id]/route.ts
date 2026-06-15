@@ -52,6 +52,20 @@ const Patch = z.object({
   bankName: z.string().optional(),
   bankAccountNumberMasked: z.string().optional(),
   bankIfsc: z.string().optional(),
+  // Multiple nominees / bank accounts. The legacy single columns above are kept
+  // in sync with the first array entry (mirrored in the handler).
+  nominees: z.array(z.object({
+    name: z.string().max(120),
+    relation: z.string().max(60).optional(),
+    dob: z.string().max(20).optional(),
+    sharePct: z.number().min(0).max(100).optional(),
+  })).max(10).optional(),
+  bankAccounts: z.array(z.object({
+    bankName: z.string().max(120),
+    accountMasked: z.string().max(60).optional(),
+    ifsc: z.string().max(20).optional(),
+    accountType: z.string().max(20).optional(),
+  })).max(10).optional(),
   notes: z.string().optional(),
   // KYC tracker (Network FP 2.4 parity, migration 0024)
   nameAsPerPan: z.string().max(200).nullable().optional(),
@@ -206,7 +220,21 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
       // Recompute persisted health from the post-patch state — many edited
       // fields (KYC, nominee, bank, risk profile, review dates) feed the score.
-      const merged = { ...before, ...parse.data };
+      // Mirror the first nominee / bank entry into the legacy single columns so
+      // existing readers (PDFs, proposals, the health score) keep working.
+      const mirror: Record<string, unknown> = {};
+      if (parse.data.nominees) {
+        const n0 = parse.data.nominees[0];
+        mirror.nomineeName = n0?.name ?? null;
+        mirror.nomineeRelation = n0?.relation ?? null;
+      }
+      if (parse.data.bankAccounts) {
+        const b0 = parse.data.bankAccounts[0];
+        mirror.bankName = b0?.bankName ?? null;
+        mirror.bankAccountNumberMasked = b0?.accountMasked ?? null;
+        mirror.bankIfsc = b0?.ifsc ?? null;
+      }
+      const merged = { ...before, ...parse.data, ...mirror };
       const health = healthFields(merged as any);
 
       // When an explicit review cadence is set, derive the next review date from
@@ -228,6 +256,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         .set({
           ...parse.data,
           ...reviewPatch,
+          ...mirror,
           updatedAt: new Date(),
           ...(touchingKyc
             ? { kycLastUpdatedBy: session.userId }
