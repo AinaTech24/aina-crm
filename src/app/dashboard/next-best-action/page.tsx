@@ -27,6 +27,7 @@ export default async function NextBestActionPage({ searchParams }: { searchParam
   const sp = await searchParams;
   const mine = sp.mine === "1" || !canFirm;
   const typeFilter = (sp.type ?? "") as NbaType | "";
+  const sevFilter = (sp.sev ?? "") as "now" | "today" | "soon" | "";
 
   const actions = await withTenant(
     session.tenantId,
@@ -37,7 +38,9 @@ export default async function NextBestActionPage({ searchParams }: { searchParam
   const totalImpact = actions.reduce((a, x) => a + x.impactInr, 0);
   const nowCount = actions.filter((a) => a.severity === "now").length;
   const byType = actions.reduce((m, a) => ((m[a.type] = (m[a.type] ?? 0) + 1), m), {} as Record<string, number>);
-  const shown = typeFilter ? actions.filter((a) => a.type === typeFilter) : actions;
+  const shown = actions.filter(
+    (a) => (!typeFilter || a.type === typeFilter) && (!sevFilter || a.severity === sevFilter)
+  );
 
   const hrefWith = (patch: Record<string, string | undefined>) => {
     const u = new URLSearchParams();
@@ -67,6 +70,21 @@ export default async function NextBestActionPage({ searchParams }: { searchParam
         <Kpi icon={AlertTriangle} label="Act now" value={String(nowCount)} tone="rose" />
         <Kpi icon={IndianRupee} label="₹ value at stake" value={inr(totalImpact)} tone="emerald" />
         <Kpi icon={Users} label="Clients to touch" value={String(actions.length)} tone="sky" />
+      </div>
+
+      {/* Urgency filter chips */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold mr-1">Urgency</span>
+        <Link href={hrefWith({ sev: undefined })} className={`chip ${!sevFilter ? "bg-brand-cyan text-white" : "bg-secondary"}`}>All</Link>
+        {(["now", "today", "soon"] as const).map((k) => {
+          const label = k === "now" ? "Act now" : k === "today" ? "Today" : "This week";
+          const cnt = actions.filter((a) => a.severity === k).length;
+          return (
+            <Link key={k} href={hrefWith({ sev: k })} className={`chip ${sevFilter === k ? "bg-brand-cyan text-white" : "bg-secondary"}`}>
+              {label} <strong className="ml-1">{cnt}</strong>
+            </Link>
+          );
+        })}
       </div>
 
       {/* Type filter chips */}
