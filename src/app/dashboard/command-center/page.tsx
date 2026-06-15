@@ -19,6 +19,7 @@ import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { withTenant } from "@/db/client";
 import { buildCommandQueue, type ActionGroup, type Severity } from "@/lib/command-center/queue";
+import { FilterBar } from "@/components/common/FilterBar";
 
 export const dynamic = "force-dynamic";
 
@@ -41,15 +42,32 @@ const BANDS: { key: Severity; label: string; sub: string }[] = [
   { key: "soon", label: "This week", sub: "Stay ahead of it" },
 ];
 
-export default async function CommandCenterPage() {
+export default async function CommandCenterPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | undefined>>;
+}) {
   const session = await requireSession();
+  const sp = await searchParams;
   const firmWide = can(session.roles, "dashboard.view.owner", session.permissions);
+  const sevFilter = (sp.severity ?? "").split(",").filter(Boolean);
+  const catFilter = (sp.category ?? "").split(",").filter(Boolean);
 
-  const groups = await withTenant(
+  const allGroups = await withTenant(
     session.tenantId,
     async (tx) => buildCommandQueue(tx as any, { userId: session.userId, firmWide }),
     { userId: session.userId, branchId: session.branchId, roles: session.roles }
   );
+
+  // Category options come from whatever the queue produced — so the filter only
+  // ever offers categories that actually have open items.
+  const categoryOptions = Array.from(
+    new Map(allGroups.map((g) => [g.key, g.label] as const)).entries()
+  ).map(([value, label]) => ({ value, label }));
+
+  let groups = allGroups;
+  if (sevFilter.length) groups = groups.filter((g) => sevFilter.includes(g.severity));
+  if (catFilter.length) groups = groups.filter((g) => catFilter.includes(g.key));
 
   const totalItems = groups.reduce((n, g) => n + g.count, 0);
   const nowCount = groups.filter((g) => g.severity === "now").reduce((n, g) => n + g.count, 0);
@@ -74,6 +92,25 @@ export default async function CommandCenterPage() {
           <Stat label="Total open" value={totalItems} tone="sky" />
         </div>
       </div>
+
+      <FilterBar
+        totalCount={totalItems}
+        filters={[
+          {
+            type: "multi",
+            key: "severity",
+            label: "Urgency",
+            options: [
+              { value: "now", label: "Act now" },
+              { value: "today", label: "Today" },
+              { value: "soon", label: "This week" },
+            ],
+          },
+          ...(categoryOptions.length
+            ? [{ type: "multi" as const, key: "category", label: "Category", options: categoryOptions }]
+            : []),
+        ]}
+      />
 
       {groups.length === 0 ? (
         <div className="card-surface p-12 text-center">

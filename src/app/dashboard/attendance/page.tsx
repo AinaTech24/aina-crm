@@ -4,6 +4,7 @@ import { CalendarCheck, CheckCircle2, XCircle, CalendarOff, Grid3x3 } from "luci
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { FilterBar } from "@/components/common/FilterBar";
+import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
 import { CustomViews } from "@/components/common/CustomViews";
 import { ClockWidget } from "@/components/attendance/ClockWidget";
 import { AttendanceTable } from "@/components/attendance/AttendanceTable";
@@ -27,7 +28,9 @@ export default async function AttendancePage({
     const conds: any[] = [sql`a.tenant_id = ${session.tenantId}::uuid`];
     if (q) conds.push(sql`u.name ILIKE ${`%${q}%`}`);
     if (statusFilter.length) conds.push(sql`a.status IN (${sql.join(statusFilter.map((v) => sql`${v}`), sql`, `)})`);
+    const dr = dateRangeCond(sp, "date", "a.attendance_date");
     if (todayOnly) conds.push(sql`a.attendance_date = current_date`);
+    else if (dr) conds.push(dr);
     else conds.push(sql`a.attendance_date >= current_date - interval '30 days'`);
     const whereSql = sql`WHERE ${sql.join(conds, sql` AND `)}`;
 
@@ -94,6 +97,7 @@ export default async function AttendancePage({
             options: Object.entries(ATTENDANCE_STATUS_LABELS).map(([value, label]) => ({ value, label })),
           },
           { type: "select", key: "today", label: "Day", options: [{ value: "1", label: "Today only" }] },
+          dateRangeFilter("date", "Date"),
         ]}
         rightSlot={
           <CustomViews
