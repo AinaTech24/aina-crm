@@ -6,6 +6,8 @@ import { investors, leads, tasks, communications, sips } from "@/db/schema";
 import { formatINR, formatRelative, formatDate } from "@/lib/utils";
 import type { SessionUser } from "@/lib/auth/session";
 import { RmInsightsSection } from "./RmInsightsSection";
+import { resolvePeriodDates, type Period } from "@/lib/dashboard/period";
+import { PeriodSelector } from "./PeriodSelector";
 
 /**
  * RM dashboard — shows only what's assigned to this RM. Per spec section 2:
@@ -19,12 +21,17 @@ export async function RmDashboard({
   limited = false,
   targetUserId,
   targetName,
+  period = "mtd",
+  customStart,
 }: {
   session: SessionUser;
   limited?: boolean;
   /** When an owner/branch-head views a specific team member's dashboard. */
   targetUserId?: string;
   targetName?: string;
+  /** Period filter — scopes the period metrics (net sales, conversions). */
+  period?: Period;
+  customStart?: string;
 }) {
   const userId = targetUserId ?? session.userId;
   const viewingOther = !!targetUserId && targetUserId !== session.userId;
@@ -32,7 +39,9 @@ export async function RmDashboard({
   // "Aman's clients" instead of "My clients".
   const who = viewingOther ? `${(targetName ?? "Member").split(" ")[0]}'s` : "My";
   const today = new Date();
-  const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+  // Period filter drives the "net sales / converted" metrics; everything else
+  // (today's follow-ups, this week's reviews, etc.) is intentionally live.
+  const { startISO, label: periodLabel } = resolvePeriodDates(period, today, customStart);
   const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59);
   const next7 = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
@@ -51,7 +60,7 @@ export async function RmDashboard({
     const leadStats = await tx.execute(sql`
       SELECT
         COUNT(*) FILTER (WHERE converted_investor_id IS NULL AND stage NOT IN ('lost', 'cold'))::int AS open_leads,
-        COUNT(*) FILTER (WHERE converted_investor_id IS NOT NULL AND converted_at >= ${startOfMonth.toISOString()})::int AS converted_mtd,
+        COUNT(*) FILTER (WHERE converted_investor_id IS NOT NULL AND converted_at >= ${startISO})::int AS converted_mtd,
         COUNT(*) FILTER (WHERE next_follow_up_at <= ${endOfDay.toISOString()} AND converted_investor_id IS NULL AND stage NOT IN ('lost', 'cold'))::int AS follow_ups_today
       FROM leads WHERE owner_id = ${userId}
     `);
@@ -64,7 +73,7 @@ export async function RmDashboard({
         COALESCE(SUM(CASE WHEN direction = 'outflow' THEN amount::numeric ELSE 0 END), 0) AS redemption
       FROM transactions t
       WHERE t.status IN ('processed', 'successful')
-        AND t.order_date >= ${startOfMonth.toISOString().slice(0, 10)}::date
+        AND t.order_date >= ${startISO.slice(0, 10)}::date
         AND t.investor_id IN (SELECT id FROM investors WHERE rm_id = ${userId})
     `);
     const b = businessStats.rows[0] as any;
@@ -204,22 +213,25 @@ export async function RmDashboard({
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">
-          {viewingOther ? `${targetName ?? "Team member"}'s day` : "My day"}
-        </h1>
-        <p className="text-muted-foreground text-sm">
-          {viewingOther
-            ? `Read-only view of ${targetName ?? "this team member"}'s book, pipeline and tasks.`
-            : `Hi ${session.name.split(" ")[0]} — here's what to focus on today.`}
-        </p>
+      <div className="flex items-start justify-between flex-wrap gap-3">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">
+            {viewingOther ? `${targetName ?? "Team member"}'s day` : "My day"}
+          </h1>
+          <p className="text-muted-foreground text-sm">
+            {viewingOther
+              ? `Read-only view of ${targetName ?? "this team member"}'s book, pipeline and tasks.`
+              : `Hi ${session.name.split(" ")[0]} — here's what to focus on today.`}
+          </p>
+        </div>
+        <PeriodSelector current={period} variant="light" />
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
         <Kpi label={`${who} clients`} value={String(data.myClients)} sub={formatINR(data.myAum) + " AUM"} />
         <Kpi label={`${who} SIP book`} value={formatINR(data.mySipBook)} sub="per month" />
-        <Kpi label={`${who} net sales MTD`} value={formatINR(data.netMtd)} sub={`Gross ${formatINR(data.grossMtd)}`} />
-        <Kpi label="Open leads" value={String(data.openLeads)} sub={`${data.convertedMtd} converted MTD`} />
+        <Kpi label={`${who} net sales`} value={formatINR(data.netMtd)} sub={`Gross ${formatINR(data.grossMtd)} · ${periodLabel}`} />
+        <Kpi label="Open leads" value={String(data.openLeads)} sub={`${data.convertedMtd} converted · ${periodLabel}`} />
         {/* Sales Quota Ring — driven by users.annual_target / 12 */}
         {data.monthlyTarget > 0 ? (
           <div className="card-surface glass-card p-4 flex flex-col items-center justify-center text-center">

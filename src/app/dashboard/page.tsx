@@ -102,7 +102,7 @@ export default async function DashboardPage({
       />
     );
     dash = selected ? (
-      <RmDashboard session={session} targetUserId={selected.id} targetName={selected.name} />
+      <RmDashboard session={session} targetUserId={selected.id} targetName={selected.name} period={period} customStart={pstart} />
     ) : (
       <OwnerCockpit session={session} period={period} customStart={pstart} />
     );
@@ -113,10 +113,10 @@ export default async function DashboardPage({
   } else if (can(roles, "dashboard.view.ops", perms)) {
     dash = <BackOfficeDashboard session={session} />;
   } else if (can(roles, "dashboard.view.rm", perms)) {
-    dash = <RmDashboard session={session} />;
+    dash = <RmDashboard session={session} period={period} customStart={pstart} />;
   } else {
     // Team member fallback — just tasks
-    dash = <RmDashboard session={session} limited />;
+    dash = <RmDashboard session={session} limited period={period} customStart={pstart} />;
   }
 
   return (

@@ -19,13 +19,20 @@ export type { Period };
  * India FY = April–March. QTD quarters:
  *   Q1: Apr–Jun · Q2: Jul–Sep · Q3: Oct–Dec · Q4: Jan–Mar
  */
-export function PeriodSelector({ current }: { current: Period }) {
+export function PeriodSelector({ current, variant = "dark" }: { current: Period; variant?: "dark" | "light" }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [pending, startTransition] = useTransition();
 
   const pstart = searchParams.get("pstart") ?? "";
+
+  // The dark variant lives inside the brown OwnerCockpit banner; the light
+  // variant is for normal (light) headers like the per-user dashboard.
+  const cls =
+    variant === "light"
+      ? { wrap: "border-border bg-card", active: "bg-primary text-primary-foreground shadow-sm", idle: "text-muted-foreground hover:text-foreground hover:bg-accent" }
+      : { wrap: "border-white/20 bg-white/10 backdrop-blur-sm", active: "bg-white text-slate-900 shadow-sm", idle: "text-white/75 hover:text-white hover:bg-white/10" };
 
   function select(p: Period) {
     const params = new URLSearchParams(searchParams.toString());
@@ -46,7 +53,7 @@ export function PeriodSelector({ current }: { current: Period }) {
 
   return (
     <div
-      className={`inline-flex rounded-lg border border-white/20 bg-white/10 backdrop-blur-sm p-0.5 gap-0.5 ${
+      className={`inline-flex rounded-lg border p-0.5 gap-0.5 ${cls.wrap} ${
         pending ? "opacity-60 pointer-events-none" : ""
       }`}
     >
@@ -55,9 +62,7 @@ export function PeriodSelector({ current }: { current: Period }) {
           key={p}
           onClick={() => select(p)}
           className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors inline-flex items-center gap-1.5 whitespace-nowrap ${
-            current === p
-              ? "bg-white text-slate-900 shadow-sm"
-              : "text-white/75 hover:text-white hover:bg-white/10"
+            current === p ? cls.active : cls.idle
           }`}
         >
           {p === "mtd" && <CalendarDays className="size-3" />}
@@ -70,7 +75,7 @@ export function PeriodSelector({ current }: { current: Period }) {
           DatePicker only commits a complete date on day-click, so it's stable. */}
       <div
         className={`px-2 py-1 rounded-md text-xs font-medium inline-flex items-center gap-1.5 ${
-          current === "custom" ? "bg-white text-slate-900 shadow-sm" : "text-white/75"
+          current === "custom" ? cls.active : cls.idle
         }`}
         title="Custom — show everything since this date"
       >
