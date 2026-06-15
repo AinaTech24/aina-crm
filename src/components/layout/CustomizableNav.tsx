@@ -21,7 +21,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { DashboardNavDropdown, type DashboardSubItem } from "./DashboardNavDropdown";
 import {
-  Search, Pencil, Check, Plus, GripVertical, X, RotateCcw, Circle, ChevronDown,
+  Search, Pencil, Check, Plus, GripVertical, X, RotateCcw, Circle, ChevronDown, ChevronUp,
   // ── nav module icons (rendered here by name; see ICONS map) ──
   Activity, AlertTriangle, BarChart3, Bot, Boxes, Briefcase, Cake, Calculator,
   Calendar, CalendarCheck, CalendarOff, ClipboardCheck, Copy, CreditCard,
@@ -207,7 +207,21 @@ export function CustomizableNav({
   }
 
   function addGroup() {
-    setLayout((prev) => [...prev, { id: `g-${prev.length}-${prev.reduce((n, g) => n + g.items.length, 0)}`, title: "New group", items: [] }]);
+    // Ask for the name up front so a new group is never an unnamed, easy-to-miss
+    // box at the bottom of the rail.
+    const title = (typeof window !== "undefined" ? window.prompt("Name the new group", "") : "")?.trim();
+    if (!title) return; // cancelled or blank — don't add an empty group
+    setLayout((prev) => [...prev, { id: `g-${slug(title)}-${prev.length}`, title, items: [] }]);
+  }
+  function moveGroup(id: string, dir: -1 | 1) {
+    setLayout((prev) => {
+      const idx = prev.findIndex((g) => g.id === id);
+      const to = idx + dir;
+      if (idx < 0 || to < 0 || to >= prev.length) return prev;
+      const next = [...prev];
+      [next[idx], next[to]] = [next[to], next[idx]];
+      return next;
+    });
   }
   function renameGroup(id: string, title: string) {
     setLayout((prev) => prev.map((g) => (g.id === id ? { ...g, title } : g)));
@@ -224,6 +238,11 @@ export function CustomizableNav({
     });
   }
   function resetLayout() {
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm("Reset the sidebar to its default layout? Your custom groups and order will be removed.")
+    )
+      return;
     setLayout(buildDefault(items));
   }
 
@@ -314,9 +333,17 @@ export function CustomizableNav({
                       className="flex-1 min-w-0 bg-transparent text-[10px] font-bold uppercase tracking-[0.1em] text-foreground/70 border-b border-dashed border-border focus:outline-none focus:ring-0 focus:border-brand-cyan"
                     />
                     {layout.length > 1 && (
-                      <button type="button" onClick={() => deleteGroup(g.id)} className="text-muted-foreground hover:text-rose-600" title="Delete group (items move to the first group)">
-                        <X className="size-3" />
-                      </button>
+                      <>
+                        <button type="button" onClick={() => moveGroup(g.id, -1)} disabled={layout[0]?.id === g.id} className="text-muted-foreground hover:text-foreground disabled:opacity-25" title="Move group up">
+                          <ChevronUp className="size-3" />
+                        </button>
+                        <button type="button" onClick={() => moveGroup(g.id, 1)} disabled={layout[layout.length - 1]?.id === g.id} className="text-muted-foreground hover:text-foreground disabled:opacity-25" title="Move group down">
+                          <ChevronDown className="size-3" />
+                        </button>
+                        <button type="button" onClick={() => deleteGroup(g.id)} className="text-muted-foreground hover:text-rose-600" title="Delete group (items move to the first group)">
+                          <X className="size-3" />
+                        </button>
+                      </>
                     )}
                   </div>
                 ) : titled ? (
