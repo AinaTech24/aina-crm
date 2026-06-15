@@ -76,6 +76,22 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Validate the file against what the user selected in the guided flow.
+    const selectedRta = ((form.get("rta") as string) || "").trim();
+    const selectedReport = ((form.get("reportType") as string) || "").trim();
+    if (selectedRta && parsed.source !== selectedRta) {
+      return NextResponse.json(
+        { error: `You selected ${selectedRta.toUpperCase()}, but this file looks like ${parsed.source.toUpperCase()} ${parsed.reportType}. Pick the matching RTA, or the right file.` },
+        { status: 400 }
+      );
+    }
+    if (selectedReport && parsed.reportType && selectedReport !== parsed.reportType) {
+      return NextResponse.json(
+        { error: `You selected file type ${selectedReport}, but this file is ${parsed.reportType}. Pick the matching file type.` },
+        { status: 400 }
+      );
+    }
+
     const summary = await withTenant(
       session.tenantId,
       (tx) =>
