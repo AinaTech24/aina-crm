@@ -12,7 +12,7 @@ import { FaqAccordion } from "@/components/landing/FaqAccordion";
 import { MobileNav } from "@/components/landing/MobileNav";
 
 /** WhatsApp community — primary "Join Our Community" CTA across the page. */
-const COMMUNITY_URL = "https://chat.whatsapp.com/Fqv4YlnPibN0r4BRQJ2DSX?s=cl&p=a&ilr=4&amv=2";
+const COMMUNITY_URL = "https://chat.whatsapp.com/C6ttmFYUtxHA7GYna5YGcN";
 
 /* ─────────────────────────────────────────────────────────────────────────
    SEO — written around what Indian MFDs actually type into Google:

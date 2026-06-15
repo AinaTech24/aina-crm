@@ -37,7 +37,6 @@ export type RenderRiskProfileArgs = {
   generatedAt: string;
 };
 
-const ACCENT: RGB = rgb(0.055, 0.647, 0.914);
 const INK: RGB = rgb(0.06, 0.09, 0.16);
 const SLATE: RGB = rgb(0.2, 0.255, 0.333);
 const MUTED: RGB = rgb(0.58, 0.64, 0.72);
@@ -220,26 +219,15 @@ function drawHeader(page: PDFPage, ctx: Ctx, full: boolean): number {
     return topY - 36;
   }
 
-  let nameX = MARGIN;
   if (logo) {
     const maxH = 38, maxW = 150;
     let dw = (logo.width / logo.height) * maxH;
     let dh = maxH;
     if (dw > maxW) { dw = maxW; dh = (logo.height / logo.width) * maxW; }
     page.drawImage(logo, { x: MARGIN, y: topY - dh, width: dw, height: dh });
-    nameX = MARGIN + dw + 12;
   }
-  page.drawText(ascii(brand.legalName ?? brand.displayName ?? "Your Advisor"), {
-    x: nameX, y: topY - 15, size: 14, font: bold, color: INK,
-  });
-  page.drawText(
-    ascii(
-      `ARN ${(brand.arn ?? "—").toString().replace(/^ARN-?/i, "")}` +
-      `${brand.euin ? ` - EUIN ${brand.euin}` : ""}` +
-      `${brand.gstNumber ? ` - GSTIN ${brand.gstNumber}` : ""}`
-    ),
-    { x: nameX, y: topY - 30, size: 9, font: helv, color: SLATE }
-  );
+  // Firm name + ARN are intentionally NOT drawn next to the logo — the logo
+  // already carries the firm branding. ARN/EUIN/GSTIN remain in the footer.
   const titleLabel = "RISK PROFILE";
   const tlW = bold.widthOfTextAtSize(titleLabel, 11);
   page.drawText(titleLabel, { x: W - MARGIN - tlW, y: topY - 13, size: 11, font: bold, color: primary });
@@ -247,8 +235,10 @@ function drawHeader(page: PDFPage, ctx: Ctx, full: boolean): number {
   const aoW = helv.widthOfTextAtSize(asOf, 9);
   page.drawText(asOf, { x: W - MARGIN - aoW, y: topY - 28, size: 9, font: helv, color: SLATE });
 
+  // Theme-matched strip — primary → secondary brand colour (no off-brand blue).
+  const secondary = brand.secondaryColor ? hexToRgb(brand.secondaryColor) : primary;
   const stripY = topY - 46;
-  drawGradientStrip(page, MARGIN, stripY, W - 2 * MARGIN, 5, primary, ACCENT);
+  drawGradientStrip(page, MARGIN, stripY, W - 2 * MARGIN, 5, primary, secondary);
   return stripY - 26;
 }
 
