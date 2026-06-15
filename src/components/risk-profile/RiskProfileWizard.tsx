@@ -11,7 +11,7 @@
 import { useMemo, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, CheckCircle2, Loader2, ShieldCheck } from "lucide-react";
+import { ChevronLeft, ChevronRight, CheckCircle2, Loader2, ShieldCheck, Download } from "lucide-react";
 
 type Option = { value: string; label: string; score: number };
 type Question = { key: string; label: string; helperText?: string; type: "single"; options: Option[] };
@@ -30,9 +30,9 @@ export function RiskProfileWizard({
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [age, setAge] = useState<string>(deriveAge(investor.dob) ?? "");
   const [remarks, setRemarks] = useState("");
-  const [documentUrl, setDocumentUrl] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [doneId, setDoneId] = useState<string | null>(null);
 
   // Auto-sync exact age value with the template's age category options
   useEffect(() => {
@@ -102,7 +102,6 @@ export function RiskProfileWizard({
           investorId: investor.id,
           age: age ? Number(age) : undefined,
           answers,
-          documentUrl: documentUrl || undefined,
           rmRemarks: remarks || undefined,
           signedByName: investor.name,
         }),
@@ -112,10 +111,53 @@ export function RiskProfileWizard({
         setErr(j.error ?? `Submit failed (${res.status})`);
         return;
       }
-      router.push(`/dashboard/investors/${investor.id}`);
+      // Show a completion screen with the PDF download instead of jumping
+      // straight to the client page.
+      if (j?.id) setDoneId(String(j.id));
+      else router.push(`/dashboard/investors/${investor.id}`);
     } finally {
       setBusy(false);
     }
+  }
+
+  // Completion screen — shown right after a successful submit so the RM can
+  // download the freshly-generated Risk Profile PDF in one click.
+  if (doneId) {
+    return (
+      <div className="max-w-3xl mx-auto">
+        <div className="card-surface p-8 text-center space-y-5">
+          <div className="size-14 mx-auto rounded-full bg-emerald-50 grid place-items-center">
+            <CheckCircle2 className="size-7 text-emerald-600" />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold">Risk profile saved</h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              <span className="font-medium text-foreground">{investor.name}</span> is now profiled as{" "}
+              <span className="font-semibold" style={{ color: live.band.color ?? undefined }}>{live.band.label}</span>{" "}
+              ({live.total}/{range.max}).
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <a href={`/api/risk-profiles/${doneId}/pdf?download=1`} className="btn-primary">
+              <Download className="size-4" /> Download PDF
+            </a>
+            <a href={`/api/risk-profiles/${doneId}/pdf`} target="_blank" rel="noreferrer" className="btn-secondary">
+              View PDF
+            </a>
+            <button
+              type="button"
+              onClick={() => router.push(`/dashboard/investors/${investor.id}`)}
+              className="btn-secondary"
+            >
+              Go to client
+            </button>
+            <Link href="/dashboard/risk-profiles" className="btn-ghost text-sm">
+              Back to list
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -253,15 +295,6 @@ export function RiskProfileWizard({
             </div>
 
             <div className="card-surface p-4 space-y-3">
-              <label className="block">
-                <div className="text-xs font-semibold mb-1">Signed document URL (optional)</div>
-                <input
-                  value={documentUrl}
-                  onChange={(e) => setDocumentUrl(e.target.value)}
-                  placeholder="https://… (S3 link to signed PDF)"
-                  className="input-base"
-                />
-              </label>
               <label className="block">
                 <div className="text-xs font-semibold mb-1">RM remarks</div>
                 <textarea

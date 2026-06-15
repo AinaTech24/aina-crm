@@ -5,6 +5,7 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { formatDate } from "@/lib/utils";
 import { Pager } from "@/components/common/Pager";
+import { RiskProfileName } from "@/components/risk-profile/RiskProfileName";
 
 export const dynamic = "force-dynamic";
 
@@ -222,10 +223,12 @@ export default async function RiskProfilesPage({
                   return (
                     <tr key={r.id} className="border-b last:border-0 hover:bg-secondary/40">
                       <td className="px-4 py-3">
-                        <Link href={`/dashboard/investors/${r.id}`} className="font-medium hover:underline">
-                          {r.name}
-                        </Link>
-                        <div className="text-xs text-muted-foreground font-mono">{r.pan}</div>
+                        <RiskProfileName
+                          investorId={r.id}
+                          name={r.name}
+                          pan={r.pan}
+                          profileId={r.profile_id ?? null}
+                        />
                       </td>
                       <td className="py-3">
                         {r.risk_profile ? (

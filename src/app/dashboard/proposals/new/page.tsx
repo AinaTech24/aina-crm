@@ -940,6 +940,32 @@ function MFRow({ item, onPatch }: { item: MF; onPatch: (p: Partial<MF>) => void 
     }
   }, [item.lumpsum, item.monthlyAmount, item.sipTermYears, item.expectedReturn]);
 
+  const MF_CATEGORIES = [
+    "Large Cap", "Large & Mid Cap", "Mid Cap", "Small Cap", "Flexi Cap", "Multi Cap",
+    "ELSS", "Index", "Hybrid", "Balanced Advantage", "Debt", "Liquid", "Gold", "Other",
+  ];
+  // Map a raw MFAPI scheme_category onto one of MF_CATEGORIES; most-specific first.
+  const mapSchemeCategory = (raw?: string | null): string | undefined => {
+    if (!raw) return undefined;
+    const rules: Array<[RegExp, string]> = [
+      [/large\s*&\s*mid|large\s*and\s*mid/i, "Large & Mid Cap"],
+      [/flexi\s*cap/i, "Flexi Cap"],
+      [/multi\s*cap/i, "Multi Cap"],
+      [/large\s*cap/i, "Large Cap"],
+      [/mid\s*cap/i, "Mid Cap"],
+      [/small\s*cap/i, "Small Cap"],
+      [/elss|tax\s*saver/i, "ELSS"],
+      [/index|nifty|sensex|etf/i, "Index"],
+      [/balanced\s*advantage|dynamic\s*asset/i, "Balanced Advantage"],
+      [/hybrid|balanced|arbitrage/i, "Hybrid"],
+      [/liquid|overnight|money\s*market/i, "Liquid"],
+      [/debt|bond|gilt|duration|credit/i, "Debt"],
+      [/gold|silver|commodit/i, "Gold"],
+    ];
+    for (const [re, cat] of rules) if (re.test(raw)) return cat;
+    return undefined;
+  };
+
   return (
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
       <div className="sm:col-span-2">
@@ -953,7 +979,10 @@ function MFRow({ item, onPatch }: { item: MF; onPatch: (p: Partial<MF>) => void 
             onPatch({
               schemeName: s.schemeName,
               amcName: s.amc ?? item.amcName,
-              category: s.category ?? item.category,
+              // Map the raw MFAPI scheme category onto a clean bucket so the
+              // dropdown reflects the picked scheme (e.g. "…Large & Mid Cap
+              // Fund" → "Large & Mid Cap"). Falls back to whatever was set.
+              category: mapSchemeCategory(s.category) ?? item.category,
             })
           }
           placeholder="Search live MF catalog — or type a name…"
@@ -965,12 +994,22 @@ function MFRow({ item, onPatch }: { item: MF; onPatch: (p: Partial<MF>) => void 
         setValue={(v) => onPatch({ amcName: v })}
         placeholder="HDFC AMC"
       />
-      <TextInput
-        label="Category"
-        value={item.category ?? ""}
-        setValue={(v) => onPatch({ category: v })}
-        placeholder="ELSS / Large Cap / Hybrid"
-      />
+      <div>
+        <div className="text-[11px] font-medium mb-1 text-muted-foreground">Category</div>
+        <select
+          value={item.category ?? ""}
+          onChange={(e) => onPatch({ category: e.target.value })}
+          className="input-base text-sm w-full"
+        >
+          <option value="">— Select category —</option>
+          {MF_CATEGORIES.map((c) => (
+            <option key={c} value={c}>{c}</option>
+          ))}
+          {item.category && !MF_CATEGORIES.includes(item.category) && (
+            <option value={item.category}>{item.category}</option>
+          )}
+        </select>
+      </div>
       <NumberInput
         label="Lumpsum"
         unit="₹"
