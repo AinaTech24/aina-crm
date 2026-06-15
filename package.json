@@ -68,6 +68,7 @@
     "@tanstack/react-table": "^8.0.0",
     "@types/bcryptjs": "^2.4.6",
     "@xyflow/react": "^12.0.0",
+    "@zip.js/zip.js": "^2.8.26",
     "axios": "^1.7.0",
     "bcryptjs": "^3.0.3",
     "bullmq": "^5.0.0",
