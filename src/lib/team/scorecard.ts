@@ -13,16 +13,28 @@
  */
 
 import { sql } from "drizzle-orm";
+import { currentFiscalYear } from "@/lib/business/sif-status";
 
 type Tx = { execute: (q: any) => Promise<{ rows: any[] }> };
 
 export type KpiUnit = "inr" | "count" | "pct";
-export type Kpi = { key: string; label: string; actual: number; unit: KpiUnit; score: number; weight: number };
+export type Kpi = { key: string; label: string; actual: number; unit: KpiUnit; score: number; weight: number; target?: number };
 export type MemberRow = { userId: string; name: string; kraScore: number; band: "green" | "amber" | "red"; kpis: Kpi[] };
 export type Scorecard = { sales: MemberRow[]; ops: MemberRow[]; from: string; to: string };
 
+/** Metrics that take a per-person annual target (flow KPIs). %/stock/inverse
+ *  KPIs (SLA, attendance, AUM, overdue) keep their own absolute/relative score. */
+export const TARGETABLE_METRICS: { key: string; label: string; team: "sales" | "ops"; unit: KpiUnit }[] = [
+  { key: "net_sales", label: "Net sales", team: "sales", unit: "inr" },
+  { key: "new_clients", label: "New clients", team: "sales", unit: "count" },
+  { key: "converted", label: "Leads converted", team: "sales", unit: "count" },
+  { key: "meetings", label: "Meetings", team: "sales", unit: "count" },
+  { key: "activities", label: "Activities", team: "sales", unit: "count" },
+  { key: "resolved", label: "Tickets resolved", team: "ops", unit: "count" },
+];
+
 type Mode = "rel" | "pct" | "relInverse";
-type KpiDef = { key: string; label: string; unit: KpiUnit; weight: number; mode: Mode; values: Map<string, number> };
+type KpiDef = { key: string; label: string; unit: KpiUnit; weight: number; mode: Mode; values: Map<string, number>; targetable?: boolean };
 
 const band = (s: number): MemberRow["band"] => (s >= 75 ? "green" : s >= 50 ? "amber" : "red");
 
@@ -44,7 +56,12 @@ async function ratio(tx: Tx, q: any): Promise<Map<string, number>> {
   return m;
 }
 
-function assemble(users: { id: string; name: string }[], defs: KpiDef[]): MemberRow[] {
+function assemble(
+  users: { id: string; name: string }[],
+  defs: KpiDef[],
+  targets: Map<string, number>,
+  fraction: number
+): MemberRow[] {
   const best = new Map<string, number>();
   const worst = new Map<string, number>();
   for (const d of defs) {
@@ -61,11 +78,20 @@ function assemble(users: { id: string; name: string }[], defs: KpiDef[]): Member
   const rows = users.map((u) => {
     const kpis: Kpi[] = defs.map((d) => {
       const actual = d.values.get(u.id) ?? 0;
+      const annual = d.targetable ? targets.get(`${u.id}:${d.key}`) : undefined;
       let score: number;
-      if (d.mode === "pct") score = Math.min(100, Math.round(actual));
-      else if (d.mode === "relInverse") score = (worst.get(d.key) ?? 0) > 0 ? Math.round((1 - actual / (worst.get(d.key) || 1)) * 100) : 100;
-      else score = (best.get(d.key) ?? 0) > 0 ? Math.round((actual / (best.get(d.key) || 1)) * 100) : 0;
-      return { key: d.key, label: d.label, actual, unit: d.unit, score, weight: d.weight };
+      let target: number | undefined;
+      if (annual && annual > 0) {
+        target = Math.round(annual * fraction); // pro-rate annual → this period
+        score = target > 0 ? Math.min(100, Math.round((actual / target) * 100)) : 0;
+      } else if (d.mode === "pct") {
+        score = Math.min(100, Math.round(actual));
+      } else if (d.mode === "relInverse") {
+        score = (worst.get(d.key) ?? 0) > 0 ? Math.round((1 - actual / (worst.get(d.key) || 1)) * 100) : 100;
+      } else {
+        score = (best.get(d.key) ?? 0) > 0 ? Math.round((actual / (best.get(d.key) || 1)) * 100) : 0;
+      }
+      return { key: d.key, label: d.label, actual, unit: d.unit, score, weight: d.weight, target };
     });
     const wsum = kpis.reduce((n, k) => n + k.weight, 0) || 1;
     const kraScore = Math.round(kpis.reduce((n, k) => n + k.score * k.weight, 0) / wsum);
@@ -74,11 +100,25 @@ function assemble(users: { id: string; name: string }[], defs: KpiDef[]): Member
   return rows.sort((a, b) => b.kraScore - a.kraScore);
 }
 
+async function loadTargets(tx: Tx, tenantId: string, fy: string): Promise<Map<string, number>> {
+  const r = await tx.execute(
+    sql`SELECT user_id, metric_key, annual_target FROM kra_targets WHERE tenant_id = ${tenantId}::uuid AND fiscal_year = ${fy}`
+  );
+  const m = new Map<string, number>();
+  for (const row of r.rows as any[]) m.set(`${String(row.user_id)}:${row.metric_key}`, Number(row.annual_target) || 0);
+  return m;
+}
+
 export async function loadScorecard(tx: Tx, tenantId: string, from: string, to: string): Promise<Scorecard> {
   const t = tenantId;
   // Timestamp window helper: [from 00:00, to+1 00:00)
   const tsLo = sql`${from}::date`;
   const tsHi = sql`(${to}::date + interval '1 day')`;
+  // Per-person targets are stored annually; pro-rate to the selected period.
+  const fy = currentFiscalYear();
+  const periodDays = Math.max(1, Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86400000) + 1);
+  const fraction = periodDays / 365;
+  const targets = await loadTargets(tx, t, fy);
 
   const roster = async (predicate: any) =>
     ((await tx.execute(sql`SELECT id, name FROM users WHERE tenant_id = ${t}::uuid AND status = 'active' AND ${predicate} ORDER BY name ASC`)).rows as any[]).map(
@@ -96,13 +136,13 @@ export async function loadScorecard(tx: Tx, tenantId: string, from: string, to: 
   const activities = await single(tx, sql`SELECT owner_user_id AS uid, count(*) AS v FROM activities WHERE tenant_id=${t}::uuid AND owner_user_id IS NOT NULL AND occurred_at >= ${tsLo} AND occurred_at < ${tsHi} GROUP BY owner_user_id`);
 
   const sales = assemble(salesUsers, [
-    { key: "net_sales", label: "Net sales", unit: "inr", weight: 0.3, mode: "rel", values: netSales },
-    { key: "new_clients", label: "New clients", unit: "count", weight: 0.2, mode: "rel", values: newClients },
-    { key: "converted", label: "Leads converted", unit: "count", weight: 0.15, mode: "rel", values: converted },
-    { key: "meetings", label: "Meetings", unit: "count", weight: 0.15, mode: "rel", values: meetings },
-    { key: "activities", label: "Activities", unit: "count", weight: 0.1, mode: "rel", values: activities },
+    { key: "net_sales", label: "Net sales", unit: "inr", weight: 0.3, mode: "rel", values: netSales, targetable: true },
+    { key: "new_clients", label: "New clients", unit: "count", weight: 0.2, mode: "rel", values: newClients, targetable: true },
+    { key: "converted", label: "Leads converted", unit: "count", weight: 0.15, mode: "rel", values: converted, targetable: true },
+    { key: "meetings", label: "Meetings", unit: "count", weight: 0.15, mode: "rel", values: meetings, targetable: true },
+    { key: "activities", label: "Activities", unit: "count", weight: 0.1, mode: "rel", values: activities, targetable: true },
     { key: "aum", label: "Book AUM", unit: "inr", weight: 0.1, mode: "rel", values: aum },
-  ]);
+  ], targets, fraction);
 
   // ── Operations KPIs ─────────────────────────────────────────────────────
   const sla = await ratio(tx, sql`SELECT assigned_to_user_id AS uid, count(*) FILTER (WHERE resolved_at <= sla_resolution_at) AS met, count(*) AS total FROM service_requests WHERE tenant_id=${t}::uuid AND assigned_to_user_id IS NOT NULL AND status IN ('resolved','closed') AND resolved_at >= ${tsLo} AND resolved_at < ${tsHi} AND sla_resolution_at IS NOT NULL GROUP BY assigned_to_user_id`);
@@ -112,10 +152,10 @@ export async function loadScorecard(tx: Tx, tenantId: string, from: string, to: 
 
   const ops = assemble(opsUsers, [
     { key: "sla", label: "SLA adherence", unit: "pct", weight: 0.35, mode: "pct", values: sla },
-    { key: "resolved", label: "Tickets resolved", unit: "count", weight: 0.25, mode: "rel", values: resolved },
+    { key: "resolved", label: "Tickets resolved", unit: "count", weight: 0.25, mode: "rel", values: resolved, targetable: true },
     { key: "overdue", label: "Overdue tasks", unit: "count", weight: 0.2, mode: "relInverse", values: overdue },
     { key: "attendance", label: "Attendance", unit: "pct", weight: 0.2, mode: "pct", values: attendance },
-  ]);
+  ], targets, fraction);
 
   return { sales, ops, from, to };
 }

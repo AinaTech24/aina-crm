@@ -6,7 +6,7 @@
  */
 
 import Link from "next/link";
-import { Trophy, ArrowLeft, TrendingUp, Headphones } from "lucide-react";
+import { Trophy, ArrowLeft, TrendingUp, Headphones, Target } from "lucide-react";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { withTenant } from "@/db/client";
@@ -25,6 +25,11 @@ function fmt(k: Kpi | undefined): string {
   if (k.unit === "inr") return inr(k.actual);
   if (k.unit === "pct") return `${Math.round(k.actual)}%`;
   return String(k.actual);
+}
+function fmtVal(n: number, unit: Kpi["unit"]): string {
+  if (unit === "inr") return inr(n);
+  if (unit === "pct") return `${Math.round(n)}%`;
+  return String(n);
 }
 const kpi = (r: MemberRow, key: string) => r.kpis.find((k) => k.key === key);
 
@@ -64,7 +69,15 @@ export default async function ScorecardPage({
           </h1>
           <p className="text-muted-foreground text-sm mt-0.5">KRA performance · {label}</p>
         </div>
-        <PeriodSelector current={period} variant="light" />
+        <div className="flex items-center gap-2 flex-wrap">
+          <Link
+            href="/dashboard/team/scorecard/targets"
+            className="rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium flex items-center gap-1.5 hover:bg-secondary/60"
+          >
+            <Target className="size-4 text-brand-cyan" /> Set targets
+          </Link>
+          <PeriodSelector current={period} variant="light" />
+        </div>
       </div>
 
       <ScoreTable
@@ -144,9 +157,15 @@ function ScoreTable({
                       <span className={`size-2 rounded-full ${BAND[r.band]}`} /> {r.kraScore}
                     </span>
                   </td>
-                  {cols.map((c) => (
-                    <td key={c.key} className="px-3 py-2 text-right tabular-nums whitespace-nowrap">{fmt(kpi(r, c.key))}</td>
-                  ))}
+                  {cols.map((c) => {
+                    const k = kpi(r, c.key);
+                    return (
+                      <td key={c.key} className="px-3 py-2 text-right tabular-nums whitespace-nowrap">
+                        {fmt(k)}
+                        {k?.target ? <span className="text-[10px] text-muted-foreground"> / {fmtVal(k.target, k.unit)}</span> : null}
+                      </td>
+                    );
+                  })}
                 </tr>
               ))}
             </tbody>
