@@ -9,6 +9,7 @@ import { can } from "@/lib/auth/rbac";
 import { buildNextBestActions, NBA_META, type NbaType, type NbaAction } from "@/lib/nba/engine";
 import { ContactQuickActions } from "@/components/common/ContactQuickActions";
 import { LogActivityButton } from "@/components/activities/ActivityLogger";
+import { NbaDateFilter } from "@/components/nba/NbaDateFilter";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +29,8 @@ export default async function NextBestActionPage({ searchParams }: { searchParam
   const mine = sp.mine === "1" || !canFirm;
   const typeFilter = (sp.type ?? "") as NbaType | "";
   const sevFilter = (sp.sev ?? "") as "now" | "today" | "soon" | "";
+  const dateFrom = (sp.date_from ?? "").slice(0, 10);
+  const dateTo = (sp.date_to ?? "").slice(0, 10);
 
   const actions = await withTenant(
     session.tenantId,
@@ -38,8 +41,20 @@ export default async function NextBestActionPage({ searchParams }: { searchParam
   const totalImpact = actions.reduce((a, x) => a + x.impactInr, 0);
   const nowCount = actions.filter((a) => a.severity === "now").length;
   const byType = actions.reduce((m, a) => ((m[a.type] = (m[a.type] ?? 0) + 1), m), {} as Record<string, number>);
+  // Date-range filter over each action's relevant date. Once a range is set,
+  // undated actions (e.g. cross-sell) drop out.
+  const inRange = (d: string | null) => {
+    if (!dateFrom && !dateTo) return true;
+    if (!d) return false;
+    if (dateFrom && d < dateFrom) return false;
+    if (dateTo && d > dateTo) return false;
+    return true;
+  };
   const shown = actions.filter(
-    (a) => (!typeFilter || a.type === typeFilter) && (!sevFilter || a.severity === sevFilter)
+    (a) =>
+      (!typeFilter || a.type === typeFilter) &&
+      (!sevFilter || a.severity === sevFilter) &&
+      inRange(a.date)
   );
 
   const hrefWith = (patch: Record<string, string | undefined>) => {
@@ -70,6 +85,17 @@ export default async function NextBestActionPage({ searchParams }: { searchParam
         <Kpi icon={AlertTriangle} label="Act now" value={String(nowCount)} tone="rose" />
         <Kpi icon={IndianRupee} label="₹ value at stake" value={inr(totalImpact)} tone="emerald" />
         <Kpi icon={Users} label="Clients to touch" value={String(actions.length)} tone="sky" />
+      </div>
+
+      {/* Date-range filter — over each action's relevant date */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold mr-1">When</span>
+        <NbaDateFilter from={dateFrom} to={dateTo} />
+        {(dateFrom || dateTo) && (
+          <span className="text-[11px] text-muted-foreground">
+            Showing {shown.length} of {actions.length} — undated actions hidden while a range is set.
+          </span>
+        )}
       </div>
 
       {/* Urgency filter chips */}

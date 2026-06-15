@@ -20,6 +20,7 @@ import { can } from "@/lib/auth/rbac";
 import { withTenant } from "@/db/client";
 import { buildCommandQueue, type ActionGroup, type Severity } from "@/lib/command-center/queue";
 import { FilterBar } from "@/components/common/FilterBar";
+import { CommandClientPicker } from "@/components/command-center/CommandClientPicker";
 import { sql } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
@@ -56,14 +57,25 @@ export default async function CommandCenterPage({
   // Owners can scope the whole queue to one user; everyone else only sees their
   // own book, so the user filter is owner-only.
   const userParam = firmWide ? (sp.user ?? "").trim() : "";
+  // Scope the whole board to a single client (search-as-you-type picker).
+  const clientId = (sp.client ?? "").trim();
 
-  const { allGroups, userOptions } = await withTenant(
+  const { allGroups, userOptions, clientName } = await withTenant(
     session.tenantId,
     async (tx) => {
       const groups = await buildCommandQueue(
         tx as any,
-        userParam ? { userId: userParam, firmWide: false } : { userId: session.userId, firmWide }
+        {
+          ...(userParam ? { userId: userParam, firmWide: false } : { userId: session.userId, firmWide }),
+          clientId,
+        }
       );
+      // Resolve the selected client's name for the picker chip.
+      let clientName = "";
+      if (clientId) {
+        const cr = await tx.execute(sql`SELECT name FROM investors WHERE id = ${clientId} LIMIT 1`);
+        clientName = ((cr.rows[0] as any)?.name as string) ?? "";
+      }
       // Roster for the User filter — active users, so any newly-added user shows
       // up automatically.
       let users: { value: string; label: string }[] = [];
@@ -75,7 +87,7 @@ export default async function CommandCenterPage({
         `);
         users = (r.rows as { id: string; name: string }[]).map((u) => ({ value: String(u.id), label: u.name ?? "—" }));
       }
-      return { allGroups: groups, userOptions: users };
+      return { allGroups: groups, userOptions: users, clientName };
     },
     { userId: session.userId, branchId: session.branchId, roles: session.roles }
   );
@@ -112,6 +124,14 @@ export default async function CommandCenterPage({
           <Stat label="Act now" value={nowCount} tone={nowCount ? "rose" : "emerald"} />
           <Stat label="Total open" value={totalItems} tone="sky" />
         </div>
+      </div>
+
+      <div className="flex items-center gap-2 flex-wrap text-xs">
+        <span className="text-muted-foreground font-medium">Client</span>
+        <CommandClientPicker selectedId={clientId} selectedName={clientName} />
+        {clientId && (
+          <span className="text-muted-foreground">Showing only this client&apos;s open actions.</span>
+        )}
       </div>
 
       <FilterBar

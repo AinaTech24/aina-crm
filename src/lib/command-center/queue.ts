@@ -61,10 +61,17 @@ function href(base: string, firmWide: boolean, extra = "") {
 
 export async function buildCommandQueue(
   tx: Tx,
-  opts: { userId: string; firmWide: boolean }
+  opts: { userId: string; firmWide: boolean; clientId?: string }
 ): Promise<ActionGroup[]> {
-  const { userId, firmWide } = opts;
+  const { userId, firmWide, clientId } = opts;
   const groups: ActionGroup[] = [];
+
+  // When the board is scoped to a single client, every investor-centric group
+  // gets an extra `<investor column> = :clientId` predicate. The column name is
+  // a hardcoded constant from the call sites (never user input) so sql.raw is
+  // safe; the id is bound as a parameter. Groups that aren't about a client
+  // (leave approvals, your own clock-in, lead follow-ups) are skipped entirely.
+  const cscope = (col: string) => (clientId ? sql` AND ${sql.raw(col)} = ${clientId}` : sql``);
 
   // ── 1. Service-request SLA breaches (firefight) ──────────────────────
   {
@@ -74,7 +81,7 @@ export async function buildCommandQueue(
       WHERE status IN ('open','in_progress','waiting_customer','escalated')
         AND sla_resolution_at IS NOT NULL
         AND sla_resolution_at < now()
-        ${scope("assigned_to_user_id", userId, firmWide)}
+        ${scope("assigned_to_user_id", userId, firmWide)}${cscope("investor_id")}
       ORDER BY sla_resolution_at ASC
       LIMIT 5
     `);
@@ -106,7 +113,7 @@ export async function buildCommandQueue(
       JOIN investors i ON i.id = s.investor_id
       WHERE (s.status = 'rejected' OR COALESCE(NULLIF(s.consecutive_failures,''),'0')::int > 0)
         AND s.status <> 'stopped'
-        ${scope("s.rm_id", userId, firmWide)}
+        ${scope("s.rm_id", userId, firmWide)}${cscope("s.investor_id")}
       ORDER BY COALESCE(NULLIF(s.consecutive_failures,''),'0')::int DESC, s.amount DESC NULLS LAST
       LIMIT 5
     `);
@@ -135,7 +142,7 @@ export async function buildCommandQueue(
       SELECT id, name, redemption_risk_reason, count(*) OVER() AS total
       FROM investors
       WHERE (status = 'redemption_risk' OR redemption_risk_flagged_at IS NOT NULL)
-        ${scope("rm_id", userId, firmWide)}
+        ${scope("rm_id", userId, firmWide)}${cscope("id")}
       ORDER BY redemption_risk_flagged_at DESC NULLS LAST
       LIMIT 5
     `);
@@ -166,7 +173,7 @@ export async function buildCommandQueue(
       WHERE status = 'active'
         AND next_review_at IS NOT NULL
         AND next_review_at < now()
-        ${scope("rm_id", userId, firmWide)}
+        ${scope("rm_id", userId, firmWide)}${cscope("id")}
       ORDER BY next_review_at ASC
       LIMIT 5
     `);
@@ -199,7 +206,7 @@ export async function buildCommandQueue(
       LEFT JOIN leads l ON l.id = m.lead_id
       WHERE m.status IN ('scheduled','confirmed')
         AND m.meeting_date::date = current_date
-        ${scope("m.rm_id", userId, firmWide)}
+        ${scope("m.rm_id", userId, firmWide)}${cscope("m.investor_id")}
       ORDER BY m.meeting_date ASC
       LIMIT 5
     `);
@@ -223,7 +230,7 @@ export async function buildCommandQueue(
   }
 
   // ── 4c. Leave requests to approve (managers only) ────────────────────
-  if (firmWide) {
+  if (firmWide && !clientId) {
     const r = await tx.execute(sql`
       SELECT la.id, la.leave_type, la.from_date, la.to_date, la.no_of_days,
              u.name AS employee_name, count(*) OVER() AS total
@@ -253,7 +260,7 @@ export async function buildCommandQueue(
   }
 
   // ── 4d. Clock in (personal) — if you haven't punched today on a workday ──
-  {
+  if (!clientId) {
     const r = await tx.execute(sql`
       SELECT
         EXISTS(
@@ -289,7 +296,7 @@ export async function buildCommandQueue(
           OR (ckyc_expiry_at IS NOT NULL
               AND ckyc_expiry_at BETWEEN current_date AND current_date + interval '30 days')
         )
-        ${scope("rm_id", userId, firmWide)}
+        ${scope("rm_id", userId, firmWide)}${cscope("id")}
       ORDER BY ckyc_expiry_at ASC NULLS FIRST
       LIMIT 5
     `);
@@ -320,7 +327,7 @@ export async function buildCommandQueue(
       WHERE status IN ('open','in_progress')
         AND due_at IS NOT NULL
         AND due_at < now()
-        ${scope("assignee_id", userId, firmWide)}
+        ${scope("assignee_id", userId, firmWide)}${cscope("related_investor_id")}
       ORDER BY due_at ASC
       LIMIT 5
     `);
@@ -344,7 +351,7 @@ export async function buildCommandQueue(
   }
 
   // ── 7. Overdue lead follow-ups (pipeline leaking) ────────────────────
-  {
+  if (!clientId) {
     const r = await tx.execute(sql`
       SELECT id, name, stage, next_follow_up_at, count(*) OVER() AS total
       FROM leads
@@ -382,7 +389,7 @@ export async function buildCommandQueue(
       FROM investors
       WHERE status = 'active'
         AND (risk_profile_signed_at IS NULL OR risk_profile_signed_at < now() - interval '365 days')
-        ${scope("rm_id", userId, firmWide)}
+        ${scope("rm_id", userId, firmWide)}${cscope("id")}
       ORDER BY risk_profile_signed_at ASC NULLS FIRST
       LIMIT 5
     `);
@@ -413,7 +420,7 @@ export async function buildCommandQueue(
       WHERE status = 'active'
         AND dob IS NOT NULL
         AND to_char(dob, 'MM-DD') = to_char(current_date, 'MM-DD')
-        ${scope("rm_id", userId, firmWide)}
+        ${scope("rm_id", userId, firmWide)}${cscope("id")}
       ORDER BY name ASC
       LIMIT 5
     `);
@@ -445,7 +452,7 @@ export async function buildCommandQueue(
         AND dob IS NOT NULL
         AND to_char(dob, 'MM-DD') BETWEEN to_char(current_date + interval '1 day', 'MM-DD')
                                       AND to_char(current_date + interval '7 days', 'MM-DD')
-        ${scope("rm_id", userId, firmWide)}
+        ${scope("rm_id", userId, firmWide)}${cscope("id")}
       ORDER BY to_char(dob, 'MM-DD') ASC
       LIMIT 5
     `);

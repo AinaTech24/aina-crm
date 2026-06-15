@@ -38,6 +38,9 @@ export type NbaAction = {
   severity: "now" | "today" | "soon";
   suggestedChannel: "call" | "whatsapp" | "task";
   href: string;
+  /** The signal's "relevant date" (review-due, follow-up, KYC expiry, bounce,
+   *  birthday…) as YYYY-MM-DD — drives the date-range filter. null when undated. */
+  date: string | null;
 };
 
 export const NBA_META: Record<NbaType, { label: string; weight: number; severity: "now" | "today" | "soon"; tone: string; icon: string }> = {
@@ -66,6 +69,7 @@ export async function buildNextBestActions(
 ): Promise<NbaAction[]> {
   const { userId, firmWide, forInvestorId } = opts;
   const out: NbaAction[] = [];
+  const todayISO = new Date().toISOString().slice(0, 10);
 
   // Personal scope OR single-investor scope.
   const invScope = forInvestorId
@@ -77,6 +81,17 @@ export async function buildNextBestActions(
   const cap = forInvestorId ? sql`` : sql`LIMIT 80`;
 
   function push(type: NbaType, r: any, impactInr: number, title: string, reason: string, channel: NbaAction["suggestedChannel"]) {
+    // The date that makes this action "due" — drives the date-range filter.
+    const dateRaw =
+      type === "redemption_risk" ? r.redemption_risk_flagged_at :
+      type === "sip_bounce" ? r.updated_at :
+      type === "kyc_broken" ? r.ckyc_expiry_at :
+      type === "lead_followup" ? r.next_follow_up_at :
+      type === "review_overdue" ? r.next_review_at :
+      type === "dormant" ? r.last_transaction_at :
+      type === "rp_stale" ? r.risk_profile_signed_at :
+      type === "birthday_today" ? todayISO :
+      null; // cross_sell has no natural date
     out.push({
       key: `${type}:${r.id}`,
       type,
@@ -93,13 +108,14 @@ export async function buildNextBestActions(
       severity: NBA_META[type].severity,
       suggestedChannel: channel,
       href: type === "lead_followup" ? `/dashboard/leads/${r.id}` : `/dashboard/investors/${r.id}`,
+      date: toISODate(dateRaw),
     });
   }
 
   // 1. Redemption-risk → AUM at risk.
   {
     const r = await tx.execute(sql`
-      SELECT i.id, i.name, i.phone, i.email, COALESCE(i.aum,0)::numeric AS aum, i.redemption_risk_reason, u.name AS rm_name
+      SELECT i.id, i.name, i.phone, i.email, COALESCE(i.aum,0)::numeric AS aum, i.redemption_risk_reason, i.redemption_risk_flagged_at, u.name AS rm_name
       FROM investors i LEFT JOIN users u ON u.id = i.rm_id
       WHERE i.merged_into_id IS NULL AND (i.status = 'redemption_risk' OR i.redemption_risk_flagged_at IS NOT NULL) ${invScope}
       ORDER BY i.aum DESC NULLS LAST ${cap}
@@ -110,7 +126,7 @@ export async function buildNextBestActions(
   {
     const r = await tx.execute(sql`
       SELECT i.id, i.name, i.phone, i.email, u.name AS rm_name,
-             s.amount::numeric AS amount, s.scheme_name, COALESCE(NULLIF(s.consecutive_failures,''),'0')::int AS fails
+             s.amount::numeric AS amount, s.scheme_name, COALESCE(NULLIF(s.consecutive_failures,''),'0')::int AS fails, s.updated_at
       FROM sips s JOIN investors i ON i.id = s.investor_id LEFT JOIN users u ON u.id = i.rm_id
       WHERE i.merged_into_id IS NULL AND (s.status = 'rejected' OR COALESCE(NULLIF(s.consecutive_failures,''),'0')::int > 0) AND s.status <> 'stopped' ${sipScope}
       ORDER BY fails DESC, s.amount DESC NULLS LAST ${cap}
@@ -218,4 +234,11 @@ function fmt(v: any): string {
   if (!v) return "—";
   const d = v instanceof Date ? v : new Date(v);
   return isNaN(d.getTime()) ? "—" : d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "2-digit" });
+}
+
+/** Normalise any date-ish value to YYYY-MM-DD (or null) for range comparisons. */
+function toISODate(v: any): string | null {
+  if (!v) return null;
+  const d = v instanceof Date ? v : new Date(v);
+  return isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
 }
