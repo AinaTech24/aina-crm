@@ -14,7 +14,7 @@ import {
   TrendingUp, Target, HandCoins, ShieldCheck, Receipt, Building2, Wrench, Flame,
   // per-calculator icons (each used exactly once — no duplicates)
   LineChart, ArrowUpNarrowWide, Sprout, Briefcase, ChevronsUp, CalendarClock, Crosshair, Droplets, Coins, Percent,
-  Goal, Shuffle, TreePalm, GraduationCap, CalendarRange, BadgeCheck, Flag, Thermometer, Hourglass, Armchair,
+  Goal, Shuffle, TreePalm, GraduationCap, Baby, CalendarRange, BadgeCheck, Flag, Thermometer, Hourglass, Armchair,
   Route, Repeat, Timer, ScrollText, RefreshCw, House, Banknote, ArrowLeftRight,
   Shield, Scale, Users,
   GitCompare, TrendingDown, Landmark, Scissors, Calculator,
@@ -57,6 +57,7 @@ import { TaxHarvestingCalculator } from "./TaxHarvestingCalculator";
 import { CrashStressTest } from "./CrashStressTest";
 import { FireNumberCalculator } from "./FireNumberCalculator";
 import { ChildEducationProjector } from "./ChildEducationProjector";
+import { EarlyStartChildSip } from "./EarlyStartChildSip";
 import { GoalCollisionTimeline } from "./GoalCollisionTimeline";
 import { XirrCalculator } from "./XirrCalculator";
 import { RebalanceCalculator } from "./RebalanceCalculator";
@@ -135,6 +136,7 @@ type TabKey =
   | "crash"
   | "fire"
   | "childedu"
+  | "childsip"
   | "collision"
   | "xirr"
   | "rebalance"
@@ -193,6 +195,7 @@ const CATALOG: CalcGroup[] = [
       { key: "multipurpose", name: "Cashflow & Corpus", icon: Shuffle, desc: "Build a corpus and draw income from it" },
       { key: "vacation", name: "Vacation Planner", icon: TreePalm, desc: "Save up for a dream trip" },
       { key: "childedu", name: "Child Education", icon: GraduationCap, desc: "Fund education at ~10% education inflation" },
+      { key: "childsip", name: "Early-Start Child SIP", icon: Baby, desc: "Invest in the early years, then let it compound for life" },
       { key: "collision", name: "Goal-Collision Timeline", icon: CalendarRange, desc: "Spot the years your goals overlap & peak" },
       { key: "feasibility", name: "Goal-Feasibility Score", icon: BadgeCheck, desc: "0–100 score — are the goals on track?" },
       { key: "goal", name: "Goal Calculator", icon: Flag, desc: "Monthly SIP to reach a target amount" },
@@ -515,6 +518,7 @@ export function CalculatorsApp({ firmName }: { firmName?: string } = {}) {
         {tab === "crash" && <CrashStressTest />}
         {tab === "fire" && <FireNumberCalculator />}
         {tab === "childedu" && <ChildEducationProjector />}
+        {tab === "childsip" && <EarlyStartChildSip />}
         {tab === "collision" && <GoalCollisionTimeline />}
         {tab === "xirr" && <XirrCalculator />}
         {tab === "rebalance" && <RebalanceCalculator />}
