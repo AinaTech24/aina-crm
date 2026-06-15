@@ -26,16 +26,19 @@ function rmCond(rmId?: string | null) {
 export async function getBusinessSummary(
   tx: any,
   tenantId: string,
-  opts: { fromISO: string; toISO: string; rmId?: string | null }
+  opts: { fromISO: string; toISO: string; rmId?: string | null; productType?: string | null; status?: string | null }
 ): Promise<BusinessSummary> {
-  const { fromISO, toISO, rmId } = opts;
+  const { fromISO, toISO, rmId, productType, status } = opts;
+  // A specific status narrows to exactly that; otherwise show all booked business
+  // (everything except cancelled) — the dashboard's default.
+  const statusCond = status ? sql` AND e.status = ${status}` : sql` AND e.status <> 'cancelled'`;
+  const productCond = productType ? sql` AND e.product_type = ${productType}` : sql``;
   const base = sql`
     FROM business_entry_lines l
     JOIN business_entries e ON e.id = l.entry_id
-    WHERE e.tenant_id = ${tenantId}::uuid
-      AND e.status <> 'cancelled'
+    WHERE e.tenant_id = ${tenantId}::uuid${statusCond}
       AND e.business_date >= ${fromISO}::date
-      AND e.business_date <= ${toISO}::date${rmCond(rmId)}
+      AND e.business_date <= ${toISO}::date${rmCond(rmId)}${productCond}
   `;
 
   const totals = (await tx.execute(sql`
