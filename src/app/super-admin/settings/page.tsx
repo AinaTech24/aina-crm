@@ -5,6 +5,7 @@ import { withPlatformAdmin } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { ALL_MODULES } from "@/lib/platform";
 import { getAiStatusForAdmin, AI_PROVIDERS } from "@/lib/ai/provider";
+import { getRazorpayStatusForAdmin } from "@/lib/billing/razorpay-config";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +13,7 @@ export default async function PlatformSettingsPage() {
   const session = await requireSession();
   const ai = await getAiStatusForAdmin();
   const aiLabel = AI_PROVIDERS.find((p) => p.value === ai.provider)?.label ?? ai.provider;
+  const rzp = await getRazorpayStatusForAdmin();
 
   // Health snapshot
   const health = await withPlatformAdmin(session.userId, async (tx) => {
@@ -35,7 +37,6 @@ export default async function PlatformSettingsPage() {
     wapi: process.env.WAINA_API_KEY && !process.env.WAINA_API_KEY.includes("xxx") ? "Configured" : "Stub",
     msg91: process.env.MSG91_AUTH_KEY && !process.env.MSG91_AUTH_KEY.includes("xxx") ? "Configured" : "Stub",
     anthropic: process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_API_KEY.includes("xxx") ? "Configured" : "Stub",
-    razorpay: process.env.RAZORPAY_KEY_ID ? "Configured" : "Stub",
     s3: process.env.S3_ACCESS_KEY_ID ? "Configured" : "Stub",
   };
 
@@ -74,7 +75,13 @@ export default async function PlatformSettingsPage() {
               status={ai.keyConfigured ? "Configured" : "Stub"}
             />
           </Link>
-          <IntegrationRow icon={Lock} label="Razorpay (billing)" status={env.razorpay} />
+          <Link href="/super-admin/razorpay" className="contents">
+            <IntegrationRow
+              icon={Lock}
+              label={`Razorpay${rzp.mode ? ` · ${rzp.mode}` : ""}${rzp.keyId && rzp.secretConfigured ? "" : " (set up)"}`}
+              status={rzp.keyId && rzp.secretConfigured ? "Configured" : "Stub"}
+            />
+          </Link>
           <IntegrationRow icon={Database} label="AWS S3 (storage)" status={env.s3} />
         </div>
         <p className="text-xs text-muted-foreground mt-3">

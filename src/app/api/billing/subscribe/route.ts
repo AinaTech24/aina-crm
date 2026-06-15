@@ -39,7 +39,7 @@ export async function POST(_req: NextRequest) {
     const session = await requireSession();
     requireCap(session.roles, "settings.billing");
 
-    if (!razorpayConfigured()) {
+    if (!(await razorpayConfigured())) {
       return NextResponse.json(
         { error: "Online payments are not configured yet. Please contact AINA." },
         { status: 503 }
@@ -97,7 +97,7 @@ export async function POST(_req: NextRequest) {
 
     return NextResponse.json({
       subscriptionId: subscription.id,
-      keyId: razorpayPublicKeyId(),
+      keyId: await razorpayPublicKeyId(),
       amountPaise,
       seats,
       shortUrl: subscription.short_url ?? null,

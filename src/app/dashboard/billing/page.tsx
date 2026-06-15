@@ -36,6 +36,8 @@ export default async function BillingPage() {
     return { sub: s, pkg: p, events: ev };
   });
 
+  const razorpayReady = await razorpayConfigured();
+
   return (
     <div className="space-y-6 max-w-4xl">
       <div>
@@ -81,7 +83,7 @@ export default async function BillingPage() {
           />
 
           <AutoPaySetup
-            configured={razorpayConfigured()}
+            configured={razorpayReady}
             mandateStatus={(sub as any).mandateStatus ?? "none"}
             status={sub.status}
             amountPaise={computeAnnualAmountPaise(pkg as any, sub as any).amountPaise}

@@ -36,7 +36,7 @@ const toDate = (unix?: number | null) => (unix ? new Date(unix * 1000) : null);
 export async function POST(req: NextRequest) {
   const rawBody = await req.text();
   const sig = req.headers.get("x-razorpay-signature") ?? "";
-  if (!verifyRazorpayWebhook(rawBody, sig)) {
+  if (!(await verifyRazorpayWebhook(rawBody, sig))) {
     captureError("webhook.signature_failed", null, { source: "razorpay" });
     return NextResponse.json({ error: "invalid signature" }, { status: 401 });
   }

@@ -21,6 +21,7 @@
  */
 
 import crypto from "node:crypto";
+import { loadRazorpayConfig } from "./razorpay-config";
 
 export type RazorpayPlan = "starter" | "growth" | "professional" | "enterprise";
 
@@ -133,8 +134,8 @@ export function isFeatureAvailable(tenantPlan: string, feature: keyof PlanConfig
 /**
  * Verify a Razorpay webhook signature.
  */
-export function verifyRazorpayWebhook(rawBody: string, signature: string): boolean {
-  const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
+export async function verifyRazorpayWebhook(rawBody: string, signature: string): Promise<boolean> {
+  const secret = (await loadRazorpayConfig()).webhookSecret;
   if (!secret || !signature) return false;
   const expected = crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
   try {
@@ -149,12 +150,12 @@ export function verifyRazorpayWebhook(rawBody: string, signature: string): boole
  * Checkout.js). The HMAC is over "<payment_id>|<subscription_id>" keyed by the
  * API SECRET — confirms the mandate authorization is genuine before we trust it.
  */
-export function verifySubscriptionPayment(params: {
+export async function verifySubscriptionPayment(params: {
   razorpayPaymentId: string;
   razorpaySubscriptionId: string;
   razorpaySignature: string;
-}): boolean {
-  const secret = process.env.RAZORPAY_KEY_SECRET;
+}): Promise<boolean> {
+  const secret = (await loadRazorpayConfig()).keySecret;
   if (!secret) return false;
   // Subscriptions: HMAC of `payment_id|subscription_id` (note the order).
   const expected = crypto
@@ -175,19 +176,19 @@ export function verifySubscriptionPayment(params: {
 // are absent (local dev with no billing configured).
 // ---------------------------------------------------------------------------
 
-export function razorpayConfigured(): boolean {
-  return !!(process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET);
+export async function razorpayConfigured(): Promise<boolean> {
+  const cfg = await loadRazorpayConfig();
+  return !!(cfg.keyId && cfg.keySecret);
 }
 
-export function razorpayPublicKeyId(): string {
-  return process.env.RAZORPAY_KEY_ID ?? "";
+export async function razorpayPublicKeyId(): Promise<string> {
+  return (await loadRazorpayConfig()).keyId ?? "";
 }
 
 async function razorpayApi<T = any>(path: string, method: "GET" | "POST", body?: unknown): Promise<T> {
-  const keyId = process.env.RAZORPAY_KEY_ID;
-  const keySecret = process.env.RAZORPAY_KEY_SECRET;
+  const { keyId, keySecret } = await loadRazorpayConfig();
   if (!keyId || !keySecret) {
-    throw new Error("Razorpay is not configured (missing RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET).");
+    throw new Error("Razorpay is not configured. Set the keys in Aina Admin → Settings → Razorpay.");
   }
   const auth = Buffer.from(`${keyId}:${keySecret}`).toString("base64");
   const res = await fetch(`https://api.razorpay.com${path}`, {
@@ -219,7 +220,7 @@ export async function createRazorpayCustomer(params: {
   contact?: string;
   notes?: Record<string, string>;
 }): Promise<{ id: string }> {
-  if (!razorpayConfigured()) return { id: `cust_stub_${Date.now()}` };
+  if (!(await razorpayConfigured())) return { id: `cust_stub_${Date.now()}` };
   const data = await razorpayApi<{ id: string }>("/v1/customers", "POST", {
     name: params.name,
     email: params.email,
@@ -241,7 +242,7 @@ export async function createRazorpayPlan(params: {
   name: string;
   notes?: Record<string, string>;
 }): Promise<{ id: string }> {
-  if (!razorpayConfigured()) return { id: `plan_stub_${Date.now()}` };
+  if (!(await razorpayConfigured())) return { id: `plan_stub_${Date.now()}` };
   const data = await razorpayApi<{ id: string }>("/v1/plans", "POST", {
     period: params.period,
     interval: params.interval ?? 1,
@@ -263,7 +264,7 @@ export async function createRazorpaySubscription(params: {
   startAtUnix?: number;
   notes?: Record<string, string>;
 }): Promise<{ id: string; short_url?: string; status?: string }> {
-  if (!razorpayConfigured()) {
+  if (!(await razorpayConfigured())) {
     return { id: `sub_stub_${Date.now()}`, status: "created" };
   }
   return razorpayApi("/v1/subscriptions", "POST", {
@@ -277,12 +278,12 @@ export async function createRazorpaySubscription(params: {
 }
 
 export async function fetchRazorpaySubscription(id: string): Promise<any> {
-  if (!razorpayConfigured()) return { id, status: "created" };
+  if (!(await razorpayConfigured())) return { id, status: "created" };
   return razorpayApi(`/v1/subscriptions/${id}`, "GET");
 }
 
 export async function cancelRazorpaySubscription(id: string, atCycleEnd = false): Promise<any> {
-  if (!razorpayConfigured()) return { id, status: "cancelled" };
+  if (!(await razorpayConfigured())) return { id, status: "cancelled" };
   return razorpayApi(`/v1/subscriptions/${id}/cancel`, "POST", { cancel_at_cycle_end: atCycleEnd ? 1 : 0 });
 }
 
