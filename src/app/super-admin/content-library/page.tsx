@@ -39,8 +39,24 @@ export default async function AinaContentLibraryPage() {
     );
   }
 
+  // Select ONLY the columns this page renders — `select()` pulls every schema
+  // column, so any drift (a column present in the Drizzle schema but missing in
+  // the DB, or vice-versa) would crash the whole page. This narrow projection is
+  // resilient to that.
   const rows = await withPlatformAdmin(session.userId, async (tx) =>
-    tx.select().from(contentLibraryAssets).orderBy(desc(contentLibraryAssets.createdAt))
+    tx
+      .select({
+        id: contentLibraryAssets.id,
+        title: contentLibraryAssets.title,
+        description: contentLibraryAssets.description,
+        type: contentLibraryAssets.type,
+        category: contentLibraryAssets.category,
+        thumbnailUrl: contentLibraryAssets.thumbnailUrl,
+        isActive: contentLibraryAssets.isActive,
+        createdAt: contentLibraryAssets.createdAt,
+      })
+      .from(contentLibraryAssets)
+      .orderBy(desc(contentLibraryAssets.createdAt))
   );
 
   return (
@@ -92,21 +108,21 @@ export default async function AinaContentLibraryPage() {
                 </div>
                 <div className="p-3 space-y-1">
                   <div className="flex items-center justify-between gap-2">
-                    <span className={`chip text-[10px] ${TYPE_TONE[a.type] ?? ""}`}>
-                      {a.type}
+                    <span className={`chip text-[10px] ${TYPE_TONE[a.type ?? ""] ?? ""}`}>
+                      {a.type ?? "other"}
                     </span>
                     <span className="text-[10px] text-muted-foreground tabular-nums">
                       {formatDate(a.createdAt)}
                     </span>
                   </div>
-                  <div className="font-semibold text-sm leading-tight">{a.title}</div>
+                  <div className="font-semibold text-sm leading-tight">{a.title ?? "Untitled"}</div>
                   {a.description && (
                     <div className="text-[11px] text-muted-foreground line-clamp-2">
                       {a.description}
                     </div>
                   )}
                   <div className="text-[10px] text-muted-foreground capitalize">
-                    {a.category.replace(/_/g, " ")}
+                    {(a.category ?? "general").replace(/_/g, " ")}
                   </div>
                 </div>
               </div>
