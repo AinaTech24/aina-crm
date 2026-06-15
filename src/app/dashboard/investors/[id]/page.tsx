@@ -33,6 +33,7 @@ import { BestTimeBadge } from "@/components/investors/BestTimeBadge";
 import { OnboardingWizardButton } from "@/components/investors/OnboardingWizard";
 import { QuickCommsPanel } from "@/components/investors/QuickCommsPanel";
 import { ActivityTimeline } from "@/components/investors/ActivityTimeline";
+import { RiskProfilePdfButtons } from "@/components/risk-profile/RiskProfileName";
 import { loadTenantLicense } from "@/lib/auth/license";
 import { isFieldAllowed } from "@/lib/auth/field-gate";
 import { InvestorBlueprintStageBar } from "@/components/investors/InvestorBlueprintStageBar";
@@ -322,9 +323,9 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
           </div>
           <Link
             href={`/dashboard/risk-profiles/new?investorId=${inv.id}`}
-            className="flex-shrink-0 text-xs font-medium bg-amber-600 hover:bg-amber-700 text-white rounded px-3 py-1.5 transition-colors shadow-sm"
+            className="flex-shrink-0 inline-flex items-center gap-1.5 text-xs font-medium bg-amber-600 hover:bg-amber-700 text-white rounded px-3 py-1.5 transition-colors shadow-sm"
           >
-            Start Assessment
+            <ShieldCheck className="size-3.5" /> Start Assessment
           </Link>
         </div>
       )}
@@ -740,18 +741,9 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
                           {h.rmRemarks ?? "—"}
                         </td>
                         <td className="px-4 py-3 text-right">
-                          {h.documentUrl ? (
-                            <a
-                              href={h.documentUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-xs font-semibold text-brand-cyan hover:underline inline-flex items-center gap-1"
-                            >
-                              View PDF
-                            </a>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">—</span>
-                          )}
+                          <div className="inline-flex items-center gap-1.5 justify-end">
+                            <RiskProfilePdfButtons profileId={h.id} name={inv.name} />
+                          </div>
                         </td>
                       </tr>
                     );
@@ -887,13 +879,6 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
               </ul>
             )}
           </Section>
-
-          <ActivityTimeline
-            communications={data.communications}
-            tasks={data.tasks}
-            serviceRequests={data.serviceRequests}
-            reviewMeetings={data.reviewMeetings}
-          />
         </div>
 
         {/* Side panel */}
@@ -959,6 +944,14 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
           </Section>
         </aside>
       </div>
+
+      {/* Unified activity timeline — full width below the related-lists grid */}
+      <ActivityTimeline
+        communications={data.communications}
+        tasks={data.tasks}
+        serviceRequests={data.serviceRequests}
+        reviewMeetings={data.reviewMeetings}
+      />
       </RelatedListSection>
       </RelatedListsContainer>
     </div>
