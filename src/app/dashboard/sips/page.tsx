@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { and, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
-import { TrendingUp, AlertTriangle, CheckCircle2, Calendar } from "lucide-react";
+import { TrendingUp, AlertTriangle, CheckCircle2, Calendar, ShieldAlert } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { sips, investors, mandates, users } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
@@ -150,13 +150,18 @@ export default async function SipsPage({
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-          <TrendingUp className="size-6 text-brand-cyan" /> SIP Tracker
-        </h1>
-        <p className="text-muted-foreground text-sm">
-          Active SIP book · month-on-month inflow · mandate-linked installments.
-        </p>
+      <div className="flex items-start justify-between flex-wrap gap-3">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+            <TrendingUp className="size-6 text-brand-cyan" /> SIP Tracker
+          </h1>
+          <p className="text-muted-foreground text-sm">
+            Active SIP book · month-on-month inflow · mandate-linked installments.
+          </p>
+        </div>
+        <Link href="/dashboard/sips/new-watch" className="btn-secondary text-sm inline-flex items-center gap-1.5">
+          <ShieldAlert className="size-4" /> New-SIP installment watch
+        </Link>
       </div>
 
       <div className="grid grid-cols-5 gap-3">

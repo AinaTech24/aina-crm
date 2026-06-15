@@ -31,6 +31,7 @@ export * from "./notifications";
 export * from "./onboarding";
 export * from "./risk_profiles";
 export * from "./sip_rejections";
+export * from "./sip_installment_marks";
 export * from "./review_meetings";
 export * from "./leave";
 export * from "./attendance";
