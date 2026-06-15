@@ -20,6 +20,7 @@ import { can } from "@/lib/auth/rbac";
 import { withTenant } from "@/db/client";
 import { buildCommandQueue, type ActionGroup, type Severity } from "@/lib/command-center/queue";
 import { FilterBar } from "@/components/common/FilterBar";
+import { sql } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
 
@@ -52,10 +53,30 @@ export default async function CommandCenterPage({
   const firmWide = can(session.roles, "dashboard.view.owner", session.permissions);
   const sevFilter = (sp.severity ?? "").split(",").filter(Boolean);
   const catFilter = (sp.category ?? "").split(",").filter(Boolean);
+  // Owners can scope the whole queue to one user; everyone else only sees their
+  // own book, so the user filter is owner-only.
+  const userParam = firmWide ? (sp.user ?? "").trim() : "";
 
-  const allGroups = await withTenant(
+  const { allGroups, userOptions } = await withTenant(
     session.tenantId,
-    async (tx) => buildCommandQueue(tx as any, { userId: session.userId, firmWide }),
+    async (tx) => {
+      const groups = await buildCommandQueue(
+        tx as any,
+        userParam ? { userId: userParam, firmWide: false } : { userId: session.userId, firmWide }
+      );
+      // Roster for the User filter — active users, so any newly-added user shows
+      // up automatically.
+      let users: { value: string; label: string }[] = [];
+      if (firmWide) {
+        const r = await tx.execute(sql`
+          SELECT id, name FROM users
+          WHERE tenant_id = ${session.tenantId}::uuid AND status = 'active'
+          ORDER BY name ASC
+        `);
+        users = (r.rows as { id: string; name: string }[]).map((u) => ({ value: String(u.id), label: u.name ?? "—" }));
+      }
+      return { allGroups: groups, userOptions: users };
+    },
     { userId: session.userId, branchId: session.branchId, roles: session.roles }
   );
 
@@ -96,6 +117,9 @@ export default async function CommandCenterPage({
       <FilterBar
         totalCount={totalItems}
         filters={[
+          ...(firmWide && userOptions.length
+            ? [{ type: "select" as const, key: "user", label: "User", options: userOptions }]
+            : []),
           {
             type: "multi",
             key: "severity",

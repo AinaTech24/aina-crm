@@ -481,12 +481,12 @@ export default function Home() {
               key={p.name}
               className={`glass-card rounded-2xl p-6 sm:p-8 flex flex-col relative border ${
                 p.featured
-                  ? "border-primary/40 bg-primary/[0.03] shadow-xl md:-translate-y-2 ring-1 ring-primary/30"
+                  ? "border-2 border-red-500 bg-red-500/[0.04] md:-translate-y-2 animate-premium-glow"
                   : "border-border/60"
               }`}
             >
               {p.featured && (
-                <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-primary text-white text-[10px] uppercase font-bold tracking-widest px-3 py-1 rounded-full shadow-md">
+                <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-red-600 text-white text-[10px] uppercase font-bold tracking-widest px-3 py-1 rounded-full ring-2 ring-red-300 animate-premium-badge">
                   Recommended
                 </span>
               )}
@@ -516,7 +516,7 @@ export default function Home() {
                 ))}
               </ul>
 
-              <Link href="/signup" className={`mt-8 w-full ${p.featured ? "btn-primary" : "btn-secondary"} font-bold py-3 text-center justify-center shadow-md`}>
+              <Link href="/signup" className={`mt-8 w-full ${p.featured ? "btn-primary !bg-red-600 hover:!bg-red-700" : "btn-secondary"} font-bold py-3 text-center justify-center shadow-md`}>
                 {p.cta}
               </Link>
             </div>
