@@ -144,6 +144,12 @@ export default async function TeamDashboardPage({
           </p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
+          <Link
+            href="/dashboard/team/scorecard"
+            className="rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium flex items-center gap-1.5 hover:bg-secondary/60"
+          >
+            <Trophy className="size-4 text-brand-cyan" /> Scorecard
+          </Link>
           <TeamMemberFilter
             members={members}
             selected={selectedMember ? member : ""}

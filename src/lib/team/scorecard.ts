@@ -1,0 +1,121 @@
+/**
+ * Team Performance — KRA scorecard engine.
+ *
+ * Computes per-person KPIs for the Sales and Operations teams from data the CRM
+ * already holds (business entries, investors, leads, activities, review
+ * meetings, service requests, tasks, attendance), scores each KPI, and rolls up
+ * a weighted KRA score + RAG band per person.
+ *
+ * V1 scoring is target-free and robust: count KPIs are scored relative to the
+ * team's best (a leaderboard), %-KPIs (SLA / attendance / conversion) are scored
+ * on their own absolute value, and "lower-is-better" KPIs (overdue) invert.
+ * Per-person absolute targets can layer on later.
+ */
+
+import { sql } from "drizzle-orm";
+
+type Tx = { execute: (q: any) => Promise<{ rows: any[] }> };
+
+export type KpiUnit = "inr" | "count" | "pct";
+export type Kpi = { key: string; label: string; actual: number; unit: KpiUnit; score: number; weight: number };
+export type MemberRow = { userId: string; name: string; kraScore: number; band: "green" | "amber" | "red"; kpis: Kpi[] };
+export type Scorecard = { sales: MemberRow[]; ops: MemberRow[]; from: string; to: string };
+
+type Mode = "rel" | "pct" | "relInverse";
+type KpiDef = { key: string; label: string; unit: KpiUnit; weight: number; mode: Mode; values: Map<string, number> };
+
+const band = (s: number): MemberRow["band"] => (s >= 75 ? "green" : s >= 50 ? "amber" : "red");
+
+async function single(tx: Tx, q: any): Promise<Map<string, number>> {
+  const r = await tx.execute(q);
+  const m = new Map<string, number>();
+  for (const row of r.rows as any[]) if (row.uid) m.set(String(row.uid), Number(row.v) || 0);
+  return m;
+}
+/** met/total → percentage per user. */
+async function ratio(tx: Tx, q: any): Promise<Map<string, number>> {
+  const r = await tx.execute(q);
+  const m = new Map<string, number>();
+  for (const row of r.rows as any[]) {
+    if (!row.uid) continue;
+    const total = Number(row.total) || 0;
+    m.set(String(row.uid), total > 0 ? Math.round((Number(row.met) || 0) / total * 100) : 0);
+  }
+  return m;
+}
+
+function assemble(users: { id: string; name: string }[], defs: KpiDef[]): MemberRow[] {
+  const best = new Map<string, number>();
+  const worst = new Map<string, number>();
+  for (const d of defs) {
+    let b = 0;
+    let w = 0;
+    for (const u of users) {
+      const v = d.values.get(u.id) ?? 0;
+      if (v > b) b = v;
+      if (v > w) w = v;
+    }
+    best.set(d.key, b);
+    worst.set(d.key, w);
+  }
+  const rows = users.map((u) => {
+    const kpis: Kpi[] = defs.map((d) => {
+      const actual = d.values.get(u.id) ?? 0;
+      let score: number;
+      if (d.mode === "pct") score = Math.min(100, Math.round(actual));
+      else if (d.mode === "relInverse") score = (worst.get(d.key) ?? 0) > 0 ? Math.round((1 - actual / (worst.get(d.key) || 1)) * 100) : 100;
+      else score = (best.get(d.key) ?? 0) > 0 ? Math.round((actual / (best.get(d.key) || 1)) * 100) : 0;
+      return { key: d.key, label: d.label, actual, unit: d.unit, score, weight: d.weight };
+    });
+    const wsum = kpis.reduce((n, k) => n + k.weight, 0) || 1;
+    const kraScore = Math.round(kpis.reduce((n, k) => n + k.score * k.weight, 0) / wsum);
+    return { userId: u.id, name: u.name, kraScore, band: band(kraScore), kpis };
+  });
+  return rows.sort((a, b) => b.kraScore - a.kraScore);
+}
+
+export async function loadScorecard(tx: Tx, tenantId: string, from: string, to: string): Promise<Scorecard> {
+  const t = tenantId;
+  // Timestamp window helper: [from 00:00, to+1 00:00)
+  const tsLo = sql`${from}::date`;
+  const tsHi = sql`(${to}::date + interval '1 day')`;
+
+  const roster = async (predicate: any) =>
+    ((await tx.execute(sql`SELECT id, name FROM users WHERE tenant_id = ${t}::uuid AND status = 'active' AND ${predicate} ORDER BY name ASC`)).rows as any[]).map(
+      (u) => ({ id: String(u.id), name: u.name ?? "—" })
+    );
+  const salesUsers = await roster(sql`('rm' = ANY(roles) OR 'branch_head' = ANY(roles))`);
+  const opsUsers = await roster(sql`('ops' = ANY(roles) OR 'back_office' = ANY(roles))`);
+
+  // ── Sales KPIs ──────────────────────────────────────────────────────────
+  const netSales = await single(tx, sql`SELECT rm_id AS uid, COALESCE(SUM(total_amount),0) AS v FROM business_entries WHERE tenant_id=${t}::uuid AND rm_id IS NOT NULL AND business_date BETWEEN ${from}::date AND ${to}::date GROUP BY rm_id`);
+  const newClients = await single(tx, sql`SELECT rm_id AS uid, count(*) AS v FROM investors WHERE tenant_id=${t}::uuid AND rm_id IS NOT NULL AND merged_into_id IS NULL AND created_at >= ${tsLo} AND created_at < ${tsHi} GROUP BY rm_id`);
+  const aum = await single(tx, sql`SELECT rm_id AS uid, COALESCE(SUM(aum),0) AS v FROM investors WHERE tenant_id=${t}::uuid AND rm_id IS NOT NULL AND status='active' AND merged_into_id IS NULL GROUP BY rm_id`);
+  const converted = await single(tx, sql`SELECT owner_id AS uid, count(*) AS v FROM leads WHERE tenant_id=${t}::uuid AND owner_id IS NOT NULL AND converted_at >= ${tsLo} AND converted_at < ${tsHi} GROUP BY owner_id`);
+  const meetings = await single(tx, sql`SELECT rm_id AS uid, count(*) AS v FROM review_meetings WHERE tenant_id=${t}::uuid AND rm_id IS NOT NULL AND status IN ('completed','confirmed') AND meeting_date >= ${tsLo} AND meeting_date < ${tsHi} GROUP BY rm_id`);
+  const activities = await single(tx, sql`SELECT owner_user_id AS uid, count(*) AS v FROM activities WHERE tenant_id=${t}::uuid AND owner_user_id IS NOT NULL AND occurred_at >= ${tsLo} AND occurred_at < ${tsHi} GROUP BY owner_user_id`);
+
+  const sales = assemble(salesUsers, [
+    { key: "net_sales", label: "Net sales", unit: "inr", weight: 0.3, mode: "rel", values: netSales },
+    { key: "new_clients", label: "New clients", unit: "count", weight: 0.2, mode: "rel", values: newClients },
+    { key: "converted", label: "Leads converted", unit: "count", weight: 0.15, mode: "rel", values: converted },
+    { key: "meetings", label: "Meetings", unit: "count", weight: 0.15, mode: "rel", values: meetings },
+    { key: "activities", label: "Activities", unit: "count", weight: 0.1, mode: "rel", values: activities },
+    { key: "aum", label: "Book AUM", unit: "inr", weight: 0.1, mode: "rel", values: aum },
+  ]);
+
+  // ── Operations KPIs ─────────────────────────────────────────────────────
+  const sla = await ratio(tx, sql`SELECT assigned_to_user_id AS uid, count(*) FILTER (WHERE resolved_at <= sla_resolution_at) AS met, count(*) AS total FROM service_requests WHERE tenant_id=${t}::uuid AND assigned_to_user_id IS NOT NULL AND status IN ('resolved','closed') AND resolved_at >= ${tsLo} AND resolved_at < ${tsHi} AND sla_resolution_at IS NOT NULL GROUP BY assigned_to_user_id`);
+  const resolved = await single(tx, sql`SELECT assigned_to_user_id AS uid, count(*) AS v FROM service_requests WHERE tenant_id=${t}::uuid AND assigned_to_user_id IS NOT NULL AND status IN ('resolved','closed') AND resolved_at >= ${tsLo} AND resolved_at < ${tsHi} GROUP BY assigned_to_user_id`);
+  const overdue = await single(tx, sql`SELECT assignee_id AS uid, count(*) AS v FROM tasks WHERE tenant_id=${t}::uuid AND assignee_id IS NOT NULL AND status IN ('open','in_progress','blocked') AND due_at IS NOT NULL AND due_at < now() GROUP BY assignee_id`);
+  const attendance = await ratio(tx, sql`SELECT employee_user_id AS uid, count(*) FILTER (WHERE clock_in_at IS NOT NULL OR status='present') AS met, count(*) AS total FROM attendance WHERE tenant_id=${t}::uuid AND employee_user_id IS NOT NULL AND attendance_date BETWEEN ${from}::date AND ${to}::date GROUP BY employee_user_id`);
+
+  const ops = assemble(opsUsers, [
+    { key: "sla", label: "SLA adherence", unit: "pct", weight: 0.35, mode: "pct", values: sla },
+    { key: "resolved", label: "Tickets resolved", unit: "count", weight: 0.25, mode: "rel", values: resolved },
+    { key: "overdue", label: "Overdue tasks", unit: "count", weight: 0.2, mode: "relInverse", values: overdue },
+    { key: "attendance", label: "Attendance", unit: "pct", weight: 0.2, mode: "pct", values: attendance },
+  ]);
+
+  return { sales, ops, from, to };
+}
