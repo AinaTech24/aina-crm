@@ -126,19 +126,12 @@ export default async function CommandCenterPage({
         </div>
       </div>
 
-      <div className="flex items-center gap-2 flex-wrap text-xs">
-        <span className="text-muted-foreground font-medium">Client</span>
-        <CommandClientPicker selectedId={clientId} selectedName={clientName} />
-        {clientId && (
-          <span className="text-muted-foreground">Showing only this client&apos;s open actions.</span>
-        )}
-      </div>
-
       <FilterBar
         totalCount={totalItems}
+        leftSlot={<CommandClientPicker selectedId={clientId} selectedName={clientName} />}
         filters={[
           ...(firmWide && userOptions.length
-            ? [{ type: "select" as const, key: "user", label: "User", options: userOptions }]
+            ? [{ type: "select" as const, key: "user", label: "User", allLabel: "All users", options: userOptions }]
             : []),
           {
             type: "multi",

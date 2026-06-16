@@ -1,24 +1,12 @@
 import Link from "next/link";
-import { eq, sql } from "drizzle-orm";
+import { asc, desc, eq, sql } from "drizzle-orm";
 import { Target, Plus } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { goals, investors } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
-import { formatINR } from "@/lib/utils";
-import { categoryLabel } from "@/lib/goal-planning/calc";
-import { RowActions } from "@/components/common/RowActions";
+import { FilterBar } from "@/components/common/FilterBar";
+import { GoalsBulkTable } from "@/components/goals/GoalsBulkTable";
 import { Pager } from "@/components/common/Pager";
-
-const STATUS_TONE: Record<string, string> = {
-  not_started: "bg-gray-100 text-gray-700",
-  on_track: "bg-emerald-50 text-emerald-700",
-  behind_track: "bg-amber-50 text-amber-700",
-  achieved: "bg-blue-50 text-blue-700",
-  // Legacy values display in muted tones
-  active: "bg-secondary text-foreground",
-  on_hold: "bg-slate-50 text-slate-700",
-  abandoned: "bg-rose-50 text-rose-700",
-};
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +19,17 @@ export default async function GoalsPage({
   const sp = await searchParams;
   const PAGE_SIZE = 50;
   const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
+  // Sort the list — by target date or target amount, ascending or descending.
+  const sortKey = (["target_date_asc", "target_date_desc", "target_amount_desc", "target_amount_asc"] as const).includes(
+    (sp.sort ?? "") as any
+  )
+    ? (sp.sort as "target_date_asc" | "target_date_desc" | "target_amount_desc" | "target_amount_asc")
+    : "target_date_asc";
+  const orderBy =
+    sortKey === "target_date_desc" ? desc(goals.targetDate)
+    : sortKey === "target_amount_desc" ? desc(goals.targetAmount)
+    : sortKey === "target_amount_asc" ? asc(goals.targetAmount)
+    : asc(goals.targetDate);
 
   const { rows, stats } = await withTenant(session.tenantId, async (tx) => {
     // KPIs from a single aggregate over ALL goals — not the paginated slice
@@ -52,12 +51,13 @@ export default async function GoalsPage({
       .select({ goal: goals, investorName: investors.name })
       .from(goals)
       .leftJoin(investors, eq(investors.id, goals.investorId))
-      .orderBy(goals.targetDate)
+      .orderBy(orderBy)
       .limit(PAGE_SIZE)
       .offset((page - 1) * PAGE_SIZE);
 
     return {
-      rows: r,
+      // Flatten for BulkTable (needs a top-level `id`).
+      rows: r.map(({ goal, investorName }) => ({ ...goal, investorName })),
       stats: {
         total: Number(s.total),
         onTrack: Number(s.on_track),
@@ -93,6 +93,23 @@ export default async function GoalsPage({
         <Stat label="Not Started" value={stats.notStarted} tone={stats.notStarted > 0 ? "amber" : "muted"} />
       </div>
 
+      <FilterBar
+        totalCount={stats.total}
+        filters={[
+          {
+            type: "sort",
+            key: "sort",
+            label: "Sort",
+            options: [
+              { value: "target_date_asc", label: "Target date — soonest" },
+              { value: "target_date_desc", label: "Target date — latest" },
+              { value: "target_amount_desc", label: "Target ₹ — high to low" },
+              { value: "target_amount_asc", label: "Target ₹ — low to high" },
+            ],
+          },
+        ]}
+      />
+
       <div className="card-surface">
         {rows.length === 0 ? (
           <div className="p-12 text-center text-sm text-muted-foreground">
@@ -104,74 +121,7 @@ export default async function GoalsPage({
             </p>
           </div>
         ) : (
-          <table className="w-full text-sm">
-            <thead className="text-xs text-muted-foreground border-b">
-              <tr>
-                <th className="text-left px-4 py-2 font-medium">Goal</th>
-                <th className="text-left py-2 font-medium">Investor</th>
-                <th className="text-right py-2 font-medium">Target</th>
-                <th className="text-right py-2 font-medium">Linked</th>
-                <th className="text-right py-2 font-medium">Req. SIP</th>
-                <th className="text-right py-2 font-medium">Existing SIP</th>
-                <th className="text-right py-2 font-medium">Gap</th>
-                <th className="text-left py-2 font-medium">Target</th>
-                <th className="text-left py-2 font-medium">Status</th>
-                <th className="px-4 py-2"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map(({ goal: g, investorName }) => {
-                const targetYr = new Date(g.targetDate).getFullYear();
-                return (
-                  <tr key={g.id} className="border-b last:border-0 hover:bg-secondary/40">
-                    <td className="px-4 py-3">
-                      <Link href={`/dashboard/goals/${g.id}`} className="font-medium hover:underline">
-                        {g.name}
-                      </Link>
-                      <div className="text-xs text-muted-foreground">{categoryLabel(g.category)}</div>
-                    </td>
-                    <td className="py-3">
-                      <Link href={`/dashboard/investors/${g.investorId}`} className="hover:underline">
-                        {investorName ?? "—"}
-                      </Link>
-                    </td>
-                    <td className="py-3 text-right tabular-nums">{formatINR(Number(g.targetAmount))}</td>
-                    <td className="py-3 text-right tabular-nums text-muted-foreground">
-                      {formatINR(Number(g.currentValue ?? 0))}
-                    </td>
-                    <td className="py-3 text-right tabular-nums">
-                      {g.requiredMonthlySip ? formatINR(Number(g.requiredMonthlySip)) : "—"}
-                    </td>
-                    <td className="py-3 text-right tabular-nums text-muted-foreground">
-                      {g.existingMonthlySip ? formatINR(Number(g.existingMonthlySip)) : "—"}
-                    </td>
-                    <td className="py-3 text-right tabular-nums">
-                      {g.gapAmount && Number(g.gapAmount) > 0 ? (
-                        <span className="text-rose-600 font-medium">{formatINR(Number(g.gapAmount))}</span>
-                      ) : (
-                        <span className="text-emerald-600">—</span>
-                      )}
-                    </td>
-                    <td className="py-3 text-xs text-muted-foreground tabular-nums">{targetYr}</td>
-                    <td className="py-3">
-                      <span className={`chip capitalize ${STATUS_TONE[g.status] ?? ""}`}>
-                        {g.status.replace(/_/g, " ")}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <RowActions
-                        editHref={`/dashboard/goals/${g.id}`}
-                        deleteUrl={`/api/goals/${g.id}`}
-                        itemLabel="goal"
-                        itemName={g.name}
-                        verb="Archive"
-                      />
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <GoalsBulkTable rows={rows} />
         )}
         {rows.length > 0 && (
           <div className="px-4 pb-3">

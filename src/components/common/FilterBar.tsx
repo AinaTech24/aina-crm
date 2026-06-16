@@ -24,7 +24,7 @@ import { DateRangePicker } from "@/components/ui/DateRangePicker";
 
 export type FilterDef =
   | { type: "search"; key: string; placeholder?: string }
-  | { type: "select"; key: string; label: string; options: { value: string; label: string }[] }
+  | { type: "select"; key: string; label: string; options: { value: string; label: string }[]; allLabel?: string }
   | { type: "multi"; key: string; label: string; options: { value: string; label: string }[] }
   // A sort control — like select, but options are directional (asc/desc) and there
   // is no empty "All" entry (a list is always sorted by *something*).
@@ -35,12 +35,15 @@ export function FilterBar({
   filters,
   totalCount,
   rightSlot,
+  leftSlot,
 }: {
   filters: FilterDef[];
   /** Show "Showing N of M" — pass the count returned by the SSR'd query. */
   totalCount?: number;
   /** Optional slot for "Custom views" or other right-aligned controls. */
   rightSlot?: React.ReactNode;
+  /** Optional slot rendered at the START of the row (e.g. a client typeahead). */
+  leftSlot?: React.ReactNode;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -119,6 +122,7 @@ export function FilterBar({
   return (
     <div className="card-surface p-3 space-y-2 relative z-30">
       <div className="flex items-center gap-2 flex-wrap">
+        {leftSlot}
         {searchFilter && (
           <div className="relative flex-1 min-w-[200px] max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none" />
@@ -146,25 +150,26 @@ export function FilterBar({
                 size="sm"
                 value={values[f.key] as string}
                 onChange={(v) => pushParams({ [f.key]: v })}
-                options={[{ value: "", label: "All" }, ...f.options]}
-                placeholder="All"
+                options={[{ value: "", label: f.allLabel ?? "All" }, ...f.options]}
+                placeholder={f.allLabel ?? "All"}
                 ariaLabel={f.label}
                 className="min-w-[7rem]"
               />
             </div>
           ) : f.type === "sort" ? (
-            <div key={f.key} className="inline-flex items-center gap-1.5 text-xs">
-              <ArrowDownUp className="size-3.5 text-muted-foreground" />
-              <span className="text-muted-foreground">{f.label}</span>
-              <Select
-                size="sm"
-                value={(values[f.key] as string) || f.options[0]?.value || ""}
-                onChange={(v) => pushParams({ [f.key]: v })}
-                options={f.options}
-                ariaLabel={f.label}
-                className="min-w-[9.5rem]"
-              />
-            </div>
+            // Sort control: the directional glyph sits INSIDE the trigger and the
+            // redundant "Sort" word is dropped — the options ("Newest first" …)
+            // already say what's being ordered.
+            <Select
+              key={f.key}
+              size="sm"
+              leadingIcon={<ArrowDownUp className="size-3.5 text-muted-foreground" />}
+              value={(values[f.key] as string) || f.options[0]?.value || ""}
+              onChange={(v) => pushParams({ [f.key]: v })}
+              options={f.options}
+              ariaLabel={f.label}
+              className="min-w-[9.5rem]"
+            />
           ) : f.type === "date_range" ? (
             <DateRangePicker
               key={f.key}

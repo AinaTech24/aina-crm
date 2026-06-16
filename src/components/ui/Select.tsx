@@ -31,6 +31,7 @@ export function Select({
   id,
   searchable = false,
   searchPlaceholder = "Search…",
+  leadingIcon,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -45,6 +46,8 @@ export function Select({
   /** Show a filter box at the top of the menu (handy for long lists). */
   searchable?: boolean;
   searchPlaceholder?: string;
+  /** Optional icon rendered *inside* the trigger, before the label (e.g. a sort glyph). */
+  leadingIcon?: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
@@ -164,8 +167,11 @@ export function Select({
           ${open ? "border-brand-cyan/60 ring-2 ring-brand-cyan/15" : "border-border hover:bg-secondary/60"}
           disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none`}
       >
-        <span className={`truncate ${selected ? "text-foreground" : "text-muted-foreground"}`}>
-          {selected ? selected.label : placeholder}
+        <span className="inline-flex items-center gap-1.5 min-w-0">
+          {leadingIcon}
+          <span className={`truncate ${selected ? "text-foreground" : "text-muted-foreground"}`}>
+            {selected ? selected.label : placeholder}
+          </span>
         </span>
         <ChevronDown
           className={`size-3.5 shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`}

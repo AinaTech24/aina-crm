@@ -171,7 +171,7 @@ export async function renderProposalPdf(args: { proposal: ProposalData; brand: P
       const x = MARGIN + i * (cw + gap);
       cur.page.drawRectangle({ x, y: cur.y - ch, width: cw, height: ch, color: HEADBG, borderColor: LINE, borderWidth: 1 });
       cur.page.drawText(ascii(c.label).toUpperCase(), { x: x + 8, y: cur.y - 15, size: 6.6, font: bold, color: MUTED });
-      const vs = fitText(ascii(c.value), bold, 12, cw - 14, 8);
+      const vs = fitText(ascii(c.value), bold, 12, cw - 14, 7);
       cur.page.drawText(ascii(c.value), { x: x + 8, y: cur.y - 36, size: vs, font: bold, color: c.tone ?? INK });
     });
     cur.y -= ch + 26;
@@ -211,8 +211,11 @@ export async function renderProposalPdf(args: { proposal: ProposalData; brand: P
         const val = ascii(String(c.get(it) ?? "-"));
         const isProjected = c.h === "Projected";
         if (c.align === "r") {
-          const t = truncate(val, helv, 8.5, cw - 8);
-          cur.page.drawText(t, { x: x + cw - 6 - helv.widthOfTextAtSize(t, 8.5), y: cur.y, size: 8.5, font: isProjected ? bold : helv, color: isProjected ? GREEN : INK });
+          // Money never gets chopped — a "Rs 11,5..." reads as a wrong amount.
+          // Shrink the font to fit the column so the FULL value always renders.
+          const f = isProjected ? bold : helv;
+          const fs = fitText(val, f, 8.5, cw - 8, 6);
+          cur.page.drawText(val, { x: x + cw - 6 - f.widthOfTextAtSize(val, fs), y: cur.y, size: fs, font: f, color: isProjected ? GREEN : INK });
         } else {
           cur.page.drawText(truncate(val, helv, 8.5, cw - 6), { x, y: cur.y, size: 8.5, font: c.h === cols[0].h ? bold : helv, color: INK });
         }

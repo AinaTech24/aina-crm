@@ -11,13 +11,13 @@ import {
 } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { formatDate, formatINR } from "@/lib/utils";
-import { RowActions } from "@/components/common/RowActions";
+import { formatINR } from "@/lib/utils";
 import { FilterBar } from "@/components/common/FilterBar";
 import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
 import { CustomViews } from "@/components/common/CustomViews";
 import { ColumnManager } from "@/components/common/ColumnManager";
 import { Pager } from "@/components/common/Pager";
+import { ProposalsBulkTable } from "@/components/proposals/ProposalsBulkTable";
 
 const PROPOSALS_COLUMNS = [
   { key: "number", label: "Proposal number", required: true },
@@ -32,34 +32,6 @@ const PROPOSALS_COLUMNS = [
   { key: "created", label: "Created" },
   { key: "actions", label: "Actions", required: true },
 ];
-
-const STATUS_TONE: Record<string, string> = {
-  draft: "bg-gray-50 text-gray-700",
-  ready: "bg-blue-50 text-blue-700",
-  sent: "bg-amber-50 text-amber-700",
-  viewed: "bg-cyan-50 text-cyan-700",
-  accepted: "bg-emerald-50 text-emerald-700",
-  rejected: "bg-rose-50 text-rose-700",
-  expired: "bg-slate-50 text-slate-700",
-};
-
-const TYPE_LABEL: Record<string, string> = {
-  comprehensive: "Comprehensive",
-  mutual_fund: "Mutual Fund",
-  insurance: "Insurance",
-  pms: "PMS",
-  aif: "AIF",
-  mixed: "Mixed",
-};
-
-const TYPE_TONE: Record<string, string> = {
-  comprehensive: "bg-violet-50 text-violet-700",
-  mutual_fund: "bg-emerald-50 text-emerald-700",
-  insurance: "bg-blue-50 text-blue-700",
-  pms: "bg-amber-50 text-amber-700",
-  aif: "bg-rose-50 text-rose-700",
-  mixed: "bg-purple-50 text-purple-700",
-};
 
 export const dynamic = "force-dynamic";
 
@@ -76,6 +48,17 @@ export default async function ProposalsPage({
   const riskFilter = (sp.risk ?? "").split(",").filter(Boolean);
   const PAGE_SIZE = 50;
   const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
+  // Sort — by created date or investment amount, ascending or descending.
+  const sortKey = (["created_desc", "created_asc", "invest_desc", "invest_asc"] as const).includes(
+    (sp.sort ?? "") as any
+  )
+    ? (sp.sort as "created_desc" | "created_asc" | "invest_desc" | "invest_asc")
+    : "created_desc";
+  const orderSql =
+    sortKey === "created_asc" ? sql`p.created_at ASC`
+    : sortKey === "invest_desc" ? sql`p.total_investment::numeric DESC NULLS LAST`
+    : sortKey === "invest_asc" ? sql`p.total_investment::numeric ASC NULLS LAST`
+    : sql`p.created_at DESC`;
 
   const data = await withTenant(session.tenantId, async (tx) => {
     const filters: any[] = [];
@@ -114,7 +97,7 @@ export default async function ProposalsPage({
       FROM proposals p
       LEFT JOIN users u ON u.id = p.prepared_by_user_id
       ${whereSql}
-      ORDER BY p.created_at DESC
+      ORDER BY ${orderSql}
       LIMIT ${PAGE_SIZE} OFFSET ${(page - 1) * PAGE_SIZE}
     `);
     // True count of the filtered set (drives the pager + accurate header count).
@@ -195,6 +178,17 @@ export default async function ProposalsPage({
         filters={[
           { type: "search", key: "q", placeholder: "Search by number, title, recipient…" },
           {
+            type: "sort",
+            key: "sort",
+            label: "Sort",
+            options: [
+              { value: "created_desc", label: "Newest first" },
+              { value: "created_asc", label: "Oldest first" },
+              { value: "invest_desc", label: "Investment ₹ — high to low" },
+              { value: "invest_asc", label: "Investment ₹ — low to high" },
+            ],
+          },
+          {
             type: "multi",
             key: "status",
             label: "Status",
@@ -260,84 +254,8 @@ export default async function ProposalsPage({
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm" data-table="proposals">
-              <thead className="text-xs text-muted-foreground border-b">
-                <tr>
-                  <th data-col="number" className="text-left px-4 py-2 font-medium">Number</th>
-                  <th data-col="title" className="text-left py-2 font-medium">Title</th>
-                  <th data-col="recipient" className="text-left py-2 font-medium">Recipient</th>
-                  <th data-col="type" className="text-left py-2 font-medium">Type</th>
-                  <th data-col="invest" className="text-right py-2 font-medium">Invest ₹</th>
-                  <th data-col="corpus" className="text-right py-2 font-medium pr-6">Corpus ₹</th>
-                  <th data-col="status" className="text-left py-2 font-medium pl-3">Status</th>
-                  <th data-col="valid_till" className="text-left py-2 font-medium">Valid till</th>
-                  <th data-col="prepared_by" className="text-left py-2 font-medium">Prepared by</th>
-                  <th data-col="created" className="text-left py-2 font-medium">Created</th>
-                  <th data-col="actions" className="px-4 py-2"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.rows.map((p) => (
-                  <tr key={p.id} className="border-b last:border-0 hover:bg-secondary/40">
-                    <td data-col="number" className="px-4 py-3 font-mono text-xs whitespace-nowrap">
-                      <Link
-                        href={`/dashboard/proposals/${p.id}`}
-                        className="text-brand-cyan-deep hover:underline font-semibold"
-                      >
-                        {p.proposal_number}
-                      </Link>
-                    </td>
-                    <td data-col="title" className="py-3 text-xs">
-                      <div className="font-medium text-foreground">{p.title}</div>
-                      {p.risk_rating && (
-                        <div className="text-[10px] text-muted-foreground capitalize">
-                          Risk · {p.risk_rating}
-                        </div>
-                      )}
-                    </td>
-                    <td data-col="recipient" className="py-3 text-xs whitespace-nowrap">
-                      <div className="font-medium">{p.recipient_name}</div>
-                      <div className="text-[10px] text-muted-foreground capitalize">
-                        {p.recipient_type}
-                      </div>
-                    </td>
-                    <td data-col="type" className="py-3">
-                      <span className={`chip ${TYPE_TONE[p.type] ?? ""} text-[10px]`}>
-                        {TYPE_LABEL[p.type] ?? p.type}
-                      </span>
-                    </td>
-                    <td data-col="invest" className="py-3 text-right tabular-nums text-xs">
-                      {p.total_investment ? formatINR(Number(p.total_investment)) : "—"}
-                    </td>
-                    <td data-col="corpus" className="py-3 pr-6 text-right tabular-nums text-xs text-emerald-700 font-medium">
-                      {p.expected_corpus ? formatINR(Number(p.expected_corpus)) : "—"}
-                    </td>
-                    <td data-col="status" className="py-3 pl-3">
-                      <span className={`chip capitalize ${STATUS_TONE[p.status] ?? ""}`}>
-                        {p.status.replace(/_/g, " ")}
-                      </span>
-                    </td>
-                    <td data-col="valid_till" className="py-3 text-xs text-muted-foreground tabular-nums whitespace-nowrap">
-                      {p.valid_until ? formatDate(p.valid_until) : "—"}
-                    </td>
-                    <td data-col="prepared_by" className="py-3 text-xs whitespace-nowrap">{p.prepared_by ?? "—"}</td>
-                    <td data-col="created" className="py-3 text-xs text-muted-foreground tabular-nums whitespace-nowrap">
-                      {formatDate(p.created_at)}
-                    </td>
-                    <td data-col="actions" className="px-4 py-3 text-right">
-                      <RowActions
-                        editHref={`/dashboard/proposals/${p.id}`}
-                        deleteUrl={`/api/proposals/${p.id}`}
-                        itemLabel="proposal"
-                        itemName={p.proposal_number}
-                        verb="Cancel"
-                      />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div>
+            <ProposalsBulkTable rows={data.rows} />
             <div className="px-4 pb-3">
               <Pager
                 page={page}

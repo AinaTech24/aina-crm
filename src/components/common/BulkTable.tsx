@@ -24,6 +24,8 @@ export type BulkColumn<T> = {
   render: (row: T) => ReactNode;
   thClass?: string;
   tdClass?: string;
+  /** Emitted as `data-col` on the <th>/<td> so a <ColumnManager> can show/hide it. */
+  colKey?: string;
 };
 
 export type BulkAction =
@@ -37,12 +39,15 @@ export function BulkTable<T extends { id: string }>({
   endpoint,
   actions,
   itemLabel = "item",
+  tableKey,
 }: {
   rows: T[];
   columns: BulkColumn<T>[];
   endpoint: string;
   actions: BulkAction[];
   itemLabel?: string;
+  /** Emitted as `data-table` on the <table> so a <ColumnManager> can target it. */
+  tableKey?: string;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -148,14 +153,14 @@ export function BulkTable<T extends { id: string }>({
       )}
 
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className="w-full text-sm" data-table={tableKey}>
           <thead className="text-xs text-muted-foreground border-b">
             <tr>
               <th className="w-8 px-4 py-2">
                 <input type="checkbox" checked={allSel} onChange={toggleAll} className="size-3.5 rounded" aria-label="Select all" />
               </th>
               {columns.map((c) => (
-                <th key={c.key} className={c.thClass ?? "text-left py-2 font-medium"}>{c.header}</th>
+                <th key={c.key} data-col={c.colKey} className={c.thClass ?? "text-left py-2 font-medium"}>{c.header}</th>
               ))}
             </tr>
           </thead>
@@ -171,7 +176,7 @@ export function BulkTable<T extends { id: string }>({
                     <input type="checkbox" checked={sel} onChange={() => toggle(row.id)} className="size-3.5 rounded" aria-label="Select row" />
                   </td>
                   {columns.map((c) => (
-                    <td key={c.key} className={c.tdClass ?? "py-2.5"}>{c.render(row)}</td>
+                    <td key={c.key} data-col={c.colKey} className={c.tdClass ?? "py-2.5"}>{c.render(row)}</td>
                   ))}
                 </tr>
               );

@@ -57,9 +57,9 @@ export function AttendanceTable({ rows, canManage }: { rows: AttRow[]; canManage
   }
 
   return (
-    <div className="card-surface overflow-x-auto">
+    <div className="card-surface overflow-auto max-h-[600px] scrollbar-none">
       <table className="w-full text-sm">
-        <thead className="text-xs text-muted-foreground border-b">
+        <thead className="text-xs text-muted-foreground border-b sticky top-0 z-10 bg-card">
           <tr>
             <th className="text-left px-4 py-2 font-medium">Employee</th>
             <th className="text-left py-2 font-medium">Date</th>

@@ -68,6 +68,9 @@ export default async function ReviewMeetingsPage({
   const modeFilter = (sp.mode ?? "").split(",").filter(Boolean);
   const typeFilter = (sp.type ?? "").split(",").filter(Boolean);
   const rmFilter = (sp.rm ?? "").split(",").filter(Boolean);
+  // Sort the (past) list by meeting date — newest or oldest first. The upcoming
+  // list always leads with the soonest meeting, so this drives the past list.
+  const sortKey = sp.sort === "meeting_asc" ? "meeting_asc" : "meeting_desc";
 
   const data = await withTenant(session.tenantId, async (tx) => {
     const filters: any[] = [sql`m.tenant_id = ${session.tenantId}::uuid`];
@@ -127,7 +130,7 @@ export default async function ReviewMeetingsPage({
       LEFT JOIN leads l ON l.id = m.lead_id
       LEFT JOIN users u ON u.id = m.rm_id
       ${whereSql}
-      ORDER BY m.meeting_date DESC
+      ORDER BY ${sortKey === "meeting_asc" ? sql`m.meeting_date ASC` : sql`m.meeting_date DESC`}
       LIMIT 200
     `);
 
@@ -232,6 +235,15 @@ export default async function ReviewMeetingsPage({
         totalCount={data.rows.length}
         filters={[
           { type: "search", key: "q", placeholder: "Search by client, notes, discussion points…" },
+          {
+            type: "sort",
+            key: "sort",
+            label: "Sort",
+            options: [
+              { value: "meeting_desc", label: "Date — latest first" },
+              { value: "meeting_asc", label: "Date — earliest first" },
+            ],
+          },
           {
             type: "multi",
             key: "category",

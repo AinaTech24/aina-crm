@@ -98,26 +98,25 @@ export default async function NextBestActionPage({ searchParams }: { searchParam
         )}
       </div>
 
-      {/* Urgency filter chips */}
+      {/* Urgency + type filter chips — one wrapping row, all labels together. */}
       <div className="flex flex-wrap items-center gap-1.5">
         <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold mr-1">Urgency</span>
-        <Link href={hrefWith({ sev: undefined })} className={`chip ${!sevFilter ? "bg-brand-cyan text-white" : "bg-secondary"}`}>All</Link>
+        <Link href={hrefWith({ sev: undefined })} className={`chip ${!sevFilter ? "bg-primary text-primary-foreground" : "bg-secondary"}`}>All</Link>
         {(["now", "today", "soon"] as const).map((k) => {
           const label = k === "now" ? "Act now" : k === "today" ? "Today" : "This week";
           const cnt = actions.filter((a) => a.severity === k).length;
           return (
-            <Link key={k} href={hrefWith({ sev: k })} className={`chip ${sevFilter === k ? "bg-brand-cyan text-white" : "bg-secondary"}`}>
+            <Link key={k} href={hrefWith({ sev: k })} className={`chip ${sevFilter === k ? "bg-primary text-primary-foreground" : "bg-secondary"}`}>
               {label} <strong className="ml-1">{cnt}</strong>
             </Link>
           );
         })}
-      </div>
 
-      {/* Type filter chips */}
-      <div className="flex flex-wrap gap-1.5">
-        <Link href={hrefWith({ type: undefined })} className={`chip ${!typeFilter ? "bg-brand-cyan text-white" : "bg-secondary"}`}>All <strong className="ml-1">{actions.length}</strong></Link>
+        <span className="mx-1 h-4 w-px bg-border shrink-0" aria-hidden />
+        <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold mr-1">Type</span>
+        <Link href={hrefWith({ type: undefined })} className={`chip ${!typeFilter ? "bg-primary text-primary-foreground" : "bg-secondary"}`}>All <strong className="ml-1">{actions.length}</strong></Link>
         {(Object.keys(byType) as NbaType[]).sort((a, b) => NBA_META[b].weight - NBA_META[a].weight).map((t) => (
-          <Link key={t} href={hrefWith({ type: t })} className={`chip ${typeFilter === t ? "bg-brand-cyan text-white" : CHIP_TONE[NBA_META[t].tone]}`}>
+          <Link key={t} href={hrefWith({ type: t })} className={`chip ${typeFilter === t ? "bg-primary text-primary-foreground" : CHIP_TONE[NBA_META[t].tone]}`}>
             {NBA_META[t].label} <strong className="ml-1">{byType[t]}</strong>
           </Link>
         ))}
@@ -130,9 +129,12 @@ export default async function NextBestActionPage({ searchParams }: { searchParam
           <p className="text-sm text-muted-foreground mt-1">No high-priority actions {mine ? "in your book" : "across the firm"} right now.</p>
         </div>
       ) : (
-        <ol className="space-y-2">
-          {shown.map((a, i) => <Row key={a.key} a={a} rank={i + 1} />)}
-        </ol>
+        // Fixed-height worklist — scrolls inside the page, scrollbar hidden.
+        <div className="max-h-[calc(100vh-20rem)] min-h-[18rem] overflow-y-auto scrollbar-none pr-0.5">
+          <ol className="space-y-2">
+            {shown.map((a, i) => <Row key={a.key} a={a} rank={i + 1} />)}
+          </ol>
+        </div>
       )}
     </div>
   );
