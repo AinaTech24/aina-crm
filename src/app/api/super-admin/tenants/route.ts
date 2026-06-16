@@ -1,4 +1,3 @@
-import { handleApiError } from "@/lib/api/error-handler";
 /**
  * AINA tenant management — create new MFD tenant + owner user + subscription
  * in one transaction.
@@ -117,13 +116,28 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ tenantId, userId, subscriptionId: subId }, { status: 201 });
   } catch (err: any) {
-    if (String(err?.message ?? "").includes("tenants_arn_unique")) {
-      return NextResponse.json({ error: "ARN already registered" }, { status: 409 });
+    const code = String(err?.code ?? "");
+    const constraint = String(err?.constraint ?? "");
+    const msg = String(err?.message ?? "");
+    // Detect duplicates by the Postgres unique-violation code (23505) — robust
+    // to whatever the constraint/index is actually named in prod.
+    const dup = code === "23505" || msg.includes("duplicate key") || msg.includes("unique constraint");
+    if (dup && (constraint.includes("arn") || msg.includes("arn"))) {
+      return NextResponse.json(
+        { error: "ARN already registered — this ARN is already in use by another tenant (including cancelled or deleted ones). Use a different ARN, or delete the existing tenant first." },
+        { status: 409 }
+      );
     }
-    if (String(err?.message ?? "").includes("users_tenant_email_unique")) {
-      return NextResponse.json({ error: "Email already in use" }, { status: 409 });
+    if (dup && (constraint.includes("email") || msg.includes("email"))) {
+      return NextResponse.json({ error: "Owner email already in use by another user." }, { status: 409 });
+    }
+    if (dup) {
+      return NextResponse.json({ error: `Duplicate value — violates ${constraint || "a unique constraint"}.` }, { status: 409 });
     }
     console.error("[create-tenant]", err);
-    return handleApiError(err);
+    // Platform-admin-only tool → surface the real error (instead of an opaque
+    // "internal") so AINA staff can act on it. A thrown 4xx status is preserved.
+    const status = typeof err?.status === "number" ? err.status : 500;
+    return NextResponse.json({ error: msg || "internal", code: code || undefined }, { status });
   }
 }

@@ -145,10 +145,15 @@ export async function POST(req: NextRequest) {
     });
   } catch (err: any) {
     const msg = String(err?.message ?? "");
-    if (msg.includes("tenants_arn_unique")) {
+    const code = String(err?.code ?? "");
+    const constraint = String(err?.constraint ?? "");
+    // Detect duplicates by the Postgres unique-violation code (23505), not a
+    // fragile constraint-name string match.
+    const dup = code === "23505" || msg.includes("duplicate key") || msg.includes("unique constraint");
+    if ((dup && (constraint.includes("arn") || msg.includes("arn"))) || msg.includes("tenants_arn_unique")) {
       return NextResponse.json({ error: "ARN already registered" }, { status: 409 });
     }
-    if (msg.includes("users_tenant_email_unique")) {
+    if ((dup && (constraint.includes("email") || msg.includes("email"))) || msg.includes("users_tenant_email_unique")) {
       return NextResponse.json({ error: "Email already in use" }, { status: 409 });
     }
     // Common dev-time failure modes — give actionable guidance.

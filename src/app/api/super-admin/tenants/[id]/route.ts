@@ -13,7 +13,7 @@ import { handleApiError } from "@/lib/api/error-handler";
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withPlatformAdmin } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
@@ -71,10 +71,17 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
       }
       if ((t as any).deletedAt) return { ok: true, alreadyDeleted: true };
 
-      await tx
-        .update(tenants)
-        .set({ deletedAt: new Date(), deletedBy: session.userId, updatedAt: new Date() } as any)
-        .where(eq(tenants.id, tenantId));
+      // Soft delete AND free the ARN (suffix it) so the same ARN can be used to
+      // create a fresh tenant later — the unique index would otherwise keep it
+      // reserved forever by the hidden row.
+      await tx.execute(sql`
+        UPDATE tenants
+        SET deleted_at = now(),
+            deleted_by = ${session.userId}::uuid,
+            arn = arn || '_deleted_' || to_char(now(), 'YYYYMMDDHH24MISS'),
+            updated_at = now()
+        WHERE id = ${tenantId}::uuid
+      `);
 
       // Cancel the live subscription too, so billing/cron stop touching it.
       const sub = (await tx.select().from(subscriptions).where(eq(subscriptions.tenantId, tenantId)).limit(1))[0];
