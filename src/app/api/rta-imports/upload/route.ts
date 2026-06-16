@@ -64,9 +64,9 @@ export async function POST(req: NextRequest) {
   if (!(file instanceof File)) {
     return NextResponse.json({ error: "file is required" }, { status: 400 });
   }
-  if (file.size > 25 * 1024 * 1024) {
+  if (file.size > 50 * 1024 * 1024) {
     return NextResponse.json(
-      { error: "file too large (max 25 MB for v1 upload — use presigned URL for larger files)" },
+      { error: "file too large (max 50 MB for v1 upload — use presigned URL for larger files)" },
       { status: 413 }
     );
   }

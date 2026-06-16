@@ -8,7 +8,11 @@ const nextConfig: NextConfig = {
     removeConsole: process.env.NODE_ENV === "production" ? { exclude: ["error", "warn"] } : false,
   },
   experimental: {
-    serverActions: { bodySizeLimit: "10mb" },
+    // 50mb so large RTA mailbacks (e.g. a CAMS R9 folio-master zip ~11-25mb)
+    // upload without the body being truncated → req.formData() "expected
+    // multipart/form-data" failure. Uploads are gated behind an authed,
+    // capability-checked route, so the larger ceiling isn't a DoS surface.
+    serverActions: { bodySizeLimit: "50mb" },
     // Scale the build's static-analysis workers to available memory instead of
     // spawning one per CPU — prevents the page-data collection phase from
     // OOM-killing a worker on memory-constrained machines. Build-time only.
