@@ -26,6 +26,7 @@ export default async function TenantsListPage() {
              (SELECT COUNT(*)::int FROM investors i WHERE i.tenant_id = t.id) AS investor_count
       FROM tenants t
       LEFT JOIN subscriptions s ON s.tenant_id = t.id
+      WHERE t.deleted_at IS NULL
       ORDER BY t.created_at DESC
     `);
   });

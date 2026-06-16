@@ -33,8 +33,10 @@ export async function POST(req: NextRequest) {
 
   const userRow = await withSystem(async (tx) => {
     const r = await tx.execute(sql`
-      SELECT u.id, u.tenant_id, u.branch_id, u.email, u.name, u.password_hash, u.roles, u.status, u.permissions, u.two_fa_enabled
+      SELECT u.id, u.tenant_id, u.branch_id, u.email, u.name, u.password_hash, u.roles, u.status, u.permissions, u.two_fa_enabled,
+             t.deleted_at AS tenant_deleted_at
       FROM users u
+      LEFT JOIN tenants t ON t.id = u.tenant_id
       WHERE lower(u.email) = ${email}
       LIMIT 1
     `);
@@ -46,6 +48,10 @@ export async function POST(req: NextRequest) {
     return recordFailure() ?? NextResponse.json({ error: "invalid credentials" }, { status: 401 });
   }
   if (userRow.status === "suspended" || userRow.status === "offboarded") {
+    return NextResponse.json({ error: "account inactive" }, { status: 403 });
+  }
+  // A soft-deleted tenant's users can't sign in (the tenant was removed by AINA).
+  if (userRow.tenant_deleted_at) {
     return NextResponse.json({ error: "account inactive" }, { status: 403 });
   }
 

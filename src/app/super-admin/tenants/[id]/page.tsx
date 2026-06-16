@@ -7,6 +7,7 @@ import { tenants, subscriptions, subscriptionEvents, users, investors, packages 
 import { requireSession } from "@/lib/auth/session";
 import { formatDate, formatRelative, formatINR } from "@/lib/utils";
 import { TenantActions } from "@/components/super-admin/TenantActions";
+import { TenantAdminPanel } from "@/components/super-admin/TenantAdminPanel";
 import { TenantAccessControl } from "@/components/super-admin/TenantAccessControl";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -137,6 +138,13 @@ export default async function TenantDetailPage({ params }: { params: Promise<{ i
           )}
         </div>
       </div>
+
+      <TenantAdminPanel
+        tenantId={id}
+        currentEmail={data.tenant.email ?? null}
+        arn={data.tenant.arn}
+        legalName={data.tenant.legalName}
+      />
 
       {data.subscription && (
         <TenantAccessControl

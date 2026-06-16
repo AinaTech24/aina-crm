@@ -313,6 +313,8 @@ export type PlatformCapability =
   | "platform.tenant.create"
   | "platform.tenant.suspend"
   | "platform.tenant.activate"
+  | "platform.tenant.edit"
+  | "platform.tenant.delete"
   | "platform.tenant.view_all"
   | "platform.tenant.usage"
   | "platform.package.manage"
@@ -327,6 +329,8 @@ export const PLATFORM_CAPS: PlatformCapability[] = [
   "platform.tenant.create",
   "platform.tenant.suspend",
   "platform.tenant.activate",
+  "platform.tenant.edit",
+  "platform.tenant.delete",
   "platform.tenant.view_all",
   "platform.tenant.usage",
   "platform.package.manage",

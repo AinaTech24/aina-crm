@@ -100,6 +100,10 @@ export const tenants = pgTable(
     dataProtectionOfficer: jsonb("dpo").$type<{ name?: string; email?: string; phone?: string }>(),
     riaRegistered: boolean("ria_registered").default(false),
     featureFlags: jsonb("feature_flags").$type<Record<string, boolean>>().default({}),
+    /** Soft delete — set by a platform admin from the super-admin panel. A
+     *  non-null value hides the tenant from the list and blocks its logins. */
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    deletedBy: uuid("deleted_by"),
     ...timestamps,
   },
   (t) => ({
