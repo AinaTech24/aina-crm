@@ -11,6 +11,7 @@ import { RTA_FILE_KINDS, RTA_SOURCES } from "@/db/schema/rta_imports";
 import { processRtaFile } from "@/lib/rta/process";
 import { decodeRtaToText } from "@/lib/rta/decode";
 import { extractRtaFileFromZip } from "@/lib/rta/unzip";
+import { getObjectBytes } from "@/lib/storage/s3";
 
 /**
  * POST /api/rta-imports/upload
@@ -29,9 +30,13 @@ import { extractRtaFileFromZip } from "@/lib/rta/unzip";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-const FormSchema = z.object({
+const BodySchema = z.object({
   source: z.enum(RTA_SOURCES),
   kind: z.enum(RTA_FILE_KINDS),
+  /** S3 object key the browser PUT the file to (via a presigned URL). */
+  key: z.string().min(1).max(500),
+  filename: z.string().min(1).max(300),
+  password: z.string().max(200).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -41,45 +46,33 @@ export async function POST(req: NextRequest) {
   requireCap(session.roles, "transactions.execute");
   await assertActiveLicense(session.tenantId, session.roles);
 
-  // The file is sent as the RAW request body (NOT multipart/form-data) so large
-  // RTA zips don't trip the multipart body-size limit that made req.formData()
-  // throw "expected multipart/form-data". source/kind ride in the query string;
-  // filename + zip password ride in headers.
-  const parsed = FormSchema.safeParse({
-    source: req.nextUrl.searchParams.get("source"),
-    kind: req.nextUrl.searchParams.get("kind"),
-  });
+  // The browser PUTs the file DIRECTLY to S3 via a presigned URL (see
+  // /api/rta-imports/upload-url), bypassing the app server's ~10MB request-body
+  // limit entirely. This request carries only the small JSON {source,kind,key,…}
+  // and the server downloads the FULL object from S3 to parse it.
+  const parsed = BodySchema.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) {
     return NextResponse.json(
-      { error: "invalid source or kind", details: parsed.error.flatten() },
+      { error: "invalid request", details: parsed.error.flatten() },
       { status: 400 }
     );
   }
-  const { source, kind } = parsed.data;
-  const fileName = decodeURIComponent(req.headers.get("x-rta-filename") || "upload.bin");
-  const headerPassword = req.headers.get("x-rta-password") || undefined;
+  const { source, kind, key, filename: fileName, password: headerPassword } = parsed.data;
 
-  // Read the raw body by STREAMING the chunks (not req.arrayBuffer()) so a
-  // buffered-body size cap can't silently truncate large RTA zips.
-  const chunks: Uint8Array[] = [];
-  const reader = req.body?.getReader();
-  if (reader) {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      if (value) chunks.push(value);
-    }
+  let buf: Buffer;
+  try {
+    buf = await getObjectBytes(key);
+  } catch (e: any) {
+    return NextResponse.json(
+      { error: `Could not read the uploaded file from storage — ${e?.message ?? "object not found"}.` },
+      { status: 400 }
+    );
   }
-  const buf = Buffer.concat(chunks);
-  const declaredLen = req.headers.get("content-length") ?? "?";
   if (buf.length === 0) {
     return NextResponse.json({ error: "empty upload — no file received" }, { status: 400 });
   }
-  if (buf.length > 50 * 1024 * 1024) {
-    return NextResponse.json(
-      { error: "file too large (max 50 MB for v1 upload — use presigned URL for larger files)" },
-      { status: 413 }
-    );
+  if (buf.length > 60 * 1024 * 1024) {
+    return NextResponse.json({ error: "file too large (max 60 MB)" }, { status: 413 });
   }
   // Checksum the ORIGINAL uploaded bytes so re-uploading the identical file dedupes.
   const checksum = createHash("sha256").update(buf).digest("hex");
@@ -97,7 +90,7 @@ export async function POST(req: NextRequest) {
       innerName = r.filename;
     } catch (e: any) {
       return NextResponse.json(
-        { error: `Could not open the zip — ${e?.message ?? "wrong password or unsupported archive"}. (received ${buf.length} of ${declaredLen} bytes)` },
+        { error: `Could not open the zip — ${e?.message ?? "wrong password or unsupported archive"}.` },
         { status: 400 }
       );
     }

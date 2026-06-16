@@ -88,18 +88,33 @@ export function UploadDialog({
     setUploading(true);
     setOutcome(null);
     try {
-      // Send the file as the RAW body (not multipart) so large RTA zips don't
-      // trip the multipart body-size limit. source/kind in query; filename +
-      // password in headers.
-      const qs = new URLSearchParams({ source, kind }).toString();
-      const res = await fetch(`/api/rta-imports/upload?${qs}`, {
+      const contentType = file.type || "application/octet-stream";
+      // 1) Get a presigned S3 URL. 2) PUT the file DIRECTLY to S3 (bypasses the
+      // app server's ~10MB body limit that truncated large zips). 3) Tell the
+      // backend to download + parse the object by its key.
+      const presRes = await fetch("/api/rta-imports/upload-url", {
         method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ filename: file.name, contentType }),
+      });
+      const pres = await presRes.json();
+      if (!presRes.ok) {
+        setOutcome({ status: "failed", error: pres.error ?? "Could not get an upload URL" });
+        return;
+      }
+      const putRes = await fetch(pres.url, {
+        method: "PUT",
         body: file,
-        headers: {
-          "content-type": "application/octet-stream",
-          "x-rta-filename": encodeURIComponent(file.name),
-          ...(password ? { "x-rta-password": password } : {}),
-        },
+        headers: { "content-type": contentType },
+      });
+      if (!putRes.ok) {
+        setOutcome({ status: "failed", error: `Direct upload to storage failed (HTTP ${putRes.status})` });
+        return;
+      }
+      const res = await fetch("/api/rta-imports/upload", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ source, kind, key: pres.key, filename: file.name, password: password || undefined }),
       });
       const data = await res.json();
       if (!res.ok) {
