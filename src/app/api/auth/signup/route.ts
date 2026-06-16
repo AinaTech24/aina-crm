@@ -52,6 +52,14 @@ export async function POST(req: NextRequest) {
 
   try {
     await withSystem(async (tx) => {
+      // Free this ARN if a soft-deleted tenant still holds it (deleting should
+      // have released it) so signup with a reused ARN works.
+      await tx.execute(sql`
+        UPDATE tenants
+        SET arn = arn || '_deleted_' || to_char(now(), 'YYYYMMDDHH24MISS'), updated_at = now()
+        WHERE arn = ${arn} AND deleted_at IS NOT NULL
+      `);
+
       await tx.execute(sql`
         INSERT INTO tenants (id, legal_name, display_name, arn, plan, status, trial_ends_at, created_at, updated_at)
         VALUES (${tenantId}, ${firmName}, ${firmName}, ${arn}, 'starter', 'trial', ${trialEndsAt}, now(), now())
@@ -144,16 +152,20 @@ export async function POST(req: NextRequest) {
       }
     });
   } catch (err: any) {
-    const msg = String(err?.message ?? "");
-    const code = String(err?.code ?? "");
-    const constraint = String(err?.constraint ?? "");
+    // Drizzle wraps the driver error and keeps the real Postgres error on
+    // `.cause` — inspect both for the actual code / constraint / detail.
+    const pg = (err?.cause ?? err) as any;
+    const msg = String(pg?.message ?? err?.message ?? "");
+    const code = String(pg?.code ?? err?.code ?? "");
+    const constraint = String(pg?.constraint ?? err?.constraint ?? "");
+    const detail = String(pg?.detail ?? "");
     // Detect duplicates by the Postgres unique-violation code (23505), not a
     // fragile constraint-name string match.
-    const dup = code === "23505" || msg.includes("duplicate key") || msg.includes("unique constraint");
-    if ((dup && (constraint.includes("arn") || msg.includes("arn"))) || msg.includes("tenants_arn_unique")) {
+    const dup = code === "23505" || msg.includes("duplicate key") || msg.includes("unique constraint") || detail.includes("already exists");
+    if ((dup && (constraint.includes("arn") || msg.includes("arn") || detail.includes("arn"))) || msg.includes("tenants_arn_unique")) {
       return NextResponse.json({ error: "ARN already registered" }, { status: 409 });
     }
-    if ((dup && (constraint.includes("email") || msg.includes("email"))) || msg.includes("users_tenant_email_unique")) {
+    if ((dup && (constraint.includes("email") || msg.includes("email") || detail.includes("email"))) || msg.includes("users_tenant_email_unique")) {
       return NextResponse.json({ error: "Email already in use" }, { status: 409 });
     }
     // Common dev-time failure modes — give actionable guidance.

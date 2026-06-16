@@ -47,6 +47,15 @@ export async function POST(req: NextRequest) {
       const pkg = (await tx.select().from(packages).where(eq(packages.key, body.packageKey)).limit(1))[0];
       if (!pkg) throw Object.assign(new Error(`unknown package: ${body.packageKey}`), { status: 400 });
 
+      // If a SOFT-DELETED tenant still holds this ARN, free it first (deleting a
+      // tenant is meant to release its ARN) so re-creation succeeds. Active
+      // tenants holding the ARN are left alone → the INSERT below 409s clearly.
+      await tx.execute(sql`
+        UPDATE tenants
+        SET arn = arn || '_deleted_' || to_char(now(), 'YYYYMMDDHH24MISS'), updated_at = now()
+        WHERE arn = ${body.arn} AND deleted_at IS NOT NULL
+      `);
+
       // Tenant
       await tx.execute(sql`
         INSERT INTO tenants (id, legal_name, display_name, arn, plan, status, trial_ends_at, created_at, updated_at)
@@ -116,19 +125,22 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ tenantId, userId, subscriptionId: subId }, { status: 201 });
   } catch (err: any) {
-    const code = String(err?.code ?? "");
-    const constraint = String(err?.constraint ?? "");
-    const msg = String(err?.message ?? "");
-    // Detect duplicates by the Postgres unique-violation code (23505) — robust
-    // to whatever the constraint/index is actually named in prod.
-    const dup = code === "23505" || msg.includes("duplicate key") || msg.includes("unique constraint");
-    if (dup && (constraint.includes("arn") || msg.includes("arn"))) {
+    // Drizzle wraps the driver error ("Failed query: …") and keeps the real
+    // Postgres error on `.cause` — inspect both so we read the actual code /
+    // constraint / detail.
+    const pg = (err?.cause ?? err) as any;
+    const code = String(pg?.code ?? err?.code ?? "");
+    const constraint = String(pg?.constraint ?? err?.constraint ?? "");
+    const detail = String(pg?.detail ?? "");
+    const msg = String(pg?.message ?? err?.message ?? "");
+    const dup = code === "23505" || msg.includes("duplicate key") || msg.includes("unique constraint") || detail.includes("already exists");
+    if (dup && (constraint.includes("arn") || msg.includes("arn") || detail.includes("arn"))) {
       return NextResponse.json(
         { error: "ARN already registered — this ARN is already in use by another tenant (including cancelled or deleted ones). Use a different ARN, or delete the existing tenant first." },
         { status: 409 }
       );
     }
-    if (dup && (constraint.includes("email") || msg.includes("email"))) {
+    if (dup && (constraint.includes("email") || msg.includes("email") || detail.includes("email"))) {
       return NextResponse.json({ error: "Owner email already in use by another user." }, { status: 409 });
     }
     if (dup) {

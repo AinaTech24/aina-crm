@@ -38,6 +38,9 @@ export async function POST(req: NextRequest) {
       FROM users u
       LEFT JOIN tenants t ON t.id = u.tenant_id
       WHERE lower(u.email) = ${email}
+      -- Prefer a user whose tenant is live (not soft-deleted), then the newest,
+      -- so a leftover deleted-tenant user never shadows a freshly re-created one.
+      ORDER BY (t.deleted_at IS NULL) DESC, u.created_at DESC
       LIMIT 1
     `);
     return (r.rows[0] ?? null) as any;
