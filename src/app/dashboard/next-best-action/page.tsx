@@ -3,6 +3,7 @@ import {
   Sparkles, Target, IndianRupee, Users, AlertTriangle, TrendingDown, XOctagon,
   ShieldAlert, CalendarClock, Moon, ShieldCheck, TrendingUp, Cake,
 } from "lucide-react";
+import { sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
@@ -10,6 +11,7 @@ import { buildNextBestActions, NBA_META, type NbaType, type NbaAction } from "@/
 import { ContactQuickActions } from "@/components/common/ContactQuickActions";
 import { LogActivityButton } from "@/components/activities/ActivityLogger";
 import { NbaDateFilter } from "@/components/nba/NbaDateFilter";
+import { NbaUserFilter } from "@/components/nba/NbaUserFilter";
 
 export const dynamic = "force-dynamic";
 
@@ -26,15 +28,32 @@ export default async function NextBestActionPage({ searchParams }: { searchParam
   const session = await requireSession();
   const canFirm = can(session.roles, "dashboard.view.owner", (session as any).permissions);
   const sp = await searchParams;
-  const mine = sp.mine === "1" || !canFirm;
   const typeFilter = (sp.type ?? "") as NbaType | "";
   const sevFilter = (sp.sev ?? "") as "now" | "today" | "soon" | "";
   const dateFrom = (sp.date_from ?? "").slice(0, 10);
   const dateTo = (sp.date_to ?? "").slice(0, 10);
+  // Owners can scope the worklist to a specific team member; "All users" (empty)
+  // = firm-wide. Non-owners only ever see their own book.
+  const userParam = canFirm ? (sp.user ?? "").trim() : "";
+  const scopedUserId = userParam || session.userId;
+  const firmWide = canFirm && !userParam;
+  const scopeLabel = firmWide ? "across the firm" : userParam ? "in this member's book" : "in your book";
 
-  const actions = await withTenant(
+  const { actions, userOptions } = await withTenant(
     session.tenantId,
-    (tx) => buildNextBestActions(tx as any, { userId: session.userId, firmWide: !mine, limit: 150 }),
+    async (tx) => {
+      const actions = await buildNextBestActions(tx as any, { userId: scopedUserId, firmWide, limit: 150 });
+      let userOptions: { value: string; label: string }[] = [];
+      if (canFirm) {
+        const r = await tx.execute(sql`
+          SELECT id, name FROM users
+          WHERE tenant_id = ${session.tenantId}::uuid AND status = 'active'
+          ORDER BY name ASC
+        `);
+        userOptions = (r.rows as { id: string; name: string }[]).map((u) => ({ value: String(u.id), label: u.name ?? "—" }));
+      }
+      return { actions, userOptions };
+    },
     { userId: session.userId, branchId: session.branchId, roles: session.roles }
   );
 
@@ -72,12 +91,7 @@ export default async function NextBestActionPage({ searchParams }: { searchParam
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2"><Sparkles className="size-6 text-brand-cyan" /> Next Best Action</h1>
           <p className="text-muted-foreground text-sm">Your single ranked worklist — every client signal scored by ₹-impact and urgency, highest-value first. {canFirm ? "" : "Your book."}</p>
         </div>
-        {canFirm && (
-          <div className="inline-flex rounded-lg border bg-secondary/40 p-0.5 gap-0.5 text-xs">
-            <Link href={hrefWith({ mine: undefined })} className={`px-2.5 py-1 rounded-md font-medium ${!mine ? "bg-card shadow-sm" : "text-muted-foreground"}`}>Firm-wide</Link>
-            <Link href={hrefWith({ mine: "1" })} className={`px-2.5 py-1 rounded-md font-medium ${mine ? "bg-card shadow-sm" : "text-muted-foreground"}`}>My book</Link>
-          </div>
-        )}
+        {canFirm && <NbaUserFilter value={userParam} options={userOptions} />}
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -126,7 +140,7 @@ export default async function NextBestActionPage({ searchParams }: { searchParam
         <div className="card-surface p-12 text-center">
           <ShieldCheck className="size-10 mx-auto text-emerald-500" />
           <div className="mt-3 font-medium">You&apos;re all caught up. ✓</div>
-          <p className="text-sm text-muted-foreground mt-1">No high-priority actions {mine ? "in your book" : "across the firm"} right now.</p>
+          <p className="text-sm text-muted-foreground mt-1">No high-priority actions {scopeLabel} right now.</p>
         </div>
       ) : (
         // Fixed-height worklist — scrolls inside the page, scrollbar hidden.
