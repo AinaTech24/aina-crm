@@ -15,7 +15,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { X, Upload, CheckCircle2, AlertCircle, Loader2, Download } from "lucide-react";
-import { RTA_FILE_TYPES, cadenceLabel } from "@/lib/rta/file-types";
+import { RTA_FILE_TYPES, cadenceLabel, type RtaFileTypeDef } from "@/lib/rta/file-types";
 import { RTA_SOURCES, type RtaSource } from "@/db/schema/rta_imports";
 
 type Outcome = {
@@ -37,6 +37,22 @@ const SOURCE_LABELS: Record<RtaSource, string> = {
   bse_star_mf: "BSE Star MF",
   nse_nmf2: "NSE NMF II",
 };
+
+/** Compact pattern(s) for the dropdown <option>, e.g. " — MFSD211_… / …R9". */
+function optionSuffix(def: RtaFileTypeDef): string {
+  const pats = def.fileNames ? Object.values(def.fileNames) : [];
+  return pats.length ? ` — ${pats.join(" / ")}` : "";
+}
+
+/** Per-registrar file-name hint for the detail box, e.g. "KFintech MFSD211_…". */
+function fileNameHint(def: RtaFileTypeDef): string {
+  if (def.fileNames && Object.keys(def.fileNames).length) {
+    return Object.entries(def.fileNames)
+      .map(([src, pat]) => `${SOURCE_LABELS[src as RtaSource]} ${pat}`)
+      .join(" · ");
+  }
+  return def.acronyms.length ? `known as ${def.acronyms.join(", ")}` : "—";
+}
 
 export function UploadDialog({
   open,
@@ -143,6 +159,7 @@ export function UploadDialog({
                   {RTA_FILE_TYPES.map((t) => (
                     <option key={t.kind} value={t.kind}>
                       {t.label}
+                      {optionSuffix(t)}
                     </option>
                   ))}
                 </select>
@@ -152,6 +169,7 @@ export function UploadDialog({
                     <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1">
                       <span>📅 <strong>Cadence:</strong> {cadenceLabel(def.cadence)}</span>
                       <span>📂 <strong>Populates:</strong> {def.populates.join(", ")}</span>
+                      <span>📄 <strong>File name:</strong> {fileNameHint(def)}</span>
                     </div>
                   </div>
                 )}

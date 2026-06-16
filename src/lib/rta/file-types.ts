@@ -52,6 +52,9 @@ export type RtaFileTypeDef = {
    * unknown PANs. Tenants on production data can ignore this.
    */
   sampleFiles?: Partial<Record<RtaSource, string>>;
+  /** What the *downloaded* file is named per registrar — helps the MFD match
+   *  the file they got (e.g. Kfintech "MFSD211_…", CAMS "…R9") to this type. */
+  fileNames?: Partial<Record<RtaSource, string>>;
 };
 
 export const RTA_FILE_TYPES: RtaFileTypeDef[] = [
@@ -154,6 +157,7 @@ export const RTA_FILE_TYPES: RtaFileTypeDef[] = [
     populates: ["aum_snapshots"],
     graceDays: 3,
     priority: 85,
+    fileNames: { kfintech: "MFSD203_…" },
   },
   {
     kind: "monthly_sip_book",
@@ -179,6 +183,7 @@ export const RTA_FILE_TYPES: RtaFileTypeDef[] = [
     populates: ["folios", "investors"],
     graceDays: 7,
     priority: 40,
+    fileNames: { kfintech: "MFSD211_…" },
   },
   // ──────────────────────────────────────────────────── Ad-hoc ──
   {
@@ -204,6 +209,7 @@ export const RTA_FILE_TYPES: RtaFileTypeDef[] = [
     populates: ["folios"],
     graceDays: 30,
     priority: 20,
+    fileNames: { cams: "…R9" },
   },
 ];
 
