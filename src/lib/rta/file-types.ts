@@ -55,6 +55,9 @@ export type RtaFileTypeDef = {
   /** What the *downloaded* file is named per registrar — helps the MFD match
    *  the file they got (e.g. Kfintech "MFSD211_…", CAMS "…R9") to this type. */
   fileNames?: Partial<Record<RtaSource, string>>;
+  /** True when `fileNames` are best-effort (from vendor docs, not yet confirmed
+   *  against a real download) — the UI shows them with a "(approx)" tag. */
+  fileNamesApprox?: boolean;
 };
 
 export const RTA_FILE_TYPES: RtaFileTypeDef[] = [
@@ -74,6 +77,8 @@ export const RTA_FILE_TYPES: RtaFileTypeDef[] = [
       cams: "/sample-rta/cams_daily_transaction_feed.txt",
       kfintech: "/sample-rta/kfintech_daily_transaction_feed.csv",
     },
+    fileNames: { kfintech: "MFSD307_…", cams: "…R2 / …R10" },
+    fileNamesApprox: true,
   },
   {
     kind: "sip_rejection_report",
@@ -105,6 +110,8 @@ export const RTA_FILE_TYPES: RtaFileTypeDef[] = [
     sampleFiles: {
       cams: "/sample-rta/cams_monthly_brokerage.txt",
     },
+    fileNames: { kfintech: "MFSD2xx (brokerage)" },
+    fileNamesApprox: true,
   },
   {
     kind: "monthly_aum_statement",

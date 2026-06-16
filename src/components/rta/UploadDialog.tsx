@@ -41,15 +41,17 @@ const SOURCE_LABELS: Record<RtaSource, string> = {
 /** Compact pattern(s) for the dropdown <option>, e.g. " — MFSD211_… / …R9". */
 function optionSuffix(def: RtaFileTypeDef): string {
   const pats = def.fileNames ? Object.values(def.fileNames) : [];
-  return pats.length ? ` — ${pats.join(" / ")}` : "";
+  if (!pats.length) return "";
+  return ` — ${pats.join(" / ")}${def.fileNamesApprox ? " (approx)" : ""}`;
 }
 
 /** Per-registrar file-name hint for the detail box, e.g. "KFintech MFSD211_…". */
 function fileNameHint(def: RtaFileTypeDef): string {
   if (def.fileNames && Object.keys(def.fileNames).length) {
-    return Object.entries(def.fileNames)
+    const s = Object.entries(def.fileNames)
       .map(([src, pat]) => `${SOURCE_LABELS[src as RtaSource]} ${pat}`)
       .join(" · ");
+    return def.fileNamesApprox ? `${s} — confirm on your first download` : s;
   }
   return def.acronyms.length ? `known as ${def.acronyms.join(", ")}` : "—";
 }
