@@ -41,16 +41,13 @@ export async function POST(req: NextRequest) {
   requireCap(session.roles, "transactions.execute");
   await assertActiveLicense(session.tenantId, session.roles);
 
-  let form: FormData;
-  try {
-    form = await req.formData();
-  } catch {
-    return NextResponse.json({ error: "expected multipart/form-data" }, { status: 400 });
-  }
-
+  // The file is sent as the RAW request body (NOT multipart/form-data) so large
+  // RTA zips don't trip the multipart body-size limit that made req.formData()
+  // throw "expected multipart/form-data". source/kind ride in the query string;
+  // filename + zip password ride in headers.
   const parsed = FormSchema.safeParse({
-    source: form.get("source"),
-    kind: form.get("kind"),
+    source: req.nextUrl.searchParams.get("source"),
+    kind: req.nextUrl.searchParams.get("kind"),
   });
   if (!parsed.success) {
     return NextResponse.json(
@@ -59,29 +56,29 @@ export async function POST(req: NextRequest) {
     );
   }
   const { source, kind } = parsed.data;
+  const fileName = decodeURIComponent(req.headers.get("x-rta-filename") || "upload.bin");
+  const headerPassword = req.headers.get("x-rta-password") || undefined;
 
-  const file = form.get("file");
-  if (!(file instanceof File)) {
-    return NextResponse.json({ error: "file is required" }, { status: 400 });
+  const buf = Buffer.from(await req.arrayBuffer());
+  if (buf.length === 0) {
+    return NextResponse.json({ error: "empty upload — no file received" }, { status: 400 });
   }
-  if (file.size > 50 * 1024 * 1024) {
+  if (buf.length > 50 * 1024 * 1024) {
     return NextResponse.json(
       { error: "file too large (max 50 MB for v1 upload — use presigned URL for larger files)" },
       { status: 413 }
     );
   }
-
-  const buf = Buffer.from(await file.arrayBuffer());
   // Checksum the ORIGINAL uploaded bytes so re-uploading the identical file dedupes.
   const checksum = createHash("sha256").update(buf).digest("hex");
 
   // RTA mailbacks arrive as password-protected zips. Unzip to the inner file
   // (with the supplied password) before decoding; a plain CSV/XLS is used as-is.
   let dataBuf = buf;
-  let innerName = file.name;
+  let innerName = fileName;
   const isZip = buf.length > 1 && buf[0] === 0x50 && buf[1] === 0x4b;
   if (isZip) {
-    const password = (form.get("password") as string) || undefined;
+    const password = headerPassword;
     try {
       const r = await extractRtaFileFromZip(new Uint8Array(buf), password);
       dataBuf = Buffer.from(r.data);
@@ -128,8 +125,8 @@ export async function POST(req: NextRequest) {
           ${session.tenantId}::uuid, ${source}, ${kind},
           ${new Date().toISOString().slice(0, 10)}::date,
           ${new Date().toISOString().slice(0, 10)}::date,
-          ${file.name}, ${"inline:" + checksum.slice(0, 12)},
-          ${file.size}, ${checksum}, 'parsing', ${session.userId}::uuid
+          ${fileName}, ${"inline:" + checksum.slice(0, 12)},
+          ${buf.length}, ${checksum}, 'parsing', ${session.userId}::uuid
         )
         RETURNING id
       `);
@@ -201,8 +198,8 @@ export async function POST(req: NextRequest) {
         after: {
           source,
           kind,
-          fileName: file.name,
-          fileSizeBytes: file.size,
+          fileName,
+          fileSizeBytes: buf.length,
           status: r.status ?? null,
           rowsImported: r.rowsImported ?? null,
           rowsSkipped: r.rowsSkipped ?? null,

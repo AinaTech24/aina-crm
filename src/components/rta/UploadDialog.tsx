@@ -88,12 +88,19 @@ export function UploadDialog({
     setUploading(true);
     setOutcome(null);
     try {
-      const fd = new FormData();
-      fd.append("source", source);
-      fd.append("kind", kind);
-      fd.append("file", file);
-      if (password) fd.append("password", password);
-      const res = await fetch("/api/rta-imports/upload", { method: "POST", body: fd });
+      // Send the file as the RAW body (not multipart) so large RTA zips don't
+      // trip the multipart body-size limit. source/kind in query; filename +
+      // password in headers.
+      const qs = new URLSearchParams({ source, kind }).toString();
+      const res = await fetch(`/api/rta-imports/upload?${qs}`, {
+        method: "POST",
+        body: file,
+        headers: {
+          "content-type": "application/octet-stream",
+          "x-rta-filename": encodeURIComponent(file.name),
+          ...(password ? { "x-rta-password": password } : {}),
+        },
+      });
       const data = await res.json();
       if (!res.ok) {
         setOutcome({ status: "failed", error: data.error ?? "Upload failed" });
