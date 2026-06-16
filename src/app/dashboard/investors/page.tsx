@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Plus, Upload, Download, LayoutGrid, List } from "lucide-react";
+import { Plus, FileSpreadsheet, FileDown, LayoutGrid, List } from "lucide-react";
 import { asc, desc, sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { investors } from "@/db/schema";
@@ -19,6 +19,7 @@ import { InvestorKpiStrip } from "@/components/investors/InvestorKpiStrip";
 // import { InvestorQuickFilters } from "@/components/investors/InvestorQuickFilters"; // hidden for now
 import { dormancyDays, type HealthBand } from "@/lib/investors/health";
 import { InvestorsTable, type InvestorTableRow } from "@/components/investors/InvestorsTable";
+import { InvestorSortSelect } from "@/components/investors/InvestorSortSelect";
 import { buildInvestorWhere } from "@/lib/investors/list-filters";
 import { Pager } from "@/components/common/Pager";
 
@@ -89,7 +90,7 @@ export default async function InvestorsPage({
   // the default (largest books first). "health" is a derived score computed in
   // JS, so it can't be ordered in SQL — the page sorts the fetched rows
   // locally (worst health first, to triage at-risk clients on the visible page).
-  const sortKey = ["name", "sip", "review", "health"].includes(sp.sort ?? "")
+  const sortKey = ["name", "sip", "review", "health", "created"].includes(sp.sort ?? "")
     ? (sp.sort as string)
     : "aum";
 
@@ -103,6 +104,7 @@ export default async function InvestorsPage({
     sip: "desc",
     review: "asc",
     health: "asc",
+    created: "desc",
   };
   const dir: "asc" | "desc" =
     sp.dir === "asc" || sp.dir === "desc" ? sp.dir : DEFAULT_DIR[sortKey] ?? "desc";
@@ -130,6 +132,8 @@ export default async function InvestorsPage({
           ? sql`${investors.nextReviewAt} ${sql.raw(dir)} nulls last`
           : sortKey === "health"
           ? (dir === "asc" ? asc(investors.healthScore) : desc(investors.healthScore))
+          : sortKey === "created"
+          ? (dir === "asc" ? asc(investors.createdAt) : desc(investors.createdAt))
           : (dir === "asc" ? asc(investors.aum) : desc(investors.aum))
       )
       .limit(view === "kanban" ? 300 : PAGE_SIZE)
@@ -267,13 +271,13 @@ export default async function InvestorsPage({
             className="rounded-md border px-3 py-1.5 text-sm flex items-center gap-1.5 hover:bg-accent"
             title="Download the current (filtered) book as an Excel file"
           >
-            <Download className="size-4" /> Export
+            <FileDown className="size-4" /> Export
           </a>
           <Link
             href="/dashboard/investors/import"
             className="rounded-md border px-3 py-1.5 text-sm flex items-center gap-1.5"
           >
-            <Upload className="size-4" /> Import Excel
+            <FileSpreadsheet className="size-4" /> Import Excel
           </Link>
           <Link
             href="/dashboard/investors/new"
@@ -297,6 +301,7 @@ export default async function InvestorsPage({
 
       <FilterBar
         totalCount={total}
+        leftSlot={view === "table" ? <InvestorSortSelect sort={sortKey} dir={dir} /> : undefined}
         filters={[
           { type: "search", key: "q", placeholder: "Search by name, PAN, phone…" },
           {

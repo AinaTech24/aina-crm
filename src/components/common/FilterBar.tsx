@@ -218,7 +218,21 @@ function SearchInput({
   onSubmit: (v: string) => void;
 }) {
   const [v, setV] = useState(initial);
-  useEffect(() => setV(initial), [initial]);
+  // `dirty` distinguishes a user keystroke from the URL-driven `initial` sync,
+  // so we only push for what the user actually typed.
+  const dirty = useRef(false);
+  useEffect(() => {
+    setV(initial);
+    dirty.current = false;
+  }, [initial]);
+  // Live search: debounce-push ~300ms after the user stops typing. Enter still
+  // submits immediately (the form onSubmit).
+  useEffect(() => {
+    if (!dirty.current || v === initial) return;
+    const t = setTimeout(() => onSubmit(v), 300);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [v]);
   return (
     <form
       onSubmit={(e) => {
@@ -228,7 +242,10 @@ function SearchInput({
     >
       <input
         value={v}
-        onChange={(e) => setV(e.target.value)}
+        onChange={(e) => {
+          dirty.current = true;
+          setV(e.target.value);
+        }}
         placeholder={placeholder}
         className="input-base pl-9 text-xs h-8"
       />

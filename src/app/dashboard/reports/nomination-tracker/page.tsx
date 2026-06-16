@@ -126,9 +126,9 @@ export default async function NominationTrackerPage() {
           <div className="border-b px-4 py-2.5 text-sm font-medium">
             Missing nominee — top {Math.min(missingCount, 100)} by AUM
           </div>
-          <div className="overflow-x-auto">
+          <div className="overflow-auto max-h-[600px] scrollbar-none">
             <table className="w-full text-sm table-modern">
-              <thead>
+              <thead className="sticky top-0 z-10 bg-card">
                 <tr>
                   <th className="text-left px-4 py-2.5">Client</th>
                   <th className="text-left px-4 py-2.5">Segment</th>

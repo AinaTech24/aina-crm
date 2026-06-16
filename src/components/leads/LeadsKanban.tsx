@@ -374,15 +374,16 @@ export function LeadsKanban({
         sensors={sensors}
         onDragStart={onDragStart}
         onDragEnd={onDragEnd}
-        // Gentle edge auto-scroll: a narrow edge zone + low acceleration so the
-        // board doesn't whizz past the middle columns — you can hover and drop on
-        // any stage, not just the first/last few.
-        autoScroll={{ enabled: true, threshold: { x: 0.1, y: 0.1 }, acceleration: 5, interval: 10 }}
+        // Gentle horizontal edge auto-scroll. Vertical auto-scroll is off and
+        // acceleration is low so the board creeps (not jumps) toward off-screen
+        // stages — you can stop and drop on any middle column.
+        autoScroll={{ enabled: true, threshold: { x: 0.12, y: 0 }, acceleration: 4, interval: 10 }}
       >
         {/* Trello-style horizontal scroller — each column is a fixed-width
-           card. The page scrolls horizontally to reach the right-hand stages
-           rather than squeezing 8 columns into the viewport. */}
-        <div className="flex gap-3 overflow-x-auto scrollbar-thin pb-2 -mx-1 px-1 snap-x">
+           card. The page scrolls horizontally to reach the right-hand stages.
+           No scroll-snap: snapping made the auto-scroll jump column-to-column
+           during a drag, so you couldn't release on a middle stage. */}
+        <div className="flex gap-3 overflow-x-auto scrollbar-thin pb-2 -mx-1 px-1">
           {stages.map((s) => {
             const tone = TONE_STYLES[s.tone];
             const items = byStage[s.key] ?? [];
@@ -486,7 +487,7 @@ function DroppableColumn({
   return (
     <div
       ref={setNodeRef}
-      className={`w-72 flex-shrink-0 snap-start rounded-xl border ${
+      className={`w-72 flex-shrink-0 rounded-xl border ${
         isOver ? `${tone.ring} ring-2 ring-offset-1 border-transparent` : "border-border/70"
       } ${tone.bg} flex flex-col transition-shadow duration-150`}
     >
@@ -579,11 +580,13 @@ function DraggableCard({
           />
         </div>
         <div className="min-w-0 flex-1">
+          {/* The link hugs the name (not the full row) and stays draggable: we
+              don't stop pointer-down, so grabbing the name starts a card drag,
+              while a plain click (no movement) still opens the lead. */}
           <Link
             href={`/dashboard/leads/${l.id}`}
-            onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => e.stopPropagation()}
-            className="font-semibold text-foreground text-[13px] block truncate hover:underline"
+            className="font-semibold text-foreground text-[13px] inline-block max-w-full truncate align-bottom hover:underline"
           >
             {l.name}
           </Link>

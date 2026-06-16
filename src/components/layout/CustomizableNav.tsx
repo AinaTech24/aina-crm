@@ -135,6 +135,12 @@ export function CustomizableNav({
   const [editing, setEditing] = useState(false);
   const [query, setQuery] = useState("");
   const [dragHref, setDragHref] = useState<string | null>(null);
+  // Group drag-to-reorder + the inline "new group" composer (name + modules),
+  // replacing the old window.prompt.
+  const [dragGroupId, setDragGroupId] = useState<string | null>(null);
+  const [showAddGroup, setShowAddGroup] = useState(false);
+  const [newGroupName, setNewGroupName] = useState("");
+  const [newGroupModules, setNewGroupModules] = useState<Set<string>>(new Set());
   // Per-group collapse state (groupId → collapsed). Defaults to expanded; the
   // user can collapse a section like the Dashboards dropdown. Persisted per user.
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
@@ -206,12 +212,47 @@ export function CustomizableNav({
     });
   }
 
-  function addGroup() {
-    // Ask for the name up front so a new group is never an unnamed, easy-to-miss
-    // box at the bottom of the rail.
-    const title = (typeof window !== "undefined" ? window.prompt("Name the new group", "") : "")?.trim();
-    if (!title) return; // cancelled or blank — don't add an empty group
-    setLayout((prev) => [...prev, { id: `g-${slug(title)}-${prev.length}`, title, items: [] }]);
+  function openAddGroup() {
+    setShowAddGroup((s) => !s);
+    setNewGroupName("");
+    setNewGroupModules(new Set());
+  }
+  function toggleNewGroupModule(href: string) {
+    setNewGroupModules((prev) => {
+      const n = new Set(prev);
+      if (n.has(href)) n.delete(href);
+      else n.add(href);
+      return n;
+    });
+  }
+  function createGroup() {
+    const title = newGroupName.trim();
+    if (!title) return; // a group needs a name
+    const chosen = newGroupModules;
+    setLayout((prev) => {
+      // A module lives in exactly one group — pull the chosen ones out of
+      // wherever they are, then drop them into the new group at the TOP.
+      const stripped = prev.map((g) => ({ ...g, items: g.items.filter((h) => !chosen.has(h)) }));
+      const id = `g-${slug(title)}-${prev.length}-${Math.floor(Math.random() * 1e4)}`;
+      return [{ id, title, items: [...chosen] }, ...stripped];
+    });
+    setShowAddGroup(false);
+    setNewGroupName("");
+    setNewGroupModules(new Set());
+  }
+  /** Reorder by dropping the dragged group onto another (insert before target). */
+  function moveGroupBefore(dragId: string, targetId: string) {
+    if (dragId === targetId) return;
+    setLayout((prev) => {
+      const from = prev.findIndex((g) => g.id === dragId);
+      if (from < 0) return prev;
+      const arr = [...prev];
+      const [moved] = arr.splice(from, 1);
+      const to = arr.findIndex((g) => g.id === targetId);
+      if (to < 0) return prev;
+      arr.splice(to, 0, moved);
+      return arr;
+    });
   }
   function moveGroup(id: string, dir: -1 | 1) {
     setLayout((prev) => {
@@ -285,7 +326,7 @@ export function CustomizableNav({
         </div>
         {editing && (
           <div className="flex items-center gap-1">
-            <button type="button" onClick={addGroup} className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-md text-brand-cyan-deep hover:bg-brand-cyan-light/60" title="Add a group">
+            <button type="button" onClick={openAddGroup} className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-md text-brand-cyan-deep hover:bg-brand-cyan-light/60" title="Add a group">
               <Plus className="size-3.5" /> Group
             </button>
             <button type="button" onClick={resetLayout} className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-md text-muted-foreground hover:bg-secondary" title="Reset to default">
@@ -298,6 +339,18 @@ export function CustomizableNav({
       <nav className="flex-1 overflow-y-auto overflow-x-hidden px-3 pb-4 pt-2 space-y-5 scrollbar-thin">
         {/* Combined Dashboards dropdown (Dashboard + My Dashboards + Team) — pinned top */}
         {!searchResults && <DashboardNavDropdown items={dashboardSubItems} />}
+        {/* Inline "new group" composer — name + pick modules; group lands at top. */}
+        {editing && showAddGroup && !searchResults && (
+          <AddGroupForm
+            name={newGroupName}
+            setName={setNewGroupName}
+            items={items}
+            selected={newGroupModules}
+            toggle={toggleNewGroupModule}
+            onCreate={createGroup}
+            onCancel={() => setShowAddGroup(false)}
+          />
+        )}
         {/* ---- search results (flat) ---- */}
         {searchResults ? (
           <div className="space-y-0.5">
@@ -322,10 +375,34 @@ export function CustomizableNav({
               <div
                 key={g.id}
                 onDragOver={editing ? (e) => e.preventDefault() : undefined}
-                onDrop={editing ? (e) => { e.preventDefault(); if (dragHref) moveItem(dragHref, g.id, null); setDragHref(null); } : undefined}
+                onDrop={
+                  editing
+                    ? (e) => {
+                        e.preventDefault();
+                        // A group drag reorders; otherwise it's a module drop.
+                        if (dragGroupId) {
+                          moveGroupBefore(dragGroupId, g.id);
+                          setDragGroupId(null);
+                        } else if (dragHref) {
+                          moveItem(dragHref, g.id, null);
+                          setDragHref(null);
+                        }
+                      }
+                    : undefined
+                }
+                className={`rounded-lg transition-[opacity] ${dragGroupId === g.id ? "opacity-50" : ""}`}
               >
                 {editing ? (
                   <div className="sidebar-section-title px-2 mb-2 flex items-center gap-1">
+                    <span
+                      draggable
+                      onDragStart={(e) => { e.stopPropagation(); setDragGroupId(g.id); }}
+                      onDragEnd={() => setDragGroupId(null)}
+                      className="cursor-grab text-muted-foreground/50 hover:text-foreground shrink-0"
+                      title="Drag to reorder this group"
+                    >
+                      <GripVertical className="size-3.5" />
+                    </span>
                     <input
                       value={g.title}
                       onChange={(e) => renameGroup(g.id, e.target.value)}
@@ -362,7 +439,7 @@ export function CustomizableNav({
 
                 {/* Items stay mounted; when the section is collapsed we hide them
                     via CSS so the icon-rail still shows every glyph. */}
-                <div className={`nav-sec-body space-y-0.5 min-h-[8px] ${isCollapsed ? "nav-sec-collapsed" : ""}`}>
+                <div className={`nav-sec-body space-y-0.5 min-h-[8px] ${isCollapsed || dragGroupId === g.id ? "nav-sec-collapsed" : ""}`}>
                   {g.items.map((href) => {
                     const it = itemMap.get(href);
                     if (!it) return null;
@@ -391,7 +468,7 @@ export function CustomizableNav({
         {editing && !searchResults && (
           <button
             type="button"
-            onClick={addGroup}
+            onClick={openAddGroup}
             className="w-full mt-1 flex items-center justify-center gap-1.5 rounded-lg border border-dashed border-border text-[11px] font-semibold text-muted-foreground hover:text-brand-cyan-deep hover:border-brand-cyan/50 hover:bg-brand-cyan-light/30 py-2.5 transition-colors"
           >
             <Plus className="size-3.5" /> Add new group
@@ -451,5 +528,75 @@ function NavRow({
     <Link href={item.href} onClick={onNavigate} className={`group nav-link ${active ? "nav-link-active" : ""}`} aria-current={active ? "page" : undefined}>
       {content}
     </Link>
+  );
+}
+
+/* ---------------- inline "new group" composer ---------------- */
+
+function AddGroupForm({
+  name,
+  setName,
+  items,
+  selected,
+  toggle,
+  onCreate,
+  onCancel,
+}: {
+  name: string;
+  setName: (v: string) => void;
+  items: NavItemData[];
+  selected: Set<string>;
+  toggle: (href: string) => void;
+  onCreate: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="rounded-lg border border-brand-cyan/40 bg-brand-cyan-light/20 p-2.5 space-y-2">
+      <input
+        autoFocus
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && name.trim()) onCreate();
+          else if (e.key === "Escape") onCancel();
+        }}
+        placeholder="New group name"
+        className="w-full rounded-md border border-border bg-card px-2 py-1.5 text-xs focus:outline-none focus:border-brand-cyan focus:ring-2 focus:ring-brand-cyan/15"
+      />
+      <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground px-0.5">
+        Add modules{selected.size > 0 ? ` · ${selected.size} selected` : ""}
+      </div>
+      <div className="max-h-48 overflow-y-auto scrollbar-thin space-y-0.5 rounded-md border border-border bg-card p-1">
+        {items.map((it) => {
+          const checked = selected.has(it.href);
+          const Icon = ICONS[it.iconName] ?? Circle;
+          return (
+            <label
+              key={it.href}
+              className={`flex items-center gap-2 px-1.5 py-1 rounded text-xs cursor-pointer ${
+                checked ? "bg-brand-cyan-light/50 text-brand-cyan-deep font-medium" : "hover:bg-secondary"
+              }`}
+            >
+              <input type="checkbox" checked={checked} onChange={() => toggle(it.href)} className="size-3.5 rounded" />
+              <Icon className="size-3.5 shrink-0 opacity-70" />
+              <span className="truncate">{it.label}</span>
+            </label>
+          );
+        })}
+      </div>
+      <div className="flex items-center gap-1.5">
+        <button
+          type="button"
+          onClick={onCreate}
+          disabled={!name.trim()}
+          className="flex-1 rounded-md bg-primary text-primary-foreground text-xs font-medium py-1.5 disabled:opacity-50"
+        >
+          Create group
+        </button>
+        <button type="button" onClick={onCancel} className="rounded-md border border-border text-xs px-3 py-1.5 hover:bg-secondary">
+          Cancel
+        </button>
+      </div>
+    </div>
   );
 }

@@ -4,7 +4,7 @@ import {
   Plus,
   Sparkles,
   UserPlus,
-  UploadCloud,
+  FileSpreadsheet,
   Filter,
   LayoutGrid,
   List,
@@ -272,7 +272,7 @@ export default async function LeadsPage({
           )}
 
           <Link href="/dashboard/leads/import" className="btn-secondary text-xs">
-            <UploadCloud className="size-3.5" /> Import Excel
+            <FileSpreadsheet className="size-3.5" /> Import Excel
           </Link>
           <Link href="/dashboard/leads/new" className="btn-primary">
             <Plus className="size-4" /> New lead

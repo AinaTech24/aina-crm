@@ -191,7 +191,7 @@ export default async function CommunicationsPage({
         }
       />
 
-      <div className="border rounded-lg bg-card overflow-hidden">
+      <div className="border rounded-lg bg-card overflow-auto max-h-[600px] scrollbar-none">
         <CommsList rows={listRows} />
       </div>
       <Pager

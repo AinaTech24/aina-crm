@@ -243,8 +243,9 @@ export function InvestorsTable({
         </div>
       )}
 
+      <div className="overflow-auto max-h-[640px] scrollbar-none">
       <table className="w-full text-sm" data-table="investors">
-        <thead className="text-xs text-muted-foreground border-b">
+        <thead className="text-xs text-muted-foreground border-b sticky top-0 z-10 bg-card">
           <tr>
             <th className="px-3 py-2 w-8">
               <input type="checkbox" checked={allSelected} onChange={toggleAll} className="size-3.5 rounded" aria-label="Select all" />
@@ -354,6 +355,7 @@ export function InvestorsTable({
           })}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }
