@@ -10,6 +10,7 @@ import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { RTA_FILE_KINDS, RTA_SOURCES } from "@/db/schema/rta_imports";
 import { processRtaFile } from "@/lib/rta/process";
 import { decodeRtaToText } from "@/lib/rta/decode";
+import { extractRtaFileFromZip } from "@/lib/rta/unzip";
 
 /**
  * POST /api/rta-imports/upload
@@ -71,12 +72,32 @@ export async function POST(req: NextRequest) {
   }
 
   const buf = Buffer.from(await file.arrayBuffer());
-  // Decode the upload to canonical pipe-delimited text. Real RTA files arrive
-  // as .xls / .xlsx / .dbf (binary) — reading them as UTF-8 produced garbage and
-  // silently imported zero rows. The decoder handles every spreadsheet + CSV.
-  const text = decodeRtaToText(buf, file.name);
-  // Checksum the ORIGINAL bytes so re-uploading the identical file dedupes.
+  // Checksum the ORIGINAL uploaded bytes so re-uploading the identical file dedupes.
   const checksum = createHash("sha256").update(buf).digest("hex");
+
+  // RTA mailbacks arrive as password-protected zips. Unzip to the inner file
+  // (with the supplied password) before decoding; a plain CSV/XLS is used as-is.
+  let dataBuf = buf;
+  let innerName = file.name;
+  const isZip = buf.length > 1 && buf[0] === 0x50 && buf[1] === 0x4b;
+  if (isZip) {
+    const password = (form.get("password") as string) || undefined;
+    try {
+      const r = await extractRtaFileFromZip(new Uint8Array(buf), password);
+      dataBuf = Buffer.from(r.data);
+      innerName = r.filename;
+    } catch (e: any) {
+      return NextResponse.json(
+        { error: `Could not open the zip — ${e?.message ?? "wrong password or unsupported archive"}.` },
+        { status: 400 }
+      );
+    }
+  }
+  // Decode the (inner) file to canonical pipe-delimited text. Real RTA files
+  // arrive as .xls / .xlsx / .dbf (binary) — reading them as UTF-8 produced
+  // garbage and silently imported zero rows. The decoder handles every
+  // spreadsheet + CSV.
+  const text = decodeRtaToText(dataBuf, innerName);
 
   const result = await withTenant(
     session.tenantId,

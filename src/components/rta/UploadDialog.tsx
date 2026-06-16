@@ -51,6 +51,7 @@ export function UploadDialog({
   const [source, setSource] = useState<RtaSource>("cams");
   const [kind, setKind] = useState<string>(defaultKind ?? "daily_transaction_feed");
   const [file, setFile] = useState<File | null>(null);
+  const [password, setPassword] = useState("");
   const [uploading, setUploading] = useState(false);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -73,6 +74,7 @@ export function UploadDialog({
       fd.append("source", source);
       fd.append("kind", kind);
       fd.append("file", file);
+      if (password) fd.append("password", password);
       const res = await fetch("/api/rta-imports/upload", { method: "POST", body: fd });
       const data = await res.json();
       if (!res.ok) {
@@ -93,6 +95,7 @@ export function UploadDialog({
 
   function reset() {
     setFile(null);
+    setPassword("");
     setOutcome(null);
   }
 
@@ -215,18 +218,26 @@ export function UploadDialog({
                     <>
                       <div className="mt-3 text-sm font-medium">Click to browse or drag a file here</div>
                       <div className="text-xs text-muted-foreground mt-0.5">
-                        CSV, TXT or pipe-delimited. Max 25 MB.
+                        CSV, TXT, XLS, or password-protected ZIP. Max 25 MB.
                       </div>
                     </>
                   )}
                   <input
                     ref={inputRef}
                     type="file"
-                    accept=".csv,.txt,.dat,.tsv"
+                    accept=".csv,.txt,.dat,.tsv,.zip,.xls,.xlsx"
                     onChange={(e) => e.target.files?.[0] && setFile(e.target.files[0])}
                     hidden
                   />
                 </div>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Zip password (only if it's a password-protected .zip)"
+                  autoComplete="off"
+                  className="w-full border rounded-lg px-3 py-2 text-sm bg-background mt-2"
+                />
               </div>
 
               {/* Submit */}
