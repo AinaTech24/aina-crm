@@ -22,6 +22,7 @@ import { InvestorLookup } from "@/components/common/InvestorLookup";
 import { SelectField } from "@/components/ui/SelectField";
 import { formatINR } from "@/lib/utils";
 import { computeGoal } from "@/lib/goal-planning/calc";
+import { recommendedLifeCover, financialAssetsTotal } from "@/lib/financial-plans/analysis";
 
 type Recipient = { id: string; name: string };
 
@@ -47,8 +48,12 @@ type Goal = {
   targetYears: number;
   inflationRate: number;
   expectedReturn: number;
+  currentValue?: number;
+  existingMonthlySip?: number;
   futureValue?: number;
   requiredMonthlySip?: number;
+  additionalMonthlySip?: number;
+  gapAmount?: number;
 };
 
 type Recommendation = {
@@ -202,10 +207,19 @@ function PlanFormContent() {
     return Math.max(0, requiredEmergency - emergencyFundCurrentValue);
   }, [requiredEmergency, emergencyFundCurrentValue]);
 
+  // Need-analysis (liabilities + goals + PV of family expenses − financial assets),
+  // not a flat 10× income.
   const requiredLifeInsurance = useMemo(() => {
-    const annualIncome = (monthlyIncome || 0) * 12;
-    return annualIncome * 10 + totalLiabilities;
-  }, [monthlyIncome, totalLiabilities]);
+    const goalsPresentCostTotal = goals.reduce((s, g) => s + (Number(g.targetAmount) || 0), 0);
+    const { recommended } = recommendedLifeCover({
+      monthlyExpenses: monthlyExpenses || 0,
+      totalLiabilities,
+      goalsPresentCostTotal,
+      financialAssets: financialAssetsTotal(assets),
+      existingCover: 0,
+    });
+    return Math.round(recommended);
+  }, [monthlyExpenses, totalLiabilities, goals, assets]);
 
   // Real-Time Wealth Health Score Calculation
   const healthScore = useMemo(() => {
@@ -247,8 +261,8 @@ function PlanFormContent() {
     return goals.map((g) => {
       const result = computeGoal({
         presentTarget: g.targetAmount,
-        currentValue: 0,
-        existingMonthlySip: 0,
+        currentValue: Math.max(0, g.currentValue || 0),
+        existingMonthlySip: Math.max(0, g.existingMonthlySip || 0),
         monthsLeft: g.targetYears * 12,
         expectedReturnPct: g.expectedReturn,
         inflationPct: g.inflationRate,
@@ -258,14 +272,23 @@ function PlanFormContent() {
         ...g,
         futureValue: Math.round(result.futureTarget),
         requiredMonthlySip: Math.round(result.requiredMonthlySipTotal),
+        additionalMonthlySip: Math.round(result.additionalMonthlySipNeeded),
+        gapAmount: Math.round(result.gapAmount),
       };
     });
   }, [goals]);
 
-  // Total required SIP for goals
+  // Total ADDITIONAL SIP needed (net of money already earmarked per goal).
   const totalRequiredSip = useMemo(() => {
-    return processedGoals.reduce((s, g) => s + (g.requiredMonthlySip || 0), 0);
+    return processedGoals.reduce((s, g) => s + (g.additionalMonthlySip || 0), 0);
   }, [processedGoals]);
+
+  // Funding feasibility — can the client's surplus actually fund the SIPs?
+  const investableSurplus = useMemo(() => {
+    const emi = liabilities.reduce((s, l) => s + (Number(l.monthlyEmi) || 0), 0);
+    return Math.max(0, (monthlyIncome || 0) - (monthlyExpenses || 0) - emi);
+  }, [monthlyIncome, monthlyExpenses, liabilities]);
+  const sipShortfall = Math.max(0, totalRequiredSip - investableSurplus);
 
   // Sub-items mutations
   function addChild() {
@@ -382,7 +405,7 @@ function PlanFormContent() {
         category: "insurance",
         action: `Increase term life insurance cover by ${formatINR(gap)}. Recommended total cover is ${formatINR(requiredLifeInsurance)}.`,
         priority: "high",
-        notes: "Based on 10x of annual income plus outstanding liabilities.",
+        notes: "Need-analysis: outstanding liabilities + goal corpus + present value of the family's living expenses, net of existing financial assets.",
       });
     }
 
@@ -1226,6 +1249,29 @@ function PlanFormContent() {
                       </label>
                     </div>
 
+                    <div className="grid grid-cols-2 gap-3 text-xs">
+                      <label className="block">
+                        <span className="text-[10px] text-muted-foreground">Already saved for this goal (₹)</span>
+                        <input
+                          type="number"
+                          value={g.currentValue || ""}
+                          onChange={(e) => patchGoal(i, { currentValue: Number(e.target.value) })}
+                          className="input-base py-1 text-xs mt-1"
+                          placeholder="0"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="text-[10px] text-muted-foreground">Existing SIP for this goal (₹/mo)</span>
+                        <input
+                          type="number"
+                          value={g.existingMonthlySip || ""}
+                          onChange={(e) => patchGoal(i, { existingMonthlySip: Number(e.target.value) })}
+                          className="input-base py-1 text-xs mt-1"
+                          placeholder="0"
+                        />
+                      </label>
+                    </div>
+
                     {g.category === "retirement" && (
                       <div className="bg-brand-cyan-light/20 border border-brand-cyan/20 rounded-lg p-3 text-xs space-y-2">
                         <div className="flex items-center justify-between font-bold text-brand-cyan-deep">
@@ -1280,7 +1326,7 @@ function PlanFormContent() {
                     )}
 
                     {/* Result outputs for the goal */}
-                    <div className="grid grid-cols-2 gap-3 bg-card border border-border/40 p-2.5 rounded-lg text-xs">
+                    <div className="grid grid-cols-3 gap-3 bg-card border border-border/40 p-2.5 rounded-lg text-xs">
                       <div>
                         <div className="text-[10px] text-muted-foreground">Future Cost (Inflation Adjusted):</div>
                         <div className="font-bold text-brand-navy tabular-nums mt-0.5">
@@ -1288,8 +1334,14 @@ function PlanFormContent() {
                         </div>
                       </div>
                       <div>
-                        <div className="text-[10px] text-muted-foreground">Required Monthly SIP:</div>
+                        <div className="text-[10px] text-muted-foreground">New SIP needed:</div>
                         <div className="font-bold text-emerald-700 tabular-nums mt-0.5">
+                          {formatINR(processed.additionalMonthlySip || 0)} /mo
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] text-muted-foreground">Total required (gross):</div>
+                        <div className="font-semibold text-muted-foreground tabular-nums mt-0.5">
                           {formatINR(processed.requiredMonthlySip || 0)} /mo
                         </div>
                       </div>
@@ -1299,8 +1351,32 @@ function PlanFormContent() {
               })}
 
               <div className="p-4 bg-emerald-50 border border-emerald-200/50 rounded-xl flex items-center justify-between text-emerald-800 font-bold text-sm">
-                <span>Total Monthly SIP Budget Needed:</span>
+                <span>New Monthly SIP Needed (net of existing):</span>
                 <span className="tabular-nums text-base">{formatINR(totalRequiredSip)} /mo</span>
+              </div>
+
+              {/* Funding feasibility — can the surplus actually fund these SIPs? */}
+              <div
+                className={`p-4 rounded-xl border text-sm flex items-start justify-between gap-3 ${
+                  sipShortfall > 0
+                    ? "bg-rose-50 border-rose-200 text-rose-800"
+                    : "bg-emerald-50 border-emerald-200/50 text-emerald-800"
+                }`}
+              >
+                <div>
+                  <div className="font-bold">
+                    {sipShortfall > 0 ? "Plan is under-funded" : "Plan is fundable from surplus"}
+                  </div>
+                  <div className="text-xs mt-0.5 opacity-90">
+                    Investable surplus {formatINR(investableSurplus)}/mo vs new SIP {formatINR(totalRequiredSip)}/mo.
+                    {sipShortfall > 0
+                      ? ` Short by ${formatINR(sipShortfall)}/mo — prioritise goals, extend timelines, or raise income.`
+                      : " The required SIPs fit within the monthly surplus."}
+                  </div>
+                </div>
+                <span className="tabular-nums text-base font-bold shrink-0">
+                  {investableSurplus > 0 ? Math.round((totalRequiredSip / investableSurplus) * 100) : (totalRequiredSip > 0 ? "∞" : 0)}%
+                </span>
               </div>
             </div>
           )}

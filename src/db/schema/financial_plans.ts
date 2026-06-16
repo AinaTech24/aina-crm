@@ -75,8 +75,13 @@ export const financialPlans = pgTable(
       targetYears: number;
       inflationRate: number;
       expectedReturn: number;
+      /** Existing money already earmarked for THIS goal — nets down the SIP ask. */
+      currentValue?: number;
+      existingMonthlySip?: number;
       futureValue?: number;
-      requiredMonthlySip?: number;
+      requiredMonthlySip?: number; // total required (gross)
+      additionalMonthlySip?: number; // net of existing SIP — the real ask
+      gapAmount?: number;
     }[]>().default([]),
 
     // Recommended Asset Allocation

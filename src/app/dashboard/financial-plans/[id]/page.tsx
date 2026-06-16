@@ -20,6 +20,15 @@ import { requireSession } from "@/lib/auth/session";
 import { formatDate, formatINR } from "@/lib/utils";
 import { financialPlans, investors, users } from "@/db/schema";
 import { RecordProvenance } from "@/components/common/RecordProvenance";
+import {
+  recommendedLifeCover,
+  emergencyStatus,
+  planFeasibility,
+  cfpRatios,
+  financialAssetsTotal,
+  liquidAssetsTotal,
+  totalMonthlyEmi as sumMonthlyEmi,
+} from "@/lib/financial-plans/analysis";
 
 export const dynamic = "force-dynamic";
 
@@ -69,19 +78,60 @@ export default async function FinancialPlanDetailPage({
   const totalLiabilities = liabilities.reduce((s, l) => s + Number(l.value || 0), 0);
   const netWorth = totalAssets - totalLiabilities;
 
-  const targetEmergency = monthlyExp * (plan.emergencyFundTargetMonths ?? 6);
-  const currentEmergency = Number(plan.emergencyFundCurrentValue ?? 0);
-  const emergencyGap = Math.max(0, targetEmergency - currentEmergency);
+  const monthlyEmi = sumMonthlyEmi(liabilities);
+  const liquidAssets = liquidAssetsTotal(assets);
+  const financialAssets = financialAssetsTotal(assets);
+
+  // Emergency fund — credit the liquid assets already on the balance sheet.
+  const emergency = emergencyStatus({
+    monthlyExpenses: monthlyExp,
+    targetMonths: plan.emergencyFundTargetMonths ?? 6,
+    earmarkedFund: Number(plan.emergencyFundCurrentValue ?? 0),
+    liquidAssets,
+  });
+  const targetEmergency = emergency.target;
+  const currentEmergency = emergency.available;
+  const emergencyGap = emergency.gap;
 
   const lifeSum = Number(plan.lifeInsuranceSumAssured ?? 0);
   const lifePremium = Number(plan.lifeInsuranceAnnualPremium ?? 0);
   const healthSum = Number(plan.healthInsuranceSumAssured ?? 0);
   const healthPremium = Number(plan.healthInsuranceAnnualPremium ?? 0);
 
-  const suggestedLife = monthlyInc * 12 * 10 + totalLiabilities;
-
   const goals = (plan.goals as any[]) || [];
-  const totalSIPBudget = goals.reduce((s, g) => s + (g.requiredMonthlySip || 0), 0);
+
+  // Life cover — need-analysis (liabilities + goals + PV of family expenses − financial assets).
+  const goalsPresentCostTotal = goals.reduce((s, g) => s + (Number(g.targetAmount) || 0), 0);
+  const lifeCover = recommendedLifeCover({
+    monthlyExpenses: monthlyExp,
+    totalLiabilities,
+    goalsPresentCostTotal,
+    financialAssets,
+    existingCover: lifeSum,
+  });
+  const suggestedLife = Math.round(lifeCover.recommended);
+
+  // New SIP the client must START (net of any per-goal existing provision), and
+  // whether the monthly surplus can actually fund it.
+  const totalNewSip = goals.reduce(
+    (s, g) => s + (g.additionalMonthlySip != null ? Number(g.additionalMonthlySip) : Number(g.requiredMonthlySip) || 0),
+    0
+  );
+  const totalSIPBudget = goals.reduce((s, g) => s + (Number(g.requiredMonthlySip) || 0), 0);
+  const feasibility = planFeasibility({
+    monthlyIncome: monthlyInc,
+    monthlyExpenses: monthlyExp,
+    totalMonthlyEmi: monthlyEmi,
+    requiredAdditionalSip: totalNewSip,
+  });
+  const ratios = cfpRatios({
+    monthlyIncome: monthlyInc,
+    monthlyExpenses: monthlyExp,
+    totalMonthlyEmi: monthlyEmi,
+    totalAssets,
+    totalLiabilities,
+    liquidAssets,
+  });
 
   const recommendedEquity = plan.recommendedEquityPct ?? 0;
   const recommendedDebt = plan.recommendedDebtPct ?? 0;
@@ -231,6 +281,64 @@ export default async function FinancialPlanDetailPage({
         </div>
       </div>
 
+      {/* Funding feasibility — can the surplus fund the required SIPs? */}
+      {totalNewSip > 0 && (
+        <div
+          className={`card-surface p-4 border flex items-start justify-between gap-4 ${
+            feasibility.feasible
+              ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+              : "bg-rose-50 border-rose-200 text-rose-800"
+          }`}
+        >
+          <div>
+            <div className="text-sm font-bold">
+              {feasibility.feasible ? "Plan is fundable from surplus" : "Plan is under-funded"}
+            </div>
+            <p className="text-xs mt-0.5 opacity-90 max-w-2xl">
+              Investable surplus <strong>{formatINR(feasibility.investableSurplus)}/mo</strong> vs new SIP required{" "}
+              <strong>{formatINR(feasibility.requiredAdditionalSip)}/mo</strong>.
+              {feasibility.feasible
+                ? " The required SIPs fit within the monthly surplus."
+                : ` Short by ${formatINR(feasibility.shortfall)}/mo — prioritise goals, extend timelines, or increase income / cut expenses.`}
+            </p>
+          </div>
+          <div className="text-right shrink-0">
+            <div className="text-2xl font-extrabold tabular-nums leading-none">
+              {feasibility.utilizationPct >= 999 ? "∞" : `${feasibility.utilizationPct}%`}
+            </div>
+            <div className="text-[10px] uppercase tracking-wider opacity-75">of surplus used</div>
+          </div>
+        </div>
+      )}
+
+      {/* Key planning ratios */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <Ratio label="Net worth" value={formatINR(ratios.netWorth)} tone={ratios.netWorth >= 0 ? "good" : "bad"} />
+        <Ratio
+          label="Liquidity"
+          value={`${ratios.liquidityMonths.toFixed(1)} mo`}
+          hint="liquid ÷ monthly expense"
+          tone={ratios.liquidityMonths >= 3 ? "good" : ratios.liquidityMonths >= 1 ? "warn" : "bad"}
+        />
+        <Ratio
+          label="Savings rate"
+          value={`${ratios.savingsRatePct}%`}
+          tone={ratios.savingsRatePct >= 30 ? "good" : ratios.savingsRatePct >= 15 ? "warn" : "bad"}
+        />
+        <Ratio
+          label="Debt-to-income"
+          value={`${ratios.debtToIncomePct}%`}
+          hint="EMIs ÷ income"
+          tone={ratios.debtToIncomePct < 30 ? "good" : ratios.debtToIncomePct <= 45 ? "warn" : "bad"}
+        />
+        <Ratio
+          label="Solvency"
+          value={`${ratios.solvencyPct}%`}
+          hint="net worth ÷ assets"
+          tone={ratios.solvencyPct >= 50 ? "good" : ratios.solvencyPct >= 20 ? "warn" : "bad"}
+        />
+      </div>
+
       {/* Main Grid Dashboards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         
@@ -306,8 +414,16 @@ export default async function FinancialPlanDetailPage({
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Life Coverage:</span>
-              <span className="font-semibold tabular-nums">{formatINR(lifeSum)}</span>
+              <span className={`font-semibold tabular-nums ${lifeCover.additional > 0 ? "text-amber-600" : "text-emerald-700"}`}>
+                {formatINR(lifeSum)} / {formatINR(suggestedLife)}
+              </span>
             </div>
+            {lifeCover.additional > 0 && (
+              <div className="flex justify-between text-[11px] text-rose-700">
+                <span>Additional term cover needed:</span>
+                <span className="font-semibold tabular-nums">{formatINR(Math.round(lifeCover.additional))}</span>
+              </div>
+            )}
             <div className="flex justify-between border-t pt-2.5 font-bold">
               <span>Health Coverage:</span>
               <span className="tabular-nums text-emerald-700">{formatINR(healthSum)}</span>
@@ -502,6 +618,32 @@ export default async function FinancialPlanDetailPage({
         )}
 
       </div>
+    </div>
+  );
+}
+
+function Ratio({
+  label,
+  value,
+  hint,
+  tone,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+  tone: "good" | "warn" | "bad";
+}) {
+  const toneCls =
+    tone === "good"
+      ? "text-emerald-700"
+      : tone === "warn"
+        ? "text-amber-600"
+        : "text-rose-600";
+  return (
+    <div className="card-surface p-3">
+      <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">{label}</div>
+      <div className={`text-lg font-bold tabular-nums mt-0.5 ${toneCls}`}>{value}</div>
+      {hint && <div className="text-[10px] text-muted-foreground/80">{hint}</div>}
     </div>
   );
 }

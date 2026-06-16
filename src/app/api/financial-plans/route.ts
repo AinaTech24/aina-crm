@@ -39,8 +39,12 @@ const GoalSchema = z.object({
   targetYears: z.number().int().min(1).max(100),
   inflationRate: z.number().min(0).max(100),
   expectedReturn: z.number().min(0).max(100),
+  currentValue: z.number().min(0).optional(),
+  existingMonthlySip: z.number().min(0).optional(),
   futureValue: z.number().min(0).optional(),
   requiredMonthlySip: z.number().min(0).optional(),
+  additionalMonthlySip: z.number().min(0).optional(),
+  gapAmount: z.number().min(0).optional(),
 });
 
 const RecommendationSchema = z.object({

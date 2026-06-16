@@ -6,6 +6,12 @@ import { requireSession } from "@/lib/auth/session";
 import { formatDate, formatINR } from "@/lib/utils";
 import { PlanPrintHelper } from "@/components/financial-plans/PlanPrintHelper";
 import { FirmLogo } from "@/components/common/FirmLogo";
+import {
+  recommendedLifeCover,
+  emergencyStatus,
+  liquidAssetsTotal,
+  financialAssetsTotal,
+} from "@/lib/financial-plans/analysis";
 
 export const dynamic = "force-dynamic";
 
@@ -55,16 +61,35 @@ export default async function FinancialPlanPrintPage({
   const totalLiabilities = liabilities.reduce((s, l) => s + Number(l.value || 0), 0);
   const netWorth = totalAssets - totalLiabilities;
 
-  const targetEmergency = monthlyExp * (p.emergencyFundTargetMonths ?? 6);
-  const currentEmergency = Number(p.emergencyFundCurrentValue ?? 0);
-  const emergencyGap = Math.max(0, targetEmergency - currentEmergency);
+  const emergency = emergencyStatus({
+    monthlyExpenses: monthlyExp,
+    targetMonths: p.emergencyFundTargetMonths ?? 6,
+    earmarkedFund: Number(p.emergencyFundCurrentValue ?? 0),
+    liquidAssets: liquidAssetsTotal(assets),
+  });
+  const targetEmergency = emergency.target;
+  const currentEmergency = emergency.available;
+  const emergencyGap = emergency.gap;
 
   const lifeSum = Number(p.lifeInsuranceSumAssured ?? 0);
-  const requiredLife = monthlyInc * 12 * 10 + totalLiabilities;
   const healthSum = Number(p.healthInsuranceSumAssured ?? 0);
 
   const goals = (p.goals as any[]) || [];
-  const totalSip = goals.reduce((s, g) => s + (g.requiredMonthlySip || 0), 0);
+  // Need-analysis life cover (not 10× income).
+  const requiredLife = Math.round(
+    recommendedLifeCover({
+      monthlyExpenses: monthlyExp,
+      totalLiabilities,
+      goalsPresentCostTotal: goals.reduce((s, g) => s + (Number(g.targetAmount) || 0), 0),
+      financialAssets: financialAssetsTotal(assets),
+      existingCover: lifeSum,
+    }).recommended
+  );
+  // New SIP to start, net of money already earmarked per goal.
+  const totalSip = goals.reduce(
+    (s, g) => s + (g.additionalMonthlySip != null ? Number(g.additionalMonthlySip) : Number(g.requiredMonthlySip) || 0),
+    0
+  );
   const recommendations = (p.recommendations as any[]) || [];
 
   const recommendedEquity = p.recommendedEquityPct ?? 0;
