@@ -16,13 +16,13 @@ import { Select } from "@/components/ui/Select";
 export function DashboardMemberFilter({
   members,
   selected,
-  period,
-  pstart,
+  dateFrom,
+  dateTo,
 }: {
   members: { id: string; name: string }[];
   selected?: string;
-  period?: string;
-  pstart?: string;
+  dateFrom?: string;
+  dateTo?: string;
 }) {
   const router = useRouter();
 
@@ -33,9 +33,9 @@ export function DashboardMemberFilter({
 
   function onChange(v: string) {
     const params = new URLSearchParams();
-    // Preserve the period selector (mtd is the default — omit it to keep URLs clean).
-    if (period && period !== "mtd") params.set("period", period);
-    if (period === "custom" && pstart) params.set("pstart", pstart);
+    // Preserve the chosen date range across a member switch.
+    if (dateFrom) params.set("date_from", dateFrom);
+    if (dateTo) params.set("date_to", dateTo);
     if (v) params.set("rm", v);
     const qs = params.toString();
     router.push(`/dashboard${qs ? `?${qs}` : ""}`);

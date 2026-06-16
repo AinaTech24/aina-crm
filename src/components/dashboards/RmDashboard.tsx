@@ -6,8 +6,7 @@ import { investors, leads, tasks, communications, sips } from "@/db/schema";
 import { formatINR, formatRelative, formatDate } from "@/lib/utils";
 import type { SessionUser } from "@/lib/auth/session";
 import { RmInsightsSection } from "./RmInsightsSection";
-import { resolvePeriodDates, type Period } from "@/lib/dashboard/period";
-import { PeriodSelector } from "./PeriodSelector";
+import { NbaDateFilter } from "@/components/nba/NbaDateFilter";
 
 /**
  * RM dashboard — shows only what's assigned to this RM. Per spec section 2:
@@ -21,17 +20,18 @@ export async function RmDashboard({
   limited = false,
   targetUserId,
   targetName,
-  period = "mtd",
-  customStart,
+  from,
+  to,
 }: {
   session: SessionUser;
   limited?: boolean;
   /** When an owner/branch-head views a specific team member's dashboard. */
   targetUserId?: string;
   targetName?: string;
-  /** Period filter — scopes the period metrics (net sales, conversions). */
-  period?: Period;
-  customStart?: string;
+  /** Date-range window (yyyy-mm-dd). Scopes the period metrics (net sales,
+   *  conversions). Defaults to month-to-date when unset. */
+  from?: string;
+  to?: string;
 }) {
   const userId = targetUserId ?? session.userId;
   const viewingOther = !!targetUserId && targetUserId !== session.userId;
@@ -39,11 +39,19 @@ export async function RmDashboard({
   // "Aman's clients" instead of "My clients".
   const who = viewingOther ? `${(targetName ?? "Member").split(" ")[0]}'s` : "My";
   const today = new Date();
-  // Period filter drives the "net sales / converted" metrics; everything else
-  // (today's follow-ups, this week's reviews, etc.) is intentionally live.
-  const { startISO, label: periodLabel } = resolvePeriodDates(period, today, customStart);
   const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59);
   const next7 = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  // Date-range window (replaces the old MTD/QTD period chips) drives the
+  // "net sales / converted" metrics; everything else (today's follow-ups,
+  // this week's reviews, etc.) is intentionally live. Defaults to month-to-date.
+  const fromISO = from && /^\d{4}-\d{2}-\d{2}$/.test(from)
+    ? new Date(`${from}T00:00:00`).toISOString()
+    : new Date(today.getFullYear(), today.getMonth(), 1).toISOString();
+  const toISO = to && /^\d{4}-\d{2}-\d{2}$/.test(to)
+    ? new Date(`${to}T23:59:59`).toISOString()
+    : endOfDay.toISOString();
+  const fmtD = (iso: string) => new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "2-digit" });
+  const periodLabel = `${fmtD(fromISO)} – ${fmtD(toISO)}`;
 
   const data = await withTenant(session.tenantId, async (tx) => {
     // My clients + AUM
@@ -60,7 +68,7 @@ export async function RmDashboard({
     const leadStats = await tx.execute(sql`
       SELECT
         COUNT(*) FILTER (WHERE converted_investor_id IS NULL AND stage NOT IN ('lost', 'cold'))::int AS open_leads,
-        COUNT(*) FILTER (WHERE converted_investor_id IS NOT NULL AND converted_at >= ${startISO})::int AS converted_mtd,
+        COUNT(*) FILTER (WHERE converted_investor_id IS NOT NULL AND converted_at >= ${fromISO} AND converted_at <= ${toISO})::int AS converted_mtd,
         COUNT(*) FILTER (WHERE next_follow_up_at <= ${endOfDay.toISOString()} AND converted_investor_id IS NULL AND stage NOT IN ('lost', 'cold'))::int AS follow_ups_today
       FROM leads WHERE owner_id = ${userId}
     `);
@@ -73,7 +81,8 @@ export async function RmDashboard({
         COALESCE(SUM(CASE WHEN direction = 'outflow' THEN amount::numeric ELSE 0 END), 0) AS redemption
       FROM transactions t
       WHERE t.status IN ('processed', 'successful')
-        AND t.order_date >= ${startISO.slice(0, 10)}::date
+        AND t.order_date >= ${fromISO.slice(0, 10)}::date
+        AND t.order_date <= ${toISO.slice(0, 10)}::date
         AND t.investor_id IN (SELECT id FROM investors WHERE rm_id = ${userId})
     `);
     const b = businessStats.rows[0] as any;
@@ -224,7 +233,7 @@ export async function RmDashboard({
               : `Hi ${session.name.split(" ")[0]} — here's what to focus on today.`}
           </p>
         </div>
-        <PeriodSelector current={period} variant="light" />
+        <NbaDateFilter from={from ?? ""} to={to ?? ""} />
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">

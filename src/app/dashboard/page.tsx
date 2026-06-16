@@ -40,6 +40,10 @@ export default async function DashboardPage({
   const sp = await searchParams;
   const period = (sp.period ?? "mtd") as "mtd" | "qtd" | "fytd" | "lm" | "custom";
   const pstart = sp.pstart;
+  // Per-user dashboards use an explicit date range (date_from/date_to); the
+  // firm-wide OwnerCockpit still uses the period chips.
+  const dateFrom = (sp.date_from ?? "").slice(0, 10);
+  const dateTo = (sp.date_to ?? "").slice(0, 10);
   const rmParam = (sp.rm ?? "").trim();
 
   // ── Custom default board ─────────────────────────────────────────────────
@@ -97,12 +101,12 @@ export default async function DashboardPage({
       <DashboardMemberFilter
         members={members}
         selected={selected ? rmParam : ""}
-        period={period}
-        pstart={pstart}
+        dateFrom={dateFrom}
+        dateTo={dateTo}
       />
     );
     dash = selected ? (
-      <RmDashboard session={session} targetUserId={selected.id} targetName={selected.name} period={period} customStart={pstart} />
+      <RmDashboard session={session} targetUserId={selected.id} targetName={selected.name} from={dateFrom} to={dateTo} />
     ) : (
       <OwnerCockpit session={session} period={period} customStart={pstart} />
     );
@@ -113,10 +117,10 @@ export default async function DashboardPage({
   } else if (can(roles, "dashboard.view.ops", perms)) {
     dash = <BackOfficeDashboard session={session} />;
   } else if (can(roles, "dashboard.view.rm", perms)) {
-    dash = <RmDashboard session={session} period={period} customStart={pstart} />;
+    dash = <RmDashboard session={session} from={dateFrom} to={dateTo} />;
   } else {
     // Team member fallback — just tasks
-    dash = <RmDashboard session={session} limited period={period} customStart={pstart} />;
+    dash = <RmDashboard session={session} limited from={dateFrom} to={dateTo} />;
   }
 
   return (

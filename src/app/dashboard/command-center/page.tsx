@@ -98,9 +98,30 @@ export default async function CommandCenterPage({
     new Map(allGroups.map((g) => [g.key, g.label] as const)).entries()
   ).map(([value, label]) => ({ value, label }));
 
+  const dateFrom = (sp.date_from ?? "").slice(0, 10);
+  const dateTo = (sp.date_to ?? "").slice(0, 10);
+  const inRange = (d?: string | null) => {
+    if (!dateFrom && !dateTo) return true;
+    if (!d) return true; // undated = always-current (e.g. SLA breach) — never hide
+    if (dateFrom && d < dateFrom) return false;
+    if (dateTo && d > dateTo) return false;
+    return true;
+  };
+
   let groups = allGroups;
   if (sevFilter.length) groups = groups.filter((g) => sevFilter.includes(g.severity));
   if (catFilter.length) groups = groups.filter((g) => catFilter.includes(g.key));
+  // Date-range filter — narrows dated items (reviews, meetings, KYC, tasks,
+  // follow-ups…) to the window; undated "act now" items always stay. Count
+  // reflects what's shown.
+  if (dateFrom || dateTo) {
+    groups = groups
+      .map((g) => {
+        const items = g.items.filter((it) => inRange(it.date));
+        return { ...g, items, count: items.length };
+      })
+      .filter((g) => g.items.length > 0);
+  }
 
   const totalItems = groups.reduce((n, g) => n + g.count, 0);
   const nowCount = groups.filter((g) => g.severity === "now").reduce((n, g) => n + g.count, 0);
@@ -133,6 +154,7 @@ export default async function CommandCenterPage({
           ...(firmWide && userOptions.length
             ? [{ type: "select" as const, key: "user", label: "User", allLabel: "All users", options: userOptions }]
             : []),
+          { type: "date_range" as const, key: "date", label: "Date" },
           {
             type: "multi",
             key: "severity",

@@ -25,7 +25,17 @@ export type ActionItem = {
   title: string;
   detail?: string;
   href: string;
+  /** The item's relevant date (yyyy-mm-dd) for date-range filtering. Null/absent
+   *  = an always-current item (e.g. an SLA breach) that a date range never hides. */
+  date?: string | null;
 };
+
+/** Coerce a timestamp/date value to a yyyy-mm-dd string (or null). */
+function ymd(v: any): string | null {
+  if (!v) return null;
+  const d = v instanceof Date ? v : new Date(v);
+  return isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
+}
 
 export type ActionGroup = {
   key: string;
@@ -99,6 +109,7 @@ export async function buildCommandQueue(
           title: x.subject ?? `Ticket #${x.ticket_no}`,
           detail: `#${x.ticket_no} · SLA passed`,
           href: `/dashboard/service-requests`,
+          date: ymd(x.sla_resolution_at),
         })),
       });
     }
@@ -191,6 +202,7 @@ export async function buildCommandQueue(
           title: x.name,
           detail: `Tier ${x.service_tier ?? "—"} · due ${fmt(x.next_review_at)}`,
           href: `/dashboard/investors/${x.id}`,
+          date: ymd(x.next_review_at),
         })),
       });
     }
@@ -224,6 +236,7 @@ export async function buildCommandQueue(
           title: x.party_name ?? "Client",
           detail: `${x.subject ? x.subject : String(x.meeting_type).replace(/_/g, " ")} · ${new Date(x.meeting_date).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" })}`,
           href: `/dashboard/review-meetings/${x.id}`,
+          date: ymd(x.meeting_date),
         })),
       });
     }
@@ -254,6 +267,7 @@ export async function buildCommandQueue(
           title: x.employee_name ?? "Employee",
           detail: `${x.no_of_days} day(s) · ${String(x.leave_type).replace(/_/g, " ")} · ${fmt(x.from_date)}`,
           href: "/dashboard/leave-applications?status=requested",
+          date: ymd(x.from_date),
         })),
       });
     }
@@ -314,6 +328,7 @@ export async function buildCommandQueue(
           title: x.name,
           detail: x.ckyc_expiry_at ? `CKYC expires ${fmt(x.ckyc_expiry_at)}` : `KYC ${x.kyc_status}`,
           href: `/dashboard/investors/${x.id}`,
+          date: ymd(x.ckyc_expiry_at),
         })),
       });
     }
@@ -345,6 +360,7 @@ export async function buildCommandQueue(
           title: x.title,
           detail: `${x.priority} · due ${fmt(x.due_at)}`,
           href: `/dashboard/tasks`,
+          date: ymd(x.due_at),
         })),
       });
     }
@@ -377,6 +393,7 @@ export async function buildCommandQueue(
           title: x.name,
           detail: `${String(x.stage).replace(/_/g, " ")} · due ${fmt(x.next_follow_up_at)}`,
           href: `/dashboard/leads/${x.id}`,
+          date: ymd(x.next_follow_up_at),
         })),
       });
     }
