@@ -59,7 +59,19 @@ export async function POST(req: NextRequest) {
   const fileName = decodeURIComponent(req.headers.get("x-rta-filename") || "upload.bin");
   const headerPassword = req.headers.get("x-rta-password") || undefined;
 
-  const buf = Buffer.from(await req.arrayBuffer());
+  // Read the raw body by STREAMING the chunks (not req.arrayBuffer()) so a
+  // buffered-body size cap can't silently truncate large RTA zips.
+  const chunks: Uint8Array[] = [];
+  const reader = req.body?.getReader();
+  if (reader) {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) chunks.push(value);
+    }
+  }
+  const buf = Buffer.concat(chunks);
+  const declaredLen = req.headers.get("content-length") ?? "?";
   if (buf.length === 0) {
     return NextResponse.json({ error: "empty upload — no file received" }, { status: 400 });
   }
@@ -85,7 +97,7 @@ export async function POST(req: NextRequest) {
       innerName = r.filename;
     } catch (e: any) {
       return NextResponse.json(
-        { error: `Could not open the zip — ${e?.message ?? "wrong password or unsupported archive"}.` },
+        { error: `Could not open the zip — ${e?.message ?? "wrong password or unsupported archive"}. (received ${buf.length} of ${declaredLen} bytes)` },
         { status: 400 }
       );
     }
