@@ -88,5 +88,5 @@ export function ProposalsBulkTable({ rows }: { rows: Row[] }) {
     },
   ];
 
-  return <BulkTable rows={rows} columns={columns} endpoint="/api/proposals/bulk" actions={actions} itemLabel="proposal" tableKey="proposals" />;
+  return <BulkTable rows={rows} columns={columns} endpoint="/api/proposals/bulk" actions={actions} itemLabel="proposal" tableKey="proposals" scrollBody />;
 }

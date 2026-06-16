@@ -40,6 +40,7 @@ export function BulkTable<T extends { id: string }>({
   actions,
   itemLabel = "item",
   tableKey,
+  scrollBody = false,
 }: {
   rows: T[];
   columns: BulkColumn<T>[];
@@ -48,6 +49,8 @@ export function BulkTable<T extends { id: string }>({
   itemLabel?: string;
   /** Emitted as `data-table` on the <table> so a <ColumnManager> can target it. */
   tableKey?: string;
+  /** Fixed-height scroll body (hidden scrollbar + sticky header) for long tables. */
+  scrollBody?: boolean;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -152,9 +155,9 @@ export function BulkTable<T extends { id: string }>({
         </div>
       )}
 
-      <div className="overflow-x-auto">
+      <div className={scrollBody ? "overflow-auto max-h-[600px] scrollbar-none" : "overflow-x-auto"}>
         <table className="w-full text-sm" data-table={tableKey}>
-          <thead className="text-xs text-muted-foreground border-b">
+          <thead className={`text-xs text-muted-foreground border-b${scrollBody ? " sticky top-0 z-10 bg-card" : ""}`}>
             <tr>
               <th className="w-8 px-4 py-2">
                 <input type="checkbox" checked={allSel} onChange={toggleAll} className="size-3.5 rounded" aria-label="Select all" />

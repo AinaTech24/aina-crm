@@ -152,7 +152,7 @@ export function MeetingsBulkTable({
       {past.length > 0 && (
         <div className="card-surface">
           <div className="border-b border-border px-4 py-2.5 font-semibold">Past meetings ({past.length})</div>
-          <BulkTable rows={past.slice(0, 50)} columns={pastCols} endpoint="/api/review-meetings/bulk" actions={actions} itemLabel="meeting" />
+          <BulkTable rows={past.slice(0, 50)} columns={pastCols} endpoint="/api/review-meetings/bulk" actions={actions} itemLabel="meeting" scrollBody />
         </div>
       )}
     </>

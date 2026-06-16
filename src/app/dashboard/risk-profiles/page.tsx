@@ -196,8 +196,9 @@ export default async function RiskProfilesPage({
           </div>
         ) : (
           <>
+            <div className="overflow-auto max-h-[600px] scrollbar-none">
             <table className="w-full text-sm">
-              <thead className="text-xs text-muted-foreground border-b">
+              <thead className="text-xs text-muted-foreground border-b sticky top-0 z-10 bg-card">
                 <tr>
                   <th className="text-left px-4 py-2 font-medium">Investor</th>
                   <th className="text-left py-2 font-medium">Category</th>
@@ -274,6 +275,7 @@ export default async function RiskProfilesPage({
                 })}
               </tbody>
             </table>
+            </div>
             <div className="px-4 pb-3">
               <Pager
                 page={page}
