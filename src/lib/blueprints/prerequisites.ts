@@ -58,11 +58,24 @@ export async function checkPrerequisites(
   leadId: string,
   targetStageKey: string
 ): Promise<PrereqCheck> {
-  const items = await Promise.all([
-    ...PREREQ_RULES_BY_TARGET[targetStageKey]?.map((rule) =>
-      rule(tx, tenantId, leadId)
-    ) ?? [],
-  ]);
+  const rules = PREREQ_RULES_BY_TARGET[targetStageKey] ?? [];
+  // Run each rule defensively: a single failing check (bad query, timeout)
+  // becomes an unsatisfied "couldn't verify" item — it blocks the advance and
+  // shows in the checklist, instead of throwing a 500 that reads as
+  // "Couldn't check this step".
+  const items = await Promise.all(
+    rules.map(async (rule) => {
+      try {
+        return await rule(tx, tenantId, leadId);
+      } catch {
+        return {
+          label: "Could not verify this step",
+          satisfied: false,
+          hint: "A check couldn't run. Try again, or use “Or pick a stage manually” to proceed.",
+        } as Prerequisite;
+      }
+    })
+  );
   return { ok: items.every((i) => i.satisfied), items };
 }
 
@@ -206,20 +219,21 @@ const hasDocChecklistSent: RuleFn = async (tx, _tenantId, leadId) => {
 };
 
 const hasDocsUploaded: RuleFn = async (tx, _tenantId, leadId) => {
-  // Documents are stored in compliance_documents OR via share-token submissions.
-  // We check compliance_documents linked to the lead (or post-conversion to
-  // its investor).
+  // Documents live in compliance_documents, keyed by related_entity_id (NOT
+  // subject_id — that column doesn't exist; referencing it 500'd this whole
+  // check). Match the subject id directly, plus the converted investor id when
+  // this is a post-conversion client. RLS scopes to the tenant.
   const r = await tx.execute(sql`
     SELECT COUNT(*)::int AS c FROM compliance_documents
-    WHERE subject_id = ${leadId}::uuid
-       OR subject_id = (SELECT converted_investor_id FROM leads WHERE id = ${leadId}::uuid)
+    WHERE related_entity_id = ${leadId}::uuid
+       OR related_entity_id = (SELECT converted_investor_id FROM leads WHERE id = ${leadId}::uuid)
   `);
   const c = (r.rows[0] as any)?.c ?? 0;
   return {
     label: "Onboarding documents have been received",
     satisfied: c > 0,
-    hint: "Wait for the client to upload, or manually upload on their behalf.",
-    cta: { href: `/dashboard/leads/${leadId}`, label: "Open lead" },
+    hint: "Upload the client's KYC documents on their behalf (or wait for them to use the upload link), then mark Documents Received.",
+    cta: { href: `/dashboard/leads/${leadId}`, label: "Open record" },
   };
 };
 
