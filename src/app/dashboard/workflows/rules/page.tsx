@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { desc, eq } from "drizzle-orm";
-import { ListChecks, Plus, Workflow, Lock } from "lucide-react";
+import { ListChecks, Plus, Workflow, Lock, BookMarked } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { workflowRules } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
@@ -85,6 +85,9 @@ export default async function WorkflowRulesPage({
           </p>
         </div>
         <div className="flex gap-2">
+          <Link href="/dashboard/workflows/rules/library" className="btn-secondary">
+            <BookMarked className="size-4" /> Rule Library
+          </Link>
           <Link href="/dashboard/workflows/actions" className="btn-secondary">
             <ListChecks className="size-4" /> Actions
           </Link>

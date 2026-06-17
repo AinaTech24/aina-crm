@@ -150,15 +150,31 @@ async function resolveCommTarget(
   }
 
   // Default: the triggering record itself.
-  const contact = pickContact(rec);
+  let contact = pickContact(rec);
+  let investorId = ctx.subjectType === "investor" ? ctx.subjectId : undefined;
+  const leadId = ctx.subjectType === "lead" ? ctx.subjectId : undefined;
+
+  // Records like SIPs / transactions / goals carry no contact of their own but
+  // reference an investor — resolve the client's contact so reminders (e.g. a
+  // SIP-due nudge keyed on next_installment_at) actually reach the client.
+  if (!contact && ctx.subjectType !== "investor") {
+    const invId = (rec as { investor_id?: string | null; investorId?: string | null }).investor_id
+      ?? (rec as { investor_id?: string | null; investorId?: string | null }).investorId;
+    if (invId) {
+      const inv = (
+        await ctx.tx.execute(
+          sql`SELECT id, email, phone, whatsapp_phone FROM investors WHERE id = ${invId}::uuid AND tenant_id = ${ctx.tenantId}::uuid LIMIT 1`
+        )
+      ).rows[0] as { id: string; email?: string | null; phone?: string | null; whatsapp_phone?: string | null } | undefined;
+      if (inv) {
+        contact = pickContact(inv);
+        investorId = inv.id;
+      }
+    }
+  }
+
   if (!contact) return { ok: false, reason: `No ${channel} contact on file for this record.` };
-  return {
-    ok: true,
-    recipient: String(contact),
-    investorId: ctx.subjectType === "investor" ? ctx.subjectId : undefined,
-    leadId: ctx.subjectType === "lead" ? ctx.subjectId : undefined,
-    extraVars: {},
-  };
+  return { ok: true, recipient: String(contact), investorId, leadId, extraVars: {} };
 }
 
 async function runSendEmail(config: Record<string, unknown>, ctx: ActionContext): Promise<ActionResult> {
