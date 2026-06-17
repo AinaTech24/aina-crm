@@ -185,7 +185,7 @@ async function resolveCommTarget(
 async function enrichmentVars(ctx: ActionContext): Promise<Record<string, string>> {
   const rec = ctx.record as {
     rm_id?: string | null; owner_id?: string | null; assigned_to_user_id?: string | null; assignee_id?: string | null;
-    meeting_date?: string | null;
+    meeting_date?: string | null; meeting_mode?: string | null; location_or_link?: string | null;
   };
   const out: Record<string, string> = {};
   const uid = rec.rm_id ?? rec.owner_id ?? rec.assigned_to_user_id ?? rec.assignee_id;
@@ -203,6 +203,17 @@ async function enrichmentVars(ctx: ActionContext): Promise<Record<string, string
     if (!isNaN(d.getTime())) {
       out.meeting_when = d.toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Kolkata" });
     }
+  }
+  // Online meetings carry a join link the client needs. {{meeting_join}} is a
+  // ready-made line that's blank for offline meetings / when no link was pasted,
+  // so templates can include it unconditionally.
+  const link = String(rec.location_or_link ?? "").trim();
+  if (rec.meeting_mode === "online" && link) {
+    out.meeting_link = link;
+    out.meeting_join = `Join online: ${link}`;
+  } else {
+    out.meeting_link = "";
+    out.meeting_join = "";
   }
   return out;
 }

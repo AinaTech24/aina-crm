@@ -112,12 +112,18 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
         { type: "header", title: "Your meeting is scheduled ✅" },
         {
           type: "text",
+          content: "Hi {{client_name}},\n\nYour meeting has been scheduled with {{rm_name}} on {{meeting_when}}.",
+        },
+        // Blank for in-person meetings / when no link was pasted.
+        { type: "text", content: "{{meeting_join}}" },
+        {
+          type: "text",
           content:
-            "Hi {{client_name}},\n\nYour meeting has been scheduled with {{rm_name}} on {{meeting_when}}. We look forward to speaking with you.\n\nIf you need to reschedule, just reply to this email.\n\nWarm regards,\n{{tenant_display_name}}",
+            "We look forward to speaking with you. If you need to reschedule, just reply to this email.\n\nWarm regards,\n{{tenant_display_name}}",
         },
       ],
       textFallback:
-        "Hi {{client_name}}, your meeting has been scheduled with {{rm_name}} on {{meeting_when}}. — {{tenant_display_name}}",
+        "Hi {{client_name}}, your meeting has been scheduled with {{rm_name}} on {{meeting_when}}. {{meeting_join}} — {{tenant_display_name}}",
     },
     variables: [{ key: "client_name", type: "string", source: "investor.name", fallback: "there" }],
   },
@@ -134,11 +140,18 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
         {
           type: "text",
           content:
-            "Hi {{client_name}},\n\nThis is a friendly reminder of your upcoming meeting with {{rm_name}} on {{meeting_when}}. We look forward to seeing you.\n\nIf you need to reschedule, just reply to this email.\n\nWarm regards,\n{{tenant_display_name}}",
+            "Hi {{client_name}},\n\nThis is a friendly reminder of your upcoming meeting with {{rm_name}} on {{meeting_when}}.",
+        },
+        // Blank for in-person meetings / when no link was pasted.
+        { type: "text", content: "{{meeting_join}}" },
+        {
+          type: "text",
+          content:
+            "We look forward to seeing you. If you need to reschedule, just reply to this email.\n\nWarm regards,\n{{tenant_display_name}}",
         },
       ],
       textFallback:
-        "Reminder: your meeting with {{rm_name}} is on {{meeting_when}}. — {{tenant_display_name}}",
+        "Reminder: your meeting with {{rm_name}} is on {{meeting_when}}. {{meeting_join}} — {{tenant_display_name}}",
     },
     variables: [{ key: "client_name", type: "string", source: "investor.name", fallback: "there" }],
   },
