@@ -100,6 +100,48 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
     },
     variables: [{ key: "client_name", type: "string", source: "investor.name", fallback: "there" }],
   },
+  {
+    key: "meeting_scheduled",
+    channel: "email",
+    category: "transactional",
+    name: "Meeting scheduled — confirmation",
+    description: "Sent to the client when a meeting is scheduled; names the RM and the time.",
+    body: {
+      subject: "Your meeting with {{tenant_display_name}} is scheduled",
+      blocks: [
+        { type: "header", title: "Your meeting is scheduled ✅" },
+        {
+          type: "text",
+          content:
+            "Hi {{client_name}},\n\nYour meeting has been scheduled with {{rm_name}} on {{meeting_when}}. We look forward to speaking with you.\n\nIf you need to reschedule, just reply to this email.\n\nWarm regards,\n{{tenant_display_name}}",
+        },
+      ],
+      textFallback:
+        "Hi {{client_name}}, your meeting has been scheduled with {{rm_name}} on {{meeting_when}}. — {{tenant_display_name}}",
+    },
+    variables: [{ key: "client_name", type: "string", source: "investor.name", fallback: "there" }],
+  },
+  {
+    key: "meeting_reminder",
+    channel: "email",
+    category: "utility",
+    name: "Meeting reminder",
+    description: "Reminder sent before a scheduled meeting; names the RM and the time.",
+    body: {
+      subject: "Reminder: your meeting with {{tenant_display_name}}",
+      blocks: [
+        { type: "header", title: "Meeting reminder ⏰" },
+        {
+          type: "text",
+          content:
+            "Hi {{client_name}},\n\nThis is a friendly reminder of your upcoming meeting with {{rm_name}} on {{meeting_when}}. We look forward to seeing you.\n\nIf you need to reschedule, just reply to this email.\n\nWarm regards,\n{{tenant_display_name}}",
+        },
+      ],
+      textFallback:
+        "Reminder: your meeting with {{rm_name}} is on {{meeting_when}}. — {{tenant_display_name}}",
+    },
+    variables: [{ key: "client_name", type: "string", source: "investor.name", fallback: "there" }],
+  },
 ];
 
 export function getStarterTemplate(key: string): StarterTemplate | undefined {

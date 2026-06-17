@@ -174,7 +174,37 @@ async function resolveCommTarget(
   }
 
   if (!contact) return { ok: false, reason: `No ${channel} contact on file for this record.` };
-  return { ok: true, recipient: String(contact), investorId, leadId, extraVars: {} };
+  return { ok: true, recipient: String(contact), investorId, leadId, extraVars: await enrichmentVars(ctx) };
+}
+
+/**
+ * Derived tokens many reminder/confirmation templates want but that aren't raw
+ * record columns: the owning user's NAME (rm_id / owner_id / assignee), and a
+ * human-readable meeting time. Best-effort — missing values just don't render.
+ */
+async function enrichmentVars(ctx: ActionContext): Promise<Record<string, string>> {
+  const rec = ctx.record as {
+    rm_id?: string | null; owner_id?: string | null; assigned_to_user_id?: string | null; assignee_id?: string | null;
+    meeting_date?: string | null;
+  };
+  const out: Record<string, string> = {};
+  const uid = rec.rm_id ?? rec.owner_id ?? rec.assigned_to_user_id ?? rec.assignee_id;
+  if (uid) {
+    const u = (
+      await ctx.tx.execute(sql`SELECT name FROM users WHERE id = ${uid}::uuid AND tenant_id = ${ctx.tenantId}::uuid LIMIT 1`)
+    ).rows[0] as { name?: string | null } | undefined;
+    if (u?.name) {
+      out.rm_name = u.name;
+      out.advisor_name = u.name;
+    }
+  }
+  if (rec.meeting_date) {
+    const d = new Date(rec.meeting_date);
+    if (!isNaN(d.getTime())) {
+      out.meeting_when = d.toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Kolkata" });
+    }
+  }
+  return out;
 }
 
 /**

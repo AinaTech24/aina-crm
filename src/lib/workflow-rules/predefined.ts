@@ -65,6 +65,45 @@ export const PREDEFINED_RULES: PredefinedRule[] = [
     },
   },
   {
+    key: "meeting_scheduled_confirmation",
+    title: "Meeting scheduled → confirm to client",
+    description:
+      "When a meeting is created with status Scheduled, email the client a confirmation naming the RM and the meeting time. Template auto-created.",
+    category: "Service",
+    needsTemplate: false,
+    rule: {
+      ...base,
+      module: "review_meetings",
+      name: "Meeting scheduled confirmation",
+      description: "Confirm a newly-scheduled meeting to the client.",
+      triggerType: "record_action",
+      triggerConfig: { when: "create", fields: [], repeat: false },
+      criteriaRows: [{ field: "status", operator: "is", value: "scheduled" }],
+      instantActions: [{ type: "send_email", label: "Email the client", config: { templateKey: "meeting_scheduled", category: "transactional", recipient: "subject" } }],
+    },
+  },
+  {
+    key: "meeting_reminder",
+    title: "Meeting reminder (if reminder set)",
+    description:
+      "1 day before a scheduled meeting that has a reminder set, email the client a reminder naming the RM and time. Template auto-created. Remove the 'Reminder set' condition to remind every scheduled meeting.",
+    category: "Service",
+    needsTemplate: false,
+    rule: {
+      ...base,
+      module: "review_meetings",
+      name: "Meeting reminder",
+      description: "Remind the client 1 day before a scheduled meeting (when a reminder is set).",
+      triggerType: "date_field",
+      triggerConfig: { field: "meeting_date", when: "before", offset: 1, unit: "day", recurrence: "once", time: "09:00" },
+      criteriaRows: [
+        { field: "status", operator: "is", value: "scheduled" },
+        { field: "reminder_task_id", operator: "is_not_empty" },
+      ],
+      instantActions: [{ type: "send_email", label: "Email the client", config: { templateKey: "meeting_reminder", category: "utility", recipient: "subject" } }],
+    },
+  },
+  {
     key: "sip_installment_reminder",
     title: "SIP installment reminder",
     description:
