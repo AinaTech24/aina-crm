@@ -77,6 +77,29 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
       { key: "referred_by_name", type: "string", source: "lead.referred_by_name" },
     ],
   },
+  {
+    key: "referrer_thank_you",
+    channel: "email",
+    category: "transactional",
+    name: "Referral thank-you (to the referring client)",
+    description: "Sent to the existing client who referred a new lead. Greets the client; names the lead they referred.",
+    body: {
+      // Recipient is the REFERRING CLIENT (an investor), so {{client_name}}
+      // resolves from the investor; {{referred_lead_name}} is the new lead's name.
+      subject: "Thank you for the referral, {{client_name}}!",
+      blocks: [
+        { type: "header", title: "Thank you for your referral 🙏" },
+        {
+          type: "text",
+          content:
+            "Hi {{client_name}},\n\nThank you so much for referring {{referred_lead_name}} to {{tenant_display_name}}. Referrals from valued clients like you mean the world to us — we'll take great care of them.\n\nWith gratitude,\n{{tenant_display_name}}",
+        },
+      ],
+      textFallback:
+        "Hi {{client_name}}, thank you for referring {{referred_lead_name}} to {{tenant_display_name}}. We truly appreciate it.",
+    },
+    variables: [{ key: "client_name", type: "string", source: "investor.name", fallback: "there" }],
+  },
 ];
 
 export function getStarterTemplate(key: string): StarterTemplate | undefined {

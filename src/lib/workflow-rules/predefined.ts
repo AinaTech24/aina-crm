@@ -86,18 +86,18 @@ export const PREDEFINED_RULES: PredefinedRule[] = [
     key: "referral_thank_you",
     title: "Thank the referring client",
     description:
-      "When a new lead is created with a 'Referred by' client, email that referring client a thank-you. Uses {{referred_lead_name}} in the template.",
+      "When a new lead is created from a client referral, email the referring client a thank-you that names the lead they referred. The email template is created for you automatically.",
     category: "Leads",
-    needsTemplate: true,
+    needsTemplate: false, // referrer_thank_you template is auto-provisioned on add
     rule: {
       ...base,
       module: "leads",
       name: "Referral thank-you",
-      description: "Email the referrer when a referred lead is created.",
+      description: "Email the referring client when a referred lead is created.",
       triggerType: "record_action",
       triggerConfig: { when: "create", fields: [], repeat: false },
       criteriaRows: [{ field: "referred_by_name", operator: "is_not_empty" }],
-      instantActions: [{ type: "send_email", label: "Email the referring client", config: { templateKey: "", category: "transactional", recipient: "referrer" } }],
+      instantActions: [{ type: "send_email", label: "Email the referring client", config: { templateKey: "referrer_thank_you", category: "transactional", recipient: "referrer" } }],
     },
   },
   {
