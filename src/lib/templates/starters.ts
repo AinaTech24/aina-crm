@@ -142,6 +142,33 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
     },
     variables: [{ key: "client_name", type: "string", source: "investor.name", fallback: "there" }],
   },
+  {
+    key: "meeting_minutes",
+    channel: "email",
+    category: "transactional",
+    name: "Meeting minutes — thank you + summary",
+    description: "Sent to the client when a meeting is completed: thanks them and shares AI-written minutes ({{minutes}}).",
+    body: {
+      subject: "Thank you for your time — minutes of our meeting",
+      blocks: [
+        { type: "header", title: "Thank you for your time 🙏" },
+        {
+          type: "text",
+          content:
+            "Hi {{client_name}},\n\nThank you for giving your valuable time to {{rm_name}}. It was a pleasure speaking with you. Here is a quick summary of what we discussed:",
+        },
+        { type: "text", content: "{{minutes}}" },
+        {
+          type: "text",
+          content:
+            "If anything above needs correcting, just reply to this email and we'll update it.\n\nWarm regards,\n{{rm_name}}\n{{tenant_display_name}}",
+        },
+      ],
+      textFallback:
+        "Hi {{client_name}}, thank you for your time with {{rm_name}}. Minutes of our meeting:\n\n{{minutes}}\n\n— {{tenant_display_name}}",
+    },
+    variables: [{ key: "client_name", type: "string", source: "investor.name", fallback: "there" }],
+  },
 ];
 
 export function getStarterTemplate(key: string): StarterTemplate | undefined {

@@ -104,6 +104,32 @@ export const PREDEFINED_RULES: PredefinedRule[] = [
     },
   },
   {
+    key: "meeting_minutes_thankyou",
+    title: "Meeting completed → AI minutes + thank-you",
+    description:
+      "When a meeting is marked Completed and the Discussion points (agenda) box isn't empty, email the client a thank-you (naming the RM) with AI-written minutes of meeting generated from the agenda. Template auto-created.",
+    category: "Service",
+    needsTemplate: false,
+    rule: {
+      ...base,
+      module: "review_meetings",
+      name: "Meeting minutes + thank-you",
+      description: "On meeting completion, email the client AI-written minutes of meeting.",
+      triggerType: "record_action",
+      // Fire when status is edited to 'completed'.
+      triggerConfig: { when: "edit", editMode: "specific", fields: [], fieldConditions: [{ field: "status", operator: "is", value: "completed" }], repeat: false },
+      // …only if the agenda box has content to summarise.
+      criteriaRows: [{ field: "discussion_points", operator: "is_not_empty" }],
+      instantActions: [
+        {
+          type: "send_email",
+          label: "Email the client minutes of meeting",
+          config: { templateKey: "meeting_minutes", category: "transactional", recipient: "subject", aiMinutesFrom: "discussion_points" },
+        },
+      ],
+    },
+  },
+  {
     key: "sip_installment_reminder",
     title: "SIP installment reminder",
     description:

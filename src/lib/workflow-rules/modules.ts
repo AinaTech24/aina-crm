@@ -481,6 +481,7 @@ export const MODULES: Record<ModuleKey, ModuleCatalog> = {
       { key: "meeting_date", label: "Meeting Date", type: "datetime", dateAnchor: true },
       { key: "next_review_date", label: "Next Review", type: "date", dateAnchor: true },
       { key: "reminder_task_id", label: "Reminder set", type: "uuid", help: "Set when a reminder was added to the meeting" },
+      { key: "discussion_points", label: "Discussion points (agenda)", type: "text" },
       CREATED(),
     ],
   },

@@ -224,11 +224,70 @@ function scalarVars(record: Record<string, unknown>): Record<string, string> {
   return out;
 }
 
+/** Format the structured AI meeting summary into a readable minutes block. */
+function formatMinutes(m: {
+  summary: string;
+  keyPoints: string[];
+  decisions: string[];
+  actionItems: Array<{ title: string; owner?: string; dueHint?: string }>;
+  nextSteps: string[];
+}): string {
+  const out: string[] = [];
+  if (m.summary) out.push(m.summary, "");
+  if (m.keyPoints.length) { out.push("Key points:"); m.keyPoints.forEach((k) => out.push(`• ${k}`)); out.push(""); }
+  if (m.decisions.length) { out.push("Decisions:"); m.decisions.forEach((d) => out.push(`• ${d}`)); out.push(""); }
+  if (m.actionItems.length) {
+    out.push("Action items:");
+    m.actionItems.forEach((a) => out.push(`• ${a.title}${a.owner ? ` (${a.owner})` : ""}${a.dueHint ? ` — ${a.dueHint}` : ""}`));
+    out.push("");
+  }
+  if (m.nextSteps.length) { out.push("Next steps:"); m.nextSteps.forEach((s) => out.push(`• ${s}`)); }
+  return out.join("\n").trim();
+}
+
+/**
+ * Optional AI minutes-of-meeting. When the email action sets config.aiMinutesFrom
+ * (a record field, e.g. "discussion_points"), rewrite that text via Claude into
+ * polished minutes and expose them as {{minutes}}. Returns:
+ *   { kind: "none" } — not configured, send normally
+ *   { kind: "ok" }   — minutes generated
+ *   { kind: "skip" } — configured but nothing to summarise / AI failed → skip send
+ */
+async function maybeAiMinutes(
+  config: Record<string, unknown>,
+  ctx: ActionContext
+): Promise<{ kind: "none" } | { kind: "ok"; minutes: string } | { kind: "skip"; reason: string }> {
+  const field = typeof config.aiMinutesFrom === "string" ? config.aiMinutesFrom : "";
+  if (!field) return { kind: "none" };
+  const rec = ctx.record as Record<string, unknown>;
+  const source = String(rec[field] ?? "").trim();
+  if (!source) return { kind: "skip", reason: "No agenda/discussion points to summarise." };
+  try {
+    const { summariseMeeting } = await import("@/lib/ai/assistant");
+    const extra = [rec.meeting_notes, rec.outcome_notes].map((v) => (v ? String(v) : "")).filter(Boolean).join("\n\n");
+    const mom = await summariseMeeting({
+      notes: [source, extra].filter(Boolean).join("\n\n"),
+      agenda: source,
+      meetingType: rec.meeting_type ? String(rec.meeting_type) : undefined,
+      durationMinutes: Number(rec.duration_minutes) || undefined,
+    });
+    if ("error" in mom) return { kind: "skip", reason: `AI summary failed: ${mom.error}` };
+    return { kind: "ok", minutes: formatMinutes(mom) };
+  } catch (e: any) {
+    return { kind: "skip", reason: `AI summary failed: ${e?.message ?? "error"}` };
+  }
+}
+
 async function runSendEmail(config: Record<string, unknown>, ctx: ActionContext): Promise<ActionResult> {
   try {
     const { dispatch } = await import("@/lib/comms/pipeline");
     const target = await resolveCommTarget(ctx, config, "email");
     if (!target.ok) return { type: "send_email", status: "skipped", detail: target.reason };
+
+    // Optional AI minutes-of-meeting → {{minutes}}.
+    const ai = await maybeAiMinutes(config, ctx);
+    if (ai.kind === "skip") return { type: "send_email", status: "skipped", detail: ai.reason };
+    const aiVars = ai.kind === "ok" ? { minutes: ai.minutes } : {};
     // "Send from": record_owner → the client's RM mailbox (resolveEmailSender
     // prefers the acting user's own mailbox, falling back to the firm mailbox).
     const actorUserId =
@@ -240,7 +299,7 @@ async function runSendEmail(config: Record<string, unknown>, ctx: ActionContext)
       channel: "email",
       templateKey: String(config.templateKey ?? config.template ?? ""),
       recipient: target.recipient,
-      variables: { ...scalarVars(ctx.record), ...((config.variables ?? {}) as Record<string, string>), ...target.extraVars },
+      variables: { ...scalarVars(ctx.record), ...((config.variables ?? {}) as Record<string, string>), ...target.extraVars, ...aiVars },
       category: (config.category ?? "transactional") as any,
       investorId: target.investorId,
       leadId: target.leadId,
