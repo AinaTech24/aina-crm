@@ -209,6 +209,27 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
     },
     variables: [{ key: "name", type: "string", source: "lead.name", fallback: "there" }],
   },
+  {
+    key: "birthday_wish",
+    channel: "email",
+    category: "marketing",
+    name: "Happy Birthday wish",
+    description: "Sent to a client on their birthday.",
+    body: {
+      subject: "Happy Birthday, {{name}}! 🎂",
+      blocks: [
+        { type: "header", title: "Happy Birthday! 🎉" },
+        {
+          type: "text",
+          content:
+            "Dear {{name}},\n\nOn behalf of everyone at {{tenant_display_name}}, wishing you a very Happy Birthday! May the year ahead bring you good health, happiness, and prosperity.\n\nWarm wishes,\n{{tenant_display_name}}",
+        },
+      ],
+      textFallback:
+        "Dear {{name}}, wishing you a very Happy Birthday from all of us at {{tenant_display_name}}! 🎂",
+    },
+    variables: [{ key: "name", type: "string", source: "investor.name", fallback: "there" }],
+  },
 ];
 
 export function getStarterTemplate(key: string): StarterTemplate | undefined {
