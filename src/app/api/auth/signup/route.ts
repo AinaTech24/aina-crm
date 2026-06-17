@@ -15,6 +15,7 @@ import { packages, subscriptions, subscriptionEvents } from "@/db/schema";
 import { signSession, SESSION_COOKIE, SESSION_TTL_SECONDS } from "@/lib/auth/session";
 import { MASTER_SEEDS } from "@/lib/masters/seeds";
 import { installDefaultRecipes } from "@/lib/recipes/install-defaults";
+import { issueEmailVerification } from "@/lib/auth/email-verification";
 import { enforce } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
@@ -210,6 +211,24 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Issue an email-verification token + send the confirm link (best-effort).
+  // We still log the owner in immediately (frictionless trial), but the
+  // unverified state is recorded so the app can nudge them and gate
+  // abuse-prone actions (e.g. inviting a team) until they confirm.
+  let emailSent = false;
+  try {
+    const v = await issueEmailVerification({
+      userId,
+      tenantId,
+      email: ownerEmail,
+      name: ownerName,
+      firmName,
+    });
+    emailSent = v.emailSent;
+  } catch (err) {
+    console.error("[signup] email-verification issue failed:", err);
+  }
+
   const token = await signSession({
     userId,
     tenantId,
@@ -219,7 +238,7 @@ export async function POST(req: NextRequest) {
     name: ownerName,
   });
 
-  const res = NextResponse.json({ ok: true, tenantId, userId });
+  const res = NextResponse.json({ ok: true, tenantId, userId, verificationEmailSent: emailSent });
   res.cookies.set(SESSION_COOKIE, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",

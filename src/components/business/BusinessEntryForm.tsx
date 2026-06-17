@@ -33,6 +33,9 @@ interface ProductConfig {
   catalog: boolean;
   /** Transaction types allowed for this product (subset of TXN_OPTS keys). */
   txnTypes: string[];
+  /** Product-specific labels for txn types (e.g. equity calls a Lumpsum a "Buy"
+   *  and a Redemption a "Sell"). Falls back to the generic TXN_OPTS label. */
+  txnLabels?: Record<string, string>;
   /** Default asset class for new/converted lines. */
   defaultAssetClass?: string;
   /** Asset class is fixed for this product (e.g. Bond/NCD = Debt) — shown read-only. */
@@ -41,8 +44,11 @@ interface ProductConfig {
 const PRODUCT_CONFIG: Record<string, ProductConfig> = {
   mutual_fund: { schemeLabel: "Scheme", schemePlaceholder: "Search catalog or type a name…", catalog: true,
     txnTypes: ["lumpsum", "additional_purchase", "sip", "sip_stop", "switch", "stp", "swp", "redemption"] },
+  // Direct Equity is bought/sold, not SIP'd/switched — show Buy/Sell, not the MF set.
   direct_equity: { schemeLabel: "Stock / scrip", schemePlaceholder: "Stock name or symbol (e.g. RELIANCE)…", catalog: false,
-    txnTypes: ["lumpsum", "additional_purchase", "sip", "redemption"], defaultAssetClass: "equity" },
+    txnTypes: ["lumpsum", "additional_purchase", "redemption"],
+    txnLabels: { lumpsum: "Buy", additional_purchase: "Buy (add-on)", redemption: "Sell" },
+    defaultAssetClass: "equity" },
   pms: { schemeLabel: "Strategy", schemePlaceholder: "PMS strategy name…", catalog: false,
     txnTypes: ["lumpsum", "additional_purchase", "redemption"], defaultAssetClass: "equity" },
   aif: { schemeLabel: "Scheme / fund", schemePlaceholder: "AIF scheme name…", catalog: false,
@@ -144,7 +150,9 @@ export function BusinessEntryForm({
   const [businessDate, setBusinessDate] = useState(initial?.businessDate ?? new Date().toISOString().slice(0, 10));
   const [status, setStatus] = useState(initial?.status === "draft" || initial?.status === "confirmed" ? initial.status : "draft");
   const [rmId, setRmId] = useState(initial?.rmId ?? currentUserId);
-  const [amcName, setAmcName] = useState(initial?.amcName ?? "");
+  // AMC is no longer an entry-level field — each scheme carries its own AMC
+  // (auto-fetched from the MF catalog), since one entry can mix AMCs. The
+  // entry-level amcName is derived from the lines on save for list/detail views.
   const [folioNo, setFolioNo] = useState(initial?.folioNo ?? "");
   const [notes, setNotes] = useState(initial?.notes ?? "");
   const [busy, setBusy] = useState(false);
@@ -206,8 +214,8 @@ export function BusinessEntryForm({
       if (a <= 0) continue;
       m.set(l.txnType, (m.get(l.txnType) ?? 0) + a);
     }
-    return TXN_OPTS.filter(([v]) => m.has(v)).map(([v, lab]) => ({ type: v, label: lab, amount: m.get(v)! }));
-  }, [lines]);
+    return TXN_OPTS.filter(([v]) => m.has(v)).map(([v, lab]) => ({ type: v, label: cfg.txnLabels?.[v] ?? lab, amount: m.get(v)! }));
+  }, [lines, cfg]);
   const liquidNet = useMemo(() => {
     let inn = 0, out = 0;
     for (const l of lines) {
@@ -224,11 +232,14 @@ export function BusinessEntryForm({
     if (cleaned.length === 0) { toast.error("Add at least one scheme with an amount", "No schemes"); return; }
     setBusy(true);
     try {
+      // Entry-level AMC is derived from the lines (first scheme that carries one)
+      // — kept for list/detail summaries now that AMC lives per scheme.
+      const headerAmc = cleaned.find((l) => l.amcName?.trim())?.amcName?.trim() || null;
       const body = {
         investorId: investorId || null,
         clientName: clientName.trim(),
         productType, platform: platform.trim() || null, businessDate, status, rmId: rmId || null,
-        amcName: amcName.trim() || null, folioNo: folioNo.trim() || null, notes: notes.trim() || null,
+        amcName: headerAmc, folioNo: folioNo.trim() || null, notes: notes.trim() || null,
         lines: cleaned.map((l) => ({
           schemeCode: l.schemeCode || null, schemeName: l.schemeName.trim(), amcName: l.amcName || null,
           assetCategory: l.assetCategory || null, assetClass: l.assetClass,
@@ -303,10 +314,6 @@ export function BusinessEntryForm({
           </SelectField>
         </div>
         <div>
-          <Label>AMC (optional)</Label>
-          <Input value={amcName} onChange={setAmcName} placeholder="e.g. HDFC Mutual Fund" />
-        </div>
-        <div>
           <Label>Folio no. (optional)</Label>
           <Input value={folioNo} onChange={setFolioNo} placeholder="Folio / account no." />
         </div>
@@ -351,12 +358,18 @@ export function BusinessEntryForm({
                       className="w-full h-8 rounded-lg border border-border bg-card px-2.5 text-xs focus:outline-none focus:border-brand-cyan/60 focus:ring-2 focus:ring-brand-cyan/15"
                     />
                   )}
-                  {cfg.catalog && l.assetCategory && <div className="text-[10px] text-muted-foreground mt-1 truncate">{l.amcName ? `${l.amcName} · ` : ""}{l.assetCategory}</div>}
+                  {cfg.catalog && (l.amcName || l.assetCategory) && (
+                    <div className="text-[10px] text-muted-foreground mt-1 truncate">
+                      {l.amcName ? <><span className="font-medium text-foreground/70">AMC:</span> {l.amcName}</> : null}
+                      {l.amcName && l.assetCategory ? " · " : ""}
+                      {l.assetCategory}
+                    </div>
+                  )}
                 </div>
                 <div className="lg:col-span-2">
                   <Label sm>Type</Label>
                   <SelectField size="sm" value={l.txnType} onChange={(e) => patchLine(i, { txnType: e.target.value })} className="w-full">
-                    {TXN_OPTS.filter(([v]) => cfg.txnTypes.includes(v)).map(([v, lab]) => <option key={v} value={v}>{lab}</option>)}
+                    {TXN_OPTS.filter(([v]) => cfg.txnTypes.includes(v)).map(([v, lab]) => <option key={v} value={v}>{cfg.txnLabels?.[v] ?? lab}</option>)}
                   </SelectField>
                 </div>
                 <div className="lg:col-span-2">

@@ -118,7 +118,7 @@ await withTenant(session.tenantId, async (tx) => {
 
 System-level operations that legitimately need cross-tenant access (the outbox poller, the segment materializer scanning all tenants) use `withSystem()` — guarded by `ALLOW_SYSTEM_TX=1` env var.
 
-**When you add a new table:** add it to the `tenant_tables` array in `drizzle/migrations/0001_rls_policies.sql`. (Future TODO: CI check that every `tenant_id` column has a policy.)
+**When you add a new table:** include `ENABLE`/`FORCE ROW LEVEL SECURITY` + a `tenant_isolation` policy in the table's own migration (every migration after 0030 does this — copy the pattern from a recent one). The static `tenant_tables` array in `0001_rls_policies.sql` is **historical/stale** — actual coverage is enforced by the dynamic backfill in `0030_rls_backfill_all_tenant_tables.sql` and verified in CI by `npm run check:rls`, which fails the build if any `tenant_id` table lacks a policy. Don't rely on editing the 0001 array.
 
 ---
 
@@ -220,7 +220,7 @@ The recipe will appear at `/dashboard/workflows/recipes/<key>`.
 ### Add a new schema table
 1. Create `src/db/schema/<your_table>.ts` (pattern: import `id`, `tenantId`, `timestamps` from `_shared.ts`).
 2. Re-export from `src/db/schema/index.ts`.
-3. Add the table name to the `tenant_tables` array in `drizzle/migrations/0001_rls_policies.sql`.
+3. In the table's migration, add `ENABLE` + `FORCE ROW LEVEL SECURITY` and a `tenant_isolation` policy (copy a recent migration; `npm run check:rls` fails CI otherwise). Do NOT rely on the stale `tenant_tables` array in `0001`.
 4. Run `npm run db:generate` then `npm run db:migrate`.
 
 ### Add a new queryable field on investors
@@ -288,15 +288,52 @@ are both responsive, or 503 if the DB is unreachable. Used by
 
 ## What's deferred / not yet wired
 
-- **Authentication** — NextAuth dependencies are in `package.json` but session integration is incomplete. The middleware that injects `tenant_id` into `withTenant` calls needs to read from the session.
+> **Note:** Auth and billing are NO LONGER deferred — both are wired end-to-end
+> (see "Already built" below). This list is now the genuine roadmap.
+
 - **BSE Star MF + NSE NMF II** — transaction execution
 - **CAMS/KFintech reverse feed parser** — daily reconciliation
-- **Razorpay billing**
 - **Investor mobile app** (React Native)
 - **Video session suite**
 - **AI assistant Tier 2 RAG** (per-tenant vector index)
+- **Per-tenant SMS (MSG91/DLT) self-serve config** — the comms pipeline reads a
+  per-tenant `msg91` integration but there's no settings UI/API to set it, so
+  every tenant falls back to the shared env DLT key. DLT registration is
+  per-entity in India, so this needs a settings page before SMS scales per-firm.
+- **RTA bulk-import client-count quota** — `assertInvestorQuota` is enforced on
+  the interactive create paths (manual / CSV commit / lead-convert), but the RTA
+  master importer (`src/lib/rta/import.ts`) creates investors mid-pipeline with
+  folio/family linking and is NOT yet capped; enforce there carefully so the
+  linkage isn't broken.
+- **Workflow send durability (outbox)** — `dispatch()` still performs the
+  external adapter call inside the workflow step's DB transaction. A rollback
+  after a successful send can't be recorded, so a re-run may double-send. The
+  `startRun` active-subject unique index (migration 0124) removes the most
+  common duplicate-run source; the full fix is to commit the `queued` row, send
+  OUTSIDE any open tx, then commit status (the campaign dispatcher already does
+  this — mirror it in the runner).
 
 These have clear hooks in the schema and architecture; pick them up in roadmap order (see README "What's left").
+
+### Already built (commercial readiness)
+
+- **Authentication** — fully wired: JWT (HS256) sessions verified in Edge
+  middleware with a DB revocation check, separate MFD vs platform-admin cookies,
+  login / logout / forgot / reset / 2FA, and self-serve signup. The RLS
+  `app.tenant_id` is set from the verified session in every `withTenant`.
+- **Self-serve onboarding** — signup creates tenant + owner + HQ branch + trial
+  subscription + master seeds + default recipes in one transaction, then issues
+  an **email-verification** token (migration 0123; owner is logged in but
+  `users.email_verified_at` is null until confirmed, and inviting a team is
+  gated on the inviter being verified).
+- **Team management** — email invites with set-password-on-accept, role
+  assignment, seat limit (`packages.maxUsers`) enforced at invite, offboarding
+  with client redistribution. `platform_admin` is never tenant-assignable.
+- **Billing** — Razorpay recurring auto-debit, HMAC-verified webhook, full
+  subscription lifecycle, license gate restricting lapsed tenants to billing +
+  support. Client-count quota (`packages.maxInvestors`) enforced on investor
+  creation; per-tenant monthly message quota via
+  `packages.feature_flags.maxMessagesPerMonth` (see comms pipeline step 5c).
 
 ---
 

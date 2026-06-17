@@ -157,6 +157,8 @@ export const users = pgTable(
     invitedAt: timestamp("invited_at", { withTimezone: true }),
     activatedAt: timestamp("activated_at", { withTimezone: true }),
     offboardedAt: timestamp("offboarded_at", { withTimezone: true }),
+    /** Self-serve signup verification. null = email not yet confirmed. */
+    emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
     ...timestamps,
   },
   (t) => ({

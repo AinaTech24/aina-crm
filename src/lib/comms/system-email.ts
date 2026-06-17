@@ -26,7 +26,17 @@ export async function sendSystemEmail(args: {
   /** Stable key so a retried send dedupes provider-side. */
   idempotencyKey?: string;
 }): Promise<SystemEmailResult> {
-  if (!process.env.RESEND_API_KEY) return { sent: false, reason: "email_not_configured" };
+  if (!process.env.RESEND_API_KEY) {
+    // In production this silently breaks onboarding (invited users / reset
+    // links never arrive). Surface it loudly instead of failing invisibly.
+    if (process.env.NODE_ENV === "production") {
+      console.error(
+        "[system-email] RESEND_API_KEY is not configured — transactional auth email " +
+          `(to ${args.to}, subject "${args.subject}") was NOT sent. Configure platform email.`
+      );
+    }
+    return { sent: false, reason: "email_not_configured" };
+  }
   try {
     await emailAdapter.send({
       tenantId: args.tenantId,

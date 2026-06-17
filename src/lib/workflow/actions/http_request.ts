@@ -21,7 +21,15 @@ export const httpRequestHandler: ActionHandler<any> = {
           : JSON.stringify(cfg.bodyTemplate)
         : undefined;
 
-    const res = await fetch(url, { method: cfg.method, headers, body });
+    // Bound the call — without a timeout a hung endpoint pins the step's DB
+    // connection until Postgres' statement_timeout kills the whole transaction.
+    const timeoutMs = Number(cfg.timeoutMs) > 0 ? Number(cfg.timeoutMs) : 15_000;
+    const res = await fetch(url, {
+      method: cfg.method,
+      headers,
+      body,
+      signal: AbortSignal.timeout(timeoutMs),
+    });
     let parsed: unknown;
     try {
       parsed = await res.clone().json();

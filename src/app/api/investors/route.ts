@@ -13,7 +13,7 @@ import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap, can } from "@/lib/auth/rbac";
-import { assertActiveLicense, assertModuleEnabled } from "@/lib/auth/license";
+import { assertActiveLicense, assertModuleEnabled, assertInvestorQuota } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { healthFields } from "@/lib/investors/health";
 import { investors, eventsOutbox } from "@/db/schema";
@@ -131,6 +131,8 @@ export async function POST(req: NextRequest) {
     const session = await requireSession();
     requireCap(session.roles, "investor.edit.all");
     await assertActiveLicense(session.tenantId, session.roles);
+    // Plan client-count gate — enforce the maxInvestors the package advertises.
+    await assertInvestorQuota(session.tenantId, session.roles, 1);
 
     const parse = CreateBody.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) {

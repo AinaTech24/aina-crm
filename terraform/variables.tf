@@ -32,6 +32,28 @@ variable "db_allocated_storage" {
   default = 20
 }
 
+# Storage AUTOSCALING ceiling. RDS grows allocated storage on demand up to this
+# (never shrinks) so a full disk can't fail writes / lose data — and you only
+# pay for what's actually used, not the ceiling. Set comfortably above the
+# baseline. 0/equal-to-allocated disables autoscaling.
+variable "db_max_allocated_storage" {
+  type    = number
+  default = 200
+}
+
+# Monthly cost guardrail. AWS Budgets emails at 80% (actual) and 100%
+# (forecast) so spend never surprises you. Budgets themselves are free.
+variable "monthly_budget_usd" {
+  type    = string
+  default = "60"
+}
+
+# Where budget alerts go. Leave blank to skip creating the budget alarm.
+variable "budget_alert_email" {
+  type    = string
+  default = "pritesh@ainatech.in"
+}
+
 variable "db_name" {
   type    = string
   default = "mfd"

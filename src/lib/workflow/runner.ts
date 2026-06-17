@@ -33,10 +33,49 @@ export interface StartRunInput {
  * for asynchronous execution by the workflow runner worker.
  *
  * Idempotency: respects `workflows.recurrencePolicy` and the active-subject
- * unique index — if a run is already active for the same (workflow, subject),
- * this function returns the existing run id without creating a new one.
+ * unique index (workflow_runs_active_subject_uniq, migration 0124) — if a run
+ * is already active for the same (workflow, subject), this function returns the
+ * existing run id without creating a new one. The recurrence SELECT handles the
+ * policy window (once / once_per_day / …); the unique index closes the
+ * SELECT-then-INSERT race between two concurrent events for the same subject.
  */
 export async function startRun(input: StartRunInput): Promise<{ runId: string; created: boolean }> {
+  try {
+    return await startRunInner(input);
+  } catch (err: any) {
+    // Active-run race: a concurrent event already inserted the one allowed
+    // active run and the partial unique index rejected this duplicate. Recover
+    // by returning the existing active run (the failed INSERT aborted our tx,
+    // so the lookup runs in a fresh transaction).
+    const pg = (err?.cause ?? err) as any;
+    const isActiveDup =
+      pg?.code === "23505" &&
+      String(pg?.constraint ?? pg?.message ?? "").includes("workflow_runs_active_subject_uniq");
+    if (isActiveDup && input.subjectId && input.subjectType) {
+      const existing = await withTenant(input.tenantId, async (tx) => {
+        const [r] = await tx
+          .select()
+          .from(workflowRuns)
+          .where(
+            and(
+              eq(workflowRuns.workflowId, input.workflowId),
+              eq(workflowRuns.tenantId, input.tenantId),
+              eq(workflowRuns.subjectType, input.subjectType!),
+              eq(workflowRuns.subjectId, input.subjectId!),
+              sql`${workflowRuns.status} IN ('queued','running','paused')`
+            )
+          )
+          .orderBy(sql`${workflowRuns.createdAt} DESC`)
+          .limit(1);
+        return r;
+      });
+      if (existing) return { runId: existing.id, created: false };
+    }
+    throw err;
+  }
+}
+
+async function startRunInner(input: StartRunInput): Promise<{ runId: string; created: boolean }> {
   return withTenant(input.tenantId, async (tx) => {
     const [wf] = await tx
       .select()

@@ -1373,6 +1373,24 @@ function ActionConfigEditor({
                   </SelectField>
                 </div>
               </div>
+              <div>
+                <label className="text-[10px] text-muted-foreground">Send to</label>
+                <SelectField
+                  value={String(c.recipient ?? "subject")}
+                  onChange={(e) => set({ recipient: e.target.value })}
+                  className="input-base text-xs w-full"
+                >
+                  <option value="subject">The record that triggered this (lead / client)</option>
+                  <option value="referrer">Referring client (Referred-by) — for Lead rules</option>
+                </SelectField>
+                {String(c.recipient ?? "subject") === "referrer" && (
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    Sends to the client linked in the lead&apos;s &ldquo;Referred by&rdquo; field. The new lead&apos;s name is
+                    available in your template as <code>{"{{referred_lead_name}}"}</code>. Skipped if the lead has no linked
+                    referring client or they have no {channel} on file.
+                  </p>
+                )}
+              </div>
               {action.type === "send_email" && (
                 <div>
                   <label className="text-[10px] text-muted-foreground">Send from</label>
@@ -1580,7 +1598,7 @@ function defaultConfigFor(typeKey: string, mod: Module | undefined): Record<stri
     case "send_email":
     case "send_whatsapp":
     case "send_sms":
-      return { templateKey: "", category: "transactional" };
+      return { templateKey: "", category: "transactional", recipient: "subject" };
     case "create_task":
     case "schedule_call":
       return { title: "", priority: "normal", assignee: "subject.rm_id" };

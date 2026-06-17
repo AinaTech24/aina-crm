@@ -8,6 +8,7 @@
  *   4. (WhatsApp only) session window check
  *   5. Compliance gate
  *   5b. Rate limit — per-tenant × channel token bucket (auth/OTP exempt)
+ *   5c. Monthly plan quota — per-tenant billing-period message cap (auth/OTP exempt)
  *   6. Insert communications row with full audit snapshot (status='queued')
  *   7. Channel adapter dispatch (Resend gets a stable idempotency key)
  *   8. Stamp external id + status
@@ -38,6 +39,7 @@ import { smsAdapter } from "./adapters/msg91";
 import { getTenantIntegration } from "./integrations";
 import { resolveEmailSender } from "./sender";
 import { consumeRateLimit } from "./rate-limit";
+import { checkMonthlyQuota } from "./usage";
 
 
 export type DispatchChannel = "whatsapp" | "email" | "sms";
@@ -394,6 +396,22 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
   }
 
   // -----------------------------------------------------------
+  // 5c. Monthly plan quota — bound a tenant's total billable channel spend
+  // over the billing period (the rate limiter only caps per-minute bursts).
+  // Unlimited / unconfigured plans short-circuit; auth/OTP is exempt.
+  // -----------------------------------------------------------
+  const quota = await checkMonthlyQuota(tx, input.tenantId, input.category);
+  if (!quota.allowed) {
+    return await skip(
+      tx,
+      communicationId,
+      input,
+      "skipped_quota",
+      `monthly message allowance reached (${quota.used}/${quota.cap}) — upgrade the plan to send more`
+    );
+  }
+
+  // -----------------------------------------------------------
   // 6. Pre-insert communications row (status='queued') for audit
   // -----------------------------------------------------------
   await tx.insert(communications).values({
@@ -515,6 +533,7 @@ async function skip(
     | "skipped_compliance"
     | "skipped_session"
     | "skipped_rate_limit"
+    | "skipped_quota"
     | "skipped_no_contact"
     | "template_not_approved"
     | "render_error",

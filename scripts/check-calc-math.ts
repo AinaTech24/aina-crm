@@ -19,6 +19,10 @@ import {
   computeGoal,
   retirementCorpus,
 } from "../src/lib/goal-planning/calc";
+import { youthBucketStrategy } from "../src/lib/calculators/bucket-strategy";
+import { familyWealthPlan } from "../src/lib/calculators/family-wealth";
+import { journeyToFreedom } from "../src/lib/calculators/journey-to-freedom";
+import { housingEmiSip } from "../src/lib/calculators/housing-emi-sip";
 
 let failures = 0;
 
@@ -65,6 +69,57 @@ console.log("[calc] inverse round-trip (requiredSip → fvSip):");
 console.log("[calc] CAGR:");
 ok("cagr(100→200 over 10y) ≈ 7.177%", approx(cagrCalculate({ initialValue: 100, finalValue: 200, years: 10 }).cagrPct, 7.177, 0.5));
 ok("cagr guards initial=0", cagrCalculate({ initialValue: 0, finalValue: 200, years: 10 }).cagrPct === 0);
+
+// ── New EFP calculator libs — invariants + pinned reference values so a future
+// edit can't silently regress the client-facing numbers (these had no coverage,
+// and the bucket SIP sign bug shipped uncaught). Inputs match the components'
+// defaults / representative scenarios; expected values captured from the libs.
+console.log("[calc] 4-bucket strategy (youthBucketStrategy):");
+{
+  const b = youthBucketStrategy({
+    monthlyExpenseToday: 80000, inflationPct: 6, ageNow: 25, freedomAge: 41,
+    longevity: 90, debtReturnPct: 8, hybridReturnPct: 10, largeCapReturnPct: 12, midCapReturnPct: 15,
+  });
+  ok("SIPs are POSITIVE (sign-bug guard)", b.sipBucket > 0 && b.sipWithout > 0, `bucket=${Math.round(b.sipBucket)} without=${Math.round(b.sipWithout)}`);
+  ok("bucket SIP < single-fund SIP (the 'MFD alpha')", b.sipBucket < b.sipWithout);
+  ok("savingsPct ≈ 43% (not the guarded 0)", approx(b.savingsPct, 0.4299, 0.5));
+  ok("corpusBucket ≈ 4.47 Cr", approx(b.corpusBucket, 44_654_598, 0.1), String(Math.round(b.corpusBucket)));
+  ok("sipBucket ≈ 81,813/mo", approx(b.sipBucket, 81_813, 0.2), String(Math.round(b.sipBucket)));
+}
+
+console.log("[calc] family wealth plan (familyWealthPlan):");
+{
+  const f = familyWealthPlan({
+    lumpsum: 1_000_000, monthlySip: 50_000, currentAge: 30, targetAge: 60,
+    classes: [{ name: "Equity", allocationPct: 60, returnPct: 12 }, { name: "Debt", allocationPct: 40, returnPct: 7 }],
+  });
+  ok("totalInvested = 1.9 Cr (10L + 50k×360)", f.totalInvested === 19_000_000, String(f.totalInvested));
+  ok("blended return = 10% (60/40 of 12/7)", approx(f.blendedReturnPct, 10, 0.01));
+  ok("finalTotal > totalInvested and finite", Number.isFinite(f.finalTotal) && f.finalTotal > f.totalInvested);
+  ok("finalTotal ≈ 14.26 Cr", approx(f.finalTotal, 142_583_724, 0.1), String(Math.round(f.finalTotal)));
+}
+
+console.log("[calc] journey to freedom (journeyToFreedom):");
+{
+  const j = journeyToFreedom({ salaryMonthly: 100_000, expensesMonthly: 50_000, inflationPct: 6, returnPct: 12 });
+  ok("monthly investable = salary − expenses", j.investmentMonthly === 50_000);
+  ok("annual expense = 6,00,000", j.annualExpense === 600_000);
+  ok("real rate ≈ 5.66%", approx(j.realRatePct, 5.6604, 0.5));
+  ok("freedom corpus ≈ 1.12 Cr", approx(j.freedomCorpus, 11_200_000, 0.1), String(Math.round(j.freedomCorpus)));
+  ok("reaches freedom within horizon", j.freedomYear !== null && j.freedomYear > 0);
+}
+
+console.log("[calc] EMI→SIP housing (housingEmiSip):");
+{
+  const h = housingEmiSip({
+    loan: 5_000_000, escalationPct: 7, loanRatePct: 9, tenureYears: 20,
+    sipReturnPct: 12, sipGrowthPct: 10, rentYieldPct: 3, rentGrowthPct: 7,
+  });
+  ok("all three strategies finite & positive", h.strategies.every((s) => Number.isFinite(s.wealth) && s.wealth > 0));
+  ok("monthly EMI ≈ 45,644", approx(h.emiMonthly, 45_644, 0.5), String(Math.round(h.emiMonthly)));
+  ok("payoff wealth ≈ 9.01 Cr", approx(h.strategies[0].wealth, 90_093_480, 0.2), String(Math.round(h.strategies[0].wealth)));
+  ok("bestKey is a real strategy key", ["payoff", "keep", "rentbuy"].includes(h.bestKey));
+}
 
 if (failures === 0) {
   console.log("\n[calc] all checks passed ✓");

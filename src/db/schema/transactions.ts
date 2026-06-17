@@ -176,6 +176,9 @@ export const sips = pgTable(
     statusIdx: index("sips_status_idx").on(t.tenantId, t.status),
     investorIdx: index("sips_investor_idx").on(t.tenantId, t.investorId),
     endDateIdx: index("sips_end_date_idx").on(t.tenantId, t.status, t.endDate),
+    // Supports the daily-SIP report's `... WHERE created_at >= now() - interval`
+    // (RLS adds the tenant_id predicate) which otherwise tenant-scans.
+    createdIdx: index("sips_tenant_created_idx").on(t.tenantId, t.createdAt),
   })
 );
 

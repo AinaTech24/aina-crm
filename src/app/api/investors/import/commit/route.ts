@@ -14,7 +14,7 @@ import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
-import { assertActiveLicense } from "@/lib/auth/license";
+import { assertActiveLicense, loadTenantLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { healthFields } from "@/lib/investors/health";
 
@@ -50,10 +50,31 @@ export async function POST(req: NextRequest) {
 
     let inserted = 0;
     let skipped = 0;
+    let quotaSkipped = 0;
     const errors: Array<{ rowIndex: number; error: string }> = [];
+
+    // Plan client-count gate. Rather than reject the whole import, fill up to
+    // the plan cap and report the overflow as quota-skipped so a partial
+    // import still lands. `room` is remaining capacity (Infinity if unlimited).
+    const license = await loadTenantLicense(session.tenantId, session.roles);
+    const cap = license.maxInvestors;
+    let room = Infinity;
+    if (cap && cap < 1e9) {
+      const current = await withTenant(session.tenantId, async (tx) => {
+        const r = (await tx.execute(
+          sql`SELECT count(*)::int c FROM investors WHERE tenant_id = ${session.tenantId}::uuid AND status <> 'closed'`
+        )).rows[0] as { c?: number } | undefined;
+        return Number(r?.c ?? 0);
+      });
+      room = Math.max(0, cap - current);
+    }
 
     await withTenant(session.tenantId, async (tx) => {
       for (let i = 0; i < rows.length; i++) {
+        if (inserted >= room) {
+          quotaSkipped++;
+          continue;
+        }
         const row = rows[i];
         const name = String(row[reverse.name] ?? "").trim();
         const pan = String(row[reverse.pan] ?? "").trim().toUpperCase();
@@ -118,12 +139,21 @@ export async function POST(req: NextRequest) {
         action: "investor.bulk_import",
         entityType: "investor",
         entityId: null,
-        meta: { inserted, skipped, errored: errors.length, totalRows: rows.length },
+        meta: { inserted, skipped, quotaSkipped, errored: errors.length, totalRows: rows.length },
         ...clientMeta,
       });
     });
 
-    return NextResponse.json({ inserted, skipped, errored: errors.length, errors: errors.slice(0, 50) });
+    return NextResponse.json({
+      inserted,
+      skipped,
+      quotaSkipped,
+      errored: errors.length,
+      errors: errors.slice(0, 50),
+      ...(quotaSkipped > 0
+        ? { quotaMessage: `${quotaSkipped} client(s) were not imported because your plan's client limit (${cap}) was reached. Upgrade to add more.` }
+        : {}),
+    });
   } catch (err: any) {
     return handleApiError(err);
   }

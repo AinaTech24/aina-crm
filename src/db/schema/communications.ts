@@ -39,6 +39,7 @@ export const communications = pgTable(
         "skipped_session",
         "skipped_compliance",
         "skipped_rate_limit",
+        "skipped_quota", // tenant hit its plan's monthly message allowance
         "skipped_no_contact", // recipient has no email/phone on file (campaign fan-out)
         "sent",
         "delivered",

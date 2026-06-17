@@ -26,47 +26,51 @@ export async function fireDueSchedules(): Promise<number> {
   });
 
   for (const t of rows.rows as any[]) {
+    const cfg = t.config ?? {};
+    const cron: string = t.cron_expression ?? cfg.cron;
+    if (!cron) continue;
+    const tenantId = t.wf_tenant ?? t.tenant_id;
+
+    // 1. Compute the next occurrence and ADVANCE THE WATERMARK FIRST.
+    //    Previously next_run_at was only written after startRun succeeded, so a
+    //    transient startRun error (or an invalid cron) left the trigger due
+    //    (next_run_at <= now()) and it re-fired every 30s tick forever. Claiming
+    //    the occurrence up front means the worst case is a single skipped run,
+    //    not a runaway loop / send flood. (TODO v2: cfg.subjectQuery should
+    //    expand to one run per matching subject; for now schedules fire a single
+    //    subject-less run that a workflow `loop` node fans out.)
+    let next: Date;
     try {
-      const cfg = t.config ?? {};
-      const cron: string = t.cron_expression ?? cfg.cron;
-      if (!cron) continue;
-
-      // Fire one run for the workflow. For schedules that target a set of
-      // subjects (e.g., "all investors matching X"), the workflow's first
-      // node is typically a `loop` that pages through subjects — but we
-      // also support a workflow-level subjectQuery on the trigger which
-      // expands to multiple runs.
-      const tenantId = t.wf_tenant ?? t.tenant_id;
-
-      if (cfg.subjectQuery) {
-        // TODO: compile subjectQuery to SQL, page through, start a run per subject.
-        // For v1, schedules fire a single run with no subject — workflows use
-        // a loop with a `find_subjects` step (deferred to v2).
-        await startRun({
-          tenantId,
-          workflowId: t.workflow_id,
-          triggeredBy: "schedule",
-          triggerId: t.id,
-        });
-      } else {
-        await startRun({
-          tenantId,
-          workflowId: t.workflow_id,
-          triggeredBy: "schedule",
-          triggerId: t.id,
-        });
-      }
-
-      // Compute next occurrence
-      const next = CronExpressionParser.parse(cron, { tz: cfg.timezone ?? "Asia/Kolkata" }).next().toDate();
+      next = CronExpressionParser.parse(cron, { tz: cfg.timezone ?? "Asia/Kolkata" }).next().toDate();
+    } catch (err) {
+      console.error(`[scheduler] trigger ${t.id} has invalid cron '${cron}':`, (err as Error).message);
+      continue;
+    }
+    try {
       await withTenant(tenantId, async (tx) => {
         await tx.execute(
           sql`UPDATE workflow_triggers SET last_run_at = now(), next_run_at = ${next} WHERE id = ${t.id}`
         );
       });
+    } catch (err) {
+      // Couldn't claim the occurrence — do NOT fire (avoids re-firing a run
+      // whose watermark we failed to advance).
+      console.error(`[scheduler] trigger ${t.id} watermark update failed:`, (err as Error).message);
+      continue;
+    }
+
+    // 2. Fire the run. A failure here is logged but the watermark already moved,
+    //    so the schedule recovers on the next due time instead of looping.
+    try {
+      await startRun({
+        tenantId,
+        workflowId: t.workflow_id,
+        triggeredBy: "schedule",
+        triggerId: t.id,
+      });
       fired++;
     } catch (err) {
-      console.error(`[scheduler] trigger ${t.id} failed:`, (err as Error).message);
+      console.error(`[scheduler] trigger ${t.id} startRun failed:`, (err as Error).message);
     }
   }
   return fired;

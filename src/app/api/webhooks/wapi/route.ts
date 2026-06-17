@@ -11,13 +11,17 @@
  *
  * GET handles Meta's verification handshake (hub.challenge).
  *
- * Security: if WAINA_WEBHOOK_SECRET is set, the platform must echo it in the
- * `x-webhook-secret` (or `x-api-key`) header; otherwise the request is accepted
- * (the Wapi inbound path has no shared-secret HMAC). Idempotent by
- * (external_id, channel).
+ * Security: the platform must echo WAINA_WEBHOOK_SECRET in the
+ * `x-webhook-secret` (or `x-api-key`) header. In production the secret is
+ * MANDATORY — an unconfigured secret fails closed (503), because an open
+ * inbound path lets anyone who knows a tenant's receiving WA number forge
+ * messages, flip outbound→replied, and revoke a tenant's marketing consent
+ * via a fake STOP. In non-production the check is skipped when unset so local
+ * testing isn't blocked. Idempotent by (external_id, channel).
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { timingSafeEqual } from "crypto";
 import { sql } from "drizzle-orm";
 import { v4 as uuid } from "uuid";
 import { withSystem, withTenant } from "@/db/client";
@@ -44,11 +48,20 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const rawBody = await req.text();
 
-  // Optional shared-secret gate.
+  // Shared-secret gate. Mandatory in production (fail closed if unset).
   const secret = process.env.WAINA_WEBHOOK_SECRET;
-  if (secret) {
+  if (!secret) {
+    if (process.env.NODE_ENV === "production") {
+      captureError("webhook.secret_unconfigured", null, { source: "wapi" });
+      return NextResponse.json(
+        { error: "webhook not configured" },
+        { status: 503 }
+      );
+    }
+    // non-production: allow through for local testing
+  } else {
     const got = req.headers.get("x-webhook-secret") ?? req.headers.get("x-api-key") ?? "";
-    if (got !== secret) {
+    if (!safeEqual(got, secret)) {
       captureError("webhook.signature_failed", null, { source: "wapi" });
       return NextResponse.json({ error: "invalid signature" }, { status: 401 });
     }
@@ -250,6 +263,14 @@ async function handleInbound(msg: { from: string; to: string; text: string; mess
       await autoTriageInbound({ tx, tenantId, investorId, fromPhone: from, text });
     }
   });
+}
+
+/** Constant-time string compare that tolerates length mismatch. */
+function safeEqual(a: string, b: string): boolean {
+  const ab = Buffer.from(a);
+  const bb = Buffer.from(b);
+  if (ab.length !== bb.length) return false;
+  return timingSafeEqual(ab, bb);
 }
 
 function normalizePhone(num: string): string {

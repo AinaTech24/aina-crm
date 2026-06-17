@@ -28,6 +28,7 @@ export * from "./packages";
 export * from "./invites";
 export * from "./commission";
 export * from "./password_resets";
+export * from "./email_verifications";
 export * from "./notifications";
 export * from "./onboarding";
 export * from "./risk_profiles";

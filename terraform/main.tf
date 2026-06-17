@@ -109,6 +109,29 @@ resource "aws_s3_bucket_public_access_block" "uploads" {
   restrict_public_buckets = true
 }
 
+# Cost hygiene (no data loss — same objects, cheaper tier + cleanup):
+#  - move objects to Intelligent-Tiering after 90 days (auto hot/cold, no
+#    retrieval fees — safe for documents that may be re-opened later)
+#  - delete abandoned multipart uploads (presigned PUTs that never completed)
+resource "aws_s3_bucket_lifecycle_configuration" "uploads" {
+  bucket = aws_s3_bucket.uploads.id
+
+  rule {
+    id     = "intelligent-tiering-cold-objects"
+    status = "Enabled"
+    filter {}
+
+    transition {
+      days          = 90
+      storage_class = "INTELLIGENT_TIERING"
+    }
+
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7
+    }
+  }
+}
+
 resource "aws_iam_role" "ec2" {
   name = "${var.project}-ec2"
   assume_role_policy = jsonencode({
@@ -146,25 +169,33 @@ resource "aws_db_subnet_group" "main" {
 }
 
 resource "aws_db_instance" "main" {
-  identifier                  = "${var.project}-db"
-  engine                      = "postgres"
-  engine_version              = "16"
-  instance_class              = var.db_instance_class
-  allocated_storage           = var.db_allocated_storage
-  storage_type                = "gp3"
-  storage_encrypted           = true
-  db_name                     = var.db_name
-  username                    = var.db_username
-  password                    = random_password.db.result
-  db_subnet_group_name        = aws_db_subnet_group.main.name
-  vpc_security_group_ids      = [aws_security_group.db.id]
-  publicly_accessible         = false
-  multi_az                    = false
-  backup_retention_period     = 7
-  auto_minor_version_upgrade  = true
-  skip_final_snapshot         = true
-  deletion_protection         = false
-  apply_immediately           = true
+  identifier        = "${var.project}-db"
+  engine            = "postgres"
+  engine_version    = "16"
+  instance_class    = var.db_instance_class
+  allocated_storage = var.db_allocated_storage
+  # Autoscale storage up to this ceiling so a full 20 GB disk can't start
+  # failing writes (an availability + data-integrity risk). You pay for used
+  # storage, not the ceiling, so this is free insurance.
+  max_allocated_storage      = var.db_max_allocated_storage
+  storage_type               = "gp3"
+  storage_encrypted          = true
+  db_name                    = var.db_name
+  username                   = var.db_username
+  password                   = random_password.db.result
+  db_subnet_group_name       = aws_db_subnet_group.main.name
+  vpc_security_group_ids     = [aws_security_group.db.id]
+  publicly_accessible        = false
+  multi_az                   = false
+  backup_retention_period    = 7
+  auto_minor_version_upgrade = true
+  # Data-loss seatbelts: a `terraform destroy` (or console delete) now takes a
+  # final snapshot and is blocked outright until someone deliberately flips
+  # deletion_protection off. Backups (7-day PITR) are unchanged.
+  skip_final_snapshot       = false
+  final_snapshot_identifier = "${var.project}-db-final-${random_id.suffix.hex}"
+  deletion_protection       = true
+  apply_immediately         = true
 }
 
 # ── Web/worker box + stable public IP ────────────────────────────────────────
@@ -189,4 +220,33 @@ resource "aws_instance" "web" {
 resource "aws_eip" "web" {
   instance = aws_instance.web.id
   domain   = "vpc"
+}
+
+# ── Cost guardrail: monthly budget with email alerts (free) ───────────────────
+# Created only when budget_alert_email is set. Emails at 80% of actual spend and
+# again if forecast to exceed 100%, so the bill never surprises you.
+resource "aws_budgets_budget" "monthly" {
+  count = var.budget_alert_email != "" ? 1 : 0
+
+  name         = "${var.project}-monthly"
+  budget_type  = "COST"
+  limit_amount = var.monthly_budget_usd
+  limit_unit   = "USD"
+  time_unit    = "MONTHLY"
+
+  notification {
+    comparison_operator        = "GREATER_THAN"
+    threshold                  = 80
+    threshold_type             = "PERCENTAGE"
+    notification_type          = "ACTUAL"
+    subscriber_email_addresses = [var.budget_alert_email]
+  }
+
+  notification {
+    comparison_operator        = "GREATER_THAN"
+    threshold                  = 100
+    threshold_type             = "PERCENTAGE"
+    notification_type          = "FORECASTED"
+    subscriber_email_addresses = [var.budget_alert_email]
+  }
 }

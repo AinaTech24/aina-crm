@@ -154,29 +154,27 @@ async function OwnerCockpitBody({
       `);
 
       // ---------- 2. Monthly business breakdown ----------
+      // Sourced from the BUSINESS ENTRIES ledger (what the firm books), not the
+      // RTA `transactions` feed — so the cards reflect manually-entered business.
+      // SIP added/lumpsum/redemption/stopped map to business_entry_lines.txn_type;
+      // SIP rejected has no business-entry equivalent (a rejection isn't booked
+      // business) so it stays on sip_rejections.
       const business = await tx.execute(sql`
         SELECT
-          COUNT(*) FILTER (WHERE type = 'sip' AND status IN ('processed', 'successful')
-              AND order_date >= ${startOfMonthISO}::date)::int AS sip_added_count,
-          COALESCE(SUM(amount::numeric) FILTER (WHERE type = 'sip' AND status IN ('processed', 'successful')
-              AND order_date >= ${startOfMonthISO}::date), 0)::numeric AS sip_added_amt,
-          COUNT(*) FILTER (WHERE type = 'lumpsum' AND status IN ('processed', 'successful')
-              AND order_date >= ${startOfMonthISO}::date)::int AS lumpsum_count,
-          COALESCE(SUM(amount::numeric) FILTER (WHERE type = 'lumpsum' AND status IN ('processed', 'successful')
-              AND order_date >= ${startOfMonthISO}::date), 0)::numeric AS lumpsum_amt,
-          COALESCE(SUM(amount::numeric) FILTER (WHERE direction = 'outflow' AND status IN ('processed', 'successful')
-              AND order_date >= ${startOfMonthISO}::date), 0)::numeric AS redemption_amt,
-          COUNT(*) FILTER (WHERE type = 'sip' AND status = 'rejected'
-              AND created_at >= ${startOfMonthISO})::int AS sip_rejected_count
-        FROM transactions
-        WHERE tenant_id = ${session.tenantId}::uuid
-          -- Bound the scan to this period's rows so it uses the
-          -- transactions(tenant_id, order_date)/(tenant_id, created_at) indexes
-          -- instead of seq-scanning the tenant's entire transaction history.
-          -- Result-preserving: every FILTER above needs order_date >= start
-          -- (5 aggregates) or created_at >= start (sip_rejected), so a row
-          -- failing BOTH can't contribute to any aggregate.
-          AND (order_date >= ${startOfMonthISO}::date OR created_at >= ${startOfMonthISO})
+          COUNT(*) FILTER (WHERE l.txn_type = 'sip')::int AS sip_added_count,
+          COALESCE(SUM(l.amount::numeric) FILTER (WHERE l.txn_type = 'sip'), 0)::numeric AS sip_added_amt,
+          COUNT(*) FILTER (WHERE l.txn_type IN ('lumpsum','additional_purchase'))::int AS lumpsum_count,
+          COALESCE(SUM(l.amount::numeric) FILTER (WHERE l.txn_type IN ('lumpsum','additional_purchase')), 0)::numeric AS lumpsum_amt,
+          COALESCE(SUM(l.amount::numeric) FILTER (WHERE l.txn_type IN ('redemption','swp')), 0)::numeric AS redemption_amt,
+          COUNT(*) FILTER (WHERE l.txn_type = 'sip_stop')::int AS sip_stopped_count,
+          (SELECT COUNT(*)::int FROM sip_rejections sr
+             WHERE sr.tenant_id = ${session.tenantId}::uuid
+               AND sr.rejection_date >= ${startOfMonthISO}::date) AS sip_rejected_count
+        FROM business_entry_lines l
+        JOIN business_entries e ON e.id = l.entry_id
+        WHERE e.tenant_id = ${session.tenantId}::uuid
+          AND e.status <> 'cancelled'
+          AND e.business_date >= ${startOfMonthISO}::date
       `);
 
       // NB: "SIP stopped this period" is already computed as stopped_sips_period
@@ -258,7 +256,7 @@ async function OwnerCockpitBody({
         lumpsumAmt: Number(b.lumpsum_amt),
         redemptionAmt: Number(b.redemption_amt),
         sipRejectedCount: Number(b.sip_rejected_count),
-        sipStoppedCount: Number(h.stopped_sips_period ?? 0),
+        sipStoppedCount: Number(b.sip_stopped_count ?? 0),
         netBusiness,
         // queues
         reviewsDue: Number(q.reviews_due),

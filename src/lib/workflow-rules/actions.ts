@@ -87,26 +87,100 @@ export async function executeAction(action: Action, ctx: ActionContext): Promise
 // Comms (delegate to existing comms pipeline via dynamic import)
 // ---------------------------------------------------------------------------
 
+type CommChannel = "email" | "whatsapp" | "sms";
+type ResolvedTarget =
+  | { ok: true; recipient: string; investorId?: string; leadId?: string; extraVars: Record<string, string> }
+  | { ok: false; reason: string };
+
+/**
+ * Resolve WHO a comms action sends to.
+ *   "subject"  (default) — the record that fired the rule (its own email/phone)
+ *   "referrer"           — the client who referred this lead (lead.referred_by_
+ *                          investor_id → that investor's contact). The message
+ *                          is logged against the REFERRER (investorId), so
+ *                          consent + compliance apply to them, and the new
+ *                          lead's name is exposed as {{referred_lead_name}}.
+ */
+async function resolveCommTarget(
+  ctx: ActionContext,
+  config: Record<string, unknown>,
+  channel: CommChannel
+): Promise<ResolvedTarget> {
+  const rec = ctx.record as {
+    email?: string | null;
+    phone?: string | null;
+    whatsapp_phone?: string | null;
+    name?: string | null;
+  };
+  const pickContact = (r: { email?: string | null; phone?: string | null; whatsapp_phone?: string | null }) =>
+    channel === "email" ? r.email : channel === "whatsapp" ? r.whatsapp_phone ?? r.phone : r.phone;
+
+  const sendTo = String(config.recipient ?? "subject");
+
+  if (sendTo === "referrer") {
+    if (ctx.subjectType !== "lead") {
+      return { ok: false, reason: "'Send to referring client' only applies to Lead rules." };
+    }
+    const leadRow = (
+      await ctx.tx.execute(
+        sql`SELECT referred_by_investor_id FROM leads WHERE id = ${ctx.subjectId}::uuid AND tenant_id = ${ctx.tenantId}::uuid LIMIT 1`
+      )
+    ).rows[0] as { referred_by_investor_id?: string | null } | undefined;
+    const refId = leadRow?.referred_by_investor_id;
+    if (!refId) return { ok: false, reason: "This lead has no linked referring client." };
+
+    const inv = (
+      await ctx.tx.execute(
+        sql`SELECT id, email, phone, whatsapp_phone, name FROM investors WHERE id = ${refId}::uuid AND tenant_id = ${ctx.tenantId}::uuid LIMIT 1`
+      )
+    ).rows[0] as
+      | { id: string; email?: string | null; phone?: string | null; whatsapp_phone?: string | null; name?: string | null }
+      | undefined;
+    if (!inv) return { ok: false, reason: "Referring client record not found." };
+
+    const contact = pickContact(inv);
+    if (!contact) return { ok: false, reason: `Referring client has no ${channel} contact on file.` };
+    return {
+      ok: true,
+      recipient: String(contact),
+      investorId: inv.id,
+      leadId: undefined,
+      extraVars: { referred_lead_name: String(rec?.name ?? "") },
+    };
+  }
+
+  // Default: the triggering record itself.
+  const contact = pickContact(rec);
+  if (!contact) return { ok: false, reason: `No ${channel} contact on file for this record.` };
+  return {
+    ok: true,
+    recipient: String(contact),
+    investorId: ctx.subjectType === "investor" ? ctx.subjectId : undefined,
+    leadId: ctx.subjectType === "lead" ? ctx.subjectId : undefined,
+    extraVars: {},
+  };
+}
+
 async function runSendEmail(config: Record<string, unknown>, ctx: ActionContext): Promise<ActionResult> {
   try {
     const { dispatch } = await import("@/lib/comms/pipeline");
-    const recipient = String((ctx.record as any)?.email ?? "");
-    if (!recipient) return { type: "send_email", status: "skipped", detail: "No email address on file for this record." };
+    const target = await resolveCommTarget(ctx, config, "email");
+    if (!target.ok) return { type: "send_email", status: "skipped", detail: target.reason };
     // "Send from": record_owner → the client's RM mailbox (resolveEmailSender
     // prefers the acting user's own mailbox, falling back to the firm mailbox).
     const actorUserId =
       config.fromAddress === "record_owner" && ctx.subjectType === "investor"
-        ? ((ctx.record as any)?.rm_id ?? undefined)
+        ? ((ctx.record as { rm_id?: string | null })?.rm_id ?? undefined)
         : undefined;
     const res = await dispatch(ctx.tx, {
       tenantId: ctx.tenantId,
       channel: "email",
       templateKey: String(config.templateKey ?? config.template ?? ""),
-      recipient,
-      variables: (config.variables ?? {}) as Record<string, string>,
+      recipient: target.recipient,
+      variables: { ...((config.variables ?? {}) as Record<string, string>), ...target.extraVars },
       category: (config.category ?? "transactional") as any,
-      investorId: ctx.subjectType === "investor" ? ctx.subjectId : undefined,
-      leadId: ctx.subjectType === "lead" ? ctx.subjectId : undefined,
+      investorId: target.investorId,
+      leadId: target.leadId,
       actorUserId,
     });
     return { type: "send_email", status: res.status === "skipped" ? "skipped" : "succeeded", externalId: res.externalId, detail: res.skipped?.reason };
@@ -118,17 +192,17 @@ async function runSendEmail(config: Record<string, unknown>, ctx: ActionContext)
 async function runSendWhatsApp(config: Record<string, unknown>, ctx: ActionContext): Promise<ActionResult> {
   try {
     const { dispatch } = await import("@/lib/comms/pipeline");
-    const recipient = String((ctx.record as any)?.whatsapp_phone ?? (ctx.record as any)?.phone ?? "");
-    if (!recipient) return { type: "send_whatsapp", status: "skipped", detail: "No WhatsApp number on file for this record." };
+    const target = await resolveCommTarget(ctx, config, "whatsapp");
+    if (!target.ok) return { type: "send_whatsapp", status: "skipped", detail: target.reason };
     const res = await dispatch(ctx.tx, {
       tenantId: ctx.tenantId,
       channel: "whatsapp",
       templateKey: String(config.templateKey ?? config.template ?? ""),
-      recipient,
-      variables: (config.variables ?? {}) as Record<string, string>,
+      recipient: target.recipient,
+      variables: { ...((config.variables ?? {}) as Record<string, string>), ...target.extraVars },
       category: (config.category ?? "transactional") as any,
-      investorId: ctx.subjectType === "investor" ? ctx.subjectId : undefined,
-      leadId: ctx.subjectType === "lead" ? ctx.subjectId : undefined,
+      investorId: target.investorId,
+      leadId: target.leadId,
     });
     return { type: "send_whatsapp", status: res.status === "skipped" ? "skipped" : "succeeded", externalId: res.externalId, detail: res.skipped?.reason };
   } catch (e: any) {
@@ -139,17 +213,17 @@ async function runSendWhatsApp(config: Record<string, unknown>, ctx: ActionConte
 async function runSendSms(config: Record<string, unknown>, ctx: ActionContext): Promise<ActionResult> {
   try {
     const { dispatch } = await import("@/lib/comms/pipeline");
-    const recipient = String((ctx.record as any)?.phone ?? "");
-    if (!recipient) return { type: "send_sms", status: "skipped", detail: "No phone number on file for this record." };
+    const target = await resolveCommTarget(ctx, config, "sms");
+    if (!target.ok) return { type: "send_sms", status: "skipped", detail: target.reason };
     const res = await dispatch(ctx.tx, {
       tenantId: ctx.tenantId,
       channel: "sms",
       templateKey: String(config.templateKey ?? config.template ?? ""),
-      recipient,
-      variables: (config.variables ?? {}) as Record<string, string>,
+      recipient: target.recipient,
+      variables: { ...((config.variables ?? {}) as Record<string, string>), ...target.extraVars },
       category: (config.category ?? "transactional") as any,
-      investorId: ctx.subjectType === "investor" ? ctx.subjectId : undefined,
-      leadId: ctx.subjectType === "lead" ? ctx.subjectId : undefined,
+      investorId: target.investorId,
+      leadId: target.leadId,
     });
     return { type: "send_sms", status: res.status === "skipped" ? "skipped" : "succeeded", externalId: res.externalId, detail: res.skipped?.reason };
   } catch (e: any) {

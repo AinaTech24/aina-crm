@@ -25,7 +25,12 @@ export type Scorecard = { sales: MemberRow[]; ops: MemberRow[]; from: string; to
 /** Metrics that take a per-person annual target (flow KPIs). %/stock/inverse
  *  KPIs (SLA, attendance, AUM, overdue) keep their own absolute/relative score. */
 export const TARGETABLE_METRICS: { key: string; label: string; team: "sales" | "ops"; unit: KpiUnit }[] = [
-  { key: "net_sales", label: "Net sales", team: "sales", unit: "inr" },
+  // Business is split by product so owners can target each line separately.
+  // MF + Other come from business_entries (by product_type); Insurance comes
+  // from the insurance_policies module (annual premium booked in the period).
+  { key: "mf_business", label: "MF business", team: "sales", unit: "inr" },
+  { key: "insurance_business", label: "Insurance business", team: "sales", unit: "inr" },
+  { key: "other_business", label: "Other products", team: "sales", unit: "inr" },
   { key: "new_clients", label: "New clients", team: "sales", unit: "count" },
   { key: "converted", label: "Leads converted", team: "sales", unit: "count" },
   { key: "meetings", label: "Meetings", team: "sales", unit: "count" },
@@ -128,7 +133,12 @@ export async function loadScorecard(tx: Tx, tenantId: string, from: string, to: 
   const opsUsers = await roster(sql`('ops' = ANY(roles) OR 'back_office' = ANY(roles))`);
 
   // ── Sales KPIs ──────────────────────────────────────────────────────────
-  const netSales = await single(tx, sql`SELECT rm_id AS uid, COALESCE(SUM(total_amount),0) AS v FROM business_entries WHERE tenant_id=${t}::uuid AND rm_id IS NOT NULL AND business_date BETWEEN ${from}::date AND ${to}::date GROUP BY rm_id`);
+  // Business is split by product. MF and "other products" come from
+  // business_entries by product_type; insurance comes from the insurance module
+  // (annual premium of policies that were actually issued in the period).
+  const mfBusiness = await single(tx, sql`SELECT rm_id AS uid, COALESCE(SUM(total_amount),0) AS v FROM business_entries WHERE tenant_id=${t}::uuid AND rm_id IS NOT NULL AND product_type = 'mutual_fund' AND status <> 'cancelled' AND business_date BETWEEN ${from}::date AND ${to}::date GROUP BY rm_id`);
+  const otherBusiness = await single(tx, sql`SELECT rm_id AS uid, COALESCE(SUM(total_amount),0) AS v FROM business_entries WHERE tenant_id=${t}::uuid AND rm_id IS NOT NULL AND product_type <> 'mutual_fund' AND status <> 'cancelled' AND business_date BETWEEN ${from}::date AND ${to}::date GROUP BY rm_id`);
+  const insuranceBusiness = await single(tx, sql`SELECT sold_by_user_id AS uid, COALESCE(SUM(annual_premium),0) AS v FROM insurance_policies WHERE tenant_id=${t}::uuid AND sold_by_user_id IS NOT NULL AND status NOT IN ('proposed','in_underwriting','cancelled') AND policy_start_date BETWEEN ${from}::date AND ${to}::date GROUP BY sold_by_user_id`);
   const newClients = await single(tx, sql`SELECT rm_id AS uid, count(*) AS v FROM investors WHERE tenant_id=${t}::uuid AND rm_id IS NOT NULL AND merged_into_id IS NULL AND created_at >= ${tsLo} AND created_at < ${tsHi} GROUP BY rm_id`);
   const aum = await single(tx, sql`SELECT rm_id AS uid, COALESCE(SUM(aum),0) AS v FROM investors WHERE tenant_id=${t}::uuid AND rm_id IS NOT NULL AND status='active' AND merged_into_id IS NULL GROUP BY rm_id`);
   const converted = await single(tx, sql`SELECT owner_id AS uid, count(*) AS v FROM leads WHERE tenant_id=${t}::uuid AND owner_id IS NOT NULL AND converted_at >= ${tsLo} AND converted_at < ${tsHi} GROUP BY owner_id`);
@@ -136,7 +146,11 @@ export async function loadScorecard(tx: Tx, tenantId: string, from: string, to: 
   const activities = await single(tx, sql`SELECT owner_user_id AS uid, count(*) AS v FROM activities WHERE tenant_id=${t}::uuid AND owner_user_id IS NOT NULL AND occurred_at >= ${tsLo} AND occurred_at < ${tsHi} GROUP BY owner_user_id`);
 
   const sales = assemble(salesUsers, [
-    { key: "net_sales", label: "Net sales", unit: "inr", weight: 0.3, mode: "rel", values: netSales, targetable: true },
+    // Business split (was a single "net_sales" 0.30) — same total weight, now
+    // per product so each can carry its own target. MF leads, then insurance.
+    { key: "mf_business", label: "MF business", unit: "inr", weight: 0.15, mode: "rel", values: mfBusiness, targetable: true },
+    { key: "insurance_business", label: "Insurance business", unit: "inr", weight: 0.08, mode: "rel", values: insuranceBusiness, targetable: true },
+    { key: "other_business", label: "Other products", unit: "inr", weight: 0.07, mode: "rel", values: otherBusiness, targetable: true },
     { key: "new_clients", label: "New clients", unit: "count", weight: 0.2, mode: "rel", values: newClients, targetable: true },
     { key: "converted", label: "Leads converted", unit: "count", weight: 0.15, mode: "rel", values: converted, targetable: true },
     { key: "meetings", label: "Meetings", unit: "count", weight: 0.15, mode: "rel", values: meetings, targetable: true },

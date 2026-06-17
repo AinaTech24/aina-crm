@@ -12,7 +12,7 @@
  */
 
 import { cache } from "react";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { subscriptions, packages } from "@/db/schema";
 import { isPlatformAdmin } from "@/lib/platform";
@@ -143,6 +143,47 @@ async function loadTenantLicenseImpl(tenantId: string, roles?: string[]): Promis
       ? sub.suspendedReason ?? sub.cancelledReason ?? "Your license is not active. Please contact AINA to reactivate."
       : undefined,
   };
+}
+
+/**
+ * Plan client-count gate. The package advertises `maxInvestors` and the UI
+ * shows it, but nothing stopped a tenant from adding past it — so the
+ * client-count pricing axis was unenforced (a tenant on a 200-client plan
+ * could hold unlimited clients). Call this before creating investors.
+ *
+ * `incoming` is how many new investors this operation will add (default 1 for
+ * a single create; pass the batch size for bulk/RTA imports). Platform admins
+ * and unlimited plans (>= 1e9) pass freely. Throws a 402-shaped error so the
+ * route surfaces an "upgrade your plan" message.
+ */
+export async function assertInvestorQuota(
+  tenantId: string,
+  roles: string[] | undefined,
+  incoming = 1
+): Promise<void> {
+  if (isPlatformAdmin(roles)) return;
+  const license = await loadTenantLicense(tenantId, roles);
+  const cap = license.maxInvestors;
+  if (!cap || cap >= 1e9) return; // unlimited / unset
+
+  const current = await withTenant(tenantId, async (tx) => {
+    const r = (await tx.execute(
+      sql`SELECT count(*)::int c FROM investors WHERE tenant_id = ${tenantId}::uuid AND status <> 'closed'`
+    )).rows[0] as { c?: number } | undefined;
+    return Number(r?.c ?? 0);
+  });
+
+  if (current + incoming > cap) {
+    const room = Math.max(0, cap - current);
+    throw Object.assign(
+      new Error(
+        `Your plan includes ${cap} clients (${current} in use` +
+          (incoming > 1 ? `, ${room} remaining; this import adds ${incoming}` : "") +
+          `). Upgrade your plan to add more clients.`
+      ),
+      { status: 402 }
+    );
+  }
 }
 
 /** Allowed paths during restriction. */

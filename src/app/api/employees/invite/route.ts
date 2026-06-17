@@ -56,6 +56,23 @@ export async function POST(req: NextRequest) {
     requireCap(session.roles, "settings.users");
     await assertActiveLicense(session.tenantId, session.roles);
 
+    // Require the inviter to have a confirmed email before they can fan invites
+    // out to other addresses — closes the "unverified owner spams invites from
+    // a typo/throwaway account" vector. Existing users are grandfathered as
+    // verified by migration 0123.
+    const verified = await withTenant(session.tenantId, async (tx) => {
+      const r = (await tx.execute(
+        sql`SELECT email_verified_at FROM users WHERE id = ${session.userId}::uuid LIMIT 1`
+      )).rows[0] as { email_verified_at?: string | null } | undefined;
+      return !!r?.email_verified_at;
+    });
+    if (!verified) {
+      return NextResponse.json(
+        { error: "Please confirm your own email address before inviting team members.", code: "email_unverified" },
+        { status: 403 }
+      );
+    }
+
     // Enforce the plan's seat limit: active users + still-pending invites must
     // stay within maxUsers. (Platform admins / unlimited plans pass freely.)
     const license = await loadTenantLicense(session.tenantId, session.roles);

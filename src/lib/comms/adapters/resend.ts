@@ -153,9 +153,38 @@ export const emailAdapter = {
     if (!secret) return false;
     const signature = headers["svix-signature"] ?? headers["resend-signature"];
     if (!signature) return false;
+
     const crypto = require("crypto") as typeof import("crypto");
-    const expected = crypto.createHmac("sha256", secret).update(rawBody).digest("base64");
-    // Resend uses comma-separated multiple signatures; check any match
+    // Svix secrets are `whsec_<base64>`; the HMAC key is the decoded base64.
+    // Tolerate a raw secret too (back-compat with however it was configured).
+    const key = secret.startsWith("whsec_")
+      ? Buffer.from(secret.slice(6), "base64")
+      : Buffer.from(secret);
+
+    const svixId = headers["svix-id"];
+    const svixTimestamp = headers["svix-timestamp"];
+
+    // Proper Svix verification: sign `${id}.${timestamp}.${body}` AND reject
+    // stale timestamps so a captured payload can't be replayed forever.
+    if (svixId && svixTimestamp) {
+      const ts = Number(svixTimestamp);
+      const TOLERANCE_S = 5 * 60;
+      if (!Number.isFinite(ts) || Math.abs(Date.now() / 1000 - ts) > TOLERANCE_S) {
+        return false; // missing/old/future timestamp → replay or clock skew
+      }
+      const signedContent = `${svixId}.${svixTimestamp}.${rawBody}`;
+      const expected = crypto.createHmac("sha256", key).update(signedContent).digest("base64");
+      return signature
+        .split(" ")
+        .some((s) => {
+          const part = s.includes(",") ? s.split(",")[1] : s;
+          return safeEqual(part.trim(), expected);
+        });
+    }
+
+    // Fallback (no Svix id/timestamp headers): body-only HMAC. No replay
+    // protection, but preserves a working non-Svix signature integration.
+    const expected = crypto.createHmac("sha256", key).update(rawBody).digest("base64");
     return signature.split(",").some((s) => safeEqual(s.trim(), `v1,${expected}`) || safeEqual(s.trim(), expected));
   },
 };

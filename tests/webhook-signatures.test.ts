@@ -16,25 +16,25 @@ describe("Razorpay webhook signature", () => {
     process.env.RAZORPAY_WEBHOOK_SECRET = "test_secret_rzp";
   });
 
-  it("accepts a correctly-signed payload", () => {
+  it("accepts a correctly-signed payload", async () => {
     const sig = crypto.createHmac("sha256", "test_secret_rzp").update(body).digest("hex");
-    expect(verifyRazorpayWebhook(body, sig)).toBe(true);
+    expect(await verifyRazorpayWebhook(body, sig)).toBe(true);
   });
 
-  it("rejects a tampered payload", () => {
+  it("rejects a tampered payload", async () => {
     const sig = crypto.createHmac("sha256", "test_secret_rzp").update(body).digest("hex");
-    expect(verifyRazorpayWebhook(body + "x", sig)).toBe(false);
+    expect(await verifyRazorpayWebhook(body + "x", sig)).toBe(false);
   });
 
-  it("rejects a signature minted with the wrong secret", () => {
+  it("rejects a signature minted with the wrong secret", async () => {
     const sig = crypto.createHmac("sha256", "attacker_secret").update(body).digest("hex");
-    expect(verifyRazorpayWebhook(body, sig)).toBe(false);
+    expect(await verifyRazorpayWebhook(body, sig)).toBe(false);
   });
 
-  it("fails CLOSED when no secret is configured", () => {
+  it("fails CLOSED when no secret is configured", async () => {
     delete process.env.RAZORPAY_WEBHOOK_SECRET;
     const sig = crypto.createHmac("sha256", "anything").update(body).digest("hex");
-    expect(verifyRazorpayWebhook(body, sig)).toBe(false);
+    expect(await verifyRazorpayWebhook(body, sig)).toBe(false);
   });
 });
 
@@ -74,6 +74,34 @@ describe("Resend webhook signature", () => {
     delete process.env.RESEND_WEBHOOK_SECRET;
     expect(
       emailAdapter.verifyWebhookSignature(body, { "svix-signature": sign(body, "anything") })
+    ).toBe(false);
+  });
+
+  // Full Svix scheme: signature covers `${id}.${timestamp}.${body}` and stale
+  // timestamps are rejected so a captured payload can't be replayed forever.
+  function signSvix(id: string, ts: number, raw: string, secret: string): string {
+    return `v1,${crypto.createHmac("sha256", secret).update(`${id}.${ts}.${raw}`).digest("base64")}`;
+  }
+
+  it("accepts a full Svix-signed payload with a fresh timestamp", () => {
+    const ts = Math.floor(Date.now() / 1000);
+    expect(
+      emailAdapter.verifyWebhookSignature(body, {
+        "svix-id": "msg_1",
+        "svix-timestamp": String(ts),
+        "svix-signature": signSvix("msg_1", ts, body, "test_secret_resend"),
+      })
+    ).toBe(true);
+  });
+
+  it("rejects a replayed (stale-timestamp) Svix payload", () => {
+    const ts = Math.floor(Date.now() / 1000) - 10 * 60; // 10 min old, outside tolerance
+    expect(
+      emailAdapter.verifyWebhookSignature(body, {
+        "svix-id": "msg_1",
+        "svix-timestamp": String(ts),
+        "svix-signature": signSvix("msg_1", ts, body, "test_secret_resend"),
+      })
     ).toBe(false);
   });
 });

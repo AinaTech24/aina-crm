@@ -85,9 +85,10 @@ export default async function ScorecardPage({
         icon="sales"
         rows={data.sales}
         cols={[
-          { key: "net_sales", label: "Net sales" },
+          { key: "mf_business", label: "MF" },
+          { key: "insurance_business", label: "Insurance" },
+          { key: "other_business", label: "Other" },
           { key: "new_clients", label: "Clients" },
-          { key: "meetings", label: "Meetings" },
           { key: "converted", label: "Converted" },
         ]}
       />
@@ -104,9 +105,10 @@ export default async function ScorecardPage({
       />
 
       <p className="text-[11px] text-muted-foreground">
-        KRA score is a weighted blend of each KPI. Count KPIs (sales, clients, tickets) are scored against the team&apos;s
-        top performer this period; %-KPIs (SLA, attendance) on their own value; overdue tasks invert (fewer is better).
-        Per-person targets can be layered on next.
+        KRA score is a weighted blend of each KPI. Business is split by product — MF &amp; Other from business entries,
+        Insurance from booked policy premium. When a per-person target is set (Set targets), that KPI scores actual vs the
+        pro-rated target; otherwise count KPIs rank against the team&apos;s top performer, %-KPIs (SLA, attendance) score on
+        their own value, and overdue tasks invert (fewer is better).
       </p>
     </div>
   );

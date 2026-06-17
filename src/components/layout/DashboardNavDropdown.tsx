@@ -24,7 +24,13 @@ const isOn = (pathname: string, href: string) =>
 export function DashboardNavDropdown({ items }: { items?: DashboardSubItem[] }) {
   const pathname = usePathname() ?? "";
   const sub = items && items.length ? items : DEFAULT_SUB;
-  const onDash = sub.some((s) => isOn(pathname, s.href));
+  // Pick a SINGLE active item — the longest matching href — so a nested path
+  // (e.g. /dashboard/team/scorecard) highlights only "Team Scorecard" and not
+  // its parent "Team Dashboard" (/dashboard/team), which is also a prefix match.
+  const activeHref = sub
+    .filter((s) => isOn(pathname, s.href))
+    .reduce<string | null>((best, s) => (best && best.length >= s.href.length ? best : s.href), null);
+  const onDash = activeHref !== null;
   const [open, setOpen] = useState(onDash);
 
   return (
@@ -43,7 +49,7 @@ export function DashboardNavDropdown({ items }: { items?: DashboardSubItem[] }) 
       {open && (
         <div className="ml-4 pl-3 border-l border-border/60 space-y-0.5 sidebar-when-expanded">
           {sub.map((s) => {
-            const active = isOn(pathname, s.href);
+            const active = s.href === activeHref;
             return (
               <Link
                 key={s.href}

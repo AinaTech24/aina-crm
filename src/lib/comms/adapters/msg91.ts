@@ -45,20 +45,45 @@ export const smsAdapter = {
       sender: senderId,
     };
 
-    const res = await axios.post("https://control.msg91.com/api/v5/flow/", payload, {
-      headers: {
-        "Content-Type": "application/json",
-        authkey: authKey,
-        ...(args.idempotencyKey ? { "X-Idempotency-Key": args.idempotencyKey } : {}),
-      },
-      timeout: 15_000,
-    });
+    let res;
+    try {
+      res = await axios.post("https://control.msg91.com/api/v5/flow/", payload, {
+        headers: {
+          "Content-Type": "application/json",
+          authkey: authKey,
+          ...(args.idempotencyKey ? { "X-Idempotency-Key": args.idempotencyKey } : {}),
+        },
+        timeout: 15_000,
+      });
+    } catch (err: any) {
+      // Classify so the caller can stop retrying permanent failures. A 4xx
+      // (bad DLT template / auth) will never succeed on retry; a 5xx / timeout
+      // / network error is transient and worth retrying.
+      const status = err?.response?.status;
+      const detail = err?.response?.data?.message ?? err?.message ?? "send failed";
+      const permanent = typeof status === "number" && status >= 400 && status < 500;
+      throw Object.assign(new Error(`MSG91 send failed (${status ?? "network"}): ${detail}`), {
+        permanent,
+        providerStatus: status,
+      });
+    }
 
+    // MSG91 v5 returns { type: "success" | "error", message, request_id }.
+    // A 200 with type:"error" (e.g. invalid template) is a real rejection —
+    // surface it instead of fabricating a fake "sent" externalId that masks it.
+    if (res.data?.type === "error") {
+      throw Object.assign(new Error(`MSG91 rejected: ${res.data?.message ?? "unknown error"}`), {
+        permanent: true,
+      });
+    }
+    const requestId = res.data?.request_id;
+    if (!requestId) {
+      throw Object.assign(new Error("MSG91 returned no request_id — treating as a failed send"), {
+        permanent: false,
+      });
+    }
 
-    return {
-      externalId: res.data?.request_id ?? `msg91-${Date.now()}`,
-      status: "sent",
-    };
+    return { externalId: String(requestId), status: "sent" };
   },
 };
 

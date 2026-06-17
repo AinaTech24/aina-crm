@@ -382,7 +382,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const dashboardSubItems = [
     { href: "/dashboard", label: "Dashboard" },
     { href: "/dashboard/boards", label: "My Dashboards" },
-    ...(canSeeTeam ? [{ href: "/dashboard/team", label: "Team Dashboard" }] : []),
+    ...(canSeeTeam
+      ? [
+          { href: "/dashboard/team", label: "Team Dashboard" },
+          { href: "/dashboard/team/scorecard", label: "Team Scorecard" },
+        ]
+      : []),
   ];
 
   const roleLabel = primaryRoleLabel(session.roles);

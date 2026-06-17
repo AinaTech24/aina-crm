@@ -28,6 +28,14 @@ const rmInvestorBare = (rmId?: string) => (rmId ? sql`AND rm_id = ${rmId}::uuid`
 const rmLead = (rmId?: string) => (rmId ? sql`AND owner_id = ${rmId}::uuid` : sql``);
 const rmTask = (rmId?: string) => (rmId ? sql`AND assignee_id = ${rmId}::uuid` : sql``);
 
+/**
+ * Net-business value of one business_entry_lines row `l`: positive for fresh
+ * purchases (SIP / lumpsum / additional purchase), negative for redemptions &
+ * SWP, and zero for internal switches/STP (not fresh money). Reused by the
+ * net-sales widgets so they read the Business Entries ledger, not the RTA feed.
+ */
+const BE_NET = sql`CASE WHEN l.txn_type IN ('sip','lumpsum','additional_purchase') THEN l.amount::numeric WHEN l.txn_type IN ('redemption','swp') THEN -l.amount::numeric ELSE 0 END`;
+
 export const WIDGET_SQL: Record<string, WidgetSqlDef> = {
   // ── KPIs ──────────────────────────────────────────────────────────────
   kpi_aum: {
@@ -36,8 +44,20 @@ export const WIDGET_SQL: Record<string, WidgetSqlDef> = {
   },
   kpi_net_sales_mtd: {
     view: { kind: "kpi", valueKey: "value", format: "inr" },
-    run: (s) => s`SELECT COALESCE(SUM(CASE WHEN direction='inflow' THEN amount::numeric ELSE -amount::numeric END),0)::numeric AS value
-      FROM transactions WHERE status IN ('successful','processed') AND order_date >= date_trunc('month', now())`,
+    // Net business from the Business Entries ledger (what the firm actually
+    // books), not the RTA transactions feed: inflow (SIP + lumpsum + additional
+    // purchase) minus outflow (redemption + SWP), this month, excluding drafts'
+    // siblings only by way of cancelled entries.
+    run: (s) => s`SELECT COALESCE(SUM(${BE_NET}),0)::numeric AS value
+      FROM business_entry_lines l JOIN business_entries e ON e.id = l.entry_id
+      WHERE e.status <> 'cancelled' AND e.business_date >= date_trunc('month', now())::date`,
+  },
+  kpi_gross_business_mtd: {
+    view: { kind: "kpi", valueKey: "value", format: "inr" },
+    // Gross booked business (all purchase legs) this month, from Business Entries.
+    run: (s) => s`SELECT COALESCE(SUM(l.amount::numeric) FILTER (WHERE l.txn_type IN ('sip','lumpsum','additional_purchase','switch','stp')),0)::numeric AS value
+      FROM business_entry_lines l JOIN business_entries e ON e.id = l.entry_id
+      WHERE e.status <> 'cancelled' AND e.business_date >= date_trunc('month', now())::date`,
   },
   kpi_active_sip: {
     view: { kind: "kpi", valueKey: "value", format: "inr" },
@@ -68,10 +88,22 @@ export const WIDGET_SQL: Record<string, WidgetSqlDef> = {
   // ── Charts ────────────────────────────────────────────────────────────
   chart_net_sales: {
     view: { kind: "chart", x: "label", series: [{ key: "net", label: "Net" }], format: "inr" },
-    run: (s) => s`SELECT to_char(order_date::date,'DD Mon') AS label, order_date::date AS d,
-      COALESCE(SUM(CASE WHEN direction='inflow' THEN amount::numeric ELSE -amount::numeric END),0)::numeric AS net
-      FROM transactions WHERE status IN ('successful','processed') AND order_date >= now() - interval '30 days'
-      GROUP BY order_date::date ORDER BY order_date::date`,
+    // Daily net business from the Business Entries ledger — last 30 days.
+    run: (s) => s`SELECT to_char(e.business_date,'DD Mon') AS label, e.business_date AS d,
+      COALESCE(SUM(${BE_NET}),0)::numeric AS net
+      FROM business_entry_lines l JOIN business_entries e ON e.id = l.entry_id
+      WHERE e.status <> 'cancelled' AND e.business_date >= (now() - interval '30 days')::date
+      GROUP BY e.business_date ORDER BY e.business_date`,
+  },
+  chart_business_by_product: {
+    view: { kind: "donut", labelKey: "label", valueKey: "value", format: "inr" },
+    // Business mix by product type (MF / PMS / AIF / …) — last 90 days, from
+    // the Business Entries ledger.
+    run: (s) => s`SELECT e.product_type AS label,
+      COALESCE(SUM(l.amount::numeric) FILTER (WHERE l.txn_type IN ('sip','lumpsum','additional_purchase','switch','stp')),0)::numeric AS value
+      FROM business_entry_lines l JOIN business_entries e ON e.id = l.entry_id
+      WHERE e.status <> 'cancelled' AND e.business_date >= (now() - interval '90 days')::date
+      GROUP BY e.product_type ORDER BY value DESC`,
   },
   chart_aum_movement: {
     view: { kind: "chart", x: "label", series: [{ key: "inflow", label: "Inflow" }, { key: "outflow", label: "Outflow" }], format: "inr" },
@@ -99,12 +131,12 @@ export const WIDGET_SQL: Record<string, WidgetSqlDef> = {
   // ── Comparator + Target meter ─────────────────────────────────────────
   cmp_net_sales_mom: {
     view: { kind: "comparator", currentKey: "cur", previousKey: "prev", format: "inr" },
+    // This month vs last month net business, from the Business Entries ledger.
     run: (s) => s`SELECT
-      COALESCE(SUM(CASE WHEN order_date >= date_trunc('month', now())
-        THEN (CASE WHEN direction='inflow' THEN amount::numeric ELSE -amount::numeric END) ELSE 0 END),0)::numeric AS cur,
-      COALESCE(SUM(CASE WHEN order_date >= date_trunc('month', now()) - interval '1 month' AND order_date < date_trunc('month', now())
-        THEN (CASE WHEN direction='inflow' THEN amount::numeric ELSE -amount::numeric END) ELSE 0 END),0)::numeric AS prev
-      FROM transactions WHERE status IN ('successful','processed') AND order_date >= date_trunc('month', now()) - interval '1 month'`,
+      COALESCE(SUM(CASE WHEN e.business_date >= date_trunc('month', now())::date THEN (${BE_NET}) ELSE 0 END),0)::numeric AS cur,
+      COALESCE(SUM(CASE WHEN e.business_date >= (date_trunc('month', now()) - interval '1 month')::date AND e.business_date < date_trunc('month', now())::date THEN (${BE_NET}) ELSE 0 END),0)::numeric AS prev
+      FROM business_entry_lines l JOIN business_entries e ON e.id = l.entry_id
+      WHERE e.status <> 'cancelled' AND e.business_date >= (date_trunc('month', now()) - interval '1 month')::date`,
   },
   cmp_new_clients_mom: {
     view: { kind: "comparator", currentKey: "cur", previousKey: "prev", format: "number" },
