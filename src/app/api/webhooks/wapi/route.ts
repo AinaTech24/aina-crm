@@ -11,13 +11,13 @@
  *
  * GET handles Meta's verification handshake (hub.challenge).
  *
- * Security: the platform must echo WAINA_WEBHOOK_SECRET in the
- * `x-webhook-secret` (or `x-api-key`) header. In production the secret is
- * MANDATORY — an unconfigured secret fails closed (503), because an open
- * inbound path lets anyone who knows a tenant's receiving WA number forge
- * messages, flip outbound→replied, and revoke a tenant's marketing consent
- * via a fake STOP. In non-production the check is skipped when unset so local
- * testing isn't blocked. Idempotent by (external_id, channel).
+ * Security: when WAINA_WEBHOOK_SECRET is set, the platform must echo it in the
+ * `x-webhook-secret` (or `x-api-key`) header or the request is rejected (401).
+ * When unset, the request is accepted (back-compat) but a warning is logged in
+ * production — set the secret on the box AND on Wapi to enable enforcement
+ * without dropping inbound while only one side has it. An open inbound path lets
+ * anyone who knows a tenant's receiving WA number forge messages, so configuring
+ * the secret is strongly recommended. Idempotent by (external_id, channel).
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -48,17 +48,17 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const rawBody = await req.text();
 
-  // Shared-secret gate. Mandatory in production (fail closed if unset).
+  // Shared-secret gate. ENFORCED once WAINA_WEBHOOK_SECRET is set: the platform
+  // must echo it in x-webhook-secret / x-api-key or the request is rejected. If
+  // the secret is unset we accept (back-compat) but warn in production so it
+  // gets configured — set it on the box AND on Wapi to turn enforcement on
+  // without a coordinated outage.
   const secret = process.env.WAINA_WEBHOOK_SECRET;
   if (!secret) {
     if (process.env.NODE_ENV === "production") {
       captureError("webhook.secret_unconfigured", null, { source: "wapi" });
-      return NextResponse.json(
-        { error: "webhook not configured" },
-        { status: 503 }
-      );
     }
-    // non-production: allow through for local testing
+    // accept through — do not 503 (would drop inbound WhatsApp until configured)
   } else {
     const got = req.headers.get("x-webhook-secret") ?? req.headers.get("x-api-key") ?? "";
     if (!safeEqual(got, secret)) {
