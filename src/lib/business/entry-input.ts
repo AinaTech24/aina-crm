@@ -23,6 +23,8 @@ export const LineInput = z.object({
   amount: z.number().min(0).max(1e13),
   units: z.number().min(0).nullish(),
   frequency: z.enum(TXN_FREQUENCIES).nullish(),
+  /** Recurring SIP installment day / ECS date — day of month 1..28. */
+  sipDate: z.string().regex(/^([1-9]|[12]\d|2[0-8])$/).nullish(),
   fromSchemeCode: z.string().max(40).nullish(),
   fromSchemeName: z.string().max(250).nullish(),
   fromAssetClass: z.enum(ASSET_CLASSES).nullish(),

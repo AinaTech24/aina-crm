@@ -14,13 +14,30 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
-import { businessEntries, businessEntryLines, investors, users } from "@/db/schema";
+import { businessEntries, businessEntryLines, investors, users, sips, eventsOutbox } from "@/db/schema";
 import { EntryInput, normalizeLine, computeTotals } from "@/lib/business/entry-input";
 
 export const dynamic = "force-dynamic";
 
 const MANAGE_ROLES = ["owner", "branch_head", "rm", "back_office", "ops"];
 const canManage = (roles: string[]) => roles.some((r) => MANAGE_ROLES.includes(r));
+
+/** sips.frequency only has a subset of the business-line frequencies; map the
+ *  overlap and default the rest (one_time / half_yearly) to monthly. */
+function toSipFrequency(f: string | null | undefined): "monthly" | "quarterly" | "weekly" | "yearly" {
+  return f === "quarterly" || f === "weekly" || f === "yearly" ? f : "monthly";
+}
+
+/** First debit date: the next occurrence of `sipDay` (1..28) on/after the SIP's
+ *  start date. Returns the start date itself if no day was captured. */
+function nextInstallmentDate(startISO: string, sipDay: string | null | undefined): string {
+  if (!sipDay) return startISO;
+  const day = Math.min(28, Math.max(1, Number(sipDay)));
+  const base = new Date(`${startISO}T00:00:00Z`);
+  let d = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), day));
+  if (d.getTime() < base.getTime()) d = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth() + 1, day));
+  return d.toISOString().slice(0, 10);
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -119,6 +136,7 @@ export async function POST(req: NextRequest) {
           amount: String(l.amount),
           units: l.units != null ? String(l.units) : null,
           frequency: l.frequency ?? null,
+          sipDate: l.txnType === "sip" ? l.sipDate ?? null : null,
           fromSchemeCode: l.fromSchemeCode ?? null,
           fromSchemeName: l.fromSchemeName ?? null,
           fromAssetClass: l.fromAssetClass ?? null,
@@ -127,6 +145,50 @@ export async function POST(req: NextRequest) {
           sortOrder: i,
         })) as any
       );
+
+      // Auto-register a SIP in the SIP book for every SIP line on a real client,
+      // so it shows in the SIP Tracker AND its installment day drives the
+      // reminder workflows (date rules on sips.next_installment_at). Only on
+      // create + only when the entry has a linked investor.
+      if (b.investorId) {
+        const sipRows = lines
+          .filter((l) => l.txnType === "sip")
+          .map((l) => {
+            const id = uuid();
+            return {
+              row: {
+                id,
+                tenantId: session.tenantId,
+                investorId: b.investorId!,
+                schemeCode: l.schemeCode ?? null,
+                schemeName: l.schemeName,
+                amcName: l.amcName ?? null,
+                folioNumber: l.folioNo ?? b.folioNo ?? null,
+                amount: String(l.amount),
+                frequency: toSipFrequency(l.frequency),
+                sipDate: l.sipDate ?? null,
+                startDate: b.businessDate,
+                nextInstallmentAt: nextInstallmentDate(b.businessDate, l.sipDate),
+                status: "active" as const,
+                rmId,
+              },
+              id,
+            };
+          });
+        if (sipRows.length) {
+          await tx.insert(sips).values(sipRows.map((s) => s.row) as any);
+          await tx.insert(eventsOutbox).values(
+            sipRows.map((s) => ({
+              tenantId: session.tenantId,
+              kind: "sip.created",
+              entityType: "sip",
+              entityId: s.id,
+              after: s.row as any,
+              meta: { source: "business_entry", entryId } as any,
+            })) as any
+          );
+        }
+      }
 
       await recordAudit(tx, {
         tenantId: session.tenantId,

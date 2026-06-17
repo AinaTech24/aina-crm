@@ -88,6 +88,9 @@ export const businessEntryLines = pgTable(
     units: numeric("units", { precision: 18, scale: 4 }),
     /** For SIP / STP / SWP. */
     frequency: text("frequency", { enum: TXN_FREQUENCIES }),
+    /** Recurring SIP installment day / ECS date — day of month "1".."28".
+     *  Carried onto the auto-created sips row so reminder workflows can fire. */
+    sipDate: text("sip_date"),
 
     /** Source scheme for a switch / STP / SWP (money moving OUT of this). */
     fromSchemeCode: text("from_scheme_code"),

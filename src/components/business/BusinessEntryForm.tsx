@@ -96,6 +96,7 @@ type Line = {
   txnType: string;
   amount: string;
   frequency: string;
+  sipDate: string;
   fromSchemeCode: string;
   fromSchemeName: string;
   fromAssetClass: string;
@@ -105,7 +106,7 @@ type Line = {
 let _k = 0;
 const blankLine = (): Line => ({
   key: `l${++_k}`, schemeCode: "", schemeName: "", amcName: "", assetCategory: "", assetClass: "equity",
-  txnType: "lumpsum", amount: "", frequency: "", fromSchemeCode: "", fromSchemeName: "", fromAssetClass: "", folioNo: "",
+  txnType: "lumpsum", amount: "", frequency: "", sipDate: "", fromSchemeCode: "", fromSchemeName: "", fromAssetClass: "", folioNo: "",
 });
 
 function inr(n: number): string {
@@ -164,7 +165,7 @@ export function BusinessEntryForm({
           schemeCode: l.schemeCode ?? "", schemeName: l.schemeName ?? "", amcName: l.amcName ?? "",
           assetCategory: l.assetCategory ?? "", assetClass: l.assetClass ?? "equity",
           txnType: l.txnType ?? "lumpsum", amount: l.amount != null ? String(l.amount) : "",
-          frequency: l.frequency ?? "", fromSchemeCode: l.fromSchemeCode ?? "", fromSchemeName: l.fromSchemeName ?? "",
+          frequency: l.frequency ?? "", sipDate: l.sipDate ?? "", fromSchemeCode: l.fromSchemeCode ?? "", fromSchemeName: l.fromSchemeName ?? "",
           fromAssetClass: l.fromAssetClass ?? "", folioNo: l.folioNo ?? "",
         }))
       : [blankLine()]
@@ -245,6 +246,7 @@ export function BusinessEntryForm({
           assetCategory: l.assetCategory || null, assetClass: l.assetClass,
           txnType: l.txnType, amount: Number(l.amount) || 0,
           frequency: NEEDS_FREQ.has(l.txnType) ? l.frequency || null : null,
+          sipDate: l.txnType === "sip" ? l.sipDate || null : null,
           fromSchemeCode: NEEDS_FROM.has(l.txnType) ? l.fromSchemeCode || null : null,
           fromSchemeName: NEEDS_FROM.has(l.txnType) ? l.fromSchemeName || null : null,
           fromAssetClass: NEEDS_FROM.has(l.txnType) ? l.fromAssetClass || null : null,
@@ -406,6 +408,19 @@ export function BusinessEntryForm({
                           <option value="">—</option>
                           {FREQ_OPTS.map(([v, lab]) => <option key={v} value={v}>{lab}</option>)}
                         </SelectField>
+                      </div>
+                    )}
+                    {l.txnType === "sip" && (
+                      <div className="lg:col-span-3">
+                        <Label sm>SIP date (ECS day) <span className="text-muted-foreground">· 1–28</span></Label>
+                        <input
+                          inputMode="numeric"
+                          value={l.sipDate}
+                          onChange={(e) => patchLine(i, { sipDate: e.target.value })}
+                          placeholder="e.g. 5"
+                          className="w-full h-8 rounded-lg border border-border bg-card px-2.5 text-xs focus:outline-none focus:border-brand-cyan/60 focus:ring-2 focus:ring-brand-cyan/15"
+                        />
+                        <div className="text-[10px] text-muted-foreground mt-0.5">Drives the SIP reminder workflow.</div>
                       </div>
                     )}
                     {NEEDS_FROM.has(l.txnType) && (

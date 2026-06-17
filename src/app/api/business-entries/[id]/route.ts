@@ -118,6 +118,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             amount: String(l.amount),
             units: l.units != null ? String(l.units) : null,
             frequency: l.frequency ?? null,
+            sipDate: l.txnType === "sip" ? l.sipDate ?? null : null,
             fromSchemeCode: l.fromSchemeCode ?? null,
             fromSchemeName: l.fromSchemeName ?? null,
             fromAssetClass: l.fromAssetClass ?? null,
