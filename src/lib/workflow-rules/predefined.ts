@@ -91,6 +91,30 @@ export const PREDEFINED_RULES: PredefinedRule[] = [
     },
   },
   {
+    key: "client_doc_checklist",
+    title: "New client → request onboarding documents",
+    description:
+      "When a client is created (onboarding starts), email them a document checklist with a secure upload link. Gated to KYC-pending clients. Template + link auto-created. Note: don't also use the manual 'Send Doc Checklist' button for the same client, or they get it twice.",
+    category: "Service",
+    needsTemplate: false,
+    rule: {
+      ...base,
+      module: "investors",
+      name: "Onboarding document request",
+      description: "Email a new (KYC-pending) client the onboarding document checklist + upload link.",
+      triggerType: "record_action",
+      triggerConfig: { when: "create", fields: [], repeat: false },
+      criteriaRows: [{ field: "kyc_status", operator: "is", value: "pending" }],
+      instantActions: [
+        {
+          type: "send_email",
+          label: "Email the client a document upload link",
+          config: { templateKey: "doc_checklist", category: "transactional", recipient: "subject", shareLink: "document_collection" },
+        },
+      ],
+    },
+  },
+  {
     key: "meeting_scheduled_confirmation",
     title: "Meeting scheduled → confirm to client",
     description:

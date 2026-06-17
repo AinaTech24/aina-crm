@@ -230,6 +230,38 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
     },
     variables: [{ key: "name", type: "string", source: "investor.name", fallback: "there" }],
   },
+  {
+    key: "doc_checklist",
+    channel: "email",
+    category: "transactional",
+    name: "Onboarding document checklist + upload link",
+    description: "Sent to a new client to request KYC/onboarding documents via a secure upload link ({{document_collection_link}}).",
+    body: {
+      subject: "Documents needed to complete your onboarding with {{tenant_display_name}}",
+      blocks: [
+        { type: "header", title: "A few documents to get you started 📄" },
+        {
+          type: "text",
+          content:
+            "Hi {{name}},\n\nWelcome to {{tenant_display_name}}! To complete your onboarding and KYC, please share the following documents:",
+        },
+        {
+          type: "text",
+          content:
+            "• PAN card\n• Address proof (Aadhaar / passport / utility bill)\n• Bank proof (cancelled cheque / passbook / recent statement)\n• Passport-size photograph\n• Cancelled cheque (for your SIP mandate)",
+        },
+        { type: "button", label: "Upload my documents securely", url: "{{document_collection_link}}" },
+        {
+          type: "text",
+          content:
+            "This link is private to you and valid for 14 days. Once we receive your documents, we'll proceed with your account setup.\n\nWarm regards,\n{{tenant_display_name}}",
+        },
+      ],
+      textFallback:
+        "Hi {{name}}, to complete onboarding please upload your KYC documents (PAN, address proof, bank proof, photo, cancelled cheque) here: {{document_collection_link}} (valid 14 days). — {{tenant_display_name}}",
+    },
+    variables: [{ key: "name", type: "string", source: "investor.name", fallback: "there" }],
+  },
 ];
 
 export function getStarterTemplate(key: string): StarterTemplate | undefined {
