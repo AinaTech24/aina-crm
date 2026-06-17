@@ -15,8 +15,27 @@ import { require as requireCap } from "@/lib/auth/rbac";
 import { WorkflowRuleSchema } from "@/lib/workflow-rules/types";
 import { isDuplicateNameError } from "@/lib/workflow-rules/guard";
 import { getPredefinedRule } from "@/lib/workflow-rules/predefined";
+import { ensureStarterTemplate } from "@/lib/templates/ensure";
 
 export const dynamic = "force-dynamic";
+
+/** Every templateKey referenced by a rule's actions (main criteria + branches). */
+function referencedTemplateKeys(input: any): string[] {
+  const keys = new Set<string>();
+  const scan = (actions: any[] | undefined) => {
+    for (const a of actions ?? []) {
+      const k = a?.config?.templateKey;
+      if (typeof k === "string" && k) keys.add(k);
+    }
+  };
+  scan(input.instantActions);
+  scan(input.scheduledActions);
+  for (const b of input.branches ?? []) {
+    scan(b?.instantActions);
+    scan(b?.scheduledActions);
+  }
+  return [...keys];
+}
 
 export async function POST(req: NextRequest) {
   const session = await requireSession();
@@ -35,8 +54,16 @@ export async function POST(req: NextRequest) {
   }
   const input = parsed.data;
 
+  const starterKeys = referencedTemplateKeys(input);
+
   try {
     const row = await withTenant(session.tenantId, async (tx) => {
+      // Provision any starter templates this rule needs (idempotent) so the rule
+      // can send the moment the owner enables it — no manual template authoring.
+      for (const key of starterKeys) {
+        await ensureStarterTemplate(tx, session.tenantId, session.userId, key);
+      }
+
       const [created] = await tx
         .insert(workflowRules)
         .values({

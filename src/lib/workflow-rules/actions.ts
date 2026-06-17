@@ -177,6 +177,23 @@ async function resolveCommTarget(
   return { ok: true, recipient: String(contact), investorId, leadId, extraVars: {} };
 }
 
+/**
+ * Expose the triggering record's scalar fields as template tokens so a template
+ * can render {{name}}, {{referred_by_name}}, {{scheme_name}}, {{amount}}, etc.
+ * directly from the record that fired the rule. Objects/arrays are skipped;
+ * caller-supplied config.variables still take priority over these.
+ */
+function scalarVars(record: Record<string, unknown>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(record ?? {})) {
+    if (v == null) continue;
+    if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
+      out[k] = String(v);
+    }
+  }
+  return out;
+}
+
 async function runSendEmail(config: Record<string, unknown>, ctx: ActionContext): Promise<ActionResult> {
   try {
     const { dispatch } = await import("@/lib/comms/pipeline");
@@ -193,7 +210,7 @@ async function runSendEmail(config: Record<string, unknown>, ctx: ActionContext)
       channel: "email",
       templateKey: String(config.templateKey ?? config.template ?? ""),
       recipient: target.recipient,
-      variables: { ...((config.variables ?? {}) as Record<string, string>), ...target.extraVars },
+      variables: { ...scalarVars(ctx.record), ...((config.variables ?? {}) as Record<string, string>), ...target.extraVars },
       category: (config.category ?? "transactional") as any,
       investorId: target.investorId,
       leadId: target.leadId,
@@ -215,7 +232,7 @@ async function runSendWhatsApp(config: Record<string, unknown>, ctx: ActionConte
       channel: "whatsapp",
       templateKey: String(config.templateKey ?? config.template ?? ""),
       recipient: target.recipient,
-      variables: { ...((config.variables ?? {}) as Record<string, string>), ...target.extraVars },
+      variables: { ...scalarVars(ctx.record), ...((config.variables ?? {}) as Record<string, string>), ...target.extraVars },
       category: (config.category ?? "transactional") as any,
       investorId: target.investorId,
       leadId: target.leadId,
@@ -236,7 +253,7 @@ async function runSendSms(config: Record<string, unknown>, ctx: ActionContext): 
       channel: "sms",
       templateKey: String(config.templateKey ?? config.template ?? ""),
       recipient: target.recipient,
-      variables: { ...((config.variables ?? {}) as Record<string, string>), ...target.extraVars },
+      variables: { ...scalarVars(ctx.record), ...((config.variables ?? {}) as Record<string, string>), ...target.extraVars },
       category: (config.category ?? "transactional") as any,
       investorId: target.investorId,
       leadId: target.leadId,

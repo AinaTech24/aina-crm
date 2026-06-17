@@ -32,6 +32,39 @@ const base = {
 
 export const PREDEFINED_RULES: PredefinedRule[] = [
   {
+    key: "lead_welcome_email",
+    title: "Welcome email to a new lead",
+    description:
+      "When a lead is created, email them a thank-you for connecting. If the lead came from a client referral, the email also thanks the referring client by name. Email templates are created for you automatically.",
+    category: "Leads",
+    needsTemplate: false, // both email templates are auto-provisioned on add
+    rule: {
+      ...base,
+      module: "leads",
+      name: "Welcome email to new lead",
+      description: "Thank a new lead for connecting (names the referrer if any).",
+      triggerType: "record_action",
+      triggerConfig: { when: "create", fields: [], repeat: false },
+      // Branch 0 (main criteria): referred by a client → referral-aware template.
+      criteriaRows: [{ field: "referred_by_name", operator: "is_not_empty" }],
+      instantActions: [
+        { type: "send_email", label: "Email the lead (referred)", config: { templateKey: "lead_welcome_referral", category: "transactional", recipient: "subject" } },
+      ],
+      // Branch 1 (catch-all): no referral → plain welcome.
+      branches: [
+        {
+          name: "No referral",
+          criteriaPattern: null,
+          criteriaRows: [],
+          instantActions: [
+            { type: "send_email", label: "Email the lead", config: { templateKey: "lead_welcome", category: "transactional", recipient: "subject" } },
+          ],
+          scheduledActions: [],
+        },
+      ],
+    },
+  },
+  {
     key: "sip_installment_reminder",
     title: "SIP installment reminder",
     description:
