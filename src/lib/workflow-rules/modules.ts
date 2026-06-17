@@ -125,10 +125,18 @@ export const MODULES: Record<ModuleKey, ModuleCatalog> = {
           "meeting_scheduled",
           "proposal_shared",
           "follow_up",
+          "won_lead",
           "converted",
           "lost",
           "not_interested",
         ],
+      },
+      {
+        key: "pipeline",
+        label: "Pipeline (product branch)",
+        type: "enum",
+        enumValues: ["mf", "insurance", "general"],
+        help: "Set from the primary product when a lead is Won",
       },
       {
         key: "source",

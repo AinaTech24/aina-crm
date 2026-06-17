@@ -182,6 +182,33 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
     },
     variables: [{ key: "client_name", type: "string", source: "investor.name", fallback: "there" }],
   },
+  {
+    key: "risk_profile_request",
+    channel: "email",
+    category: "transactional",
+    name: "Risk profile — form fill request",
+    description: "Sent when a lead is won for Mutual Funds; asks the client to complete their risk profile via a private link ({{risk_profile_link}}).",
+    body: {
+      subject: "One quick step: complete your risk profile with {{tenant_display_name}}",
+      blocks: [
+        { type: "header", title: "Let's get your investments started 🚀" },
+        {
+          type: "text",
+          content:
+            "Hi {{name}},\n\nWelcome aboard! Before we recommend the right mutual fund portfolio for you, we need to understand your risk appetite and goals. It takes about 2 minutes:",
+        },
+        { type: "button", label: "Complete my risk profile", url: "{{risk_profile_link}}" },
+        {
+          type: "text",
+          content:
+            "This link is private to you and valid for 14 days. Once you're done, your advisor will share a tailored plan.\n\nWarm regards,\n{{tenant_display_name}}",
+        },
+      ],
+      textFallback:
+        "Hi {{name}}, please complete your risk profile to get started: {{risk_profile_link}} (valid 14 days). — {{tenant_display_name}}",
+    },
+    variables: [{ key: "name", type: "string", source: "lead.name", fallback: "there" }],
+  },
 ];
 
 export function getStarterTemplate(key: string): StarterTemplate | undefined {

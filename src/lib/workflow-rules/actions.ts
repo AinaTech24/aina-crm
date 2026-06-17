@@ -16,6 +16,7 @@
  *   - add_tag / remove_tag — appends/removes from a `tags` jsonb array
  */
 
+import crypto from "node:crypto";
 import { sql, eq, and } from "drizzle-orm";
 import { getModule } from "./modules";
 import type { Action } from "./types";
@@ -28,6 +29,7 @@ import {
   eventsOutbox,
   proposals,
   communications,
+  shareTokens,
 } from "@/db/schema";
 import { v4 as uuid } from "uuid";
 import { autoAdvance } from "@/lib/blueprints/auto-advance";
@@ -289,11 +291,54 @@ async function maybeAiMinutes(
   }
 }
 
+/** Public-form path per share-token kind (mirrors share-tokens/index.ts). */
+const SHARE_PATHS: Record<string, string> = {
+  risk_profile: "/r",
+  document_collection: "/d",
+  proposal_approval: "/p",
+  onboarding_progress: "/onboarding",
+  portfolio_view: "/portfolio",
+  feedback: "/f",
+};
+
+/**
+ * Optional single-use public form link. When the email action sets
+ * config.shareLink (e.g. "risk_profile"), mint a share token for the subject and
+ * expose it as {{share_link}} and {{<kind>_link}} (e.g. {{risk_profile_link}}).
+ * Minted on the action's own tx so it's tied to the send. Only leads/investors
+ * can be a share-token subject.
+ */
+async function maybeShareLink(config: Record<string, unknown>, ctx: ActionContext): Promise<Record<string, string>> {
+  const kind = typeof config.shareLink === "string" ? config.shareLink : "";
+  if (!kind || !SHARE_PATHS[kind]) return {};
+  const subjectType = ctx.subjectType === "investor" ? "investor" : ctx.subjectType === "lead" ? "lead" : null;
+  if (!subjectType) return {};
+
+  const token = crypto.randomBytes(32).toString("base64url");
+  const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+  const expiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
+  await ctx.tx.insert(shareTokens).values({
+    tenantId: ctx.tenantId,
+    kind,
+    tokenHash,
+    subjectType,
+    subjectId: ctx.subjectId,
+    expiresAt,
+  } as any);
+
+  const base = process.env.APP_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const url = `${base}${SHARE_PATHS[kind]}/${token}`;
+  return { share_link: url, [`${kind}_link`]: url };
+}
+
 async function runSendEmail(config: Record<string, unknown>, ctx: ActionContext): Promise<ActionResult> {
   try {
     const { dispatch } = await import("@/lib/comms/pipeline");
     const target = await resolveCommTarget(ctx, config, "email");
     if (!target.ok) return { type: "send_email", status: "skipped", detail: target.reason };
+
+    // Optional single-use public form link → {{risk_profile_link}} etc.
+    const linkVars = await maybeShareLink(config, ctx);
 
     // Optional AI minutes-of-meeting → {{minutes}}.
     const ai = await maybeAiMinutes(config, ctx);
@@ -310,7 +355,7 @@ async function runSendEmail(config: Record<string, unknown>, ctx: ActionContext)
       channel: "email",
       templateKey: String(config.templateKey ?? config.template ?? ""),
       recipient: target.recipient,
-      variables: { ...scalarVars(ctx.record), ...((config.variables ?? {}) as Record<string, string>), ...target.extraVars, ...aiVars },
+      variables: { ...scalarVars(ctx.record), ...linkVars, ...((config.variables ?? {}) as Record<string, string>), ...target.extraVars, ...aiVars },
       category: (config.category ?? "transactional") as any,
       investorId: target.investorId,
       leadId: target.leadId,

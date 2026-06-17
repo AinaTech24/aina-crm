@@ -21,7 +21,7 @@ import { assertActiveLicense } from "@/lib/auth/license";
 import { clientMetaFromHeaders } from "@/lib/audit";
 import { transitionTo } from "@/lib/blueprints/engine";
 import { productToPipeline } from "@/lib/blueprints/lead_to_client";
-import { leads } from "@/db/schema";
+import { leads, eventsOutbox } from "@/db/schema";
 import { loadEditableLead } from "@/lib/leads/access";
 
 export const dynamic = "force-dynamic";
@@ -50,6 +50,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const result = await withTenant(session.tenantId, async (tx) => {
       await loadEditableLead(tx, session, id);
 
+      // Snapshot BEFORE so workflow rules can detect the stage change to won_lead.
+      const [before] = await tx.select().from(leads).where(and(eq(leads.id, id), eq(leads.tenantId, session.tenantId))).limit(1);
+
       // Persist the product interest + the chosen pipeline (drives the branch).
       await tx
         .update(leads)
@@ -65,6 +68,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           : `Won — products: ${products.join(", ")}`,
         ...clientMeta,
       });
+
+      // Emit lead.updated (before/after) so the workflow-rules engine can react
+      // to "lead won" — e.g. send the risk-profile form on a Mutual Funds win.
+      if (res.ok && before) {
+        const [after] = await tx.select().from(leads).where(and(eq(leads.id, id), eq(leads.tenantId, session.tenantId))).limit(1);
+        await tx.insert(eventsOutbox).values({
+          tenantId: session.tenantId,
+          kind: "lead.updated",
+          entityType: "lead",
+          entityId: id,
+          before: before as any,
+          after: (after ?? before) as any,
+          meta: { source: "won_lead" } as any,
+        } as any);
+      }
       return res;
     });
 

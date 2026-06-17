@@ -65,6 +65,32 @@ export const PREDEFINED_RULES: PredefinedRule[] = [
     },
   },
   {
+    key: "won_lead_mf_risk_profile",
+    title: "Won Lead (Mutual Funds) → send risk profile form",
+    description:
+      "When a lead is marked Won with Mutual Funds as the primary product, email the client a private link to complete their risk profile. Template + link auto-created.",
+    category: "Leads",
+    needsTemplate: false,
+    rule: {
+      ...base,
+      module: "leads",
+      name: "Won Lead (MF) — risk profile request",
+      description: "On a won MF lead, email the client a risk-profile form link.",
+      triggerType: "record_action",
+      // Fires when the lead's stage edits to 'won_lead' (the won flow emits lead.updated).
+      triggerConfig: { when: "edit", editMode: "specific", fields: [], fieldConditions: [{ field: "stage", operator: "is", value: "won_lead" }], repeat: false },
+      // …only for the Mutual Funds branch.
+      criteriaRows: [{ field: "pipeline", operator: "is", value: "mf" }],
+      instantActions: [
+        {
+          type: "send_email",
+          label: "Email the client a risk-profile link",
+          config: { templateKey: "risk_profile_request", category: "transactional", recipient: "subject", shareLink: "risk_profile" },
+        },
+      ],
+    },
+  },
+  {
     key: "meeting_scheduled_confirmation",
     title: "Meeting scheduled → confirm to client",
     description:
