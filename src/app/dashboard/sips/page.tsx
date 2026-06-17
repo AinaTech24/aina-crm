@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { and, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
-import { TrendingUp, AlertTriangle, CheckCircle2, Calendar, ShieldAlert } from "lucide-react";
+import { TrendingUp, AlertTriangle, CheckCircle2, Calendar, ShieldAlert, Plus } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { sips, investors, mandates, users } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
+import { can } from "@/lib/auth/rbac";
 import { formatINR, formatDate } from "@/lib/utils";
 import { FilterBar } from "@/components/common/FilterBar";
 import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
@@ -159,9 +160,16 @@ export default async function SipsPage({
             Active SIP book · month-on-month inflow · mandate-linked installments.
           </p>
         </div>
-        <Link href="/dashboard/sips/new-watch" className="btn-secondary text-sm inline-flex items-center gap-1.5">
-          <ShieldAlert className="size-4" /> New-SIP installment watch
-        </Link>
+        <div className="flex items-center gap-2 flex-wrap">
+          {can(session.roles, "transactions.execute", session.permissions) && (
+            <Link href="/dashboard/sips/new" className="btn-primary text-sm inline-flex items-center gap-1.5">
+              <Plus className="size-4" /> Add SIP
+            </Link>
+          )}
+          <Link href="/dashboard/sips/new-watch" className="btn-secondary text-sm inline-flex items-center gap-1.5">
+            <ShieldAlert className="size-4" /> New-SIP installment watch
+          </Link>
+        </div>
       </div>
 
       <div className="grid grid-cols-5 gap-3">
