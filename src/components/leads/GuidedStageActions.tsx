@@ -82,6 +82,8 @@ export function GuidedStageActions({
   // is assigned to.
   const [taskAssigneeId, setTaskAssigneeId] = useState("");
   const [teamUsers, setTeamUsers] = useState<Array<{ id: string; name: string }>>([]);
+  // Required when transitioning to "ucc_activated" — stored on the client master.
+  const [uccNumber, setUccNumber] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -349,6 +351,13 @@ export function GuidedStageActions({
       return;
     }
 
+    // "UCC Activated" requires the UCC number — stored on the client master.
+    const isUccActivated = transitioningAction.targetStage === "ucc_activated";
+    if (isUccActivated && !uccNumber.trim()) {
+      setError("Please enter the UCC number.");
+      return;
+    }
+
     setSubmitting(true);
     setError(null);
     try {
@@ -360,6 +369,7 @@ export function GuidedStageActions({
           remarks: remarks || `Transitioned to ${transitioningAction.targetStage}`,
           fields: fieldValues,
           callBackAt: isCallBack ? callBackAt : undefined,
+          uccNumber: isUccActivated ? uccNumber.trim() : undefined,
         }),
       });
 
@@ -393,6 +403,7 @@ export function GuidedStageActions({
       setTransitioningAction(null);
       setCallBackAt("");
       setTaskAssigneeId("");
+      setUccNumber("");
       router.refresh();
       window.dispatchEvent(new CustomEvent("blueprint:refresh"));
       onAfterAdvance?.();
@@ -629,6 +640,26 @@ export function GuidedStageActions({
                 </select>
                 <p className="text-[10px] text-muted-foreground">
                   We'll create a high-priority task to create the UCC for this client, assigned to them.
+                </p>
+              </div>
+            )}
+
+            {/* UCC number — required for "UCC activated"; saved on the client. */}
+            {transitioningAction.targetStage === "ucc_activated" && (
+              <div className="space-y-1 border-t border-b border-border py-3">
+                <label className="text-xs text-foreground font-medium">
+                  UCC number <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={uccNumber}
+                  onChange={(e) => setUccNumber(e.target.value)}
+                  placeholder="e.g. 1234567"
+                  className="input-base text-xs w-full"
+                />
+                <p className="text-[10px] text-muted-foreground">
+                  We'll save this UCC on the client's profile.
                 </p>
               </div>
             )}

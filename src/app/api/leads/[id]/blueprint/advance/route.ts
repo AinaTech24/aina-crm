@@ -25,7 +25,8 @@ import { requireAny } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { clientMetaFromHeaders } from "@/lib/audit";
 import { transitionTo } from "@/lib/blueprints/engine";
-import { leads } from "@/db/schema";
+import { leads, tasks } from "@/db/schema";
+import { v4 as uuid } from "uuid";
 import { loadEditableLead } from "@/lib/leads/access";
 import {
   normalizeEmail,
@@ -49,7 +50,54 @@ const Body = z.object({
    */
   force: z.boolean().optional(),
   fields: z.record(z.string(), z.any()).optional(),
+  /** ISO/local datetime — when moving to "call_back_later", schedules a
+   *  reminder task for the lead owner at this time. */
+  callBackAt: z.string().optional(),
+  /** When moving to "ucc_activated", store this UCC on the client (investor). */
+  uccNumber: z.string().max(40).optional(),
 });
+
+/** Store the activated UCC on the client master (the lead's converted investor,
+ *  or the investor directly when the blueprint subject is already a client). */
+async function storeClientUcc(tx: any, tenantId: string, leadId: string, ucc: string): Promise<void> {
+  const v = ucc.trim();
+  if (!v) return;
+  await tx.execute(sql`
+    UPDATE investors SET bse_ucc_code = ${v}, updated_at = now()
+    WHERE tenant_id = ${tenantId}::uuid
+      AND (id = (SELECT converted_investor_id FROM leads WHERE id = ${leadId}::uuid AND tenant_id = ${tenantId}::uuid)
+           OR id = ${leadId}::uuid)
+  `);
+}
+
+/** Create the "call this lead back" reminder task for the owner at the chosen time. */
+async function scheduleCallBackReminder(
+  tx: any,
+  tenantId: string,
+  leadId: string,
+  fallbackAssigneeId: string,
+  callBackAt: string
+): Promise<void> {
+  const due = new Date(callBackAt);
+  if (isNaN(due.getTime())) return; // ignore an unparseable date rather than fail the move
+  const lr = await tx.execute(
+    sql`SELECT name, owner_id FROM leads WHERE id = ${leadId}::uuid AND tenant_id = ${tenantId}::uuid LIMIT 1`
+  );
+  const lead = lr.rows[0] as { name?: string; owner_id?: string } | undefined;
+  await tx.insert(tasks).values({
+    id: uuid(),
+    tenantId,
+    assigneeId: lead?.owner_id ?? fallbackAssigneeId,
+    subjectType: "lead",
+    subjectId: leadId,
+    relatedLeadId: leadId,
+    type: "follow_up",
+    title: `Call back: ${lead?.name ?? "lead"}`,
+    priority: "normal",
+    status: "open",
+    dueAt: due,
+  } as any);
+}
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -62,7 +110,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!parsed.success) {
       return NextResponse.json({ error: "invalid body", issues: parsed.error.issues }, { status: 400 });
     }
-    const { remarks, force, fields } = parsed.data;
+    const { remarks, force, fields, callBackAt, uccNumber } = parsed.data;
 
     // Validate the target stage. normalizeLeadStage() falls back to "new" for
     // unrecognized input — detect that silent coercion and 400, instead of
@@ -110,7 +158,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         remarks,
         ...clientMeta,
       });
-      if (first.ok) return first;
+      if (first.ok) {
+        if (toStageKey === "call_back_later" && callBackAt) {
+          await scheduleCallBackReminder(tx, session.tenantId, id, session.userId, callBackAt);
+        }
+        if (toStageKey === "ucc_activated" && uccNumber) {
+          await storeClientUcc(tx, session.tenantId, id, uccNumber);
+        }
+        return first;
+      }
       // Don't let the multi-hop walk silently bypass a prerequisite / role /
       // terminal block from the direct hop — surface it so the user fixes it.
       if (first.code === "prereq" || first.code === "role" || first.code === "terminal") return first;
