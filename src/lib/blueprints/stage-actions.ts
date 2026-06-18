@@ -610,7 +610,7 @@ export const STAGE_ACTIONS: Record<string, StageAction[]> = {
       tone: "primary",
       targetStage: "make_transaction",
       hint: "Submit purchase order to BSE Star / NSE NMF.",
-      behaviour: { kind: "navigate", hrefPattern: "/dashboard/transactions?investorId={id}" },
+      behaviour: { kind: "navigate", hrefPattern: "/dashboard/business-entries/new?investorId={id}" },
     },
   ],
 
@@ -666,7 +666,7 @@ export const STAGE_ACTIONS: Record<string, StageAction[]> = {
       tone: "primary",
       targetStage: "make_transaction",
       hint: "Resolve the issue and resubmit the order.",
-      behaviour: { kind: "navigate", hrefPattern: "/dashboard/transactions?investorId={id}" },
+      behaviour: { kind: "navigate", hrefPattern: "/dashboard/business-entries/new?investorId={id}" },
     },
   ],
 

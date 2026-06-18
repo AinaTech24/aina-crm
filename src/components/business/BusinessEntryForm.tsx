@@ -134,18 +134,21 @@ export function BusinessEntryForm({
   initialLines,
   members,
   currentUserId,
+  prefillClient,
 }: {
   initial?: InitialEntry;
   initialLines?: InitialLine[];
   members: { id: string; name: string }[];
   currentUserId: string;
+  /** Pre-select the client on a NEW entry (e.g. opened from a blueprint action). */
+  prefillClient?: { id: string; name: string };
 }) {
   const router = useRouter();
   const toast = useToast();
   const isEdit = !!initial;
 
-  const [investorId, setInvestorId] = useState(initial?.investorId ?? "");
-  const [clientName, setClientName] = useState(initial?.clientName ?? "");
+  const [investorId, setInvestorId] = useState(initial?.investorId ?? prefillClient?.id ?? "");
+  const [clientName, setClientName] = useState(initial?.clientName ?? prefillClient?.name ?? "");
   const [productType, setProductType] = useState(initial?.productType ?? "mutual_fund");
   const [platform, setPlatform] = useState(initial?.platform ?? "");
   const [businessDate, setBusinessDate] = useState(initial?.businessDate ?? new Date().toISOString().slice(0, 10));
