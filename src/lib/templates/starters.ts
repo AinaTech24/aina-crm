@@ -292,6 +292,136 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
     },
     variables: [{ key: "client_name", type: "string", source: "investor.name", fallback: "there" }],
   },
+  {
+    key: "kyc_expiry", channel: "email", category: "utility",
+    name: "KYC expiry reminder", description: "Sent before a client's KYC expires.",
+    body: {
+      subject: "Action needed: your KYC is expiring soon",
+      blocks: [
+        { type: "header", title: "Let's keep your KYC current 🔁" },
+        { type: "text", content: "Hi {{client_name}},\n\nYour KYC is due to expire soon. To keep your investments active and compliant, we need to complete a quick re-KYC. Just reply to this email and we'll guide you through it.\n\nWarm regards,\n{{tenant_display_name}}" },
+      ],
+      textFallback: "Hi {{client_name}}, your KYC is expiring soon — reply and we'll help you re-KYC. — {{tenant_display_name}}",
+    },
+    variables: [{ key: "client_name", type: "string", source: "investor.name", fallback: "there" }],
+  },
+  {
+    key: "sip_ending", channel: "email", category: "utility",
+    name: "SIP ending soon", description: "Sent before a SIP's end date.",
+    body: {
+      subject: "Your SIP is ending soon",
+      blocks: [
+        { type: "header", title: "Your SIP is wrapping up ⏳" },
+        { type: "text", content: "Hi {{client_name}},\n\nYour SIP ({{scheme_name}}) is scheduled to end on {{end_date}}. Let's review whether to renew or step it up so your goals stay on track. Reply and we'll set it up.\n\nWarm regards,\n{{tenant_display_name}}" },
+      ],
+      textFallback: "Hi {{client_name}}, your SIP ({{scheme_name}}) ends on {{end_date}} — let's renew or step it up. — {{tenant_display_name}}",
+    },
+    variables: [{ key: "client_name", type: "string", source: "investor.name", fallback: "there" }],
+  },
+  {
+    key: "premium_renewal", channel: "email", category: "utility",
+    name: "Insurance premium renewal reminder", description: "Sent before a policy's next premium due date.",
+    body: {
+      subject: "Premium due soon — keep your cover active",
+      blocks: [
+        { type: "header", title: "Premium due soon 🛡️" },
+        { type: "text", content: "Hi {{client_name}},\n\nYour insurance premium is due on {{next_premium_due_date}}. Please pay before the due date to keep policy {{policy_number}} in force. Reply if you'd like a hand with the payment.\n\nWarm regards,\n{{tenant_display_name}}" },
+      ],
+      textFallback: "Hi {{client_name}}, your insurance premium (policy {{policy_number}}) is due {{next_premium_due_date}}. — {{tenant_display_name}}",
+    },
+    variables: [{ key: "client_name", type: "string", source: "investor.name", fallback: "there" }],
+  },
+  {
+    key: "policy_maturity", channel: "email", category: "utility",
+    name: "Policy maturity heads-up", description: "Sent before a policy matures.",
+    body: {
+      subject: "Your policy is maturing soon",
+      blocks: [
+        { type: "header", title: "Your policy is maturing 🎯" },
+        { type: "text", content: "Hi {{client_name}},\n\nYour policy {{policy_number}} matures on {{maturity_date}}. Let's plan how to reinvest the proceeds to keep your money working. Reply to schedule a quick call.\n\nWarm regards,\n{{tenant_display_name}}" },
+      ],
+      textFallback: "Hi {{client_name}}, policy {{policy_number}} matures on {{maturity_date}} — let's plan the reinvestment. — {{tenant_display_name}}",
+    },
+    variables: [{ key: "client_name", type: "string", source: "investor.name", fallback: "there" }],
+  },
+  {
+    key: "onboarding_anniversary", channel: "email", category: "transactional",
+    name: "Client anniversary", description: "Sent yearly on the client's onboarding anniversary.",
+    body: {
+      subject: "Happy anniversary with {{tenant_display_name}}! 🎉",
+      blocks: [
+        { type: "header", title: "Cheers to another year together 🥂" },
+        { type: "text", content: "Hi {{client_name}},\n\nIt's another year since you joined {{tenant_display_name}}. Thank you for your trust — here's to many more years of growing your wealth together. We're always here if you need anything.\n\nWarm regards,\n{{tenant_display_name}}" },
+      ],
+      textFallback: "Hi {{client_name}}, happy anniversary with {{tenant_display_name}} — thank you for your trust!",
+    },
+    variables: [{ key: "client_name", type: "string", source: "investor.name", fallback: "there" }],
+  },
+  {
+    key: "stale_lead_nurture", channel: "email", category: "marketing",
+    name: "Stale lead re-engagement", description: "Sent to a lead with no activity for a while.",
+    body: {
+      subject: "Still thinking it over?",
+      blocks: [
+        { type: "header", title: "We're here when you're ready 👋" },
+        { type: "text", content: "Hi {{name}},\n\nWe noticed we haven't connected in a while. We'd love to help you start your investment journey with {{tenant_display_name}} — just reply and we'll take it from there, no pressure.\n\nWarm regards,\n{{tenant_display_name}}" },
+      ],
+      textFallback: "Hi {{name}}, we'd love to help you get started with {{tenant_display_name}} — just reply. ",
+    },
+    variables: [{ key: "name", type: "string", source: "lead.name", fallback: "there" }],
+  },
+  {
+    key: "goal_review", channel: "email", category: "utility",
+    name: "Goal target approaching", description: "Sent before a goal's target date.",
+    body: {
+      subject: "Your goal is approaching — let's review",
+      blocks: [
+        { type: "header", title: "Your goal is in sight 🎯" },
+        { type: "text", content: "Hi {{client_name}},\n\nYour goal “{{name}}” is approaching its target date ({{target_date}}). Let's review your progress and make any adjustments so you finish strong. Reply to book a quick review.\n\nWarm regards,\n{{tenant_display_name}}" },
+      ],
+      textFallback: "Hi {{client_name}}, your goal “{{name}}” (target {{target_date}}) is approaching — let's review. — {{tenant_display_name}}",
+    },
+    variables: [{ key: "client_name", type: "string", source: "investor.name", fallback: "there" }],
+  },
+  {
+    key: "dormant_reengage", channel: "email", category: "marketing",
+    name: "Dormant client re-engagement", description: "Sent when a client hasn't transacted in a long time.",
+    body: {
+      subject: "We miss you, {{client_name}}",
+      blocks: [
+        { type: "header", title: "Let's reconnect 🤝" },
+        { type: "text", content: "Hi {{client_name}},\n\nIt's been a while since your last transaction. Markets and opportunities have moved on — let's reconnect and make sure your portfolio is still working hard for you. Reply and we'll set up a quick review.\n\nWarm regards,\n{{tenant_display_name}}" },
+      ],
+      textFallback: "Hi {{client_name}}, it's been a while — let's reconnect and review your portfolio. — {{tenant_display_name}}",
+    },
+    variables: [{ key: "client_name", type: "string", source: "investor.name", fallback: "there" }],
+  },
+  {
+    key: "sip_stepup", channel: "email", category: "marketing",
+    name: "Annual SIP step-up nudge", description: "Sent yearly suggesting a SIP step-up.",
+    body: {
+      subject: "Time to step up your SIP?",
+      blocks: [
+        { type: "header", title: "A small step, a big difference 📈" },
+        { type: "text", content: "Hi {{client_name}},\n\nYour SIP has completed another year. A small annual step-up can significantly grow your corpus over time, thanks to compounding. Reply and we'll show you the impact on your goals.\n\nWarm regards,\n{{tenant_display_name}}" },
+      ],
+      textFallback: "Hi {{client_name}}, consider stepping up your SIP this year — reply to see the impact. — {{tenant_display_name}}",
+    },
+    variables: [{ key: "client_name", type: "string", source: "investor.name", fallback: "there" }],
+  },
+  {
+    key: "client_welcome", channel: "email", category: "transactional",
+    name: "New client welcome", description: "Sent when a client is onboarded.",
+    body: {
+      subject: "Welcome to {{tenant_display_name}}! 🎉",
+      blocks: [
+        { type: "header", title: "Welcome aboard 🎉" },
+        { type: "text", content: "Hi {{client_name}},\n\nWelcome to {{tenant_display_name}}! We're delighted to have you. Your advisor will be in touch shortly, and you can reach us anytime just by replying to this email. Here's to building your wealth together.\n\nWarm regards,\n{{tenant_display_name}}" },
+      ],
+      textFallback: "Hi {{client_name}}, welcome to {{tenant_display_name}}! Your advisor will be in touch shortly.",
+    },
+    variables: [{ key: "client_name", type: "string", source: "investor.name", fallback: "there" }],
+  },
 ];
 
 export function getStarterTemplate(key: string): StarterTemplate | undefined {

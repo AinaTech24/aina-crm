@@ -228,6 +228,8 @@ export const MODULES: Record<ModuleKey, ModuleCatalog> = {
       { key: "kyc_expires_at", column: "ckyc_expiry_at", label: "KYC Expiry", type: "date", dateAnchor: true },
       { key: "next_review_at", label: "Next Review Date", type: "date", dateAnchor: true },
       { key: "last_review_at", label: "Last Review Date", type: "datetime", dateAnchor: true },
+      { key: "onboarded_at", label: "Onboarded On", type: "datetime", dateAnchor: true },
+      { key: "last_transaction_at", label: "Last Transaction", type: "datetime", dateAnchor: true },
       CREATED(),
       UPDATED(),
     ],

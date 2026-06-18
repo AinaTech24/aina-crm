@@ -200,6 +200,246 @@ export const PREDEFINED_RULES: PredefinedRule[] = [
     },
   },
   {
+    key: "new_client_welcome_email",
+    title: "New client → welcome email",
+    description:
+      "As soon as a client is created, email them a warm welcome from your firm. Template auto-created.",
+    category: "Clients",
+    needsTemplate: false,
+    rule: {
+      ...base,
+      module: "investors",
+      name: "New client welcome email",
+      description: "Email every new client a welcome message.",
+      triggerType: "record_action",
+      triggerConfig: { when: "create", fields: [], repeat: false },
+      criteriaRows: [],
+      instantActions: [
+        { type: "send_email", label: "Email the client", config: { templateKey: "client_welcome", category: "transactional", recipient: "subject" } },
+      ],
+    },
+  },
+  {
+    key: "kyc_expiry_reminder",
+    title: "KYC expiring → remind the client",
+    description:
+      "30 days before a client's KYC expires, email them to complete re-KYC so their investments stay active. Template auto-created.",
+    category: "Clients",
+    needsTemplate: false,
+    rule: {
+      ...base,
+      module: "investors",
+      name: "KYC expiry reminder",
+      description: "Email the client 30 days before KYC expiry.",
+      triggerType: "date_field",
+      triggerConfig: { field: "kyc_expires_at", when: "before", offset: 30, unit: "day", recurrence: "once", time: "09:00" },
+      criteriaRows: [{ field: "status", operator: "is", value: "active" }],
+      instantActions: [
+        { type: "send_email", label: "Email the client", config: { templateKey: "kyc_expiry", category: "utility", recipient: "subject" } },
+      ],
+    },
+  },
+  {
+    key: "onboarding_anniversary",
+    title: "Client anniversary → thank-you email",
+    description:
+      "Every year on the anniversary of a client joining, email them a thank-you. Recurs yearly off the onboarding date. Template auto-created.",
+    category: "Clients",
+    needsTemplate: false,
+    rule: {
+      ...base,
+      module: "investors",
+      name: "Client anniversary",
+      description: "Email a thank-you on the client's onboarding anniversary.",
+      triggerType: "date_field",
+      triggerConfig: { field: "onboarded_at", when: "on", offset: 0, unit: "day", recurrence: "every_year", time: "09:00" },
+      criteriaRows: [{ field: "status", operator: "is", value: "active" }],
+      instantActions: [
+        { type: "send_email", label: "Email the client", config: { templateKey: "onboarding_anniversary", category: "transactional", recipient: "subject" } },
+      ],
+    },
+  },
+  {
+    key: "dormant_client_reengage",
+    title: "Dormant client → re-engagement email",
+    description:
+      "When a client hasn't transacted in 180 days, email them to reconnect and review their portfolio. Marketing message — needs the client's marketing consent. Template auto-created.",
+    category: "Clients",
+    needsTemplate: false,
+    rule: {
+      ...base,
+      module: "investors",
+      name: "Dormant client re-engagement",
+      description: "Email a re-engagement nudge after 180 days of no transactions.",
+      triggerType: "date_field",
+      triggerConfig: { field: "last_transaction_at", when: "after", offset: 180, unit: "day", recurrence: "once", time: "09:00" },
+      criteriaRows: [{ field: "status", operator: "is", value: "active" }],
+      instantActions: [
+        { type: "send_email", label: "Email the client", config: { templateKey: "dormant_reengage", category: "marketing", recipient: "subject" } },
+      ],
+    },
+  },
+  {
+    key: "review_meeting_due",
+    title: "Review due → create RM task",
+    description:
+      "On a client's next-review date, create a task for their RM to schedule the review meeting. No message template needed — works immediately.",
+    category: "Clients",
+    needsTemplate: false,
+    rule: {
+      ...base,
+      module: "investors",
+      name: "Review meeting due",
+      description: "Create an RM task on the client's next-review date.",
+      triggerType: "date_field",
+      triggerConfig: { field: "next_review_at", when: "on", offset: 0, unit: "day", recurrence: "once", time: "09:00" },
+      criteriaRows: [{ field: "status", operator: "is", value: "active" }],
+      instantActions: [
+        { type: "create_task", label: "Create RM review task", config: { title: "Schedule periodic review with client", taskType: "review", priority: "normal", assignee: "subject.rm_id", department: "rm" } },
+      ],
+    },
+  },
+  {
+    key: "sip_ending_soon",
+    title: "SIP ending soon → email client",
+    description:
+      "30 days before an active SIP's end date, email the client to review whether to renew or step it up. Template auto-created.",
+    category: "SIP",
+    needsTemplate: false,
+    rule: {
+      ...base,
+      module: "sips",
+      name: "SIP ending soon",
+      description: "Email the client 30 days before a SIP ends.",
+      triggerType: "date_field",
+      triggerConfig: { field: "end_date", when: "before", offset: 30, unit: "day", recurrence: "once", time: "09:00" },
+      criteriaRows: [{ field: "status", operator: "is", value: "active" }],
+      instantActions: [
+        { type: "send_email", label: "Email the client", config: { templateKey: "sip_ending", category: "utility", recipient: "subject" } },
+      ],
+    },
+  },
+  {
+    key: "sip_stepup_nudge",
+    title: "SIP anniversary → step-up nudge",
+    description:
+      "Every year on a SIP's start-date anniversary, email the client suggesting an annual step-up. Marketing message — needs the client's marketing consent. Template auto-created.",
+    category: "SIP",
+    needsTemplate: false,
+    rule: {
+      ...base,
+      module: "sips",
+      name: "Annual SIP step-up nudge",
+      description: "Email a step-up suggestion on the SIP's yearly anniversary.",
+      triggerType: "date_field",
+      triggerConfig: { field: "start_date", when: "on", offset: 0, unit: "day", recurrence: "every_year", time: "09:00" },
+      criteriaRows: [{ field: "status", operator: "is", value: "active" }],
+      instantActions: [
+        { type: "send_email", label: "Email the client", config: { templateKey: "sip_stepup", category: "marketing", recipient: "subject" } },
+      ],
+    },
+  },
+  {
+    key: "insurance_premium_renewal",
+    title: "Insurance premium due → remind client",
+    description:
+      "7 days before a policy's next premium due date, email the client to pay and keep their cover active. Template auto-created.",
+    category: "Clients",
+    needsTemplate: false,
+    rule: {
+      ...base,
+      module: "insurance",
+      name: "Insurance premium renewal reminder",
+      description: "Email the client 7 days before a premium is due.",
+      triggerType: "date_field",
+      triggerConfig: { field: "next_premium_due_date", when: "before", offset: 7, unit: "day", recurrence: "once", time: "09:00" },
+      criteriaRows: [{ field: "status", operator: "is", value: "active" }],
+      instantActions: [
+        { type: "send_email", label: "Email the client", config: { templateKey: "premium_renewal", category: "utility", recipient: "subject" } },
+      ],
+    },
+  },
+  {
+    key: "policy_maturity_heads_up",
+    title: "Policy maturing → email client",
+    description:
+      "30 days before a policy matures, email the client to plan reinvesting the proceeds. Template auto-created.",
+    category: "Clients",
+    needsTemplate: false,
+    rule: {
+      ...base,
+      module: "insurance",
+      name: "Policy maturity heads-up",
+      description: "Email the client 30 days before a policy matures.",
+      triggerType: "date_field",
+      triggerConfig: { field: "maturity_date", when: "before", offset: 30, unit: "day", recurrence: "once", time: "09:00" },
+      criteriaRows: [{ field: "status", operator: "is", value: "active" }],
+      instantActions: [
+        { type: "send_email", label: "Email the client", config: { templateKey: "policy_maturity", category: "utility", recipient: "subject" } },
+      ],
+    },
+  },
+  {
+    key: "goal_target_approaching",
+    title: "Goal approaching → review email",
+    description:
+      "90 days before a financial goal's target date, email the client to review progress. Template auto-created.",
+    category: "Clients",
+    needsTemplate: false,
+    rule: {
+      ...base,
+      module: "goals",
+      name: "Goal target approaching",
+      description: "Email the client 90 days before a goal's target date.",
+      triggerType: "date_field",
+      triggerConfig: { field: "target_date", when: "before", offset: 90, unit: "day", recurrence: "once", time: "09:00" },
+      criteriaRows: [],
+      instantActions: [
+        { type: "send_email", label: "Email the client", config: { templateKey: "goal_review", category: "utility", recipient: "subject" } },
+      ],
+    },
+  },
+  {
+    key: "lead_followup_due",
+    title: "Lead follow-up due → create owner task",
+    description:
+      "On a lead's next-follow-up date, create a task for the lead owner to follow up. No message template needed — works immediately.",
+    category: "Leads",
+    needsTemplate: false,
+    rule: {
+      ...base,
+      module: "leads",
+      name: "Lead follow-up due",
+      description: "Create an owner task on the lead's next-follow-up date.",
+      triggerType: "date_field",
+      triggerConfig: { field: "next_follow_up_at", when: "on", offset: 0, unit: "day", recurrence: "once", time: "09:00" },
+      criteriaRows: [],
+      instantActions: [
+        { type: "create_task", label: "Create follow-up task", config: { title: "Follow up with lead", taskType: "follow_up", priority: "high", assignee: "subject.owner_id", department: "sales" } },
+      ],
+    },
+  },
+  {
+    key: "stale_lead_nurture",
+    title: "Stale lead → re-engagement email",
+    description:
+      "When a new lead has had no activity for 14 days, email them a gentle nudge to start their journey. Marketing message — needs consent. Template auto-created.",
+    category: "Leads",
+    needsTemplate: false,
+    rule: {
+      ...base,
+      module: "leads",
+      name: "Stale lead re-engagement",
+      description: "Email a nurture nudge after 14 days of no activity on a new lead.",
+      triggerType: "date_field",
+      triggerConfig: { field: "last_activity_at", when: "after", offset: 14, unit: "day", recurrence: "once", time: "09:00" },
+      criteriaRows: [{ field: "stage", operator: "is", value: "new" }],
+      instantActions: [
+        { type: "send_email", label: "Email the lead", config: { templateKey: "stale_lead_nurture", category: "marketing", recipient: "subject" } },
+      ],
+    },
+  },
+  {
     key: "sip_installment_reminder",
     title: "SIP installment reminder",
     description:
