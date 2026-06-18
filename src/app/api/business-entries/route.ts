@@ -190,6 +190,29 @@ export async function POST(req: NextRequest) {
         }
       }
 
+      // Emit business_entry.created so workflow rules can react (e.g. send the
+      // client a transaction confirmation). The snapshot carries the fields the
+      // rule's criteria + template tokens read.
+      await tx.insert(eventsOutbox).values({
+        tenantId: session.tenantId,
+        kind: "business_entry.created",
+        entityType: "business_entry",
+        entityId: entryId,
+        after: {
+          id: entryId,
+          investor_id: b.investorId ?? null,
+          client_name: b.clientName,
+          product_type: b.productType,
+          status: b.status,
+          total_amount: String(totals.total),
+          amc_name: b.amcName ?? null,
+          platform: b.platform ?? null,
+          rm_id: rmId,
+          business_date: b.businessDate,
+        } as any,
+        meta: { userId: session.userId } as any,
+      } as any);
+
       await recordAudit(tx, {
         tenantId: session.tenantId,
         actorUserId: session.userId,

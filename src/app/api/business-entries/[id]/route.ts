@@ -13,7 +13,7 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
-import { businessEntries, businessEntryLines } from "@/db/schema";
+import { businessEntries, businessEntryLines, eventsOutbox } from "@/db/schema";
 import {
   PRODUCT_TYPES,
   BUSINESS_ENTRY_STATUSES,
@@ -130,6 +130,41 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       }
 
       await tx.update(businessEntries).set(set as any).where(eq(businessEntries.id, id));
+
+      // Emit business_entry.updated (snake-case before/after) so workflow rules
+      // can react to a draft → confirmed change — e.g. send the client a
+      // transaction confirmation. Snapshots use the snake_case keys the rule
+      // criteria + recipient resolution read.
+      const [afterRow] = await tx
+        .select()
+        .from(businessEntries)
+        .where(and(eq(businessEntries.id, id), eq(businessEntries.tenantId, session.tenantId)))
+        .limit(1);
+      const snap = (e: any) =>
+        e
+          ? {
+              id: e.id,
+              investor_id: e.investorId ?? null,
+              client_name: e.clientName,
+              product_type: e.productType,
+              status: e.status,
+              total_amount: e.totalAmount,
+              amc_name: e.amcName ?? null,
+              platform: e.platform ?? null,
+              rm_id: e.rmId ?? null,
+              business_date: e.businessDate,
+            }
+          : null;
+      await tx.insert(eventsOutbox).values({
+        tenantId: session.tenantId,
+        kind: "business_entry.updated",
+        entityType: "business_entry",
+        entityId: id,
+        before: snap(before) as any,
+        after: snap(afterRow ?? before) as any,
+        meta: { userId: session.userId } as any,
+      } as any);
+
       await recordAudit(tx, {
         tenantId: session.tenantId,
         actorUserId: session.userId,

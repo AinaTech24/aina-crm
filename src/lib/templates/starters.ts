@@ -262,6 +262,36 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
     },
     variables: [{ key: "name", type: "string", source: "investor.name", fallback: "there" }],
   },
+  {
+    key: "business_confirmation",
+    channel: "email",
+    category: "transactional",
+    name: "Transaction / business confirmation",
+    description: "Sent to the client when a business entry is confirmed — confirms what was recorded.",
+    body: {
+      subject: "Transaction confirmation — {{tenant_display_name}}",
+      blocks: [
+        { type: "header", title: "Transaction recorded ✅" },
+        {
+          type: "text",
+          content:
+            "Hi {{client_name}},\n\nThis confirms that {{tenant_display_name}} has recorded your transaction:",
+        },
+        {
+          type: "text",
+          content: "Amount: ₹{{total_amount}}\nAMC: {{amc_name}}\nDate: {{business_date}}",
+        },
+        {
+          type: "text",
+          content:
+            "Thank you for investing with us. If anything looks incorrect, just reply to this email and we'll fix it.\n\nWarm regards,\n{{tenant_display_name}}",
+        },
+      ],
+      textFallback:
+        "Hi {{client_name}}, {{tenant_display_name}} has recorded your transaction of ₹{{total_amount}} ({{amc_name}}, {{business_date}}). Reply if anything looks off.",
+    },
+    variables: [{ key: "client_name", type: "string", source: "investor.name", fallback: "there" }],
+  },
 ];
 
 export function getStarterTemplate(key: string): StarterTemplate | undefined {

@@ -29,7 +29,8 @@ export type ModuleKey =
   | "campaigns"
   | "goals"
   | "onboarding"
-  | "risk_profiles";
+  | "risk_profiles"
+  | "business_entries";
 
 export type ModuleFieldType =
   | "string"
@@ -659,6 +660,39 @@ export const MODULES: Record<ModuleKey, ModuleCatalog> = {
       { key: "score", label: "Score", type: "integer", scoreField: true },
       { key: "expires_at", label: "Expires At", type: "date", dateAnchor: true },
       CREATED(),
+    ],
+  },
+
+  business_entries: {
+    key: "business_entries",
+    label: "Business Entries",
+    table: "business_entries",
+    entityType: "business_entry",
+    eventPrefix: "business_entry",
+    actionEvents: { create: "business_entry.created", edit: "business_entry.updated" },
+    fields: [
+      ID(),
+      { key: "client_name", label: "Client Name", type: "string" },
+      { key: "investor_id", label: "Client", type: "uuid" },
+      {
+        key: "product_type",
+        label: "Product Type",
+        type: "enum",
+        enumValues: ["mutual_fund", "direct_equity", "pms", "aif", "sif", "bond", "ncd", "p2p", "las", "other"],
+      },
+      {
+        key: "status",
+        label: "Status",
+        type: "enum",
+        enumValues: ["draft", "confirmed", "emailed", "cancelled"],
+      },
+      { key: "total_amount", label: "Total Amount", type: "currency", scoreField: true },
+      { key: "amc_name", label: "AMC", type: "string" },
+      { key: "platform", label: "Platform", type: "string" },
+      { key: "rm_id", label: "RM", type: "uuid" },
+      { key: "business_date", label: "Business Date", type: "date", dateAnchor: true },
+      CREATED(),
+      UPDATED(),
     ],
   },
 };

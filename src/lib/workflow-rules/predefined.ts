@@ -180,6 +180,26 @@ export const PREDEFINED_RULES: PredefinedRule[] = [
     },
   },
   {
+    key: "business_entry_confirmation",
+    title: "Business entry confirmed → email client confirmation",
+    description:
+      "When a business entry is Confirmed (saved as Confirmed, or a draft later marked Confirmed), email the client a transaction confirmation with the amount, AMC, and date. Template auto-created. Remove the 'Confirmed' condition to fire on every entry (incl. drafts).",
+    category: "Service",
+    needsTemplate: false,
+    rule: {
+      ...base,
+      module: "business_entries",
+      name: "Business entry confirmation",
+      description: "Email the client a transaction confirmation when a business entry is confirmed.",
+      triggerType: "record_action",
+      triggerConfig: { when: "create_or_edit", fields: [], repeat: false },
+      criteriaRows: [{ field: "status", operator: "is", value: "confirmed" }],
+      instantActions: [
+        { type: "send_email", label: "Email the client", config: { templateKey: "business_confirmation", category: "transactional", recipient: "subject" } },
+      ],
+    },
+  },
+  {
     key: "sip_installment_reminder",
     title: "SIP installment reminder",
     description:
