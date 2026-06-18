@@ -99,6 +99,28 @@ async function scheduleCallBackReminder(
   } as any);
 }
 
+/** On a bank-rejected mandate, create a high-priority task to re-do it. Assigned
+ *  to the lead owner (or the acting user if none). */
+async function createRedoMandateTask(tx: any, tenantId: string, leadId: string, fallbackAssigneeId: string): Promise<void> {
+  const lr = await tx.execute(
+    sql`SELECT name, owner_id FROM leads WHERE id = ${leadId}::uuid AND tenant_id = ${tenantId}::uuid LIMIT 1`
+  );
+  const lead = lr.rows[0] as { name?: string; owner_id?: string } | undefined;
+  await tx.insert(tasks).values({
+    id: uuid(),
+    tenantId,
+    assigneeId: lead?.owner_id ?? fallbackAssigneeId,
+    subjectType: "lead",
+    subjectId: leadId,
+    relatedLeadId: leadId,
+    type: "follow_up",
+    title: `Re-do SIP mandate — bank rejected: ${lead?.name ?? "client"}`,
+    description: "The bank rejected the mandate. Resolve the issue and re-register the NACH / e-mandate.",
+    priority: "high",
+    status: "open",
+  } as any);
+}
+
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await requireSession();
@@ -164,6 +186,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         }
         if (toStageKey === "ucc_activated" && uccNumber) {
           await storeClientUcc(tx, session.tenantId, id, uccNumber);
+        }
+        if (toStageKey === "mandate_reject") {
+          await createRedoMandateTask(tx, session.tenantId, id, session.userId);
         }
         return first;
       }

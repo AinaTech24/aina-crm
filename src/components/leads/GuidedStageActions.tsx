@@ -46,6 +46,15 @@ type Prereq = {
   cta?: { href: string; label: string };
 };
 
+/**
+ * Transitions that, on confirm, ask for an assignee and auto-create a task for
+ * that team member. Maps the target stage → the task title.
+ */
+const TASK_ON_TRANSITION: Record<string, string> = {
+  ucc_create: "Create UCC for this client",
+  mandate_create: "Register the SIP mandate for this client",
+};
+
 type Outcome =
   | { kind: "advanced" }
   | { kind: "needs_action"; items: Prereq[]; targetStage: string }
@@ -87,10 +96,10 @@ export function GuidedStageActions({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Load the team list once, when a UCC-create transition modal opens, so the
+  // Load the team list once, when a task-creating transition modal opens, so the
   // "Assign to" picker can be populated.
   useEffect(() => {
-    if (transitioningAction?.targetStage !== "ucc_create" || teamUsers.length > 0) return;
+    if (!TASK_ON_TRANSITION[transitioningAction?.targetStage ?? ""] || teamUsers.length > 0) return;
     let cancelled = false;
     (async () => {
       try {
@@ -344,10 +353,11 @@ export function GuidedStageActions({
       return;
     }
 
-    // "Create UCC" requires an assignee — we auto-create a UCC task for them.
-    const isUcc = transitioningAction.targetStage === "ucc_create";
-    if (isUcc && !taskAssigneeId) {
-      setError("Please choose who to assign the UCC task to.");
+    // Task-creating transitions (Create UCC, Register Mandate) require an
+    // assignee — we auto-create the task for them after the stage moves.
+    const taskTitle = TASK_ON_TRANSITION[transitioningAction.targetStage];
+    if (taskTitle && !taskAssigneeId) {
+      setError("Please choose who to assign the task to.");
       return;
     }
 
@@ -376,17 +386,17 @@ export function GuidedStageActions({
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d?.error ?? "Failed to complete transition");
 
-      // Auto-create the UCC task assigned to the chosen team member. The stage
+      // Auto-create the task assigned to the chosen team member. The stage
       // already moved, so a task failure is surfaced (don't silently drop it)
       // but the transition stands — re-clicking Save retries the task (the
       // transition is idempotent).
-      if (isUcc) {
+      if (taskTitle) {
         const tRes = await fetch(`/api/tasks`, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
-            title: "Create UCC for this client",
-            description: remarks ? `From onboarding transition. ${remarks}` : "Auto-created when the client moved to UCC Create.",
+            title: taskTitle,
+            description: remarks ? `From onboarding transition. ${remarks}` : `Auto-created on the "${transitioningAction.targetStage.replace(/_/g, " ")}" transition.`,
             type: "follow_up",
             priority: "high",
             department: "back_office",
@@ -396,7 +406,7 @@ export function GuidedStageActions({
         });
         if (!tRes.ok) {
           const td = await tRes.json().catch(() => ({}));
-          throw new Error(`Stage moved, but the UCC task couldn't be created: ${td?.error ?? `HTTP ${tRes.status}`}. Click Save again to retry.`);
+          throw new Error(`Stage moved, but the task couldn't be created: ${td?.error ?? `HTTP ${tRes.status}`}. Click Save again to retry.`);
         }
       }
 
@@ -621,11 +631,11 @@ export function GuidedStageActions({
               </div>
             )}
 
-            {/* UCC task assignee — required for "create UCC"; auto-creates the task. */}
-            {transitioningAction.targetStage === "ucc_create" && (
+            {/* Task assignee — required for task-creating transitions; auto-creates the task. */}
+            {TASK_ON_TRANSITION[transitioningAction.targetStage] && (
               <div className="space-y-1 border-t border-b border-border py-3">
                 <label className="text-xs text-foreground font-medium">
-                  Assign UCC task to <span className="text-rose-500">*</span>
+                  Assign task to <span className="text-rose-500">*</span>
                 </label>
                 <select
                   required
@@ -639,7 +649,7 @@ export function GuidedStageActions({
                   ))}
                 </select>
                 <p className="text-[10px] text-muted-foreground">
-                  We'll create a high-priority task to create the UCC for this client, assigned to them.
+                  We&apos;ll create a high-priority task — &ldquo;{TASK_ON_TRANSITION[transitioningAction.targetStage]}&rdquo; — assigned to them.
                 </p>
               </div>
             )}
