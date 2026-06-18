@@ -21,7 +21,6 @@ import {
 } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { formatINR, formatDate, formatRelative } from "@/lib/utils";
-import { InvestorEditPanel } from "@/components/investors/InvestorEditPanel";
 import { CheckInButton, LogActivityButton } from "@/components/activities/ActivityLogger";
 import { ChangeLogButton } from "@/components/common/ChangeLog";
 import { RecordProvenance } from "@/components/common/RecordProvenance";
@@ -76,8 +75,7 @@ const INVESTOR_DETAIL_SECTIONS: RelatedListDef[] = [
   { key: "emails", label: "Emails" },
   { key: "whatsapp", label: "WhatsApp" },
   { key: "blueprint", label: "Onboarding blueprint" },
-  { key: "edit_panel", label: "Inline-editable details" },
-  { key: "master", label: "Master record (full read-only view)" },
+  { key: "master", label: "Client details" },
   { key: "risk_history", label: "Risk profile history" },
   { key: "related", label: "Folios · SIPs · Goals · Tasks · SRs · Consent" },
 ];
@@ -259,7 +257,7 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
 
   // Related Modules rail — collections with live counts + jump-to-section.
   const relatedItems = [
-    { label: "Folios", selector: "#rel-folios", count: data.folios.length },
+    { label: "Holdings", selector: "#rel-folios", count: data.valuation.holdings.length },
     { label: "Active SIPs", selector: "#rel-sips", count: data.sips.filter((s: any) => s.status === "active").length },
     { label: "Goals", selector: "#rel-goals", count: data.goals.length },
     { label: "Transactions", selector: '[data-rl-section="transactions"]', count: data.txCount },
@@ -269,7 +267,7 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
     { label: "Risk-profile history", selector: '[data-rl-section="risk_history"]', count: (data as any).riskHistory?.length ?? 0 },
     { label: "Family", selector: '[data-rl-section="family"]' },
     { label: "Portfolio allocation", selector: '[data-rl-section="allocation"]' },
-    { label: "Master record", selector: '[data-rl-section="master"]' },
+    { label: "Client details", selector: '[data-rl-section="master"]' },
     // Off-page modules — navigate to the relevant module (scoped where possible).
     { label: "Insurance Tracker", href: `/dashboard/insurance?q=${encodeURIComponent(inv.name)}`, count: (data as any).insuranceCount ?? 0 },
     { label: "Referrals (by client)", href: "/dashboard/leads", count: (data as any).referralCount ?? 0 },
@@ -545,21 +543,6 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
         <InvestorBlueprintStageBar investorId={inv.id} />
       </RelatedListSection>
 
-      {/* Inline-editable form — falls through to read-only Master record below */}
-      <RelatedListSection moduleKey="investors-detail" sectionKey="edit_panel">
-        <InvestorEditPanel
-          investor={JSON.parse(JSON.stringify(inv))}
-          showPan={showPan}
-          showDob={showDob}
-          showPhone={showPhone}
-          showEmail={showEmail}
-          showWhatsApp={showPhone}
-          showNominee={showNominee}
-          showBank={showBank}
-          showRiskProfile={showRisk}
-        />
-      </RelatedListSection>
-
       {/* ----------------------------- Master record -----------------------------
         Every field the spec calls out under § 6 Module 4 Client Master, grouped
         logically so RM/back-office can scan it in one read.
@@ -568,7 +551,7 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
       <div className="border rounded-lg bg-card p-5">
         <div className="flex items-center justify-between mb-3">
           <h2 className="font-semibold flex items-center gap-2">
-            <User2 className="size-4" /> Master record
+            <User2 className="size-4" /> Client details
           </h2>
           <div className="flex items-center gap-3">
             <span className="text-xs text-muted-foreground">
@@ -759,26 +742,56 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
       <div className="grid grid-cols-3 gap-6">
         {/* Folios + SIPs */}
         <div className="col-span-2 space-y-6">
-          <Section id="rel-folios" title="Folios" count={data.folios.length}>
-            {data.folios.length === 0 ? (
-              <EmptyRow text="No folios yet." />
+          <Section id="rel-folios" title="Holdings" count={data.valuation.holdings.length}>
+            {data.valuation.holdings.length === 0 ? (
+              <EmptyRow text="No holdings yet." />
             ) : (
               <table className="w-full text-sm">
                 <thead className="text-xs text-muted-foreground border-b">
                   <tr>
-                    <th className="text-left py-2 font-medium">AMC</th>
-                    <th className="text-left py-2 font-medium">Folio #</th>
-                    <th className="text-left py-2 font-medium">RTA</th>
-                    <th className="text-right py-2 font-medium">AUM</th>
+                    <th className="text-left py-2 font-medium">Scheme</th>
+                    <th className="text-left py-2 font-medium">Folio No</th>
+                    <th className="text-right py-2 font-medium">Total Investments</th>
+                    <th className="text-right py-2 font-medium">Current Value</th>
+                    <th className="text-right py-2 font-medium">XIRR</th>
+                    <th className="text-left py-2 font-medium pl-3">Type</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {data.folios.map((f) => (
-                    <tr key={f.id} className="border-b last:border-0">
-                      <td className="py-2">{f.amcName}</td>
-                      <td className="py-2 font-mono text-xs">{f.folioNumber}</td>
-                      <td className="py-2 text-xs uppercase text-muted-foreground">{f.rta}</td>
-                      <td className="py-2 text-right tabular-nums">{formatINR(Number(f.aum ?? 0))}</td>
+                  {data.valuation.holdings.map((h, i) => (
+                    <tr key={`${h.schemeCode ?? h.schemeName ?? "h"}-${i}`} className="border-b last:border-0">
+                      <td className="py-2 pr-3">
+                        <div className="font-medium">{h.schemeName ?? h.schemeCode ?? "—"}</div>
+                        {h.amcName && <div className="text-xs text-muted-foreground">{h.amcName}</div>}
+                      </td>
+                      <td className="py-2 font-mono text-xs">
+                        {h.folioNumber ?? "—"}
+                        {h.folioNumbers.length > 1 && (
+                          <span className="text-muted-foreground"> +{h.folioNumbers.length - 1}</span>
+                        )}
+                      </td>
+                      <td className="py-2 text-right tabular-nums">{formatINR(h.investedNet)}</td>
+                      <td className="py-2 text-right tabular-nums">
+                        {h.priced ? (
+                          formatINR(h.currentValue ?? 0)
+                        ) : (
+                          <span className="text-xs text-muted-foreground">Unpriced</span>
+                        )}
+                      </td>
+                      <td
+                        className={`py-2 text-right tabular-nums ${
+                          h.xirr == null ? "text-muted-foreground" : h.xirr >= 0 ? "text-emerald-600" : "text-red-600"
+                        }`}
+                      >
+                        {h.xirr == null ? "—" : `${h.xirr >= 0 ? "+" : ""}${(h.xirr * 100).toFixed(1)}%`}
+                      </td>
+                      <td className="py-2 pl-3">
+                        {h.kind && (
+                          <span className="inline-flex rounded-full bg-muted px-2 py-0.5 text-xs capitalize">
+                            {h.kind === "sip" ? "SIP" : h.kind === "mixed" ? "Mixed" : "Lumpsum"}
+                          </span>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

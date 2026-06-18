@@ -26,12 +26,20 @@ export type SchemeHolding = {
   schemeCode: string | null;
   schemeName: string | null;
   amcName: string | null;
+  /** Folio the holding sits in. If a scheme spans more than one folio we keep
+   *  the first and expose the rest via `folioNumbers`. */
+  folioNumber: string | null;
+  folioNumbers: string[];
   netUnits: number;
   investedNet: number;
   latestNav: number | null;
   navDate: string | null;
   currentValue: number | null;
   gain: number | null;
+  /** Money-weighted return for THIS holding (priced holdings only). */
+  xirr: number | null;
+  /** How the holding was built up: "sip", "lumpsum", or "mixed" (both). */
+  kind: "sip" | "lumpsum" | "mixed" | null;
   /** true when a live NAV was found for this scheme. */
   priced: boolean;
 };
@@ -62,6 +70,7 @@ type TxRow = {
   scheme_code: string | null;
   scheme_name: string | null;
   amc_name: string | null;
+  folio_number: string | null;
   direction: string | null;
   type: string | null;
   amount: string | null;
@@ -82,7 +91,7 @@ export async function valueInvestor(
   investorId: string
 ): Promise<InvestorValuation> {
   const res = await tx.execute(sql`
-    SELECT t.scheme_code, t.scheme_name, t.amc_name,
+    SELECT t.scheme_code, t.scheme_name, t.amc_name, t.folio_number,
            t.direction, t.type, t.amount, t.units, t.order_date,
            n.nav AS latest_nav, n.nav_date AS latest_nav_date
     FROM transactions t
@@ -93,6 +102,11 @@ export async function valueInvestor(
     ORDER BY t.order_date ASC
   `);
   const rows = res.rows as unknown as TxRow[];
+
+  // Per-scheme dated cashflows (for per-holding XIRR) and inflow-type tracking
+  // (for the SIP / Lumpsum label), keyed the same way as the holding map.
+  const flowsByKey = new Map<string, CashFlow[]>();
+  const typesByKey = new Map<string, { sip: boolean; lumpsum: boolean }>();
 
   // Pass 1 — aggregate per scheme, and stash each transaction's cashflow
   // candidate tagged with its scheme key (so XIRR can later include only the
@@ -109,7 +123,19 @@ export async function valueInvestor(
 
     if (r.order_date && isFinite(amount) && amount !== 0) {
       // buy = money out (−), sell/payout = money in (+).
-      flowCandidates.push({ key, date: new Date(r.order_date), amount: isInflow ? -amount : amount });
+      const flow = { date: new Date(r.order_date), amount: isInflow ? -amount : amount };
+      flowCandidates.push({ key, ...flow });
+      const existing = flowsByKey.get(key);
+      if (existing) existing.push(flow);
+      else flowsByKey.set(key, [flow]);
+    }
+
+    // Track how each holding was funded (inflows only): SIP vs lumpsum.
+    if (isInflow) {
+      const t = typesByKey.get(key) ?? { sip: false, lumpsum: false };
+      if (r.type === "sip") t.sip = true;
+      else t.lumpsum = true; // lumpsum / switch / stp inflows all count as lumpsum
+      typesByKey.set(key, t);
     }
 
     let h = bySchemeKey.get(key);
@@ -119,15 +145,23 @@ export async function valueInvestor(
         schemeCode: r.scheme_code,
         schemeName: r.scheme_name,
         amcName: r.amc_name,
+        folioNumber: r.folio_number ?? null,
+        folioNumbers: [],
         netUnits: 0,
         investedNet: 0,
         latestNav: latestNav != null && isFinite(latestNav) ? latestNav : null,
         navDate: r.latest_nav_date ?? null,
         currentValue: null,
         gain: null,
+        xirr: null,
+        kind: null,
         priced: false,
       };
       bySchemeKey.set(key, h);
+    }
+    if (r.folio_number && !h.folioNumbers.includes(r.folio_number)) {
+      h.folioNumbers.push(r.folio_number);
+      if (!h.folioNumber) h.folioNumber = r.folio_number;
     }
     h.netUnits += isInflow ? units : -units;
     h.investedNet += isInflow ? amount : -amount;
@@ -149,6 +183,10 @@ export async function valueInvestor(
     if (Math.abs(h.netUnits) < 0.0005) h.netUnits = 0; // dust → fully redeemed
     investedNet += h.investedNet;
 
+    // SIP / Lumpsum / Mixed label from the inflow types we saw.
+    const t = typesByKey.get(key);
+    h.kind = t ? (t.sip && t.lumpsum ? "mixed" : t.sip ? "sip" : "lumpsum") : null;
+
     if (h.latestNav != null && h.netUnits > 0) {
       h.priced = true;
       h.currentValue = h.netUnits * h.latestNav;
@@ -156,6 +194,10 @@ export async function valueInvestor(
       currentValue += h.currentValue;
       pricedInvested += h.investedNet;
       pricedKeys.add(key);
+
+      // Per-holding XIRR: this scheme's dated cashflows + today's market value.
+      const flows = [...(flowsByKey.get(key) ?? []), { date: new Date(), amount: h.currentValue }];
+      h.xirr = xirr(flows);
     } else if (h.netUnits > 0) {
       unpricedSchemes++;
       unpricedInvested += h.investedNet;
