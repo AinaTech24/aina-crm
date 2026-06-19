@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { Avatar } from "@/components/ui/Avatar";
 import {
   Calendar as CalendarIcon,
   ListChecks,
@@ -25,6 +26,10 @@ type Item = {
   title: string;
   href: string;
   meta?: string;
+  subjectType?: "investor" | "lead";
+  subjectId?: string;
+  avatarUrl?: string | null;
+  personName?: string;
 };
 
 const KIND_META: Record<Item["kind"], { color: string; icon: any; label: string }> = {
@@ -41,7 +46,10 @@ interface InteractiveCalendarProps {
   yyyy: number;
   mm: number;
   monthLabel: string;
-  icalSubscriptionUrl: string;
+  /** null when the server can't sign a feed token (NEXTAUTH_SECRET unset) —
+   *  the "Sync to Calendar" button is hidden rather than handing out a
+   *  forgeable/broken link. */
+  icalSubscriptionUrl: string | null;
 }
 
 export function InteractiveCalendar({
@@ -73,6 +81,7 @@ export function InteractiveCalendar({
   });
 
   const handleCopyLink = async () => {
+    if (!icalSubscriptionUrl) return;
     try {
       await navigator.clipboard.writeText(icalSubscriptionUrl);
       setCopied(true);
@@ -181,14 +190,16 @@ export function InteractiveCalendar({
           </div>
         )}
 
-        <button
-          onClick={handleCopyLink}
-          className="btn-secondary text-xs py-1.5 px-3 flex items-center gap-1.5 self-end sm:self-auto"
-          title="Sync this rolling calendar feed to Google Calendar, Apple, or Outlook"
-        >
-          {copied ? <Check className="size-3.5 text-emerald-600" /> : <Repeat className="size-3.5 text-brand-cyan" />}
-          {copied ? "Link Copied!" : "Sync to Calendar"}
-        </button>
+        {icalSubscriptionUrl && (
+          <button
+            onClick={handleCopyLink}
+            className="btn-secondary text-xs py-1.5 px-3 flex items-center gap-1.5 self-end sm:self-auto"
+            title="Sync this rolling calendar feed to Google Calendar, Apple, or Outlook"
+          >
+            {copied ? <Check className="size-3.5 text-emerald-600" /> : <Repeat className="size-3.5 text-brand-cyan" />}
+            {copied ? "Link Copied!" : "Sync to Calendar"}
+          </button>
+        )}
       </div>
 
       {/* Legend Filtering Badges */}
@@ -260,10 +271,13 @@ export function InteractiveCalendar({
                           return (
                             <div
                               key={idx}
-                              className={`text-[10px] truncate rounded px-1.5 py-0.5 border ${meta.color} font-medium`}
+                              className={`text-[10px] truncate rounded px-1.5 py-0.5 border ${meta.color} font-medium flex items-center gap-1`}
                               title={`${meta.label}: ${it.title}`}
                             >
-                              {it.title}
+                              {it.subjectId && (
+                                <Avatar src={it.avatarUrl ? `/api/${it.subjectType === "lead" ? "leads" : "investors"}/${it.subjectId}/avatar` : null} name={it.personName ?? it.title} size={14} />
+                              )}
+                              <span className="truncate">{it.title}</span>
                             </div>
                           );
                         })}
@@ -332,7 +346,12 @@ export function InteractiveCalendar({
                           className={`text-[10px] rounded p-1.5 border leading-tight ${meta.color} font-medium flex flex-col gap-0.5 shadow-sm`}
                           title={`${meta.label}: ${it.title}`}
                         >
-                          <span className="font-semibold">{it.title}</span>
+                          <span className="font-semibold flex items-center gap-1">
+                            {it.subjectId && (
+                              <Avatar src={it.avatarUrl ? `/api/${it.subjectType === "lead" ? "leads" : "investors"}/${it.subjectId}/avatar` : null} name={it.personName ?? it.title} size={16} />
+                            )}
+                            <span className="truncate">{it.title}</span>
+                          </span>
                           {it.meta && <span className="opacity-75 text-[9px] font-normal font-mono truncate">{it.meta}</span>}
                         </div>
                       );
@@ -399,7 +418,12 @@ export function InteractiveCalendar({
                           {meta.label}
                         </span>
                       </div>
-                      <div className="font-semibold text-sm leading-snug">{it.title}</div>
+                      <div className="font-semibold text-sm leading-snug flex items-center gap-2">
+                        {it.subjectId && (
+                          <Avatar src={it.avatarUrl ? `/api/${it.subjectType === "lead" ? "leads" : "investors"}/${it.subjectId}/avatar` : null} name={it.personName ?? it.title} size={24} />
+                        )}
+                        <span>{it.title}</span>
+                      </div>
                       {it.meta && (
                         <div className="text-xs opacity-80 mt-1 font-mono font-medium leading-relaxed">
                           {it.meta}

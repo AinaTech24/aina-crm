@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import crypto from "node:crypto";
 import { withSystem, withTenant } from "@/db/client";
 import { users } from "@/db/schema";
+import { can } from "@/lib/auth/rbac";
+import { getCalendarItems } from "@/lib/calendar/items";
 
 export const dynamic = "force-dynamic";
+
+const pad = (n: number) => String(n).padStart(2, "0");
 
 export async function GET(req: NextRequest) {
   try {
@@ -16,113 +20,60 @@ export async function GET(req: NextRequest) {
       return new NextResponse("Bad Request: missing params", { status: 400 });
     }
 
-    const expectedSignature = crypto
-      .createHmac("sha256", process.env.NEXTAUTH_SECRET ?? "dev-secret")
-      .update(userId)
-      .digest("hex");
+    // Fail closed: this feed is auth-bearing, so refuse to verify against a
+    // public default secret. Without a configured secret, no token is valid.
+    const secret = process.env.NEXTAUTH_SECRET;
+    if (!secret) {
+      return new NextResponse("Calendar feed not configured", { status: 503 });
+    }
 
-    if (token !== expectedSignature) {
+    const expectedSignature = crypto.createHmac("sha256", secret).update(userId).digest("hex");
+    // Constant-time comparison — avoid leaking the signature via timing.
+    const a = Buffer.from(token);
+    const b = Buffer.from(expectedSignature);
+    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
       return new NextResponse("Unauthorized", { status: 401 });
     }
 
     const user = await withSystem(async (tx) => {
       return (await tx.select().from(users).where(eq(users.id, userId)).limit(1))[0];
     });
-
     if (!user) {
       return new NextResponse("User not found", { status: 404 });
     }
 
+    // Rolling window: start of this month through ~4 months out (UTC-safe).
     const now = new Date();
-    const monthStartIso = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
-    const monthEndIso = new Date(now.getFullYear(), now.getMonth() + 4, 0).toISOString().slice(0, 10);
+    const y = now.getUTCFullYear();
+    const m = now.getUTCMonth(); // 0-based
+    const fromIso = `${y}-${pad(m + 1)}-01`;
+    const toIso = new Date(Date.UTC(y, m + 4, 0)).toISOString().slice(0, 10);
 
-    const out: any[] = [];
+    const roles = (user.roles as string[] | null) ?? [];
+    const perms = (user as any).permissions ?? null;
 
-    await withTenant(user.tenantId, async (tx) => {
-      const tasks = await tx.execute(sql`
-        SELECT id, title, due_at, priority, description
-        FROM tasks
-        WHERE due_at IS NOT NULL
-          AND due_at::date >= ${monthStartIso} AND due_at::date <= ${monthEndIso}
-        ORDER BY due_at ASC LIMIT 500
-      `);
-      for (const r of tasks.rows as any[]) {
-        out.push({ date: r.due_at, kind: "task", title: r.title, description: r.description });
-      }
+    const items = await withTenant(user.tenantId, async (tx) =>
+      getCalendarItems(tx, {
+        fromIso,
+        toIso,
+        scope: {
+          userId: user.id,
+          tasksAll: can(roles, "task.view.all", perms),
+          leadsAll: can(roles, "lead.view.all", perms),
+          investorsAll: can(roles, "investor.view.all", perms),
+        },
+      })
+    );
 
-      const leads = await tx.execute(sql`
-        SELECT id, name, next_follow_up_at, stage
-        FROM leads
-        WHERE next_follow_up_at IS NOT NULL
-          AND next_follow_up_at::date >= ${monthStartIso}
-          AND next_follow_up_at::date <= ${monthEndIso}
-          AND converted_investor_id IS NULL AND stage NOT IN ('lost')
-        LIMIT 500
-      `);
-      for (const r of leads.rows as any[]) {
-        out.push({ date: r.next_follow_up_at, kind: "follow_up", title: `Follow up: ${r.name}`, description: `Stage: ${r.stage}` });
-      }
-
-      const reviews = await tx.execute(sql`
-        SELECT id, name, next_review_at, segment_tag
-        FROM investors
-        WHERE next_review_at IS NOT NULL
-          AND next_review_at::date >= ${monthStartIso}
-          AND next_review_at::date <= ${monthEndIso}
-        LIMIT 500
-      `);
-      for (const r of reviews.rows as any[]) {
-        out.push({ date: r.next_review_at, kind: "review", title: `Review: ${r.name}`, description: `Segment: ${r.segment_tag ?? "—"}` });
-      }
-
-      const sips = await tx.execute(sql`
-        SELECT s.id, s.scheme_name, s.amount, s.next_installment_at, i.name AS investor_name
-        FROM sips s LEFT JOIN investors i ON i.id = s.investor_id
-        WHERE s.status = 'active' AND s.next_installment_at IS NOT NULL
-          AND s.next_installment_at::date >= ${monthStartIso}
-          AND s.next_installment_at::date <= ${monthEndIso}
-        LIMIT 500
-      `);
-      for (const r of sips.rows as any[]) {
-        out.push({ date: r.next_installment_at, kind: "sip", title: `SIP · ${r.investor_name ?? "—"}`, description: `Amount: ₹${r.amount}\nScheme: ${r.scheme_name ?? "—"}` });
-      }
-
-      const campaigns = await tx.execute(sql`
-        SELECT id, name, scheduled_at, channel, status
-        FROM campaigns
-        WHERE scheduled_at IS NOT NULL
-          AND scheduled_at::date >= ${monthStartIso}
-          AND scheduled_at::date <= ${monthEndIso}
-        LIMIT 200
-      `);
-      for (const r of campaigns.rows as any[]) {
-        out.push({ date: r.scheduled_at, kind: "campaign", title: r.name, description: `Channel: ${r.channel} · Status: ${r.status}` });
-      }
-
-      const compliance = await tx.execute(sql`
-        SELECT 'arn' AS kind, arn_expiry_at AS due_date, arn AS identifier
-        FROM tenants WHERE id = ${user.tenantId}::uuid AND arn_expiry_at IS NOT NULL
-          AND arn_expiry_at >= ${monthStartIso}::date AND arn_expiry_at <= ${monthEndIso}::date
-        UNION ALL
-        SELECT 'nism', nism_expiry_at::date, name
-        FROM users WHERE nism_expiry_at IS NOT NULL
-          AND nism_expiry_at::date >= ${monthStartIso} AND nism_expiry_at::date <= ${monthEndIso}
-        UNION ALL
-        SELECT 'kyc', ckyc_expiry_at, name
-        FROM investors WHERE ckyc_expiry_at IS NOT NULL
-          AND ckyc_expiry_at >= ${monthStartIso}::date AND ckyc_expiry_at <= ${monthEndIso}::date
-        LIMIT 200
-      `);
-      for (const r of compliance.rows as any[]) {
-        out.push({
-          date: r.due_date,
-          kind: "compliance",
-          title: `${r.kind?.toUpperCase()} Expiry: ${r.identifier}`,
-          description: `Compliance renewal checklist alert for ${r.identifier}`,
-        });
-      }
-    });
+    const clean = (str: string) => str.replace(/[\n\r]/g, " ").replace(/[,;]/g, "\\$&");
+    const icalDateTime = (d: Date) => d.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
+    const icalDate = (ymd: string) => ymd.replace(/-/g, "");
+    const nextDay = (ymd: string) => {
+      const d = new Date(`${ymd}T00:00:00Z`);
+      d.setUTCDate(d.getUTCDate() + 1);
+      return d.toISOString().slice(0, 10).replace(/-/g, "");
+    };
+    const stampStr = icalDateTime(new Date());
 
     const ics = [
       "BEGIN:VCALENDAR",
@@ -132,42 +83,41 @@ export async function GET(req: NextRequest) {
       "METHOD:PUBLISH",
     ];
 
-    const clean = (str: string) => str.replace(/[\n\r]/g, " ").replace(/[,;]/g, "\\$&");
-
-    for (const item of out) {
-      const dateObj = new Date(item.date);
-      const formatIcalDate = (d: Date) => {
-        return d.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
-      };
-
-      const startStr = formatIcalDate(dateObj);
-      const endDateObj = new Date(dateObj.getTime() + 60 * 60 * 1000);
-      const endStr = formatIcalDate(endDateObj);
-      const stampStr = formatIcalDate(new Date());
-
+    for (const item of items) {
+      if (!item.date && !item.at) continue;
       ics.push("BEGIN:VEVENT");
-      ics.push(`UID:${item.kind}-${startStr}-${crypto.randomUUID().slice(0, 8)}@ainacrm.com`);
+      // Stable UID (source row id) so calendar clients UPDATE events on refresh
+      // instead of duplicating them.
+      ics.push(`UID:${item.id}@ainacrm.com`);
       ics.push(`DTSTAMP:${stampStr}`);
-      ics.push(`DTSTART:${startStr}`);
-      ics.push(`DTEND:${endStr}`);
-      ics.push(`SUMMARY:[${item.kind.toUpperCase()}] ${clean(item.title)}`);
-      if (item.description) {
-        ics.push(`DESCRIPTION:${clean(item.description)}`);
+      if (item.at) {
+        // Timed event (task due time, campaign send time).
+        const start = new Date(item.at);
+        ics.push(`DTSTART:${icalDateTime(start)}`);
+        ics.push(`DTEND:${icalDateTime(new Date(start.getTime() + 60 * 60 * 1000))}`);
+      } else {
+        // All-day event (reviews, follow-ups, expiries) — no spurious clock time.
+        ics.push(`DTSTART;VALUE=DATE:${icalDate(item.date)}`);
+        ics.push(`DTEND;VALUE=DATE:${nextDay(item.date)}`);
       }
+      ics.push(`SUMMARY:[${item.kind.toUpperCase()}] ${clean(item.title)}`);
+      if (item.description) ics.push(`DESCRIPTION:${clean(item.description)}`);
       ics.push("END:VEVENT");
     }
 
     ics.push("END:VCALENDAR");
-    const icsContent = ics.join("\r\n");
 
-    return new NextResponse(icsContent, {
+    return new NextResponse(ics.join("\r\n"), {
       status: 200,
       headers: {
         "Content-Type": "text/calendar; charset=utf-8",
         "Content-Disposition": `attachment; filename="ainacrm-feed.ics"`,
+        // Calendar clients poll often; let them cache briefly.
+        "Cache-Control": "private, max-age=900",
       },
     });
-  } catch (err: any) {
-    return new NextResponse(err?.message ?? "Error", { status: 500 });
+  } catch {
+    // Don't leak internals to an unauthenticated feed consumer.
+    return new NextResponse("Error generating calendar feed", { status: 500 });
   }
 }

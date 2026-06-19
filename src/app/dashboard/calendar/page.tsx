@@ -1,20 +1,13 @@
 import Link from "next/link";
-import { sql } from "drizzle-orm";
 import { Calendar } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { can } from "@/lib/auth/rbac";
 import { InteractiveCalendar } from "@/components/calendar/InteractiveCalendar";
+import { getCalendarItems } from "@/lib/calendar/items";
 import crypto from "node:crypto";
 
 export const dynamic = "force-dynamic";
-
-type Item = {
-  date: string; // YYYY-MM-DD
-  kind: "task" | "follow_up" | "review" | "sip" | "campaign" | "compliance";
-  title: string;
-  href: string;
-  meta?: string;
-};
 
 export default async function CalendarPage({
   searchParams,
@@ -28,110 +21,41 @@ export default async function CalendarPage({
   const [yyyy, mm] = month.split("-").map(Number);
 
   const monthStart = new Date(yyyy, mm - 1, 1);
-  const monthEnd = new Date(yyyy, mm, 0); // last day of month
+  // Build the ISO bounds directly (no toISOString, which would shift the day in
+  // a non-UTC server timezone).
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const lastDay = new Date(yyyy, mm, 0).getDate();
+  const monthStartIso = `${yyyy}-${pad(mm)}-01`;
+  const monthEndIso = `${yyyy}-${pad(mm)}-${pad(lastDay)}`;
 
-  const monthStartIso = monthStart.toISOString().slice(0, 10);
-  const monthEndIso = monthEnd.toISOString().slice(0, 10);
-
-  const items = await withTenant(session.tenantId, async (tx) => {
-    const out: Item[] = [];
-
-    const tasks = await tx.execute(sql`
-      SELECT id, title, due_at::date AS d, priority
-      FROM tasks
-      WHERE due_at IS NOT NULL
-        AND due_at::date >= ${monthStartIso} AND due_at::date <= ${monthEndIso}
-      ORDER BY due_at ASC LIMIT 500
-    `);
-    for (const r of tasks.rows as any[]) {
-      out.push({ date: r.d, kind: "task", title: r.title, href: `/dashboard/tasks`, meta: r.priority });
-    }
-
-    const leads = await tx.execute(sql`
-      SELECT id, name, next_follow_up_at::date AS d, stage
-      FROM leads
-      WHERE next_follow_up_at IS NOT NULL
-        AND next_follow_up_at::date >= ${monthStartIso}
-        AND next_follow_up_at::date <= ${monthEndIso}
-        AND converted_investor_id IS NULL AND stage NOT IN ('lost')
-      LIMIT 500
-    `);
-    for (const r of leads.rows as any[]) {
-      out.push({ date: r.d, kind: "follow_up", title: `Follow up: ${r.name}`, href: `/dashboard/leads/${r.id}`, meta: r.stage });
-    }
-
-    const reviews = await tx.execute(sql`
-      SELECT id, name, next_review_at::date AS d, segment_tag
-      FROM investors
-      WHERE next_review_at IS NOT NULL
-        AND next_review_at::date >= ${monthStartIso}
-        AND next_review_at::date <= ${monthEndIso}
-      LIMIT 500
-    `);
-    for (const r of reviews.rows as any[]) {
-      out.push({ date: r.d, kind: "review", title: `Review: ${r.name}`, href: `/dashboard/investors/${r.id}`, meta: r.segment_tag ?? "" });
-    }
-
-    const sips = await tx.execute(sql`
-      SELECT s.id, s.scheme_name, s.amount, s.next_installment_at::date AS d, i.name AS investor_name
-      FROM sips s LEFT JOIN investors i ON i.id = s.investor_id
-      WHERE s.status = 'active' AND s.next_installment_at IS NOT NULL
-        AND s.next_installment_at::date >= ${monthStartIso}
-        AND s.next_installment_at::date <= ${monthEndIso}
-      LIMIT 500
-    `);
-    for (const r of sips.rows as any[]) {
-      out.push({ date: r.d, kind: "sip", title: `SIP · ${r.investor_name ?? "—"}`, href: `/dashboard/sips`, meta: `₹${r.amount} · ${r.scheme_name ?? ""}` });
-    }
-
-    const campaigns = await tx.execute(sql`
-      SELECT id, name, scheduled_at::date AS d, channel, status
-      FROM campaigns
-      WHERE scheduled_at IS NOT NULL
-        AND scheduled_at::date >= ${monthStartIso}
-        AND scheduled_at::date <= ${monthEndIso}
-      LIMIT 200
-    `);
-    for (const r of campaigns.rows as any[]) {
-      out.push({ date: r.d, kind: "campaign", title: r.name, href: `/dashboard/campaigns/${r.id}`, meta: `${r.channel} · ${r.status}` });
-    }
-
-    const compliance = await tx.execute(sql`
-      SELECT 'arn' AS kind, ${session.tenantId}::text AS id, arn AS who, arn_expiry_at AS d
-      FROM tenants WHERE id = ${session.tenantId} AND arn_expiry_at IS NOT NULL
-        AND arn_expiry_at >= ${monthStartIso}::date AND arn_expiry_at <= ${monthEndIso}::date
-      UNION ALL
-      SELECT 'nism', id::text, name, nism_expiry_at::date
-      FROM users WHERE nism_expiry_at IS NOT NULL
-        AND nism_expiry_at::date >= ${monthStartIso} AND nism_expiry_at::date <= ${monthEndIso}
-      UNION ALL
-      SELECT 'kyc', id::text, name, ckyc_expiry_at
-      FROM investors WHERE ckyc_expiry_at IS NOT NULL
-        AND ckyc_expiry_at >= ${monthStartIso}::date AND ckyc_expiry_at <= ${monthEndIso}::date
-      LIMIT 200
-    `);
-    for (const r of compliance.rows as any[]) {
-      out.push({
-        date: typeof r.d === "string" ? r.d : new Date(r.d).toISOString().slice(0, 10),
-        kind: "compliance",
-        title: `${r.kind?.toUpperCase()} expiry: ${r.who}`,
-        href: `/dashboard/compliance`,
-      });
-    }
-
-    return out;
-  });
+  // Scope to the viewer's book (managers see the whole firm). RLS only isolates
+  // by tenant — without this, every RM's calendar showed the entire firm.
+  const items = await withTenant(session.tenantId, async (tx) =>
+    getCalendarItems(tx, {
+      fromIso: monthStartIso,
+      toIso: monthEndIso,
+      scope: {
+        userId: session.userId,
+        tasksAll: can(session.roles, "task.view.all", session.permissions),
+        leadsAll: can(session.roles, "lead.view.all", session.permissions),
+        investorsAll: can(session.roles, "investor.view.all", session.permissions),
+      },
+    })
+  );
 
   const prevMonth = new Date(yyyy, mm - 2, 1);
   const nextMonth = new Date(yyyy, mm, 1);
   const monthLabel = monthStart.toLocaleDateString("en-IN", { month: "long", year: "numeric" });
 
-  // iCal subscription link generation (secure per-user signature)
-  const signature = crypto
-    .createHmac("sha256", process.env.NEXTAUTH_SECRET ?? "dev-secret")
-    .update(session.userId)
-    .digest("hex");
-  const icalSubscriptionUrl = `${process.env.APP_URL ?? "http://localhost:3000"}/api/calendar/feed?userId=${session.userId}&token=${signature}`;
+  // iCal subscription link — signed per user. Fail closed: if no signing secret
+  // is configured, hand out NO link rather than one keyed on a public default.
+  const secret = process.env.NEXTAUTH_SECRET;
+  const icalSubscriptionUrl = secret
+    ? `${process.env.APP_URL ?? "http://localhost:3000"}/api/calendar/feed?userId=${session.userId}&token=${crypto
+        .createHmac("sha256", secret)
+        .update(session.userId)
+        .digest("hex")}`
+    : null;
 
   return (
     <div className="space-y-6 max-w-7xl">
