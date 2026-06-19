@@ -13,14 +13,18 @@ import { handleApiError } from "@/lib/api/error-handler";
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
-import { leads } from "@/db/schema";
+import { assertActiveLicense } from "@/lib/auth/license";
+import { leads, users, eventsOutbox } from "@/db/schema";
 import { scoreFields } from "@/lib/leads/score";
+import { CANONICAL_LEAD_STAGES } from "@/lib/leads/normalize";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export const dynamic = "force-dynamic";
 
@@ -36,6 +40,9 @@ export async function POST(req: NextRequest) {
     // Bulk acts on arbitrary lead ids (no per-row ownership re-check), so it's a
     // manager-level capability — RMs do single-lead edits via their own routes.
     requireCap(session.roles, "lead.edit.all", session.permissions);
+    // A lapsed tenant must not be able to mutate the pipeline in bulk (the
+    // single-lead PATCH already enforces this; bulk skipped it).
+    await assertActiveLicense(session.tenantId, session.roles);
     const parsed = Body.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
       return NextResponse.json({ error: "invalid body", issues: parsed.error.issues }, { status: 400 });
@@ -46,7 +53,25 @@ export async function POST(req: NextRequest) {
     const patch: Record<string, any> = { updatedAt: new Date() };
     switch (action) {
       case "assign":
-        patch.ownerId = value && value.length > 0 ? value : null;
+        if (value && value.length > 0) {
+          if (!UUID_RE.test(value)) {
+            return NextResponse.json({ error: "assign value must be a user id" }, { status: 400 });
+          }
+          // Assigning to an out-of-tenant uuid would orphan the leads under an
+          // owner who can't see them — verify the target is a user in this firm.
+          const exists = await withTenant(session.tenantId, async (tx) => {
+            const [u] = await tx
+              .select({ id: users.id })
+              .from(users)
+              .where(and(eq(users.id, value), eq(users.tenantId, session.tenantId)))
+              .limit(1);
+            return !!u;
+          });
+          if (!exists) return NextResponse.json({ error: "selected owner is not a user in this firm" }, { status: 400 });
+          patch.ownerId = value;
+        } else {
+          patch.ownerId = null;
+        }
         break;
       case "follow_up":
         if (!value) return NextResponse.json({ error: "value (date) required" }, { status: 400 });
@@ -54,6 +79,11 @@ export async function POST(req: NextRequest) {
         break;
       case "stage":
         if (!value) return NextResponse.json({ error: "value (stage) required" }, { status: 400 });
+        // Guard the enum: a raw arbitrary stage would violate the column check
+        // (500) or store garbage. Only canonical stage keys are accepted.
+        if (!(CANONICAL_LEAD_STAGES as readonly string[]).includes(value)) {
+          return NextResponse.json({ error: "invalid stage" }, { status: 400 });
+        }
         patch.stage = value;
         patch.stageChangedAt = new Date();
         break;
@@ -98,6 +128,25 @@ export async function POST(req: NextRequest) {
             await tx.update(leads).set(sf as any).where(eq(leads.id, l.id));
           }
         }
+      }
+
+      // Emit lead.updated per affected lead so record_action "edit" workflow
+      // rules fire on bulk changes too (not just on /won + single edits). The
+      // after-snapshot is the post-update row; before is omitted — bulk is a
+      // coarse admin action, not a field-level change worth diffing.
+      const finalIds = updated.map((u) => u.id);
+      if (finalIds.length) {
+        const finalRows = await tx.select().from(leads).where(inArray(leads.id, finalIds));
+        await tx.insert(eventsOutbox).values(
+          finalRows.map((l) => ({
+            tenantId: session.tenantId,
+            kind: "lead.updated",
+            entityType: "lead",
+            entityId: l.id,
+            after: l as any,
+            meta: { userId: session.userId, source: `bulk_${action}` } as any,
+          })) as any
+        );
       }
 
       await recordAudit(tx, {

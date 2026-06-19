@@ -18,7 +18,10 @@ export const dynamic = "force-dynamic";
 
 const Body = z.object({
   mapping: z.record(z.string(), z.string()),
-  rows: z.array(z.record(z.string(), z.any())),
+  // Bound the payload: the import runs as one transaction, so an unbounded
+  // array would hold a write lock + memory for minutes. 10k/upload is well above
+  // a normal book migration; larger imports should be split.
+  rows: z.array(z.record(z.string(), z.any())).max(10000),
 });
 
 const VALID_STAGES = new Set(["new", "contacted", "qualified", "proposal_sent", "converted", "lost", "cold"]);

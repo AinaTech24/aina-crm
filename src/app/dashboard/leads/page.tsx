@@ -4,7 +4,7 @@ import {
   Plus,
   Sparkles,
   UserPlus,
-  FileSpreadsheet,
+  FileDown,
   Filter,
   LayoutGrid,
   List,
@@ -12,6 +12,7 @@ import {
 import { withTenant } from "@/db/client";
 import { leads, users } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
+import { requireLeadView, leadScopeSql } from "@/lib/leads/access";
 import { WorkSwitcher } from "@/components/layout/WorkSwitcher";
 
 const PIPELINE_VIEWS = [
@@ -91,6 +92,9 @@ export default async function LeadsPage({
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const session = await requireSession();
+  // Authorization: a role with no lead visibility is blocked here (defense in
+  // depth — the sidebar already hides the module).
+  requireLeadView(session);
   const sp = await searchParams;
   const q = (sp.q ?? "").trim();
   const stageFilter = (sp.stage ?? "").split(",").filter(Boolean);
@@ -125,6 +129,12 @@ export default async function LeadsPage({
       isNull(leads.convertedInvestorId),
       // Hide soft-deleted (archived) leads — they carry the __deleted__ sentinel.
       sql`leads.lost_reason IS DISTINCT FROM '__deleted__'`,
+      // Role scope: RMs see only their own leads, branch heads only their
+      // branch, owner/managers the whole book. RLS isolates by TENANT only, so
+      // this owner/branch slice MUST be applied in the query (the API enforces
+      // the same via leadScopeCondition — the page used to skip it, exposing the
+      // whole firm's pipeline to every RM).
+      leadScopeSql(session, "leads"),
     ];
     if (q) {
       conds.push(
@@ -214,6 +224,7 @@ export default async function LeadsPage({
     return {
       id: l.id,
       name: l.name,
+      avatarUrl: l.avatarUrl ?? null,
       phone: l.phone ?? null,
       email: l.email ?? null,
       stage: l.stage,
@@ -272,7 +283,7 @@ export default async function LeadsPage({
           )}
 
           <Link href="/dashboard/leads/import" className="btn-secondary text-xs">
-            <FileSpreadsheet className="size-3.5" /> Import Excel
+            <FileDown className="size-3.5" /> Import Excel
           </Link>
           <Link href="/dashboard/leads/new" className="btn-primary">
             <Plus className="size-4" /> New lead

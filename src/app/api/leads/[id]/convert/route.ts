@@ -14,7 +14,7 @@ import { handleApiError } from "@/lib/api/error-handler";
 
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuid } from "uuid";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
@@ -24,9 +24,11 @@ import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { autoAdvance } from "@/lib/blueprints/auto-advance";
 import { loadEditableLead } from "@/lib/leads/access";
 import { normalizePan } from "@/lib/leads/normalize";
+import { mapKycFieldsToInvestorUpdate } from "@/lib/onboarding/kyc-fields";
 import {
   leads,
   investors,
+  users,
   eventsOutbox,
   riskProfileResponses,
   proposals,
@@ -37,7 +39,14 @@ import {
 export const dynamic = "force-dynamic";
 
 const Body = z.object({
-  pan: z.string().regex(/^[A-Z]{5}[0-9]{4}[A-Z]$/, "PAN must look like ABCDE1234F"),
+  // PAN is OPTIONAL — it's often captured after KYC docs are received. If
+  // provided it must be a valid PAN; blank/omitted converts the lead PAN-less
+  // (the owner fills it in later from the client master).
+  pan: z
+    .string()
+    .regex(/^[A-Z]{5}[0-9]{4}[A-Z]$/, "PAN must look like ABCDE1234F")
+    .optional()
+    .or(z.literal("")),
   segmentTag: z.enum(["HNI", "Affluent", "Retail", "NRI", "Corporate"]).default("Retail"),
   investorCategory: z
     .enum(["individual", "huf", "corporate", "trust", "nri", "minor", "other"])
@@ -70,7 +79,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         return { investorId: lead.convertedInvestorId, alreadyConverted: true };
       }
 
-      const pan = normalizePan(body.pan)!;
+      // If an explicit RM was chosen, it must be a user in this firm — otherwise
+      // the new client would be owned by an out-of-tenant uuid.
+      if (body.rmId) {
+        const [u] = await tx
+          .select({ id: users.id })
+          .from(users)
+          .where(and(eq(users.id, body.rmId), eq(users.tenantId, session.tenantId)))
+          .limit(1);
+        if (!u) return { badRm: true as const };
+      }
+
+      // null when no PAN supplied — the DB column is nullable (migration 0129).
+      const pan = body.pan && body.pan.trim() ? normalizePan(body.pan) : null;
 
       // Create investor
       const inserted = await tx
@@ -101,7 +122,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         .set({
           stage: "converted",
           stageChangedAt: new Date(),
-          pan,
+          ...(pan ? { pan } : {}),
           convertedInvestorId: investorId,
           convertedAt: new Date(),
           updatedAt: new Date(),
@@ -197,6 +218,26 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
                AND subject_id = ${leadId}::uuid
                AND used_at IS NULL
           `);
+
+          // 7. KYC data the client filled via the public onboarding link while
+          //    still a lead → apply it to the new investor's client master.
+          const kyc = (lead as any).kycData as Record<string, string> | null;
+          if (kyc && Object.keys(kyc).length > 0) {
+            const base = inserted[0] as any;
+            const upd = mapKycFieldsToInvestorUpdate(kyc, {
+              pan: base?.pan,
+              email: base?.email,
+              phone: base?.phone,
+              whatsappPhone: base?.whatsappPhone,
+              address: base?.address,
+              bankAccounts: base?.bankAccounts,
+              nominees: base?.nominees,
+            });
+            await sp
+              .update(investors)
+              .set({ ...upd, kycData: kyc, updatedAt: new Date() } as any)
+              .where(eq(investors.id, investorId));
+          }
         });
       } catch (carryErr) {
         console.warn(
@@ -287,6 +328,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return { investorId, alreadyConverted: false };
     });
 
+    if ("badRm" in result) {
+      return NextResponse.json({ error: "selected RM is not a user in this firm" }, { status: 400 });
+    }
     return NextResponse.json(result, { status: 201 });
   } catch (err: any) {
     if (String(err?.message ?? "").includes("investors_tenant_pan_unique")) {

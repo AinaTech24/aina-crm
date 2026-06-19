@@ -14,7 +14,7 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
-import { leads, eventsOutbox } from "@/db/schema";
+import { leads, eventsOutbox, users } from "@/db/schema";
 import { canEditAllLeads, loadEditableLead, loadViewableLead } from "@/lib/leads/access";
 import { scoreFields } from "@/lib/leads/score";
 import {
@@ -71,6 +71,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       const before = await loadEditableLead(tx, session, id);
       const patch: Record<string, any> = { ...parse.data };
       if (!canEditAllLeads(session)) delete patch.ownerId;
+      // Reassigning the owner must stay inside the firm — a uuid from another
+      // tenant would orphan the lead under someone who can't see it.
+      if (patch.ownerId && patch.ownerId !== before.ownerId) {
+        const [u] = await tx
+          .select({ id: users.id })
+          .from(users)
+          .where(and(eq(users.id, patch.ownerId), eq(users.tenantId, session.tenantId)))
+          .limit(1);
+        if (!u) return "bad_owner" as const;
+      }
       if (Object.prototype.hasOwnProperty.call(patch, "email")) {
         patch.email = patch.email || null;
         patch.emailNormalized = normalizeEmail(patch.email);
@@ -114,6 +124,20 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         .set({ ...patch, ...scored, updatedAt: new Date() } as any)
         .where(and(eq(leads.id, id), eq(leads.tenantId, session.tenantId)))
         .returning();
+
+      // Emit lead.updated (before/after) so the workflow-rules engine can react
+      // to a lead edit — e.g. a stage change made from the edit panel. (Only the
+      // /won route emitted this before, so panel edits fired no automations.)
+      await tx.insert(eventsOutbox).values({
+        tenantId: session.tenantId,
+        kind: "lead.updated",
+        entityType: "lead",
+        entityId: id,
+        before: before as any,
+        after: (after[0] ?? before) as any,
+        meta: { userId: session.userId } as any,
+      } as any);
+
       await recordAudit(tx, {
         tenantId: session.tenantId,
         actorUserId: session.userId,
@@ -126,6 +150,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       });
       return after[0];
     });
+    if (result === "bad_owner") return NextResponse.json({ error: "selected owner is not a user in this firm" }, { status: 400 });
     if (!result) return NextResponse.json({ error: "not found" }, { status: 404 });
     return NextResponse.json(result);
   } catch (err: any) {

@@ -52,15 +52,28 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         .set({ stage: nextStage, stageChangedAt, updatedAt: new Date(), ...scored } as any)
         .where(eq(leads.id, id))
         .returning();
-      await tx.insert(eventsOutbox).values({
-        tenantId: session.tenantId,
-        kind: `lead.stage.${nextStage}`,
-        entityType: "lead",
-        entityId: id,
-        before: { stage: before.stage } as any,
-        after: { stage: nextStage } as any,
-        meta: { userId: session.userId } as any,
-      } as any);
+      await tx.insert(eventsOutbox).values([
+        {
+          tenantId: session.tenantId,
+          kind: `lead.stage.${nextStage}`,
+          entityType: "lead",
+          entityId: id,
+          before: { stage: before.stage } as any,
+          after: { stage: nextStage } as any,
+          meta: { userId: session.userId } as any,
+        },
+        // Also emit the generic record-edit event so record_action "edit" rules
+        // (which key on lead.updated) fire on a stage move, not just on /won.
+        {
+          tenantId: session.tenantId,
+          kind: "lead.updated",
+          entityType: "lead",
+          entityId: id,
+          before: before as any,
+          after: (after[0] ?? before) as any,
+          meta: { userId: session.userId, source: "stage_change" } as any,
+        },
+      ] as any);
 
       await recordAudit(tx, {
         tenantId: session.tenantId,
