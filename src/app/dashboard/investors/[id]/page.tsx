@@ -20,7 +20,7 @@ import {
   riskProfileResponses,
 } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
-import { formatINR, formatDate, formatRelative } from "@/lib/utils";
+import { formatINR, formatDate, formatRelative, formatPhone, isValidIndianMobile } from "@/lib/utils";
 import { CheckInButton, LogActivityButton } from "@/components/activities/ActivityLogger";
 import { ChangeLogButton } from "@/components/common/ChangeLog";
 import { RecordProvenance } from "@/components/common/RecordProvenance";
@@ -274,6 +274,16 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
     { label: "Documents", href: "/dashboard/documents" },
   ];
 
+  // Lifecycle-aware layout: a brand-new / onboarding client (no holdings, no
+  // transactions, no booked AUM) gets the portfolio-centric sections hidden so
+  // the page leads with onboarding/KYC/risk instead of five empty ₹0 cards.
+  // Any client with real holdings or history sees everything as before.
+  const hasPortfolio =
+    (data.valuation?.holdings?.length ?? 0) > 0 ||
+    data.txCount > 0 ||
+    data.folios.length > 0 ||
+    Number(inv.aum ?? 0) > 0;
+
   return (
     <div className="max-w-7xl space-y-4">
       <RelatedModulesRail items={relatedItems} />
@@ -362,7 +372,15 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
             <div className="flex gap-3 mt-3 text-sm">
               {showPhone && inv.phone && (
                 <a href={`tel:${inv.phone}`} className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground">
-                  <Phone className="size-4" /> {inv.phone}
+                  <Phone className="size-4" /> {formatPhone(inv.phone)}
+                  {!isValidIndianMobile(inv.phone) && (
+                    <span
+                      title="This doesn't look like a valid 10-digit Indian mobile number"
+                      className="inline-flex items-center text-amber-600"
+                    >
+                      <AlertTriangle className="size-3.5" />
+                    </span>
+                  )}
                 </a>
               )}
               {showEmail && inv.email && (
@@ -426,7 +444,14 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
           <div className="grid grid-cols-3 gap-4 text-right">
             <div>
               <div className="text-xs text-muted-foreground">AUM</div>
-              <div className="text-xl font-bold">{showAum ? formatINR(Number(inv.aum ?? 0)) : "—"}</div>
+              {/* `inv.aum` is the nightly-refreshed COMBINED figure (folios +
+                  uncovered transactions); `data.valuation.currentValue` is the
+                  live priced-transaction value. Show the greater so we never
+                  understate a folio-only (RTA-imported) book, nor display a
+                  stale ₹0 when live holdings already have value. */}
+              <div className="text-xl font-bold">
+                {showAum ? formatINR(Math.max(Number(inv.aum ?? 0), data.valuation?.currentValue ?? 0)) : "—"}
+              </div>
             </div>
             <div>
               <div className="text-xs text-muted-foreground">Active SIP</div>
@@ -483,42 +508,51 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
         />
       </RelatedListSection>
 
-      {/* Live portfolio valuation — units × latest AMFI NAV + XIRR */}
-      {showAum && data.valuation && (
-        <div className="space-y-2">
-          <PortfolioValuationCard valuation={data.valuation} />
-          <StatementActions investorId={inv.id} statementCadence={(inv as any).statementCadence ?? "off"} />
-        </div>
+      {/* Portfolio-centric sections — hidden for onboarding-phase clients with
+          no holdings/transactions so the page isn't a wall of empty ₹0 cards.
+          Cross-sell stays visible below (useful even pre-investment). */}
+      {hasPortfolio && (
+        <>
+          {/* Live portfolio valuation — units × latest AMFI NAV + XIRR */}
+          {showAum && data.valuation && (
+            <div className="space-y-2">
+              <PortfolioValuationCard valuation={data.valuation} />
+              <StatementActions investorId={inv.id} statementCadence={(inv as any).statementCadence ?? "off"} />
+            </div>
+          )}
+
+          {/* Churn-risk scorecard + AI retention play */}
+          {showAum && data.churn && (
+            <ChurnRiskCard
+              result={data.churn}
+              name={inv.name}
+              serviceTier={inv.serviceTier}
+              currentValueInr={data.valuation?.currentValue ?? Number(inv.aum ?? 0)}
+            />
+          )}
+
+          {/* Portfolio allocation — derives from already-loaded folios */}
+          <RelatedListSection moduleKey="investors-detail" sectionKey="allocation">
+            <PortfolioAllocation folios={data.folios as any} />
+          </RelatedListSection>
+
+          {/* SIP-bounce health — early churn signal from rejected SIP installments */}
+          <RelatedListSection moduleKey="investors-detail" sectionKey="sip_health">
+            <SipHealthCard health={data.sipHealth} />
+          </RelatedListSection>
+
+          {/* Transaction ledger — recent purchases / redemptions / SIPs / switches */}
+          <RelatedListSection moduleKey="investors-detail" sectionKey="transactions">
+            <TransactionLedger transactions={data.recentTransactions as any} total={data.txCount} />
+          </RelatedListSection>
+        </>
       )}
 
-      {/* Churn-risk scorecard + AI retention play */}
-      {showAum && data.churn && (
-        <ChurnRiskCard
-          result={data.churn}
-          name={inv.name}
-          serviceTier={inv.serviceTier}
-          currentValueInr={data.valuation?.currentValue ?? Number(inv.aum ?? 0)}
-        />
-      )}
-
-      {/* Portfolio allocation — derives from already-loaded folios */}
-      <RelatedListSection moduleKey="investors-detail" sectionKey="allocation">
-        <PortfolioAllocation folios={data.folios as any} />
-      </RelatedListSection>
-
-      {/* Cross-sell / product-holdings matrix — wallet-share opportunities */}
+      {/* Cross-sell / product-holdings matrix — wallet-share opportunities.
+          Shown for every client (recording what they hold elsewhere is useful
+          before they've invested a rupee with us). */}
       <RelatedListSection moduleKey="investors-detail" sectionKey="cross_sell">
         <CrossSellCard investorId={inv.id} initial={(inv as any).crossSell ?? null} />
-      </RelatedListSection>
-
-      {/* SIP-bounce health — early churn signal from rejected SIP installments */}
-      <RelatedListSection moduleKey="investors-detail" sectionKey="sip_health">
-        <SipHealthCard health={data.sipHealth} />
-      </RelatedListSection>
-
-      {/* Transaction ledger — recent purchases / redemptions / SIPs / switches */}
-      <RelatedListSection moduleKey="investors-detail" sectionKey="transactions">
-        <TransactionLedger transactions={data.recentTransactions as any} total={data.txCount} />
       </RelatedListSection>
 
       {/* Documents & attachments — RM-uploaded files + auto-ingested client
@@ -578,17 +612,25 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
 
         <Group title="Identity">
           <KV label="Client ID" value={inv.id} mono />
-          {showPan && <KV label="PAN" value={inv.pan} mono />}
+          {showPan && <KV label="PAN" value={inv.pan ?? "—"} mono />}
           <KV label="Name" value={inv.name} />
+          <KV label="Name as per PAN" value={inv.nameAsPerPan ?? "—"} />
           {showDob && <KV label="DOB" value={inv.dob ? formatDate(inv.dob) : "—"} />}
           <KV label="Gender" value={inv.gender === "M" ? "Male" : inv.gender === "F" ? "Female" : inv.gender === "O" ? "Other" : "—"} />
+          <KV label="Marital status" value={inv.maritalStatus ?? "—"} cap />
+          <KV label="Mother's name" value={inv.motherName ?? "—"} />
+          <KV label="Place of birth" value={inv.birthPlace ?? "—"} />
+          <KV label="Aadhaar (last 4)" value={inv.aadhaarLast4 ? `••••${inv.aadhaarLast4}` : "—"} mono />
           <KV label="Client since" value={inv.onboardedAt ? formatDate(inv.onboardedAt) : "—"} />
+          <KV label="Anniversary" value={inv.anniversaryDate ? formatDate(inv.anniversaryDate) : "—"} />
         </Group>
 
         <Group title="Contact">
           {showPhone && <KV label="Mobile" value={inv.phone ?? "—"} />}
+          <KV label="Mobile belongs to" value={inv.mobileRelation ?? "—"} cap />
           {showPhone && <KV label="Alternate mobile" value={inv.alternatePhone ?? "—"} />}
           {showEmail && <KV label="Email" value={inv.email ?? "—"} />}
+          <KV label="Email belongs to" value={inv.emailRelation ?? "—"} cap />
           {showPhone && <KV label="WhatsApp" value={inv.whatsappPhone ?? "—"} />}
           {showAddress && (
             <KV
@@ -610,27 +652,91 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
           )}
           {showCity && <KV label="City" value={(inv.address as any)?.city ?? "—"} />}
           {showState && <KV label="State" value={(inv.address as any)?.state ?? "—"} />}
+          {showAddress && <KV label="Pincode" value={(inv.address as any)?.pincode ?? "—"} />}
+          {showAddress && <KV label="Country" value={(inv.address as any)?.country ?? "—"} />}
         </Group>
 
         <Group title="Profile">
           <KV label="Occupation" value={inv.occupation ?? "—"} />
+          <KV label="Employer" value={inv.employerName ?? "—"} />
           <KV label="Income range" value={inv.incomeRange ?? "—"} />
-          <KV label="Client category" value={(inv.investorCategory ?? "—").replace("corporate", "Company")} cap />
+          <KV label="Entity type" value={(inv.investorCategory ?? "—").replace("corporate", "Company")} cap />
           {showSegment && <KV label="Client type" value={inv.segmentTag ?? "—"} />}
+          <KV label="Client category" value={inv.clientCategory ?? "—"} />
+          <KV label="Mode of holding" value={inv.modeOfHolding ?? "—"} cap />
+          <KV label="Household type" value={inv.householdType ?? "—"} />
+          <KV label="Family head name" value={inv.familyOwnerName ?? "—"} />
+          <KV label="Referral client" value={inv.referralClientName ?? "—"} />
           {showRm && <KV label="Assigned RM" value={data.rm?.name ?? "—"} sub={data.rm?.email} />}
           <KV label="Family group" value={data.family?.familyName ?? "—"} sub={inv.familyRole ?? undefined} />
         </Group>
 
         <Group title="Compliance status">
           {showKyc && <Status label="KYC status" value={inv.kycStatus} good={inv.kycStatus === "verified"} />}
+          <KV label="Residential status" value={inv.residencyStatus ?? "—"} cap />
+          <KV label="Tax status" value={inv.taxStatus ?? "—"} />
+          <KV label="PAN–Aadhaar link" value={inv.panAadhaarLinkStatus ?? "—"} cap />
+          <KV label="CKYC number" value={inv.ckycNumber ?? "—"} mono />
+          <KV label="CKYC expiry" value={inv.ckycExpiryAt ? formatDate(inv.ckycExpiryAt) : "—"} />
+          <KV label="KYC validated" value={inv.kycValidatedAt ? formatDate(inv.kycValidatedAt) : "—"} />
+          <KV label="KRA" value={inv.kraName ?? "—"} />
+          <KV label="FATCA status" value={inv.fatcaStatus ?? "—"} cap />
+          <KV label="FATCA expiry" value={inv.fatcaExpiryAt ? formatDate(inv.fatcaExpiryAt) : "—"} />
           {showRisk && <Status label="Risk profile" value={inv.riskProfile ?? "not_assessed"} good={!!inv.riskProfile && !!inv.riskProfileSignedAt} />}
-          {showNominee && <Status label="Nominee" value={inv.nomineeName ? "set" : "missing"} good={!!inv.nomineeName} />}
-          {showBank && <Status label="Bank details" value={inv.bankAccountNumberMasked ? "captured" : "missing"} good={!!inv.bankAccountNumberMasked} />}
           {showPan && <KV label="UCC (BSE)" value={inv.bseUccCode ?? "—"} mono />}
           {showPan && <KV label="CAN (NSE)" value={inv.nseCanCode ?? "—"} mono />}
           <Status label="Mandate" value={inv.mandateStatus ?? "none"} good={inv.mandateStatus === "active"} />
           <KV label="Mandate ref" value={inv.mandateRefNo ?? "—"} mono />
+          {inv.mandateAmount != null && <KV label="Mandate amount" value={formatINR(Number(inv.mandateAmount))} />}
         </Group>
+
+        {showNominee && (
+          <Group title="Nominee">
+            {(() => {
+              const noms = (inv.nominees as any[] | null) ?? [];
+              if (noms.length > 0) {
+                return noms.map((n, i) => (
+                  <KV
+                    key={i}
+                    label={noms.length > 1 ? `Nominee ${i + 1}` : "Nominee"}
+                    value={n?.name ?? "—"}
+                    sub={[n?.relation, n?.dob ? `DOB ${formatDate(n.dob)}` : null, n?.sharePct != null ? `${n.sharePct}%` : null].filter(Boolean).join(" · ") || undefined}
+                  />
+                ));
+              }
+              return (
+                <>
+                  <KV label="Nominee name" value={inv.nomineeName ?? "—"} />
+                  <KV label="Relationship" value={inv.nomineeRelation ?? "—"} cap />
+                  <KV label="Nominee DOB" value={inv.nomineeDob ? formatDate(inv.nomineeDob) : "—"} />
+                </>
+              );
+            })()}
+          </Group>
+        )}
+
+        {showBank && (
+          <Group title="Bank account">
+            <KV label="Bank name" value={inv.bankName ?? "—"} />
+            <KV label="Account no." value={inv.bankAccountNumberMasked ?? "—"} mono />
+            <KV label="IFSC" value={inv.bankIfsc ?? "—"} mono />
+            {Array.isArray(inv.bankAccounts) && (inv.bankAccounts as any[]).length > 1 &&
+              (inv.bankAccounts as any[]).slice(1).map((b, i) => (
+                <KV key={i} label={`Bank ${i + 2}`} value={b?.bankName ?? "—"} sub={[b?.accountMasked, b?.ifsc, b?.accountType].filter(Boolean).join(" · ") || undefined} />
+              ))}
+          </Group>
+        )}
+
+        {(inv.secondHolderFirstName || inv.secondHolderLastName || inv.secondHolderOccupation || inv.secondHolderCompanyName || inv.secondHolderBirthPlace || inv.secondHolderMotherName || inv.secondHolderMaritalStatus) && (
+          <Group title="Second / joint holder">
+            <KV label="Name" value={[inv.secondHolderFirstName, inv.secondHolderLastName].filter(Boolean).join(" ") || "—"} />
+            <KV label="Occupation" value={inv.secondHolderOccupation ?? "—"} />
+            <KV label="Company" value={inv.secondHolderCompanyName ?? "—"} />
+            <KV label="Birth place" value={inv.secondHolderBirthPlace ?? "—"} />
+            <KV label="Mother's name" value={inv.secondHolderMotherName ?? "—"} />
+            <KV label="Marital status" value={inv.secondHolderMaritalStatus ?? "—"} cap />
+          </Group>
+        )}
 
         <Group title="Financials">
           {showAum && <KV label="Current AUM" value={formatINR(Number(inv.aum ?? 0))} highlight />}
@@ -658,6 +764,16 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
             <KV label="Redemption-risk reason" value={inv.redemptionRiskReason} colSpan={2} />
           )}
         </Group>
+
+        {inv.kycData && Object.keys(inv.kycData as any).length > 0 && (
+          <Group title="Additional details (from onboarding)">
+            {Object.entries(inv.kycData as Record<string, string>)
+              .filter(([, v]) => v != null && String(v).trim() !== "")
+              .map(([k, v]) => (
+                <KV key={k} label={k.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())} value={String(v)} />
+              ))}
+          </Group>
+        )}
 
         {inv.notes && (
           <div className="mt-4 pt-4 border-t">
