@@ -17,15 +17,18 @@ import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense, loadTenantLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { healthFields } from "@/lib/investors/health";
+import { investors } from "@/db/schema";
 
 export const dynamic = "force-dynamic";
 
 const Body = z.object({
   mapping: z.record(z.string(), z.string()),
-  rows: z.array(z.record(z.string(), z.any())),
+  // Cap the payload: the whole import runs in one transaction inserting row by
+  // row, so an unbounded array would hold a write lock + memory for minutes.
+  // 10k/upload is comfortably above a normal MFD book migration; larger books
+  // should be split (a background-job importer is the longer-term fix).
+  rows: z.array(z.record(z.string(), z.any())).max(10000),
 });
-
-const PAN_RE = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
 
 export async function POST(req: NextRequest) {
   try {
@@ -44,8 +47,14 @@ export async function POST(req: NextRequest) {
     for (const [src, our] of Object.entries(mapping)) {
       if (our) reverse[our] = src;
     }
-    if (!reverse.name || !reverse.pan) {
-      return NextResponse.json({ error: "mapping must cover at least name + pan" }, { status: 400 });
+    // Permissive import: a client row only needs ONE identifying field mapped.
+    // PAN is frequently absent in a freshly-migrated book, so we no longer force
+    // it — rows without a PAN get a clearly-marked placeholder (filled in later).
+    if (!reverse.name && !reverse.pan && !reverse.email && !reverse.phone) {
+      return NextResponse.json(
+        { error: "map at least one identifying column: Name, PAN, Email or Mobile" },
+        { status: 400 }
+      );
     }
 
     let inserted = 0;
@@ -76,57 +85,112 @@ export async function POST(req: NextRequest) {
           continue;
         }
         const row = rows[i];
-        const name = String(row[reverse.name] ?? "").trim();
-        const pan = String(row[reverse.pan] ?? "").trim().toUpperCase();
+        const p = (f: string) => pick(row, reverse[f]) || null; // "" → null
 
-        if (!name || !pan) {
-          errors.push({ rowIndex: i, error: "missing name or pan" });
+        // Permissive import — clients may arrive with partial data. We don't
+        // reject rows for missing/invalid PAN any more; the only thing that
+        // disqualifies a row is having NOTHING usable at all.
+        const rawName = String(row[reverse.name] ?? "").trim();
+        const rawPan = String(row[reverse.pan] ?? "").trim().toUpperCase();
+        const emailEarly = p("email");
+        const phoneEarly = p("phone");
+
+        // `name` is NOT NULL — fall back to whatever identifier exists.
+        const name = rawName || emailEarly || phoneEarly || rawPan || "";
+        if (!name) {
+          errors.push({ rowIndex: i, error: "empty row — no name, PAN, email or mobile" });
           continue;
         }
-        if (!PAN_RE.test(pan)) {
-          errors.push({ rowIndex: i, error: `invalid PAN: ${pan}` });
-          continue;
-        }
+        // `pan` is NOT NULL + unique. Keep the real (even if oddly-formatted)
+        // PAN when present; otherwise mint a unique placeholder the RM can
+        // replace later (it won't dedup, which is the desired behaviour).
+        const pan = rawPan || `NOPAN-${uuid().slice(0, 8).toUpperCase()}`;
 
-        const email = pick(row, reverse.email);
-        const phone = pick(row, reverse.phone);
-        const whatsapp = pick(row, reverse.whatsappPhone) || phone;
-        const dob = pick(row, reverse.dob);
-        const segment = pick(row, reverse.segmentTag);
-        const category = pick(row, reverse.investorCategory) || "individual";
-        const city = pick(row, reverse.city);
-        const state = pick(row, reverse.state);
-        const pincode = pick(row, reverse.pincode);
+        const toDate = (f: string) => {
+          const v = pick(row, reverse[f]);
+          if (!v) return null;
+          const d = new Date(v);
+          return isNaN(d.getTime()) ? null : d;
+        };
+        const phone = p("phone");
+        const whatsapp = p("whatsappPhone") ?? phone;
+        const kycStatus = pick(row, reverse.kycStatus) || "pending";
+        const nomineeName = p("nomineeName");
+        const aadhaar = pick(row, reverse.aadhaarLast4).replace(/\D/g, "").slice(-4) || null;
 
-        // Initial health from the imported fields (a freshly-imported client
-        // typically has data gaps — nominee/bank/risk — so this surfaces the
-        // enrichment backlog immediately instead of showing a false 100/green).
-        const h = healthFields({
-          status: "active",
-          kycStatus: "pending",
-        });
+        const h = healthFields({ status: "active", kycStatus: "pending" });
 
         try {
-          const r = await tx.execute(sql`
-            INSERT INTO investors (
-              id, tenant_id, branch_id, name, pan, email, phone, whatsapp_phone,
-              dob, segment_tag, investor_category, address, rm_id, status, onboarded_at,
-              health_score, health_band, health_scored_at,
-              created_at, updated_at
-            )
-            VALUES (
-              ${uuid()}, ${session.tenantId}, ${session.branchId ?? null},
-              ${name}, ${pan}, ${email || null}, ${phone || null}, ${whatsapp || null},
-              ${dob ? new Date(dob) : null}, ${segment || null}, ${category},
-              ${JSON.stringify({ city, state, pincode, country: "India" })}::jsonb,
-              ${session.userId}, 'active', now(),
-              ${h.healthScore}, ${h.healthBand}, now(),
-              now(), now()
-            )
-            ON CONFLICT (tenant_id, pan) DO NOTHING
-            RETURNING id
-          `);
-          if ((r as any).rows.length > 0) inserted++;
+          const r = await tx
+            .insert(investors)
+            .values({
+              id: uuid(),
+              tenantId: session.tenantId,
+              branchId: session.branchId ?? null,
+              name,
+              pan,
+              nameAsPerPan: p("nameAsPerPan"),
+              email: p("email"),
+              emailRelation: p("emailRelation"),
+              phone,
+              mobileRelation: p("mobileRelation"),
+              whatsappPhone: whatsapp,
+              dob: p("dob"),
+              gender: p("gender") as any,
+              birthPlace: p("birthPlace"),
+              motherName: p("motherName"),
+              maritalStatus: p("maritalStatus"),
+              occupation: p("occupation"),
+              employerName: p("employerName"),
+              aadhaarLast4: aadhaar,
+              address: {
+                line1: pick(row, reverse.addressLine1),
+                city: pick(row, reverse.city),
+                state: pick(row, reverse.state),
+                pincode: pick(row, reverse.pincode),
+                country: pick(row, reverse.country) || "India",
+              },
+              investorCategory: (p("investorCategory") ?? "individual") as any,
+              segmentTag: p("segmentTag") as any,
+              clientCategory: p("clientCategory") as any,
+              householdType: p("householdType"),
+              familyOwnerName: p("familyOwnerName"),
+              referralClientName: p("referralClientName"),
+              modeOfHolding: p("modeOfHolding"),
+              bseUccCode: p("bseUccCode"),
+              nseCanCode: p("nseCanCode"),
+              taxStatus: p("taxStatus"),
+              residencyStatus: p("residencyStatus") as any,
+              kycStatus: kycStatus as any,
+              secondHolderFirstName: p("secondHolderFirstName"),
+              secondHolderLastName: p("secondHolderLastName"),
+              secondHolderOccupation: p("secondHolderOccupation"),
+              secondHolderCompanyName: p("secondHolderCompanyName"),
+              secondHolderBirthPlace: p("secondHolderBirthPlace"),
+              secondHolderMotherName: p("secondHolderMotherName"),
+              secondHolderMaritalStatus: p("secondHolderMaritalStatus"),
+              onboardedAt: toDate("onboardedAt") ?? new Date(),
+              anniversaryDate: p("anniversaryDate"),
+              lastReviewAt: toDate("lastReviewAt"),
+              nextReviewAt: toDate("nextReviewAt"),
+              reviewFrequency: p("reviewFrequency") as any,
+              nomineeName,
+              nomineeRelation: p("nomineeRelation"),
+              nomineeDob: p("nomineeDob"),
+              nominees: nomineeName
+                ? [{ name: nomineeName, relation: pick(row, reverse.nomineeRelation) || undefined, dob: pick(row, reverse.nomineeDob) || undefined }]
+                : [],
+              bankName: p("bankName"),
+              bankAccountNumberMasked: p("bankAccountNumberMasked"),
+              bankIfsc: p("bankIfsc"),
+              notes: p("notes"),
+              rmId: session.userId,
+              status: "active",
+              ...h,
+            } as any)
+            .onConflictDoNothing({ target: [investors.tenantId, investors.pan] })
+            .returning({ id: investors.id });
+          if (r.length > 0) inserted++;
           else skipped++;
         } catch (err: any) {
           errors.push({ rowIndex: i, error: String(err.message ?? "insert failed") });

@@ -21,7 +21,7 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
-import { investors } from "@/db/schema";
+import { investors, complianceDocuments, users } from "@/db/schema";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
@@ -49,12 +49,34 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "invalid body", issues: parsed.error.issues }, { status: 400 });
     }
     const { ids, action, value } = parsed.data;
+    // Permanent bulk erasure (up to 1000 clients + cascaded data) is far more
+    // dangerous than a re-tag — gate it on the narrow delete capability, not the
+    // broad edit.all this route otherwise runs on.
+    if (action === "delete") requireCap(session.roles, "investor.delete");
     const meta = clientMetaFromHeaders(req.headers);
 
     const patch: Record<string, any> = { updatedAt: new Date() };
     switch (action) {
       case "assign":
-        patch.rmId = value && value.length > 0 ? value : null;
+        // Assigning to a stranger's uuid would orphan the clients under an RM
+        // who can't see them — verify the target is a user in this firm.
+        if (value && value.length > 0) {
+          if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) {
+            return NextResponse.json({ error: "assign value must be a user id" }, { status: 400 });
+          }
+          const exists = await withTenant(session.tenantId, async (tx) => {
+            const [u] = await tx
+              .select({ id: users.id })
+              .from(users)
+              .where(and(eq(users.id, value), eq(users.tenantId, session.tenantId)))
+              .limit(1);
+            return !!u;
+          });
+          if (!exists) return NextResponse.json({ error: "selected RM is not a user in this firm" }, { status: 400 });
+          patch.rmId = value;
+        } else {
+          patch.rmId = null;
+        }
         break;
       case "review":
         if (!value) return NextResponse.json({ error: "value (date) required" }, { status: 400 });
@@ -79,23 +101,31 @@ export async function POST(req: NextRequest) {
         patch.clientCategory = value;
         break;
       case "delete":
-        // Soft delete — archive the client (status='closed'). A hard DELETE is
-        // unsafe: transactions / SIPs / folios FK-reference the investor and the
-        // financial history must be retained. Archived clients drop out of the
-        // active book but stay restorable.
-        patch.status = "closed";
-        patch.exitedAt = new Date();
+        // Permanent hard delete — handled in the tx below (the owned-data
+        // subgraph cascades via migration 0131).
         break;
     }
 
     const count = await withTenant(session.tenantId, async (tx) => {
-      const updated = await tx
-        .update(investors)
-        .set(patch as any)
-        // Tenant predicate (defense-in-depth) — a destructive bulk op must never
-        // touch another firm's clients even if RLS is bypassed (superuser role).
-        .where(and(eq(investors.tenantId, session.tenantId), inArray(investors.id, ids)))
-        .returning({ id: investors.id });
+      // Tenant predicate (defense-in-depth) — a destructive bulk op must never
+      // touch another firm's clients even if RLS is bypassed (superuser role).
+      const scope = and(eq(investors.tenantId, session.tenantId), inArray(investors.id, ids));
+      let updated: { id: string }[];
+      if (action === "delete") {
+        // Documents link polymorphically (no FK) — remove them, then hard delete.
+        await tx
+          .delete(complianceDocuments)
+          .where(
+            and(
+              eq(complianceDocuments.tenantId, session.tenantId),
+              eq(complianceDocuments.relatedEntityType, "investor"),
+              inArray(complianceDocuments.relatedEntityId, ids)
+            )
+          );
+        updated = await tx.delete(investors).where(scope).returning({ id: investors.id });
+      } else {
+        updated = await tx.update(investors).set(patch as any).where(scope).returning({ id: investors.id });
+      }
       await recordAudit(tx, {
         tenantId: session.tenantId,
         actorUserId: session.userId,

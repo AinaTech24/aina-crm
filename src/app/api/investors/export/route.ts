@@ -114,8 +114,11 @@ export async function GET(req: NextRequest) {
       const addr = (inv.address as any) ?? {};
       const row: Record<string, any> = { Name: inv.name };
       if (show.pan) row["PAN"] = inv.pan ?? "";
-      row["Name as per PAN"] = (inv as any).nameAsPerPan ?? "";
-      row["DOB"] = ymd((inv as any).dob);
+      // Name-as-per-PAN and DOB are identity PII in the same class as the PAN —
+      // gate them on the same clearance so a PAN-restricted role can't pull them
+      // out the side door.
+      if (show.pan) row["Name as per PAN"] = (inv as any).nameAsPerPan ?? "";
+      if (show.pan) row["DOB"] = ymd((inv as any).dob);
       row["Gender"] = (inv as any).gender ?? "";
       if (show.segment) row["Segment"] = inv.segmentTag ?? "";
       if (show.tier) row["Service tier"] = inv.serviceTier ?? "";
@@ -126,8 +129,9 @@ export async function GET(req: NextRequest) {
       if (show.kyc) row["KYC"] = inv.kycStatus ?? "";
       row["PAN–Aadhaar link"] = (inv as any).panAadhaarLinkStatus ?? "";
       row["Residency"] = (inv as any).residencyStatus ?? "";
-      row["CKYC number"] = (inv as any).ckycNumber ?? "";
-      row["CKYC expiry"] = ymd((inv as any).ckycExpiryAt);
+      // CKYC number is a government KYC identifier — PII-class, gate on pan.
+      if (show.pan) row["CKYC number"] = (inv as any).ckycNumber ?? "";
+      if (show.pan) row["CKYC expiry"] = ymd((inv as any).ckycExpiryAt);
       row["FATCA status"] = (inv as any).fatcaStatus ?? "";
       row["FATCA expiry"] = ymd((inv as any).fatcaExpiryAt);
       if (show.risk) row["Risk profile"] = inv.riskProfile ?? "";
@@ -162,10 +166,10 @@ export async function GET(req: NextRequest) {
       row["BSE UCC"] = (inv as any).bseUccCode ?? "";
       row["NSE CAN"] = (inv as any).nseCanCode ?? "";
       row["Mandate status"] = (inv as any).mandateStatus ?? "";
-      // ── Bank ──
-      row["Bank name"] = (inv as any).bankName ?? "";
-      row["Bank A/c (masked)"] = (inv as any).bankAccountNumberMasked ?? "";
-      row["Bank IFSC"] = (inv as any).bankIfsc ?? "";
+      // ── Bank ── (financial PII — gate on the same clearance as PAN)
+      if (show.pan) row["Bank name"] = (inv as any).bankName ?? "";
+      if (show.pan) row["Bank A/c (masked)"] = (inv as any).bankAccountNumberMasked ?? "";
+      if (show.pan) row["Bank IFSC"] = (inv as any).bankIfsc ?? "";
       // ── Dates ──
       row["Last review"] = ymd(inv.lastReviewAt);
       row["Next review"] = ymd(inv.nextReviewAt);

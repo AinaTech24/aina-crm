@@ -76,6 +76,171 @@ export async function recomputeAllAum(
   return { updated, totalAum };
 }
 
+/**
+ * Combined valuation: investors.aum = folio-holdings value (the CAS/RTA register
+ * is the base) PLUS transaction-derived value for any scheme the folios DON'T
+ * already cover (so a transaction-only book still values, and a mixed book isn't
+ * double-counted on shared schemes). This is what the investor profile headline,
+ * firm AUM, scorecards and the Excel export read.
+ *
+ * Why this exists: `recomputeAllAum` values ONLY from transactions and leaves
+ * holdings-only investors (RTA folio-master / CAS imports, no transaction feed)
+ * untouched — so their headline AUM sat at the created default (₹0) even though
+ * their folios carried real holdings. This rolls those holdings up.
+ *
+ * Never-zero is preserved: an investor with neither folios nor a transaction
+ * basis is not in the result set and is left untouched (we don't zero a book we
+ * can't value). Same `{ updated, totalAum }` shape as recomputeAllAum — drop-in.
+ */
+export async function recomputeCombinedAum(
+  tx: Tx
+): Promise<{ updated: number; totalAum: number }> {
+  const res = await tx.execute(sql`
+    WITH folio_holdings AS (
+      -- Base: each investor's total holdings value from the folio register.
+      SELECT investor_id, COALESCE(SUM(aum), 0)::numeric AS folio_aum
+      FROM folios
+      WHERE investor_id IS NOT NULL
+      GROUP BY investor_id
+    ),
+    folio_scheme_codes AS (
+      -- Scheme codes already represented in an investor's folios — used to skip
+      -- the same scheme in the transaction ledger (no double count).
+      SELECT DISTINCT f.investor_id, (s->>'schemeCode') AS scheme_code
+      FROM folios f
+      CROSS JOIN LATERAL jsonb_array_elements(COALESCE(f.schemes, '[]'::jsonb)) AS s
+      WHERE f.investor_id IS NOT NULL
+        AND (s->>'schemeCode') IS NOT NULL AND (s->>'schemeCode') <> ''
+    ),
+    txn_holding AS (
+      SELECT t.investor_id,
+             COALESCE(t.scheme_code, t.scheme_name, 'unknown') AS skey,
+             SUM(CASE WHEN t.direction = 'inflow' THEN t.units ELSE -t.units END) AS net_units,
+             MAX(n.nav) AS nav
+      FROM transactions t
+      LEFT JOIN scheme_nav n ON n.scheme_code = t.scheme_code
+      WHERE t.status IN ('processed', 'successful')
+        AND t.order_date IS NOT NULL
+      GROUP BY t.investor_id, COALESCE(t.scheme_code, t.scheme_name, 'unknown')
+    ),
+    txn_uncovered AS (
+      -- Layer: transaction value ONLY for schemes the folios don't cover.
+      SELECT th.investor_id,
+             COALESCE(
+               SUM(th.net_units * th.nav) FILTER (WHERE th.nav IS NOT NULL AND th.net_units > 0.0005),
+               0
+             ) AS txn_value
+      FROM txn_holding th
+      WHERE NOT EXISTS (
+        SELECT 1 FROM folio_scheme_codes fsc
+        WHERE fsc.investor_id = th.investor_id AND fsc.scheme_code = th.skey
+      )
+      GROUP BY th.investor_id
+    ),
+    combined AS (
+      SELECT investor_id, SUM(v)::numeric AS total FROM (
+        SELECT investor_id, folio_aum AS v FROM folio_holdings
+        UNION ALL
+        SELECT investor_id, txn_value AS v FROM txn_uncovered
+      ) u
+      GROUP BY investor_id
+    )
+    UPDATE investors i
+       SET aum = ROUND(combined.total::numeric, 2),
+           updated_at = now()
+      FROM combined
+     WHERE combined.investor_id = i.id
+       AND i.aum IS DISTINCT FROM ROUND(combined.total::numeric, 2)
+    RETURNING i.id
+  `);
+  const updated = (res.rows as any[]).length;
+
+  const totalRes = await tx.execute(
+    sql`SELECT COALESCE(SUM(aum), 0)::numeric AS total FROM investors`
+  );
+  const totalAum = Number((totalRes.rows[0] as any)?.total ?? 0);
+  return { updated, totalAum };
+}
+
+/**
+ * Recompute ONE investor's cached aum + active_sip_amount from live data, in
+ * the current tenant tx. Mirrors recomputeCombinedAum's folios-base + uncovered-
+ * transaction-layer logic but scoped to a single id — used after a merge so the
+ * survivor's headline figures reflect the holdings it just absorbed (otherwise
+ * they stay stale until the nightly recompute). Never zeroes a book it can't
+ * value: if there's no folio/transaction basis the columns are set to 0 only
+ * when they already differ.
+ */
+export async function recomputeInvestorAum(tx: Tx, investorId: string): Promise<void> {
+  await tx.execute(sql`
+    WITH folio_holdings AS (
+      SELECT investor_id, COALESCE(SUM(aum), 0)::numeric AS folio_aum
+      FROM folios
+      WHERE investor_id = ${investorId}::uuid
+      GROUP BY investor_id
+    ),
+    folio_scheme_codes AS (
+      SELECT DISTINCT f.investor_id, (s->>'schemeCode') AS scheme_code
+      FROM folios f
+      CROSS JOIN LATERAL jsonb_array_elements(COALESCE(f.schemes, '[]'::jsonb)) AS s
+      WHERE f.investor_id = ${investorId}::uuid
+        AND (s->>'schemeCode') IS NOT NULL AND (s->>'schemeCode') <> ''
+    ),
+    txn_holding AS (
+      SELECT t.investor_id,
+             COALESCE(t.scheme_code, t.scheme_name, 'unknown') AS skey,
+             SUM(CASE WHEN t.direction = 'inflow' THEN t.units ELSE -t.units END) AS net_units,
+             MAX(n.nav) AS nav
+      FROM transactions t
+      LEFT JOIN scheme_nav n ON n.scheme_code = t.scheme_code
+      WHERE t.investor_id = ${investorId}::uuid
+        AND t.status IN ('processed', 'successful')
+        AND t.order_date IS NOT NULL
+      GROUP BY t.investor_id, COALESCE(t.scheme_code, t.scheme_name, 'unknown')
+    ),
+    txn_uncovered AS (
+      SELECT th.investor_id,
+             COALESCE(SUM(th.net_units * th.nav) FILTER (WHERE th.nav IS NOT NULL AND th.net_units > 0.0005), 0) AS txn_value
+      FROM txn_holding th
+      WHERE NOT EXISTS (
+        SELECT 1 FROM folio_scheme_codes fsc
+        WHERE fsc.investor_id = th.investor_id AND fsc.scheme_code = th.skey
+      )
+      GROUP BY th.investor_id
+    ),
+    combined AS (
+      SELECT investor_id, SUM(v)::numeric AS total FROM (
+        SELECT investor_id, folio_aum AS v FROM folio_holdings
+        UNION ALL
+        SELECT investor_id, txn_value AS v FROM txn_uncovered
+      ) u
+      GROUP BY investor_id
+    )
+    UPDATE investors i
+       SET aum = ROUND(COALESCE(combined.total, 0)::numeric, 2),
+           updated_at = now()
+      FROM combined
+     WHERE i.id = ${investorId}::uuid
+       AND combined.investor_id = i.id
+       AND i.aum IS DISTINCT FROM ROUND(COALESCE(combined.total, 0)::numeric, 2)
+  `);
+
+  // active_sip_amount = Σ live SIP book (same rule as the nightly backfill).
+  await tx.execute(sql`
+    UPDATE investors i
+       SET active_sip_amount = COALESCE((
+             SELECT SUM(s.amount::numeric) FROM sips s
+             WHERE s.investor_id = i.id AND s.status = 'active'
+           ), 0),
+           updated_at = now()
+     WHERE i.id = ${investorId}::uuid
+       AND i.active_sip_amount IS DISTINCT FROM COALESCE((
+             SELECT SUM(s.amount::numeric) FROM sips s
+             WHERE s.investor_id = i.id AND s.status = 'active'
+           ), 0)
+  `);
+}
+
 type FolioScheme = {
   schemeCode: string;
   schemeName: string;

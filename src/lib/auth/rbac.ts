@@ -67,6 +67,7 @@ export type Capability =
   | "investor.edit.all"
   | "investor.edit.assigned"
   | "investor.bulk_export"
+  | "investor.delete"
   | "investor.note.add"
   // Leads
   | "lead.view.all"
@@ -156,6 +157,12 @@ const MATRIX: Record<Capability, Role[]> = {
   "investor.edit.all": ["back_office", "ops"],
   "investor.edit.assigned": ["rm"],
   "investor.bulk_export": ["compliance"],
+  // Permanent hard-delete of a client + its owned data subgraph (cascades).
+  // Deliberately NARROWER than investor.edit.all: editing a phone number must
+  // not imply the power to irreversibly erase a client's whole history. Owner
+  // wins via can(); compliance owns DPDP erasure. RM / back_office / ops do NOT
+  // get it — they soft-close instead.
+  "investor.delete": ["compliance"],
   "investor.note.add": ["rm", "back_office", "ops", "branch_head", "compliance"],
 
   // Leads — marketing + owner own pipeline; RM works assigned.

@@ -19,6 +19,8 @@ import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
+import { recomputeInvestorAum } from "@/lib/finance/aum-persist";
+import { recomputeInvestorHealth } from "@/lib/investors/health-persist";
 
 export const dynamic = "force-dynamic";
 
@@ -113,6 +115,13 @@ export async function POST(req: NextRequest) {
           UPDATE investors SET status = 'inactive', merged_into_id = ${survivorId}::uuid, merged_at = now(), updated_at = now()
           WHERE id = ${loserId}::uuid
         `);
+
+        // The survivor just absorbed the loser's folios / transactions / SIPs —
+        // refresh its cached headline figures (aum, active SIP) and health so the
+        // client list, KPI strip and scorecards don't show stale numbers until
+        // the nightly recompute. Both losers' rows are now off the survivor.
+        await recomputeInvestorAum(tx, survivorId);
+        await recomputeInvestorHealth(tx, survivorId);
 
         await recordAudit(tx, {
           tenantId: session.tenantId,

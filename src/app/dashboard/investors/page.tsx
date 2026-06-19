@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Plus, FileSpreadsheet, FileDown, LayoutGrid, List } from "lucide-react";
+import { Plus, FileDown, LayoutGrid, List, FileUp } from "lucide-react";
 import { asc, desc, sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { investors } from "@/db/schema";
@@ -90,9 +90,10 @@ export default async function InvestorsPage({
   // the default (largest books first). "health" is a derived score computed in
   // JS, so it can't be ordered in SQL — the page sorts the fetched rows
   // locally (worst health first, to triage at-risk clients on the visible page).
-  const sortKey = ["name", "sip", "review", "health", "created"].includes(sp.sort ?? "")
+  // Default to newest-first so a just-created client appears in the first row.
+  const sortKey = ["name", "sip", "review", "health", "created", "aum"].includes(sp.sort ?? "")
     ? (sp.sort as string)
-    : "aum";
+    : "created";
 
   // Sort direction. Each column has a sensible default (largest AUM/SIP first,
   // A→Z names, soonest review, worst health for triage); an explicit `dir`
@@ -119,22 +120,41 @@ export default async function InvestorsPage({
     // identical WHERE logic. Tenant isolation is handled by RLS.
     const where = buildInvestorWhere(sp, userId);
 
+    // Project only the columns the table + kanban actually read — the table
+    // never needs the heavy/sensitive jsonb (kycData, nominees, crossSell,
+    // address), so don't pull them into the server component for every page.
     const r = await tx
-      .select()
+      .select({
+        id: investors.id,
+        name: investors.name,
+        avatarUrl: investors.avatarUrl,
+        pan: investors.pan,
+        clientCategory: investors.clientCategory,
+        serviceTier: investors.serviceTier,
+        segmentTag: investors.segmentTag,
+        aum: investors.aum,
+        activeSipAmount: investors.activeSipAmount,
+        kycStatus: investors.kycStatus,
+        status: investors.status,
+        healthScore: investors.healthScore,
+        healthBand: investors.healthBand,
+        lastTransactionAt: investors.lastTransactionAt,
+        updatedAt: investors.updatedAt,
+      })
       .from(investors)
       .where(where as any)
       .orderBy(
         sortKey === "name"
           ? (dir === "asc" ? asc(investors.name) : desc(investors.name))
           : sortKey === "sip"
-          ? (dir === "asc" ? asc(investors.activeSipAmount) : desc(investors.activeSipAmount))
-          : sortKey === "review"
-          ? sql`${investors.nextReviewAt} ${sql.raw(dir)} nulls last`
-          : sortKey === "health"
-          ? (dir === "asc" ? asc(investors.healthScore) : desc(investors.healthScore))
-          : sortKey === "created"
-          ? (dir === "asc" ? asc(investors.createdAt) : desc(investors.createdAt))
-          : (dir === "asc" ? asc(investors.aum) : desc(investors.aum))
+            ? (dir === "asc" ? asc(investors.activeSipAmount) : desc(investors.activeSipAmount))
+            : sortKey === "review"
+              ? sql`${investors.nextReviewAt} ${sql.raw(dir)} nulls last`
+              : sortKey === "health"
+                ? (dir === "asc" ? asc(investors.healthScore) : desc(investors.healthScore))
+                : sortKey === "created"
+                  ? (dir === "asc" ? asc(investors.createdAt) : desc(investors.createdAt))
+                  : (dir === "asc" ? asc(investors.aum) : desc(investors.aum))
       )
       .limit(view === "kanban" ? 300 : PAGE_SIZE)
       .offset(view === "kanban" ? 0 : (page - 1) * PAGE_SIZE);
@@ -214,6 +234,7 @@ export default async function InvestorsPage({
   const tableRows: InvestorTableRow[] = rows.map((i) => ({
     id: i.id,
     name: i.name,
+    avatarUrl: i.avatarUrl ?? null,
     pan: showPan ? i.pan : null,
     clientCategory: i.clientCategory ?? null,
     serviceTier: showTier ? i.serviceTier : null,
@@ -243,21 +264,19 @@ export default async function InvestorsPage({
           <div className="inline-flex rounded-lg border border-border bg-secondary/40 p-0.5 gap-0.5 mr-1">
             <Link
               href="/dashboard/investors"
-              className={`px-2.5 py-1 rounded-md text-xs font-medium inline-flex items-center gap-1.5 transition-colors ${
-                view === "table"
-                  ? "bg-card shadow-sm text-foreground"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
+              className={`px-2.5 py-1 rounded-md text-xs font-medium inline-flex items-center gap-1.5 transition-colors ${view === "table"
+                ? "bg-card shadow-sm text-foreground"
+                : "text-muted-foreground hover:text-foreground"
+                }`}
             >
               <List className="size-3.5" /> Table
             </Link>
             <Link
               href="/dashboard/investors?view=kanban"
-              className={`px-2.5 py-1 rounded-md text-xs font-medium inline-flex items-center gap-1.5 transition-colors ${
-                view === "kanban"
-                  ? "bg-card shadow-sm text-foreground"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
+              className={`px-2.5 py-1 rounded-md text-xs font-medium inline-flex items-center gap-1.5 transition-colors ${view === "kanban"
+                ? "bg-card shadow-sm text-foreground"
+                : "text-muted-foreground hover:text-foreground"
+                }`}
             >
               <LayoutGrid className="size-3.5" /> Kanban
             </Link>
@@ -271,13 +290,13 @@ export default async function InvestorsPage({
             className="rounded-md border px-3 py-1.5 text-sm flex items-center gap-1.5 hover:bg-accent"
             title="Download the current (filtered) book as an Excel file"
           >
-            <FileDown className="size-4" /> Export
+            <FileUp className="size-4" /> Export
           </a>
           <Link
             href="/dashboard/investors/import"
             className="rounded-md border px-3 py-1.5 text-sm flex items-center gap-1.5"
           >
-            <FileSpreadsheet className="size-4" /> Import Excel
+            <FileDown className="size-4" /> Import
           </Link>
           <Link
             href="/dashboard/investors/new"

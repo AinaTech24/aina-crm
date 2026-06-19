@@ -4,7 +4,12 @@ import { handleApiError } from "@/lib/api/error-handler";
  *
  *   GET    /api/investors/[id]   — full investor + folios + sips + last comms
  *   PATCH  /api/investors/[id]   — partial update (catalog-writable fields only)
- *   DELETE /api/investors/[id]   — soft delete (status='exited' + DPDP purge per request)
+ *   DELETE /api/investors/[id]   — PERMANENT hard delete: removes the client and
+ *                                  cascades its owned-data subgraph (folios,
+ *                                  transactions, SIPs, goals, proposals … per
+ *                                  migration 0131). Irreversible. Gated on the
+ *                                  narrow `investor.delete` capability (owner /
+ *                                  compliance only) — NOT `investor.edit.all`.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -15,6 +20,8 @@ import { requireSession } from "@/lib/auth/session";
 import { require as requireCap, can } from "@/lib/auth/rbac";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { healthFields } from "@/lib/investors/health";
+import { NomineesArray } from "@/lib/investors/nominee";
+import { registerNomineePanDocs } from "@/lib/investors/nominee-docs";
 import { recomputeFamilyHealthForInvestor } from "@/lib/families/health-persist";
 import {
   investors,
@@ -26,6 +33,8 @@ import {
   tasks,
   eventsOutbox,
   auditLog,
+  complianceDocuments,
+  users,
 } from "@/db/schema";
 
 export const dynamic = "force-dynamic";
@@ -54,12 +63,7 @@ const Patch = z.object({
   bankIfsc: z.string().optional(),
   // Multiple nominees / bank accounts. The legacy single columns above are kept
   // in sync with the first array entry (mirrored in the handler).
-  nominees: z.array(z.object({
-    name: z.string().max(120),
-    relation: z.string().max(60).optional(),
-    dob: z.string().max(20).optional(),
-    sharePct: z.number().min(0).max(100).optional(),
-  })).max(10).optional(),
+  nominees: NomineesArray,
   bankAccounts: z.array(z.object({
     bankName: z.string().max(120),
     accountMasked: z.string().max(60).optional(),
@@ -124,6 +128,10 @@ const Patch = z.object({
   mandateRefNo: z.string().max(60).nullable().optional(),
   status: z.enum(["active", "dormant", "inactive", "redemption_risk", "closed", "exited"]).optional(),
   reviewFrequency: z.enum(["monthly", "quarterly", "half_yearly", "annual"]).nullable().optional(),
+  // Relationship dates — onboardedAt is a timestamp (coerced to Date in the
+  // handler); anniversaryDate is a plain date column (accepts YYYY-MM-DD).
+  onboardedAt: z.string().nullable().optional(),
+  anniversaryDate: z.string().nullable().optional(),
 });
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -207,6 +215,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       const before = (await tx.select().from(investors).where(and(eq(investors.id, id), eq(investors.tenantId, session.tenantId))).limit(1))[0];
       if (!before) return null;
 
+      // Reassigning the RM must stay inside the firm: a uuid from another tenant
+      // is a valid uuid but would orphan the client under an RM who can't see
+      // them. Verify the target user belongs to this tenant before assigning.
+      if (parse.data.rmId !== undefined && parse.data.rmId !== before.rmId) {
+        const [u] = await tx
+          .select({ id: users.id })
+          .from(users)
+          .where(and(eq(users.id, parse.data.rmId), eq(users.tenantId, session.tenantId)))
+          .limit(1);
+        if (!u) return "bad_rm" as const;
+      }
+
       // Stamp KYC audit fields when any KYC-related column is touched.
       const touchingKyc =
         parse.data.kycStatus !== undefined ||
@@ -227,6 +247,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         const n0 = parse.data.nominees[0];
         mirror.nomineeName = n0?.name ?? null;
         mirror.nomineeRelation = n0?.relation ?? null;
+        mirror.nomineeDob = n0?.dob ?? null;
       }
       if (parse.data.bankAccounts) {
         const b0 = parse.data.bankAccounts[0];
@@ -251,11 +272,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         reviewPatch.nextReviewAt = next;
       }
 
+      // onboardedAt is a timestamp column — coerce the YYYY-MM-DD string to a
+      // Date (Drizzle's date column takes anniversaryDate as a string directly).
+      const datePatch: Record<string, unknown> = {};
+      if (parse.data.onboardedAt !== undefined) {
+        datePatch.onboardedAt = parse.data.onboardedAt ? new Date(parse.data.onboardedAt) : null;
+      }
+
       const after = await tx
         .update(investors)
         .set({
           ...parse.data,
           ...reviewPatch,
+          ...datePatch,
           ...mirror,
           updatedAt: new Date(),
           ...(touchingKyc
@@ -289,6 +318,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         ...clientMetaFromHeaders(req.headers),
       });
 
+      // Register any newly-uploaded nominee PAN files as client documents.
+      await registerNomineePanDocs(tx, session.tenantId, id, parse.data.nominees, session.userId);
+
       // A member's KYC/nominee/risk/etc. feeds its family's health too —
       // re-score the family this investor belongs to (no-op if unlinked).
       await recomputeFamilyHealthForInvestor(tx, id);
@@ -296,6 +328,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return after[0];
     });
 
+    if (result === "bad_rm") return NextResponse.json({ error: "selected RM is not a user in this firm" }, { status: 400 });
     if (!result) return NextResponse.json({ error: "not found" }, { status: 404 });
     return NextResponse.json(result);
   } catch (err: any) {
@@ -307,21 +340,47 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   const { id } = await params;
   try {
     const session = await requireSession();
-    requireCap(session.roles, "investor.edit.all");
-    await withTenant(session.tenantId, async (tx) => {
-      await tx
-        .update(investors)
-        .set({ status: "exited", exitedAt: new Date(), updatedAt: new Date() } as any)
-        .where(and(eq(investors.id, id), eq(investors.tenantId, session.tenantId)));
+    // Permanent erasure is far more dangerous than an edit — gate on the narrow
+    // delete capability (owner / compliance), not the broad edit.all.
+    requireCap(session.roles, "investor.delete");
+    const outcome = await withTenant(session.tenantId, async (tx) => {
+      const [inv] = await tx
+        .select({ name: investors.name, pan: investors.pan })
+        .from(investors)
+        .where(and(eq(investors.id, id), eq(investors.tenantId, session.tenantId)))
+        .limit(1);
+      if (!inv) return "not_found" as const;
 
+      // Audit BEFORE the row + its owned-data subgraph are removed.
       await tx.insert(auditLog).values({
         tenantId: session.tenantId,
         actorUserId: session.userId,
-        action: "investor.exit",
+        action: "investor.delete",
         entityType: "investor",
         entityId: id,
+        before: { name: inv.name, pan: inv.pan } as any,
       } as any);
+
+      // Documents link to the client polymorphically (no FK), so the cascade
+      // won't reach them — remove them explicitly.
+      await tx
+        .delete(complianceDocuments)
+        .where(
+          and(
+            eq(complianceDocuments.tenantId, session.tenantId),
+            eq(complianceDocuments.relatedEntityType, "investor"),
+            eq(complianceDocuments.relatedEntityId, id)
+          )
+        );
+
+      // Permanent hard delete — folios/transactions/sips/proposals/goals/etc.
+      // cascade automatically (migration 0131).
+      await tx
+        .delete(investors)
+        .where(and(eq(investors.id, id), eq(investors.tenantId, session.tenantId)));
+      return "ok" as const;
     });
+    if (outcome === "not_found") return NextResponse.json({ error: "not found" }, { status: 404 });
     return NextResponse.json({ ok: true });
   } catch (err: any) {
     return handleApiError(err);
