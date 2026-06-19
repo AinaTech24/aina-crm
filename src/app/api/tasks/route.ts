@@ -173,6 +173,12 @@ export async function POST(req: NextRequest) {
         })(),
       } as any);
 
+      // NOTE: tasks intentionally emit NO events_outbox row (task.created/updated).
+      // Tasks are an OUTPUT of automations (the create_task workflow action), not a
+      // trigger — wiring task.* into the outbox would risk automation loops
+      // (a rule that creates a task firing a rule that reacts to tasks). The
+      // workflow-rules `tasks` module catalog exists for future use, but is
+      // deliberately dormant. Revisit only with explicit loop guards.
       await recordAudit(tx, {
         tenantId: session.tenantId,
         actorUserId: session.userId,

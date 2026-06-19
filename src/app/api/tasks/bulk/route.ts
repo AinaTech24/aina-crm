@@ -21,9 +21,12 @@ import { requireSession } from "@/lib/auth/session";
 import { can, requireAny } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
+import { spawnNextOccurrence } from "@/lib/tasks/recurrence";
 import { tasks, users } from "@/db/schema";
 
 export const dynamic = "force-dynamic";
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const Body = z.object({
   ids: z.array(z.string().uuid()).min(1).max(500),
@@ -59,6 +62,7 @@ export async function POST(req: NextRequest) {
       patch.priority = value;
     } else if (action === "assign") {
       if (!value) return NextResponse.json({ error: "value (userId) required" }, { status: 400 });
+      if (!UUID_RE.test(value)) return NextResponse.json({ error: "value must be a user id" }, { status: 400 });
     }
 
     const count = await withTenant(session.tenantId, async (tx) => {
@@ -78,11 +82,29 @@ export async function POST(req: NextRequest) {
       if (!canEditAll) {
         conds.push(or(eq(tasks.assigneeId, session.userId), eq(tasks.createdById, session.userId))!);
       }
+
+      // Recurring chain-on-completion: capture the in-scope recurring tasks that
+      // are about to transition INTO completed (before the update erases their
+      // prior status) so we can spawn each next occurrence — matching the
+      // single-task PATCH. Without this, bulk-completing a recurring task
+      // silently ended the series.
+      const toChain =
+        action === "status" && patch.status === "completed"
+          ? await tx
+              .select()
+              .from(tasks)
+              .where(and(...conds, sql`recurrence is not null`, sql`status <> 'completed'`))
+          : [];
+
       const updated = await tx
         .update(tasks)
         .set(patch as any)
         .where(and(...conds))
         .returning({ id: tasks.id });
+
+      for (const t of toChain) {
+        await spawnNextOccurrence(tx, t as any, session.userId, meta);
+      }
 
       await recordAudit(tx, {
         tenantId: session.tenantId,
