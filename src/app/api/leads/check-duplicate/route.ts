@@ -37,15 +37,21 @@ export async function POST(req: NextRequest) {
     const emailLower = email ? email.trim().toLowerCase() : null;
     const panUpper = pan ? pan.trim().toUpperCase() : null;
 
+    // Match on the INDEXED columns the schema maintains for exactly this:
+    // phone_normalized / email_normalized (leads_phone_norm_idx / _email_norm_idx)
+    // and the real `pan` column (leads_pan_idx). The old code matched PAN inside
+    // free-text `notes` (never selected → never matched) and used unindexable
+    // expressions on raw phone/email, full-scanning on every keystroke.
     const conds: any[] = [];
-    if (last10) conds.push(sql`right(regexp_replace(coalesce(leads.phone, ''), '[^0-9]', '', 'g'), 10) = ${last10}`);
-    if (emailLower) conds.push(sql`lower(coalesce(leads.email, '')) = ${emailLower}`);
-    if (panUpper) conds.push(sql`upper(coalesce(leads.notes, '')) ILIKE ${`%${panUpper}%`}`); // PAN not a column on leads — fuzzy notes match
+    if (last10) conds.push(sql`leads.phone_normalized = ${last10}`);
+    if (emailLower) conds.push(sql`leads.email_normalized = ${emailLower}`);
+    if (panUpper) conds.push(sql`upper(coalesce(leads.pan, '')) = ${panUpper}`);
     const where = sql.join(conds, sql` OR `);
 
     const rows = await withTenant(session.tenantId, async (tx) => {
       return tx.execute(sql`
-        SELECT id, name, stage, source, phone, email, created_at
+        SELECT id, name, stage, source, phone, email, pan,
+               phone_normalized, email_normalized, created_at
         FROM leads
         WHERE (${where})
         ORDER BY created_at DESC
@@ -55,9 +61,9 @@ export async function POST(req: NextRequest) {
 
     const matches = (rows.rows as any[]).map((r) => {
       const matchedOn: string[] = [];
-      if (last10 && r.phone?.replace(/\D/g, "").endsWith(last10)) matchedOn.push("phone");
-      if (emailLower && (r.email ?? "").toLowerCase() === emailLower) matchedOn.push("email");
-      if (panUpper && (r.notes ?? "").toUpperCase().includes(panUpper)) matchedOn.push("pan");
+      if (last10 && r.phone_normalized === last10) matchedOn.push("phone");
+      if (emailLower && (r.email_normalized ?? "") === emailLower) matchedOn.push("email");
+      if (panUpper && (r.pan ?? "").toUpperCase() === panUpper) matchedOn.push("pan");
       return {
         id: r.id,
         name: r.name,

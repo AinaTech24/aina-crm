@@ -162,6 +162,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         });
       }
 
+      // Emit lead.updated (after all the outcome side-effects) so record_action
+      // "edit" workflow rules can react to a logged call outcome — the dedicated
+      // blueprint events alone don't satisfy a generic lead-edit rule.
+      const [after] = await tx.select().from(leads).where(eq(leads.id, id)).limit(1);
+      await tx.insert(eventsOutbox).values({
+        tenantId: session.tenantId,
+        kind: "lead.updated",
+        entityType: "lead",
+        entityId: id,
+        before: lead as any,
+        after: (after ?? lead) as any,
+        meta: { userId: session.userId, source: "call_outcome", outcome: body.outcome } as any,
+      } as any);
+
       return { outcome: body.outcome, transition };
     });
 

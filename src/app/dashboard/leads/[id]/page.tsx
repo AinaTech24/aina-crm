@@ -13,8 +13,9 @@ import {
   Flame,
 } from "lucide-react";
 import { withTenant } from "@/db/client";
-import { leads, users, tasks, communications, riskProfileResponses, proposals } from "@/db/schema";
+import { users, tasks, communications, riskProfileResponses, proposals } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
+import { loadViewableLead } from "@/lib/leads/access";
 import { formatDate, formatRelative } from "@/lib/utils";
 import { LeadActions } from "@/components/leads/LeadActions";
 import { EmailRelatedList } from "@/components/comms/EmailRelatedList";
@@ -60,7 +61,11 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
   const { id } = await params;
   const session = await requireSession();
   const data = await withTenant(session.tenantId, async (tx) => {
-    const lead = (await tx.select().from(leads).where(eq(leads.id, id)).limit(1))[0];
+    // Scope to the viewer's access: requires a lead-view capability and, for
+    // RMs/branch heads, that the lead is theirs. Returns null otherwise (→
+    // notFound), so an RM can't open another RM's lead by URL. The API
+    // (GET /api/leads/[id]) already does this; the page used to bypass it.
+    const lead = await loadViewableLead(tx, session, id);
     if (!lead) return null;
     // Run the 5 secondary queries in parallel — they're all independent of
     // each other and only depend on `lead.id`. This cuts the page's TTFB

@@ -14,7 +14,7 @@ import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { assertActiveLicense } from "@/lib/auth/license";
-import { leads } from "@/db/schema";
+import { leads, eventsOutbox } from "@/db/schema";
 import { autoAdvance } from "@/lib/blueprints/auto-advance";
 import { loadEditableLead } from "@/lib/leads/access";
 
@@ -45,7 +45,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       const entry = `${prefix}\n${parse.data.note}`;
       const combined = lead.followUpNotes ? `${entry}\n\n---\n\n${lead.followUpNotes}` : entry;
 
-      await tx
+      const [after] = await tx
         .update(leads)
         .set({
           followUpNotes: combined,
@@ -54,7 +54,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           nextFollowUpAt: parse.data.nextFollowUpAt ? new Date(parse.data.nextFollowUpAt) : lead.nextFollowUpAt,
           updatedAt: ts,
         } as any)
-        .where(eq(leads.id, id));
+        .where(eq(leads.id, id))
+        .returning();
+
+      // Emit lead.updated so record_action "edit" workflow rules can react to a
+      // logged activity (e.g. a contacted-lead follow-up cadence).
+      await tx.insert(eventsOutbox).values({
+        tenantId: session.tenantId,
+        kind: "lead.updated",
+        entityType: "lead",
+        entityId: id,
+        before: lead as any,
+        after: (after ?? lead) as any,
+        meta: { userId: session.userId, source: "note" } as any,
+      } as any);
 
       // ─── Smart blueprint advance — activity logged ────────────────
       // The activity type determines which stage the lead jumps to:

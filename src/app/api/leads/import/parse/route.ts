@@ -7,6 +7,7 @@ import { handleApiError } from "@/lib/api/error-handler";
 import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from "xlsx";
 import { requireSession } from "@/lib/auth/session";
+import { require as requireCap } from "@/lib/auth/rbac";
 
 export const dynamic = "force-dynamic";
 
@@ -44,7 +45,10 @@ function suggestMapping(headers: string[]): Record<string, string> {
 
 export async function POST(req: NextRequest) {
   try {
-    await requireSession();
+    const session = await requireSession();
+    // Importing the firm's book is a manager action — gate parse with the same
+    // capability as the commit step (was requireSession-only).
+    requireCap(session.roles, "lead.edit.all", session.permissions);
     const form = await req.formData();
     const file = form.get("file");
     if (!(file instanceof File)) return NextResponse.json({ error: "file required" }, { status: 400 });
