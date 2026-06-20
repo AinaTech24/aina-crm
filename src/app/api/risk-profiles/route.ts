@@ -16,7 +16,7 @@ import { eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { require as requireCap } from "@/lib/auth/rbac";
+import { require as requireCap, requireAny, can } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { riskProfileResponses, investors, eventsOutbox } from "@/db/schema";
@@ -36,7 +36,14 @@ const Body = z.object({
 export async function GET() {
   try {
     const session = await requireSession();
+    // Risk profiles carry client PII (name, PAN, category). Require an investor
+    // view capability (this GET was previously open to ANY authenticated role —
+    // marketing included) and scope RMs to their own clients.
+    requireAny(session.roles, ["investor.view.all", "investor.view.assigned"], session.permissions);
+    const canViewAll = can(session.roles, "investor.view.all", session.permissions);
     const rows = await withTenant(session.tenantId, async (tx) => {
+      // Non-managers only see profiles for clients assigned to them.
+      const scope = canViewAll ? sql`TRUE` : sql`i.rm_id = ${session.userId}::uuid`;
       // One row per investor — latest signed profile
       const r = await tx.execute(sql`
         SELECT DISTINCT ON (rp.investor_id)
@@ -45,6 +52,7 @@ export async function GET() {
           i.name AS investor_name, i.pan AS investor_pan
         FROM risk_profile_responses rp
         LEFT JOIN investors i ON i.id = rp.investor_id
+        WHERE ${scope}
         ORDER BY rp.investor_id, rp.signed_at DESC NULLS LAST
       `);
       return r.rows;

@@ -64,8 +64,14 @@ export const riskProfileResponses = pgTable(
     /** Annual review — auto-set to signedAt + 365d when missing. */
     nextReviewAt: date("next_review_at"),
 
+    // rm_entry        — the RM keyed the answers in.
+    // client_otp       — client submitted AND an OTP was verified server-side.
+    // client_physical  — captured from a physically-signed form.
+    // client_link      — client self-submitted via a secure single-use link
+    //                    (token is the credential; NO OTP verification). Don't
+    //                    record client_otp for this path — it would overclaim.
     verificationMethod: text("verification_method", {
-      enum: ["rm_entry", "client_otp", "client_physical"],
+      enum: ["rm_entry", "client_otp", "client_physical", "client_link"],
     }).notNull().default("rm_entry"),
     otpTransactionId: text("otp_transaction_id"),
     clientIp: text("client_ip"),

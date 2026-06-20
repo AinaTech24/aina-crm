@@ -42,12 +42,33 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json().catch(() => ({}));
     const tokenId: string | undefined = body.tokenId;
-    const answers: Record<string, string> = body.answers ?? {};
-    const signatureName: string = String(body.signatureName ?? "").trim();
-    const verificationMethod: string = body.verificationMethod ?? "client_otp";
-    const otpTransactionId: string | undefined = body.otpTransactionId;
     if (!tokenId) return NextResponse.json({ error: "missing tokenId" }, { status: 400 });
+
+    // Bound the untrusted input. The answers object is keyed by question key;
+    // cap the number of entries and each value's length so a single submission
+    // can't store an unbounded blob into the responses JSONB.
+    const rawAnswers = body.answers;
+    if (rawAnswers == null || typeof rawAnswers !== "object" || Array.isArray(rawAnswers)) {
+      return NextResponse.json({ error: "invalid answers" }, { status: 400 });
+    }
+    const answerEntries = Object.entries(rawAnswers as Record<string, unknown>);
+    if (answerEntries.length > 100) {
+      return NextResponse.json({ error: "too many answers" }, { status: 400 });
+    }
+    const answers: Record<string, string> = {};
+    for (const [k, v] of answerEntries) {
+      answers[String(k).slice(0, 120)] = String(v ?? "").slice(0, 500);
+    }
+
+    const signatureName: string = String(body.signatureName ?? "").trim().slice(0, 120);
     if (!signatureName) return NextResponse.json({ error: "Signature required" }, { status: 400 });
+
+    // The client cannot ASSERT how it was verified. We do NOT run an OTP check
+    // on this path, so recording "client_otp" would overclaim on a SEBI audit
+    // trail. The token (single-use, signed, tenant-scoped) is the credential —
+    // record that truthfully as a secure-link signature.
+    const verificationMethod = "client_link";
+    const otpTransactionId: string | undefined = undefined;
 
     // Re-fetch via the token id rather than re-resolving the plaintext — the
     // client only knows the id at this point. The token was already validated

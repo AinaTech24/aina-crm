@@ -3,9 +3,12 @@ import { sql } from "drizzle-orm";
 import { ShieldCheck, AlertTriangle, Plus, ArrowRight } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { requireAny, can } from "@/lib/auth/rbac";
 import { formatDate } from "@/lib/utils";
 import { Pager } from "@/components/common/Pager";
 import { RiskProfileName, RiskProfilePdfButtons } from "@/components/risk-profile/RiskProfileName";
+import { Avatar } from "@/components/ui/Avatar";
+import { PdfRow } from "@/components/common/ClickableRow";
 
 export const dynamic = "force-dynamic";
 
@@ -60,12 +63,19 @@ export default async function RiskProfilesPage({
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const session = await requireSession();
+  // Client PII (name, PAN, risk band) — require an investor-view capability and
+  // scope RMs to their own book (the page previously showed the whole firm's
+  // risk register to any role, including marketing).
+  requireAny(session.roles, ["investor.view.all", "investor.view.assigned"], session.permissions);
+  const canViewAll = can(session.roles, "investor.view.all", session.permissions);
   const sp = await searchParams;
   const filter: FilterKey =
     (FILTERS.find((f) => f.key === sp.filter)?.key as FilterKey) ?? "all";
   const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
 
   const data = await withTenant(session.tenantId, async (tx) => {
+    // Owner slice for non-managers (applied to every query below).
+    const rmScope = canViewAll ? sql`TRUE` : sql`rm_id = ${session.userId}::uuid`;
     // KPI strip — one aggregate over the active book.
     const stats = await tx.execute(sql`
       SELECT
@@ -77,7 +87,7 @@ export default async function RiskProfilesPage({
         COUNT(*) FILTER (WHERE risk_profile_signed_at IS NOT NULL
           AND risk_profile_signed_at >= now() - interval '1 year'
           AND risk_profile_signed_at < now() - interval '11 months')::int AS due_soon
-      FROM investors WHERE status = 'active'
+      FROM investors WHERE status = 'active' AND ${rmScope}
     `);
     const s = stats.rows[0] as any;
 
@@ -87,7 +97,7 @@ export default async function RiskProfilesPage({
     // join needed since the filter is on the investor mirror columns.
     const c = await tx.execute(sql`
       SELECT COUNT(*)::int AS c FROM investors
-      WHERE status = 'active' AND ${predicate}
+      WHERE status = 'active' AND ${predicate} AND ${rmScope}
     `);
     const total = Number((c.rows[0] as any)?.c ?? 0);
 
@@ -96,7 +106,7 @@ export default async function RiskProfilesPage({
     // unbounded DISTINCT ON over the whole book).
     const rows = await tx.execute(sql`
       SELECT
-        i.id, i.name, i.pan, i.risk_profile, i.risk_profile_signed_at, i.risk_profile_score,
+        i.id, i.name, i.pan, i.avatar_url, i.risk_profile, i.risk_profile_signed_at, i.risk_profile_score,
         rp.id AS profile_id, rp.total_score, rp.next_review_at, rp.signed_at AS latest_signed_at
       FROM investors i
       LEFT JOIN LATERAL (
@@ -107,6 +117,7 @@ export default async function RiskProfilesPage({
         LIMIT 1
       ) rp ON TRUE
       WHERE i.status = 'active' AND ${predicate}
+        AND ${canViewAll ? sql`TRUE` : sql`i.rm_id = ${session.userId}::uuid`}
       ORDER BY ${orderClause(filter)}
       LIMIT ${PAGE_SIZE} OFFSET ${(page - 1) * PAGE_SIZE}
     `);
@@ -196,7 +207,7 @@ export default async function RiskProfilesPage({
           </div>
         ) : (
           <>
-            <div className="overflow-auto max-h-[600px] scrollbar-none">
+            <div className="table-scroll">
             <table className="w-full text-sm">
               <thead className="text-xs text-muted-foreground border-b sticky top-0 z-10 bg-card">
                 <tr>
@@ -206,7 +217,7 @@ export default async function RiskProfilesPage({
                   <th className="text-left py-2 font-medium">Last signed</th>
                   <th className="text-left py-2 font-medium">Next review</th>
                   <th className="text-left py-2 font-medium">Status</th>
-                  <th className="px-4 py-2"></th>
+                  <th className="px-4 py-2 text-right font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -222,13 +233,23 @@ export default async function RiskProfilesPage({
                     : "current";
                   const score = r.total_score ?? r.risk_profile_score ?? null;
                   return (
-                    <tr key={r.id} className="border-b last:border-0 hover:bg-secondary/40">
+                    <PdfRow
+                      key={r.id}
+                      title={`Risk Profile · ${r.name}`}
+                      pdfUrl={r.profile_id ? `/api/risk-profiles/${r.profile_id}/pdf` : ""}
+                      downloadUrl={r.profile_id ? `/api/risk-profiles/${r.profile_id}/pdf?download=1` : undefined}
+                      disabled={!r.profile_id}
+                      className="border-b last:border-0 hover:bg-secondary/40"
+                    >
                       <td className="px-4 py-3">
-                        <RiskProfileName
-                          name={r.name}
-                          pan={r.pan}
-                          profileId={r.profile_id ?? null}
-                        />
+                        <div className="flex items-center gap-2">
+                          <Avatar src={r.avatar_url ? `/api/investors/${r.id}/avatar` : null} name={r.name} size={26} />
+                          <RiskProfileName
+                            name={r.name}
+                            pan={r.pan}
+                            profileId={r.profile_id ?? null}
+                          />
+                        </div>
                       </td>
                       <td className="py-3">
                         {r.risk_profile ? (
@@ -270,7 +291,7 @@ export default async function RiskProfilesPage({
                           </Link>
                         </div>
                       </td>
-                    </tr>
+                    </PdfRow>
                   );
                 })}
               </tbody>

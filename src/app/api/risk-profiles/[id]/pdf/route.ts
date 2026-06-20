@@ -9,7 +9,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { requireAny } from "@/lib/auth/rbac";
+import { requireAny, can } from "@/lib/auth/rbac";
 import { renderRiskProfilePdf } from "@/lib/risk-profile/risk-profile-pdf";
 
 export const dynamic = "force-dynamic";
@@ -18,10 +18,21 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   try {
     const session = await requireSession();
     requireAny(session.roles, ["investor.view.all", "investor.view.assigned"], session.permissions);
+    const canViewAll = can(session.roles, "investor.view.all", session.permissions);
     const { id } = await params;
     const download = req.nextUrl.searchParams.get("download") === "1";
 
     const built = await withTenant(session.tenantId, async (tx) => {
+      // Tenant-scoped AND, for non-managers, owner-scoped — otherwise an RM could
+      // pull any client's full risk PDF (name, PAN, every answer) by guessing the
+      // profile id. The subject can be an investor (i.rm_id) OR a lead (the
+      // response stores a lead id in investor_id polymorphically) — allow the
+      // owning RM of either. Anything else yields no row (→ 404).
+      const ownerScope = canViewAll
+        ? sql`TRUE`
+        : sql`(i.rm_id = ${session.userId}::uuid OR EXISTS (
+            SELECT 1 FROM leads l WHERE l.id = r.investor_id AND l.owner_id = ${session.userId}::uuid
+          ))`;
       const r = await tx.execute(sql`
         SELECT
           r.final_category, r.total_score, r.responses, r.profile_date, r.age,
@@ -30,6 +41,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         FROM risk_profile_responses r
         LEFT JOIN investors i ON i.id = r.investor_id
         WHERE r.id = ${id}::uuid AND r.tenant_id = ${session.tenantId}::uuid
+          AND ${ownerScope}
         LIMIT 1
       `);
       const row = r.rows[0] as any;
