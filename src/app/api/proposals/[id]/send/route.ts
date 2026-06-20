@@ -25,8 +25,9 @@ import { z } from "zod";
 import { Resend } from "resend";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { require as requireCap } from "@/lib/auth/rbac";
+import { require as requireCap, can } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
+import { createShareToken } from "@/lib/share-tokens";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { gateClientSend } from "@/lib/comms/guarded-send";
 import { autoAdvance, resolveLeadIdForInvestor } from "@/lib/blueprints/auto-advance";
@@ -202,14 +203,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
     const { channel } = parse.data;
     const clientMeta = clientMetaFromHeaders(req.headers);
-    const origin =
-      req.headers.get("origin") ??
-      (req.headers.get("host") ? `${req.headers.get("x-forwarded-proto") ?? "http"}://${req.headers.get("host")}` : "");
-    const publicUrl = `${origin}/dashboard/proposals/${id}/print?autoprint=0`;
+    // Managers send any proposal; everyone else only their own (mirrors the
+    // collection GET scope).
+    const seesAll = can(session.roles, "investor.view.all", session.permissions) || can(session.roles, "compliance.view", session.permissions);
 
     return await withTenant(session.tenantId, async (tx) => {
       const p = (await tx.select().from(proposals).where(and(eq(proposals.id, id), eq(proposals.tenantId, session.tenantId))).limit(1))[0];
       if (!p) return NextResponse.json({ error: "not found" }, { status: 404 });
+      if (!seesAll && p.preparedByUserId !== session.userId) {
+        return NextResponse.json({ error: "you can only send proposals you prepared" }, { status: 403 });
+      }
       if (["accepted", "rejected"].includes(p.status as string)) {
         return NextResponse.json(
           { error: `cannot send a ${p.status} proposal` },
@@ -273,6 +276,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       const tenant = (
         await tx.select().from(tenants).where(eq(tenants.id, session.tenantId)).limit(1)
       )[0];
+
+      // The client-facing link must be a PUBLIC proposal page, not an auth-gated
+      // /dashboard URL (the old link redirected clients to login — and WhatsApp
+      // carries no PDF attachment, so the link was the client's only access).
+      // Mint a single-use proposal-approval token → /p/<token>.
+      const share = await createShareToken({
+        tenantId: session.tenantId,
+        kind: "proposal_approval",
+        subjectType: "proposal",
+        subjectId: id,
+        expiresInDays: 30,
+        createdBy: session.userId,
+      });
+      const publicUrl = share.url;
 
       let externalId: string | null = null;
       let waUrl: string | null = null;

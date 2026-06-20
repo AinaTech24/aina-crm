@@ -11,7 +11,7 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { require as requireCap } from "@/lib/auth/rbac";
+import { require as requireCap, can } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { proposals } from "@/db/schema";
@@ -47,10 +47,15 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
   try {
     const session = await requireSession();
+    requireCap(session.roles, "proposal.view");
+    const seesAll = can(session.roles, "investor.view.all", session.permissions) || can(session.roles, "compliance.view", session.permissions);
     const row = await withTenant(session.tenantId, async (tx) =>
       (await tx.select().from(proposals).where(and(eq(proposals.id, id), eq(proposals.tenantId, session.tenantId))).limit(1))[0] ?? null
     );
-    if (!row) return NextResponse.json({ error: "not found" }, { status: 404 });
+    // Non-managers only see proposals they prepared (mirrors the collection GET).
+    if (!row || (!seesAll && row.preparedByUserId !== session.userId)) {
+      return NextResponse.json({ error: "not found" }, { status: 404 });
+    }
     return NextResponse.json(row);
   } catch (err: any) {
     return handleApiError(err);

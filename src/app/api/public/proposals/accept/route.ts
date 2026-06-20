@@ -25,8 +25,9 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json().catch(() => ({}));
     const tokenId = String(body.tokenId ?? "");
-    const signatureName = String(body.signatureName ?? "").trim();
-    const acceptanceText = String(body.acceptanceText ?? "").trim();
+    // Bound the untrusted input — these land in proposal_approvals text columns.
+    const signatureName = String(body.signatureName ?? "").trim().slice(0, 120);
+    const acceptanceText = String(body.acceptanceText ?? "").trim().slice(0, 5000);
     if (!tokenId) return NextResponse.json({ error: "missing tokenId" }, { status: 400 });
     if (!signatureName) return NextResponse.json({ error: "Signature required" }, { status: 400 });
     if (!acceptanceText) return NextResponse.json({ error: "Missing acceptance text" }, { status: 400 });
