@@ -8,8 +8,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { require as requireCap, can } from "@/lib/auth/rbac";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { goals, investors, tenants, communications } from "@/db/schema";
+import { getConsent } from "@/lib/comms/pipeline";
 import { emailAdapter } from "@/lib/comms/adapters/resend";
 import { resolveEmailSender } from "@/lib/comms/sender";
 import { emailLogoHeaderHtml } from "@/lib/comms/email-logo";
@@ -25,12 +27,25 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
   try {
     const session = await requireSession();
+    // Emailing a client is a managed action — gate it (this route was open to
+    // ANY logged-in user) and, for non-managers, scope to the goal's own RM.
+    requireCap(session.roles, "goal.manage");
+    const canViewAll = can(session.roles, "investor.view.all", session.permissions);
     const meta = clientMetaFromHeaders(req.headers);
 
     const ctx = await withTenant(session.tenantId, async (tx) => {
       const [goal] = await tx.select().from(goals).where(and(eq(goals.id, id), eq(goals.tenantId, session.tenantId))).limit(1);
       if (!goal) return { error: "not_found" as const };
       const [inv] = await tx.select().from(investors).where(eq(investors.id, goal.investorId)).limit(1);
+      // Ownership: an RM may only email their own clients' plans.
+      if (!canViewAll && inv && inv.rmId !== session.userId) return { error: "forbidden" as const };
+      // Compliance: this path doesn't go through dispatch(), so enforce the same
+      // opt-out rule the pipeline does — never email a client who has REVOKED
+      // transactional email consent.
+      if (inv) {
+        const consent = await getConsent(tx, session.tenantId, goal.investorId, "email", "transactional");
+        if (consent && consent.status === "revoked") return { error: "opted_out" as const };
+      }
       const [t] = await tx.select().from(tenants).where(eq(tenants.id, session.tenantId)).limit(1);
       let sender: Awaited<ReturnType<typeof resolveEmailSender>>;
       try {
@@ -41,7 +56,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return { goal, inv, tenant: t, sender };
     });
 
-    if ("error" in ctx) return NextResponse.json({ error: "not found" }, { status: 404 });
+    if ("error" in ctx) {
+      if (ctx.error === "forbidden") return NextResponse.json({ error: "this client isn't assigned to you" }, { status: 403 });
+      if (ctx.error === "opted_out") return NextResponse.json({ error: "This client has opted out of emails." }, { status: 409 });
+      return NextResponse.json({ error: "not found" }, { status: 404 });
+    }
     if (!ctx.inv?.email) {
       return NextResponse.json({ error: "This client has no email on file. Add an email to send the plan." }, { status: 400 });
     }

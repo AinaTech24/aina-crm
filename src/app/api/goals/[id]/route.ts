@@ -12,7 +12,7 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { require as requireCap } from "@/lib/auth/rbac";
+import { require as requireCap, requireAny } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { goals } from "@/db/schema";
@@ -65,6 +65,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
   try {
     const session = await requireSession();
+    requireAny(session.roles, ["investor.view.all", "investor.view.assigned"], session.permissions);
     const row = await withTenant(session.tenantId, async (tx) =>
       (await tx.select().from(goals).where(and(eq(goals.id, id), eq(goals.tenantId, session.tenantId))).limit(1))[0] ?? null
     );

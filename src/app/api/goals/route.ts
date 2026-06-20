@@ -12,7 +12,7 @@ import { desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { require as requireCap } from "@/lib/auth/rbac";
+import { require as requireCap, requireAny, can } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { goals, investors } from "@/db/schema";
@@ -45,11 +45,17 @@ const Body = z.object({
 export async function GET() {
   try {
     const session = await requireSession();
+    // Goals expose client financial planning (targets, required SIP, client
+    // name). Require an investor-view capability (was open to any role) and
+    // scope non-managers to their own clients' goals.
+    requireAny(session.roles, ["investor.view.all", "investor.view.assigned"], session.permissions);
+    const canViewAll = can(session.roles, "investor.view.all", session.permissions);
     const rows = await withTenant(session.tenantId, async (tx) => {
       return tx
         .select({ goal: goals, investorName: investors.name })
         .from(goals)
         .leftJoin(investors, eq(investors.id, goals.investorId))
+        .where(canViewAll ? undefined : eq(investors.rmId, session.userId))
         .orderBy(goals.targetDate)
         .limit(500);
     });

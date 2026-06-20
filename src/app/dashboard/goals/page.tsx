@@ -4,6 +4,7 @@ import { Target, Plus } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { goals, investors } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
+import { requireAny, can } from "@/lib/auth/rbac";
 import { FilterBar } from "@/components/common/FilterBar";
 import { GoalsBulkTable } from "@/components/goals/GoalsBulkTable";
 import { Pager } from "@/components/common/Pager";
@@ -16,6 +17,11 @@ export default async function GoalsPage({
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const session = await requireSession();
+  // Client financial goals — require an investor-view capability and scope
+  // non-managers to their own clients (the page previously showed every client's
+  // goals to any role).
+  requireAny(session.roles, ["investor.view.all", "investor.view.assigned"], session.permissions);
+  const canViewAll = can(session.roles, "investor.view.all", session.permissions);
   const sp = await searchParams;
   const PAGE_SIZE = 50;
   const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
@@ -32,6 +38,10 @@ export default async function GoalsPage({
     : asc(goals.targetDate);
 
   const { rows, stats } = await withTenant(session.tenantId, async (tx) => {
+    // Owner slice for non-managers — only goals whose client is assigned to them.
+    const statsScope = canViewAll
+      ? sql``
+      : sql` WHERE investor_id IN (SELECT id FROM investors WHERE rm_id = ${session.userId}::uuid)`;
     // KPIs from a single aggregate over ALL goals — not the paginated slice
     // (the old code derived counts from a LIMIT 200 page, so they capped/lied
     // once a firm had more than 200 goals).
@@ -43,21 +53,22 @@ export default async function GoalsPage({
           COUNT(*) FILTER (WHERE status = 'behind_track')::int AS behind,
           COUNT(*) FILTER (WHERE status = 'achieved')::int AS achieved,
           COUNT(*) FILTER (WHERE status = 'not_started')::int AS not_started
-        FROM goals
+        FROM goals${statsScope}
       `)
     ).rows[0] as any;
 
     const r = await tx
-      .select({ goal: goals, investorName: investors.name })
+      .select({ goal: goals, investorName: investors.name, investorAvatarUrl: investors.avatarUrl })
       .from(goals)
       .leftJoin(investors, eq(investors.id, goals.investorId))
+      .where(canViewAll ? undefined : eq(investors.rmId, session.userId))
       .orderBy(orderBy)
       .limit(PAGE_SIZE)
       .offset((page - 1) * PAGE_SIZE);
 
     return {
       // Flatten for BulkTable (needs a top-level `id`).
-      rows: r.map(({ goal, investorName }) => ({ ...goal, investorName })),
+      rows: r.map(({ goal, investorName, investorAvatarUrl }) => ({ ...goal, investorName, investorAvatarUrl })),
       stats: {
         total: Number(s.total),
         onTrack: Number(s.on_track),
