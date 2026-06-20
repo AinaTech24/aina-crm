@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import { Plus, HeartHandshake, Search } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { requireAny, can } from "@/lib/auth/rbac";
 import { formatINR, formatRelative } from "@/lib/utils";
 import { RowActions } from "@/components/common/RowActions";
 import { FamilyKpiStrip } from "@/components/families/FamilyKpiStrip";
@@ -29,6 +30,11 @@ export default async function FamiliesPage({
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const session = await requireSession();
+  // Households expose member names + PAN (search) + AUM — require an investor-view
+  // capability and scope non-managers to their own families (the page used to
+  // show the whole firm's households to any role; "mine" was only opt-in).
+  requireAny(session.roles, ["investor.view.all", "investor.view.assigned"], session.permissions);
+  const canViewAll = can(session.roles, "investor.view.all", session.permissions);
   const sp = await searchParams;
   const q = (sp.q ?? "").trim();
   const userId = session.userId;
@@ -59,6 +65,9 @@ export default async function FamiliesPage({
     // additive WHERE conditions on the family row + a HAVING on member-level
     // aggregates after the LEFT JOIN.
     const where: any[] = [];
+    // Owner slice for non-managers (applies to the list, the count, and — below
+    // — the wealth-band chips).
+    if (!canViewAll) where.push(sql`f.rm_id = ${userId}::uuid`);
     if (q) {
       where.push(sql`(
         f.head_name ILIKE ${`%${q}%`}
@@ -154,6 +163,7 @@ export default async function FamiliesPage({
           SELECT f.id, COALESCE(SUM(i.aum::numeric) FILTER (WHERE i.status = 'active'), 0) AS aum
           FROM families f LEFT JOIN investors i ON i.family_id = f.id
           WHERE f.tenant_id = ${session.tenantId}::uuid
+            ${canViewAll ? sql`` : sql`AND f.rm_id = ${userId}::uuid`}
           GROUP BY f.id
         ) agg
       ) b GROUP BY band
@@ -265,8 +275,9 @@ export default async function FamiliesPage({
               </p>
             </div>
           ) : (
+            <div className="table-scroll">
             <table className="w-full text-sm">
-              <thead className="text-xs text-muted-foreground border-b bg-muted/10">
+              <thead className="text-xs text-muted-foreground border-b sticky top-0 z-10 bg-card">
                 <tr>
                   <th className="text-left px-4 py-2 font-medium">Family</th>
                   <th className="text-right py-2 font-medium">Members</th>
@@ -381,6 +392,7 @@ export default async function FamiliesPage({
                 })}
               </tbody>
             </table>
+            </div>
           )}
           {rows.length > 0 && (
             <div className="px-4 pb-3">

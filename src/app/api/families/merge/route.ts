@@ -16,6 +16,7 @@ import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
+import { recomputeFamilyHealth } from "@/lib/families/health-persist";
 
 export const dynamic = "force-dynamic";
 
@@ -77,6 +78,11 @@ export async function POST(req: NextRequest) {
           FROM families l WHERE s.id = ${survivorId}::uuid AND l.id = ${loserId}::uuid AND s.tenant_id = ${session.tenantId}::uuid
         `);
         await tx.execute(sql`DELETE FROM families WHERE id = ${loserId}::uuid AND tenant_id = ${session.tenantId}::uuid`);
+
+        // The survivor just absorbed the loser's members — re-score it so its
+        // health band, member count and AUM rollup reflect the merged household
+        // (otherwise they stay stale until the next unrelated edit).
+        await recomputeFamilyHealth(tx, survivorId);
 
         await recordAudit(tx, {
           tenantId: session.tenantId,

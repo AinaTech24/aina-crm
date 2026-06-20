@@ -111,6 +111,18 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
         .set({ familyId: null, familyRole: null, updatedAt: new Date() } as any)
         .where(and(eq(investors.id, investorId), eq(investors.familyId, familyId)));
 
+      // Emit the unlink event (attach emits investor.family_linked) so workflows
+      // can react to a member leaving a household.
+      await tx.insert(eventsOutbox).values({
+        tenantId: session.tenantId,
+        kind: "investor.family_unlinked",
+        entityType: "investor",
+        entityId: investorId,
+        before: { familyId } as any,
+        after: { familyId: null } as any,
+        meta: { userId: session.userId } as any,
+      } as any);
+
       await recordAudit(tx, {
         tenantId: session.tenantId,
         actorUserId: session.userId,

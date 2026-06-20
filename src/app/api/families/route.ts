@@ -8,14 +8,14 @@ import { handleApiError } from "@/lib/api/error-handler";
 
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuid } from "uuid";
-import { desc } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { require as requireCap } from "@/lib/auth/rbac";
+import { require as requireCap, requireAny, can } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
-import { families } from "@/db/schema";
+import { families, users } from "@/db/schema";
 import { familyHealthFields } from "@/lib/families/health";
 import { computeFamilyNextReview } from "@/lib/families/cadence";
 
@@ -36,9 +36,17 @@ const Body = z.object({
 export async function GET() {
   try {
     const session = await requireSession();
-    const rows = await withTenant(session.tenantId, async (tx) =>
-      tx.select().from(families).orderBy(desc(families.createdAt))
-    );
+    // Households carry client PII (member names, PAN via search, AUM rollup).
+    // Require an investor-view capability (was open to any role) and scope
+    // non-managers to families they own.
+    requireAny(session.roles, ["investor.view.all", "investor.view.assigned"], session.permissions);
+    const canViewAll = can(session.roles, "investor.view.all", session.permissions);
+    const rows = await withTenant(session.tenantId, async (tx) => {
+      const q = tx.select().from(families).orderBy(desc(families.createdAt));
+      return canViewAll
+        ? q
+        : tx.select().from(families).where(eq(families.rmId, session.userId)).orderBy(desc(families.createdAt));
+    });
     return NextResponse.json({ families: rows });
   } catch (err: any) {
     return handleApiError(err);
@@ -61,7 +69,17 @@ export async function POST(req: NextRequest) {
       parse.data.firstMeetingDate ?? null,
       parse.data.reviewFrequency ?? null
     );
-    await withTenant(session.tenantId, async (tx) => {
+    const outcome = await withTenant(session.tenantId, async (tx) => {
+      // An explicit RM must be a user in THIS firm — otherwise the household
+      // would be owned by an out-of-tenant uuid.
+      if (parse.data.rmId) {
+        const [u] = await tx
+          .select({ id: users.id })
+          .from(users)
+          .where(and(eq(users.id, parse.data.rmId), eq(users.tenantId, session.tenantId)))
+          .limit(1);
+        if (!u) return "bad_rm" as const;
+      }
       await tx.insert(families).values({
         id,
         tenantId: session.tenantId,
@@ -100,7 +118,9 @@ export async function POST(req: NextRequest) {
         },
         ...clientMeta,
       });
+      return "ok" as const;
     });
+    if (outcome === "bad_rm") return NextResponse.json({ error: "selected RM is not a user in this firm" }, { status: 400 });
     return NextResponse.json({ id }, { status: 201 });
   } catch (err: any) {
     return handleApiError(err);

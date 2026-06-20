@@ -12,10 +12,10 @@ import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { require as requireCap } from "@/lib/auth/rbac";
+import { require as requireCap, requireAny } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
-import { families, investors } from "@/db/schema";
+import { families, investors, users } from "@/db/schema";
 import { familyHealthFields } from "@/lib/families/health";
 import { computeFamilyNextReview } from "@/lib/families/cadence";
 
@@ -39,6 +39,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
   try {
     const session = await requireSession();
+    // Require an investor-view capability (this GET was open to any role).
+    requireAny(session.roles, ["investor.view.all", "investor.view.assigned"], session.permissions);
     const row = await withTenant(session.tenantId, async (tx) =>
       (await tx.select().from(families).where(and(eq(families.id, id), eq(families.tenantId, session.tenantId))).limit(1))[0] ?? null
     );
@@ -64,9 +66,32 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       const before = (await tx.select().from(families).where(and(eq(families.id, id), eq(families.tenantId, session.tenantId))).limit(1))[0];
       if (!before) return null;
 
+      // A reassigned RM must be a user in this firm (a stray uuid would orphan
+      // the household under someone outside the tenant).
+      if (parse.data.rmId && parse.data.rmId !== before.rmId) {
+        const [u] = await tx
+          .select({ id: users.id })
+          .from(users)
+          .where(and(eq(users.id, parse.data.rmId), eq(users.tenantId, session.tenantId)))
+          .limit(1);
+        if (!u) return "bad_rm" as const;
+      }
+
+      // Coerce ISO date strings → Date objects. Drizzle timestamp columns call
+      // value.toISOString() on assignment, so a raw string throws ("toISOString
+      // is not a function") → the 500 the user saw when saving with a review
+      // date present. Unparseable → null.
+      const patch: any = { ...parse.data };
+      for (const k of ["lastReviewAt", "nextReviewAt", "firstMeetingDate"] as const) {
+        if (typeof patch[k] === "string") {
+          const d = new Date(patch[k]);
+          patch[k] = isNaN(d.getTime()) ? null : d;
+        }
+      }
+
       // Family-level fields (primary, RM, review dates) feed the health score —
       // recompute from the post-patch family + its current members.
-      const merged: any = { ...before, ...parse.data };
+      const merged: any = { ...before, ...patch };
 
       // If the cadence inputs changed (and the caller didn't set nextReviewAt
       // explicitly), re-derive nextReviewAt from frequency + first meeting.
@@ -84,7 +109,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       const after = await tx
         .update(families)
         .set({
-          ...parse.data,
+          ...patch,
           ...(recomputedNextReview !== undefined ? { nextReviewAt: recomputedNextReview } : {}),
           updatedAt: new Date(),
           ...health,
@@ -102,6 +127,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       });
       return after[0];
     });
+    if (result === "bad_rm") return NextResponse.json({ error: "selected RM is not a user in this firm" }, { status: 400 });
     if (!result) return NextResponse.json({ error: "not found" }, { status: 404 });
     return NextResponse.json(result);
   } catch (err: any) {

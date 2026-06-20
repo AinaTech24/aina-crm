@@ -11,7 +11,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { requireAny } from "@/lib/auth/rbac";
+import { requireAny, can } from "@/lib/auth/rbac";
 import { investors, families, tenants } from "@/db/schema";
 import { valueInvestor, type InvestorValuation } from "@/lib/finance/valuation";
 import { renderValuationStatementPdf } from "@/lib/finance/valuation-pdf";
@@ -22,16 +22,20 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   try {
     const session = await requireSession();
     requireAny(session.roles, ["investor.view.all", "investor.view.assigned"], session.permissions);
+    const canViewAll = can(session.roles, "investor.view.all", session.permissions);
     const { id } = await params;
     const download = req.nextUrl.searchParams.get("download") === "1";
 
     const built = await withTenant(session.tenantId, async (tx) => {
       const [fam] = await tx
-        .select({ familyName: families.familyName, headName: families.headName })
+        .select({ familyName: families.familyName, headName: families.headName, rmId: families.rmId })
         .from(families)
         .where(and(eq(families.id, id), eq(families.tenantId, session.tenantId)))
         .limit(1);
       if (!fam) return null;
+      // Owner scope: a household's consolidated statement (every member's name +
+      // live valuation) is only pullable by a manager or the family's own RM.
+      if (!canViewAll && fam.rmId !== session.userId) return null;
       const members = await tx
         .select({ id: investors.id })
         .from(investors)
