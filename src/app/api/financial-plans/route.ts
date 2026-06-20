@@ -4,7 +4,7 @@ import { desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { require as requireCap } from "@/lib/auth/rbac";
+import { require as requireCap, can } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { financialPlans, investors } from "@/db/schema";
@@ -110,6 +110,11 @@ export async function GET() {
   try {
     const session = await requireSession();
     requireCap(session.roles, "financial_plan.view");
+    // Financial plans hold the most sensitive client data (income, assets,
+    // liabilities). Managers see all; everyone else only the plans they
+    // prepared — financial_plan.view alone would otherwise let any holder
+    // (incl. marketing) read every client's full financials.
+    const seesAll = can(session.roles, "investor.view.all", session.permissions) || can(session.roles, "compliance.view", session.permissions);
 
     const rows = await withTenant(session.tenantId, async (tx) =>
       tx
@@ -127,6 +132,7 @@ export async function GET() {
         })
         .from(financialPlans)
         .leftJoin(investors, eq(financialPlans.investorId, investors.id))
+        .where(seesAll ? undefined : eq(financialPlans.preparedByUserId, session.userId))
         .orderBy(desc(financialPlans.createdAt))
         .limit(500)
     );

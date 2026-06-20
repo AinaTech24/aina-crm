@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { require as requireCap, can } from "@/lib/auth/rbac";
 import { formatDate, formatINR } from "@/lib/utils";
 import { financialPlans, investors, users } from "@/db/schema";
 import { RecordProvenance } from "@/components/common/RecordProvenance";
@@ -39,6 +40,8 @@ export default async function FinancialPlanDetailPage({
 }) {
   const { id } = await params;
   const session = await requireSession();
+  requireCap(session.roles, "financial_plan.view");
+  const seesAll = can(session.roles, "investor.view.all", session.permissions) || can(session.roles, "compliance.view", session.permissions);
 
   const data = await withTenant(session.tenantId, async (tx) => {
     const p = await tx
@@ -48,6 +51,8 @@ export default async function FinancialPlanDetailPage({
       .limit(1);
 
     if (p.length === 0) return null;
+    // Non-managers may only view plans they prepared.
+    if (!seesAll && p[0].preparedByUserId !== session.userId) return null;
 
     const plan = p[0];
     const investor = await tx

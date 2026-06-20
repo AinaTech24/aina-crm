@@ -13,11 +13,14 @@ import {
 } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { require as requireCap, can } from "@/lib/auth/rbac";
 import { formatDate, formatINR } from "@/lib/utils";
 import { RowActions } from "@/components/common/RowActions";
 import { FilterBar } from "@/components/common/FilterBar";
 import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
 import { Pager } from "@/components/common/Pager";
+import { Avatar } from "@/components/ui/Avatar";
+import { PdfRow } from "@/components/common/ClickableRow";
 import { financialPlans, investors } from "@/db/schema";
 
 export const dynamic = "force-dynamic";
@@ -34,6 +37,12 @@ export default async function FinancialPlansPage({
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const session = await requireSession();
+  // The most sensitive client data in the app (income, assets, liabilities) —
+  // require the view capability and scope non-managers to plans they prepared
+  // (the page had NO gate and showed firm-wide net-worth/surplus KPIs to any
+  // role).
+  requireCap(session.roles, "financial_plan.view");
+  const seesAll = can(session.roles, "investor.view.all", session.permissions) || can(session.roles, "compliance.view", session.permissions);
   const sp = await searchParams;
   const q = (sp.q ?? "").trim();
   const statusFilter = (sp.status ?? "").split(",").filter(Boolean);
@@ -43,11 +52,14 @@ export default async function FinancialPlansPage({
   const data = await withTenant(session.tenantId, async (tx) => {
     // Server-side filter (was filtered in JS over the whole table before).
     const conds: any[] = [];
+    if (!seesAll) conds.push(eq(financialPlans.preparedByUserId, session.userId));
     if (q) conds.push(or(ilike(financialPlans.planNumber, `%${q}%`), ilike(investors.name, `%${q}%`)));
     if (statusFilter.length) conds.push(inArray(financialPlans.status, statusFilter as any));
     const dr = dateRangeCond(sp, "created", "financial_plans.created_at");
     if (dr) conds.push(dr);
     const where = conds.length ? and(...conds) : undefined;
+    // Same owner slice for the raw-SQL KPI aggregate below.
+    const statsScope = seesAll ? sql`` : sql` WHERE prepared_by_user_id = ${session.userId}::uuid`;
 
     // One page of filtered rows.
     const rows = await tx
@@ -60,6 +72,7 @@ export default async function FinancialPlansPage({
         monthlyExpenses: financialPlans.monthlyExpenses,
         preparedAt: financialPlans.preparedAt,
         investorName: investors.name,
+        investorAvatarUrl: investors.avatarUrl,
       })
       .from(financialPlans)
       .leftJoin(investors, eq(financialPlans.investorId, investors.id))
@@ -83,7 +96,7 @@ export default async function FinancialPlansPage({
         COALESCE(SUM(GREATEST(0, COALESCE(monthly_income::numeric, 0) - COALESCE(monthly_expenses::numeric, 0))), 0)::numeric AS total_surplus,
         COALESCE(SUM((SELECT COALESCE(SUM((a->>'value')::numeric), 0) FROM jsonb_array_elements(COALESCE(assets, '[]'::jsonb)) a)), 0)::numeric AS total_assets,
         COALESCE(SUM((SELECT COALESCE(SUM((l->>'value')::numeric), 0) FROM jsonb_array_elements(COALESCE(liabilities, '[]'::jsonb)) l)), 0)::numeric AS total_liabilities
-      FROM financial_plans
+      FROM financial_plans${statsScope}
     `);
 
     return {
@@ -179,9 +192,9 @@ export default async function FinancialPlansPage({
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="table-scroll">
               <table className="w-full text-sm">
-                <thead>
+                <thead className="sticky top-0 z-10 bg-card">
                   <tr className="border-b text-xs text-muted-foreground bg-secondary/20">
                     <th className="text-left font-semibold py-3 px-4">Plan Number</th>
                     <th className="text-left font-semibold py-3 px-4">Client Name</th>
@@ -194,18 +207,29 @@ export default async function FinancialPlansPage({
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {filteredRows.map((p) => {
+                  {filteredRows.map((p, idx) => {
                     const inc = Number(p.monthlyIncome ?? 0);
                     const exp = Number(p.monthlyExpenses ?? 0);
                     const surplus = Math.max(0, inc - exp);
+                    const seq = (page - 1) * PAGE_SIZE + idx + 1;
                     return (
-                      <tr key={p.id} className="hover:bg-secondary/20 transition-colors">
+                      <PdfRow
+                        key={p.id}
+                        title={`Financial Plan · ${p.investorName ?? p.planNumber ?? ""}`}
+                        pdfUrl={`/dashboard/financial-plans/${p.id}/print`}
+                        className="hover:bg-secondary/20 transition-colors"
+                      >
                         <td className="py-3 px-4 font-semibold text-brand-navy">
-                          <Link href={`/dashboard/financial-plans/${p.id}`} className="hover:underline">
-                            {p.planNumber}
+                          <Link href={`/dashboard/financial-plans/${p.id}`} className="hover:underline" title={p.planNumber ?? undefined}>
+                            {seq}
                           </Link>
                         </td>
-                        <td className="py-3 px-4 font-medium text-foreground">{p.investorName ?? "—"}</td>
+                        <td className="py-3 px-4 font-medium text-foreground">
+                          <div className="flex items-center gap-2">
+                            <Avatar src={p.investorAvatarUrl ? `/api/investors/${p.investorId}/avatar` : null} name={p.investorName} size={26} />
+                            <span>{p.investorName ?? "—"}</span>
+                          </div>
+                        </td>
                         <td className="py-3 px-4 text-right tabular-nums">{p.monthlyIncome ? formatINR(inc) : "—"}</td>
                         <td className="py-3 px-4 text-right tabular-nums">{p.monthlyExpenses ? formatINR(exp) : "—"}</td>
                         <td className="py-3 px-4 text-right font-semibold text-emerald-600 tabular-nums">
@@ -242,7 +266,7 @@ export default async function FinancialPlansPage({
                             />
                           </div>
                         </td>
-                      </tr>
+                      </PdfRow>
                     );
                   })}
                 </tbody>

@@ -3,7 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { require as requireCap } from "@/lib/auth/rbac";
+import { require as requireCap, can } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { financialPlans, investors } from "@/db/schema";
@@ -95,6 +95,7 @@ export async function GET(
     const { id } = await params;
     const session = await requireSession();
     requireCap(session.roles, "financial_plan.view");
+    const seesAll = can(session.roles, "investor.view.all", session.permissions) || can(session.roles, "compliance.view", session.permissions);
 
     const row = await withTenant(session.tenantId, async (tx) => {
       const p = await tx
@@ -102,9 +103,11 @@ export async function GET(
         .from(financialPlans)
         .where(and(eq(financialPlans.id, id), eq(financialPlans.tenantId, session.tenantId)))
         .limit(1);
-      
+
       if (p.length === 0) return null;
-      
+      // Non-managers only see plans they prepared.
+      if (!seesAll && p[0].preparedByUserId !== session.userId) return null;
+
       const investor = await tx
         .select({
           id: investors.id,
@@ -139,6 +142,7 @@ export async function PATCH(
     const session = await requireSession();
     requireCap(session.roles, "financial_plan.manage");
     await assertActiveLicense(session.tenantId, session.roles);
+    const seesAll = can(session.roles, "investor.view.all", session.permissions) || can(session.roles, "compliance.view", session.permissions);
 
     const body = await req.json().catch(() => ({}));
     const parse = UpdateBody.safeParse(body);
@@ -160,6 +164,10 @@ export async function PATCH(
 
       if (existing.length === 0) {
         throw Object.assign(new Error("not found"), { status: 404 });
+      }
+      // Non-managers may only edit plans they prepared.
+      if (!seesAll && existing[0].preparedByUserId !== session.userId) {
+        throw Object.assign(new Error("you can only edit plans you prepared"), { status: 403 });
       }
 
       const updateValues: any = {};
@@ -224,6 +232,7 @@ export async function DELETE(
     const session = await requireSession();
     requireCap(session.roles, "financial_plan.manage");
     await assertActiveLicense(session.tenantId, session.roles);
+    const seesAll = can(session.roles, "investor.view.all", session.permissions) || can(session.roles, "compliance.view", session.permissions);
     const clientMeta = clientMetaFromHeaders(req.headers);
 
     await withTenant(session.tenantId, async (tx) => {
@@ -235,6 +244,10 @@ export async function DELETE(
 
       if (existing.length === 0) {
         throw Object.assign(new Error("not found"), { status: 404 });
+      }
+      // Permanent delete — non-managers may only delete plans they prepared.
+      if (!seesAll && existing[0].preparedByUserId !== session.userId) {
+        throw Object.assign(new Error("you can only delete plans you prepared"), { status: 403 });
       }
 
       await tx.delete(financialPlans).where(and(eq(financialPlans.id, id), eq(financialPlans.tenantId, session.tenantId)));

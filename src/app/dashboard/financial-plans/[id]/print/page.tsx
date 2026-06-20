@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { financialPlans, tenants, users, investors } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
+import { require as requireCap, can } from "@/lib/auth/rbac";
 import { formatDate, formatINR } from "@/lib/utils";
 import { PlanPrintHelper } from "@/components/financial-plans/PlanPrintHelper";
 import { FirmLogo } from "@/components/common/FirmLogo";
@@ -22,12 +23,16 @@ export default async function FinancialPlanPrintPage({
 }) {
   const { id } = await params;
   const session = await requireSession();
+  requireCap(session.roles, "financial_plan.view");
+  const seesAll = can(session.roles, "investor.view.all", session.permissions) || can(session.roles, "compliance.view", session.permissions);
 
   const data = await withTenant(session.tenantId, async (tx) => {
     const p = (
       await tx.select().from(financialPlans).where(eq(financialPlans.id, id)).limit(1)
     )[0];
     if (!p) return null;
+    // Non-managers may only view plans they prepared.
+    if (!seesAll && p.preparedByUserId !== session.userId) return null;
 
     const tenant = (
       await tx.select().from(tenants).where(eq(tenants.id, session.tenantId)).limit(1)
@@ -145,8 +150,8 @@ export default async function FinancialPlanPrintPage({
         .fp-h2 { font-size: 13px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: ${primary}; }
         .fp-muted { color: #64748b; }
         .fp-strip {
-          height: 5px; border-radius: 3px;
-          background: linear-gradient(90deg, ${primary} 0%, ${accent} 100%);
+          height: 4px; border-radius: 3px;
+          background: linear-gradient(90deg, ${primary} 0%, ${primary}cc 55%, ${primary}33 100%);
           margin: 12px 0 16px;
         }
         .fp-table { width: 100%; border-collapse: collapse; font-size: 11px; }
@@ -162,29 +167,23 @@ export default async function FinancialPlanPrintPage({
       <div className="fp-page">
         {/* Letterhead */}
         <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <FirmLogo
-              src={tenant?.logoUrl}
-              name={tenant?.displayName ?? tenant?.legalName}
-              color={primary}
-              size={42}
-              radius={8}
-              maxWidth={160}
-            />
-            <div>
-              <div style={{ fontSize: 14, fontWeight: 700 }}>
-                {tenant?.legalName ?? tenant?.displayName ?? "—"}
-              </div>
-              <div className="fp-muted" style={{ fontSize: 10 }}>
-                ARN · {tenant?.arn ?? "—"}
-                {tenant?.gstNumber && ` · GSTIN ${tenant.gstNumber}`}
-              </div>
-            </div>
-          </div>
+          {/* Logo only — it already carries the firm name, so no duplicate text
+              next to it (consistent with the other report headers). */}
+          <FirmLogo
+            src={tenant?.logoUrl}
+            name={tenant?.displayName ?? tenant?.legalName}
+            color={primary}
+            size={46}
+            radius={8}
+            maxWidth={210}
+          />
           <div style={{ textAlign: "right" }}>
             <div className="fp-chip">{p.planNumber}</div>
             <div className="fp-muted" style={{ fontSize: 10, marginTop: 3 }}>
               Prepared {formatDate(p.preparedAt)}
+            </div>
+            <div className="fp-muted" style={{ fontSize: 10 }}>
+              ARN {(tenant?.arn ?? "").replace(/^ARN-?/i, "")}
             </div>
           </div>
         </div>
