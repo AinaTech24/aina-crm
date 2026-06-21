@@ -9,16 +9,19 @@ import { NextRequest, NextResponse } from "next/server";
 import { and, asc, eq } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { can } from "@/lib/auth/rbac";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { businessEntries, businessEntryLines, investors } from "@/db/schema";
 import { emailAdapter } from "@/lib/comms/adapters/resend";
 import { resolveEmailSender } from "@/lib/comms/sender";
-import { loadTenant } from "@/lib/comms/pipeline";
+import { loadTenant, getConsent } from "@/lib/comms/pipeline";
 import { renderBusinessEmail } from "@/lib/business/email";
 
 export const dynamic = "force-dynamic";
 
 const MANAGE_ROLES = ["owner", "branch_head", "rm", "back_office", "ops"];
+const seesAllEntries = (s: { roles: string[]; permissions?: string[] | null }) =>
+  can(s.roles, "investor.view.all", s.permissions) || can(s.roles, "reports.business", s.permissions);
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -36,6 +39,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           .where(and(eq(businessEntries.id, id), eq(businessEntries.tenantId, session.tenantId)))
           .limit(1);
         if (!entry) return { error: "not_found" as const };
+        // RMs may only email confirmations for their own bookings.
+        if (!seesAllEntries(session) && entry.rmId !== session.userId) return { error: "forbidden" as const };
         const lines = await tx
           .select()
           .from(businessEntryLines)
@@ -46,6 +51,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         if (entry.investorId) {
           const [inv] = await tx.select({ email: investors.email }).from(investors).where(eq(investors.id, entry.investorId)).limit(1);
           email = inv?.email ?? null;
+          // This path doesn't go through dispatch(), so enforce the same opt-out
+          // rule the comms pipeline does — never email a client who has REVOKED
+          // transactional email consent.
+          const consent = await getConsent(tx, session.tenantId, entry.investorId, "email", "transactional");
+          if (consent && consent.status === "revoked") return { error: "opted_out" as const };
         }
         // Use the shared loader (Drizzle select, RLS-safe) — the tenants table
         // has no "name" column (it's display_name / legal_name), which is what
@@ -80,7 +90,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       );
     }
 
-    if ("error" in ctx) return NextResponse.json({ error: "not found" }, { status: 404 });
+    if ("error" in ctx) {
+      if (ctx.error === "forbidden") return NextResponse.json({ error: "you can only email entries you booked" }, { status: 403 });
+      if (ctx.error === "opted_out") return NextResponse.json({ error: "This client has opted out of emails." }, { status: 409 });
+      return NextResponse.json({ error: "not found" }, { status: 404 });
+    }
     if (!ctx.email) {
       return NextResponse.json({ error: "This client has no email on file. Link a client with an email to send." }, { status: 400 });
     }

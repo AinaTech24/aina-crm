@@ -5,6 +5,7 @@ import { Plus, Briefcase, LayoutDashboard, Droplets } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { businessEntries, users } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
+import { can } from "@/lib/auth/rbac";
 import { formatINR } from "@/lib/utils";
 import { FilterBar } from "@/components/common/FilterBar";
 import { BusinessEntriesTable } from "@/components/business-entries/BusinessEntriesTable";
@@ -29,6 +30,9 @@ export default async function BusinessEntriesPage({
 }) {
   const session = await requireSession();
   if (!session.roles.some((r) => MANAGE_ROLES.includes(r))) redirect("/dashboard");
+  // RMs see only their own bookings + their own revenue KPIs; managers/ops see
+  // the whole firm.
+  const seesAll = can(session.roles, "investor.view.all", session.permissions) || can(session.roles, "reports.business", session.permissions);
   const sp = await searchParams;
   const q = (sp.q ?? "").trim();
   const statusFilter = (sp.status ?? "").split(",").filter(Boolean);
@@ -39,6 +43,7 @@ export default async function BusinessEntriesPage({
 
   const { rows, kpi, rms } = await withTenant(session.tenantId, async (tx) => {
     const conds: any[] = [eq(businessEntries.tenantId, session.tenantId)];
+    if (!seesAll) conds.push(eq(businessEntries.rmId, session.userId));
     if (q) conds.push(or(ilike(businessEntries.clientName, `%${q}%`), ilike(businessEntries.amcName, `%${q}%`))!);
     if (statusFilter.length) conds.push(inArray(businessEntries.status, statusFilter as any));
     if (productFilter.length) conds.push(inArray(businessEntries.productType, productFilter as any));
@@ -69,7 +74,7 @@ export default async function BusinessEntriesPage({
         COALESCE(SUM(total_amount) FILTER (WHERE business_date >= ${fyStartISO()}::date), 0)::numeric AS fy_gross,
         COALESCE(SUM(total_amount) FILTER (WHERE date_trunc('month', business_date) = date_trunc('month', current_date)), 0)::numeric AS mtd_gross
       FROM business_entries
-      WHERE tenant_id = ${session.tenantId}::uuid AND status <> 'cancelled'
+      WHERE tenant_id = ${session.tenantId}::uuid AND status <> 'cancelled'${seesAll ? sql`` : sql` AND rm_id = ${session.userId}::uuid`}
     `);
     const kpi = (kpiRes.rows[0] as any) ?? { entries: 0, fy_gross: 0, mtd_gross: 0 };
 

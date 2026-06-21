@@ -11,6 +11,7 @@ import { and, asc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { can } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { businessEntries, businessEntryLines, eventsOutbox } from "@/db/schema";
@@ -24,6 +25,9 @@ export const dynamic = "force-dynamic";
 
 const MANAGE_ROLES = ["owner", "branch_head", "rm", "back_office", "ops"];
 const canManage = (roles: string[]) => roles.some((r) => MANAGE_ROLES.includes(r));
+/** Managers/ops see any entry; an RM only the entries they booked. */
+const seesAllEntries = (s: { roles: string[]; permissions?: string[] | null }) =>
+  can(s.roles, "investor.view.all", s.permissions) || can(s.roles, "reports.business", s.permissions);
 
 const PatchInput = z.object({
   investorId: z.string().uuid().nullish(),
@@ -51,6 +55,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         .where(and(eq(businessEntries.id, id), eq(businessEntries.tenantId, session.tenantId)))
         .limit(1);
       if (!entry) return null;
+      // RMs may only open their own bookings.
+      if (!seesAllEntries(session) && entry.rmId !== session.userId) return null;
       const lines = await tx
         .select()
         .from(businessEntryLines)
@@ -83,6 +89,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         .where(and(eq(businessEntries.id, id), eq(businessEntries.tenantId, session.tenantId)))
         .limit(1);
       if (!before) return "not_found" as const;
+      // RMs may only edit their own bookings.
+      if (!seesAllEntries(session) && before.rmId !== session.userId) return "forbidden" as const;
 
       const set: Record<string, unknown> = { updatedAt: new Date() };
       if (b.investorId !== undefined) set.investorId = b.investorId;
@@ -179,6 +187,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     });
 
     if (outcome === "not_found") return NextResponse.json({ error: "not found" }, { status: 404 });
+    if (outcome === "forbidden") return NextResponse.json({ error: "you can only edit entries you booked" }, { status: 403 });
     return NextResponse.json({ ok: true });
   } catch (err: any) {
     return handleApiError(err);
@@ -193,24 +202,33 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     const meta = clientMetaFromHeaders(req.headers);
     const outcome = await withTenant(session.tenantId, async (tx) => {
       const [before] = await tx
-        .select({ id: businessEntries.id, clientName: businessEntries.clientName })
+        .select({ id: businessEntries.id, clientName: businessEntries.clientName, rmId: businessEntries.rmId, status: businessEntries.status })
         .from(businessEntries)
         .where(and(eq(businessEntries.id, id), eq(businessEntries.tenantId, session.tenantId)))
         .limit(1);
       if (!before) return "not_found" as const;
-      await tx.delete(businessEntries).where(eq(businessEntries.id, id)); // lines cascade
+      // RMs may only cancel their own bookings.
+      if (!seesAllEntries(session) && before.rmId !== session.userId) return "forbidden" as const;
+      // Soft delete: business entries are revenue/AUM records that feed the FY/MTD
+      // book, scorecards and reconciliation — void them (status='cancelled')
+      // rather than hard-deleting the row + its audit trail.
+      await tx
+        .update(businessEntries)
+        .set({ status: "cancelled", updatedAt: new Date() } as any)
+        .where(and(eq(businessEntries.id, id), eq(businessEntries.tenantId, session.tenantId)));
       await recordAudit(tx, {
         tenantId: session.tenantId,
         actorUserId: session.userId,
-        action: "business_entry.delete",
+        action: "business_entry.cancel",
         entityType: "business_entry",
         entityId: id,
-        before: { clientName: before.clientName } as any,
+        before: { clientName: before.clientName, status: before.status } as any,
         ...meta,
       });
       return "ok" as const;
     });
     if (outcome === "not_found") return NextResponse.json({ error: "not found" }, { status: 404 });
+    if (outcome === "forbidden") return NextResponse.json({ error: "you can only cancel entries you booked" }, { status: 403 });
     return NextResponse.json({ ok: true });
   } catch (err: any) {
     return handleApiError(err);

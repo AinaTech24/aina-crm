@@ -12,6 +12,7 @@ import { and, desc, eq, gte, ilike, inArray, lte, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { can } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { businessEntries, businessEntryLines, investors, users, sips, eventsOutbox } from "@/db/schema";
@@ -21,6 +22,12 @@ export const dynamic = "force-dynamic";
 
 const MANAGE_ROLES = ["owner", "branch_head", "rm", "back_office", "ops"];
 const canManage = (roles: string[]) => roles.some((r) => MANAGE_ROLES.includes(r));
+
+/** Who sees the WHOLE firm's business book vs only their own bookings. Owner /
+ *  back-office / ops / compliance / branch-head manage the register; an RM sees
+ *  the entries they booked. */
+const seesAllEntries = (s: { roles: string[]; permissions?: string[] | null }) =>
+  can(s.roles, "investor.view.all", s.permissions) || can(s.roles, "reports.business", s.permissions);
 
 /** sips.frequency only has a subset of the business-line frequencies; map the
  *  overlap and default the rest (one_time / half_yearly) to monthly. */
@@ -54,6 +61,8 @@ export async function GET(req: NextRequest) {
 
     const rows = await withTenant(session.tenantId, async (tx) => {
       const conds: any[] = [eq(businessEntries.tenantId, session.tenantId)];
+      // RMs see only the entries they booked; managers/ops see the whole firm.
+      if (!seesAllEntries(session)) conds.push(eq(businessEntries.rmId, session.userId));
       if (q) conds.push(or(ilike(businessEntries.clientName, `%${q}%`), ilike(businessEntries.amcName, `%${q}%`))!);
       if (productType.length) conds.push(inArray(businessEntries.productType, productType as any));
       if (status.length) conds.push(inArray(businessEntries.status, status as any));
