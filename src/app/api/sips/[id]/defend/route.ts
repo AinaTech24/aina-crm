@@ -11,11 +11,11 @@ import { handleApiError } from "@/lib/api/error-handler";
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { requireAny } from "@/lib/auth/rbac";
+import { requireAny, can } from "@/lib/auth/rbac";
 import { sips, tasks, investors } from "@/db/schema";
 import { formatINR } from "@/lib/utils";
 
@@ -50,8 +50,28 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         if (!sip) return { notFound: true as const };
 
         const investor = sip.investorId
-          ? (await tx.select({ name: investors.name }).from(investors).where(eq(investors.id, sip.investorId)).limit(1))[0]
+          ? (await tx.select({ name: investors.name, rmId: investors.rmId }).from(investors).where(eq(investors.id, sip.investorId)).limit(1))[0]
           : null;
+
+        // RMs may only defend SIPs in their own book.
+        const seesAll = can(session.roles, "investor.view.all", session.permissions) || can(session.roles, "reports.business", session.permissions);
+        if (!seesAll && sip.rmId !== session.userId && investor?.rmId !== session.userId) {
+          return { forbidden: true as const };
+        }
+
+        // Idempotency: a double-click (or two RMs on the queue) must not spawn
+        // duplicate Save-SIP tasks. If an OPEN defend task already exists for
+        // this SIP (tagged in meta), no-op and return it.
+        const existing = (
+          await tx.execute(sql`
+            SELECT id FROM tasks
+             WHERE tenant_id = ${session.tenantId}::uuid
+               AND status NOT IN ('completed', 'cancelled')
+               AND meta->>'sipId' = ${id}
+             LIMIT 1
+          `)
+        ).rows[0] as { id: string } | undefined;
+        if (existing) return { taskId: existing.id, deduped: true as const };
 
         const reasonText = reasons.length ? ` (${reasons.join(", ")})` : "";
         const dueAt = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000); // +2 days
@@ -75,6 +95,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             assigneeId: (sip.rmId as string | null) ?? session.userId,
             createdById: session.userId,
             dueAt,
+            meta: { sipId: id } as any,
           } as any)
           .returning({ id: tasks.id });
 
@@ -84,6 +105,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     );
 
     if ("notFound" in result) return NextResponse.json({ error: "SIP not found" }, { status: 404 });
+    if ("forbidden" in result) return NextResponse.json({ error: "this SIP isn't in your book" }, { status: 403 });
     return NextResponse.json({ ok: true, taskId: result.taskId });
   } catch (err: any) {
     return handleApiError(err);

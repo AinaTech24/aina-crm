@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ShieldAlert, AlertTriangle, Repeat, IndianRupee, ArrowLeft } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { can } from "@/lib/auth/rbac";
 import { findAtRiskSips, SIP_RISK_LABEL, type SipRiskReason } from "@/lib/finance/sip-defense";
 import { formatINR, formatDate } from "@/lib/utils";
 import { DefendSipButton } from "@/components/sip-rejections/DefendSipButton";
@@ -35,9 +36,11 @@ export default async function SipAtRiskPage() {
     );
   }
 
+  // RMs see only their own at-risk SIPs; managers/ops see the whole firm.
+  const seesAll = can(session.roles, "investor.view.all", session.permissions) || can(session.roles, "reports.business", session.permissions);
   const data = await withTenant(
     session.tenantId,
-    async (tx) => findAtRiskSips(tx, session.tenantId),
+    async (tx) => findAtRiskSips(tx, session.tenantId, { rmId: seesAll ? null : session.userId }),
     { userId: session.userId, branchId: session.branchId, roles: session.roles }
   );
 
@@ -98,9 +101,9 @@ export default async function SipAtRiskPage() {
         </div>
       ) : (
         <div className="card-surface overflow-hidden">
-          <div className="overflow-x-auto">
+          <div className="table-scroll">
             <table className="w-full text-sm table-modern">
-              <thead>
+              <thead className="sticky top-0 z-10 bg-card">
                 <tr>
                   <th className="text-left px-4 py-2.5">Investor</th>
                   <th className="text-left px-4 py-2.5">AMC / Scheme</th>

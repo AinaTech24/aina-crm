@@ -82,7 +82,15 @@ function mapFeedStatus(s: string): CellStatus {
 
 type FeedTxn = { schemeCode: string | null; schemeName: string | null; folio: string | null; order: Date; status: CellStatus; reason: string | null };
 
-export async function computeSipInstallmentWatch(tx: Tx, tenantId: string): Promise<SipInstallmentWatch> {
+export async function computeSipInstallmentWatch(
+  tx: Tx,
+  tenantId: string,
+  opts: { rmId?: string | null } = {}
+): Promise<SipInstallmentWatch> {
+  // Non-managers see only their own book (SIPs they own OR for their clients).
+  const scope = opts.rmId
+    ? sql` AND (s.rm_id = ${opts.rmId}::uuid OR i.rm_id = ${opts.rmId}::uuid)`
+    : sql``;
   // Recently-started SIPs still inside their first-6-installments window.
   const sipsRows = (
     await tx.execute(sql`
@@ -95,7 +103,7 @@ export async function computeSipInstallmentWatch(tx: Tx, tenantId: string): Prom
        WHERE s.tenant_id = ${tenantId}::uuid
          AND s.start_date IS NOT NULL
          AND s.start_date >= current_date - interval '7 months'
-         AND s.status NOT IN ('completed','expired')
+         AND s.status NOT IN ('completed','expired')${scope}
        ORDER BY s.start_date DESC
     `)
   ).rows as any[];

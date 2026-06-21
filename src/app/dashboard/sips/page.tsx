@@ -4,7 +4,7 @@ import { TrendingUp, AlertTriangle, CheckCircle2, Calendar, ShieldAlert, Plus } 
 import { withTenant } from "@/db/client";
 import { sips, investors, mandates, users } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
-import { can } from "@/lib/auth/rbac";
+import { require as requireCap, can } from "@/lib/auth/rbac";
 import { formatINR, formatDate } from "@/lib/utils";
 import { FilterBar } from "@/components/common/FilterBar";
 import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
@@ -64,6 +64,10 @@ export default async function SipsPage({
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const session = await requireSession();
+  // SIPs are transaction data — require the view cap (the page had no gate) and
+  // scope non-managers to their own book.
+  requireCap(session.roles, "transactions.view");
+  const seesAll = can(session.roles, "investor.view.all", session.permissions) || can(session.roles, "reports.business", session.permissions);
   const sp = await searchParams;
   const q = (sp.q ?? "").trim();
   const statusFilterRaw = (sp.status ?? "").split(",").filter(Boolean);
@@ -82,6 +86,10 @@ export default async function SipsPage({
   }
 
   const data = await withTenant(session.tenantId, async (tx) => {
+    // Own-book slice for non-managers: SIPs they own OR for a client they manage.
+    const statsScope = seesAll
+      ? sql``
+      : sql` AND (rm_id = ${session.userId}::uuid OR investor_id IN (SELECT id FROM investors WHERE rm_id = ${session.userId}::uuid))`;
     const stats = await tx.execute(sql`
       SELECT
         COUNT(*) FILTER (WHERE status = 'active')::int AS active_sips,
@@ -91,11 +99,12 @@ export default async function SipsPage({
         COUNT(*) FILTER (WHERE status = 'active' AND end_date IS NOT NULL
           AND end_date <= current_date + interval '90 days')::int AS expiring_soon
       FROM sips
-      WHERE tenant_id = ${session.tenantId}::uuid
+      WHERE tenant_id = ${session.tenantId}::uuid${statsScope}
     `);
     const s = stats.rows[0] as any;
 
     const conds: any[] = [];
+    if (!seesAll) conds.push(or(eq(sips.rmId, session.userId), eq(investors.rmId, session.userId))!);
     if (q) {
       conds.push(
         or(
@@ -238,9 +247,9 @@ export default async function SipsPage({
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="table-scroll">
             <table className="w-full text-sm" data-table="sips">
-              <thead className="text-xs text-muted-foreground border-b">
+              <thead className="text-xs text-muted-foreground border-b sticky top-0 z-10 bg-card">
                 <tr>
                   <th data-col="investor" className="text-left px-4 py-2 font-medium">Investor</th>
                   <th data-col="folio" className="text-left py-2 font-medium">Folio</th>

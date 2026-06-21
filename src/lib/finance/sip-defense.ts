@@ -59,7 +59,16 @@ export type SipDefenceSummary = {
 
 const HIGH_REASONS: SipRiskReason[] = ["dead_mandate", "repeated_failures"];
 
-export async function findAtRiskSips(tx: Tx, tenantId: string): Promise<SipDefenceSummary> {
+export async function findAtRiskSips(
+  tx: Tx,
+  tenantId: string,
+  opts: { rmId?: string | null } = {}
+): Promise<SipDefenceSummary> {
+  // When rmId is set (a non-manager), restrict to that RM's book — the SIPs they
+  // own OR for a client they manage.
+  const scope = opts.rmId
+    ? sql` AND (s.rm_id = ${opts.rmId}::uuid OR i.rm_id = ${opts.rmId}::uuid)`
+    : sql``;
   const res = await tx.execute(sql`
     SELECT s.id,
            s.amount::numeric AS amount,
@@ -79,7 +88,7 @@ export async function findAtRiskSips(tx: Tx, tenantId: string): Promise<SipDefen
     FROM sips s
     JOIN investors i ON i.id = s.investor_id
     LEFT JOIN mandates m ON m.id = s.mandate_id
-    WHERE s.tenant_id = ${tenantId} AND s.status = 'active'
+    WHERE s.tenant_id = ${tenantId} AND s.status = 'active'${scope}
   `);
 
   const rmRes = await tx.execute(sql`SELECT id, name FROM users WHERE tenant_id = ${tenantId}`);

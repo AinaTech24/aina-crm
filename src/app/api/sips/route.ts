@@ -16,7 +16,7 @@ import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
-import { sips, investors, eventsOutbox } from "@/db/schema";
+import { sips, investors, users, eventsOutbox } from "@/db/schema";
 
 export const dynamic = "force-dynamic";
 
@@ -63,6 +63,17 @@ export async function POST(req: NextRequest) {
       )[0];
       if (!inv) {
         throw Object.assign(new Error("investor not found"), { status: 404 });
+      }
+
+      // An explicit RM must be a user in THIS firm (a stray uuid would attribute
+      // the SIP to someone outside the tenant).
+      if (b.rmId) {
+        const [u] = await tx
+          .select({ id: users.id })
+          .from(users)
+          .where(and(eq(users.id, b.rmId), eq(users.tenantId, session.tenantId)))
+          .limit(1);
+        if (!u) throw Object.assign(new Error("RM not found in this firm"), { status: 400 });
       }
 
       const inserted = await tx

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowLeft, ShieldAlert, Activity, CheckCircle2, AlertTriangle } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { can } from "@/lib/auth/rbac";
 import { formatINR, formatDate } from "@/lib/utils";
 import { computeSipInstallmentWatch, type RiskLevel } from "@/lib/finance/sip-installment-watch";
 import { InstallmentWatchGrid } from "@/components/sips/InstallmentWatchGrid";
@@ -28,7 +29,9 @@ export default async function NewSipWatchPage() {
     );
   }
 
-  const { rows, kpis } = await withTenant(session.tenantId, (tx) => computeSipInstallmentWatch(tx, session.tenantId));
+  // RMs see only their own recently-started SIPs; managers/ops see the firm.
+  const seesAll = can(session.roles, "investor.view.all", session.permissions) || can(session.roles, "reports.business", session.permissions);
+  const { rows, kpis } = await withTenant(session.tenantId, (tx) => computeSipInstallmentWatch(tx, session.tenantId, { rmId: seesAll ? null : session.userId }));
 
   return (
     <div className="space-y-6 max-w-7xl">
@@ -71,9 +74,9 @@ export default async function NewSipWatchPage() {
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="table-scroll">
             <table className="w-full text-sm">
-              <thead className="text-xs text-muted-foreground border-b">
+              <thead className="text-xs text-muted-foreground border-b sticky top-0 z-10 bg-card">
                 <tr>
                   <th className="text-left px-4 py-2 font-medium">Client / Scheme</th>
                   <th className="text-right py-2 font-medium">SIP / mo</th>

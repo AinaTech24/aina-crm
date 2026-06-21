@@ -11,10 +11,13 @@ import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { can } from "@/lib/auth/rbac";
 
 export const dynamic = "force-dynamic";
 
 const MANAGE_ROLES = ["owner", "branch_head", "rm", "back_office", "ops"];
+const seesAllEntries = (s: { roles: string[]; permissions?: string[] | null }) =>
+  can(s.roles, "investor.view.all", s.permissions) || can(s.roles, "reports.business", s.permissions);
 
 const Body = z.object({
   sipId: z.string().uuid(),
@@ -32,9 +35,18 @@ export async function POST(req: NextRequest) {
     const { sipId, installmentNo, status, note } = Body.parse(await req.json());
 
     await withTenant(session.tenantId, async (tx) => {
-      // Confirm the SIP belongs to this tenant (RLS-scoped) before marking.
-      const own = await tx.execute(sql`SELECT 1 FROM sips WHERE id = ${sipId}::uuid LIMIT 1`);
-      if (own.rows.length === 0) throw new Error("SIP not found");
+      // Confirm the SIP belongs to this tenant (RLS-scoped) and, for an RM, that
+      // it's in their book — they shouldn't mark a SIP they can't see.
+      const own = await tx.execute(sql`
+        SELECT s.rm_id, i.rm_id AS inv_rm
+          FROM sips s LEFT JOIN investors i ON i.id = s.investor_id
+         WHERE s.id = ${sipId}::uuid LIMIT 1
+      `);
+      const row = own.rows[0] as { rm_id: string | null; inv_rm: string | null } | undefined;
+      if (!row) throw new Error("SIP not found");
+      if (!seesAllEntries(session) && row.rm_id !== session.userId && row.inv_rm !== session.userId) {
+        throw Object.assign(new Error("you can only mark SIPs in your book"), { status: 403 });
+      }
 
       if (status === null) {
         await tx.execute(sql`
