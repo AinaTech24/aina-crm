@@ -3,7 +3,7 @@ import { sql } from "drizzle-orm";
 import { CalendarClock, AlertTriangle, IndianRupee, ShieldAlert, Shield } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { can } from "@/lib/auth/rbac";
+import { require as requireCap, can } from "@/lib/auth/rbac";
 import { formatDate, formatINR } from "@/lib/utils";
 import { StatusChips, type StatusChip } from "@/components/common/StatusChips";
 import { ContactQuickActions } from "@/components/common/ContactQuickActions";
@@ -23,11 +23,23 @@ const BUCKET_LABEL: Record<Bucket, string> = { overdue: "Overdue (in grace)", th
 
 export default async function RenewalsPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const session = await requireSession();
-  const canManage = can(session.roles, "compliance.edit", (session as any).permissions) || true;
+  requireCap(session.roles, "insurance.view");
+  const seesAll = can(session.roles, "investor.view.all", session.permissions) || can(session.roles, "compliance.view", session.permissions);
+  // Marking a policy renewed is a write — gate it honestly (was `… || true`,
+  // which made everyone a "manager").
+  const canManage = can(session.roles, "insurance.write", session.permissions);
   const sp = await searchParams;
   const bucket = (BUCKETS as readonly string[]).includes(sp.bucket ?? "") ? (sp.bucket as Bucket) : "this_week";
 
   const data = await withTenant(session.tenantId, async (tx) => {
+    // Own-book slice for non-managers. The counts query has no investor join
+    // (sub-select on investor_id); the rows query joins investors as `i`.
+    const countScope = seesAll
+      ? sql``
+      : sql` AND (p.sold_by_user_id = ${session.userId}::uuid OR p.investor_id IN (SELECT id FROM investors WHERE rm_id = ${session.userId}::uuid))`;
+    const rowScope = seesAll
+      ? sql``
+      : sql` AND (p.sold_by_user_id = ${session.userId}::uuid OR i.rm_id = ${session.userId}::uuid)`;
     const counts = (await tx.execute(sql`
       SELECT
         COUNT(*) FILTER (WHERE ${BUCKET_SQL.overdue})::int AS overdue,
@@ -36,14 +48,14 @@ export default async function RenewalsPage({ searchParams }: { searchParams: Pro
         COUNT(*) FILTER (WHERE ${BUCKET_SQL.lapsing})::int AS lapsing,
         COALESCE(SUM(p.annual_premium::numeric) FILTER (WHERE ${BUCKET_SQL.overdue} OR ${BUCKET_SQL.this_week} OR ${BUCKET_SQL.next_30}), 0)::numeric AS due_premium
       FROM insurance_policies p
-      WHERE p.tenant_id = ${session.tenantId}::uuid AND p.status = 'active' AND p.next_premium_due_date IS NOT NULL
+      WHERE p.tenant_id = ${session.tenantId}::uuid AND p.status = 'active' AND p.next_premium_due_date IS NOT NULL${countScope}
     `)).rows[0] as any;
 
     const rows = (await tx.execute(sql`
       SELECT p.id, p.plan_name, p.insurer, p.policy_number, p.next_premium_due_date, p.annual_premium::numeric AS annual_premium,
              p.premium_frequency, p.grace_period_days, i.name AS client, i.phone, i.whatsapp_phone, i.email
       FROM insurance_policies p LEFT JOIN investors i ON i.id = p.investor_id
-      WHERE p.tenant_id = ${session.tenantId}::uuid AND p.status = 'active' AND p.next_premium_due_date IS NOT NULL AND (${BUCKET_SQL[bucket]})
+      WHERE p.tenant_id = ${session.tenantId}::uuid AND p.status = 'active' AND p.next_premium_due_date IS NOT NULL AND (${BUCKET_SQL[bucket]})${rowScope}
       ORDER BY p.next_premium_due_date ASC
       LIMIT 300
     `)).rows as any[];
@@ -77,12 +89,12 @@ export default async function RenewalsPage({ searchParams }: { searchParams: Pro
 
       <StatusChips basePath="/dashboard/insurance/renewals" paramKey="bucket" current={bucket} params={sp} chips={chips} />
 
-      <div className="card-surface overflow-x-auto">
+      <div className="card-surface table-scroll">
         {data.rows.length === 0 ? (
           <div className="p-12 text-center text-sm text-muted-foreground">No policies in “{BUCKET_LABEL[bucket]}”. 🎉</div>
         ) : (
           <table className="w-full text-sm">
-            <thead className="text-xs text-muted-foreground border-b">
+            <thead className="text-xs text-muted-foreground border-b sticky top-0 z-10 bg-card">
               <tr>
                 <th className="text-left px-4 py-2 font-medium">Client</th>
                 <th className="text-left py-2 font-medium">Policy</th>

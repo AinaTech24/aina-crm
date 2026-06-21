@@ -11,7 +11,7 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { require as requireCap } from "@/lib/auth/rbac";
+import { require as requireCap, can } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import {
@@ -62,6 +62,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   try {
     const session = await requireSession();
     requireCap(session.roles, "insurance.view");
+    const seesAll = can(session.roles, "investor.view.all", session.permissions) || can(session.roles, "compliance.view", session.permissions);
     const row = await withTenant(session.tenantId, async (tx) => {
       const p = (
         await tx.select().from(insurancePolicies).where(and(eq(insurancePolicies.id, id), eq(insurancePolicies.tenantId, session.tenantId))).limit(1)
@@ -70,11 +71,14 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
       const inv = (
         await tx
-          .select({ name: investors.name })
+          .select({ name: investors.name, rmId: investors.rmId })
           .from(investors)
           .where(eq(investors.id, p.investorId))
           .limit(1)
       )[0];
+
+      // Non-managers only see policies for their clients OR that they sold.
+      if (!seesAll && p.soldByUserId !== session.userId && inv?.rmId !== session.userId) return null;
 
       return {
         ...p,

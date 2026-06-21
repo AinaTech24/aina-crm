@@ -10,15 +10,17 @@ import {
   Activity,
   AlertTriangle,
   IndianRupee,
-  Upload,
+  FileDown,
   CalendarClock,
 } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { require as requireCap, can } from "@/lib/auth/rbac";
 import { formatDate, formatINR } from "@/lib/utils";
 import { RowActions } from "@/components/common/RowActions";
 import { FilterBar } from "@/components/common/FilterBar";
 import { CustomViews } from "@/components/common/CustomViews";
+import { Avatar } from "@/components/ui/Avatar";
 import { Pager } from "@/components/common/Pager";
 import { StatusChips, type StatusChip } from "@/components/common/StatusChips";
 import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
@@ -73,6 +75,11 @@ export default async function InsurancePage({
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const session = await requireSession();
+  // Policies carry nominee PII, client PAN, premium + commission — require the
+  // view capability (the page had NO gate) and scope non-managers to their own
+  // book (a client they manage OR a policy they sold).
+  requireCap(session.roles, "insurance.view");
+  const seesAll = can(session.roles, "investor.view.all", session.permissions) || can(session.roles, "compliance.view", session.permissions);
   const sp = await searchParams;
   const q = (sp.q ?? "").trim();
   const typeFilter = (sp.type ?? "").split(",").filter(Boolean);
@@ -83,7 +90,14 @@ export default async function InsurancePage({
   const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
 
   const data = await withTenant(session.tenantId, async (tx) => {
+    // Owner slice for non-managers. The joined queries (rows/count) reference
+    // the investor alias `i`; the bare aggregates (stats/statusCounts) use a
+    // sub-select on investor_id.
     const filters: any[] = [];
+    if (!seesAll) filters.push(sql`(p.sold_by_user_id = ${session.userId}::uuid OR i.rm_id = ${session.userId}::uuid)`);
+    const bareScope = seesAll
+      ? sql``
+      : sql` WHERE (sold_by_user_id = ${session.userId}::uuid OR investor_id IN (SELECT id FROM investors WHERE rm_id = ${session.userId}::uuid))`;
     if (q) {
       filters.push(
         sql`(p.policy_number ILIKE ${`%${q}%`} OR p.plan_name ILIKE ${`%${q}%`} OR p.insurer ILIKE ${`%${q}%`} OR i.name ILIKE ${`%${q}%`})`
@@ -123,6 +137,7 @@ export default async function InsurancePage({
              p.nominee_name, p.nominee_relation,
              p.lives_covered,
              i.name AS investor_name, i.pan AS investor_pan,
+             i.id AS investor_id, i.avatar_url AS investor_avatar_url,
              p.created_at
       FROM insurance_policies p
       LEFT JOIN investors i ON i.id = p.investor_id
@@ -157,10 +172,10 @@ export default async function InsurancePage({
         COUNT(*) FILTER (
           WHERE policy_type IN ('term', 'ulip', 'endowment', 'money_back', 'life_other')
         )::int AS life_count
-      FROM insurance_policies
+      FROM insurance_policies${bareScope}
     `);
     const statusCounts = await tx.execute(sql`
-      SELECT status, COUNT(*)::int AS c FROM insurance_policies GROUP BY status
+      SELECT status, COUNT(*)::int AS c FROM insurance_policies${bareScope} GROUP BY status
     `);
     return {
       rows: rows.rows as any[],
@@ -197,7 +212,7 @@ export default async function InsurancePage({
         </div>
         <div className="flex items-center gap-2">
           <Link href="/dashboard/insurance/renewals" className="btn-secondary"><CalendarClock className="size-4" /> Renewals</Link>
-          <Link href="/dashboard/insurance/import" className="btn-secondary"><Upload className="size-4" /> Import</Link>
+          <Link href="/dashboard/insurance/import" className="btn-secondary"><FileDown className="size-4" /> Import</Link>
           <Link href="/dashboard/insurance/new" className="btn-primary">
             <Plus className="size-4" /> New policy
           </Link>
@@ -316,7 +331,7 @@ export default async function InsurancePage({
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="table-scroll">
             <table className="w-full text-sm">
               <thead className="text-xs text-muted-foreground border-b">
                 <tr>
@@ -341,13 +356,12 @@ export default async function InsurancePage({
                     p.status === "active" &&
                     p.next_premium_due_date &&
                     new Date(p.next_premium_due_date).getTime() <
-                      Date.now() + 30 * 24 * 60 * 60 * 1000;
+                    Date.now() + 30 * 24 * 60 * 60 * 1000;
                   return (
                     <tr
                       key={p.id}
-                      className={`border-b last:border-0 hover:bg-secondary/40 ${
-                        dueSoon ? "bg-amber-50/30" : ""
-                      }`}
+                      className={`border-b last:border-0 hover:bg-secondary/40 ${dueSoon ? "bg-amber-50/30" : ""
+                        }`}
                     >
                       <td className="px-4 py-3">
                         <Link
@@ -378,9 +392,14 @@ export default async function InsurancePage({
                         )}
                       </td>
                       <td className="py-3 text-xs whitespace-nowrap">
-                        <div className="font-medium">{p.investor_name}</div>
-                        <div className="text-[10px] text-muted-foreground font-mono">
-                          {p.investor_pan}
+                        <div className="flex items-center gap-2">
+                          <Avatar src={p.investor_avatar_url ? `/api/investors/${p.investor_id}/avatar` : null} name={p.investor_name} size={26} />
+                          <div>
+                            <div className="font-medium">{p.investor_name}</div>
+                            <div className="text-[10px] text-muted-foreground font-mono">
+                              {p.investor_pan}
+                            </div>
+                          </div>
                         </div>
                       </td>
                       <td className="py-3 text-right tabular-nums">
@@ -472,10 +491,10 @@ function Stat({
     accent === "rose"
       ? "text-rose-600"
       : accent === "amber"
-      ? "text-amber-600"
-      : accent === "emerald"
-      ? "text-emerald-600"
-      : "text-foreground";
+        ? "text-amber-600"
+        : accent === "emerald"
+          ? "text-emerald-600"
+          : "text-foreground";
   const bg: Record<string, string> = {
     cyan: "bg-brand-cyan-light text-brand-cyan-deep",
     emerald: "bg-emerald-50 text-emerald-600",

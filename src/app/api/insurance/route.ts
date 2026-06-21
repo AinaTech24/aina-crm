@@ -7,11 +7,11 @@ import { handleApiError } from "@/lib/api/error-handler";
 
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuid } from "uuid";
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { require as requireCap } from "@/lib/auth/rbac";
+import { require as requireCap, can } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import {
@@ -73,8 +73,15 @@ export async function GET() {
   try {
     const session = await requireSession();
     requireCap(session.roles, "insurance.view");
+    // Policies carry nominee PII + commission. Managers see all; everyone else
+    // only their own book — policies for a client they manage OR that they sold
+    // (insurance.view alone otherwise exposes every advisor's commission).
+    const seesAll = can(session.roles, "investor.view.all", session.permissions) || can(session.roles, "compliance.view", session.permissions);
+    const scope = seesAll
+      ? undefined
+      : sql`(${insurancePolicies.soldByUserId} = ${session.userId}::uuid OR ${insurancePolicies.investorId} IN (SELECT id FROM investors WHERE rm_id = ${session.userId}::uuid))`;
     const rows = await withTenant(session.tenantId, async (tx) =>
-      tx.select().from(insurancePolicies).orderBy(desc(insurancePolicies.createdAt)).limit(500)
+      tx.select().from(insurancePolicies).where(scope).orderBy(desc(insurancePolicies.createdAt)).limit(500)
     );
     return NextResponse.json({ policies: rows });
   } catch (err: any) {

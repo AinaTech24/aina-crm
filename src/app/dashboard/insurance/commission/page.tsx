@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import { IndianRupee, TrendingUp, FileText, Repeat, Shield } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { require as requireCap, can } from "@/lib/auth/rbac";
 import { formatINR } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -12,15 +13,24 @@ const RENEWAL_RATE = 0.05;
 
 export default async function InsuranceCommissionPage() {
   const session = await requireSession();
+  // Commission is advisor/firm economics — the page had NO gate and showed the
+  // WHOLE firm's earnings to any role. Require the view capability and scope
+  // non-managers to their own book.
+  requireCap(session.roles, "insurance.view");
+  const seesAll = can(session.roles, "investor.view.all", session.permissions) || can(session.roles, "compliance.view", session.permissions);
 
   const data = await withTenant(session.tenantId, async (tx) => {
+    // Own-book slice for non-managers (policies they sold OR for their clients).
+    const scope = seesAll
+      ? sql``
+      : sql` AND (sold_by_user_id = ${session.userId}::uuid OR investor_id IN (SELECT id FROM investors WHERE rm_id = ${session.userId}::uuid))`;
     const totals = (await tx.execute(sql`
       SELECT
         COALESCE(SUM(commission_paisa::numeric), 0)::numeric AS recorded,
         COUNT(*) FILTER (WHERE commission_paisa IS NOT NULL AND commission_paisa::numeric > 0)::int AS with_comm,
         COALESCE(SUM(annual_premium::numeric) FILTER (WHERE status='active'), 0)::numeric AS premium_book,
         COUNT(*) FILTER (WHERE status='active')::int AS active
-      FROM insurance_policies WHERE tenant_id = ${session.tenantId}::uuid
+      FROM insurance_policies WHERE tenant_id = ${session.tenantId}::uuid${scope}
     `)).rows[0] as any;
 
     const byInsurer = (await tx.execute(sql`
@@ -29,7 +39,7 @@ export default async function InsuranceCommissionPage() {
         COUNT(*) FILTER (WHERE status='active')::int AS active,
         COALESCE(SUM(annual_premium::numeric) FILTER (WHERE status='active'), 0)::numeric AS premium_book,
         COALESCE(SUM(commission_paisa::numeric), 0)::numeric AS recorded
-      FROM insurance_policies WHERE tenant_id = ${session.tenantId}::uuid
+      FROM insurance_policies WHERE tenant_id = ${session.tenantId}::uuid${scope}
       GROUP BY insurer ORDER BY premium_book DESC LIMIT 30
     `)).rows as any[];
     return { totals, byInsurer };
@@ -56,13 +66,13 @@ export default async function InsuranceCommissionPage() {
         <Kpi icon={FileText} label="Active policies" value={String(t.active ?? 0)} />
       </div>
 
-      <div className="card-surface overflow-x-auto">
+      <div className="card-surface table-scroll">
         <div className="px-4 py-3 border-b font-semibold text-sm flex items-center gap-2"><TrendingUp className="size-4 text-brand-cyan" /> By insurer</div>
         {data.byInsurer.length === 0 ? (
           <div className="p-12 text-center text-sm text-muted-foreground">No policies in the register yet.</div>
         ) : (
           <table className="w-full text-sm">
-            <thead className="text-xs text-muted-foreground border-b">
+            <thead className="text-xs text-muted-foreground border-b sticky top-0 z-10 bg-card">
               <tr><th className="text-left px-4 py-2 font-medium">Insurer</th><th className="text-right py-2 font-medium">Policies</th><th className="text-right py-2 font-medium">Active</th><th className="text-right py-2 font-medium">Premium book</th><th className="text-right py-2 font-medium">Recorded comm.</th><th className="text-right py-2 font-medium pr-4">Est. renewal/yr</th></tr>
             </thead>
             <tbody>
