@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { sql } from "drizzle-orm";
-import { ShieldAlert, HeartPulse, Umbrella, IndianRupee, Users } from "lucide-react";
+import { ShieldAlert, HeartPulse, Umbrella, IndianRupee, Users, FileText } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
@@ -20,21 +20,40 @@ export default async function ProtectionGapPage({ searchParams }: { searchParams
     session.tenantId,
     async (tx) => {
       const own = mine ? sql` AND i.rm_id = ${session.userId}::uuid` : sql``;
+      // A "covered" policy = active OR mid-purchase (proposed / in_underwriting),
+      // so a client buying a policy isn't flagged as a gap (and nagged).
+      const COVERED = sql`('active','proposed','in_underwriting')`;
+      // Household-aware: the client is covered if THEY or any family member holds
+      // an active/in-flight policy of that line (insurance is bought per family —
+      // a spouse's floater covers the household, so don't false-flag the client).
+      const covers = (types: ReturnType<typeof sql>) => sql`EXISTS (
+        SELECT 1 FROM insurance_policies p
+        WHERE p.tenant_id = i.tenant_id AND p.status IN ${COVERED} AND p.policy_type IN ${types}
+          AND (p.investor_id = i.id
+               OR (i.family_id IS NOT NULL AND p.investor_id IN (SELECT fm.id FROM investors fm WHERE fm.family_id = i.family_id)))
+      )`;
       const base = sql`
         SELECT i.id, i.name, i.phone, i.whatsapp_phone, i.email, COALESCE(i.aum,0)::numeric AS aum, i.segment_tag,
-          NOT EXISTS(SELECT 1 FROM insurance_policies p WHERE p.tenant_id=i.tenant_id AND p.investor_id=i.id AND p.status='active' AND p.policy_type IN ('term','ulip','endowment','money_back','life_other')) AS life_gap,
-          NOT EXISTS(SELECT 1 FROM insurance_policies p WHERE p.tenant_id=i.tenant_id AND p.investor_id=i.id AND p.status='active' AND p.policy_type IN ('health','critical_illness')) AS health_gap
+          NOT ${covers(sql`('term','ulip','endowment','money_back','life_other')`)} AS life_gap,
+          NOT ${covers(sql`('health','critical_illness')`)} AS health_gap,
+          CASE i.segment_tag WHEN 'HNI' THEN 4 WHEN 'Corporate' THEN 4 WHEN 'NRI' THEN 3 WHEN 'Affluent' THEN 3 ELSE 1 END AS seg_rank
         FROM investors i
         WHERE i.tenant_id = ${session.tenantId}::uuid AND i.status='active' AND i.merged_into_id IS NULL${own}`;
+      // Indicative recommended cover (₹) — a transparent segment-based floor, not
+      // a precise HLV. Life: HNI/Corp ₹2Cr, NRI/Affluent ₹1Cr, else ₹50L.
+      // Health floater: HNI/NRI/Corp ₹10L, else ₹5L.
+      const lifeFloor = sql`(CASE g.segment_tag WHEN 'HNI' THEN 20000000 WHEN 'Corporate' THEN 20000000 WHEN 'NRI' THEN 10000000 WHEN 'Affluent' THEN 10000000 ELSE 5000000 END)`;
+      const healthFloor = sql`(CASE WHEN g.segment_tag IN ('HNI','NRI','Corporate') THEN 1000000 ELSE 500000 END)`;
+      const coverNeeded = sql`((CASE WHEN g.life_gap THEN ${lifeFloor} ELSE 0 END) + (CASE WHEN g.health_gap THEN ${healthFloor} ELSE 0 END))`;
       const rows = (await tx.execute(sql`
-        SELECT * FROM (${base}) g
+        SELECT g.*, ${coverNeeded}::numeric AS cover_needed FROM (${base}) g
         WHERE (g.life_gap OR g.health_gap)
           ${gap === "life" ? sql`AND g.life_gap` : gap === "health" ? sql`AND g.health_gap` : sql``}
-        ORDER BY g.aum DESC NULLS LAST LIMIT 300`)).rows as any[];
+        ORDER BY g.seg_rank DESC, g.aum DESC NULLS LAST, ${coverNeeded} DESC LIMIT 300`)).rows as any[];
       const stats = (await tx.execute(sql`
         SELECT COUNT(*) FILTER (WHERE life_gap)::int AS life, COUNT(*) FILTER (WHERE health_gap)::int AS health,
                COUNT(*) FILTER (WHERE life_gap AND health_gap)::int AS both,
-               COALESCE(SUM(aum) FILTER (WHERE life_gap OR health_gap),0)::numeric AS aum_exposed
+               COALESCE(SUM(${coverNeeded}) FILTER (WHERE g.life_gap OR g.health_gap), 0)::numeric AS cover_gap
         FROM (${base}) g`)).rows[0] as any;
       return { rows, stats };
     },
@@ -66,17 +85,17 @@ export default async function ProtectionGapPage({ searchParams }: { searchParams
         <Kpi icon={Umbrella} label="No life cover" value={String(s.life ?? 0)} tone="rose" />
         <Kpi icon={HeartPulse} label="No health cover" value={String(s.health ?? 0)} tone="amber" />
         <Kpi icon={Users} label="Both gaps" value={String(s.both ?? 0)} tone="rose" />
-        <Kpi icon={IndianRupee} label="AUM exposed" value={formatINR(Number(s.aum_exposed ?? 0))} tone="emerald" />
+        <Kpi icon={IndianRupee} label="Est. cover gap" value={formatINR(Number(s.cover_gap ?? 0))} tone="emerald" />
       </div>
 
       <div className="flex flex-wrap gap-1.5">{tab("", "All gaps", data.rows.length)}{tab("life", "Life gap", Number(s.life ?? 0))}{tab("health", "Health gap", Number(s.health ?? 0))}</div>
 
-      <div className="card-surface overflow-x-auto">
+      <div className="card-surface table-scroll">
         {data.rows.length === 0 ? (
           <div className="p-12 text-center text-sm text-muted-foreground">No protection gaps {mine ? "in your book" : ""}. Every client is covered. 🛡️</div>
         ) : (
           <table className="w-full text-sm">
-            <thead className="text-xs text-muted-foreground border-b"><tr><th className="text-left px-4 py-2 font-medium">Client</th><th className="text-left py-2 font-medium">Gaps</th><th className="text-right py-2 font-medium">AUM</th><th className="text-right py-2 font-medium pr-4">Reach</th></tr></thead>
+            <thead className="text-xs text-muted-foreground border-b sticky top-0 z-10 bg-card"><tr><th className="text-left px-4 py-2 font-medium">Client</th><th className="text-left py-2 font-medium">Gaps</th><th className="text-right py-2 font-medium">Cover needed</th><th className="text-right py-2 font-medium">AUM</th><th className="text-right py-2 font-medium pr-4">Act</th></tr></thead>
             <tbody>
               {data.rows.map((r) => {
                 const first = String(r.name ?? "").split(" ")[0];
@@ -89,8 +108,20 @@ export default async function ProtectionGapPage({ searchParams }: { searchParams
                         {r.health_gap && <span className="chip text-[10px] bg-amber-50 text-amber-700">No health</span>}
                       </div>
                     </td>
-                    <td className="py-2.5 text-right tabular-nums">{Number(r.aum) > 0 ? formatINR(Number(r.aum)) : "—"}</td>
-                    <td className="py-2.5 pr-4 text-right"><ContactQuickActions phone={r.whatsapp_phone || r.phone} email={r.email} message={`Dear ${first}, as your advisor I'd like to make sure your family's protection is adequate. Can we do a quick insurance review?`} subject="Insurance protection review" show={["whatsapp", "call"]} /></td>
+                    <td className="py-2.5 text-right tabular-nums font-medium" title="Indicative recommended cover — segment-based estimate">{Number(r.cover_needed) > 0 ? `~${formatINR(Number(r.cover_needed))}` : "—"}</td>
+                    <td className="py-2.5 text-right tabular-nums text-muted-foreground">{Number(r.aum) > 0 ? formatINR(Number(r.aum)) : "—"}</td>
+                    <td className="py-2.5 pr-4">
+                      <div className="flex items-center justify-end gap-2">
+                        <ContactQuickActions phone={r.whatsapp_phone || r.phone} email={r.email} message={`Dear ${first}, as your advisor I'd like to make sure your family's protection is adequate. Can we do a quick insurance review?`} subject="Insurance protection review" show={["whatsapp", "call"]} />
+                        <Link
+                          href={`/dashboard/proposals/new?investorId=${r.id}&type=insurance`}
+                          title="Draft an insurance proposal for this client"
+                          className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary"
+                        >
+                          <FileText className="size-4" />
+                        </Link>
+                      </div>
+                    </td>
                   </tr>
                 );
               })}
@@ -98,7 +129,7 @@ export default async function ProtectionGapPage({ searchParams }: { searchParams
           </table>
         )}
       </div>
-      <p className="text-[11px] text-muted-foreground italic">A &ldquo;gap&rdquo; means no <em>active</em> policy of that type in the register. Update the register or cross-sell matrix to clear it.</p>
+      <p className="text-[11px] text-muted-foreground italic">A &ldquo;gap&rdquo; means no active or in-progress policy of that type for the client <em>or anyone in their family</em>. &ldquo;Cover needed&rdquo; is an indicative segment-based estimate, not a precise Human Life Value — confirm with a needs analysis. Update the register to clear a gap.</p>
     </div>
   );
 }
