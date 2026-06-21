@@ -10,28 +10,18 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, CheckCircle2 } from "lucide-react";
 
-const MONTHS: Record<string, number> = { annual: 12, semi_annual: 6, quarterly: 3, monthly: 1, single: 0 };
-
-export function RenewAction({ policyId, frequency, nextDue }: { policyId: string; frequency: string; nextDue: string | null }) {
+export function RenewAction({ policyId, frequency }: { policyId: string; frequency: string; nextDue?: string | null }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
 
   async function renew() {
-    const add = MONTHS[frequency] ?? 12;
-    if (add === 0) return;
-    const base = nextDue ? new Date(nextDue) : new Date();
-    // Advance from the later of the due date or today, so a long-overdue policy lands in the future.
-    const from = base.getTime() < Date.now() ? new Date() : base;
-    const next = new Date(from);
-    next.setMonth(next.getMonth() + add);
-    const iso = (d: Date) => d.toISOString().slice(0, 10);
+    if (frequency === "single") return;
     setBusy(true);
     try {
-      const res = await fetch(`/api/insurance/${policyId}`, {
-        method: "PATCH", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ nextPremiumDueDate: iso(next), lastPremiumDate: iso(new Date()), status: "active" }),
-      });
+      // The server computes the next due date authoritatively from the policy's
+      // frequency, stamps the payment, and clears the lapse marker.
+      const res = await fetch(`/api/insurance/${policyId}/renew`, { method: "POST" });
       if (res.ok) { setDone(true); router.refresh(); }
     } finally { setBusy(false); }
   }

@@ -343,7 +343,8 @@ export const PREDEFINED_RULES: PredefinedRule[] = [
     key: "insurance_premium_renewal",
     title: "Insurance premium due → remind client",
     description:
-      "7 days before a policy's next premium due date, email the client to pay and keep their cover active. Template auto-created.",
+      "7 days before a policy's next premium due date, email the client to pay and keep their cover active. Template auto-created. " +
+      "NOTE: the \"Insurance premium reminder\" recipe already nudges via WhatsApp at 15/7/1 days — enable only ONE of the two so the client isn't messaged twice at the 7-day mark.",
     category: "Clients",
     needsTemplate: false,
     rule: {

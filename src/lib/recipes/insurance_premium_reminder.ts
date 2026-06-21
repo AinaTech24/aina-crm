@@ -16,7 +16,8 @@ export const insurancePremiumReminderRecipe: RecipeDef = {
   key: "insurance_premium_reminder",
   name: "Insurance premium reminder",
   description:
-    "When a policy's premium is due (15/7/1 days out), WhatsApp the client a reminder and create an RM follow-up task. Protects the client's cover and your persistency.",
+    "When a policy's premium is due (15/7/1 days out), WhatsApp the client a reminder and create an RM follow-up task. Protects the client's cover and your persistency. " +
+    "Note: overlaps with the \"Insurance premium reminder\" predefined rule (email, 7 days out) — enable only one so the client isn't messaged twice at the 7-day mark.",
   category: "retention",
   tags: ["insurance", "retention", "persistency"],
   defaultTemplates: [
