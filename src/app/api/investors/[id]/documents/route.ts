@@ -18,7 +18,7 @@ import { handleApiError } from "@/lib/api/error-handler";
 
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuid } from "uuid";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
@@ -57,7 +57,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
           and(
             eq(complianceDocuments.tenantId, session.tenantId),
             eq(complianceDocuments.relatedEntityType, "investor"),
-            eq(complianceDocuments.relatedEntityId, id)
+            eq(complianceDocuments.relatedEntityId, id),
+            isNull(complianceDocuments.supersededById)
           )
         )
         .orderBy(desc(complianceDocuments.createdAt))

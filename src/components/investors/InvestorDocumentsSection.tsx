@@ -8,7 +8,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { FileText, Upload, Download, Trash2, Loader2, FolderOpen, UserCheck, Send, Link as LinkIcon, Copy, ExternalLink, CheckCircle2, Eye, ChevronRight } from "lucide-react";
+import { FileText, Upload, Download, Trash2, Loader2, FolderOpen, UserCheck, Send, Link as LinkIcon, Copy, ExternalLink, CheckCircle2, Circle, Eye, ChevronRight, ClipboardCheck } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { DocumentViewerModal, type ViewerDoc } from "@/components/documents/DocumentViewerModal";
@@ -48,11 +48,33 @@ export function InvestorDocumentsSection({ investorId, investorName, investorPho
   const [viewer, setViewer] = useState<ViewerDoc | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // ── KYC completeness (received vs required for the client type) ──
+  type CompItem = { key: string; label: string; required: boolean; received: boolean };
+  type Comp = { clientType: string; items: CompItem[]; requiredTotal: number; requiredReceived: number; missingRequired: string[]; pct: number; extraCount: number };
+  const [comp, setComp] = useState<Comp | null>(null);
+  const [compType, setCompType] = useState<string>("");
+  const [showComp, setShowComp] = useState(false);
+
+  async function loadCompleteness(typeOverride?: string) {
+    try {
+      const qs = typeOverride ? `?clientType=${typeOverride}` : "";
+      const res = await fetch(`/api/investors/${investorId}/doc-completeness${qs}`);
+      const j = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setComp(j);
+        if (!compType) setCompType(j.clientType);
+      }
+    } catch {
+      /* advisory */
+    }
+  }
+
   async function load() {
     try {
       const res = await fetch(`/api/investors/${investorId}/documents`);
       const j = await res.json().catch(() => ({}));
       if (res.ok) setDocs(Array.isArray(j.documents) ? j.documents : []);
+      void loadCompleteness(compType || undefined);
     } finally {
       setLoading(false);
     }
@@ -89,6 +111,8 @@ export function InvestorDocumentsSection({ investorId, investorName, investorPho
         const fd = new FormData();
         fd.append("file", file);
         fd.append("kind", "kyc");
+        fd.append("docType", "kyc");
+        if (investorName) fd.append("clientName", investorName);
         const up = await fetch("/api/compliance/upload", { method: "POST", body: fd })
           .then((r) => r.json())
           .catch(() => ({}));
@@ -259,6 +283,62 @@ export function InvestorDocumentsSection({ investorId, investorName, investorPho
           </button>
         </div>
       </div>
+
+      {/* KYC completeness */}
+      {comp && (comp.requiredTotal > 0) && (
+        <div className="mb-4 rounded-lg border border-border bg-secondary/10 p-3">
+          <button
+            type="button"
+            onClick={() => setShowComp((v) => !v)}
+            className="w-full flex items-center gap-2 text-left"
+            aria-expanded={showComp}
+          >
+            <ChevronRight className={`size-3.5 text-muted-foreground shrink-0 transition-transform ${showComp ? "rotate-90" : ""}`} />
+            <ClipboardCheck className={`size-4 ${comp.pct === 100 ? "text-emerald-600" : "text-amber-600"}`} />
+            <span className="text-sm font-semibold">KYC completeness</span>
+            <span className={`text-xs font-bold ${comp.pct === 100 ? "text-emerald-700" : "text-amber-700"}`}>
+              {comp.requiredReceived}/{comp.requiredTotal} required
+            </span>
+            <div className="flex-1 h-1.5 rounded-full bg-secondary overflow-hidden max-w-[160px] ml-1">
+              <div className={`h-full ${comp.pct === 100 ? "bg-emerald-500" : "bg-amber-500"}`} style={{ width: `${comp.pct}%` }} />
+            </div>
+            <span className="text-xs text-muted-foreground ml-auto">{comp.pct}%</span>
+          </button>
+          {!showComp && comp.missingRequired.length > 0 && (
+            <p className="text-[11px] text-amber-700 mt-1.5 pl-6">Missing: {comp.missingRequired.join(", ")}</p>
+          )}
+          {showComp && (
+            <div className="mt-3 space-y-2 pl-1">
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-muted-foreground">Client type:</span>
+                <select
+                  value={compType}
+                  onChange={(e) => { setCompType(e.target.value); void loadCompleteness(e.target.value); }}
+                  className="input-base text-xs w-auto py-1"
+                >
+                  <option value="individual">Individual</option>
+                  <option value="huf">HUF</option>
+                  <option value="nri">NRI</option>
+                  <option value="minor">Minor</option>
+                  <option value="company">Company</option>
+                  <option value="trust">Trust</option>
+                </select>
+                {comp.extraCount > 0 && <span className="text-[11px] text-muted-foreground">· {comp.extraCount} other doc(s)</span>}
+              </div>
+              <ul className="grid sm:grid-cols-2 gap-x-4 gap-y-1">
+                {comp.items.map((it) => (
+                  <li key={it.key} className="flex items-center gap-1.5 text-xs">
+                    {it.received ? <CheckCircle2 className="size-3.5 text-emerald-600 shrink-0" /> : <Circle className={`size-3.5 shrink-0 ${it.required ? "text-amber-500" : "text-muted-foreground/40"}`} />}
+                    <span className={it.received ? "text-foreground" : it.required ? "text-amber-700" : "text-muted-foreground"}>
+                      {it.label}{!it.required && <span className="text-muted-foreground/60"> (optional)</span>}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
 
       {showReq && (
         <div className="mb-4 rounded-lg border border-brand-cyan/30 bg-brand-cyan-light/20 p-3 space-y-2">

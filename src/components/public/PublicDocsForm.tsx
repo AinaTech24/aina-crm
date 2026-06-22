@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { CheckCircle2, FileText, Loader2, Upload, X } from "lucide-react";
+import { isFieldVisible, validateNomineeAllocations, type KycField } from "@/lib/onboarding/kyc-fields";
 
 type RequiredDoc = { key: string; label: string; required?: boolean };
 
@@ -9,12 +10,15 @@ export function PublicDocsForm({
   tokenId,
   recipientName,
   requiredDocs,
+  requiredFields = [],
 }: {
   tokenId: string;
   recipientName: string;
   requiredDocs: RequiredDoc[];
+  requiredFields?: KycField[];
 }) {
   const [files, setFiles] = useState<Record<string, File | null>>({});
+  const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
   const [extraNotes, setExtraNotes] = useState("");
   const [signature, setSignature] = useState("");
   const [busy, setBusy] = useState(false);
@@ -24,30 +28,119 @@ export function PublicDocsForm({
   function setFile(key: string, file: File | null) {
     setFiles((p) => ({ ...p, [key]: file }));
   }
+  function setField(key: string, value: string) {
+    setFieldValues((p) => ({ ...p, [key]: value }));
+  }
+
+  // Group VISIBLE fields by section (showIf-driven conditionals collapse as
+  // the user fills the form). Recomputes when values change.
+  const sections = useMemo(() => {
+    const map = new Map<string, KycField[]>();
+    for (const f of requiredFields) {
+      if (!isFieldVisible(f, fieldValues)) continue;
+      if (!map.has(f.section)) map.set(f.section, []);
+      map.get(f.section)!.push(f);
+    }
+    return Array.from(map.entries());
+  }, [requiredFields, fieldValues]);
+
+  function firstMissingField(): KycField | null {
+    for (const f of requiredFields) {
+      if (!isFieldVisible(f, fieldValues)) continue; // a hidden field can't be required
+      if (f.required && !(fieldValues[f.key] ?? "").trim()) return f;
+    }
+    return null;
+  }
 
   function canSubmit() {
     if (!signature.trim()) return false;
+    if (firstMissingField()) return false;
     return requiredDocs.every((d) => !d.required || !!files[d.key]);
   }
 
   async function submit() {
+    // Surface the first unfilled required field instead of a silent disabled button.
+    const miss = firstMissingField();
+    if (miss) {
+      setError(`Please fill: ${miss.label}`);
+      return;
+    }
+    // Multiple nominees must add up to 100%.
+    const allocErr = validateNomineeAllocations(fieldValues);
+    if (allocErr) {
+      setError(allocErr);
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
-      const fd = new FormData();
-      fd.append("tokenId", tokenId);
-      fd.append("signatureName", signature.trim());
-      fd.append("extraNotes", extraNotes);
-      for (const d of requiredDocs) {
-        const f = files[d.key];
-        if (f) {
-          fd.append(`file_${d.key}`, f);
-          fd.append(`label_${d.key}`, d.label);
+      // Visible KYC field values to send.
+      const fields: Record<string, string> = {};
+      for (const f of requiredFields) {
+        if (!isFieldVisible(f, fieldValues)) continue;
+        const val = (fieldValues[f.key] ?? "").trim();
+        if (val) fields[f.key] = val;
+      }
+      // The files the client attached.
+      const chosen = requiredDocs
+        .map((d) => ({ docKey: d.key, label: d.label, file: files[d.key] }))
+        .filter((x): x is { docKey: string; label: string; file: File } => !!x.file);
+
+      // ── Preferred path: presign → upload each file DIRECT to S3 → submit keys.
+      // Keeps large files out of our server. Falls back to the legacy multipart
+      // submit if presign isn't available (e.g. older deploy).
+      let usedPresigned = false;
+      if (chosen.length > 0) {
+        try {
+          const presignRes = await fetch("/api/public/docs/presign", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ tokenId, files: chosen.map((c) => ({ docKey: c.docKey, filename: c.file.name, contentType: c.file.type })) }),
+          });
+          if (presignRes.ok) {
+            const { uploads } = (await presignRes.json()) as { uploads: Array<{ docKey: string; key: string; url: string }> };
+            const byKey = new Map(uploads.map((u) => [u.docKey, u]));
+            const filePayload: Array<{ docKey: string; label: string; name: string; mimeType: string; storageKey: string; sizeBytes: number }> = [];
+            for (const c of chosen) {
+              const u = byKey.get(c.docKey);
+              if (!u) throw new Error(`Could not prepare upload for ${c.label}`);
+              const put = await fetch(u.url, { method: "PUT", headers: { "content-type": c.file.type }, body: c.file });
+              if (!put.ok) throw new Error(`Upload failed for ${c.label}`);
+              filePayload.push({ docKey: c.docKey, label: c.label, name: c.file.name, mimeType: c.file.type, storageKey: u.key, sizeBytes: c.file.size });
+            }
+            const r = await fetch("/api/public/docs/submit", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ tokenId, signatureName: signature.trim(), extraNotes, fields, files: filePayload }),
+            });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok) throw new Error(data?.error ?? `HTTP ${r.status}`);
+            usedPresigned = true;
+          }
+        } catch (presignErr: any) {
+          // If the direct-upload path errored mid-way, surface it rather than
+          // silently double-submitting via multipart.
+          throw presignErr;
         }
       }
-      const r = await fetch("/api/public/docs/submit", { method: "POST", body: fd });
-      const data = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(data?.error ?? `HTTP ${r.status}`);
+
+      // ── Fallback path: presign unavailable (no files, or endpoint missing) →
+      // legacy multipart submit through the server.
+      if (!usedPresigned) {
+        const fd = new FormData();
+        fd.append("tokenId", tokenId);
+        fd.append("signatureName", signature.trim());
+        fd.append("extraNotes", extraNotes);
+        for (const [k, v] of Object.entries(fields)) fd.append(`field_${k}`, v);
+        for (const c of chosen) {
+          fd.append(`file_${c.docKey}`, c.file);
+          fd.append(`label_${c.docKey}`, c.label);
+        }
+        const r = await fetch("/api/public/docs/submit", { method: "POST", body: fd });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(data?.error ?? `HTTP ${r.status}`);
+      }
+
       setDone(true);
     } catch (e: any) {
       setError(e?.message ?? "Submission failed");
@@ -60,7 +153,7 @@ export function PublicDocsForm({
     return (
       <div className="bg-white rounded-xl shadow p-8 text-center">
         <CheckCircle2 className="size-12 text-emerald-500 mx-auto" />
-        <h2 className="text-xl font-bold mt-3">Documents received!</h2>
+        <h2 className="text-xl font-bold mt-3">Details received!</h2>
         <p className="text-sm text-muted-foreground mt-2">
           Thank you{recipientName ? `, ${recipientName.split(" ")[0]}` : ""}. Our back-office team will start your
           KYC and account-opening process shortly. You'll receive your portal login details via email once we're done.
@@ -72,14 +165,31 @@ export function PublicDocsForm({
   return (
     <div className="space-y-4">
       <div className="bg-white rounded-xl shadow p-6">
-        <h1 className="text-xl font-bold">Upload your documents</h1>
+        <h1 className="text-xl font-bold">Complete your account opening</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Hi{recipientName ? ` ${recipientName}` : ""} — please upload each of the following documents to start
-          your account-opening. Files: PDF, JPG, PNG up to 10 MB each.
+          Hi{recipientName ? ` ${recipientName}` : ""} — please fill in your details and upload the documents below
+          to start your investment account. It only takes a few minutes.
         </p>
       </div>
 
+      {/* ─── KYC data fields ─────────────────────────────────────────── */}
+      {sections.map(([section, fields]) => (
+        <div key={section} className="bg-white rounded-xl shadow p-6 space-y-3">
+          <h2 className="text-sm font-bold text-slate-800">{section}</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {fields.map((f) => (
+              <FieldRow key={f.key} field={f} value={fieldValues[f.key] ?? ""} onChange={(val) => setField(f.key, val)} />
+            ))}
+          </div>
+        </div>
+      ))}
+
+      {/* ─── Document uploads ────────────────────────────────────────── */}
       <div className="bg-white rounded-xl shadow p-6 space-y-3">
+        <div>
+          <h2 className="text-sm font-bold text-slate-800">Upload your documents</h2>
+          <p className="text-[11px] text-muted-foreground mt-0.5">Files: PDF, JPG, PNG up to 10 MB each.</p>
+        </div>
         {requiredDocs.map((d) => (
           <DocRow key={d.key} doc={d} value={files[d.key] ?? null} onChange={(f) => setFile(d.key, f)} />
         ))}
@@ -104,8 +214,8 @@ export function PublicDocsForm({
             className="w-full border rounded-lg px-3 py-2 text-sm"
           />
           <div className="text-[10px] text-muted-foreground mt-1">
-            By signing, you confirm that the documents you've uploaded are genuine and belong to you. They will be
-            used solely for the purpose of opening your mutual fund investment account.
+            By signing, you confirm that the details and documents you've provided are genuine and belong to you. They
+            will be used solely for the purpose of opening your mutual fund investment account.
           </div>
         </label>
 
@@ -117,10 +227,44 @@ export function PublicDocsForm({
           className="w-full rounded-md bg-brand-cyan text-white px-4 py-2.5 text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-50 mt-2"
         >
           {busy ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
-          {busy ? "Uploading…" : "Submit documents"}
+          {busy ? "Submitting…" : "Submit details & documents"}
         </button>
       </div>
     </div>
+  );
+}
+
+function FieldRow({ field, value, onChange }: { field: KycField; value: string; onChange: (v: string) => void }) {
+  const labelEl = (
+    <div className="text-xs font-medium text-slate-700 mb-1">
+      {field.label}
+      {field.required && <span className="text-rose-600 ml-1">*</span>}
+    </div>
+  );
+  const cls = "w-full border rounded-lg px-3 py-2 text-sm";
+  return (
+    <label className="block">
+      {labelEl}
+      {field.type === "select" ? (
+        <select value={value} onChange={(e) => onChange(e.target.value)} className={cls}>
+          <option value="">— select —</option>
+          {field.options?.map((o) => (
+            <option key={o} value={o}>
+              {o}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <input
+          type={field.type === "tel" ? "tel" : field.type === "email" ? "email" : field.type === "date" ? "date" : field.type === "number" ? "number" : "text"}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={field.placeholder ?? ""}
+          className={cls}
+        />
+      )}
+      {field.helpText && <div className="text-[10px] text-muted-foreground mt-1">{field.helpText}</div>}
+    </label>
   );
 }
 

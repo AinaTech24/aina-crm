@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   FolderArchive,
@@ -16,6 +16,7 @@ import {
   Eye,
   ExternalLink,
   FileText,
+  RefreshCw,
 } from "lucide-react";
 import { formatDate, formatRelative } from "@/lib/utils";
 import { DocumentViewerModal, type ViewerDoc } from "@/components/documents/DocumentViewerModal";
@@ -83,9 +84,59 @@ export function DocumentsFeed({
   const [deletingGroup, setDeletingGroup] = useState<string | null>(null);
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const [viewer, setViewer] = useState<ViewerDoc | null>(null);
+  const [replacingId, setReplacingId] = useState<string | null>(null);
+  const replaceRef = useRef<HTMLInputElement>(null);
+  const replaceDocRef = useRef<DocRow | null>(null);
   const [pendingDelete, setPendingDelete] = useState<
     { kind: "single"; id: string; name: string } | { kind: "group"; group: Group } | null
   >(null);
+
+  function startReplace(doc: DocRow) {
+    replaceDocRef.current = doc;
+    replaceRef.current?.click();
+  }
+
+  async function onReplaceFile(file: File | null) {
+    const doc = replaceDocRef.current;
+    if (!file || !doc) return;
+    setReplacingId(doc.id);
+    try {
+      // 1. Upload the new file, 2. supersede the old row with it.
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("kind", "compliance");
+      fd.append("docType", doc.category || "compliance");
+      const up = await fetch("/api/compliance/upload", { method: "POST", body: fd }).then((r) => r.json()).catch(() => ({}));
+      if (!up?.key) {
+        alert(up?.error ?? "Upload failed");
+        return;
+      }
+      const res = await fetch(`/api/compliance/documents/${doc.id}/supersede`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: file.name, storageKey: up.key, mimeType: up.contentType ?? file.type, sizeBytes: up.sizeBytes ?? file.size }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(j.error ?? "Replace failed");
+        return;
+      }
+      // Swap the old (now-superseded) row for the new version in-place so the
+      // change is visible immediately; refresh reconciles with the server.
+      setRows((prev) =>
+        prev.map((r) =>
+          r.id === doc.id
+            ? { ...r, id: j.id ?? r.id, name: file.name, mimeType: up.contentType ?? file.type, sizeBytes: String(up.sizeBytes ?? file.size), createdAt: new Date().toISOString(), expiresOn: null }
+            : r
+        )
+      );
+      router.refresh();
+    } finally {
+      setReplacingId(null);
+      replaceDocRef.current = null;
+      if (replaceRef.current) replaceRef.current.value = "";
+    }
+  }
 
   async function handleDelete(id: string) {
     setDeletingId(id);
@@ -185,6 +236,9 @@ export function DocumentsFeed({
 
   return (
     <div className="space-y-6">
+      {/* Hidden input for the per-row "Replace" action */}
+      <input ref={replaceRef} type="file" className="hidden" onChange={(e) => onReplaceFile(e.target.files?.[0] ?? null)} accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx,.csv" />
+
       {/* Stats cards */}
       <div className="grid grid-cols-3 gap-4">
         <div className="border rounded-lg p-4 bg-card">
@@ -372,6 +426,15 @@ export function DocumentsFeed({
                               >
                                 <Download className="size-4" />
                               </a>
+                              <button
+                                type="button"
+                                onClick={() => startReplace(d)}
+                                disabled={replacingId === d.id}
+                                title="Replace with a newer version"
+                                className="size-8 rounded-lg hover:bg-secondary/40 border border-border/40 grid place-items-center text-muted-foreground hover:text-brand-cyan transition-colors disabled:opacity-50"
+                              >
+                                {replacingId === d.id ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
+                              </button>
                               <button
                                 type="button"
                                 onClick={() => setPendingDelete({ kind: "single", id: d.id, name: d.name })}

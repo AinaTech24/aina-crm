@@ -13,6 +13,7 @@ import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { complianceDocuments } from "@/db/schema";
 import { presignedGetUrl } from "@/lib/storage/s3";
+import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
 
@@ -53,7 +54,18 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
           )
         )
         .limit(1);
-      return d ?? null;
+      if (!d) return null;
+      // Audit access to a client's document (who viewed which KYC, when).
+      await recordAudit(tx, {
+        tenantId: session.tenantId,
+        actorUserId: session.userId,
+        action: inline ? "document.view" : "document.download",
+        entityType: "compliance_document",
+        entityId: docId,
+        after: { name: d.name, investorId: id } as any,
+        ...clientMetaFromHeaders(req.headers),
+      });
+      return d;
     });
 
     if (!doc || !doc.storageKey) return NextResponse.json({ error: "document not found" }, { status: 404 });

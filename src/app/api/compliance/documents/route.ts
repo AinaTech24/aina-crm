@@ -14,7 +14,7 @@ import { handleApiError } from "@/lib/api/error-handler";
 
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuid } from "uuid";
-import { desc, sql, eq, and } from "drizzle-orm";
+import { desc, sql, eq, and, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
@@ -60,7 +60,11 @@ export async function GET() {
     // (owner wins via can()). Previously any authenticated session could list it.
     requireAny(session.roles, ["compliance.view", "kyc.manage"]);
     const rows = await withTenant(session.tenantId, async (tx) => {
-      return tx.select().from(complianceDocuments).orderBy(desc(complianceDocuments.createdAt));
+      return tx
+        .select()
+        .from(complianceDocuments)
+        .where(isNull(complianceDocuments.supersededById))
+        .orderBy(desc(complianceDocuments.createdAt));
     });
     return NextResponse.json({ documents: rows });
   } catch (err: any) {

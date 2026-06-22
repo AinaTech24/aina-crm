@@ -1,4 +1,4 @@
-import { date, index, jsonb, numeric, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { date, index, integer, jsonb, numeric, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { id, tenantId, timestamps } from "./_shared";
 import { tenants } from "./tenants";
 
@@ -39,11 +39,16 @@ export const complianceDocuments = pgTable(
     relatedEntityId: uuid("related_entity_id"),
     tags: jsonb("tags").$type<string[]>().default([]),
     uploadedByUserId: uuid("uploaded_by_user_id"),
+    /** Versioning: when this doc is replaced, points to the newer row's id (and
+     *  this row is hidden from the vault). NULL = current/active. */
+    supersededById: uuid("superseded_by_id"),
+    version: integer("version").default(1),
     ...timestamps,
   },
   (t) => ({
     categoryIdx: index("compliance_docs_category_idx").on(t.tenantId, t.category),
     expiryIdx: index("compliance_docs_expiry_idx").on(t.tenantId, t.expiresOn),
+    activeIdx: index("compliance_docs_active_idx").on(t.tenantId, t.createdAt),
   })
 );
 
@@ -87,6 +92,9 @@ export const sops = pgTable(
     category: text("category"),
     currentVersionId: uuid("current_version_id"),
     requiredRoles: text("required_roles").array().default([]),
+    // Soft-delete — preserves versions + acknowledgement evidence (migration 0150).
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    deletedBy: uuid("deleted_by"),
     ...timestamps,
   },
   (t) => ({

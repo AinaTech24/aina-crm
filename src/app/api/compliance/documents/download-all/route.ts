@@ -14,6 +14,7 @@ import { requireAny } from "@/lib/auth/rbac";
 import { complianceDocuments } from "@/db/schema";
 import { getObjectBytes } from "@/lib/storage/s3";
 import { makeZip } from "@/lib/storage/zip";
+import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { handleApiError } from "@/lib/api/error-handler";
 
 export const dynamic = "force-dynamic";
@@ -98,6 +99,19 @@ export async function GET(req: NextRequest) {
     if (entries.length === 0) {
       return NextResponse.json({ error: "No downloadable files were found in storage." }, { status: 404 });
     }
+
+    // Audit the bulk export — one row capturing the whole ZIP action.
+    await withTenant(session.tenantId, async (tx) => {
+      await recordAudit(tx, {
+        tenantId: session.tenantId,
+        actorUserId: session.userId,
+        action: "compliance_document.download_bulk",
+        entityType: "compliance_document",
+        entityId: docs[0]?.id ?? "bulk",
+        after: { count: entries.length, ids: docs.map((d) => d.id) } as any,
+        ...clientMetaFromHeaders(req.headers),
+      });
+    });
 
     const zip = makeZip(entries);
     return new NextResponse(zip as any, {

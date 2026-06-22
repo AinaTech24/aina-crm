@@ -27,6 +27,8 @@
  *   sub_distributor.arn_expiring   — sub-dist ARN within 90 days
  *   sub_distributor.euin_expiring  — sub-dist EUIN within 90 days
  *   legal_registration.expiring    — statutory registration within 90 days
+ *   document.expiring              — a vault document expires within 30 days
+ *   document.expired               — a vault document has lapsed
  *
  * Idempotency: each event carries `meta.source = 'daily-ops-scanner'` and
  * `meta.scanDate = YYYY-MM-DD`. A partial unique index
@@ -46,10 +48,11 @@
 
 import { eq, sql } from "drizzle-orm";
 import { withSystem, withTenant } from "@/db/client";
+import { readSoftDeleteRetentionDays } from "@/lib/platform/retention";
 import { recomputeAllHealth } from "@/lib/investors/health-persist";
 import { recomputeAllFamilyHealth } from "@/lib/families/health-persist";
 import { recomputeAllGoals } from "@/lib/goal-planning/recompute";
-import { recomputeAllAum, revalueAllFolios } from "@/lib/finance/aum-persist";
+import { recomputeCombinedAum, revalueAllFolios } from "@/lib/finance/aum-persist";
 import { eventsOutbox, investors, folios, suitabilityMatrixEntries } from "@/db/schema";
 
 interface ScanResult {
@@ -60,6 +63,10 @@ interface ScanResult {
   dormant: number;
   kycExpiring: number;
   riskExpired: number;
+  /** Compliance-vault documents expiring within 30 days. */
+  docsExpiring: number;
+  /** Compliance-vault documents that have already lapsed (one-time event). */
+  docsExpired: number;
   // Employee-level licensing (Network FP template parity).
   nismExpiring: number;
   arnExpiring: number;
@@ -96,6 +103,8 @@ interface ScanResult {
   attendanceSeeded: number;
   /** Active clients whose portfolios drifted from their risk profiles. */
   portfolioRiskDrift: number;
+  /** Automation-health alerts raised this run (stuck outbox / overdue jobs / failed runs). */
+  automationAlerts: number;
   durationMs: number;
 }
 
@@ -135,6 +144,8 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
     dormant: 0,
     kycExpiring: 0,
     riskExpired: 0,
+    docsExpiring: 0,
+    docsExpired: 0,
     nismExpiring: 0,
     arnExpiring: 0,
     euinExpiring: 0,
@@ -156,6 +167,7 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
     srEscalated: 0,
     attendanceSeeded: 0,
     portfolioRiskDrift: 0,
+    automationAlerts: 0,
     durationMs: 0,
   };
 
@@ -167,6 +179,7 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
         SELECT id, name, dob, rm_id FROM investors
         WHERE dob IS NOT NULL
           AND status = 'active'
+          AND deleted_at IS NULL
           AND EXTRACT(MONTH FROM dob) = EXTRACT(MONTH FROM CURRENT_DATE)
           AND EXTRACT(DAY   FROM dob) = EXTRACT(DAY   FROM CURRENT_DATE)
           AND (CURRENT_DATE - dob) / 365 >= 18
@@ -193,6 +206,7 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
         SELECT id, name, onboarded_at, rm_id FROM investors
         WHERE onboarded_at IS NOT NULL
           AND status = 'active'
+          AND deleted_at IS NULL
           AND EXTRACT(MONTH FROM onboarded_at) = EXTRACT(MONTH FROM CURRENT_DATE)
           AND EXTRACT(DAY   FROM onboarded_at) = EXTRACT(DAY   FROM CURRENT_DATE)
           AND onboarded_at < CURRENT_DATE - INTERVAL '1 year'
@@ -218,6 +232,7 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
       const minorRows = await tx.execute(sql`
         SELECT id, name, dob, rm_id FROM investors
         WHERE investor_category = 'minor'
+          AND deleted_at IS NULL
           AND dob IS NOT NULL
           AND dob + INTERVAL '18 years' <= CURRENT_DATE
       `);
@@ -253,6 +268,7 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
                  AND t.investor_id = i.id
             ) lt ON true
            WHERE i.status = 'active'
+             AND i.deleted_at IS NULL
              AND (lt.last_at IS NULL OR lt.last_at < CURRENT_DATE - INTERVAL '365 days')
              AND i.onboarded_at < CURRENT_DATE - INTERVAL '365 days'
         )
@@ -284,6 +300,7 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
         SELECT id, name, ckyc_expiry_at, rm_id FROM investors
         WHERE ckyc_expiry_at IS NOT NULL
           AND status = 'active'
+          AND deleted_at IS NULL
           AND ckyc_expiry_at BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '30 days'
       `);
       result.kycExpiring = kycRows.rows.length;
@@ -308,6 +325,7 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
         SELECT id, name, risk_profile_signed_at, rm_id FROM investors
         WHERE risk_profile_signed_at IS NOT NULL
           AND status = 'active'
+          AND deleted_at IS NULL
           AND risk_profile_signed_at < CURRENT_DATE - INTERVAL '365 days'
       `);
       result.riskExpired = riskRows.rows.length;
@@ -508,6 +526,53 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
         result.legalRegExpiring++;
       }
 
+      // ── 13. Compliance-vault document expiries ────────────────────────
+      // ARN / NISM / KYD / AMC-empanelment / RIA docs etc. carry an explicit
+      // expires_on. Until now that only drove a dashboard badge — emit events so
+      // a recipe can actually remind the compliance team to renew. Two kinds:
+      //   document.expiring — within 30 days (and not yet lapsed)
+      //   document.expired  — already past (fires once via the scan-date dedup)
+      // Superseded (replaced) docs are skipped — they're history, not live.
+      const docExpiryRows = await tx.execute(sql`
+        SELECT id, name, category, expires_on, related_entity_type, related_entity_id
+        FROM compliance_documents
+        WHERE tenant_id = ${tenantId}::uuid
+          AND superseded_by_id IS NULL
+          AND expires_on IS NOT NULL
+          AND expires_on <= CURRENT_DATE + INTERVAL '30 days'
+      `);
+      for (const row of docExpiryRows.rows as Array<{
+        id: string;
+        name: string;
+        category: string;
+        expires_on: string;
+        related_entity_type: string | null;
+        related_entity_id: string | null;
+      }>) {
+        const d = new Date(`${row.expires_on}T00:00:00`);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const daysOut = Math.round((d.getTime() - today.getTime()) / 86400000);
+        const expired = daysOut < 0;
+        await tx.insert(eventsOutbox).values({
+          tenantId,
+          kind: expired ? "document.expired" : "document.expiring",
+          entityType: "compliance_document",
+          entityId: row.id,
+          after: {
+            name: row.name,
+            category: row.category,
+            expiresOn: row.expires_on,
+            daysOut,
+            relatedEntityType: row.related_entity_type,
+            relatedEntityId: row.related_entity_id,
+          } as any,
+          meta: { scanDate, source: "daily-ops-scanner" } as any,
+        } as any).onConflictDoNothing();
+        if (expired) result.docsExpired++;
+        else result.docsExpiring++;
+      }
+
       // ── Refresh persisted client-health ───────────────────────────────
       // Health has time-based factors (days-since-contact, review overdue) so
       // it drifts even when rows don't change. Re-score the whole book nightly
@@ -535,7 +600,7 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
       // Folios first (so their repriced values are available), then investors.
       const folioVal = await revalueAllFolios(tx);
       result.foliosRevalued = folioVal.folios;
-      const aumVal = await recomputeAllAum(tx);
+      const aumVal = await recomputeCombinedAum(tx);
       result.aumRevalued = aumVal.updated;
 
       // ── CS5: AUM "moments that matter" ────────────────────────────────
@@ -574,7 +639,7 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
       // protection_gap_nudge recipe messages them, not nags daily.
       const gapRows = await tx.execute(sql`
         SELECT i.id, i.name, i.rm_id, i.aum FROM investors i
-        WHERE i.status = 'active' AND i.aum >= 2500000
+        WHERE i.status = 'active' AND i.deleted_at IS NULL AND i.aum >= 2500000
           AND NOT EXISTS (SELECT 1 FROM insurance_policies p WHERE p.investor_id = i.id AND p.status = 'active')
           AND NOT EXISTS (SELECT 1 FROM events_outbox e WHERE e.tenant_id = ${tenantId}::uuid AND e.entity_id = i.id AND e.kind = 'insurance.protection_gap' AND e.occurred_at > now() - interval '90 days')
         LIMIT 500
@@ -593,7 +658,7 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
       if (month <= 2) {
         const taxRows = await tx.execute(sql`
           SELECT i.id, i.name, i.rm_id FROM investors i
-          WHERE i.status = 'active' AND i.aum >= 500000
+          WHERE i.status = 'active' AND i.deleted_at IS NULL AND i.aum >= 500000
             AND EXISTS (SELECT 1 FROM transactions t WHERE t.investor_id = i.id AND t.status IN ('processed','successful'))
             AND NOT EXISTS (SELECT 1 FROM events_outbox e WHERE e.tenant_id = ${tenantId}::uuid AND e.entity_id = i.id AND e.kind = 'tax.harvest_opportunity' AND e.occurred_at > now() - interval '300 days')
           LIMIT 500
@@ -890,18 +955,29 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
       result.portfolioRiskDrift = driftEmitted;
 
       // ── Attendance auto-seed — ensure today's row per active employee ────
-      // approved leave → on_leave · Sunday → week_off · else absent (until they
-      // clock in). ON CONFLICT DO NOTHING so a real clock-in is never clobbered.
+      // Precedence: holiday (holidays master) → approved leave → weekly-off
+      // (configured days, else Sunday) → absent (until they clock in).
+      // ON CONFLICT DO NOTHING so a real clock-in is never clobbered.
       const attSeed = await tx.execute(sql`
         INSERT INTO attendance (tenant_id, employee_user_id, attendance_date, status, source)
         SELECT u.tenant_id, u.id, current_date,
           CASE
             WHEN EXISTS (
+              SELECT 1 FROM holidays h
+              WHERE h.tenant_id = u.tenant_id AND h.holiday_date = current_date
+            ) THEN 'holiday'
+            WHEN EXISTS (
               SELECT 1 FROM leave_applications la
               WHERE la.tenant_id = u.tenant_id AND la.employee_user_id = u.id
                 AND la.status = 'approved' AND current_date BETWEEN la.from_date AND la.to_date
             ) THEN 'on_leave'
-            WHEN EXTRACT(DOW FROM current_date) = 0 THEN 'week_off'
+            WHEN EXISTS (
+              SELECT 1 FROM attendance_settings s
+              WHERE s.tenant_id = u.tenant_id
+                AND s.week_off_days @> to_jsonb(EXTRACT(DOW FROM current_date)::int)
+            ) THEN 'week_off'
+            WHEN NOT EXISTS (SELECT 1 FROM attendance_settings s WHERE s.tenant_id = u.tenant_id)
+              AND EXTRACT(DOW FROM current_date) = 0 THEN 'week_off'
             ELSE 'absent'
           END,
           'auto'
@@ -989,6 +1065,62 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
             .onConflictDoNothing();
         }
       }
+
+      // ── Automation-health alert (proactive "trust surface") ────────────
+      // The Control Tower already computes these danger signals, but nobody
+      // sees them unless they open the page. Push an alert to the leads when
+      // the engine is visibly degraded: events stuck in the outbox >1h
+      // (poller wedged), scheduled rule jobs overdue >1h, or a spike of
+      // failed workflow runs in the last 24h. Deduped to once per day per
+      // recipient (a notification of this kind already created today is a
+      // no-op), so a re-run or a persistent fault doesn't spam.
+      const healthRow = await tx.execute(sql`
+        SELECT
+          (SELECT count(*) FROM events_outbox
+             WHERE tenant_id = ${tenantId}::uuid AND processed_at IS NULL
+               AND occurred_at < now() - interval '1 hour')::int AS stuck,
+          (SELECT count(*) FROM workflow_rule_scheduled_jobs
+             WHERE tenant_id = ${tenantId}::uuid AND status = 'pending'
+               AND run_at < now() - interval '1 hour')::int AS overdue,
+          (SELECT count(*) FROM workflow_runs
+             WHERE tenant_id = ${tenantId}::uuid AND status = 'failed'
+               AND created_at >= now() - interval '24 hours')::int AS failed_runs
+      `);
+      const h = (healthRow.rows[0] as any) ?? {};
+      const stuck = Number(h.stuck ?? 0);
+      const overdue = Number(h.overdue ?? 0);
+      const failedRuns = Number(h.failed_runs ?? 0);
+      if (stuck > 0 || overdue > 0 || failedRuns >= 10) {
+        const parts: string[] = [];
+        if (stuck > 0) parts.push(`${stuck} event${stuck === 1 ? "" : "s"} stuck in the outbox >1h`);
+        if (overdue > 0) parts.push(`${overdue} scheduled job${overdue === 1 ? "" : "s"} overdue >1h`);
+        if (failedRuns >= 10) parts.push(`${failedRuns} failed workflow runs in 24h`);
+        const body = parts.join(" · ");
+        const leads = await tx.execute(sql`
+          SELECT id FROM users
+          WHERE tenant_id = ${tenantId}::uuid AND status = 'active'
+            AND roles && ARRAY['owner','branch_head','ops']::text[]
+        `);
+        let raised = 0;
+        for (const u of leads.rows as Array<{ id: string }>) {
+          // INSERT…SELECT…WHERE NOT EXISTS = idempotent once-per-day-per-user.
+          const res = await tx.execute(sql`
+            INSERT INTO notifications (tenant_id, user_id, kind, title, body, link_url, severity, meta)
+            SELECT ${tenantId}::uuid, ${u.id}::uuid, 'automation.health',
+                   'Automation needs attention', ${body},
+                   '/dashboard/workflows/runs', 'warning',
+                   ${JSON.stringify({ stuck, overdue, failedRuns, scanDate })}::jsonb
+            WHERE NOT EXISTS (
+              SELECT 1 FROM notifications
+              WHERE tenant_id = ${tenantId}::uuid AND user_id = ${u.id}::uuid
+                AND kind = 'automation.health' AND created_at >= current_date
+            )
+            RETURNING id
+          `);
+          raised += res.rows.length;
+        }
+        result.automationAlerts = raised;
+      }
     },
     { roles: ["system"] }
   );
@@ -1009,6 +1141,74 @@ export async function runDailyOpsScan(): Promise<{
   durationMs: number;
 }> {
   const startedAt = Date.now();
+
+  // ── Auto-purge: permanently remove soft-deleted tenants whose retention
+  // window has elapsed (data is kept until then so they can be recovered).
+  // Each purge runs in its OWN system tx so one failure can't roll back others.
+  try {
+    const dueIds = await withSystem(async (tx) => {
+      const days = await readSoftDeleteRetentionDays(tx as any);
+      const due = await tx.execute(sql`
+        SELECT id FROM tenants
+        WHERE deleted_at IS NOT NULL
+          AND deleted_at < now() - make_interval(days => ${days})
+        LIMIT 50
+      `);
+      return (due.rows as Array<{ id: string }>).map((r) => r.id);
+    });
+    let purged = 0;
+    for (const id of dueIds) {
+      try {
+        await withSystem(async (tx) => {
+          await tx.execute(sql`SELECT platform_purge_tenant(${id}::uuid)`);
+        });
+        purged++;
+      } catch (e) {
+        console.error("[daily-ops] auto-purge failed for tenant", id, (e as Error)?.message);
+      }
+    }
+    if (purged) console.log(`[daily-ops] auto-purged ${purged} soft-deleted tenant(s) past retention`);
+  } catch (e) {
+    console.error("[daily-ops] auto-purge pass failed:", (e as Error)?.message);
+  }
+
+  // ── Auto-purge: permanently remove soft-deleted CLIENTS (investors) whose
+  // Trash-bin retention window has elapsed. The hard delete cascades the owned
+  // data subgraph (folios/transactions/sips/goals/proposals — migration 0131);
+  // compliance documents link polymorphically (no FK) so they're removed first.
+  try {
+    const due = await withSystem(async (tx) => {
+      const days = await readSoftDeleteRetentionDays(tx as any);
+      const r = await tx.execute(sql`
+        SELECT id, tenant_id FROM investors
+        WHERE deleted_at IS NOT NULL
+          AND deleted_at < now() - make_interval(days => ${days})
+        LIMIT 200
+      `);
+      return r.rows as Array<{ id: string; tenant_id: string }>;
+    });
+    let purgedClients = 0;
+    for (const row of due) {
+      try {
+        await withSystem(async (tx) => {
+          await tx.execute(sql`
+            DELETE FROM compliance_documents
+            WHERE tenant_id = ${row.tenant_id}::uuid
+              AND related_entity_type = 'investor'
+              AND related_entity_id = ${row.id}::uuid
+          `);
+          await tx.execute(sql`DELETE FROM investors WHERE id = ${row.id}::uuid`);
+        });
+        purgedClients++;
+      } catch (e) {
+        console.error("[daily-ops] client auto-purge failed for", row.id, (e as Error)?.message);
+      }
+    }
+    if (purgedClients) console.log(`[daily-ops] auto-purged ${purgedClients} trashed client(s) past retention`);
+  } catch (e) {
+    console.error("[daily-ops] client auto-purge pass failed:", (e as Error)?.message);
+  }
+
   const tenants = await listActiveTenants();
   const failed: string[] = [];
   const totals = {
@@ -1018,6 +1218,8 @@ export async function runDailyOpsScan(): Promise<{
     dormant: 0,
     kycExpiring: 0,
     riskExpired: 0,
+    docsExpiring: 0,
+    docsExpired: 0,
     nismExpiring: 0,
     arnExpiring: 0,
     euinExpiring: 0,
@@ -1039,6 +1241,7 @@ export async function runDailyOpsScan(): Promise<{
     srEscalated: 0,
     attendanceSeeded: 0,
     portfolioRiskDrift: 0,
+    automationAlerts: 0,
   };
   // Each tenant scan is fully independent (its own withTenant tx, RLS-scoped to
   // that tenant's rows), so they can run concurrently without lock contention.
@@ -1054,6 +1257,8 @@ export async function runDailyOpsScan(): Promise<{
       totals.dormant += r.dormant;
       totals.kycExpiring += r.kycExpiring;
       totals.riskExpired += r.riskExpired;
+      totals.docsExpiring += r.docsExpiring;
+      totals.docsExpired += r.docsExpired;
       totals.nismExpiring += r.nismExpiring;
       totals.arnExpiring += r.arnExpiring;
       totals.euinExpiring += r.euinExpiring;
@@ -1075,6 +1280,7 @@ export async function runDailyOpsScan(): Promise<{
       totals.srEscalated += r.srEscalated;
       totals.attendanceSeeded += r.attendanceSeeded;
       totals.portfolioRiskDrift += r.portfolioRiskDrift;
+      totals.automationAlerts += r.automationAlerts;
   };
   const worker = async () => {
     for (;;) {

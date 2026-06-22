@@ -1,8 +1,8 @@
 import Link from "next/link";
-import { desc, eq, inArray, sql } from "drizzle-orm";
-import { Upload } from "lucide-react";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { Upload, ShieldCheck, ScrollText } from "lucide-react";
 import { withTenant } from "@/db/client";
-import { complianceDocuments, investors } from "@/db/schema";
+import { complianceDocuments, investors, ddqScores, sops } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { DocumentsFeed } from "@/components/compliance/DocumentsFeed";
@@ -38,12 +38,13 @@ export default async function DocumentsPage() {
           AND expires_on < current_date)::int AS expired
       FROM compliance_documents
       WHERE tenant_id = ${session.tenantId}::uuid
+        AND superseded_by_id IS NULL
     `);
     const s = stats.rows[0] as any;
     const rows = await tx
       .select()
       .from(complianceDocuments)
-      .where(eq(complianceDocuments.tenantId, session.tenantId))
+      .where(and(eq(complianceDocuments.tenantId, session.tenantId), isNull(complianceDocuments.supersededById)))
       .orderBy(desc(complianceDocuments.createdAt))
       .limit(100);
 
@@ -65,10 +66,24 @@ export default async function DocumentsPage() {
       for (const n of names) clientInfo[n.id] = { name: n.name, email: n.email, phone: n.phone, avatarUrl: n.avatarUrl };
     }
 
+    // Compliance-readiness signals: latest DDQ score + SOP library size.
+    const [ddq] = await tx
+      .select({ score: ddqScores.overallScore })
+      .from(ddqScores)
+      .where(eq(ddqScores.tenantId, session.tenantId))
+      .orderBy(desc(ddqScores.computedAt))
+      .limit(1);
+    const [sopCountRow] = await tx
+      .select({ n: sql<number>`count(*)::int` })
+      .from(sops)
+      .where(eq(sops.tenantId, session.tenantId));
+
     return {
       total: Number(s.total),
       expiringSoon: Number(s.expiring_soon),
       expired: Number(s.expired),
+      ddqScore: ddq?.score != null ? Number(ddq.score) : null,
+      sopCount: Number(sopCountRow?.n ?? 0),
       rows,
       clientInfo,
     };
@@ -116,6 +131,31 @@ export default async function DocumentsPage() {
           className="rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-sm font-medium flex items-center gap-1.5 hover:bg-primary/95 transition-colors print:hidden"
         >
           <Upload className="size-4" /> Upload document
+        </Link>
+      </div>
+
+      {/* Compliance-readiness strip — links the vault to DDQ + SOPs. */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <Link href="/dashboard/compliance" className="border rounded-lg p-4 bg-card flex items-center gap-3 hover:bg-accent/30 transition-colors">
+          <ShieldCheck className={`size-5 ${data.ddqScore != null && data.ddqScore >= 70 ? "text-emerald-600" : data.ddqScore != null ? "text-amber-600" : "text-muted-foreground"}`} />
+          <div>
+            <div className="text-xs text-muted-foreground">DDQ readiness</div>
+            <div className="text-xl font-bold">{data.ddqScore != null ? `${Math.round(data.ddqScore)}%` : "—"}</div>
+          </div>
+        </Link>
+        <Link href="/dashboard/compliance" className="border rounded-lg p-4 bg-card flex items-center gap-3 hover:bg-accent/30 transition-colors">
+          <ScrollText className="size-5 text-brand-cyan" />
+          <div>
+            <div className="text-xs text-muted-foreground">SOPs in library</div>
+            <div className="text-xl font-bold">{data.sopCount}</div>
+          </div>
+        </Link>
+        <Link href="/dashboard/documents?expiry=soon" className="border rounded-lg p-4 bg-card flex items-center gap-3 hover:bg-accent/30 transition-colors">
+          <Upload className="size-5 text-muted-foreground rotate-180" />
+          <div>
+            <div className="text-xs text-muted-foreground">Renewals due (30d)</div>
+            <div className={`text-xl font-bold ${stats.expiringSoon + stats.expired > 0 ? "text-amber-600" : ""}`}>{stats.expiringSoon + stats.expired}</div>
+          </div>
         </Link>
       </div>
 
