@@ -13,6 +13,7 @@
 import { Resend } from "resend";
 import nodemailer from "nodemailer";
 import { describeMailError } from "../connection-error";
+import { wrapLinksForTracking } from "../click-tracking";
 import type { TemplateVersion } from "@/db/schema";
 
 /** Per-MFD SMTP mailbox — send client email straight from the firm's own server. */
@@ -60,6 +61,9 @@ export interface SendEmailArgs {
   smtp?: SmtpConfig;
   /** Stable key so a re-fired send dedupes provider-side (Resend idempotency). */
   idempotencyKey?: string;
+  /** When set (campaign sends), rewrite links through the click-tracking redirect
+   *  keyed by this communication id. */
+  trackingId?: string;
   /** In-memory attachments (e.g. a generated proposal/statement PDF). */
   attachments?: Array<{ filename: string; content: Buffer }>;
 }
@@ -77,11 +81,21 @@ export const emailAdapter = {
     // Lazy import: the renderer is a .tsx module (React Email JSX) — loading it
     // only on the template path keeps this adapter importable from plain-TS
     // contexts (unit tests, scripts) without a JSX transform.
-    const html =
+    let html =
       args.inlineHtml ??
       (args.templateVersion
         ? (await import("../email_renderer")).renderEmailTemplate(args.templateVersion.body as any, args.tokens)
         : `<p>${args.rendered.text.replace(/\n/g, "<br/>")}</p>`);
+
+    // Campaign sends: rewrite links through the click-tracking redirect. Wrapped
+    // defensively — tracking must never break the actual email going out.
+    if (args.trackingId) {
+      try {
+        html = wrapLinksForTracking(html, args.trackingId);
+      } catch {
+        /* keep the unwrapped html */
+      }
+    }
 
     // Template-level attachments (factsheet, KYC form, …) — Resend fetches by URL.
     const tplAttachments = (args.templateVersion?.attachments as Array<{ name: string; url: string }> | undefined) ?? [];

@@ -56,6 +56,7 @@ const PUBLIC_PATHS = new Set([
  * Path prefixes that should never require a session.
  *
  *   /r/*    — public risk-profile questionnaire (client clicks WA/email link)
+ *   /lc/*   — public email link click-tracking redirect (campaign emails)
  *   /d/*    — public document-collection form
  *   /p/*    — public proposal-approval page
  *   /lf/*   — public lead-capture form (Sprint 3 #15) — MFD embeds on
@@ -64,7 +65,7 @@ const PUBLIC_PATHS = new Set([
  *   /api/webhooks/* — Wapi / Resend / etc.
  *   /api/health, /api/auth/*, /api/employees/accept-invite — auth flows
  */
-const PUBLIC_PATH_PREFIXES = ["/r/", "/d/", "/p/", "/lf/"];
+const PUBLIC_PATH_PREFIXES = ["/r/", "/lc/", "/d/", "/p/", "/lf/"];
 const PUBLIC_API_PREFIXES = [
   "/api/public/",
   "/api/webhooks/",
@@ -182,10 +183,15 @@ export async function middleware(req: NextRequest) {
     return tag(NextResponse.redirect(new URL("/super-admin", req.url)));
   }
 
-  const res = tag(NextResponse.next());
+  // Expose the request pathname to Server Components so they can do path-aware
+  // logic (license-restricted carve-out for /dashboard/billing, per-module nav
+  // gating). This MUST be set on the REQUEST headers — `headers()` in an RSC
+  // reads the incoming request, so a response-only header never reaches it
+  // (which silently disabled the restricted-license + nav enforcement).
+  const requestHeaders = new Headers(req.headers);
+  requestHeaders.set("x-pathname", pathname);
+  const res = tag(NextResponse.next({ request: { headers: requestHeaders } }));
   res.headers.set("x-mfd-session", JSON.stringify(session));
-  // Expose the request pathname so server components can do path-aware
-  // logic (e.g. license-restricted carve-out for /dashboard/billing).
   res.headers.set("x-pathname", pathname);
   return res;
 }

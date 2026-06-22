@@ -8,15 +8,8 @@ import {
   ChevronLeft,
   MessageCircle,
   Mail,
-  MessageSquare,
-  Share2,
   Video,
-  Users2,
-  Users,
-  Globe,
-  Sparkles,
   Megaphone,
-  FileText,
   Save,
   Loader2,
 } from "lucide-react";
@@ -28,23 +21,15 @@ const KIND_OPTIONS: Array<{
   /** Set to true when this kind also produces an outbound broadcast we can wire to template+segment. */
   broadcast?: boolean;
 }> = [
-  { key: "social_media", label: "Social Media", icon: Share2 },
   { key: "whatsapp", label: "WhatsApp", icon: MessageCircle, broadcast: true },
   { key: "email", label: "Email", icon: Mail, broadcast: true },
-  { key: "sms", label: "SMS", icon: MessageSquare, broadcast: true },
-  { key: "webinar", label: "Webinar", icon: Video },
-  { key: "seminar", label: "Seminar", icon: Users2 },
-  { key: "referral", label: "Referral", icon: Users },
-  { key: "google_business", label: "Google Business", icon: Globe },
-  { key: "paid_ads", label: "Paid Ads", icon: Sparkles },
-  { key: "content", label: "Content", icon: FileText },
-  { key: "other", label: "Other", icon: Megaphone },
+  { key: "webinar", label: "Webinar / Seminar", icon: Video },
 ];
 
 export default function NewCampaignPage() {
   const router = useRouter();
   const [name, setName] = useState("");
-  const [kind, setKind] = useState<string>("social_media");
+  const [kind, setKind] = useState<string>("whatsapp");
   const [theme, setTheme] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -52,8 +37,14 @@ export default function NewCampaignPage() {
   const [segmentId, setSegmentId] = useState("");
   const [audience, setAudience] = useState<AudienceSelection | null>(null);
   const [templateId, setTemplateId] = useState("");
+  const [variantTemplateId, setVariantTemplateId] = useState("");
+  const [abSplitPct, setAbSplitPct] = useState(50);
+  const [abEnabled, setAbEnabled] = useState(false);
+  const [recurrence, setRecurrence] = useState("none");
+  const [recurrenceUntil, setRecurrenceUntil] = useState("");
   const [scheduledAt, setScheduledAt] = useState("");
   const [throttle, setThrottle] = useState(60);
+  const [preflight, setPreflight] = useState<{ recipients: number; recentOverlap: Array<{ name: string; when: string }>; waOutsideWindow: number | null } | null>(null);
   const [contentStatus, setContentStatus] = useState("not_started");
   const [complianceCheckStatus, setComplianceCheckStatus] = useState("pending");
   const [approvalStatus, setApprovalStatus] = useState("pending");
@@ -75,6 +66,28 @@ export default function NewCampaignPage() {
       setSegments(segRes.segments ?? []);
     })();
   }, []);
+
+  // Pre-launch checks (overlap with recent campaigns + WhatsApp 24h-window
+  // estimate) whenever the audience or channel changes.
+  useEffect(() => {
+    if (!segmentId) {
+      setPreflight(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch(`/api/campaigns/preflight?segmentId=${segmentId}&channel=${kind}`);
+        const j = await r.json();
+        if (!cancelled && r.ok) setPreflight(j);
+      } catch {
+        /* advisory only */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [segmentId, kind]);
 
   const opt = KIND_OPTIONS.find((k) => k.key === kind)!;
   const isBroadcast = !!opt.broadcast;
@@ -112,6 +125,14 @@ export default function NewCampaignPage() {
         if (segmentId) payload.segmentId = segmentId;
         if (scheduledAt) payload.scheduledAt = new Date(scheduledAt).toISOString();
         payload.throttlePerMinute = throttle;
+        if (abEnabled && variantTemplateId) {
+          payload.variantTemplateId = variantTemplateId;
+          payload.abSplitPct = abSplitPct;
+        }
+        if (recurrence !== "none") {
+          payload.recurrence = recurrence;
+          if (recurrenceUntil) payload.recurrenceUntil = new Date(recurrenceUntil).toISOString();
+        }
       }
       const res = await fetch("/api/campaigns", {
         method: "POST",
@@ -159,7 +180,7 @@ export default function NewCampaignPage() {
         {/* Campaign type */}
         <div>
           <div className="text-xs font-medium mb-2">Campaign type</div>
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-3 gap-2">
             {KIND_OPTIONS.map((o) => {
               const Icon = o.icon;
               const active = kind === o.key;
@@ -268,6 +289,34 @@ export default function NewCampaignPage() {
                 <p className="text-[11px] text-amber-700 mt-1">No approved {kind} template yet — create &amp; approve one under Templates first.</p>
               )}
             </label>
+            {/* A/B testing */}
+            {templateId && (
+              <div className="rounded-md border border-dashed p-3 space-y-2">
+                <label className="flex items-center gap-2 text-xs font-medium cursor-pointer">
+                  <input type="checkbox" checked={abEnabled} onChange={(e) => setAbEnabled(e.target.checked)} />
+                  A/B test — send a second template variant to part of the audience
+                </label>
+                {abEnabled && (
+                  <div className="grid grid-cols-2 gap-3 pt-1">
+                    <label className="block">
+                      <div className="text-[11px] text-muted-foreground mb-1">Variant B template</div>
+                      <select value={variantTemplateId} onChange={(e) => setVariantTemplateId(e.target.value)} className="input-base">
+                        <option value="">Select template…</option>
+                        {filteredTemplates.filter((t) => t.id !== templateId).map((t) => (
+                          <option key={t.id} value={t.id}>{t.name} ({t.key})</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="block">
+                      <div className="text-[11px] text-muted-foreground mb-1">% of audience to variant B: <strong>{abSplitPct}%</strong></div>
+                      <input type="range" min={0} max={100} step={5} value={abSplitPct} onChange={(e) => setAbSplitPct(Number(e.target.value))} className="w-full" />
+                      <div className="text-[10px] text-muted-foreground">A gets {100 - abSplitPct}% · B gets {abSplitPct}%. Pick a winner later from the campaign page.</div>
+                    </label>
+                  </div>
+                )}
+              </div>
+            )}
+
             <div>
               <div className="text-xs font-medium mb-1">Audience</div>
               <CampaignAudienceBuilder
@@ -307,6 +356,43 @@ export default function NewCampaignPage() {
                 />
               </label>
             </div>
+
+            {/* Recurrence */}
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block">
+                <div className="text-xs font-medium mb-1">Repeat</div>
+                <select value={recurrence} onChange={(e) => setRecurrence(e.target.value)} className="input-base">
+                  <option value="none">One-time</option>
+                  <option value="daily">Daily</option>
+                  <option value="weekly">Weekly</option>
+                  <option value="monthly">Monthly</option>
+                </select>
+              </label>
+              {recurrence !== "none" && (
+                <label className="block">
+                  <div className="text-xs font-medium mb-1">Repeat until</div>
+                  <input type="date" value={recurrenceUntil} onChange={(e) => setRecurrenceUntil(e.target.value)} className="input-base" />
+                </label>
+              )}
+            </div>
+
+            {/* Pre-launch advisory */}
+            {preflight && (
+              <div className="space-y-1.5">
+                {preflight.recentOverlap.length > 0 && (
+                  <div className="rounded-md border border-amber-300 bg-amber-50 text-amber-800 px-3 py-2 text-[11px]">
+                    ⚠ This audience was already messaged by {preflight.recentOverlap.length} campaign{preflight.recentOverlap.length > 1 ? "s" : ""} in the last 14 days
+                    ({preflight.recentOverlap.map((o) => o.name).join(", ")}). Sending again may cause fatigue.
+                  </div>
+                )}
+                {kind === "whatsapp" && preflight.waOutsideWindow != null && preflight.waOutsideWindow > 0 && (
+                  <div className="rounded-md border border-blue-200 bg-blue-50 text-blue-800 px-3 py-2 text-[11px]">
+                    ℹ ~{preflight.waOutsideWindow} of {preflight.recipients} recipients are outside the WhatsApp 24h window. A marketing template
+                    can still reach them, but free-form messages to them will be skipped.
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 

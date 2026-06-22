@@ -12,11 +12,25 @@
  */
 
 import { and, eq, sql } from "drizzle-orm";
+import { v4 as uuid } from "uuid";
 import { withTenant, withSystem } from "@/db/client";
 import { campaigns, segments, segmentMemberships, investors, leads, templates, communications } from "@/db/schema";
 import { dispatch } from "@/lib/comms/pipeline";
 import { isBroadcastCampaign } from "@/lib/campaigns/broadcast";
+import { recomputeCampaignRoi } from "@/lib/campaigns/roi";
 import { captureError } from "@/lib/observability/capture";
+
+/** Deterministic A/B bucket for a subject. Returns the variant ('a' | 'b') the
+ *  subject falls into given the % of the audience assigned to B. Stable per
+ *  subject so re-runs don't reshuffle. */
+function pickVariant(subjectId: string, splitPctToB: number): "a" | "b" {
+  let h = 2166136261;
+  for (let i = 0; i < subjectId.length; i++) {
+    h ^= subjectId.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0) % 100 < splitPctToB ? "b" : "a";
+}
 
 /** Tick cadence (15s) → 4 ticks/minute. Batch size = throttlePerMinute / 4 so
  *  the configured per-minute rate is actually respected. */
@@ -72,6 +86,17 @@ async function processOneCampaign(tenantId: string, campaignId: string): Promise
     if (!seg || !tpl) {
       await cancel(tx, campaignId, tenantId, "Linked segment or template not found.");
       return { done: true as const };
+    }
+
+    // A/B: load the optional second template variant. Each recipient is bucketed
+    // into A or B (unless a winner has been picked, in which case everyone gets it).
+    let variantTpl: any = null;
+    if (c.variant_template_id) {
+      [variantTpl] = await tx
+        .select()
+        .from(templates)
+        .where(and(eq(templates.id, c.variant_template_id), eq(templates.tenantId, tenantId)))
+        .limit(1);
     }
 
     const members = await tx
@@ -131,7 +156,16 @@ async function processOneCampaign(tenantId: string, campaignId: string): Promise
       recipients.push({ subjectId: m.subjectId, name: subj.name ?? "", contact, kind: seg.subjectType as "investor" | "lead" });
     }
 
-    return { done: false as const, channel: c.channel as string, tplKey: tpl.key as string, recipients, overrides };
+    return {
+      done: false as const,
+      channel: c.channel as string,
+      tplKey: tpl.key as string,
+      tplKeyB: (variantTpl?.key as string | undefined) ?? null,
+      abSplitPct: Math.max(0, Math.min(100, Number(c.ab_split_pct ?? 50))),
+      abWinner: (c.ab_winner as "a" | "b" | null) ?? null,
+      recipients,
+      overrides,
+    };
   });
 
   if (plan.done) {
@@ -141,17 +175,31 @@ async function processOneCampaign(tenantId: string, campaignId: string): Promise
 
   // ── Phase 2: SEND — each recipient in its OWN transaction ─────────────────
   for (const r of plan.recipients) {
+    // Resolve which template + variant this recipient gets. A picked winner
+    // overrides the split (everyone left gets the winner); otherwise bucket by
+    // the deterministic split. With no B template, it's a plain single-variant send.
+    let variant: "a" | "b" | undefined;
+    let templateKey = plan.tplKey;
+    if (plan.tplKeyB) {
+      if (plan.abWinner) {
+        variant = plan.abWinner;
+      } else {
+        variant = pickVariant(r.subjectId, plan.abSplitPct);
+      }
+      templateKey = variant === "b" && plan.tplKeyB ? plan.tplKeyB : plan.tplKey;
+    }
     try {
       await withTenant(tenantId, async (tx) => {
         await dispatch(tx, {
           tenantId,
           channel: plan.channel as any,
-          templateKey: plan.tplKey,
+          templateKey,
           recipient: r.contact,
           variables: { name: r.name, ...(plan.overrides[r.subjectId] ?? {}) },
           category: "marketing",
           ...(r.kind === "investor" ? { investorId: r.subjectId } : { leadId: r.subjectId }),
           campaignId,
+          ...(variant ? { variant } : {}),
         } as any);
       });
     } catch (e: any) {
@@ -211,6 +259,81 @@ async function markSent(tx: any, campaignId: string, tenantId: string) {
     .update(campaigns)
     .set({ status: "sent", completedAt: new Date(), updatedAt: new Date() } as any)
     .where(and(eq(campaigns.id, campaignId), eq(campaigns.tenantId, tenantId)));
+
+  // Attribute ROI (meetings booked / clients converted) the moment the send
+  // finishes — early numbers; a marketer can also re-run it later from the UI as
+  // more outcomes land inside the attribution window.
+  try {
+    await recomputeCampaignRoi(tx, tenantId, campaignId);
+  } catch (err: any) {
+    captureError("[campaign-dispatcher] ROI attribution failed", err, { campaignId });
+  }
+
+  // Recurrence: if this campaign repeats, clone it as a fresh scheduled run for
+  // the next interval (re-using the same dynamic segment, so membership is
+  // re-evaluated at the next send). Bounded by recurrenceUntil.
+  try {
+    await maybeCloneRecurring(tx, tenantId, campaignId);
+  } catch (err: any) {
+    captureError("[campaign-dispatcher] recurrence clone failed", err, { campaignId });
+  }
+}
+
+/** Next fire time for a recurrence kind, computed from `from`. */
+function nextOccurrence(from: Date, recurrence: string): Date | null {
+  const d = new Date(from);
+  if (recurrence === "daily") d.setDate(d.getDate() + 1);
+  else if (recurrence === "weekly") d.setDate(d.getDate() + 7);
+  else if (recurrence === "monthly") d.setMonth(d.getMonth() + 1);
+  else return null;
+  return d;
+}
+
+/**
+ * Clone a completed recurring campaign into a new 'scheduled' run for the next
+ * interval. The clone points at the same segment + template(s); counters reset.
+ * Stops when the next occurrence would fall after `recurrenceUntil`.
+ */
+async function maybeCloneRecurring(tx: any, tenantId: string, campaignId: string) {
+  const [c] = await tx.select().from(campaigns).where(and(eq(campaigns.id, campaignId), eq(campaigns.tenantId, tenantId))).limit(1);
+  if (!c || !c.recurrence || c.recurrence === "none") return;
+  if (!isBroadcastCampaign(c)) return;
+
+  const base = c.scheduledAt ? new Date(c.scheduledAt) : c.startedAt ? new Date(c.startedAt) : new Date();
+  const next = nextOccurrence(base, c.recurrence as string);
+  if (!next) return;
+  if (c.recurrenceUntil && next > new Date(c.recurrenceUntil)) return;
+
+  const newId = uuid();
+  await tx.insert(campaigns).values({
+    id: newId,
+    tenantId,
+    name: c.name,
+    description: c.description,
+    kind: c.kind,
+    theme: c.theme,
+    channel: c.channel,
+    templateId: c.templateId,
+    templateVersionId: c.templateVersionId,
+    variantTemplateId: c.variantTemplateId,
+    variantTemplateVersionId: c.variantTemplateVersionId,
+    abSplitPct: c.abSplitPct,
+    segmentId: c.segmentId,
+    targetAudience: c.targetAudience,
+    status: "scheduled",
+    scheduledAt: next,
+    throttlePerMinute: c.throttlePerMinute,
+    // Carry approval forward so the recurring run isn't stuck pending each cycle.
+    approvalStatus: c.approvalStatus,
+    contentStatus: c.contentStatus,
+    complianceCheckStatus: c.complianceCheckStatus,
+    recurrence: c.recurrence,
+    recurrenceUntil: c.recurrenceUntil,
+    parentCampaignId: c.parentCampaignId ?? c.id,
+    campaignCost: c.campaignCost,
+    variableOverrides: c.variableOverrides,
+    createdByUserId: c.createdByUserId,
+  } as any);
 }
 
 async function cancel(tx: any, campaignId: string, tenantId: string, reason: string) {
@@ -227,6 +350,13 @@ async function recomputeCounters(tenantId: string, campaignId: string) {
       .from(communications)
       .where(and(eq(communications.campaignId, campaignId), eq(communications.tenantId, tenantId)))
       .groupBy(communications.status);
+
+    // Clicks are orthogonal to the delivery status (a delivered/read message can
+    // also be clicked) — count them separately from the clicked_at stamp.
+    const [{ clicked }] = await tx
+      .select({ clicked: sql<number>`count(*) FILTER (WHERE ${communications.clickedAt} IS NOT NULL)::int` })
+      .from(communications)
+      .where(and(eq(communications.campaignId, campaignId), eq(communications.tenantId, tenantId)));
 
     let queued = 0, sent = 0, delivered = 0, read = 0, replied = 0, failed = 0, bounced = 0, unsubscribed = 0;
     let total = 0;
@@ -252,6 +382,7 @@ async function recomputeCounters(tenantId: string, campaignId: string) {
         deliveredCount: delivered,
         readCount: read,
         repliedCount: replied,
+        clickedCount: Number(clicked ?? 0),
         failedCount: failed,
         bouncedCount: bounced,
         unsubscribedCount: unsubscribed,

@@ -36,9 +36,24 @@ export const campaigns = pgTable(
     channel: text("channel", { enum: ["email", "whatsapp", "sms"] }).notNull(),
     templateId: uuid("template_id").references(() => templates.id),
     templateVersionId: uuid("template_version_id").references(() => templateVersions.id),
+    /** A/B testing — optional second template variant + the % of the audience that
+     *  receives it (0–100). When `variantTemplateId` is set the dispatcher splits
+     *  the audience and tags each `communications` row with `variant` ('a' | 'b'). */
+    variantTemplateId: uuid("variant_template_id").references(() => templates.id),
+    variantTemplateVersionId: uuid("variant_template_version_id").references(() => templateVersions.id),
+    abSplitPct: integer("ab_split_pct").default(50),
+    /** Winning variant once decided ('a' | 'b'); null while undecided / no A/B. */
+    abWinner: text("ab_winner", { enum: ["a", "b"] }),
     segmentId: uuid("segment_id").references(() => segments.id),
     /** Free-text audience description (when no formal segment is used). */
     targetAudience: text("target_audience"),
+
+    /** Recurrence — a recurring campaign re-clones itself (fresh scheduled run)
+     *  when it completes, until `recurrenceUntil`. 'none' = one-shot. */
+    recurrence: text("recurrence", { enum: ["none", "daily", "weekly", "monthly"] }).default("none"),
+    recurrenceUntil: timestamp("recurrence_until", { withTimezone: true }),
+    /** Set on clones spawned by a recurring parent — for lineage / reporting. */
+    parentCampaignId: uuid("parent_campaign_id"),
 
     status: text("status", {
       enum: ["draft", "scheduled", "sending", "sent", "paused", "cancelled"],

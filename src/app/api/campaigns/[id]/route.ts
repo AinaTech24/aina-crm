@@ -40,6 +40,11 @@ const Patch = z.object({
   theme: z.string().max(200).optional(),
   segmentId: z.string().uuid().optional(),
   templateId: z.string().uuid().optional(),
+  variantTemplateId: z.string().uuid().nullable().optional(),
+  abSplitPct: z.number().int().min(0).max(100).optional(),
+  abWinner: z.enum(["a", "b"]).nullable().optional(),
+  recurrence: z.enum(["none", "daily", "weekly", "monthly"]).optional(),
+  recurrenceUntil: z.string().nullable().optional(),
   targetAudience: z.string().max(300).optional(),
   startDate: z.string().optional(),
   endDate: z.string().optional(),
@@ -86,7 +91,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       // Block edits to send-mechanics fields once sending — but allow updating
       // ROI metrics (leads_generated, meetings_booked, clients_converted, remarks).
       const sendingLocked = ["sending", "completed"].includes(before.status as string);
-      const sendMechanicsKeys = ["segmentId", "templateId", "scheduledAt", "status", "channel"];
+      const sendMechanicsKeys = ["segmentId", "templateId", "variantTemplateId", "abSplitPct", "scheduledAt", "status", "channel"];
       if (sendingLocked) {
         const touchesSendMechanics = sendMechanicsKeys.some((k) => k in (parse.data as any));
         if (touchesSendMechanics) {
@@ -99,6 +104,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       if (patch.startDate) patch.startDate = new Date(patch.startDate);
       if (patch.endDate) patch.endDate = new Date(patch.endDate);
       if (patch.scheduledAt) patch.scheduledAt = new Date(patch.scheduledAt);
+      if (patch.recurrenceUntil) patch.recurrenceUntil = new Date(patch.recurrenceUntil);
       if (patch.campaignCost != null) patch.campaignCost = String(patch.campaignCost);
       // Stamp approval timestamp when status flips to 'approved'
       if (patch.approvalStatus === "approved" && before.approvalStatus !== "approved") {

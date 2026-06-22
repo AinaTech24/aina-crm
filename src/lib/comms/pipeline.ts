@@ -60,6 +60,8 @@ export interface DispatchInput {
   workflowRunId?: string;
   workflowRunStepId?: string;
   campaignId?: string;
+  /** A/B variant this send belongs to ('a' | 'b') — campaign sends only. */
+  variant?: "a" | "b";
   meta?: Record<string, unknown>;
   /** Allow caller to override the locale */
   locale?: string;
@@ -273,6 +275,43 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
   }
 
   // -----------------------------------------------------------
+  // 3a. Marketing frequency cap (anti-fatigue / WhatsApp-ban protection).
+  // Skip a marketing send to a subject who has already received the tenant's
+  // configured number of marketing (campaign) messages within the trailing
+  // window. Campaign sends are the marketing channel — we proxy "marketing
+  // volume" by counting prior campaign-stamped sends to this subject. NULL/0
+  // cap disables the gate. Auth/OTP + non-marketing sends are exempt.
+  // -----------------------------------------------------------
+  if (input.category === "marketing" && input.investorId && input.campaignId) {
+    const cap = Number((tenantRow as any)?.marketingFreqCap ?? 0);
+    const windowDays = Number((tenantRow as any)?.marketingFreqWindowDays ?? 7) || 7;
+    if (cap > 0) {
+      const [{ n }] = await tx
+        .select({ n: sql<number>`count(*)::int` })
+        .from(communications)
+        .where(
+          and(
+            eq(communications.tenantId, input.tenantId),
+            eq(communications.investorId, input.investorId),
+            eq(communications.direction, "outbound"),
+            sql`${communications.campaignId} IS NOT NULL`,
+            inArray(communications.status, ["sent", "delivered", "read", "replied"]),
+            sql`${communications.createdAt} >= now() - ${`${windowDays} days`}::interval`
+          )
+        );
+      if (Number(n ?? 0) >= cap) {
+        return await skip(
+          tx,
+          communicationId,
+          input,
+          "skipped_frequency_cap",
+          `marketing frequency cap reached (${n}/${cap} in ${windowDays}d)`
+        );
+      }
+    }
+  }
+
+  // -----------------------------------------------------------
   // 3b. Email suppression — never send to a hard-bounced / unsubscribed address.
   // -----------------------------------------------------------
   if (input.channel === "email") {
@@ -432,6 +471,7 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
     workflowRunId: input.workflowRunId,
     workflowRunStepId: input.workflowRunStepId,
     campaignId: input.campaignId,
+    variant: input.variant,
     consentSnapshot: consentSnapshot as any,
     complianceSnapshot: compliance.findings as any,
     complianceScore: String(compliance.score) as any,
@@ -483,6 +523,8 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
         replyTo: sender.replyTo,
         // Stable across step retries → Resend dedupes a re-fired send.
         idempotencyKey: input.workflowRunStepId ?? communicationId,
+        // Campaign emails get link-level click tracking keyed by this comm row.
+        trackingId: input.campaignId ? communicationId : undefined,
       });
     } else {
       const integration = await getTenantIntegration(tx, input.tenantId, "msg91");
@@ -534,6 +576,7 @@ async function skip(
     | "skipped_session"
     | "skipped_rate_limit"
     | "skipped_quota"
+    | "skipped_frequency_cap"
     | "skipped_no_contact"
     | "template_not_approved"
     | "render_error",
@@ -554,6 +597,7 @@ async function skip(
     workflowRunId: input.workflowRunId,
     workflowRunStepId: input.workflowRunStepId,
     campaignId: input.campaignId,
+    variant: input.variant,
   });
   return { communicationId: id, status: "skipped", skipped: { reason, findings: compliance?.findings } };
 }

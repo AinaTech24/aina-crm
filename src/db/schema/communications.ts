@@ -40,6 +40,7 @@ export const communications = pgTable(
         "skipped_compliance",
         "skipped_rate_limit",
         "skipped_quota", // tenant hit its plan's monthly message allowance
+        "skipped_frequency_cap", // subject already received the tenant's marketing-cap messages in the window
         "skipped_no_contact", // recipient has no email/phone on file (campaign fan-out)
         "sent",
         "delivered",
@@ -77,6 +78,10 @@ export const communications = pgTable(
     workflowRunId: uuid("workflow_run_id").references(() => workflowRuns.id),
     workflowRunStepId: uuid("workflow_run_step_id").references(() => workflowRunSteps.id),
     campaignId: uuid("campaign_id"),
+    /** A/B variant this message belongs to ('a' | 'b') — campaign sends only. */
+    variant: text("variant"),
+    /** First time a tracked link in this message was clicked (click tracking). */
+    clickedAt: timestamp("clicked_at", { withTimezone: true }),
 
     /** Snapshot of consent at the moment of send (immutable audit) */
     consentSnapshot: jsonb("consent_snapshot"),

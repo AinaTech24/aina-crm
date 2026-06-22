@@ -1,4 +1,4 @@
-import { boolean, date, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, date, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { id, timestamps } from "./_shared";
 
 export const tenants = pgTable(
@@ -25,6 +25,10 @@ export const tenants = pgTable(
     website: text("website"),
     primaryColor: text("primary_color").default("#1f2937"),
     secondaryColor: text("secondary_color").default("#0ea5e9"),
+    /** Extra theme controls (migration 0128) — body text + hover/secondary
+     *  surface colour. Optional hex; null = stock palette. */
+    textColor: text("text_color"),
+    hoverColor: text("hover_color"),
     logoUrl: text("logo_url"),
     faviconUrl: text("favicon_url"),
     /** Square app icon — sidebar badge / small square avatars. */
@@ -100,6 +104,12 @@ export const tenants = pgTable(
     dataProtectionOfficer: jsonb("dpo").$type<{ name?: string; email?: string; phone?: string }>(),
     riaRegistered: boolean("ria_registered").default(false),
     featureFlags: jsonb("feature_flags").$type<Record<string, boolean>>().default({}),
+    /** Marketing frequency cap (anti-fatigue / WhatsApp-ban protection). The comms
+     *  pipeline skips a marketing send to a subject who already received
+     *  `marketingFreqCap` marketing messages within the trailing
+     *  `marketingFreqWindowDays` days. NULL cap = disabled. */
+    marketingFreqCap: integer("marketing_freq_cap").default(6),
+    marketingFreqWindowDays: integer("marketing_freq_window_days").default(7),
     /** Soft delete — set by a platform admin from the super-admin panel. A
      *  non-null value hides the tenant from the list and blocks its logins. */
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
