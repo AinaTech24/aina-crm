@@ -80,7 +80,8 @@ const PostBody = z.object({
 export async function GET(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "compliance.edit");
+    // Read access is open to any team member (sales needs the catalog to know
+    // what's pitchable); creates/edits stay gated to compliance.edit (POST).
     await assertActiveLicense(session.tenantId, session.roles);
 
     const sp = req.nextUrl.searchParams;

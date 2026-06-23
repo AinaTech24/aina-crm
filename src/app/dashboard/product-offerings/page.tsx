@@ -9,13 +9,14 @@
  */
 
 import Link from "next/link";
-import { Plus, Users as UsersIcon, FileText } from "lucide-react";
+import { Plus, Users as UsersIcon, FileText, ShieldCheck, ShieldAlert, AlertTriangle } from "lucide-react";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { require as requireCap } from "@/lib/auth/rbac";
+import { can } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { productOfferings, users, legalRegistrations } from "@/db/schema";
+import { computeOfferingHealth, buildCredMap, type OfferingHealth } from "@/lib/product-offerings/health";
 
 export const dynamic = "force-dynamic";
 
@@ -51,8 +52,10 @@ export default async function ProductOfferingsListPage({
   searchParams: Promise<{ status?: string; category?: string }>;
 }) {
   const session = await requireSession();
-  requireCap(session.roles, "compliance.edit");
+  // VIEW is open to any team member (the catalog answers "what can I pitch this
+  // lead?" for RMs); only compliance/owner can add or edit (gated below + in API).
   await assertActiveLicense(session.tenantId, session.roles);
+  const canEdit = can(session.roles, "compliance.edit", session.permissions);
   const sp = await searchParams;
   const statusFilter = sp.status ?? "active";
   const categoryFilter = sp.category ?? "all";
@@ -79,28 +82,60 @@ export default async function ProductOfferingsListPage({
     for (const id of (r.teamMemberIds ?? []) as string[]) teamIds.add(id);
     for (const id of (r.linkedRegistrationIds ?? []) as string[]) regIds.add(id);
   }
-  const { teamMap, regMap } = await withTenant(session.tenantId, async (tx) => {
+  const { teamMap, regNameMap, regMap, credMap } = await withTenant(session.tenantId, async (tx) => {
     const teamMap = new Map<string, string>();
-    const regMap = new Map<string, string>();
+    const regNameMap = new Map<string, string>();
+    const regMap = new Map<string, { label: string; expiresAt: string | Date | null }>();
+    let credMap = new Map<string, ReturnType<typeof buildCredMap> extends Map<string, infer V> ? V : never>();
     if (teamIds.size > 0) {
       const members = await tx
-        .select({ id: users.id, name: users.name })
+        .select({
+          id: users.id,
+          name: users.name,
+          nismExpiryAt: users.nismExpiryAt,
+          nismCertificateNo: users.nismCertificateNo,
+          arnExpiryAt: users.arnExpiryAt,
+          personalArn: users.personalArn,
+          euinExpiryAt: users.euinExpiryAt,
+          euin: users.euin,
+        })
         .from(users)
         .where(inArray(users.id, [...teamIds]));
       for (const m of members) teamMap.set(m.id, m.name);
+      credMap = buildCredMap(members);
     }
     if (regIds.size > 0) {
       const regs = await tx
         .select({
           id: legalRegistrations.id,
           registrationFor: legalRegistrations.registrationFor,
+          expiryAt: legalRegistrations.expiryAt,
         })
         .from(legalRegistrations)
         .where(inArray(legalRegistrations.id, [...regIds]));
-      for (const r of regs) regMap.set(r.id, r.registrationFor);
+      for (const r of regs) {
+        regNameMap.set(r.id, r.registrationFor);
+        regMap.set(r.id, { label: r.registrationFor, expiresAt: r.expiryAt });
+      }
     }
-    return { teamMap, regMap };
+    return { teamMap, regNameMap, regMap, credMap };
   });
+
+  // Per-offering health (team readiness + linked-licence expiry).
+  const healthById = new Map<string, OfferingHealth>();
+  for (const r of rows) {
+    healthById.set(
+      r.id,
+      computeOfferingHealth({
+        status: r.status,
+        requiredExams: (r.requiredExams ?? []) as string[],
+        linkedRegistrationIds: (r.linkedRegistrationIds ?? []) as string[],
+        teamMemberIds: (r.teamMemberIds ?? []) as string[],
+        regMap,
+        credMap,
+      })
+    );
+  }
 
   // Counts for filter chips
   const counts = await withTenant(session.tenantId, async (tx) => {
@@ -121,6 +156,49 @@ export default async function ProductOfferingsListPage({
     };
   });
 
+  function HealthBadge({ health, active }: { health?: OfferingHealth; active: boolean }) {
+    if (!health) return null;
+    const licBad = health.license === "expired";
+    const licWarn = health.license === "expiring";
+    const teamBad = health.readiness === "blocked";
+    const teamWarn = health.readiness === "attention" || health.readiness === "no_team";
+    const bad = licBad || teamBad;
+    const warn = !bad && (licWarn || teamWarn);
+
+    // Build a hover summary.
+    const bits: string[] = [];
+    if (health.license === "expired") bits.push("Authorising licence EXPIRED");
+    else if (health.license === "expiring") bits.push("Licence expiring within 90 days");
+    if (health.readiness === "blocked") bits.push("No qualified team member");
+    else if (health.readiness === "no_team") bits.push("No team assigned");
+    else if (health.gaps.length) bits.push(...health.gaps);
+    const title = bits.join(" · ") || "Team qualified · licences current";
+
+    if (bad) {
+      return (
+        <span title={title} className={`chip text-[10px] inline-flex items-center gap-1 ${active ? "bg-rose-100 text-rose-700" : "bg-slate-100 text-slate-500"}`}>
+          <ShieldAlert className="size-3" /> Risk
+        </span>
+      );
+    }
+    if (warn) {
+      return (
+        <span title={title} className="chip text-[10px] inline-flex items-center gap-1 bg-amber-100 text-amber-700">
+          <AlertTriangle className="size-3" /> Check
+        </span>
+      );
+    }
+    // Only affirm when there's something verifiable to affirm.
+    if (health.licenses.length > 0 || health.requires.nism || health.requires.arn || health.requires.euin) {
+      return (
+        <span title={title} className="chip text-[10px] inline-flex items-center gap-1 bg-emerald-50 text-emerald-700">
+          <ShieldCheck className="size-3" /> Ready
+        </span>
+      );
+    }
+    return null;
+  }
+
   return (
     <div className="space-y-5">
       <div className="flex items-end justify-between">
@@ -132,12 +210,14 @@ export default async function ProductOfferingsListPage({
             on it — single source of truth for SEBI / DDQ / lead-intake.
           </p>
         </div>
-        <Link
-          href="/dashboard/product-offerings/new"
-          className="btn-primary text-sm"
-        >
-          <Plus className="size-4" /> Add offering
-        </Link>
+        {canEdit && (
+          <Link
+            href="/dashboard/product-offerings/new"
+            className="btn-primary text-sm"
+          >
+            <Plus className="size-4" /> Add offering
+          </Link>
+        )}
       </div>
 
       <div className="flex items-center gap-2 flex-wrap">
@@ -171,12 +251,14 @@ export default async function ProductOfferingsListPage({
           <p className="text-sm text-muted-foreground">
             No offerings with this filter yet.
           </p>
-          <Link
-            href="/dashboard/product-offerings/new"
-            className="btn-primary text-sm mt-4"
-          >
-            <Plus className="size-4" /> Add the first offering
-          </Link>
+          {canEdit && (
+            <Link
+              href="/dashboard/product-offerings/new"
+              className="btn-primary text-sm mt-4"
+            >
+              <Plus className="size-4" /> Add the first offering
+            </Link>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -194,13 +276,16 @@ export default async function ProductOfferingsListPage({
                     {r.regulator}
                   </div>
                 </div>
-                <span
-                  className={`chip text-[10px] shrink-0 ${
-                    STATUS_TONE[r.status] ?? "bg-slate-100"
-                  }`}
-                >
-                  {r.status}
-                </span>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <HealthBadge health={healthById.get(r.id)} active={r.status === "active"} />
+                  <span
+                    className={`chip text-[10px] ${
+                      STATUS_TONE[r.status] ?? "bg-slate-100"
+                    }`}
+                  >
+                    {r.status}
+                  </span>
+                </div>
               </div>
 
               {((r.providers as string[]) ?? []).length > 0 && (
@@ -228,7 +313,7 @@ export default async function ProductOfferingsListPage({
                   </div>
                   <div className="mt-0.5 truncate">
                     {((r.linkedRegistrationIds as string[]) ?? [])
-                      .map((id) => regMap.get(id))
+                      .map((id) => regNameMap.get(id))
                       .filter(Boolean)
                       .join(", ") || "—"}
                   </div>
