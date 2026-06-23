@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { sql } from "drizzle-orm";
-import { Plus, UserCog, AlertTriangle, Target, IndianRupee } from "lucide-react";
+import { Plus, UserCog, AlertTriangle, Target, IndianRupee, ShieldCheck, Network, Upload } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { ROLE_LABELS } from "@/lib/auth/rbac";
@@ -83,12 +83,23 @@ export default async function EmployeesPage({
             Roles, departments, reporting lines, targets, NISM compliance — all in one register.
           </p>
         </div>
-        <Link
-          href="/dashboard/employees/new"
-          className="rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-sm font-medium flex items-center gap-1.5"
-        >
-          <Plus className="size-4" /> Invite employee
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link href="/dashboard/employees/org" className="rounded-md border px-3 py-1.5 text-sm font-medium flex items-center gap-1.5 hover:bg-secondary">
+            <Network className="size-4" /> Org chart
+          </Link>
+          <Link href="/dashboard/employees/compliance" className="rounded-md border px-3 py-1.5 text-sm font-medium flex items-center gap-1.5 hover:bg-secondary">
+            <ShieldCheck className="size-4" /> Licensing
+          </Link>
+          <Link href="/dashboard/employees/import" className="rounded-md border px-3 py-1.5 text-sm font-medium flex items-center gap-1.5 hover:bg-secondary">
+            <Upload className="size-4" /> Import
+          </Link>
+          <Link
+            href="/dashboard/employees/new"
+            className="rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-sm font-medium flex items-center gap-1.5"
+          >
+            <Plus className="size-4" /> Invite employee
+          </Link>
+        </div>
       </div>
 
       <div className="grid grid-cols-4 gap-3">
@@ -150,9 +161,9 @@ export default async function EmployeesPage({
             <div className="mt-2">No employees match these filters.</div>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="table-scroll">
             <table className="w-full text-sm">
-              <thead className="text-xs text-muted-foreground border-b">
+              <thead className="text-xs text-muted-foreground border-b sticky top-0 z-10 bg-card">
                 <tr>
                   <th className="text-left px-4 py-2 font-medium">Employee</th>
                   <th className="text-left py-2 font-medium">Department</th>

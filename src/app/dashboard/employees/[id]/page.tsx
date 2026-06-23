@@ -10,6 +10,7 @@ import { tenantAccessibleNavKeys } from "@/config/nav-access";
 import { formatINR, formatDate } from "@/lib/utils";
 import { EmployeeEditForm } from "@/components/employees/EmployeeEditForm";
 import { RecordProvenance } from "@/components/common/RecordProvenance";
+import { getEntitlement, currentFyStart } from "@/lib/leave/policy";
 
 export const dynamic = "force-dynamic";
 
@@ -37,6 +38,30 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
         (SELECT COUNT(*)::int FROM tasks WHERE assignee_id = ${id}::uuid AND status IN ('open','in_progress')) AS open_tasks,
         (SELECT COUNT(*)::int FROM tasks WHERE assignee_id = ${id}::uuid AND status IN ('open','in_progress') AND due_at < now()) AS overdue_tasks,
         (SELECT COUNT(*)::int FROM review_meetings WHERE rm_id = ${id}::uuid AND status IN ('scheduled','confirmed') AND meeting_date >= now()) AS upcoming_meetings
+    `);
+
+    // ── Attendance (month-to-date) + leave (current FY) summary ──
+    const attMtd = await tx.execute(sql`
+      SELECT
+        COUNT(*) FILTER (WHERE status = 'present')::int AS present,
+        COUNT(*) FILTER (WHERE status = 'half_day')::int AS half_day,
+        COUNT(*) FILTER (WHERE status = 'absent')::int AS absent,
+        COUNT(*) FILTER (WHERE status = 'on_leave')::int AS on_leave,
+        COUNT(*) FILTER (WHERE status NOT IN ('week_off','holiday'))::int AS working_days
+      FROM attendance
+      WHERE tenant_id = ${session.tenantId}::uuid AND employee_user_id = ${id}::uuid
+        AND attendance_date >= date_trunc('month', current_date)
+    `);
+    const leaveUsed = await tx.execute(sql`
+      SELECT leave_type, COALESCE(SUM(no_of_days), 0)::numeric AS used
+      FROM leave_applications
+      WHERE tenant_id = ${session.tenantId}::uuid AND employee_user_id = ${id}::uuid
+        AND status = 'approved' AND from_date >= ${currentFyStart()}
+      GROUP BY leave_type
+    `);
+    const pendingLeave = await tx.execute(sql`
+      SELECT COUNT(*)::int AS n FROM leave_applications
+      WHERE tenant_id = ${session.tenantId}::uuid AND employee_user_id = ${id}::uuid AND status = 'requested'
     `);
 
     // Fetch compliance documents linked to this employee
@@ -109,10 +134,37 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
         .where(eq(users.id, managerId));
       manager = m ?? null;
     }
-    return { emp, teammates, stats: stats.rows[0] as any, manager, docs, logs: logs.rows as any[], assignedTasks, assignedMeetings };
+    return {
+      emp,
+      teammates,
+      stats: stats.rows[0] as any,
+      manager,
+      docs,
+      logs: logs.rows as any[],
+      assignedTasks,
+      assignedMeetings,
+      attMtd: attMtd.rows[0] as any,
+      leaveUsed: leaveUsed.rows as Array<{ leave_type: string; used: string }>,
+      pendingLeave: Number((pendingLeave.rows[0] as any)?.n ?? 0),
+    };
   });
   if (!data) notFound();
   const { emp, teammates, stats, manager } = data;
+
+  // ── HR summary derivations ──
+  const att = data.attMtd ?? {};
+  const presentEq = Number(att.present ?? 0) + Number(att.half_day ?? 0) * 0.5;
+  const workingDays = Number(att.working_days ?? 0);
+  const attendancePct = workingDays > 0 ? Math.round((presentEq / workingDays) * 100) : null;
+  const usedByType: Record<string, number> = {};
+  for (const r of data.leaveUsed) usedByType[r.leave_type] = Number(r.used ?? 0);
+  const custom = (emp as any).customLeaveEntitlements as Record<string, number> | null;
+  const leaveBalance = (["casual", "sick", "earned"] as const).map((t) => {
+    const ent = getEntitlement(t, custom);
+    const used = usedByType[t] ?? 0;
+    return { type: t, used, entitlement: ent, balance: ent == null ? null : Math.max(0, ent - used) };
+  });
+  const totalLeaveBalance = leaveBalance.reduce((a, b) => a + (b.balance ?? 0), 0);
 
   return (
     <div className="space-y-6 max-w-5xl">
@@ -159,6 +211,32 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
         <Tile icon={CheckCircle2} label="Open tasks" value={String(stats.open_tasks ?? 0)} />
         <Tile icon={AlertTriangle} label="Overdue" value={String(stats.overdue_tasks ?? 0)} accent={Number(stats.overdue_tasks) > 0 ? "rose" : "muted"} />
         <Tile icon={Calendar} label="Upcoming meetings" value={String(stats.upcoming_meetings ?? 0)} />
+      </div>
+
+      {/* HR strip — attendance (MTD) + leave (current FY) */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <Tile
+          icon={Calendar}
+          label="Attendance (MTD)"
+          value={attendancePct != null ? `${attendancePct}%` : "—"}
+          accent={attendancePct != null && attendancePct < 80 ? "rose" : attendancePct != null ? "emerald" : "muted"}
+        />
+        <Tile icon={CheckCircle2} label="Leave balance (FY)" value={String(totalLeaveBalance)} accent="emerald" />
+        <Tile icon={AlertTriangle} label="Pending leave" value={String(data.pendingLeave)} accent={data.pendingLeave > 0 ? "amber" : "muted"} />
+        <div className="card-surface p-3">
+          <div className="flex items-center justify-between text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
+            <span>Leave used (FY)</span>
+            <Calendar className="size-3 text-muted-foreground" />
+          </div>
+          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px]">
+            {leaveBalance.map((l) => (
+              <span key={l.type} className="tabular-nums">
+                <span className="capitalize text-muted-foreground">{l.type}</span>{" "}
+                <span className="font-semibold">{l.used}{l.entitlement != null ? `/${l.entitlement}` : ""}</span>
+              </span>
+            ))}
+          </div>
+        </div>
       </div>
 
       {/* Quick HR summary */}
@@ -228,8 +306,9 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
   );
 }
 
-function Tile({ icon: Icon, label, value, accent }: { icon: any; label: string; value: string; accent?: "emerald" | "rose" | "muted" }) {
-  const color = accent === "emerald" ? "text-emerald-600" : accent === "rose" ? "text-rose-600" : "text-foreground";
+function Tile({ icon: Icon, label, value, accent }: { icon: any; label: string; value: string; accent?: "emerald" | "rose" | "amber" | "muted" }) {
+  const color =
+    accent === "emerald" ? "text-emerald-600" : accent === "rose" ? "text-rose-600" : accent === "amber" ? "text-amber-600" : "text-foreground";
   return (
     <div className="card-surface p-3">
       <div className="flex items-center justify-between text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
