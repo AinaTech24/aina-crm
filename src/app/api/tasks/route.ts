@@ -41,6 +41,9 @@ const Body = z.object({
   department: z.enum(DEPARTMENTS).optional(),
   remarks: z.string().max(1000).optional(),
   priority: z.enum(["low", "normal", "high", "urgent"]).default("normal"),
+  /** Initial status — lets the Kanban quick-add drop a card straight into a
+   *  column. Defaults to 'open' for the normal create flow. */
+  status: z.enum(["open", "in_progress", "blocked", "completed", "cancelled"]).default("open"),
   assigneeId: z.string().uuid().optional(),
   dueAt: z.string().optional(),
   /** Recurrence — null/omitted = one-off. */
@@ -154,7 +157,7 @@ export async function POST(req: NextRequest) {
         description: body.description,
         remarks: body.remarks,
         priority: body.priority,
-        status: "open",
+        status: body.status,
         assigneeId,
         createdById: session.userId,
         dueAt: body.dueAt ? new Date(body.dueAt) : null,

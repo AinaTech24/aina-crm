@@ -9,16 +9,19 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, GripVertical, CalendarClock, User, ListChecks } from "lucide-react";
+import { Loader2, GripVertical, CalendarClock, User, ListChecks, Plus, X } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 import { TaskDetailDrawer } from "./TaskDetailDrawer";
+import { Avatar } from "@/components/ui/Avatar";
 import { taskChecklist, type Task } from "@/db/schema";
 
 interface TaskRow {
   task: Task;
   assignee: string | null;
   investorName: string | null;
+  investorAvatarUrl?: string | null;
   leadName: string | null;
+  leadAvatarUrl?: string | null;
 }
 
 const COLUMNS = [
@@ -51,6 +54,9 @@ export function TaskKanban({ initialRows, currentUserId }: { initialRows: TaskRo
   const [dragId, setDragId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [overCol, setOverCol] = useState<string | null>(null);
+  const [addingCol, setAddingCol] = useState<string | null>(null);
+  const [newTitle, setNewTitle] = useState("");
+  const [creating, setCreating] = useState(false);
 
   // Re-sync when the server query changes (filters / refresh).
   if (JSON.stringify(initialRows.map((r) => r.task.id)) !== JSON.stringify(rows.map((r) => r.task.id))) {
@@ -83,6 +89,32 @@ export function TaskKanban({ initialRows, currentUserId }: { initialRows: TaskRo
       toast.error("Network error — please try again", "Update failed");
     } finally {
       setBusyId(null);
+    }
+  }
+
+  async function createInColumn(status: string) {
+    const title = newTitle.trim();
+    if (!title || creating) return;
+    setCreating(true);
+    try {
+      const res = await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ title, status }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        toast.error(j.error ?? "Could not create task", "Create failed");
+        return;
+      }
+      setNewTitle("");
+      setAddingCol(null);
+      toast.success("Task added");
+      router.refresh(); // server re-fetch; the id-diff resync below picks it up
+    } catch {
+      toast.error("Network error — please try again", "Create failed");
+    } finally {
+      setCreating(false);
     }
   }
 
@@ -143,7 +175,22 @@ export function TaskKanban({ initialRows, currentUserId }: { initialRows: TaskRo
                                 <ListChecks className="size-2.5" /> {checklistDone}/{checklist.length}
                               </span>
                             )}
-                            {who && <span className="text-[10px] text-muted-foreground truncate max-w-[8rem]">{who}</span>}
+                            {who && (
+                              <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground truncate max-w-[8rem]">
+                                <Avatar
+                                  src={
+                                    row.investorName && t.relatedInvestorId && row.investorAvatarUrl
+                                      ? `/api/investors/${t.relatedInvestorId}/avatar`
+                                      : row.leadName && t.relatedLeadId && row.leadAvatarUrl
+                                        ? `/api/leads/${t.relatedLeadId}/avatar`
+                                        : null
+                                  }
+                                  name={who}
+                                  size={16}
+                                />
+                                <span className="truncate">{who}</span>
+                              </span>
+                            )}
                           </div>
                           <div className="mt-1.5 flex items-center justify-between text-[10px] text-muted-foreground">
                             <span className="inline-flex items-center gap-1 truncate">
@@ -162,10 +209,49 @@ export function TaskKanban({ initialRows, currentUserId }: { initialRows: TaskRo
                     </div>
                   );
                 })}
-                {col.items.length === 0 && (
+                {col.items.length === 0 && addingCol !== col.key && (
                   <div className="text-[11px] text-muted-foreground/60 text-center py-4">Drop tasks here</div>
                 )}
               </div>
+
+              {/* Quick-add a task directly into this status column */}
+              {addingCol === col.key ? (
+                <div className="mt-1.5 rounded-lg border border-brand-cyan/40 bg-card p-2">
+                  <textarea
+                    autoFocus
+                    value={newTitle}
+                    onChange={(e) => setNewTitle(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); createInColumn(col.key); }
+                      if (e.key === "Escape") { setAddingCol(null); setNewTitle(""); }
+                    }}
+                    rows={2}
+                    placeholder="Task title…"
+                    className="w-full resize-none border-0 bg-transparent p-0 text-sm focus:outline-none focus:ring-0"
+                  />
+                  <div className="mt-1.5 flex items-center justify-between">
+                    <button
+                      type="button"
+                      onClick={() => createInColumn(col.key)}
+                      disabled={creating || !newTitle.trim()}
+                      className="btn-primary text-xs inline-flex items-center gap-1 disabled:opacity-50"
+                    >
+                      {creating ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />} Add
+                    </button>
+                    <button type="button" onClick={() => { setAddingCol(null); setNewTitle(""); }} className="text-muted-foreground hover:text-foreground p-1" title="Cancel">
+                      <X className="size-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => { setAddingCol(col.key); setNewTitle(""); }}
+                  className="mt-1.5 w-full rounded-lg border border-dashed border-border py-1.5 text-xs text-muted-foreground hover:text-foreground hover:border-brand-cyan/50 hover:bg-card transition-colors inline-flex items-center justify-center gap-1"
+                >
+                  <Plus className="size-3.5" /> Add task
+                </button>
+              )}
             </div>
           ))}
         </div>
