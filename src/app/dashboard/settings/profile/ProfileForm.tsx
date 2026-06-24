@@ -2,7 +2,18 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Check, Camera, Trash2 } from "lucide-react";
+import { Loader2, Check, Camera, Trash2, LogOut } from "lucide-react";
+
+/** 0=weak … 3=strong, from length + character-class variety. */
+function pwStrength(pw: string): 0 | 1 | 2 | 3 {
+  let s = 0;
+  if (pw.length >= 8) s++;
+  if (pw.length >= 12) s++;
+  if (/[a-z]/.test(pw) && /[A-Z]/.test(pw)) s++;
+  if (/\d/.test(pw)) s++;
+  if (/[^a-zA-Z0-9]/.test(pw)) s++;
+  return Math.min(3, Math.max(0, s - 1)) as 0 | 1 | 2 | 3;
+}
 import { useToast } from "@/components/ui/Toast";
 import { PasswordInput } from "@/components/ui/PasswordInput";
 
@@ -72,6 +83,7 @@ export default function ProfileForm({
           filename: file.name,
           contentType: file.type || "image/png",
           kind: "general",
+          docType: "avatar",
         }),
       });
       const pj = await presign.json();
@@ -85,14 +97,10 @@ export default function ProfileForm({
       });
       if (!put.ok) throw new Error("Upload failed");
 
-      // 3. derive the URL to store/display (local app path or S3/CDN)
-      const isLocal = pj.url.startsWith("/");
-      const base = (process.env.NEXT_PUBLIC_S3_PUBLIC_URL ?? "").replace(/\/+$/, "");
-      const publicUrl = isLocal
-        ? pj.url.split("?")[0]
-        : base
-          ? `${base}/${pj.key}`
-          : pj.url.split("?")[0];
+      // 3. Store the app-served asset URL `/api/upload-local/<key>` — it serves
+      //    from the local volume OR S3 (whichever holds the object), so the same
+      //    URL works regardless of where the bytes landed.
+      const publicUrl = `/api/upload-local/${pj.key}`;
 
       await saveAvatarUrl(publicUrl);
       setAvatarUrl(publicUrl);
@@ -142,8 +150,23 @@ export default function ProfileForm({
     }
   }
 
+  async function signOutEverywhere() {
+    if (!confirm("Sign out of all devices, including this one? You'll need to log in again.")) return;
+    try {
+      const res = await fetch("/api/me/sign-out-everywhere", { method: "POST" });
+      if (res.ok) {
+        window.location.href = "/login";
+      } else {
+        toast.error("Could not sign out everywhere. Try again.", "Failed");
+      }
+    } catch {
+      toast.error("Network error.", "Failed");
+    }
+  }
+
   async function changePassword() {
     if (newPw.length < 8) return toast.error("New password must be at least 8 characters.", "Check your password");
+    if (newPw === curPw) return toast.error("New password must be different from your current one.", "Check your password");
     if (newPw !== confirmPw) return toast.error("The new passwords don't match.", "Check your password");
     setSavingPw(true);
     try {
@@ -261,6 +284,25 @@ export default function ProfileForm({
           <div>
             <label className={label}>New password</label>
             <PasswordInput autoComplete="new-password" className={field} value={newPw} onChange={(e) => setNewPw(e.target.value)} />
+            {newPw.length > 0 && (() => {
+              const score = pwStrength(newPw);
+              const meta = [
+                { label: "Weak", color: "bg-rose-500", text: "text-rose-600" },
+                { label: "Fair", color: "bg-amber-500", text: "text-amber-600" },
+                { label: "Good", color: "bg-blue-500", text: "text-blue-600" },
+                { label: "Strong", color: "bg-emerald-500", text: "text-emerald-600" },
+              ][score];
+              return (
+                <div className="mt-1.5">
+                  <div className="flex gap-1">
+                    {[0, 1, 2, 3].map((i) => (
+                      <div key={i} className={`h-1 flex-1 rounded-full ${i <= score ? meta.color : "bg-secondary"}`} />
+                    ))}
+                  </div>
+                  <div className={`text-[10px] mt-0.5 ${meta.text}`}>{meta.label} · 8+ chars with a mix of cases, a number &amp; a symbol is best.</div>
+                </div>
+              );
+            })()}
           </div>
           <div>
             <label className={label}>Confirm new password</label>
@@ -273,6 +315,16 @@ export default function ProfileForm({
           >
             {savingPw && <Loader2 className="size-3.5 animate-spin" />} Update password
           </button>
+
+          <div className="border-t pt-3 mt-1">
+            <button
+              onClick={signOutEverywhere}
+              className="text-sm px-4 py-2 rounded-md border border-rose-200 text-rose-700 hover:bg-rose-50 inline-flex items-center gap-2"
+            >
+              <LogOut className="size-3.5" /> Sign out of all devices
+            </button>
+            <p className="text-[11px] text-muted-foreground mt-1.5">Revokes every active session, including this one — use if a device was lost.</p>
+          </div>
         </div>
       </div>
     </div>
