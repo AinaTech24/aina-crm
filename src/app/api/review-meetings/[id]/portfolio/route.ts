@@ -15,7 +15,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { require as requireCap } from "@/lib/auth/rbac";
+import { requireAny, can } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import {
   reviewMeetings,
@@ -74,7 +74,10 @@ export async function GET(
 ) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "review_meeting.manage.all");
+    // RMs with manage.assigned may open the worksheet for THEIR OWN meetings —
+    // not just back-office (.all). Ownership is enforced after the meeting loads.
+    requireAny(session.roles, ["review_meeting.manage.all", "review_meeting.manage.assigned"], session.permissions);
+    const canAll = can(session.roles, "review_meeting.manage.all", session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
     const { id } = await params;
 
@@ -90,6 +93,7 @@ export async function GET(
         )
         .limit(1);
       if (!meeting) return null;
+      if (!canAll && meeting.rmId !== session.userId) return { forbidden: true as const };
 
       const items = await tx
         .select()
@@ -118,6 +122,7 @@ export async function GET(
       return { meeting, items, folios: investorFolios };
     });
     if (!result) return NextResponse.json({ error: "not found" }, { status: 404 });
+    if ("forbidden" in result) return NextResponse.json({ error: "forbidden" }, { status: 403 });
     return NextResponse.json(result);
   } catch (err: any) {
     return handleApiError(err);
@@ -130,7 +135,8 @@ export async function PUT(
 ) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "review_meeting.manage.all");
+    requireAny(session.roles, ["review_meeting.manage.all", "review_meeting.manage.assigned"], session.permissions);
+    const canAll = can(session.roles, "review_meeting.manage.all", session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
     const { id } = await params;
     const parse = PutBody.safeParse(await req.json().catch(() => ({})));
@@ -155,6 +161,9 @@ export async function PUT(
         )
         .limit(1);
       if (!meeting) throw new Error("meeting not found");
+      if (!canAll && meeting.rmId !== session.userId) {
+        throw Object.assign(new Error("forbidden"), { status: 403 });
+      }
 
       const existing = await tx
         .select()

@@ -59,25 +59,52 @@ const AVAILABLE_FIELDS = {
 const ALL_NAV_KEYS = ALL_NAV_ITEMS.map((i) => i.key);
 const ALL_WIDGET_KEYS = ALL_DASHBOARD_WIDGETS.map((w) => w.key);
 
+/** Animated on/off switch — green when on, red when off. Presentational only;
+ *  the wrapping element owns the click. */
+function ToggleVisual({ on }: { on: boolean }) {
+  return (
+    <span
+      aria-hidden
+      className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors duration-200 ${
+        on ? "bg-emerald-500" : "bg-rose-400"
+      }`}
+    >
+      <span
+        className={`inline-block size-4 rounded-full bg-white shadow transition-transform duration-200 ${
+          on ? "translate-x-[18px]" : "translate-x-0.5"
+        }`}
+      />
+    </span>
+  );
+}
+
 export function TenantAccessControl({
   tenantId,
   initialAllowedNav,
   initialAllowedFields,
   initialAllowedDashboardWidgets,
+  packageNavKeys = [],
 }: {
   tenantId: string;
   initialAllowedNav: string[] | null;
   initialAllowedFields: string[] | null;
   initialAllowedDashboardWidgets: string[] | null;
+  /** Nav keys the firm's PACKAGE grants — the default selection when there's
+   *  no per-tenant override (so the toggles reflect the plan, not "all"). */
+  packageNavKeys?: string[];
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // null grant = the firm gets the package default; when customizing we start
-  // from the current grant (or "everything").
-  const [nav, setNav] = useState<string[]>(initialAllowedNav || ALL_NAV_KEYS);
+  // What the package grants (fall back to everything only if the package lists
+  // nothing, so an empty plan doesn't render a blank, broken-looking list).
+  const packageDefault = packageNavKeys.length > 0 ? packageNavKeys : ALL_NAV_KEYS;
+
+  // null grant = the firm inherits the package default; when customizing we
+  // start from the current override, else the PACKAGE's granted modules.
+  const [nav, setNav] = useState<string[]>(initialAllowedNav || packageDefault);
   const [customNavActive, setCustomNavActive] = useState(!!initialAllowedNav);
 
   // If allowed fields is null, all fields are allowed. We keep track of the selected fields list.
@@ -159,18 +186,18 @@ export function TenantAccessControl({
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold">Sidebar Access</h3>
-            <label className="flex items-center gap-1.5 text-xs font-medium cursor-pointer">
-              <input
-                type="checkbox"
-                checked={customNavActive}
-                onChange={(e) => {
-                  setCustomNavActive(e.target.checked);
-                  if (e.target.checked && nav.length === 0) setNav(ALL_NAV_KEYS);
-                  setSaved(false);
-                }}
-              />
-              Customize Access
-            </label>
+            <button
+              type="button"
+              onClick={() => {
+                const next = !customNavActive;
+                setCustomNavActive(next);
+                if (next && nav.length === 0) setNav(packageDefault);
+                setSaved(false);
+              }}
+              className="flex items-center gap-1.5 text-xs font-medium"
+            >
+              <ToggleVisual on={customNavActive} /> Customize Access
+            </button>
           </div>
           {!customNavActive ? (
             <div className="text-xs text-muted-foreground bg-secondary/30 p-3 rounded-md border">
@@ -183,29 +210,50 @@ export function TenantAccessControl({
                 <button type="button" onClick={() => { setNav(ALL_NAV_KEYS); setSaved(false); }} className="text-primary hover:underline">
                   Select all
                 </button>
+                <button type="button" onClick={() => { setNav(packageDefault); setSaved(false); }} className="text-primary hover:underline">
+                  Match package
+                </button>
                 <button type="button" onClick={() => { setNav([]); setSaved(false); }} className="text-muted-foreground hover:underline">
                   Clear all
                 </button>
                 <span className="text-muted-foreground ml-auto">{nav.length}/{ALL_NAV_KEYS.length} selected</span>
               </div>
-              {NAV_ACCESS_GROUPS.map((grp) => (
+              {NAV_ACCESS_GROUPS.map((grp) => {
+                const groupKeys = grp.items.map((i) => i.key);
+                const allOn = groupKeys.every((k) => nav.includes(k));
+                return (
                 <div key={grp.title} className="space-y-1.5">
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground border-b pb-0.5">
-                    {grp.title}
+                  <div className="flex items-center justify-between border-b pb-0.5">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                      {grp.title}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNav((prev) => (allOn ? prev.filter((k) => !groupKeys.includes(k)) : [...new Set([...prev, ...groupKeys])]));
+                        setSaved(false);
+                      }}
+                      className="text-[10px] font-medium text-primary hover:underline"
+                    >
+                      {allOn ? "Disable all" : "Enable all"}
+                    </button>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                     {grp.items.map((m) => (
-                      <label
+                      <button
                         key={m.key}
-                        className="flex items-center gap-2 border rounded p-1.5 bg-card hover:bg-secondary/40 text-[11px] cursor-pointer"
+                        type="button"
+                        onClick={() => toggleNav(m.key)}
+                        className="flex items-center gap-2 border rounded p-1.5 bg-card hover:bg-secondary/40 text-[11px] text-left w-full"
                       >
-                        <input type="checkbox" checked={nav.includes(m.key)} onChange={() => toggleNav(m.key)} />
+                        <ToggleVisual on={nav.includes(m.key)} />
                         <span>{m.label}</span>
-                      </label>
+                      </button>
                     ))}
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -214,17 +262,13 @@ export function TenantAccessControl({
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold">Allowed Data Fields</h3>
-            <label className="flex items-center gap-1.5 text-xs font-medium cursor-pointer">
-              <input
-                type="checkbox"
-                checked={customFieldsActive}
-                onChange={(e) => {
-                  setCustomFieldsActive(e.target.checked);
-                  setSaved(false);
-                }}
-              />
-              Customize Data Fields
-            </label>
+            <button
+              type="button"
+              onClick={() => { setCustomFieldsActive((v) => !v); setSaved(false); }}
+              className="flex items-center gap-1.5 text-xs font-medium"
+            >
+              <ToggleVisual on={customFieldsActive} /> Customize Data Fields
+            </button>
           </div>
           {!customFieldsActive ? (
             <div className="text-xs text-muted-foreground bg-secondary/30 p-3 rounded-md border">
@@ -241,17 +285,15 @@ export function TenantAccessControl({
                     {fields.map((f) => {
                       const fqName = `${subject}.${f.key}`;
                       return (
-                        <label
+                        <button
                           key={fqName}
-                          className="flex items-center gap-2 border rounded p-1.5 bg-card hover:bg-secondary/40 text-[11px] cursor-pointer"
+                          type="button"
+                          onClick={() => toggleField(fqName)}
+                          className="flex items-center gap-2 border rounded p-1.5 bg-card hover:bg-secondary/40 text-[11px] text-left w-full"
                         >
-                          <input
-                            type="checkbox"
-                            checked={allowedFields.includes(fqName) || allowedFields.includes(f.key)}
-                            onChange={() => toggleField(fqName)}
-                          />
+                          <ToggleVisual on={allowedFields.includes(fqName) || allowedFields.includes(f.key)} />
                           <span>{f.label}</span>
-                        </label>
+                        </button>
                       );
                     })}
                   </div>
@@ -272,18 +314,18 @@ export function TenantAccessControl({
               business breakdown, charts, insights).
             </p>
           </div>
-          <label className="flex items-center gap-1.5 text-xs font-medium cursor-pointer">
-            <input
-              type="checkbox"
-              checked={customWidgetsActive}
-              onChange={(e) => {
-                setCustomWidgetsActive(e.target.checked);
-                if (e.target.checked && widgets.length === 0) setWidgets(ALL_WIDGET_KEYS);
-                setSaved(false);
-              }}
-            />
-            Customize Widgets
-          </label>
+          <button
+            type="button"
+            onClick={() => {
+              const next = !customWidgetsActive;
+              setCustomWidgetsActive(next);
+              if (next && widgets.length === 0) setWidgets(ALL_WIDGET_KEYS);
+              setSaved(false);
+            }}
+            className="flex items-center gap-1.5 text-xs font-medium"
+          >
+            <ToggleVisual on={customWidgetsActive} /> Customize Widgets
+          </button>
         </div>
         {!customWidgetsActive ? (
           <div className="text-xs text-muted-foreground bg-secondary/30 p-3 rounded-md border">
@@ -308,13 +350,15 @@ export function TenantAccessControl({
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                   {grp.items.map((w) => (
-                    <label
+                    <button
                       key={w.key}
-                      className="flex items-center gap-2 border rounded p-1.5 bg-card hover:bg-secondary/40 text-[11px] cursor-pointer"
+                      type="button"
+                      onClick={() => toggleWidget(w.key)}
+                      className="flex items-center gap-2 border rounded p-1.5 bg-card hover:bg-secondary/40 text-[11px] text-left w-full"
                     >
-                      <input type="checkbox" checked={widgets.includes(w.key)} onChange={() => toggleWidget(w.key)} />
+                      <ToggleVisual on={widgets.includes(w.key)} />
                       <span>{w.label}</span>
-                    </label>
+                    </button>
                   ))}
                 </div>
               </div>

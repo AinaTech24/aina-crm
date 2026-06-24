@@ -10,6 +10,7 @@
  */
 
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage, type PDFImage, type RGB } from "pdf-lib";
+import { drawReportHeader } from "@/lib/pdf/report-header";
 
 export type ProposalBrand = {
   displayName?: string | null;
@@ -111,33 +112,22 @@ export async function renderProposalPdf(args: { proposal: ProposalData; brand: P
     if (cur.y - need < 96) newPage();
   };
 
-  // ── Letterhead (first page only) ──
-  {
-    const page = cur.page;
-    const topY = A4[1] - MARGIN;
-    let arnY = topY - 30;
-    if (logo) {
-      const maxH = 40, maxW = 200;
-      let dw = (logo.width / logo.height) * maxH;
-      let dh = maxH;
-      if (dw > maxW) { dw = maxW; dh = (logo.height / logo.width) * maxW; }
-      page.drawImage(logo, { x: MARGIN, y: topY - dh, width: dw, height: dh });
-      arnY = topY - dh - 11;
-    } else {
-      page.drawText(ascii(brand.legalName ?? brand.displayName ?? "Your Advisor"), { x: MARGIN, y: topY - 15, size: 14, font: bold, color: INK });
-      arnY = topY - 30;
-    }
-    page.drawText(ascii(`ARN ${(brand.arn ?? "—").toString().replace(/^ARN-?/i, "")}${brand.euin ? ` - EUIN ${brand.euin}` : ""}`), { x: MARGIN, y: arnY, size: 9, font: helv, color: SLATE });
-    const titleLabel = "INVESTMENT PROPOSAL";
-    page.drawText(titleLabel, { x: W - MARGIN - bold.widthOfTextAtSize(titleLabel, 11), y: topY - 13, size: 11, font: bold, color: primary });
-    if (p.proposalNumber) {
-      const pn = ascii(p.proposalNumber);
-      page.drawText(pn, { x: W - MARGIN - helv.widthOfTextAtSize(pn, 9), y: topY - 28, size: 9, font: helv, color: SLATE });
-    }
-    const stripY = Math.min(arnY - 12, topY - 56);
-    drawGradientStrip(page, MARGIN, stripY, usable, 5, primary, secondary);
-    cur.y = stripY - 26;
-  }
+  // ── Letterhead (first page only) — shared report header ──
+  cur.y = drawReportHeader({
+    page: cur.page,
+    helv,
+    bold,
+    pageWidth: W,
+    pageHeight: A4[1],
+    margin: MARGIN,
+    logo,
+    firmName: brand.legalName ?? brand.displayName,
+    title: "INVESTMENT PROPOSAL",
+    subtitles: [fmtDate(generatedAt)],
+    arn: brand.arn,
+    primary,
+    secondary,
+  });
 
   // ── Title + recipient ──
   cur.page.drawText(ascii(p.title ?? "Investment Proposal"), { x: MARGIN, y: cur.y, size: 16, font: bold, color: INK });
@@ -286,14 +276,6 @@ async function embedLogo(doc: PDFDocument, rawUrl?: string | null): Promise<PDFI
     try { return await doc.embedJpg(bytes); } catch {}
     return null;
   } catch { return null; }
-}
-function drawGradientStrip(page: PDFPage, x: number, y: number, w: number, h: number, c1: RGB, c2: RGB) {
-  const segs = 48;
-  const sw = w / segs;
-  for (let i = 0; i < segs; i++) {
-    const t = i / (segs - 1);
-    page.drawRectangle({ x: x + i * sw, y, width: sw + 0.6, height: h, color: rgb(c1.red + (c2.red - c1.red) * t, c1.green + (c2.green - c1.green) * t, c1.blue + (c2.blue - c1.blue) * t) });
-  }
 }
 function fitText(text: string, font: PDFFont, size: number, maxWidth: number, min: number): number {
   let s = size;

@@ -40,6 +40,13 @@ export type ChurnSignals = {
   sipRejections90d?: number | null;
   /** Portfolio XIRR as a decimal (−0.08 = −8% p.a.), or null if unpriced. */
   xirr?: number | null;
+  /**
+   * Cheap absolute-return proxy = (current value − net invested) / net invested,
+   * as a decimal. Used by the whole-book batch sweep, where a precise per-investor
+   * XIRR (NAV join) is too heavy; the 360 badge passes the real `xirr` instead.
+   * Only one of the two scores the "returns" factor (XIRR wins).
+   */
+  absoluteReturnPct?: number | null;
   /** Current market value (₹) — small books are lower-stickiness. */
   currentValue?: number | null;
   /** Explicit redemption-risk flag set elsewhere. */
@@ -109,13 +116,24 @@ export function churnScore(s: ChurnSignals, now = new Date()): ChurnResult {
     score += 12;
   }
 
-  // 4. Performance dissatisfaction.
+  // 4. Performance dissatisfaction. Prefer precise XIRR (the 360 badge); fall
+  //    back to the cheap absolute-return proxy for the whole-book batch sweep so
+  //    the radar doesn't ignore returns entirely (and so it agrees with the 360
+  //    page's direction). Only one fires — XIRR wins when present.
   if (s.xirr != null) {
     if (s.xirr < -0.05) {
       f.push({ key: "returns", label: `XIRR ${(s.xirr * 100).toFixed(1)}%`, points: 16, why: "Negative returns — high dissatisfaction risk" });
       score += 16;
     } else if (s.xirr < 0.04) {
       f.push({ key: "returns", label: `XIRR ${(s.xirr * 100).toFixed(1)}%`, points: 8, why: "Returns below a bank FD — client may question staying" });
+      score += 8;
+    }
+  } else if (s.absoluteReturnPct != null) {
+    if (s.absoluteReturnPct < -0.05) {
+      f.push({ key: "returns", label: `Down ${Math.abs(s.absoluteReturnPct * 100).toFixed(0)}% vs invested`, points: 16, why: "Portfolio value is below net invested — high dissatisfaction risk" });
+      score += 16;
+    } else if (s.absoluteReturnPct < 0.04) {
+      f.push({ key: "returns", label: "Flat vs invested", points: 8, why: "Barely ahead of net invested — client may question staying" });
       score += 8;
     }
   }

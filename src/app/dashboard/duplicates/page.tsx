@@ -122,7 +122,6 @@ export default async function DuplicatesPage({ searchParams }: { searchParams: P
     <div className="space-y-6 max-w-4xl">
       <div>
         <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2"><Copy className="size-6 text-brand-cyan" /> Find Duplicate Records</h1>
-        <p className="text-muted-foreground text-sm">Records that share a PAN, phone, email, or name are likely the same. Pick the one to keep — the rest fold into it, carrying all their history.</p>
       </div>
 
       {/* Module toggle */}

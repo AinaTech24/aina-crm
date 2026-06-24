@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { requireAny } from "@/lib/auth/rbac";
 import { handleApiError } from "@/lib/api/error-handler";
 import { loadEquityTeam, currentFiscalYear } from "@/lib/equity/service";
 
@@ -23,6 +24,7 @@ function defaultPeriod(): string {
 export async function GET(req: NextRequest) {
   try {
     const session = await requireSession();
+    requireAny(session.roles, ["reports.business", "reports.manage"], session.permissions);
     const fyRaw = req.nextUrl.searchParams.get("fy") ?? "";
     const fy = FY_RE.test(fyRaw) ? fyRaw : currentFiscalYear();
     const pRaw = req.nextUrl.searchParams.get("period") ?? "";

@@ -166,6 +166,58 @@ export function fifoRealizedGains(rows: TxRow[], fyStartYear: number): RealizedG
   };
 }
 
+export type OpenLot = { schemeCode: string | null; schemeName: string | null; date: string; units: number; nav: number };
+
+/**
+ * FIFO over the same rows, but returns the REMAINING (unsold) open lots — the
+ * client's live position with each lot's true purchase date + cost — plus the
+ * LTCG already REALISED in the given FY. The harvesting planner uses the open
+ * lots to count only genuinely long-term units, and the realised LTCG to shrink
+ * the remaining ₹1.25 L exemption. Rows must be ordered by date.
+ */
+export function fifoOpenLots(rows: TxRow[], fyStartYear: number): { open: OpenLot[]; realizedLtcgThisFy: number } {
+  const fyStart = `${fyStartYear}-04-01`;
+  const fyEnd = `${fyStartYear + 1}-03-31`;
+  const lots = new Map<string, { schemeCode: string | null; schemeName: string | null; queue: Array<{ date: string; units: number; nav: number }> }>();
+  let realizedLtcgThisFy = 0;
+
+  for (const r of rows) {
+    const key = r.scheme_code ?? r.scheme_name ?? "unknown";
+    const units = num(r.units);
+    if (units <= 0 || !r.order_date) continue;
+    const nav = navOf(r);
+    const dir = (r.direction ?? "").toLowerCase();
+    const isSell = dir === "outflow" || (!dir && SELL_TYPES.has(r.type ?? ""));
+    const isBuy = dir === "inflow" || (!dir && !SELL_TYPES.has(r.type ?? ""));
+    let entry = lots.get(key);
+    if (!entry) { entry = { schemeCode: r.scheme_code, schemeName: r.scheme_name, queue: [] }; lots.set(key, entry); }
+    if (isBuy) {
+      entry.queue.push({ date: r.order_date, units, nav });
+    } else if (isSell) {
+      let toSell = units;
+      const q = entry.queue;
+      while (toSell > 0.0005 && q.length > 0) {
+        const lot = q[0];
+        const matched = Math.min(lot.units, toSell);
+        if (holdingDays(lot.date, r.order_date) > 365 && r.order_date >= fyStart && r.order_date <= fyEnd) {
+          realizedLtcgThisFy += (nav - lot.nav) * matched;
+        }
+        lot.units -= matched;
+        toSell -= matched;
+        if (lot.units <= 0.0005) q.shift();
+      }
+    }
+  }
+
+  const open: OpenLot[] = [];
+  for (const [, e] of lots) {
+    for (const l of e.queue) {
+      if (l.units > 0.0005) open.push({ schemeCode: e.schemeCode, schemeName: e.schemeName, date: l.date, units: l.units, nav: l.nav });
+    }
+  }
+  return { open, realizedLtcgThisFy };
+}
+
 function num(s: string | null): number {
   const n = s != null ? Number(s) : 0;
   return isFinite(n) ? n : 0;

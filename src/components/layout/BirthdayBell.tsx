@@ -110,7 +110,7 @@ export function BirthdayBell() {
             <div className="px-4 py-10 text-center">
               <Cake className="size-9 text-muted-foreground/40 mx-auto mb-2" />
               <div className="text-sm text-muted-foreground">
-                No birthdays {tab === "today" ? "today" : tab === "tomorrow" ? "tomorrow" : "in the last 7 days"}.
+                No birthdays {tab === "today" ? "today" : tab === "tomorrow" ? "tomorrow" : "in the last 30 days"}.
               </div>
             </div>
           ) : (

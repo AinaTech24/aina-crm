@@ -38,6 +38,9 @@ export const sendEmailHandler: ActionHandler<any> = {
       actorUserId,
       workflowRunId: ctx.runId,
       workflowRunStepId: ctx.stepId,
+      // Stable across step retries (stepId is regenerated each attempt) so Resend
+      // dedupes a re-fired send instead of delivering twice.
+      idempotencyKey: `wf:${ctx.runId}:${node.id}`,
       meta: { cc: cfg.cc, bcc: cfg.bcc },
     });
 

@@ -25,10 +25,13 @@ import { RowActions } from "@/components/common/RowActions";
 import { RmSelector } from "@/components/common/RmSelector";
 import { formatINR } from "@/lib/utils";
 import { healthBandClasses, type HealthBand } from "@/lib/investors/health";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { Avatar } from "@/components/ui/Avatar";
 
 export type InvestorTableRow = {
   id: string;
   name: string;
+  avatarUrl: string | null;
   pan: string | null;
   clientCategory: string | null;
   serviceTier: string | null;
@@ -40,6 +43,8 @@ export type InvestorTableRow = {
   healthScore: number;
   healthBand: HealthBand;
   dormDays: number | null;
+  /** Profile-completeness % (0-100) — how filled-in the master record is. */
+  completeness: number;
 };
 
 export type InvestorTableFlags = {
@@ -77,11 +82,17 @@ export function InvestorsTable({
   sort,
   dir = "desc",
   flags,
+  allIds = [],
+  total = 0,
 }: {
   rows: InvestorTableRow[];
   sort: string;
   dir?: "asc" | "desc";
   flags: InvestorTableFlags;
+  /** Every matching client id across all pages — powers "Select all N". */
+  allIds?: string[];
+  /** Total matching clients (across all pages). */
+  total?: number;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -91,6 +102,7 @@ export function InvestorsTable({
   const [bulk, setBulk] = useState<null | "assign" | "review" | "tier" | "segment" | "category">(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const [assignRm, setAssignRm] = useState<string | null>(null);
   const [reviewDate, setReviewDate] = useState("");
@@ -98,7 +110,12 @@ export function InvestorsTable({
   const [segmentVal, setSegmentVal] = useState("HNI");
   const [categoryVal, setCategoryVal] = useState("A");
 
-  const allSelected = rows.length > 0 && selected.size === rows.length;
+  const allSelected = rows.length > 0 && rows.every((r) => selected.has(r.id));
+  // True once every matching client (across all pages) is selected.
+  const allMatchingSelected = allIds.length > 0 && selected.size >= allIds.length;
+  // Show the "select all across pages" prompt when the page is fully ticked but
+  // more clients exist beyond this page.
+  const offerSelectAll = allSelected && total > rows.length && !allMatchingSelected;
 
   function toggle(id: string) {
     setSelected((s) => {
@@ -160,15 +177,13 @@ export function InvestorsTable({
     }
   }
 
-  async function deleteSelected() {
+  function deleteSelected() {
+    if (selected.size === 0) return;
+    setConfirmDelete(true);
+  }
+  async function doDeleteSelected() {
     const ids = [...selected];
     if (ids.length === 0) return;
-    if (
-      !window.confirm(
-        `Archive ${ids.length} client${ids.length > 1 ? "s" : ""}? They'll be set to "closed" and removed from the active book — financial history is kept and they can be reactivated later.`
-      )
-    )
-      return;
     setBusy(true);
     setErr(null);
     try {
@@ -186,6 +201,7 @@ export function InvestorsTable({
       router.refresh();
     } finally {
       setBusy(false);
+      setConfirmDelete(false);
     }
   }
 
@@ -197,6 +213,14 @@ export function InvestorsTable({
       {selected.size > 0 && (
         <div className="flex items-center gap-2 flex-wrap border-b bg-brand-cyan-light/40 px-4 py-2 text-sm">
           <span className="font-semibold">{selected.size} selected</span>
+          {offerSelectAll && (
+            <button onClick={() => setSelected(new Set(allIds))} className="text-xs font-medium text-brand-cyan-deep hover:underline">
+              Select all {total} clients
+            </button>
+          )}
+          {allMatchingSelected && total > rows.length && (
+            <span className="text-xs text-muted-foreground">All {total} clients selected</span>
+          )}
           <button onClick={() => setBulk("assign")} className="btn-ghost text-xs inline-flex items-center gap-1"><UserCog className="size-3.5" /> Reassign RM</button>
           <button onClick={() => setBulk("review")} className="btn-ghost text-xs inline-flex items-center gap-1"><CalendarClock className="size-3.5" /> Set next review</button>
           <button onClick={() => setBulk("tier")} className="btn-ghost text-xs inline-flex items-center gap-1"><Layers className="size-3.5" /> Set tier</button>
@@ -243,7 +267,7 @@ export function InvestorsTable({
         </div>
       )}
 
-      <div className="overflow-auto max-h-[640px] scrollbar-none">
+      <div className="table-scroll">
       <table className="w-full text-sm" data-table="investors">
         <thead className="text-xs text-muted-foreground border-b sticky top-0 z-10 bg-card">
           <tr>
@@ -271,8 +295,9 @@ export function InvestorsTable({
             <th data-col="health" className="text-left py-2 font-medium">
               <button onClick={() => setSort("health")} className="inline-flex items-center gap-1 hover:text-foreground">Health <ArrowUpDown className="size-3" />{arrow("health")}</button>
             </th>
+            <th data-col="complete" className="text-left py-2 font-medium">Profile</th>
             {flags.showStatus && <th data-col="status" className="text-left py-2 font-medium">Status</th>}
-            <th data-col="actions" className="px-4 py-2"></th>
+            <th data-col="actions" className="px-4 py-2 text-right font-medium">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -281,12 +306,22 @@ export function InvestorsTable({
             const dorm = i.dormDays != null && i.dormDays > 180;
             const isSel = selected.has(i.id);
             return (
-              <tr key={i.id} className={`border-b last:border-0 hover:bg-accent/40 ${isSel ? "bg-brand-cyan-light/30" : ""}`}>
+              <tr
+                key={i.id}
+                onClick={(e) => {
+                  if ((e.target as HTMLElement).closest("a, button, input, select, [role='menu'], [data-no-row-nav]")) return;
+                  router.push(`/dashboard/investors/${i.id}`);
+                }}
+                className={`border-b last:border-0 hover:bg-accent/40 cursor-pointer ${isSel ? "bg-brand-cyan-light/30" : ""}`}
+              >
                 <td className="px-3 py-3">
                   <input type="checkbox" checked={isSel} onChange={() => toggle(i.id)} className="size-3.5 rounded" aria-label={`Select ${i.name}`} />
                 </td>
                 <td data-col="name" className="py-3 font-medium">
-                  <Link href={`/dashboard/investors/${i.id}`} className="hover:underline">{i.name}</Link>
+                  <Link href={`/dashboard/investors/${i.id}`} className="flex items-center gap-2 hover:underline">
+                    <Avatar src={i.avatarUrl ? `/api/investors/${i.id}/avatar` : null} name={i.name} size={28} />
+                    <span>{i.name}</span>
+                  </Link>
                 </td>
                 {flags.showPan && <td data-col="pan" className="py-3 text-xs font-mono text-muted-foreground">{i.pan}</td>}
                 {flags.showCategory && (
@@ -340,9 +375,23 @@ export function InvestorsTable({
                     )}
                   </div>
                 </td>
+                <td data-col="complete" className="py-3">
+                  <div className="flex items-center gap-1.5" title={`Profile ${i.completeness}% complete`}>
+                    <div className="h-1.5 w-12 rounded-full bg-secondary overflow-hidden">
+                      <div
+                        className={`h-full rounded-full ${i.completeness >= 90 ? "bg-emerald-500" : i.completeness >= 70 ? "bg-amber-500" : "bg-rose-500"}`}
+                        style={{ width: `${i.completeness}%` }}
+                      />
+                    </div>
+                    <span className={`text-xs tabular-nums ${i.completeness >= 90 ? "text-emerald-600" : i.completeness >= 70 ? "text-amber-600" : "text-rose-600"}`}>
+                      {i.completeness}%
+                    </span>
+                  </div>
+                </td>
                 {flags.showStatus && <td data-col="status" className="py-3 text-xs">{i.status}</td>}
                 <td data-col="actions" className="px-4 py-3 text-right">
                   <RowActions
+                    inline
                     editHref={`/dashboard/investors/${i.id}`}
                     deleteUrl={`/api/investors/${i.id}`}
                     itemLabel="investor"
@@ -356,6 +405,18 @@ export function InvestorsTable({
         </tbody>
       </table>
       </div>
+
+      <ConfirmDialog
+        open={confirmDelete}
+        title={`Permanently delete ${selected.size} client${selected.size > 1 ? "s" : ""}?`}
+        message="This permanently removes the client and all their data — folios, transactions, SIPs, goals, proposals, insurance and documents. This cannot be undone."
+        confirmLabel={busy ? "Deleting…" : "Delete permanently"}
+        cancelLabel="Cancel"
+        tone="danger"
+        busy={busy}
+        onConfirm={doDeleteSelected}
+        onCancel={() => setConfirmDelete(false)}
+      />
     </div>
   );
 }

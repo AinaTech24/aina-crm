@@ -9,7 +9,10 @@ import { GettingStartedChecklist } from "./GettingStartedChecklist";
 import { DataGapsTile } from "./DataGapsTile";
 import { SipPersistencyTile } from "./SipPersistencyTile";
 import { PeriodSelector } from "./PeriodSelector";
-import { resolvePeriodDates, type Period } from "@/lib/dashboard/period";
+import { resolvePeriodRange, type Period } from "@/lib/dashboard/period";
+import { getDashboardThresholds } from "@/lib/dashboard/thresholds";
+import { Sparkline } from "./Sparkline";
+import { DashboardEmptyState } from "./DashboardEmptyState";
 import { loadTenantLicense } from "@/lib/auth/license";
 import { isDashboardWidgetVisible } from "@/config/dashboard-widgets";
 
@@ -19,8 +22,26 @@ import { AttentionQueuesSection } from "./AttentionQueuesSection";
 import { RmLeaderboard } from "./RmLeaderboard";
 import { LeadFunnelSection } from "./LeadFunnelSection";
 import { AumSegmentSection } from "./AumSegmentSection";
-import { NetSalesSection } from "./NetSalesSection";
+import { NetSalesChart } from "./NetSalesChart";
 import { CardSkeleton, ChartSkeleton, LeaderboardSkeleton } from "./DashboardSkeletons";
+
+/** Build a "?period=…(&pstart=…)" query suffix so drill-down links open scoped
+ *  to the same window the cockpit is showing. Returns "" for the default (mtd,
+ *  no custom start) so plain links stay clean. */
+function buildPeriodQuery(period: Period, customStart?: string): string {
+  const params = new URLSearchParams();
+  if (period !== "mtd") params.set("period", period);
+  if (period === "custom" && customStart) params.set("pstart", customStart);
+  const qs = params.toString();
+  return qs ? `?${qs}` : "";
+}
+
+/** Append the period query to an href, merging correctly whether the href
+ *  already has its own params or not. */
+function withPeriod(href: string, periodQuery: string): string {
+  if (!periodQuery) return href;
+  return href.includes("?") ? `${href}&${periodQuery.slice(1)}` : `${href}${periodQuery}`;
+}
 
 /**
  * MFD Owner Cockpit — spec § 6, Module 2.
@@ -47,7 +68,7 @@ export async function OwnerCockpit({
   customStart?: string;
 }) {
   const now = new Date();
-  const { label: periodLabel } = resolvePeriodDates(period, now, customStart);
+  const { label: periodLabel } = resolvePeriodRange(period, now, { customStart });
   const today = now.toLocaleDateString("en-IN", {
     weekday: "long",
     day: "numeric",
@@ -119,12 +140,26 @@ async function OwnerCockpitBody({
   customStart?: string;
 }) {
   const now = new Date();
-  // Resolve period → start date. All "MTD" aggregates in the queries below
-  // use startOfPeriodISO instead of the hard-coded startOfMonth.
-  const { startISO: startOfPeriodISO, label: periodLabel } = resolvePeriodDates(period, now, customStart);
+  // Resolve period → start/end range. All "MTD" aggregates in the queries below
+  // use this start instead of the hard-coded startOfMonth, and the net-sales
+  // chart honours the SAME window so it matches the KPI tiles.
+  const range = resolvePeriodRange(period, now, { customStart });
+  const { fromISO: startOfPeriodISO, toISO: endOfPeriodISO, label: periodLabel, days: rangeDays } = range;
   // Keep the original variable name so existing SQL template literals stay unchanged.
   const startOfMonthISO = startOfPeriodISO;
-  const dormantCutoff = new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString();
+
+  // Business-logic thresholds — sourced from the central config, not magic numbers.
+  const thresholds = getDashboardThresholds(session.tenantId);
+  const dormantCutoff = new Date(
+    Date.now() - thresholds.dormancyDays * 24 * 60 * 60 * 1000
+  ).toISOString();
+
+  // Drill-down links carry the active window so the destination opens scoped.
+  const periodQuery = buildPeriodQuery(period, customStart);
+
+  // Chart bucketing: short ranges stay daily for resolution; longer ranges
+  // bucket by week so the x-axis doesn't turn into a comb of 90+ ticks.
+  const netSalesGranularity: "day" | "week" = rangeDays < 14 ? "day" : "week";
 
   const data = await withTenant(
     session.tenantId,
@@ -192,7 +227,7 @@ async function OwnerCockpitBody({
               WHERE tenant_id = ${session.tenantId}::uuid AND status IN ('open', 'in_progress') AND type = 'complaint') AS complaints_open,
           (SELECT COUNT(*)::int FROM investors
               WHERE tenant_id = ${session.tenantId}::uuid AND status = 'active' AND service_tier = 'A'
-                AND (last_review_at IS NULL OR last_review_at < now() - interval '120 days')) AS hni_not_reviewed,
+                AND (last_review_at IS NULL OR last_review_at < now() - make_interval(days => ${thresholds.hniReviewDays}))) AS hni_not_reviewed,
           (SELECT COUNT(*)::int FROM investors
               WHERE tenant_id = ${session.tenantId}::uuid AND status = 'active'
                 AND (last_transaction_at IS NULL OR last_transaction_at < ${dormantCutoff})) AS dormant_clients
@@ -223,6 +258,91 @@ async function OwnerCockpitBody({
         FROM leads
         WHERE tenant_id = ${session.tenantId}::uuid
           AND created_at >= ${startOfMonthISO}
+      `);
+
+      // ---------- 6. Net-sales series — period-scoped, day or week buckets ----------
+      // Generates a continuous bucket series across the SELECTED window (so the
+      // chart matches the KPI tiles), then LEFT JOINs transactions onto it so
+      // gaps render as zeros rather than missing points.
+      const netSeries = await tx.execute(
+        netSalesGranularity === "week"
+          ? sql`
+              WITH buckets AS (
+                SELECT generate_series(
+                  date_trunc('week', ${startOfPeriodISO}::timestamptz),
+                  date_trunc('week', ${endOfPeriodISO}::timestamptz),
+                  interval '1 week'
+                )::date AS b
+              )
+              SELECT buckets.b::text AS day,
+                COALESCE(SUM(CASE WHEN t.direction = 'inflow' THEN t.amount::numeric END), 0)::numeric AS gross,
+                COALESCE(SUM(CASE WHEN t.direction = 'outflow' THEN t.amount::numeric END), 0)::numeric AS redemption,
+                COALESCE(SUM(CASE WHEN t.direction = 'inflow' THEN t.amount::numeric ELSE -t.amount::numeric END), 0)::numeric AS net
+              FROM buckets LEFT JOIN transactions t
+                ON date_trunc('week', t.order_date)::date = buckets.b
+                AND t.tenant_id = ${session.tenantId}::uuid
+                AND t.status IN ('processed', 'successful')
+              GROUP BY buckets.b ORDER BY buckets.b
+            `
+          : sql`
+              WITH buckets AS (
+                SELECT generate_series(
+                  ${startOfPeriodISO}::date,
+                  ${endOfPeriodISO}::date,
+                  interval '1 day'
+                )::date AS b
+              )
+              SELECT buckets.b::text AS day,
+                COALESCE(SUM(CASE WHEN t.direction = 'inflow' THEN t.amount::numeric END), 0)::numeric AS gross,
+                COALESCE(SUM(CASE WHEN t.direction = 'outflow' THEN t.amount::numeric END), 0)::numeric AS redemption,
+                COALESCE(SUM(CASE WHEN t.direction = 'inflow' THEN t.amount::numeric ELSE -t.amount::numeric END), 0)::numeric AS net
+              FROM buckets LEFT JOIN transactions t
+                ON t.order_date = buckets.b
+                AND t.tenant_id = ${session.tenantId}::uuid
+                AND t.status IN ('processed', 'successful')
+              GROUP BY buckets.b ORDER BY buckets.b
+            `
+      );
+
+      // ---------- 7. Hero sparkline series — per-day net business across the period ----------
+      // Cheap daily roll-up from the business-entries ledger (same source the
+      // Net Business KPI uses): one row per day, net = sip + lumpsum - redemption.
+      const netBizDaily = await tx.execute(sql`
+        WITH days AS (
+          SELECT generate_series(${startOfPeriodISO}::date, ${endOfPeriodISO}::date, interval '1 day')::date AS d
+        )
+        SELECT days.d::text AS day,
+          COALESCE(SUM(
+            CASE
+              WHEN l.txn_type IN ('sip','lumpsum','additional_purchase') THEN l.amount::numeric
+              WHEN l.txn_type IN ('redemption','swp') THEN -l.amount::numeric
+              ELSE 0
+            END
+          ), 0)::numeric AS net
+        FROM days
+        LEFT JOIN business_entries e
+          ON e.tenant_id = ${session.tenantId}::uuid
+          AND e.status <> 'cancelled'
+          AND e.business_date = days.d
+        LEFT JOIN business_entry_lines l ON l.entry_id = e.id
+        GROUP BY days.d ORDER BY days.d
+      `);
+
+      // ---------- 8. SIP book sparkline — cumulative active SIP amount per day ----------
+      // Daily registered-SIP amount across the period (the incremental adds that
+      // build the book). Kept as a per-day add series — a true running balance
+      // would need historical snapshots we don't store.
+      const sipAddDaily = await tx.execute(sql`
+        WITH days AS (
+          SELECT generate_series(${startOfPeriodISO}::date, ${endOfPeriodISO}::date, interval '1 day')::date AS d
+        )
+        SELECT days.d::text AS day,
+          COALESCE(SUM(s.amount::numeric), 0)::numeric AS amt
+        FROM days
+        LEFT JOIN sips s
+          ON s.tenant_id = ${session.tenantId}::uuid
+          AND s.created_at::date = days.d
+        GROUP BY days.d ORDER BY days.d
       `);
 
       // Unpack the results into the shape the JSX expects.
@@ -273,6 +393,15 @@ async function OwnerCockpitBody({
         conversionPct,
         leadsMtd: Number(lf.total_leads_mtd),
         convertedMtd: Number(lf.converted_mtd),
+        // chart + sparkline series (period-scoped)
+        netSalesSeries: (netSeries.rows as any[]).map((r) => ({
+          day: String(r.day),
+          gross: Number(r.gross),
+          redemption: Number(r.redemption),
+          net: Number(r.net),
+        })),
+        netBizSpark: (netBizDaily.rows as any[]).map((r) => Number(r.net)),
+        sipAddSpark: (sipAddDaily.rows as any[]).map((r) => Number(r.amt)),
       };
     },
     { userId: session.userId, branchId: session.branchId, roles: session.roles }
@@ -313,7 +442,7 @@ async function OwnerCockpitBody({
       {anyHeadline && (
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {show("kpi.total_clients") && <Kpi
-          href="/dashboard/investors"
+          href={withPeriod("/dashboard/investors", periodQuery)}
           icon={Users}
           label="Total Clients"
           value={String(data.totalClients)}
@@ -323,7 +452,7 @@ async function OwnerCockpitBody({
           accent="cyan"
         />}
         {show("kpi.open_leads") && <Kpi
-          href="/dashboard/leads"
+          href={withPeriod("/dashboard/leads", periodQuery)}
           icon={UserPlus}
           label="Open Leads"
           value={String(data.totalLeads)}
@@ -331,7 +460,7 @@ async function OwnerCockpitBody({
           accent="violet"
         />}
         {show("kpi.active_sip_book") && <Kpi
-          href="/dashboard/sips"
+          href={withPeriod("/dashboard/sips", periodQuery)}
           icon={TrendingUp}
           label="Active SIP Book"
           value={formatINR(data.sipBook)}
@@ -343,29 +472,46 @@ async function OwnerCockpitBody({
           }
           deltaTone={data.newSipsPeriod - data.stoppedSipsPeriod >= 0 ? "up" : "down"}
           accent="emerald"
+          sparkline={data.sipAddSpark}
+          sparkStrokeClass="text-emerald-500"
         />}
         {show("kpi.net_business") && <Kpi
-          href="/dashboard/reports/net_sales"
+          href={withPeriod("/dashboard/reports/net_sales", periodQuery)}
           icon={TrendingUp}
           label={`Net Business ${period.toUpperCase()}`}
           value={formatINR(data.netBusiness)}
           sub={`Gross ${formatINR(data.sipAddedAmt + data.lumpsumAmt)}`}
           trend={data.netBusiness >= 0 ? "up" : "down"}
           hero
+          sparkline={data.netBizSpark}
         />}
       </div>
       )}
 
       {/* ---------- 2. Monthly business breakdown ---------- */}
       {anyBusiness && (
-      <Group title={`Business — ${periodLabel}`} link={{ href: "/dashboard/reports/net_sales", label: "Open report" }}>
+      <Group title={`Business — ${periodLabel}`} link={{ href: withPeriod("/dashboard/reports/net_sales", periodQuery), label: "Open report" }}>
+        {data.sipAddedCount === 0 &&
+        data.lumpsumCount === 0 &&
+        data.redemptionAmt === 0 &&
+        data.sipRejectedCount === 0 &&
+        data.sipStoppedCount === 0 ? (
+          <DashboardEmptyState
+            icon={ClipboardList}
+            title={`No business booked in ${periodLabel}`}
+            hint="SIPs, lumpsums and redemptions booked in this window will tally here. Record an entry or widen the period."
+            cta={{ href: withPeriod("/dashboard/business-entries", periodQuery), label: "Add business entry" }}
+            compact
+          />
+        ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-          {show("kpi.sip_added") && <Stat href="/dashboard/sips" label="SIP Added" value={String(data.sipAddedCount)} sub={formatINR(data.sipAddedAmt)} />}
-          {show("kpi.lumpsum") && <Stat href="/dashboard/transactions" label="Lumpsum" value={String(data.lumpsumCount)} sub={formatINR(data.lumpsumAmt)} />}
-          {show("kpi.redemption") && <Stat href="/dashboard/transactions?type=redemption" label="Redemption" value={formatINR(data.redemptionAmt)} tone={data.redemptionAmt > 0 ? "rose" : "muted"} />}
-          {show("kpi.sip_rejected") && <Stat href="/dashboard/sip-rejections" label="SIP Rejected" value={String(data.sipRejectedCount)} tone={data.sipRejectedCount > 0 ? "rose" : "muted"} />}
-          {show("kpi.sip_stopped") && <Stat href="/dashboard/sips?status=stopped" label="SIP Stopped" value={String(data.sipStoppedCount)} tone={data.sipStoppedCount > 0 ? "amber" : "muted"} />}
+          {show("kpi.sip_added") && <Stat href={withPeriod("/dashboard/sips", periodQuery)} label="SIP Added" value={String(data.sipAddedCount)} sub={formatINR(data.sipAddedAmt)} />}
+          {show("kpi.lumpsum") && <Stat href={withPeriod("/dashboard/transactions", periodQuery)} label="Lumpsum" value={String(data.lumpsumCount)} sub={formatINR(data.lumpsumAmt)} />}
+          {show("kpi.redemption") && <Stat href={withPeriod("/dashboard/transactions?type=redemption", periodQuery)} label="Redemption" value={formatINR(data.redemptionAmt)} tone={data.redemptionAmt > 0 ? "rose" : "muted"} />}
+          {show("kpi.sip_rejected") && <Stat href={withPeriod("/dashboard/sip-rejections", periodQuery)} label="SIP Rejected" value={String(data.sipRejectedCount)} tone={data.sipRejectedCount > 0 ? "rose" : "muted"} />}
+          {show("kpi.sip_stopped") && <Stat href={withPeriod("/dashboard/sips?status=stopped", periodQuery)} label="SIP Stopped" value={String(data.sipStoppedCount)} tone={data.sipStoppedCount > 0 ? "amber" : "muted"} />}
         </div>
+        )}
       </Group>
       )}
 
@@ -403,17 +549,32 @@ async function OwnerCockpitBody({
 
         {show("section.rm_leaderboard") && (
         <Suspense fallback={<LeaderboardSkeleton />}>
-          <RmLeaderboard session={session} />
+          <RmLeaderboard session={session} period={period} periodQuery={periodQuery} />
         </Suspense>
         )}
       </div>
       )}
 
-      {/* ---------- Net-sales chart (streamed via Suspense) ---------- */}
+      {/* ---------- Net-sales chart — period-scoped, matches the KPI tiles ---------- */}
       {show("section.net_sales") && (
-      <Suspense fallback={<ChartSkeleton height="h-64" />}>
-        <NetSalesSection session={session} />
-      </Suspense>
+      <div className="card-surface glass-card p-5">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="font-semibold flex items-center gap-2">
+            <div className="size-7 rounded-lg bg-brand-cyan-light grid place-items-center">
+              <TrendingUp className="size-3.5 text-brand-cyan-deep" />
+            </div>
+            Net sales — {periodLabel}
+          </h2>
+          <span className="text-xs text-muted-foreground">
+            {netSalesGranularity === "week" ? "Weekly" : "Daily"} inflow vs redemption
+          </span>
+        </div>
+        <NetSalesChart
+          data={data.netSalesSeries}
+          granularity={netSalesGranularity}
+          emptyCta={{ href: withPeriod("/dashboard/transactions", periodQuery), label: "View transactions" }}
+        />
+      </div>
       )}
 
       {/* ---------- SIP Persistency — franchise health metric ---------- */}
@@ -549,6 +710,8 @@ function Kpi({
   hero,
   delta,
   deltaTone,
+  sparkline,
+  sparkStrokeClass,
 }: {
   href?: string;
   icon?: any;
@@ -561,8 +724,15 @@ function Kpi({
   /** Small period-trajectory pill, e.g. "+23 MTD". */
   delta?: string;
   deltaTone?: "up" | "down";
+  /** Optional per-period trend series; rendered only when it has ≥2 real points. */
+  sparkline?: number[];
+  sparkStrokeClass?: string;
 }) {
   const TrendIcon = trend === "up" ? ArrowUpRight : trend === "down" ? ArrowDownRight : null;
+  // Only render a sparkline when there's a real, non-flat series to show —
+  // never fabricate a line out of all-zeros.
+  const hasSpark =
+    !!sparkline && sparkline.length >= 2 && sparkline.some((n) => n !== sparkline![0]);
 
   if (hero) {
     const inner = (
@@ -577,7 +747,12 @@ function Kpi({
             </div>
           )}
         </div>
-        <div className="text-3xl font-extrabold mt-2 tabular-nums tracking-tight">{value}</div>
+        <div className="flex items-end justify-between gap-2 mt-2">
+          <div className="text-3xl font-extrabold tabular-nums tracking-tight">{value}</div>
+          {hasSpark && (
+            <Sparkline data={sparkline!} strokeClass="text-white/80" width={72} height={28} />
+          )}
+        </div>
         {sub && (
           <div className="text-xs mt-2 flex items-center gap-1 text-white/85">
             {TrendIcon && (
@@ -637,6 +812,16 @@ function Kpi({
             )}
             {delta}
           </span>
+        )}
+        {hasSpark && (
+          <div className="ml-auto">
+            <Sparkline
+              data={sparkline!}
+              strokeClass={sparkStrokeClass ?? "text-emerald-500"}
+              width={72}
+              height={24}
+            />
+          </div>
         )}
       </div>
       {sub && (

@@ -526,6 +526,47 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
         result.legalRegExpiring++;
       }
 
+      // ── 12b. Auto-expire lapsed registrations ─────────────────────────
+      // A license whose date has passed but whose status was never manually
+      // updated must not keep reading as 'active' (it'd be invisible in the
+      // "Expired" view + the pre-expiry alert window has closed). Flip it to
+      // 'expired' (perpetual excluded) and emit a one-time event — the scan-date
+      // dedup + the status change together guarantee it fires only on lapse day.
+      const lapsedRows = await tx.execute(sql`
+        UPDATE legal_registrations
+        SET status = 'expired', updated_at = now()
+        WHERE tenant_id = ${tenantId}::uuid
+          AND status IN ('active', 'pending_renewal')
+          AND renewal_frequency <> 'perpetual'
+          AND expiry_at IS NOT NULL
+          AND expiry_at < CURRENT_DATE
+        RETURNING id, registered_in_name_of, authority, registration_for, expiry_at
+      `);
+      for (const row of lapsedRows.rows as Array<{
+        id: string;
+        registered_in_name_of: string;
+        authority: string;
+        registration_for: string;
+        expiry_at: string;
+      }>) {
+        await tx
+          .insert(eventsOutbox)
+          .values({
+            tenantId,
+            kind: "legal_registration.expired",
+            entityType: "legal_registration",
+            entityId: row.id,
+            after: {
+              registeredInNameOf: row.registered_in_name_of,
+              authority: row.authority,
+              registrationFor: row.registration_for,
+              expiresAt: row.expiry_at,
+            } as any,
+            meta: { scanDate, source: "daily-ops-scanner" } as any,
+          } as any)
+          .onConflictDoNothing();
+      }
+
       // ── 13. Compliance-vault document expiries ────────────────────────
       // ARN / NISM / KYD / AMC-empanelment / RIA docs etc. carry an explicit
       // expires_on. Until now that only drove a dashboard badge — emit events so

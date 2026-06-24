@@ -1,22 +1,30 @@
 # Caddy = reverse proxy + automatic HTTPS (free Let's Encrypt certs, auto-renew).
-# Replaces a paid AWS load balancer on the cheap single-box path.
 #
-# APP_DOMAIN is injected from the environment (docker-compose.prod.yml).
-# Point an A record (your domain → the EC2 Elastic IP) and Caddy does the rest.
+# ZERO-DOWNTIME: we proxy to BOTH blue and green web containers. Only one is
+# running at a time (the active colour); the other's hostname doesn't resolve and
+# is marked down by the active health check, so traffic flows to the live one.
+# During a deploy both run briefly — Caddy round-robins, and `lb_try_duration`
+# transparently RETRIES a request against the other colour if the one it picked
+# is mid-shutdown. Net effect: users never see the cold-start gap.
 
 {$APP_DOMAIN} {
 	encode gzip zstd
-	# Access log to stdout (visible via `docker logs app-caddy-1`) — request
-	# method, path, and status for every hit. Cheap; invaluable for debugging.
 	log {
 		output stdout
 		format console
 	}
-	reverse_proxy web:3000 {
+	reverse_proxy web-blue:3000 web-green:3000 {
+		lb_policy round_robin
+		# If the chosen colour refuses the connection (mid-cutover), retry the
+		# other colour within this window instead of erroring to the user.
+		lb_try_duration 12s
+		lb_try_interval 250ms
+		# Active health probing so a stopped/booting colour is excluded fast.
 		health_uri /api/health
-		health_interval 30s
+		health_interval 5s
+		health_timeout 4s
+		health_status 200
 	}
-	# Sensible security headers.
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
 		X-Content-Type-Options "nosniff"

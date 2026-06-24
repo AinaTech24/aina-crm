@@ -14,7 +14,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant, type Tx } from "@/db/client";
-import { users } from "@/db/schema";
+import { users, branches } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap, areAssignableRoles, areKnownCapabilities } from "@/lib/auth/rbac";
 import { areKnownNavKeys } from "@/config/nav-access";
@@ -150,6 +150,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         .from(users)
         .where(and(eq(users.id, id), eq(users.tenantId, session.tenantId)));
       if (!existing) return null;
+
+      // A reassigned branch must belong to this tenant (defense-in-depth —
+      // prevents a foreign/dangling branch_id landing on the user row).
+      if (body.branchId) {
+        const [b] = await tx
+          .select({ id: branches.id })
+          .from(branches)
+          .where(and(eq(branches.id, body.branchId), eq(branches.tenantId, session.tenantId)))
+          .limit(1);
+        if (!b) throw Object.assign(new Error("That branch doesn't belong to your firm."), { status: 400 });
+      }
 
       // Lockout guards.
       const isSelf = id === session.userId;

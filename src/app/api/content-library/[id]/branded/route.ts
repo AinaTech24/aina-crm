@@ -20,8 +20,10 @@ import { withSystem, withTenant } from "@/db/client";
 import { contentLibraryAssets, tenants } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { composeBrandedImage, type BrandingTenant } from "@/lib/branding/compose";
-import { getBrandingTemplate } from "@/lib/branding/templates";
+import { getBrandingTemplate, getOutputAspect } from "@/lib/branding/templates";
+import { pickLogo } from "@/lib/branding/logo";
 import { assetVisibleTo, fetchAssetBytes } from "@/lib/content/asset-url";
+import { recordContentEvent } from "@/lib/content/events";
 
 export const dynamic = "force-dynamic";
 // sharp needs the Node runtime, not Edge.
@@ -39,12 +41,24 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     const templateParam = url.searchParams.get("template");
     // MFD-controllable layout overrides
     const posParam = url.searchParams.get("position");
-    const overridePosition: "top" | "bottom" | "both" | "split" | null =
-      posParam === "top" || posParam === "bottom" || posParam === "both" || posParam === "split"
+    const overridePosition: "top" | "bottom" | "both" | "split" | "frame" | null =
+      posParam === "top" ||
+      posParam === "bottom" ||
+      posParam === "both" ||
+      posParam === "split" ||
+      posParam === "frame"
         ? posParam
         : null;
     const heightParam = url.searchParams.get("h");
     const overrideHeight = heightParam ? Number(heightParam) : null;
+    const variantParam = url.searchParams.get("variant");
+    const overrideVariant: "solid" | "light" | null =
+      variantParam === "solid" || variantParam === "light" ? variantParam : null;
+    // Multi-size export: map the size preset to a width/height aspect.
+    const outputAspect = getOutputAspect(url.searchParams.get("size"));
+    const ftParam = url.searchParams.get("frametheme");
+    const overrideFrameTheme: "premium" | "minimal" | "bold" | null =
+      ftParam === "premium" || ftParam === "minimal" || ftParam === "bold" ? ftParam : null;
 
     // Load asset — global OR caller's own (withSystem bypasses RLS, so this
     // predicate is what stops cross-tenant image exfiltration by id).
@@ -86,7 +100,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       email: (tenant as any).email ?? null,
       website: (tenant as any).website ?? null,
       address: (tenant as any).address ?? null,
-      logoUrl: (tenant as any).logoUrl ?? null,
+      // Use the same fallback chain as the sidebar (full → icon → mark) so a
+      // firm that uploaded only a square icon / monogram — not the full-logo
+      // slot — still gets their real logo on the creative instead of an initial.
+      logoUrl: pickLogo(tenant as any, "full"),
       primaryColor: (tenant as any).primaryColor ?? null,
     };
 
@@ -98,13 +115,27 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       const t = getBrandingTemplate(templateParam);
       config.position = t.image.position;
       config.heightPct = t.image.heightPct;
+      config.variant = t.image.variant ?? "solid";
+      if (t.image.frameTheme) config.frameTheme = t.image.frameTheme;
     }
     if (overridePosition) config.position = overridePosition;
     if (overrideHeight && overrideHeight >= 5 && overrideHeight <= 50) {
       config.heightPct = overrideHeight;
     }
+    if (overrideVariant) config.variant = overrideVariant;
+    if (overrideFrameTheme) config.frameTheme = overrideFrameTheme;
+    config.outputAspect = outputAspect;
 
     const pngBuf = await composeBrandedImage(sourceBuf, brand, config);
+
+    // Usage analytics — a preview render means the MFD co-branded it; a download
+    // means they saved it. Best-effort, never blocks the response.
+    void recordContentEvent({
+      assetId: id,
+      tenantId: session.tenantId,
+      userId: session.userId,
+      eventType: mode === "download" ? "download" : "cobrand",
+    });
 
     const filename = `${(asset.title ?? "asset").replace(/[^a-zA-Z0-9._-]/g, "_")}-${
       (tenant.arn ?? "").replace(/^ARN-?/i, "")
@@ -115,7 +146,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     // the rendered output).
     const headers = new Headers({
       "Content-Type": "image/png",
-      "Cache-Control": "private, max-age=300",
+      // The preview must reflect branding/profile edits immediately, so it's
+      // never cached — otherwise saving a logo/contact still shows the stale
+      // composite. The download link can cache briefly (same render, fetched once).
+      "Cache-Control": mode === "download" ? "private, max-age=300" : "no-store, must-revalidate",
       "Content-Disposition":
         mode === "download" ? `attachment; filename="${filename}"` : `inline; filename="${filename}"`,
     });

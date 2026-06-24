@@ -41,7 +41,7 @@ export default async function AinaLibraryPage({
       )
       .orderBy(desc(contentLibraryAssets.createdAt))
   );
-  
+
   let rows = allRows.filter(
     (r) => r.isActive && (!r.expireAt || new Date(r.expireAt) > new Date())
   );
@@ -62,10 +62,6 @@ export default async function AinaLibraryPage({
           <h1 className="page-title">
             <Sparkles className="size-6 text-brand-cyan" /> AINA Content Library
           </h1>
-          <p className="page-subtitle">
-            Festive creatives, market updates, articles, presentations — download with your branding
-            baked in.
-          </p>
         </div>
         {canUpload && (
           <Link href="/dashboard/aina-library/new" className="btn-primary flex items-center gap-1 text-xs">

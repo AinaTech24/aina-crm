@@ -13,8 +13,9 @@
  */
 
 import { useState } from "react";
-import { Download, FileText, LayoutTemplate, Send } from "lucide-react";
+import { Download, FileText, LayoutTemplate, Send, Users } from "lucide-react";
 import { SendToClientDrawer } from "./SendToClientDrawer";
+import { BulkSendDrawer } from "./BulkSendDrawer";
 import { BRANDING_TEMPLATES, DEFAULT_TEMPLATE_ID, getBrandingTemplate } from "@/lib/branding/templates";
 
 export function PdfBrandingPicker({
@@ -31,6 +32,7 @@ export function PdfBrandingPicker({
   const [templateId, setTemplateId] = useState(DEFAULT_TEMPLATE_ID);
   const [refreshKey, setRefreshKey] = useState(0);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
 
   const template = getBrandingTemplate(templateId);
   const params = `template=${templateId}&v=${refreshKey}`;
@@ -99,6 +101,13 @@ export function PdfBrandingPicker({
           >
             <Send className="size-3.5" /> Send to Client
           </button>
+          <button
+            type="button"
+            onClick={() => setBulkOpen(true)}
+            className="rounded-md bg-secondary hover:bg-secondary/80 border text-secondary-foreground px-3 py-1.5 text-xs font-semibold flex items-center gap-1.5"
+          >
+            <Users className="size-3.5" /> Send to many
+          </button>
           <a href={downloadHref} className="btn-primary" download>
             <Download className="size-4" /> Download co-branded PDF
           </a>
@@ -118,6 +127,13 @@ export function PdfBrandingPicker({
         assetTitle={assetTitle}
         assetType={assetType}
         assetFileUrl={assetFileUrl}
+      />
+
+      <BulkSendDrawer
+        open={bulkOpen}
+        onClose={() => setBulkOpen(false)}
+        assetId={assetId}
+        assetType={assetType}
       />
     </div>
   );

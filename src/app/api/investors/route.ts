@@ -8,7 +8,7 @@ import { handleApiError } from "@/lib/api/error-handler";
 
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuid } from "uuid";
-import { and, desc, eq, ilike, or, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, isNull, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
@@ -16,6 +16,9 @@ import { require as requireCap, can } from "@/lib/auth/rbac";
 import { assertActiveLicense, assertModuleEnabled, assertInvestorQuota } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { healthFields } from "@/lib/investors/health";
+import { NomineesArray } from "@/lib/investors/nominee";
+import { ReferralsArray } from "@/lib/investors/referral";
+import { registerNomineePanDocs } from "@/lib/investors/nominee-docs";
 import { investors, eventsOutbox } from "@/db/schema";
 
 export const dynamic = "force-dynamic";
@@ -23,6 +26,8 @@ export const dynamic = "force-dynamic";
 const CreateBody = z.object({
   name: z.string().min(2).max(200),
   pan: z.string().regex(/^[A-Z]{5}[0-9]{4}[A-Z]$/, "invalid PAN"),
+  nominees: NomineesArray,
+  referrals: ReferralsArray,
   email: z.string().email().optional().or(z.literal("")),
   phone: z.string().optional(),
   alternatePhone: z.string().optional(),
@@ -53,8 +58,41 @@ const CreateBody = z.object({
       city: z.string().optional(),
       state: z.string().optional(),
       pincode: z.string().optional(),
+      country: z.string().optional(),
     })
     .optional(),
+
+  // ── Extended client-master fields (Batch 2) — all optional. ──
+  employerName: z.string().optional(), // Company Name
+  aadhaarLast4: z.string().max(4).optional(),
+  clientCategory: z.enum(["A", "B", "C", "D"]).optional(),
+  kycStatus: z
+    .enum(["pending", "registered", "verified", "hold", "rejected", "expired", "re_kyc_required"])
+    .optional(),
+  taxStatus: z.string().optional(),
+  residencyStatus: z.enum(["indian_resident", "nri", "oci", "pio", "foreign_national"]).optional(),
+  maritalStatus: z.string().optional(),
+  modeOfHolding: z.string().optional(),
+  anniversaryDate: z.string().optional(),
+  birthPlace: z.string().optional(),
+  motherName: z.string().optional(),
+  mobileRelation: z.string().optional(),
+  emailRelation: z.string().optional(),
+  referralClientName: z.string().optional(),
+  familyOwnerName: z.string().optional(),
+  householdType: z.string().optional(), // "Family or Individual"
+  onboardedAt: z.string().optional(), // Date of Onboarding
+  lastReviewAt: z.string().optional(), // Last Meeting Date
+  nextReviewAt: z.string().optional(), // Next Meeting Date
+  reviewFrequency: z.enum(["monthly", "quarterly", "half_yearly", "annual"]).optional(),
+  // Second / joint holder.
+  secondHolderFirstName: z.string().optional(),
+  secondHolderLastName: z.string().optional(),
+  secondHolderOccupation: z.string().optional(),
+  secondHolderCompanyName: z.string().optional(),
+  secondHolderBirthPlace: z.string().optional(),
+  secondHolderMotherName: z.string().optional(),
+  secondHolderMaritalStatus: z.string().optional(),
 });
 
 export async function GET(req: NextRequest) {
@@ -79,6 +117,10 @@ export async function GET(req: NextRequest) {
 
     const result = await withTenant(session.tenantId, async (tx) => {
       const conditions = [];
+      // Never list records that were merged into another client (the retired
+      // "loser" of a duplicate merge) — they'd otherwise still show alongside
+      // the survivor.
+      conditions.push(isNull(investors.mergedIntoId));
       // Scope: branch heads → their whole branch; RMs → their assigned clients.
       // (Owner / back-office / compliance with view.all see the full tenant book.)
       const branchScoped =
@@ -155,12 +197,53 @@ export async function POST(req: NextRequest) {
           phone: body.phone || null,
           whatsappPhone: body.whatsappPhone || null,
           dob: body.dob || null,
+          gender: body.gender ?? null,
+          occupation: body.occupation || null,
+          employerName: body.employerName || null,
           segmentTag: body.segmentTag,
           investorCategory: body.investorCategory,
+          clientCategory: body.clientCategory ?? null,
+          // Nominees — store the array + mirror the first into legacy columns.
+          nominees: body.nominees ?? [],
+          referrals: body.referrals ?? [],
+          nomineeName: body.nominees?.[0]?.name || null,
+          nomineeRelation: body.nominees?.[0]?.relation || null,
+          nomineeDob: body.nominees?.[0]?.dob || null,
           rmId: body.rmId ?? session.userId,
+          familyId: body.familyId ?? null,
           address: body.address,
           notes: body.notes,
-          onboardedAt: new Date(),
+          bseUccCode: body.bseUccCode || null,
+          nseCanCode: body.nseCanCode || null,
+          // KYC / compliance
+          kycStatus: body.kycStatus ?? "pending",
+          taxStatus: body.taxStatus || null,
+          residencyStatus: body.residencyStatus ?? null,
+          aadhaarLast4: body.aadhaarLast4 || null,
+          // Personal
+          maritalStatus: body.maritalStatus || null,
+          modeOfHolding: body.modeOfHolding || null,
+          anniversaryDate: body.anniversaryDate || null,
+          birthPlace: body.birthPlace || null,
+          motherName: body.motherName || null,
+          mobileRelation: body.mobileRelation || null,
+          emailRelation: body.emailRelation || null,
+          referralClientName: body.referralClientName || null,
+          familyOwnerName: body.familyOwnerName || null,
+          householdType: body.householdType || null,
+          // Second / joint holder
+          secondHolderFirstName: body.secondHolderFirstName || null,
+          secondHolderLastName: body.secondHolderLastName || null,
+          secondHolderOccupation: body.secondHolderOccupation || null,
+          secondHolderCompanyName: body.secondHolderCompanyName || null,
+          secondHolderBirthPlace: body.secondHolderBirthPlace || null,
+          secondHolderMotherName: body.secondHolderMotherName || null,
+          secondHolderMaritalStatus: body.secondHolderMaritalStatus || null,
+          // Relationship / review
+          reviewFrequency: body.reviewFrequency ?? null,
+          lastReviewAt: body.lastReviewAt ? new Date(body.lastReviewAt) : null,
+          nextReviewAt: body.nextReviewAt ? new Date(body.nextReviewAt) : null,
+          onboardedAt: body.onboardedAt ? new Date(body.onboardedAt) : new Date(),
           status: "active",
           // Deterministic initial health from the captured fields.
           ...healthFields({
@@ -191,6 +274,9 @@ export async function POST(req: NextRequest) {
         after: { name: body.name, pan: body.pan, segmentTag: body.segmentTag },
         ...clientMeta,
       });
+
+      // Register each nominee's PAN file as a client document.
+      await registerNomineePanDocs(tx, session.tenantId, id, body.nominees, session.userId);
     });
 
     return NextResponse.json({ id }, { status: 201 });

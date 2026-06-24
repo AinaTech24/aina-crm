@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { and, desc, eq, gte, ilike, inArray, lte, or, sql } from "drizzle-orm";
 import { Plus, Briefcase, LayoutDashboard, Droplets } from "lucide-react";
 import { withTenant } from "@/db/client";
-import { businessEntries, users } from "@/db/schema";
+import { businessEntries, users, investors } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { formatINR } from "@/lib/utils";
@@ -55,6 +55,8 @@ export default async function BusinessEntriesPage({
       .select({
         id: businessEntries.id,
         clientName: businessEntries.clientName,
+        investorId: businessEntries.investorId,
+        avatarUrl: investors.avatarUrl,
         productType: businessEntries.productType,
         businessDate: businessEntries.businessDate,
         status: businessEntries.status,
@@ -64,6 +66,7 @@ export default async function BusinessEntriesPage({
       })
       .from(businessEntries)
       .leftJoin(users, eq(users.id, businessEntries.rmId))
+      .leftJoin(investors, eq(investors.id, businessEntries.investorId))
       .where(and(...conds))
       .orderBy(desc(businessEntries.businessDate), desc(businessEntries.createdAt))
       .limit(150);

@@ -117,17 +117,19 @@ export function RiskProfilePdfButtons({ profileId, name }: { profileId: string |
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="btn-secondary text-xs px-2.5 py-1 inline-flex items-center gap-1"
+        className="btn-secondary text-xs p-1.5 inline-flex items-center"
         title="View Risk Profile PDF"
+        aria-label="View Risk Profile PDF"
       >
-        <Eye className="size-3" /> View
+        <Eye className="size-3.5" />
       </button>
       <a
         href={`/api/risk-profiles/${profileId}/pdf?download=1`}
-        className="btn-secondary text-xs px-2.5 py-1 inline-flex items-center gap-1"
+        className="btn-secondary text-xs p-1.5 inline-flex items-center"
         title="Download Risk Profile PDF"
+        aria-label="Download Risk Profile PDF"
       >
-        <Download className="size-3" /> Download
+        <Download className="size-3.5" />
       </a>
       {open && <PdfModal profileId={profileId} name={name} onClose={() => setOpen(false)} />}
     </>

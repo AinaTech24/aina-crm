@@ -35,12 +35,9 @@ export async function POST(req: NextRequest) {
     const parse = Body.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) return NextResponse.json({ error: "invalid body" }, { status: 400 });
 
-    if (!(await isAiConfigured())) {
-      return NextResponse.json(
-        { error: "AI isn't configured yet. Set the provider + API key in Aina Admin → AI & Models." },
-        { status: 400 }
-      );
-    }
+    // The metrics below are computed from the DB and are useful on their own —
+    // so we still answer (deterministically) even when no LLM is configured.
+    const aiConfigured = await isAiConfigured();
 
     // ── Live metric snapshot (RLS-scoped to this tenant) ───────────────────
     const snapshot = await withTenant(session.tenantId, async (tx) => {
@@ -161,22 +158,71 @@ Rules:
 LIVE METRICS (JSON):
 ${JSON.stringify(snapshot, null, 2)}`;
 
+    // A deterministic, always-correct one-liner straight from the live metrics —
+    // used when the AI provider is busy/unconfigured so the user STILL gets real
+    // data (the numbers are computed from the DB, not the model).
+    const fallbackAnswer = deterministicAnswer(parse.data.question, snapshot);
+
     // Carry prior turns so follow-ups ("…and how many of those are HNI?") resolve.
     const history = (parse.data.history ?? []).slice(-8).map((m) => ({ role: m.role, content: m.content }));
-    const res = await aiMessagesClient().messages.create({
-      model: "fast",
-      max_tokens: 600,
-      system,
-      messages: [...history, { role: "user", content: parse.data.question }],
-    });
-    const answer = res.content
-      .filter((b) => b.type === "text")
-      .map((b: any) => b.text)
-      .join("\n")
-      .trim();
+    let answer = fallbackAnswer;
+    let aiUsed = false;
+    if (aiConfigured) {
+      try {
+        const res = await aiMessagesClient().messages.create({
+          model: "fast",
+          max_tokens: 600,
+          system,
+          messages: [...history, { role: "user", content: parse.data.question }],
+        });
+        const text = res.content
+          .filter((b) => b.type === "text")
+          .map((b: any) => b.text)
+          .join("\n")
+          .trim();
+        if (text) {
+          answer = text;
+          aiUsed = true;
+        }
+      } catch {
+        // AI provider busy / rate-limited / down — fall back to the deterministic
+        // answer. We still return 200 with the REAL metrics rather than a 500.
+      }
+    }
 
-    return NextResponse.json({ answer, metrics: snapshot });
+    return NextResponse.json({ answer, metrics: snapshot, aiUsed });
   } catch (err: any) {
     return handleApiError(err);
   }
+}
+
+/** A safe, numbers-only answer built straight from the live snapshot. Keyword-
+ *  matched to the question so the user always gets real data even with no LLM. */
+function deterministicAnswer(question: string, s: any): string {
+  const q = question.toLowerCase();
+  const inr = (n: number) => "₹" + Math.round(Number(n) || 0).toLocaleString("en-IN");
+  const has = (...k: string[]) => k.some((x) => q.includes(x));
+  if (has("aum", "assets under")) {
+    if (has("rm", "manager")) {
+      const lines = (s.aum_by_rm ?? []).map((r: any) => `• ${r.rm}: ${inr(r.aum_inr)} (${r.clients})`);
+      return lines.length ? `AUM by RM:\n${lines.join("\n")}` : "No RM-wise AUM yet.";
+    }
+    return `Total AUM is ${inr(s.total_aum_inr)} across ${s.active_clients} active clients (avg ${inr(s.avg_aum_per_client_inr)} per client).`;
+  }
+  if (has("kyc")) return `${s.kyc_pending_clients} clients are KYC-pending.`;
+  if (has("sip")) return `You have ${s.active_sips} active SIPs — a monthly SIP book of ${inr(s.monthly_sip_book_inr)}.`;
+  if (has("nominee")) return `${s.clients_without_nominee} clients have no nominee on file.`;
+  if (has("dormant")) return `${s.dormant_clients_365d} clients are dormant (no transaction in 365 days).`;
+  if (has("new", "this month")) return `${s.new_clients_this_month} new clients this month (${s.new_clients_last_30d} in the last 30 days).`;
+  if (has("top", "biggest", "largest")) {
+    const lines = (s.top_clients_by_aum ?? []).slice(0, 10).map((t: any, i: number) => `${i + 1}. ${t.name} — ${inr(t.aum_inr)}`);
+    return lines.length ? `Top clients by AUM:\n${lines.join("\n")}` : "No clients yet.";
+  }
+  if (has("lead")) return `${s.open_leads} open leads in the pipeline.`;
+  if (has("task")) return `${s.open_tasks} open tasks (${s.overdue_tasks} overdue).`;
+  if (has("insurance", "policy", "policies")) return `${s.active_insurance_policies} active policies — ${inr(s.active_insurance_annual_premium_inr)} annual premium.`;
+  if (has("meeting")) return `${s.upcoming_meetings} upcoming meetings scheduled.`;
+  if (has("hni")) return `${s.hni_clients} HNI clients.`;
+  // Generic snapshot summary.
+  return `Here's your firm right now: ${s.active_clients} active clients · ${inr(s.total_aum_inr)} AUM · ${s.active_sips} active SIPs (${inr(s.monthly_sip_book_inr)}/mo) · ${s.open_leads} open leads · ${s.open_tasks} open tasks. Ask about AUM, KYC, SIPs, top clients, dormant clients and more.`;
 }

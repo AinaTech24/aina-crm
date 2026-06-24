@@ -85,10 +85,6 @@ export default async function SchemesPage({
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
             <Boxes className="size-6 text-brand-cyan" /> Scheme Master
           </h1>
-          <p className="text-muted-foreground text-sm">
-            The firm's mutual-fund catalog — browse, shortlist (IC buy-list), and score schemes.
-            {!canManage && " Managing the shortlist + evaluation is for the investment committee (owner / compliance)."}
-          </p>
         </div>
         {canManage && <SyncSchemesButton />}
       </div>

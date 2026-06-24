@@ -22,6 +22,12 @@
 
 import { sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
+import { fifoOpenLots, currentFyStartYear, type TxRow } from "@/lib/tax/realized-gains";
+
+/** Whole days between two YYYY-MM-DD dates. */
+function holdingDays(buy: string, sell: string): number {
+  return Math.floor((Date.parse(sell) - Date.parse(buy)) / 86_400_000);
+}
 
 /** This year's LTCG exemption on equity (₹). */
 export const LTCG_EXEMPTION = 125_000;
@@ -39,6 +45,8 @@ function isEquityTaxed(category?: string | null, name?: string | null): boolean 
 
 export type HarvestHolding = {
   schemeName: string | null;
+  schemeCode: string | null;
+  ltUnits: number;
   longTermGain: number;
 };
 
@@ -46,78 +54,117 @@ export type HarvestRow = {
   investorId: string;
   investorName: string;
   rmId: string | null;
-  /** Total unrealised long-term equity gain (₹). */
+  /** Total unrealised long-term equity gain (₹) — only units held > 12 months. */
   longTermGain: number;
-  /** How much can be harvested tax-free this year (min of gain + remaining exemption). */
+  /** LTCG already realised this FY (eats into the exemption). */
+  realizedLtcgThisFy: number;
+  /** Exemption still available = max(0, 1,25,000 − realised this FY). */
+  remainingExemption: number;
+  /** How much can be harvested tax-free this year (min of LT gain + remaining exemption). */
   harvestable: number;
   /** Tax saved by harvesting this year (harvestable × 12.5%). */
   taxSaved: number;
   holdings: HarvestHolding[];
 };
 
-export async function scanTaxHarvest(
-  tx: Tx,
-  opts: { limit?: number } = {}
-): Promise<HarvestRow[]> {
+export type LossHolding = { schemeName: string | null; schemeCode: string | null; loss: number; term: "lt" | "st" };
+export type LossRow = {
+  investorId: string;
+  investorName: string;
+  rmId: string | null;
+  ltLoss: number; // long-term unrealised loss (offsets LT gains)
+  stLoss: number; // short-term unrealised loss (offsets ST + LT gains)
+  totalLoss: number;
+  holdings: LossHolding[];
+};
+
+export type HarvestScan = { gains: HarvestRow[]; losses: LossRow[]; fyStartYear: number };
+
+export async function scanTaxHarvest(tx: Tx, opts: { limit?: number; rmId?: string } = {}): Promise<HarvestScan> {
+  // RM scope: a non-manager viewing their own book passes rmId; managers omit it
+  // and sweep the whole firm.
+  const rmScope = opts.rmId ? sql` AND i.rm_id = ${opts.rmId}::uuid` : sql``;
+  // One sweep of every transaction for active investors, ordered so we can FIFO
+  // per (investor, scheme). Redeemed lots fall out of FIFO automatically.
   const res = await tx.execute(sql`
-    SELECT
-      t.investor_id, i.name AS investor_name, i.rm_id,
-      t.scheme_code, t.scheme_name, t.scheme_category,
-      SUM(CASE WHEN t.direction = 'inflow' THEN t.units::numeric ELSE -t.units::numeric END) AS net_units,
-      SUM(CASE WHEN t.direction = 'inflow' THEN t.amount::numeric ELSE -t.amount::numeric END) AS net_invested,
-      MIN(t.order_date) FILTER (WHERE t.direction = 'inflow') AS first_inflow,
-      n.nav AS current_nav
+    SELECT t.investor_id, i.name AS investor_name, i.rm_id,
+           t.scheme_code, t.scheme_name, t.scheme_category, t.type, t.direction,
+           t.units, t.nav, t.amount, t.order_date
     FROM transactions t
-    JOIN investors i ON i.id = t.investor_id AND i.status = 'active'
-    LEFT JOIN scheme_nav n ON n.scheme_code = t.scheme_code
-    WHERE t.status IN ('processed', 'successful')
-    GROUP BY t.investor_id, i.name, i.rm_id, t.scheme_code, t.scheme_name, t.scheme_category, n.nav
-    HAVING SUM(CASE WHEN t.direction = 'inflow' THEN t.units::numeric ELSE -t.units::numeric END) > 0.0005
+    JOIN investors i ON i.id = t.investor_id AND i.status = 'active'${rmScope}
+    WHERE t.status IN ('processed', 'successful') AND t.order_date IS NOT NULL
+    ORDER BY t.investor_id, t.order_date ASC, t.id ASC
   `);
+  const navRes = await tx.execute(sql`SELECT scheme_code, nav FROM scheme_nav WHERE scheme_code IS NOT NULL`);
+  const navByScheme = new Map<string, number>();
+  for (const r of navRes.rows as any[]) if (r.scheme_code != null && r.nav != null) navByScheme.set(String(r.scheme_code), Number(r.nav));
 
-  const now = new Date();
-  const oneYearAgo = new Date(now.getTime() - 365 * 86_400_000);
+  const fyStartYear = currentFyStartYear();
+  const nowStr = new Date().toISOString().slice(0, 10);
 
-  // Aggregate the per-scheme long-term gains up to the investor level.
-  const byInvestor = new Map<string, HarvestRow>();
-
+  const byInv = new Map<string, { name: string; rmId: string | null; rows: TxRow[]; cat: Map<string, { category: string | null; name: string | null }> }>();
   for (const r of res.rows as any[]) {
-    const currentNav = r.current_nav != null ? Number(r.current_nav) : null;
-    if (currentNav == null || !isFinite(currentNav)) continue; // unpriced — skip
-    if (!isEquityTaxed(r.scheme_category, r.scheme_name)) continue; // only equity LTCG
-    const firstInflow = r.first_inflow ? new Date(r.first_inflow) : null;
-    if (!firstInflow || firstInflow > oneYearAgo) continue; // not long-term yet
-
-    const netUnits = Number(r.net_units);
-    const netInvested = Number(r.net_invested);
-    const currentValue = netUnits * currentNav;
-    const gain = currentValue - netInvested;
-    if (gain <= 0) continue; // only positive gains are harvestable
-
-    let row = byInvestor.get(r.investor_id);
-    if (!row) {
-      row = {
-        investorId: r.investor_id,
-        investorName: r.investor_name,
-        rmId: r.rm_id,
-        longTermGain: 0,
-        harvestable: 0,
-        taxSaved: 0,
-        holdings: [],
-      };
-      byInvestor.set(r.investor_id, row);
-    }
-    row.longTermGain += gain;
-    row.holdings.push({ schemeName: r.scheme_name, longTermGain: gain });
+    let grp = byInv.get(r.investor_id);
+    if (!grp) { grp = { name: r.investor_name, rmId: r.rm_id, rows: [], cat: new Map() }; byInv.set(r.investor_id, grp); }
+    grp.rows.push(r as TxRow);
+    const sk = r.scheme_code ?? r.scheme_name ?? "unknown";
+    if (!grp.cat.has(sk)) grp.cat.set(sk, { category: r.scheme_category, name: r.scheme_name });
   }
 
-  const rows = Array.from(byInvestor.values()).map((row) => {
-    row.harvestable = Math.min(row.longTermGain, LTCG_EXEMPTION);
-    row.taxSaved = row.harvestable * LTCG_RATE;
-    row.holdings.sort((a, b) => b.longTermGain - a.longTermGain);
-    return row;
-  });
+  const gains: HarvestRow[] = [];
+  const losses: LossRow[] = [];
 
-  rows.sort((a, b) => b.harvestable - a.harvestable);
-  return opts.limit ? rows.slice(0, opts.limit) : rows;
+  for (const [investorId, g] of byInv) {
+    const { open, realizedLtcgThisFy } = fifoOpenLots(g.rows, fyStartYear);
+    const ltGainBy = new Map<string, { name: string | null; code: string | null; units: number; gain: number }>();
+    const lossBy = new Map<string, { name: string | null; code: string | null; loss: number; term: "lt" | "st" }>();
+    let ltGain = 0, ltLoss = 0, stLoss = 0;
+
+    for (const lot of open) {
+      const sk = lot.schemeCode ?? lot.schemeName ?? "unknown";
+      const meta = g.cat.get(sk);
+      if (!isEquityTaxed(meta?.category, meta?.name ?? lot.schemeName)) continue; // equity only
+      const nav = lot.schemeCode != null ? navByScheme.get(String(lot.schemeCode)) : undefined;
+      if (nav == null || !isFinite(nav)) continue; // unpriced — skip
+      const gain = (nav - lot.nav) * lot.units;
+      const isLt = holdingDays(lot.date, nowStr) > 365;
+      if (gain > 0) {
+        if (isLt) {
+          ltGain += gain;
+          const e = ltGainBy.get(sk) ?? { name: lot.schemeName, code: lot.schemeCode, units: 0, gain: 0 };
+          e.units += lot.units; e.gain += gain; ltGainBy.set(sk, e);
+        }
+        // short-term GAINS aren't harvestable tax-free — ignored.
+      } else if (gain < 0) {
+        if (isLt) ltLoss += -gain; else stLoss += -gain;
+        const e = lossBy.get(sk) ?? { name: lot.schemeName, code: lot.schemeCode, loss: 0, term: isLt ? "lt" : "st" };
+        e.loss += -gain; lossBy.set(sk, e);
+      }
+    }
+
+    if (ltGain > 0.5) {
+      const remainingExemption = Math.max(0, LTCG_EXEMPTION - Math.max(0, realizedLtcgThisFy));
+      const harvestable = Math.min(ltGain, remainingExemption);
+      gains.push({
+        investorId, investorName: g.name, rmId: g.rmId,
+        longTermGain: ltGain,
+        realizedLtcgThisFy: Math.max(0, realizedLtcgThisFy),
+        remainingExemption,
+        harvestable,
+        taxSaved: harvestable * LTCG_RATE,
+        holdings: [...ltGainBy.values()].map((e) => ({ schemeName: e.name, schemeCode: e.code, ltUnits: e.units, longTermGain: e.gain })).sort((a, b) => b.longTermGain - a.longTermGain),
+      });
+    }
+    if (ltLoss + stLoss > 0.5) {
+      losses.push({
+        investorId, investorName: g.name, rmId: g.rmId,
+        ltLoss, stLoss, totalLoss: ltLoss + stLoss,
+        holdings: [...lossBy.values()].map((e) => ({ schemeName: e.name, schemeCode: e.code, loss: e.loss, term: e.term })).sort((a, b) => b.loss - a.loss),
+      });
+    }
+  }
+
+  gains.sort((a, b) => b.harvestable - a.harvestable || b.longTermGain - a.longTermGain);
+  losses.sort((a, b) => b.totalLoss - a.totalLoss);
+  return { gains: opts.limit ? gains.slice(0, opts.limit) : gains, losses: opts.limit ? losses.slice(0, opts.limit) : losses, fyStartYear };
 }

@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { Plus, ScrollText } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { sops, sopVersions, sopAcknowledgements } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
+import { can } from "@/lib/auth/rbac";
 import { sql } from "drizzle-orm";
 import { formatRelative } from "@/lib/utils";
 import { RowActions } from "@/components/common/RowActions";
@@ -12,6 +13,8 @@ export const dynamic = "force-dynamic";
 
 export default async function SopsPage() {
   const session = await requireSession();
+  // Authoring/deletion is sop.manage-only; viewers see the library read-only.
+  const canManage = can(session.roles, "sop.manage", session.permissions);
   const result = await withTenant(session.tenantId, async (tx) => {
     const sopRows = await tx
       .select({
@@ -25,7 +28,8 @@ export default async function SopsPage() {
       .from(sops)
       .leftJoin(sopVersions, eq(sopVersions.id, sops.currentVersionId))
       // Tenant predicate — without it the list shows every tenant's SOPs.
-      .where(eq(sops.tenantId, session.tenantId))
+      // Soft-deleted SOPs (deleted_at set) are hidden from the library.
+      .where(and(eq(sops.tenantId, session.tenantId), isNull(sops.deletedAt)))
       .orderBy(desc(sops.updatedAt));
     return sopRows;
   });
@@ -35,16 +39,15 @@ export default async function SopsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">SOP library</h1>
-          <p className="text-muted-foreground text-sm">
-            Standard Operating Procedures, versioned, with sign-off tracking. Required for DDQ readiness.
-          </p>
         </div>
-        <Link
-          href="/dashboard/sops/new"
-          className="rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-sm font-medium flex items-center gap-1.5"
-        >
-          <Plus className="size-4" /> New SOP
-        </Link>
+        {canManage && (
+          <Link
+            href="/dashboard/sops/new"
+            className="rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-sm font-medium flex items-center gap-1.5"
+          >
+            <Plus className="size-4" /> New SOP
+          </Link>
+        )}
       </div>
 
       <div className="border rounded-lg bg-card">
@@ -79,13 +82,14 @@ export default async function SopsPage() {
                       <span className="text-muted-foreground">for {r.sop.requiredRoles.join(", ")}</span>
                     )}
                     {r.version && <span className="text-muted-foreground">{formatRelative(r.version.publishedAt ?? r.version.createdAt)}</span>}
-                    <RowActions
-                      editHref={`/dashboard/sops/${r.sop.id}`}
-                      deleteUrl={`/api/sops/${r.sop.id}`}
-                      itemLabel="SOP"
-                      itemName={r.sop.title}
-                      permanent
-                    />
+                    {canManage && (
+                      <RowActions
+                        editHref={`/dashboard/sops/${r.sop.id}`}
+                        deleteUrl={`/api/sops/${r.sop.id}`}
+                        itemLabel="SOP"
+                        itemName={r.sop.title}
+                      />
+                    )}
                   </div>
                 </div>
               </li>

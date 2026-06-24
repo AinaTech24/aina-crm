@@ -18,7 +18,7 @@ import { subscriptions, packages } from "@/db/schema";
 import { isPlatformAdmin } from "@/lib/platform";
 
 export type LicenseState = {
-  status: "trial" | "active" | "past_due" | "suspended" | "expired" | "cancelled" | "no_subscription";
+  status: "pending" | "trial" | "active" | "past_due" | "suspended" | "expired" | "cancelled" | "no_subscription";
   packageKey: string | null;
   enabledModules: string[];
   /** Package GRANULAR feature grant (nav hrefs). null/[] = use coarse modules. */
@@ -35,10 +35,17 @@ export type LicenseState = {
   licenseEndAt: Date | null;
   nextRenewalAt: Date | null;
   isRestricted: boolean; // true → only billing + support visible
+  /** true → brand-new tenant hasn't chosen/paid for a plan yet; route to
+   *  /onboarding/choose-plan instead of the dashboard or the billing gate. */
+  needsOnboarding: boolean;
   reason?: string;
 };
 
-const RESTRICTED_STATUSES = new Set(["suspended", "expired", "cancelled"]);
+// "pending" (signed up, hasn't paid) is restricted too — strictly no app access
+// until a plan is paid for. The dashboard layout sends `pending` to onboarding
+// (needsOnboarding) before this matters for the UI; this also blocks API routes
+// that call assertActiveLicense, so there's no back-door to the data.
+const RESTRICTED_STATUSES = new Set(["pending", "suspended", "expired", "cancelled"]);
 
 /**
  * Per-request memoized. The layout + several server components all call this
@@ -66,6 +73,7 @@ async function loadTenantLicenseImpl(tenantId: string, roles?: string[]): Promis
       licenseEndAt: null,
       nextRenewalAt: null,
       isRestricted: false,
+      needsOnboarding: false,
     };
   }
 
@@ -96,6 +104,7 @@ async function loadTenantLicenseImpl(tenantId: string, roles?: string[]): Promis
       licenseEndAt: null,
       nextRenewalAt: null,
       isRestricted: true,
+      needsOnboarding: false,
       reason: "No active subscription. Contact AINA to provision your license.",
     };
   }
@@ -139,6 +148,7 @@ async function loadTenantLicenseImpl(tenantId: string, roles?: string[]): Promis
     licenseEndAt: sub.licenseEndAt ? new Date(sub.licenseEndAt) : null,
     nextRenewalAt: sub.nextRenewalAt ? new Date(sub.nextRenewalAt) : null,
     isRestricted,
+    needsOnboarding: effectiveStatus === "pending",
     reason: isRestricted
       ? sub.suspendedReason ?? sub.cancelledReason ?? "Your license is not active. Please contact AINA to reactivate."
       : undefined,

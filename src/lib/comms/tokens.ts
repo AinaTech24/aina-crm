@@ -122,6 +122,44 @@ const SYSTEM_TOKENS = new Set([
 ]);
 
 /**
+ * Flatten a template body to the plain text the compliance gate scans.
+ *
+ * This is the SINGLE source of truth for "what text does this template
+ * contain" — the create / PATCH / submit routes previously each carried their
+ * own slightly different `extractText`, so the compliance gate scanned
+ * different text on different paths (e.g. submit missed header titles + button
+ * labels that the send-time gate reads). That left seams in the moat.
+ *
+ * It is deliberately a SUPERSET of every field any extractor reads, including
+ * the send-time pipeline (`extractTextFromBlocks`: text→content, header→title,
+ * button→label). Scanning a superset at authoring time means authoring is at
+ * least as strict as send — a template that clears the authoring gate can never
+ * be newly blocked at send for content the author couldn't see being scanned.
+ */
+export function templateBodyToText(channel: string, body: any): string {
+  if (!body) return "";
+  if (channel === "whatsapp") {
+    return [body?.header?.text, body?.body?.text, body?.footer?.text].filter(Boolean).join("\n");
+  }
+  if (channel === "email") {
+    const blocks = Array.isArray(body?.blocks) ? body.blocks : [];
+    const blockText = blocks
+      .map((b: any) =>
+        // Every candidate text-bearing field across all block shapes, regardless
+        // of `type` — guarantees we never under-scan relative to send-time.
+        [b?.content, b?.text, b?.title, b?.subtitle, b?.html, b?.label]
+          .filter(Boolean)
+          .join("\n")
+      )
+      .filter(Boolean)
+      .join("\n");
+    return [body?.subject, body?.preheader, blockText, body?.textFallback].filter(Boolean).join("\n");
+  }
+  if (channel === "sms") return body?.text ?? "";
+  return JSON.stringify(body);
+}
+
+/**
  * Find `{{placeholders}}` in template text that have no matching declared
  * variable (and aren't system tokens or positional params). Surfaced as a
  * non-blocking warning so authors catch typo'd merge fields before they

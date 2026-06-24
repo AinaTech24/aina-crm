@@ -18,6 +18,8 @@ import {
   sensitivitySipRates,
 } from "@/lib/goal-planning/calc";
 import { formatINR } from "@/lib/utils";
+import { SelectField } from "@/components/ui/SelectField";
+import { GLIDE_PATH_LABELS, type GlidePath } from "@/lib/goal-planning/glide-path";
 
 const STATUS_TONE: Record<string, string> = {
   not_started: "bg-gray-100 text-gray-700 border-gray-200",
@@ -46,13 +48,14 @@ export function GoalDetailCalculator({ goal }: { goal: any }) {
       expectedReturnPct: String(Number(goal.expectedReturn ?? 12)),
       inflationPct: goal.inflationPct ? String(Number(goal.inflationPct)) : "6",
       stepUpPct: goal.stepUpPct ? String(Number(goal.stepUpPct)) : "10",
+      glidePath: (goal.glidePath ?? "none") as GlidePath,
       remarks: goal.remarks ?? "",
     };
   };
 
   const [form, setForm] = useState(initial);
 
-  function set<K extends keyof ReturnType<typeof initial>>(k: K, v: string) {
+  function set<K extends keyof ReturnType<typeof initial>>(k: K, v: ReturnType<typeof initial>[K]) {
     setForm((s) => ({ ...s, [k]: v }));
   }
 
@@ -118,6 +121,7 @@ export function GoalDetailCalculator({ goal }: { goal: any }) {
           presentTargetAmount: form.targetMode === "today" ? (parseFloat(form.targetAmount) || undefined) : undefined,
           inflationPct: parseFloat(form.inflationPct) || 0,
           stepUpPct: parseFloat(form.stepUpPct) || 0,
+          glidePath: form.glidePath,
           targetDate: targetDateIso,
           currentValue: parseFloat(form.currentValue) || 0,
           existingMonthlySip: parseFloat(form.existingMonthlySip) || 0,
@@ -238,6 +242,21 @@ export function GoalDetailCalculator({ goal }: { goal: any }) {
             />
           </Field>
         </div>
+
+        <Field label="Glide path (de-risk near target)">
+          <SelectField
+            value={form.glidePath}
+            onChange={(e) => set("glidePath", e.target.value as GlidePath)}
+            className="w-full"
+          >
+            {(Object.entries(GLIDE_PATH_LABELS) as [GlidePath, string][]).map(([v, l]) => (
+              <option key={v} value={v}>{l}</option>
+            ))}
+          </SelectField>
+          <p className="text-[11px] text-muted-foreground mt-1.5">
+            Tapers the expected return as the target nears (shifts toward debt).
+          </p>
+        </Field>
 
         <Field label="Remarks">
           <textarea

@@ -27,6 +27,14 @@ import { fetchAssetBytes } from "@/lib/content/asset-url";
 export const MF_DISCLAIMER =
   "Mutual Fund investments are subject to market risks, read all scheme related documents carefully.";
 
+/**
+ * Font stacks used in every SVG. The Noto families give per-glyph fallback for
+ * Devanagari (Hindi) and Gujarati so multilingual firm names / taglines render
+ * instead of tofu — these must be installed in the runtime image (Dockerfile).
+ */
+const FONT_SANS = "'Noto Sans','Noto Sans Devanagari','Noto Sans Gujarati',Inter,'Liberation Sans','DejaVu Sans',sans-serif";
+const FONT_MONO = "ui-monospace,'DejaVu Sans Mono','Liberation Mono',monospace";
+
 export type BrandingTenant = {
   displayName?: string | null;
   legalName?: string | null;
@@ -39,7 +47,16 @@ export type BrandingTenant = {
   primaryColor?: string | null;
 };
 
-export type BrandingPosition = "top" | "bottom" | "both" | "split";
+export type BrandingPosition = "top" | "bottom" | "both" | "split" | "frame";
+
+/**
+ * Strip styling theme:
+ *   - solid: bold brand-colour gradient band, white text (the original look).
+ *   - light: clean white/editorial band, dark text + a thin brand keyline —
+ *            understated and corporate. Applies to the single-strip layouts
+ *            (top/bottom/both); `split` is always its own letterhead look.
+ */
+export type BrandingVariant = "solid" | "light";
 
 /**
  * Branding layout options:
@@ -52,7 +69,17 @@ export type BrandingPosition = "top" | "bottom" | "both" | "split";
 export type BrandingConfig = {
   position?: BrandingPosition;
   heightPct?: number;
+  variant?: BrandingVariant;
   background?: string;
+  /** Visual theme for the "frame" layout: premium | minimal | bold. */
+  frameTheme?: "premium" | "minimal" | "bold";
+  /**
+   * Target output aspect ratio (width/height) for multi-size export — e.g. 1
+   * (square 1:1), 0.8 (portrait 4:5), 0.5625 (story 9:16). null/undefined keeps
+   * the natural size (Frame extends the canvas; strips keep the source size).
+   * The creative is fit (contain, never cropped) into the target canvas.
+   */
+  outputAspect?: number | null;
 };
 
 /** A logo fetched + decoded, plus its aspect ratio for card sizing. */
@@ -74,6 +101,9 @@ export async function composeBrandedImage(
 ): Promise<Buffer> {
   const position = config.position ?? "bottom";
   const heightPct = clamp(config.heightPct ?? 18, 8, 30);
+  const variant: BrandingVariant = config.variant === "light" ? "light" : "solid";
+  const outputAspect =
+    typeof config.outputAspect === "number" && config.outputAspect > 0 ? config.outputAspect : null;
 
   // Load source + read dimensions
   const base = sharp(sourceBuffer, { failOn: "none" });
@@ -88,6 +118,15 @@ export async function composeBrandedImage(
   const accent = shadeHex(primary, 34);
 
   const logo = await prepareLogo(tenant.logoUrl);
+
+  // Frame is canvas-extended (it never covers the creative), so it takes a
+  // wholly separate path before we build any overlay list.
+  if (position === "frame") {
+    const frameTheme: FrameTheme =
+      config.frameTheme === "minimal" || config.frameTheme === "bold" ? config.frameTheme : "premium";
+    return composeFrame(sourceBuffer, W, H, tenant, primary, accent, logo, heightPct, frameTheme, outputAspect);
+  }
+
   const overlays: sharp.OverlayOptions[] = [];
 
   if (position === "split") {
@@ -114,7 +153,7 @@ export async function composeBrandedImage(
   } else {
     // Single combined strip (bottom / top / both).
     const geom = stripGeom(W, stripH, logo?.aspect ?? null);
-    const stripSvg = buildStripSvg(W, stripH, primary, accent, tenant, geom, !!logo);
+    const stripSvg = buildStripSvg(W, stripH, primary, accent, tenant, geom, !!logo, variant);
     const stripPng = await svgToPng(stripSvg);
 
     let fitted: { buf: Buffer; w: number; h: number } | null = null;
@@ -140,7 +179,27 @@ export async function composeBrandedImage(
     }
   }
 
-  return base.composite(overlays).png().toBuffer();
+  const composited = await base.composite(overlays).png().toBuffer();
+  // Multi-size export: fit the branded result into the requested aspect canvas
+  // (contain — never crops the creative; pads with white).
+  return outputAspect ? fitToAspect(composited, outputAspect) : composited;
+}
+
+/**
+ * Fit an image (contain, centred, white padding) into a canvas of the target
+ * width/height aspect ratio. Width is kept; height is derived. Never crops.
+ */
+async function fitToAspect(buf: Buffer, aspect: number): Promise<Buffer> {
+  const m = await sharp(buf).metadata();
+  const w = m.width ?? 1080;
+  const h = m.height ?? 1080;
+  const targetH = Math.round(w / aspect);
+  // Already (near) the target aspect — nothing to do.
+  if (Math.abs(targetH - h) <= 2) return buf;
+  return sharp(buf)
+    .resize(w, targetH, { fit: "contain", background: "#ffffff" })
+    .png()
+    .toBuffer();
 }
 
 /* ─────────────────── Logo preparation ─────────────────── */
@@ -220,6 +279,60 @@ function stripGeom(W: number, stripH: number, aspect: number | null): StripGeom 
   return { disclaimerH, mainH, cardH, cardW, cardX, cardY, rx, textX, textW };
 }
 
+/** Resolved colour palette for a strip, keyed off the chosen variant. */
+type StripPalette = {
+  bgFrom: string;
+  bgTo: string;
+  accentLine: string;
+  title: string;
+  arn: string;
+  contactStroke: string;
+  contactText: string;
+  bandBg: string;
+  bandRule: string;
+  disc: string;
+  cardFill: string;
+  cardStroke: string | null;
+  initial: string;
+};
+
+function stripPalette(variant: BrandingVariant, primary: string, accent: string): StripPalette {
+  if (variant === "light") {
+    // Clean editorial band: near-white surface, brand keyline, dark text,
+    // muted greys for secondary info. Slate-based neutrals.
+    return {
+      bgFrom: "#ffffff",
+      bgTo: "#f8fafc",
+      accentLine: primary, // thin brand keyline along the inner edge
+      title: "#0f172a",
+      arn: primary,
+      contactStroke: "#64748b",
+      contactText: "#475569",
+      bandBg: "#f1f5f9",
+      bandRule: "rgba(15,23,42,0.06)",
+      disc: "#64748b",
+      cardFill: "#ffffff",
+      cardStroke: "#e2e8f0", // hairline so a white logo doesn't vanish on white
+      initial: primary,
+    };
+  }
+  return {
+    bgFrom: primary,
+    bgTo: shadeHex(primary, -14),
+    accentLine: accent,
+    title: "#ffffff",
+    arn: accent,
+    contactStroke: "rgba(255,255,255,0.9)",
+    contactText: "rgba(255,255,255,0.95)",
+    bandBg: shadeHex(primary, -24),
+    bandRule: "rgba(255,255,255,0.12)",
+    disc: "rgba(255,255,255,0.82)",
+    cardFill: "#ffffff",
+    cardStroke: null,
+    initial: primary,
+  };
+}
+
 function buildStripSvg(
   W: number,
   stripH: number,
@@ -227,11 +340,11 @@ function buildStripSvg(
   accent: string,
   tenant: BrandingTenant,
   geom: StripGeom,
-  hasLogo: boolean
+  hasLogo: boolean,
+  variant: BrandingVariant = "solid"
 ): string {
   const { disclaimerH, mainH, cardH, cardW, cardX, cardY, rx, textX, textW } = geom;
-  const darker = shadeHex(primary, -14);
-  const bandBg = shadeHex(primary, -24);
+  const pal = stripPalette(variant, primary, accent);
   const accentH = Math.max(3, Math.round(stripH * 0.022));
 
   const titleF = clamp(Math.round(mainH * 0.3), 14, 40);
@@ -247,19 +360,28 @@ function buildStripSvg(
   const yArn = yTitle + Math.round(arnF * 1.4);
   const yContact = Math.min(mainH - Math.round(contactF * 0.45), yArn + Math.round(contactF * 1.7));
 
-  const rowSvg = contactRowSvg(contactItems(tenant), textX, yContact, textW, contactF);
+  const rowSvg = contactRowSvg(
+    contactItems(tenant),
+    textX,
+    yContact,
+    textW,
+    contactF,
+    pal.contactStroke,
+    pal.contactText
+  );
 
-  // Logo card (white, rounded). When there's no logo we draw the firm initial.
+  // Logo card (rounded). When there's no logo we draw the firm initial.
   const initial = rawName.charAt(0).toUpperCase();
   const cardSvg =
-    `<rect x="${cardX}" y="${cardY}" width="${cardW}" height="${cardH}" rx="${rx}" fill="#ffffff" />` +
+    `<rect x="${cardX}" y="${cardY}" width="${cardW}" height="${cardH}" rx="${rx}" fill="${pal.cardFill}"${pal.cardStroke ? ` stroke="${pal.cardStroke}" stroke-width="1"` : ""
+    } />` +
     (hasLogo
       ? ""
-      : `<text x="${cardX + cardW / 2}" y="${cardY + cardH / 2}" fill="${primary}" font-family="Inter, system-ui, sans-serif" font-size="${Math.round(
-          cardH * 0.52
-        )}" font-weight="800" text-anchor="middle" dominant-baseline="central">${escapeXml(
-          initial
-        )}</text>`);
+      : `<text x="${cardX + cardW / 2}" y="${cardY + cardH / 2}" fill="${pal.initial}" font-family="Inter, system-ui, sans-serif" font-size="${Math.round(
+        cardH * 0.52
+      )}" font-weight="800" text-anchor="middle" dominant-baseline="central">${escapeXml(
+        initial
+      )}</text>`);
 
   // Disclaimer sub-band.
   const bandTop = stripH - disclaimerH;
@@ -274,21 +396,21 @@ function buildStripSvg(
 <svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${stripH}" viewBox="0 0 ${W} ${stripH}">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="0.6">
-      <stop offset="0%" stop-color="${primary}" />
-      <stop offset="100%" stop-color="${darker}" />
+      <stop offset="0%" stop-color="${pal.bgFrom}" />
+      <stop offset="100%" stop-color="${pal.bgTo}" />
     </linearGradient>
   </defs>
   <rect x="0" y="0" width="${W}" height="${stripH}" fill="url(#bg)" />
-  <rect x="0" y="0" width="${W}" height="${accentH}" fill="${accent}" />
+  <rect x="0" y="0" width="${W}" height="${accentH}" fill="${pal.accentLine}" />
   ${cardSvg}
-  <text x="${textX}" y="${yTitle}" fill="#ffffff" font-family="Inter, system-ui, sans-serif" font-size="${titleF}" font-weight="700" letter-spacing="0.2">${displayName}</text>
-  <text x="${textX}" y="${yArn}" fill="${accent}" font-family="ui-monospace, Menlo, monospace" font-size="${arnF}" font-weight="700" letter-spacing="0.6">${escapeXml(
+  <text x="${textX}" y="${yTitle}" fill="${pal.title}" font-family="Inter, system-ui, sans-serif" font-size="${titleF}" font-weight="700" letter-spacing="0.2">${displayName}</text>
+  <text x="${textX}" y="${yArn}" fill="${pal.arn}" font-family="ui-monospace, Menlo, monospace" font-size="${arnF}" font-weight="700" letter-spacing="0.6">${escapeXml(
     arnText
   )}</text>
   ${rowSvg}
-  <rect x="0" y="${bandTop}" width="${W}" height="${disclaimerH}" fill="${bandBg}" />
-  <rect x="0" y="${bandTop}" width="${W}" height="1" fill="rgba(255,255,255,0.12)" />
-  <text x="${W / 2}" y="${discY}" fill="rgba(255,255,255,0.82)" font-family="Inter, system-ui, sans-serif" font-size="${discF}" font-weight="500" letter-spacing="0.2" text-anchor="middle">${escapeXml(
+  <rect x="0" y="${bandTop}" width="${W}" height="${disclaimerH}" fill="${pal.bandBg}" />
+  <rect x="0" y="${bandTop}" width="${W}" height="1" fill="${pal.bandRule}" />
+  <text x="${W / 2}" y="${discY}" fill="${pal.disc}" font-family="Inter, system-ui, sans-serif" font-size="${discF}" font-weight="500" letter-spacing="0.2" text-anchor="middle">${escapeXml(
     MF_DISCLAIMER
   )}</text>
 </svg>`;
@@ -350,10 +472,10 @@ function buildHeaderStripSvg(
     (hasLogo
       ? ""
       : `<text x="${cardX + cardW / 2}" y="${cardY + cardH / 2}" fill="${primary}" font-family="Inter, system-ui, sans-serif" font-size="${Math.round(
-          cardH * 0.5
-        )}" font-weight="800" text-anchor="middle" dominant-baseline="central">${escapeXml(
-          initial
-        )}</text>`);
+        cardH * 0.5
+      )}" font-weight="800" text-anchor="middle" dominant-baseline="central">${escapeXml(
+        initial
+      )}</text>`);
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
@@ -439,9 +561,8 @@ function buildDetailsStripSvg(
     .join("");
 
   const divider = hasContacts
-    ? `<line x1="${dividerX}" y1="${padding + Math.round(innerH * 0.16)}" x2="${dividerX}" y2="${
-        padding + Math.round(innerH * 0.84)
-      }" stroke="rgba(255,255,255,0.18)" stroke-width="1.5" />`
+    ? `<line x1="${dividerX}" y1="${padding + Math.round(innerH * 0.16)}" x2="${dividerX}" y2="${padding + Math.round(innerH * 0.84)
+    }" stroke="rgba(255,255,255,0.18)" stroke-width="1.5" />`
     : "";
 
   // Disclaimer sub-band.
@@ -463,21 +584,354 @@ function buildDetailsStripSvg(
   </defs>
   <rect x="0" y="0" width="${W}" height="${H}" fill="url(#bgD)" />
   <rect x="0" y="0" width="${W}" height="${stripeH}" fill="${accent}" />
-  <rect x="${padding}" y="${padding}" width="${accentBarW}" height="${innerH}" rx="${
-    accentBarW / 2
-  }" fill="${accent}" />
+  <rect x="${padding}" y="${padding}" width="${accentBarW}" height="${innerH}" rx="${accentBarW / 2
+    }" fill="${accent}" />
   <text x="${idX}" y="${arnY}" fill="#ffffff" font-family="ui-monospace, Menlo, monospace" font-size="${arnFont}" font-weight="700" letter-spacing="0.5">${escapeXml(
-    arnText
-  )}</text>
+      arnText
+    )}</text>
   <text x="${idX}" y="${labelY}" fill="rgba(255,255,255,0.6)" font-family="Inter, system-ui, sans-serif" font-size="${labelFont}" font-weight="600" letter-spacing="1.1">${idLabel}</text>
   ${divider}
   ${rowsSvg}
   <rect x="0" y="${bandTop}" width="${W}" height="${disclaimerH}" fill="${bandBg}" />
   <rect x="0" y="${bandTop}" width="${W}" height="1" fill="rgba(255,255,255,0.12)" />
   <text x="${W / 2}" y="${discY}" fill="rgba(255,255,255,0.82)" font-family="Inter, system-ui, sans-serif" font-size="${discF}" font-weight="500" letter-spacing="0.2" text-anchor="middle">${escapeXml(
-    MF_DISCLAIMER
-  )}</text>
+      MF_DISCLAIMER
+    )}</text>
 </svg>`;
+}
+
+/* ─────────────────── Frame layout (header + footer, canvas-extended) ─────────────────── */
+
+/**
+ * "Frame" co-branding — the agency-style look from polished MFD social
+ * creatives: a WHITE header band (logo + firm name + AMFI tagline on the left,
+ * an ARN badge on the right) above the creative, and a brand-colour FOOTER band
+ * (centred contact row + the mandatory disclaimer) below it.
+ *
+ * Unlike the strip layouts this does NOT overlay the image — it EXTENDS the
+ * canvas (adds bands above + below), so the creative itself is never covered.
+ * Output is therefore taller than the input.
+ */
+export type FrameTheme = "premium" | "minimal" | "bold";
+
+async function composeFrame(
+  sourceBuffer: Buffer,
+  W: number,
+  H: number,
+  tenant: BrandingTenant,
+  primary: string,
+  accent: string,
+  logo: PreparedLogo | null,
+  heightPct: number,
+  theme: FrameTheme = "premium",
+  targetAspect: number | null = null
+): Promise<Buffer> {
+  const hp = clamp(heightPct, 8, 30);
+  const headerH = clamp(Math.round((W * hp) / 100), 100, 460);
+  const footerH = clamp(Math.round(headerH * 1.18), 112, 500);
+
+  const pal = framePalette(theme, primary, accent);
+  const lockup = !!logo && (logo.aspect ?? 1) >= 2.2;
+  const lg = frameLogoGeom(W, headerH, logo?.aspect ?? null, lockup);
+
+  // FULL-BLEED content zone — the creative fills the width edge-to-edge between
+  // the bands (a real social post, not a photo pasted into a frame). Natural
+  // size keeps the creative's own height; a target size fills any letterbox
+  // with a blurred zoom of the same image, so every ratio looks complete with
+  // NO cropping.
+  let contentH: number;
+  let OH: number;
+  let contentTile: Buffer;
+  if (!targetAspect) {
+    contentTile = await sharp(sourceBuffer, { failOn: "none" }).resize({ width: W }).png().toBuffer();
+    const m = await sharp(contentTile).metadata();
+    contentH = m.height ?? Math.round(W * (H / W));
+    OH = headerH + contentH + footerH;
+  } else {
+    OH = Math.max(headerH + footerH + Math.round(W * 0.55), Math.round(W / targetAspect));
+    contentH = OH - headerH - footerH;
+    const bg = await sharp(sourceBuffer, { failOn: "none" })
+      .resize(W, contentH, { fit: "cover" })
+      .blur(28)
+      .modulate({ brightness: 0.9, saturation: 1.05 })
+      .toBuffer();
+    const fg = await sharp(sourceBuffer, { failOn: "none" })
+      .resize(W, contentH, { fit: "inside", withoutEnlargement: false })
+      .png()
+      .toBuffer();
+    const fgm = await sharp(fg).metadata();
+    contentTile = await sharp(bg)
+      .composite([
+        {
+          input: fg,
+          top: Math.round((contentH - (fgm.height ?? contentH)) / 2),
+          left: Math.round((W - (fgm.width ?? W)) / 2),
+        },
+      ])
+      .png()
+      .toBuffer();
+  }
+
+  const headerSvg = buildProHeaderSvg(theme, W, headerH, pal, tenant, lg, !!logo, lockup);
+  const footerSvg = buildProFooterSvg(theme, W, footerH, pal, tenant);
+
+  const overlays: sharp.OverlayOptions[] = [
+    { input: contentTile, top: headerH, left: 0 },
+    { input: await svgToPng(headerSvg), top: 0, left: 0 },
+    { input: await svgToPng(footerSvg), top: OH - footerH, left: 0 },
+  ];
+
+  if (logo) {
+    const fittedLogo = await fitLogo(logo, lg.w, lg.h, Math.round(lg.h * 0.06));
+    overlays.push({
+      input: fittedLogo.buf,
+      top: lg.y + Math.round((lg.h - fittedLogo.h) / 2),
+      left: lg.x + Math.round((lg.w - fittedLogo.w) / 2),
+    });
+  }
+
+  return sharp({
+    create: { width: W, height: OH, channels: 4, background: { r: 255, g: 255, b: 255, alpha: 1 } },
+  })
+    .composite(overlays)
+    .png()
+    .toBuffer();
+}
+
+type FrameLogoGeom = { x: number; y: number; w: number; h: number; pad: number };
+
+function frameLogoGeom(W: number, headerH: number, aspect: number | null, lockup: boolean): FrameLogoGeom {
+  const pad = Math.round(headerH * 0.22);
+  const h = headerH - 2 * pad;
+  const w = lockup
+    ? clamp(Math.round(h * (aspect ?? 1)), h, Math.round(W * 0.5))
+    : aspect != null
+      ? clamp(Math.round(h * aspect), Math.round(h * 0.7), Math.round(W * 0.32))
+      : h;
+  return { x: pad, y: pad, w, h, pad };
+}
+
+/** Resolved colour/style palette for a Frame theme. */
+function framePalette(theme: FrameTheme, primary: string, accent: string) {
+  const dark = shadeHex(primary, -16);
+  const darker = shadeHex(primary, -34);
+  const tint = shadeHex(primary, 90); // near-white brand wash
+  const softTint = shadeHex(primary, 78);
+  const minimal = theme === "minimal";
+  const bold = theme === "bold";
+  return {
+    primary,
+    dark,
+    darker,
+    accent,
+    tint,
+    softTint,
+    minimal,
+    bold,
+    headerText: bold ? "#ffffff" : "#0f172a",
+    headerSub: bold ? "rgba(255,255,255,0.88)" : primary,
+    arnFill: bold ? "#ffffff" : primary,
+    arnText: bold ? primary : "#ffffff",
+    arnOutline: minimal,
+    footerText: minimal ? "#334155" : "#ffffff",
+    chipFill: minimal ? primary : "#ffffff",
+    chipGlyph: minimal ? "#ffffff" : primary,
+    discBand: minimal ? "#eef2f7" : darker,
+    discText: minimal ? "#64748b" : "rgba(255,255,255,0.88)",
+    logoOnCard: bold,
+  };
+}
+
+type FramePalette = ReturnType<typeof framePalette>;
+
+function buildProHeaderSvg(
+  theme: FrameTheme,
+  W: number,
+  headerH: number,
+  pal: FramePalette,
+  tenant: BrandingTenant,
+  lg: FrameLogoGeom,
+  hasLogo: boolean,
+  lockup: boolean
+): string {
+  const rawName = tenant.displayName ?? tenant.legalName ?? "MFD";
+  const logoCenterY = lg.y + lg.h / 2;
+  const side = lg.pad;
+
+  // ARN pill (fully rounded), vertically centred on the logo, right-aligned.
+  const arnStr = `ARN ${(tenant.arn ?? "—").toString().replace(/^ARN[-\x3a\s]*/i, "")}`;
+  const badgeF = clamp(Math.round(headerH * 0.15), 12, 24);
+  const badgeH = Math.round(badgeF * 2.1);
+  const badgeW = Math.round(arnStr.length * badgeF * 0.6 + badgeF * 2.4);
+  const badgeX = W - side - badgeW;
+  const badgeY = Math.round(logoCenterY - badgeH / 2);
+  const arnStroke = pal.arnOutline ? ` stroke="${pal.primary}" stroke-width="1.5"` : "";
+  const arnSvg =
+    `<rect x="${badgeX}" y="${badgeY}" width="${badgeW}" height="${badgeH}" rx="${Math.round(badgeH / 2)}" fill="${pal.arnOutline ? "#ffffff" : pal.arnFill}"${arnStroke} />` +
+    `<text x="${badgeX + badgeW / 2}" y="${badgeY + badgeH / 2}" fill="${pal.arnOutline ? pal.primary : pal.arnText}" font-family="${FONT_MONO}" font-size="${badgeF}" font-weight="700" text-anchor="middle" dominant-baseline="central" letter-spacing="0.5">${escapeXml(arnStr)}</text>`;
+
+  // Bold theme: a white rounded card behind the logo so it reads on the brand
+  // header. Other themes place the logo directly on the white header.
+  const cardPad = Math.round(lg.pad * 0.32);
+  const cardSvg = pal.logoOnCard
+    ? `<rect x="${lg.x - cardPad}" y="${lg.y - cardPad}" width="${lg.w + 2 * cardPad}" height="${lg.h + 2 * cardPad}" rx="${Math.round(lg.h * 0.22)}" fill="#ffffff" />`
+    : "";
+
+  // Firm initial when no logo is uploaded.
+  const initial = escapeXml(rawName.charAt(0).toUpperCase());
+  const initialSvg = hasLogo
+    ? ""
+    : `<rect x="${lg.x}" y="${lg.y}" width="${lg.w}" height="${lg.h}" rx="${Math.round(Math.min(lg.w, lg.h) * 0.22)}" fill="${pal.bold ? "#ffffff" : pal.primary}" />` +
+    `<text x="${lg.x + lg.w / 2}" y="${lg.y + lg.h / 2}" fill="${pal.bold ? pal.primary : "#ffffff"}" font-family="${FONT_SANS}" font-size="${Math.round(lg.h * 0.5)}" font-weight="800" text-anchor="middle" dominant-baseline="central">${initial}</text>`;
+
+  // Name + tagline (skipped for a wide lockup that already carries the name).
+  let textSvg = "";
+  if (!lockup) {
+    const textX = lg.x + lg.w + Math.round(headerH * 0.16);
+    const nameF = clamp(Math.round(lg.h * 0.4), 16, 42);
+    const tagF = clamp(Math.round(lg.h * 0.2), 10, 19);
+    const avail = badgeX - textX - Math.round(side * 0.7);
+    const name = escapeXml(truncate(rawName, Math.max(6, Math.floor(avail / (nameF * 0.56)))));
+    const tag = escapeXml(truncate("AMFI Registered Mutual Fund Distributor", Math.max(6, Math.floor(avail / (tagF * 0.56)))));
+    const lineGap = Math.round(tagF * 0.6);
+    const top = logoCenterY - (nameF + lineGap + tagF) / 2;
+    const nameY = Math.round(top + nameF * 0.82);
+    const tagY = Math.round(nameY + lineGap + tagF * 0.82);
+    textSvg =
+      `<text x="${textX}" y="${nameY}" fill="${pal.headerText}" font-family="${FONT_SANS}" font-size="${nameF}" font-weight="800" letter-spacing="0.2">${name}</text>` +
+      `<text x="${textX}" y="${tagY}" fill="${pal.headerSub}" font-family="${FONT_SANS}" font-size="${tagF}" font-weight="600" letter-spacing="0.4">${tag}</text>`;
+  }
+
+  // Background + separator per theme.
+  let bg: string;
+  let sep = "";
+  if (pal.bold) {
+    const cv = Math.round(headerH * 0.14);
+    bg =
+      `<defs><linearGradient id="hg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${pal.primary}"/><stop offset="1" stop-color="${pal.dark}"/></linearGradient></defs>` +
+      `<path d="M0 0 H ${W} V ${headerH - cv} Q ${Math.round(W / 2)} ${headerH + cv} 0 ${headerH - cv} Z" fill="url(#hg)" />`;
+  } else {
+    bg = `<rect x="0" y="0" width="${W}" height="${headerH}" fill="#ffffff" />`;
+    sep =
+      `<defs><linearGradient id="sep" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="${pal.primary}" stop-opacity="0"/><stop offset="0.5" stop-color="${pal.primary}" stop-opacity="${pal.minimal ? 0.22 : 0.5}"/><stop offset="1" stop-color="${pal.primary}" stop-opacity="0"/></linearGradient></defs>` +
+      `<rect x="${side}" y="${headerH - 3}" width="${W - 2 * side}" height="${pal.minimal ? 1.5 : 3}" rx="1" fill="url(#sep)" />`;
+  }
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${headerH}" viewBox="0 0 ${W} ${headerH}">
+  ${bg}
+  ${sep}
+  ${cardSvg}
+  ${initialSvg}
+  ${textSvg}
+  ${arnSvg}
+</svg>`;
+}
+
+function buildProFooterSvg(
+  theme: FrameTheme,
+  W: number,
+  footerH: number,
+  pal: FramePalette,
+  tenant: BrandingTenant
+): string {
+  const side = Math.round(W * 0.055);
+  const cv = Math.round(footerH * 0.16); // wave depth for the curved top edge
+  const disclaimerH = clamp(Math.round(footerH * 0.26), 18, 52);
+  const contactCenterY = Math.round(cv + (footerH - disclaimerH - cv) / 2);
+  const contactF = clamp(Math.round(footerH * 0.12), 12, 22);
+  const rowSvg = proContactRow(contactItems(tenant), W, side, contactCenterY, contactF, pal);
+
+  const bandTop = footerH - disclaimerH;
+  const discMaxW = W - 2 * side;
+  let discF = clamp(Math.round(disclaimerH * 0.34), 9, 16);
+  if (MF_DISCLAIMER.length * discF * 0.5 > discMaxW) {
+    discF = Math.max(8, Math.floor(discMaxW / (MF_DISCLAIMER.length * 0.5)));
+  }
+  const discY = bandTop + Math.round(disclaimerH / 2 + discF * 0.36);
+  const discSvg =
+    `<rect x="0" y="${bandTop}" width="${W}" height="${disclaimerH}" fill="${pal.discBand}" />` +
+    `<text x="${W / 2}" y="${discY}" fill="${pal.discText}" font-family="${FONT_SANS}" font-size="${discF}" font-weight="500" letter-spacing="0.2" text-anchor="middle">${escapeXml(MF_DISCLAIMER)}</text>`;
+
+  // Brand band with a gentle wavy top edge (corners above the wave stay
+  // transparent → the page background shows through). Minimal theme = light
+  // footer with a thin brand top rule instead.
+  const bg = pal.minimal
+    ? `<rect x="0" y="0" width="${W}" height="${footerH}" fill="#ffffff" />` +
+    `<rect x="0" y="0" width="${W}" height="2" fill="${pal.primary}" opacity="0.85" />`
+    : `<defs><linearGradient id="fg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${pal.primary}"/><stop offset="1" stop-color="${pal.dark}"/></linearGradient></defs>` +
+    `<path d="M0 ${cv} Q ${Math.round(W / 2)} 0 ${W} ${cv} V ${footerH} H 0 Z" fill="url(#fg)" />`;
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${footerH}" viewBox="0 0 ${W} ${footerH}">
+  ${bg}
+  ${rowSvg}
+  ${discSvg}
+</svg>`;
+}
+
+/**
+ * Footer contact row. Each item is a circular icon chip + a label, distributed
+ * edge-to-edge for ≥3 items (space-between) or centred for ≤2. Overflowing
+ * items (address first) are dropped so the row never crowds.
+ */
+function proContactRow(
+  items: { icon: string; text: string }[],
+  W: number,
+  side: number,
+  centerY: number,
+  font: number,
+  pal: FramePalette
+): string {
+  let list = items.slice();
+  if (!list.length) return "";
+  const chip = Math.round(font * 2.0);
+  const glyph = Math.round(chip * 0.5);
+  const gap = Math.round(font * 0.55);
+  const charPx = font * 0.56;
+  const availW = W - 2 * side;
+  const minGap = Math.round(font * 1.2);
+
+  const itemW = (it: { icon: string; text: string }) => chip + gap + Math.min(it.text.length, 36) * charPx;
+  const sum = (arr: { icon: string; text: string }[]) => arr.reduce((s, it) => s + itemW(it), 0);
+  while (list.length > 1 && sum(list) + minGap * (list.length - 1) > availW) list = list.slice(0, -1);
+
+  const n = list.length;
+  const total = sum(list);
+  const pos: number[] = [];
+  if (n >= 3) {
+    const space = (availW - total) / (n - 1);
+    let x = side;
+    for (let i = 0; i < n; i++) {
+      pos.push(x);
+      x += itemW(list[i]) + space;
+    }
+  } else {
+    const gb = Math.round(font * 2.6);
+    let x = Math.max(side, Math.round((W - (total + gb * (n - 1))) / 2));
+    for (let i = 0; i < n; i++) {
+      pos.push(x);
+      x += itemW(list[i]) + gb;
+    }
+  }
+
+  const r = chip / 2;
+  const out: string[] = [];
+  list.forEach((it, i) => {
+    const x = pos[i];
+    const ccx = x + r;
+    const text = escapeXml(truncate(it.text, 36));
+    out.push(`<circle cx="${ccx}" cy="${centerY}" r="${r}" fill="${pal.chipFill}" />`);
+    const ix = ccx - glyph / 2;
+    const iy = centerY - glyph / 2;
+    out.push(
+      `<g transform="translate(${ix}, ${iy}) scale(${(glyph / 24).toFixed(3)})" fill="none" stroke="${pal.chipGlyph}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${featherIcon(it.icon)}</g>`
+    );
+    out.push(
+      `<text x="${x + chip + gap}" y="${centerY + Math.round(font * 0.34)}" fill="${pal.footerText}" font-family="${FONT_SANS}" font-size="${font}" font-weight="600">${text}</text>`
+    );
+  });
+  return out.join("");
 }
 
 /* ─────────────────── Contact helpers ─────────────────── */
@@ -510,7 +964,9 @@ function contactRowSvg(
   startX: number,
   baselineY: number,
   availW: number,
-  font: number
+  font: number,
+  iconColor: string = "rgba(255,255,255,0.9)",
+  textColor: string = "rgba(255,255,255,0.95)"
 ): string {
   if (!items.length) return "";
   const iconSize = Math.round(font * 1.05);
@@ -531,12 +987,12 @@ function contactRowSvg(
     out.push(
       `<g transform="translate(${x}, ${iconY}) scale(${(iconSize / 24).toFixed(
         3
-      )})" fill="none" stroke="rgba(255,255,255,0.9)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${featherIcon(
+      )})" fill="none" stroke="${iconColor}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${featherIcon(
         it.icon
       )}</g>`
     );
     out.push(
-      `<text x="${afterIcon}" y="${baselineY}" fill="rgba(255,255,255,0.95)" font-family="Inter, system-ui, sans-serif" font-size="${font}" font-weight="500">${escapeXml(
+      `<text x="${afterIcon}" y="${baselineY}" fill="${textColor}" font-family="Inter, system-ui, sans-serif" font-size="${font}" font-weight="500">${escapeXml(
         shown
       )}</text>`
     );

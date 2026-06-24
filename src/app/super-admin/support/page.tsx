@@ -4,6 +4,7 @@ import { LifeBuoy } from "lucide-react";
 import { withPlatformAdmin } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { formatRelative } from "@/lib/utils";
+import { SupportTicketFilters } from "@/components/super-admin/SupportTicketFilters";
 
 const STATUS_COLORS: Record<string, string> = {
   open: "bg-blue-50 text-blue-700",
@@ -87,7 +88,7 @@ export default async function SupportTicketsPage({
         </p>
       </div>
 
-      <div className="grid grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         <Kpi label="Total" value={data.stats.total} />
         <Kpi label="Open" value={data.stats.open_n} tone={data.stats.open_n > 0 ? "amber" : "muted"} />
         <Kpi label="In progress" value={data.stats.in_progress_n} tone="blue" />
@@ -95,35 +96,8 @@ export default async function SupportTicketsPage({
         <Kpi label="Avg resolution" value={`${Math.round((data.stats.avg_resolution_hrs ?? 0) / 24)}d`} />
       </div>
 
-      <form className="border rounded-lg bg-card">
-        <div className="border-b px-4 py-2.5 flex gap-2">
-          <select name="status" defaultValue={sp.status ?? ""} className="text-sm border rounded-md px-2 bg-background">
-            <option value="">All statuses</option>
-            <option value="open">Open</option>
-            <option value="in_progress">In progress</option>
-            <option value="waiting_customer">Waiting customer</option>
-            <option value="resolved">Resolved</option>
-            <option value="closed">Closed</option>
-          </select>
-          <select name="category" defaultValue={sp.category ?? ""} className="text-sm border rounded-md px-2 bg-background">
-            <option value="">All categories</option>
-            <option value="bug">Bug</option>
-            <option value="feature_request">Feature request</option>
-            <option value="billing">Billing</option>
-            <option value="training">Training</option>
-            <option value="integration">Integration</option>
-            <option value="data_help">Data help</option>
-            <option value="other">Other</option>
-          </select>
-          <select name="priority" defaultValue={sp.priority ?? ""} className="text-sm border rounded-md px-2 bg-background">
-            <option value="">All priorities</option>
-            <option value="urgent">Urgent</option>
-            <option value="high">High</option>
-            <option value="normal">Normal</option>
-            <option value="low">Low</option>
-          </select>
-          <button className="rounded-md border px-3 text-sm">Apply</button>
-        </div>
+      <div className="border rounded-lg bg-card">
+        <SupportTicketFilters status={sp.status} category={sp.category} priority={sp.priority} />
 
         {data.rows.length === 0 ? (
           <div className="p-12 text-center text-sm text-muted-foreground">
@@ -131,6 +105,7 @@ export default async function SupportTicketsPage({
             <div className="mt-2">No support tickets yet.</div>
           </div>
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="text-xs text-muted-foreground border-b">
               <tr>
@@ -182,8 +157,9 @@ export default async function SupportTicketsPage({
               ))}
             </tbody>
           </table>
+          </div>
         )}
-      </form>
+      </div>
     </div>
   );
 }

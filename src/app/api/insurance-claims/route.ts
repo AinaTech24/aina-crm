@@ -6,14 +6,15 @@ import { handleApiError } from "@/lib/api/error-handler";
  */
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuid } from "uuid";
-import { eq } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
-import { insuranceClaims, investors, CLAIM_STATUSES, CLAIM_TYPES, CLAIM_MODES, INTIMATION_MODES, SUBMITTED_MODES } from "@/db/schema";
+import { insuranceClaims, insurancePolicies, investors, CLAIM_STATUSES, CLAIM_TYPES, CLAIM_MODES, INTIMATION_MODES, SUBMITTED_MODES } from "@/db/schema";
+import { policyStatusForClaim } from "@/lib/insurance/claim-status";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +41,15 @@ const ClaimBody = z.object({
   settledAmount: z.number().min(0).optional(),
   rmId: z.string().uuid().optional(),
   comments: z.string().max(2000).optional(),
+  documents: z.array(z.object({
+    name: z.string().max(200),
+    docType: z.string().max(60).optional(),
+    key: z.string().max(400).optional(),
+    url: z.string().max(800).optional(),
+    mime: z.string().max(120).optional(),
+    size: z.number().optional(),
+    uploadedAt: z.string().optional(),
+  })).max(50).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -84,7 +94,22 @@ export async function POST(req: NextRequest) {
         settledAmount: b.settledAmount != null ? String(b.settledAmount) : "0",
         rmId: b.rmId ?? session.userId,
         comments: b.comments ?? null,
+        documents: b.documents ?? [],
       } as any);
+
+      // #5 Reconcile the linked policy's status with the new claim's status.
+      if (b.policyId) {
+        const next = policyStatusForClaim(b.claimStatus ?? "claim_intimated");
+        if (next) {
+          await tx.update(insurancePolicies)
+            .set({ status: next, updatedAt: new Date() } as any)
+            .where(and(
+              eq(insurancePolicies.id, b.policyId),
+              eq(insurancePolicies.tenantId, session.tenantId),
+              inArray(insurancePolicies.status, ["active", "claim_filed", "claim_settled"]),
+            ));
+        }
+      }
 
       await recordAudit(tx, {
         tenantId: session.tenantId,

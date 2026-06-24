@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { ChevronLeft, Phone, Mail, MessageCircle, MapPin, AlertTriangle, User2, ShieldCheck } from "lucide-react";
 import { withTenant } from "@/db/client";
 import {
@@ -32,6 +32,8 @@ import { BestTimeBadge } from "@/components/investors/BestTimeBadge";
 import { OnboardingWizardButton } from "@/components/investors/OnboardingWizard";
 import { QuickCommsPanel } from "@/components/investors/QuickCommsPanel";
 import { ActivityTimeline } from "@/components/investors/ActivityTimeline";
+import { NomineeSection } from "@/components/investors/NomineeSection";
+import { ReferralSection } from "@/components/investors/ReferralSection";
 import { RiskProfilePdfButtons } from "@/components/risk-profile/RiskProfileName";
 import { loadTenantLicense } from "@/lib/auth/license";
 import { isFieldAllowed } from "@/lib/auth/field-gate";
@@ -55,6 +57,13 @@ import { WhatsAppRelatedList } from "@/components/comms/WhatsAppRelatedList";
 import { SectionNav } from "@/components/common/SectionNav";
 import { MasterRecordEditor } from "@/components/investors/MasterRecordEditor";
 import { crossSellOpportunities } from "@/lib/investors/cross-sell";
+import { HoldingsTable } from "@/components/investors/HoldingsTable";
+import { CompletenessCard } from "@/components/investors/CompletenessCard";
+import { SuitabilityCard } from "@/components/investors/SuitabilityCard";
+import { KycDataViewer } from "@/components/investors/KycDataViewer";
+import { clientCompleteness } from "@/lib/investors/completeness";
+import { assetClassExposure } from "@/lib/investors/asset-class";
+import { assessSuitability } from "@/lib/investors/suitability";
 import {
   RelatedListsContainer,
   RelatedListsManager,
@@ -66,11 +75,13 @@ const INVESTOR_DETAIL_SECTIONS: RelatedListDef[] = [
   { key: "header", label: "Client header & contact", required: true },
   { key: "health", label: "Client health score" },
   { key: "summary", label: "Risk / nominee / KYC / review summary" },
+  { key: "nominees", label: "Nominees" },
+  { key: "referrals", label: "Referrals" },
   { key: "family", label: "Family snapshot" },
   { key: "allocation", label: "Portfolio allocation" },
-  { key: "cross_sell", label: "Cross-sell / holdings" },
   { key: "sip_health", label: "SIP health" },
   { key: "transactions", label: "Transaction history" },
+  { key: "cross_sell", label: "Cross-sell / holdings" },
   { key: "documents", label: "Documents & attachments" },
   { key: "emails", label: "Emails" },
   { key: "whatsapp", label: "WhatsApp" },
@@ -125,6 +136,8 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
   const data = await withTenant(session.tenantId, async (tx) => {
     const inv = (await tx.select().from(investors).where(eq(investors.id, id)).limit(1))[0];
     if (!inv) return null;
+    // Soft-deleted clients live in the Trash bin, not on the detail page.
+    if ((inv as any).deletedAt) return null;
 
     const [foliosRows, sipsRows, goalsRows, commsRows, tasksRows, srRows, consentsRows, rmRow, familyRow, lumpsumSum, valuation, reviewMeetingsRows, riskHistoryRows, recentTxRows, txCountRow, sipBouncesRow] = await Promise.all([
       tx.select().from(folios).where(eq(folios.investorId, id)),
@@ -139,7 +152,7 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
       tx
         .select()
         .from(tasks)
-        .where(and(eq(tasks.subjectId, id), eq(tasks.subjectType, "investor")))
+        .where(and(eq(tasks.subjectId, id), eq(tasks.subjectType, "investor"), isNull(tasks.deletedAt)))
         .limit(20),
       tx.select().from(serviceRequests).where(eq(serviceRequests.investorId, id)).limit(20),
       tx.select().from(consents).where(eq(consents.investorId, id)),
@@ -250,6 +263,10 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
   if (!data) notFound();
 
   const inv = data.investor;
+  // Derived client-360 insights (all from already-loaded data).
+  const completeness = clientCompleteness(inv as any);
+  const exposure = assetClassExposure(data.folios as any);
+  const suitability = assessSuitability((inv as any).riskProfile ?? null, exposure.equityPct, exposure.classifiedPct);
   const isRiskProfileMissing = !inv.riskProfile;
   const isRiskProfileExpired = inv.riskProfileSignedAt
     ? new Date(inv.riskProfileSignedAt).getTime() < Date.now() - 365 * 24 * 60 * 60 * 1000
@@ -441,26 +458,27 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
               />
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-4 text-right">
-            <div>
-              <div className="text-xs text-muted-foreground">AUM</div>
-              {/* `inv.aum` is the nightly-refreshed COMBINED figure (folios +
-                  uncovered transactions); `data.valuation.currentValue` is the
-                  live priced-transaction value. Show the greater so we never
-                  understate a folio-only (RTA-imported) book, nor display a
-                  stale ₹0 when live holdings already have value. */}
-              <div className="text-xl font-bold">
-                {showAum ? formatINR(Math.max(Number(inv.aum ?? 0), data.valuation?.currentValue ?? 0)) : "—"}
-              </div>
-            </div>
-            <div>
-              <div className="text-xs text-muted-foreground">Active SIP</div>
-              <div className="text-xl font-bold">{showSip ? formatINR(Number(inv.activeSipAmount ?? 0)) : "—"}</div>
-            </div>
-            <div>
-              <div className="text-xs text-muted-foreground">Lifetime inflow</div>
-              <div className="text-xl font-bold">{showInflow ? formatINR(Number(inv.lifetimeInflow ?? 0)) : "—"}</div>
-            </div>
+          {/* KPI rail — stacked cards fill the right column so the header reads
+              balanced instead of empty on one side. */}
+          <div className="flex flex-col gap-2.5 w-full sm:w-56 shrink-0 self-stretch">
+            {/* `inv.aum` is the nightly-refreshed COMBINED figure (folios +
+                uncovered transactions); `data.valuation.currentValue` is the live
+                priced-transaction value. Show the greater so we never understate
+                a folio-only (RTA-imported) book, nor display a stale ₹0. */}
+            <HeaderKpi
+              label="AUM"
+              value={showAum ? formatINR(Math.max(Number(inv.aum ?? 0), data.valuation?.currentValue ?? 0)) : "—"}
+              primary
+            />
+            <HeaderKpi label="Active SIP" value={showSip ? formatINR(Number(inv.activeSipAmount ?? 0)) + (showSip && Number(inv.activeSipAmount ?? 0) > 0 ? "/mo" : "") : "—"} />
+            <HeaderKpi label="Lifetime inflow" value={showInflow ? formatINR(Number(inv.lifetimeInflow ?? 0)) : "—"} />
+            {data.valuation?.xirr != null && (
+              <HeaderKpi
+                label="XIRR (annualised)"
+                value={`${data.valuation.xirr >= 0 ? "+" : ""}${(data.valuation.xirr * 100).toFixed(1)}%`}
+                tone={data.valuation.xirr >= 0 ? "good" : "bad"}
+              />
+            )}
           </div>
         </div>
       </div>
@@ -498,6 +516,26 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
         </div>
       </RelatedListSection>
 
+      {/* Nominees — dedicated, editable section (multi-nominee) */}
+      {showNominee && (
+        <RelatedListSection moduleKey="investors-detail" sectionKey="nominees">
+          <NomineeSection
+            investorId={inv.id}
+            nominees={((inv.nominees as any[]) ?? []) as any}
+            legacy={{
+              name: inv.nomineeName,
+              relation: inv.nomineeRelation,
+              dob: inv.nomineeDob ? String(inv.nomineeDob) : null,
+            }}
+          />
+        </RelatedListSection>
+      )}
+
+      {/* Referrals — dedicated, editable section (multi-referral) */}
+      <RelatedListSection moduleKey="investors-detail" sectionKey="referrals">
+        <ReferralSection investorId={inv.id} referrals={((inv.referrals as any[]) ?? []) as any} />
+      </RelatedListSection>
+
       {/* Family snapshot — only renders when familyId is set */}
       <RelatedListSection moduleKey="investors-detail" sectionKey="family">
         <FamilySnapshot
@@ -533,7 +571,10 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
 
           {/* Portfolio allocation — derives from already-loaded folios */}
           <RelatedListSection moduleKey="investors-detail" sectionKey="allocation">
-            <PortfolioAllocation folios={data.folios as any} />
+            <div className="space-y-2">
+              <PortfolioAllocation folios={data.folios as any} />
+              {showRisk && <SuitabilityCard suitability={suitability} />}
+            </div>
           </RelatedListSection>
 
           {/* SIP-bounce health — early churn signal from rejected SIP installments */}
@@ -576,6 +617,10 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
       <RelatedListSection moduleKey="investors-detail" sectionKey="blueprint">
         <InvestorBlueprintStageBar investorId={inv.id} />
       </RelatedListSection>
+
+      {/* Profile completeness + any extra KYC captured from the onboarding link */}
+      <CompletenessCard completeness={completeness} />
+      <KycDataViewer kycData={(inv as any).kycData ?? null} />
 
       {/* ----------------------------- Master record -----------------------------
         Every field the spec calls out under § 6 Module 4 Client Master, grouped
@@ -858,62 +903,13 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
       <div className="grid grid-cols-3 gap-6">
         {/* Folios + SIPs */}
         <div className="col-span-2 space-y-6">
-          <Section id="rel-folios" title="Holdings" count={data.valuation.holdings.length}>
-            {data.valuation.holdings.length === 0 ? (
-              <EmptyRow text="No holdings yet." />
-            ) : (
-              <table className="w-full text-sm">
-                <thead className="text-xs text-muted-foreground border-b">
-                  <tr>
-                    <th className="text-left py-2 font-medium">Scheme</th>
-                    <th className="text-left py-2 font-medium">Folio No</th>
-                    <th className="text-right py-2 font-medium">Total Investments</th>
-                    <th className="text-right py-2 font-medium">Current Value</th>
-                    <th className="text-right py-2 font-medium">XIRR</th>
-                    <th className="text-left py-2 font-medium pl-3">Type</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.valuation.holdings.map((h, i) => (
-                    <tr key={`${h.schemeCode ?? h.schemeName ?? "h"}-${i}`} className="border-b last:border-0">
-                      <td className="py-2 pr-3">
-                        <div className="font-medium">{h.schemeName ?? h.schemeCode ?? "—"}</div>
-                        {h.amcName && <div className="text-xs text-muted-foreground">{h.amcName}</div>}
-                      </td>
-                      <td className="py-2 font-mono text-xs">
-                        {h.folioNumber ?? "—"}
-                        {h.folioNumbers.length > 1 && (
-                          <span className="text-muted-foreground"> +{h.folioNumbers.length - 1}</span>
-                        )}
-                      </td>
-                      <td className="py-2 text-right tabular-nums">{formatINR(h.investedNet)}</td>
-                      <td className="py-2 text-right tabular-nums">
-                        {h.priced ? (
-                          formatINR(h.currentValue ?? 0)
-                        ) : (
-                          <span className="text-xs text-muted-foreground">Unpriced</span>
-                        )}
-                      </td>
-                      <td
-                        className={`py-2 text-right tabular-nums ${
-                          h.xirr == null ? "text-muted-foreground" : h.xirr >= 0 ? "text-emerald-600" : "text-red-600"
-                        }`}
-                      >
-                        {h.xirr == null ? "—" : `${h.xirr >= 0 ? "+" : ""}${(h.xirr * 100).toFixed(1)}%`}
-                      </td>
-                      <td className="py-2 pl-3">
-                        {h.kind && (
-                          <span className="inline-flex rounded-full bg-muted px-2 py-0.5 text-xs capitalize">
-                            {h.kind === "sip" ? "SIP" : h.kind === "mixed" ? "Mixed" : "Lumpsum"}
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </Section>
+          <div id="rel-folios" className="scroll-mt-24">
+            <HoldingsTable
+              holdings={data.valuation.holdings as any}
+              asOf={data.valuation.asOf}
+              unpricedSchemes={data.valuation.unpricedSchemes}
+            />
+          </div>
 
           <Section id="rel-sips" title="Active SIPs" count={data.sips.filter((s) => s.status === "active").length}>
             {data.sips.length === 0 ? (
@@ -966,7 +962,11 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
                   let neededIncrease = 0;
 
                   if (N > 0) {
-                    const r = 0.10 / 12; // 10% expected return rate per annum
+                    // Use the goal's OWN expected-return assumption (matches the
+                    // goal detail page) instead of a hardcoded 10%, so the
+                    // shortfall shown here reconciles with the goal calculator.
+                    const annualReturn = Number((g as any).expectedReturn ?? 12) / 100;
+                    const r = (annualReturn > 0 ? annualReturn : 0.12) / 12;
                     projectedValue = currentVal * Math.pow(1 + r, N) + sip * ((Math.pow(1 + r, N) - 1) / r);
                     if (projectedValue < targetAmount) {
                       shortfall = targetAmount - projectedValue;
@@ -1095,6 +1095,17 @@ function Section({ id, title, count, children }: { id?: string; title: string; c
         {count !== undefined && <span className="text-xs text-muted-foreground">{count}</span>}
       </div>
       {children}
+    </div>
+  );
+}
+
+/** Stacked KPI card for the client-header rail. */
+function HeaderKpi({ label, value, primary, tone }: { label: string; value: string; primary?: boolean; tone?: "good" | "bad" }) {
+  const valueColor = tone === "good" ? "text-emerald-600" : tone === "bad" ? "text-rose-600" : "text-foreground";
+  return (
+    <div className={`flex-1 rounded-lg border px-4 py-3 ${primary ? "border-brand-cyan/30 bg-brand-cyan-light/20" : "border-border bg-secondary/30"}`}>
+      <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className={`text-xl font-bold tabular-nums mt-0.5 ${valueColor}`}>{value}</div>
     </div>
   );
 }

@@ -183,7 +183,7 @@ export function Select({
           ref={menuRef}
           role="listbox"
           style={menuStyle}
-          className={`w-max max-w-[min(20rem,90vw)] max-h-64 overflow-y-auto scrollbar-thin card-elevated bg-card p-1 animate-scale-in ${flipUp ? "origin-bottom" : "origin-top"} ${menuClassName}`}
+          className={`w-max max-w-[min(20rem,90vw)] max-h-72 overflow-y-auto scrollbar-none card-elevated bg-card p-1 animate-scale-in ${flipUp ? "origin-bottom" : "origin-top"} ${menuClassName}`}
         >
           {searchable && (
             <li className="sticky top-0 bg-card p-1 -m-1 mb-1 border-b border-border z-10">

@@ -8,6 +8,7 @@
  */
 
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage, type PDFImage, type RGB } from "pdf-lib";
+import { drawReportHeader } from "@/lib/pdf/report-header";
 import { computeGoal, monthsBetween, sensitivitySipRates, projectYearly } from "./calc";
 
 export type GoalBrand = {
@@ -84,28 +85,22 @@ export async function renderGoalPdf(args: {
   const newPage = () => { cur.page = doc.addPage([PW, PH]); cur.y = PH - MARGIN; };
   const ensure = (need: number) => { if (cur.y - need < 92) { newPage(); return true; } return false; };
 
-  // ── Letterhead ──
-  {
-    const topY = PH - MARGIN;
-    let arnY = topY - 30;
-    if (logo) {
-      const maxH = 40, maxW = 200;
-      let dw = (logo.width / logo.height) * maxH, dh = maxH;
-      if (dw > maxW) { dw = maxW; dh = (logo.height / logo.width) * maxW; }
-      cur.page.drawImage(logo, { x: MARGIN, y: topY - dh, width: dw, height: dh });
-      arnY = topY - dh - 11;
-    } else {
-      cur.page.drawText(ascii(brand.legalName ?? brand.displayName ?? "Your Advisor"), { x: MARGIN, y: topY - 15, size: 14, font: bold, color: INK });
-    }
-    cur.page.drawText(ascii(`ARN ${(brand.arn ?? "—").toString().replace(/^ARN-?/i, "")}${brand.euin ? ` - EUIN ${brand.euin}` : ""}`), { x: MARGIN, y: arnY, size: 9, font: helv, color: SLATE });
-    const titleLabel = "GOAL PLAN";
-    cur.page.drawText(titleLabel, { x: PW - MARGIN - bold.widthOfTextAtSize(titleLabel, 11), y: topY - 13, size: 11, font: bold, color: primary });
-    const dl = ascii(`Prepared ${fmtDate(generatedAt)}`);
-    cur.page.drawText(dl, { x: PW - MARGIN - helv.widthOfTextAtSize(dl, 9), y: topY - 28, size: 9, font: helv, color: SLATE });
-    const stripY = Math.min(arnY - 12, topY - 56);
-    drawGradientStrip(cur.page, MARGIN, stripY, usable, 5, primary, secondary);
-    cur.y = stripY - 26;
-  }
+  // ── Letterhead — shared report header ──
+  cur.y = drawReportHeader({
+    page: cur.page,
+    helv,
+    bold,
+    pageWidth: PW,
+    pageHeight: PH,
+    margin: MARGIN,
+    logo,
+    firmName: brand.legalName ?? brand.displayName,
+    title: "GOAL PLAN",
+    subtitles: [`Prepared ${fmtDate(generatedAt)}`],
+    arn: brand.arn,
+    primary,
+    secondary,
+  });
 
   // ── Headline ──
   cur.page.drawText(ascii(goal.name ?? "Goal"), { x: MARGIN, y: cur.y, size: 16, font: bold, color: INK });

@@ -17,23 +17,27 @@ const CAT_TONE: Record<string, string> = {
   general: "border-border bg-secondary/70 text-foreground",
 };
 
-export async function AnnouncementsStrip({ session }: { session: { tenantId: string; roles: string[]; branchId?: string | null } }) {
+export async function AnnouncementsStrip({ session }: { session: { tenantId: string; userId: string; roles: string[]; branchId?: string | null } }) {
   const rolesJson = JSON.stringify(session.roles);
   const rows = await withTenant(session.tenantId, async (tx) => {
+    // Drop notices the user has already read so the strip stays a signal, not
+    // noise. A requires-ack notice stays until it's actually acknowledged.
     const r = await tx.execute(sql`
-      SELECT id, title, body, category, is_pinned
-      FROM announcements
-      WHERE tenant_id = ${session.tenantId}::uuid
-        AND published_at IS NOT NULL AND published_at <= now()
-        AND (expires_at IS NULL OR expires_at > now())
-        AND (branch_id IS NULL OR branch_id = ${session.branchId ?? null})
-        AND (is_pinned = true OR category = 'urgent')
+      SELECT a.id, a.title, a.body, a.category, a.is_pinned, a.requires_ack
+      FROM announcements a
+      LEFT JOIN announcement_reads ar ON ar.announcement_id = a.id AND ar.user_id = ${session.userId}::uuid
+      WHERE a.tenant_id = ${session.tenantId}::uuid
+        AND a.published_at IS NOT NULL AND a.published_at <= now()
+        AND (a.expires_at IS NULL OR a.expires_at > now())
+        AND (a.branch_id IS NULL OR a.branch_id = ${session.branchId ?? null})
+        AND (a.is_pinned = true OR a.category = 'urgent' OR a.requires_ack = true)
         AND (
-          audience_roles IS NULL
-          OR jsonb_array_length(audience_roles) = 0
-          OR audience_roles ?| array(SELECT jsonb_array_elements_text(${rolesJson}::jsonb))
+          a.audience_roles IS NULL
+          OR jsonb_array_length(a.audience_roles) = 0
+          OR a.audience_roles ?| array(SELECT jsonb_array_elements_text(${rolesJson}::jsonb))
         )
-      ORDER BY (category = 'urgent') DESC, is_pinned DESC, published_at DESC
+        AND (CASE WHEN a.requires_ack THEN ar.acknowledged_at IS NULL ELSE ar.read_at IS NULL END)
+      ORDER BY (a.category = 'urgent') DESC, a.is_pinned DESC, a.published_at DESC
       LIMIT 3
     `);
     return r.rows as any[];

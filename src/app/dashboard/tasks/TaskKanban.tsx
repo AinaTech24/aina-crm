@@ -122,7 +122,7 @@ export function TaskKanban({ initialRows, currentUserId }: { initialRows: TaskRo
 
   return (
     <>
-      <div className="overflow-x-auto pb-2">
+      <div className="overflow-x-auto scrollbar-none pb-2">
         <div className="flex gap-3 min-w-max">
           {grouped.map((col) => (
             <div
@@ -142,7 +142,7 @@ export function TaskKanban({ initialRows, currentUserId }: { initialRows: TaskRo
                 <span className="text-xs text-muted-foreground tabular-nums">{col.items.length}</span>
               </div>
 
-              <div className="space-y-2 min-h-[3rem] max-h-[60vh] overflow-y-auto scrollbar-thin pr-0.5">
+              <div className="space-y-2 min-h-[3rem] max-h-[60vh] overflow-y-auto scrollbar-none pr-0.5">
                 {col.items.map((row) => {
                   const t = row.task;
                   const due = fmtDue(t.dueAt);

@@ -56,9 +56,9 @@ export default async function ProposalsPage({
     : "created_desc";
   const orderSql =
     sortKey === "created_asc" ? sql`p.created_at ASC`
-    : sortKey === "invest_desc" ? sql`p.total_investment::numeric DESC NULLS LAST`
-    : sortKey === "invest_asc" ? sql`p.total_investment::numeric ASC NULLS LAST`
-    : sql`p.created_at DESC`;
+      : sortKey === "invest_desc" ? sql`p.total_investment::numeric DESC NULLS LAST`
+        : sortKey === "invest_asc" ? sql`p.total_investment::numeric ASC NULLS LAST`
+          : sql`p.created_at DESC`;
 
   const data = await withTenant(session.tenantId, async (tx) => {
     const filters: any[] = [];
@@ -93,9 +93,13 @@ export default async function ProposalsPage({
              p.expected_corpus::numeric AS expected_corpus,
              p.risk_rating, p.valid_until, p.sent_at, p.accepted_at,
              p.created_at,
-             u.name AS prepared_by
+             u.name AS prepared_by,
+             i.avatar_url AS investor_avatar_url,
+             l.avatar_url AS lead_avatar_url
       FROM proposals p
       LEFT JOIN users u ON u.id = p.prepared_by_user_id
+      LEFT JOIN investors i ON i.id = p.investor_id
+      LEFT JOIN leads l ON l.id = p.lead_id
       ${whereSql}
       ORDER BY ${orderSql}
       LIMIT ${PAGE_SIZE} OFFSET ${(page - 1) * PAGE_SIZE}
@@ -137,9 +141,6 @@ export default async function ProposalsPage({
           <h1 className="page-title">
             <FileSignature className="size-6 text-brand-cyan" /> Proposals
           </h1>
-          <p className="page-subtitle">
-            Branded investment proposals · Mutual Fund · Insurance · PMS · AIF · sent as PDFs.
-          </p>
         </div>
         <Link href="/dashboard/proposals/new" className="btn-primary">
           <Plus className="size-4" /> New proposal
@@ -255,7 +256,7 @@ export default async function ProposalsPage({
           </div>
         ) : (
           <div>
-            <ProposalsBulkTable rows={data.rows} />
+            <ProposalsBulkTable rows={data.rows.map((r, i) => ({ ...r, _seq: (page - 1) * PAGE_SIZE + i + 1 }))} />
             <div className="px-4 pb-3">
               <Pager
                 page={page}
@@ -286,18 +287,18 @@ function Stat({
     tone === "rose"
       ? "text-rose-600"
       : tone === "amber"
-      ? "text-amber-600"
-      : tone === "emerald"
-      ? "text-emerald-600"
-      : "text-foreground";
+        ? "text-amber-600"
+        : tone === "emerald"
+          ? "text-emerald-600"
+          : "text-foreground";
   const iconBg =
     tone === "rose"
       ? "bg-rose-50 text-rose-600"
       : tone === "amber"
-      ? "bg-amber-50 text-amber-600"
-      : tone === "emerald"
-      ? "bg-emerald-50 text-emerald-600"
-      : "bg-brand-cyan-light text-brand-cyan-deep";
+        ? "bg-amber-50 text-amber-600"
+        : tone === "emerald"
+          ? "bg-emerald-50 text-emerald-600"
+          : "bg-brand-cyan-light text-brand-cyan-deep";
   return (
     <div className="kpi-card">
       <div className="flex items-center justify-between">

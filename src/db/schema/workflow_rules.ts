@@ -139,6 +139,11 @@ export const workflowRules = pgTable(
     /** Execution order within the module. Lower runs first when multiple rules match. */
     executionOrder: integer("execution_order").notNull().default(100),
 
+    /** Safety throttle — max event-triggered firings per trailing hour. NULL =
+     *  unlimited. Protects against a pathological high-frequency rule (and the
+     *  per-tenant message quota) firing a comms storm. Manual/test runs exempt. */
+    rateLimitPerHour: integer("rate_limit_per_hour"),
+
     /** Counters for the Usage tab. */
     executionCount: integer("execution_count").notNull().default(0),
     lastExecutedAt: timestamp("last_executed_at", { withTimezone: true }),

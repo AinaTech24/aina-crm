@@ -38,7 +38,7 @@ export async function GET() {
             SELECT to_char(current_date, 'MM-DD') AS today_md,
                    to_char(current_date + 1, 'MM-DD') AS tom_md,
                    array(SELECT to_char(current_date - g, 'MM-DD')
-                         FROM generate_series(1, 7) g) AS past_md
+                         FROM generate_series(1, 30) g) AS past_md
           )
           SELECT i.id, i.name, i.dob,
             CASE
@@ -47,7 +47,9 @@ export async function GET() {
               ELSE 'past'
             END AS bucket
           FROM investors i, w
-          WHERE i.status = 'active'
+          WHERE i.status <> 'closed'
+            AND i.merged_into_id IS NULL
+            AND i.deleted_at IS NULL
             AND i.dob IS NOT NULL
             AND (
               to_char(i.dob, 'MM-DD') = w.today_md

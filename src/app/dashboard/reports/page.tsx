@@ -15,6 +15,7 @@ type ReportItem = { key: string; label: string; icon: string; href?: string };
 const REPORTS: { group: string; items: ReportItem[] }[] = [
   { group: "Growth MIS (Monthly)", items: [
     { key: "growth_mis", label: "Growth MIS — Efforts × Results", icon: "BarChart3", href: "/dashboard/reports/growth-mis" },
+    { key: "business_mis", label: "Results MIS — Product × Asset (Full FY)", icon: "BarChart3", href: "/dashboard/reports/business-mis" },
   ]},
   { group: "Sales & Business", items: [
     { key: "daily_sip_added", label: "Daily SIP Added", icon: "TrendingUp" },

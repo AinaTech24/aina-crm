@@ -8,6 +8,8 @@ import { Avatar } from "@/components/ui/Avatar";
 import { InvestorLookup } from "@/components/common/InvestorLookup";
 import { RmSelector } from "@/components/common/RmSelector";
 import { SubDistributorLookup } from "@/components/common/SubDistributorLookup";
+import { ThemeSelect } from "@/components/ui/ThemeSelect";
+import { ThemeDate } from "@/components/ui/ThemeDate";
 
 type DupMatch = {
   id: string;
@@ -89,6 +91,8 @@ export default function NewLeadPage() {
       const fd = new FormData();
       fd.append("file", file);
       fd.append("kind", "general");
+      fd.append("docType", "avatar");
+      if (form.name) fd.append("clientName", form.name);
       const up = await fetch("/api/compliance/upload", { method: "POST", body: fd })
         .then((r) => r.json())
         .catch(() => ({}));
@@ -205,7 +209,7 @@ export default function NewLeadPage() {
   const showReferrerLookup = REFERRAL_SOURCES.has(form.source);
 
   return (
-    <div className="space-y-4 max-w-4xl mx-auto">
+    <div className="space-y-4 max-w-5xl mx-auto">
       <Link
         href="/dashboard/leads"
         className="text-sm text-muted-foreground hover:underline hover:text-foreground flex items-center gap-1 transition-colors"
@@ -302,17 +306,15 @@ export default function NewLeadPage() {
 
         <div>
           <div className="text-xs font-medium mb-1">Source</div>
-          <select
+          <ThemeSelect
             value={form.source}
-            onChange={(e) => {
-              const v = e.target.value;
+            onChange={(v) => {
               set("source", v);
               // Clear referrer fields if user switches away from a referral source
               if (!REFERRAL_SOURCES.has(v)) {
                 setForm((s) => ({ ...s, referredByInvestorId: "", referredByName: "" }));
               }
             }}
-            className="input-base"
           >
             <option value="referral">Client Referral</option>
             <option value="existing_client">Existing Client Reference</option>
@@ -325,7 +327,7 @@ export default function NewLeadPage() {
             <option value="cold_call">Cold Call</option>
             <option value="other">Other</option>
             <option value="manual">— Manual entry —</option>
-          </select>
+          </ThemeSelect>
         </div>
 
         {/* Conditional referrer lookup — appears only for referral / existing-client sources */}
@@ -407,19 +409,11 @@ export default function NewLeadPage() {
         <div className="sm:col-span-2 grid grid-cols-2 gap-3">
           <label className="block">
             <div className="text-xs font-medium mb-1">Lead type</div>
-            <select value={form.leadType} onChange={(e) => set("leadType", e.target.value)} className="input-base">
-              {LEAD_TYPES.map(([k, l]) => (
-                <option key={k} value={k}>{l}</option>
-              ))}
-            </select>
+            <ThemeSelect value={form.leadType} onChange={(v) => set("leadType", v)} options={LEAD_TYPES} />
           </label>
           <label className="block">
             <div className="text-xs font-medium mb-1">AUM potential</div>
-            <select value={form.aumPotential} onChange={(e) => set("aumPotential", e.target.value)} className="input-base">
-              {AUM_BANDS.map(([k, l]) => (
-                <option key={k} value={k}>{l}</option>
-              ))}
-            </select>
+            <ThemeSelect value={form.aumPotential} onChange={(v) => set("aumPotential", v)} options={AUM_BANDS} />
           </label>
         </div>
 
@@ -442,11 +436,10 @@ export default function NewLeadPage() {
           />
           <label className="block">
             <div className="text-xs font-medium mb-1">Follow-up date</div>
-            <input
+            <ThemeDate
               type="datetime-local"
               value={form.followUpDate}
-              onChange={(e) => set("followUpDate", e.target.value)}
-              className="input-base"
+              onChange={(v) => set("followUpDate", v)}
             />
             <p className="text-[10px] text-muted-foreground mt-1">
               Sets the next follow-up + creates an RM task.

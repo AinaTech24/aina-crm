@@ -31,6 +31,9 @@ import {
   GOAL_CATEGORIES,
 } from "@/lib/goal-planning/calc";
 import { formatINR } from "@/lib/utils";
+import { SelectField } from "@/components/ui/SelectField";
+import { GLIDE_PATH_LABELS, type GlidePath } from "@/lib/goal-planning/glide-path";
+import { GOAL_TEMPLATES } from "@/lib/goal-planning/templates";
 
 const STATUS_TONE: Record<string, string> = {
   not_started: "bg-gray-100 text-gray-700 border-gray-200",
@@ -59,6 +62,7 @@ export function GoalCreateForm({
     expectedReturnPct: "12",
     inflationPct: "6",
     stepUpPct: "10",
+    glidePath: "none" as GlidePath,
     remarks: "",
   });
   const [busy, setBusy] = useState(false);
@@ -66,6 +70,16 @@ export function GoalCreateForm({
 
   function set<K extends keyof typeof form>(k: K, v: (typeof form)[K]) {
     setForm((s) => ({ ...s, [k]: v }));
+  }
+
+  function applyTemplate(t: (typeof GOAL_TEMPLATES)[number]) {
+    setForm((s) => ({
+      ...s,
+      name: t.defaultName,
+      category: t.category,
+      targetYear: String(new Date().getFullYear() + t.horizonYears),
+      glidePath: t.glidePath,
+    }));
   }
 
   // Live compute on every keystroke
@@ -142,6 +156,7 @@ export function GoalCreateForm({
           presentTargetAmount: form.targetMode === "today" ? (parseFloat(form.targetAmount) || undefined) : undefined,
           inflationPct: parseFloat(form.inflationPct) || 0,
           stepUpPct: parseFloat(form.stepUpPct) || 0,
+          glidePath: form.glidePath,
           targetDate: targetDateIso,
           currentValue: parseFloat(form.currentValue) || 0,
           existingMonthlySip: parseFloat(form.existingMonthlySip) || 0,
@@ -169,6 +184,23 @@ export function GoalCreateForm({
         <h2 className="font-semibold flex items-center gap-2">
           <Calculator className="size-4 text-brand-cyan" /> Inputs
         </h2>
+
+        <div>
+          <div className="text-xs font-semibold text-foreground/80 mb-1.5">Start from a template</div>
+          <div className="flex flex-wrap gap-1.5">
+            {GOAL_TEMPLATES.map((t) => (
+              <button
+                key={t.key}
+                type="button"
+                onClick={() => applyTemplate(t)}
+                title={t.hint}
+                className="rounded-full border border-border bg-card hover:bg-brand-cyan-light/30 hover:border-brand-cyan/40 px-3 py-1 text-xs font-medium transition-all"
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+        </div>
 
         <Field label="Goal name">
           <input
@@ -279,6 +311,21 @@ export function GoalCreateForm({
             />
           </Field>
         </div>
+
+        <Field label="Glide path (de-risk near target)">
+          <SelectField
+            value={form.glidePath}
+            onChange={(e) => set("glidePath", e.target.value as GlidePath)}
+            className="w-full"
+          >
+            {(Object.entries(GLIDE_PATH_LABELS) as [GlidePath, string][]).map(([v, l]) => (
+              <option key={v} value={v}>{l}</option>
+            ))}
+          </SelectField>
+          <p className="text-[11px] text-muted-foreground mt-1.5">
+            Tapers the expected return as the target nears (shifts toward debt).
+          </p>
+        </Field>
 
         <Field label="Remarks">
           <textarea

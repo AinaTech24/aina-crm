@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { sql } from "drizzle-orm";
-import { Megaphone, Image as ImageIcon, Send } from "lucide-react";
+import { Megaphone, Send } from "lucide-react";
 import { withTenant } from "@/db/client";
 import type { SessionUser } from "@/lib/auth/session";
-import { formatRelative } from "@/lib/utils";
+import { resolvePeriodRange, type Period } from "@/lib/dashboard/period";
+import { PeriodSelector } from "./PeriodSelector";
+import { DashboardEmptyState } from "./DashboardEmptyState";
 import { CampaignRoiChart } from "./CampaignRoiChart";
 import { MarketingInsightsSection } from "./MarketingInsightsSection";
 
@@ -14,18 +16,28 @@ import { MarketingInsightsSection } from "./MarketingInsightsSection";
  *   Pending creatives · Content pending approval · Posted content archive
  *   Social media calendar · Event registrations · Webinar follow-ups
  */
-export async function MarketingDashboard({ session }: { session: SessionUser }) {
-  const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+export async function MarketingDashboard({
+  session,
+  period,
+  customStart,
+}: {
+  session: SessionUser;
+  period?: Period;
+  customStart?: string;
+}) {
+  const range = resolvePeriodRange(period ?? "mtd", new Date(), { customStart });
+  const fromISO = range.fromISO;
+  const toISO = range.toISO;
 
   const data = await withTenant(session.tenantId, async (tx) => {
     const r = await tx.execute(sql`
       SELECT
-        (SELECT COUNT(*)::int FROM campaigns WHERE created_at >= ${startOfMonth.toISOString()}) AS campaigns_mtd,
+        (SELECT COUNT(*)::int FROM campaigns WHERE created_at >= ${fromISO} AND created_at <= ${toISO}) AS campaigns_mtd,
         (SELECT COUNT(*)::int FROM campaigns WHERE status IN ('sending', 'scheduled')) AS active_campaigns,
-        (SELECT COUNT(*)::int FROM leads WHERE created_at >= ${startOfMonth.toISOString()}
+        (SELECT COUNT(*)::int FROM leads WHERE created_at >= ${fromISO} AND created_at <= ${toISO}
             AND source IN ('website', 'meta_ads', 'google_ads', 'social_media', 'webinar')) AS leads_mtd,
         (SELECT COUNT(*)::int FROM leads WHERE converted_investor_id IS NOT NULL
-            AND converted_at >= ${startOfMonth.toISOString()}) AS conversions_mtd,
+            AND converted_at >= ${fromISO} AND converted_at <= ${toISO}) AS conversions_mtd,
         (SELECT COUNT(*)::int FROM templates WHERE status = 'pending_approval' AND category = 'marketing') AS pending_approval
     `);
     const s = r.rows[0] as any;
@@ -33,15 +45,16 @@ export async function MarketingDashboard({ session }: { session: SessionUser }) 
     const campaignsList = await tx.execute(sql`
       SELECT id, name, channel, status, total_recipients, sent_count, delivered_count, read_count, replied_count, scheduled_at, started_at
       FROM campaigns
+      WHERE created_at >= ${fromISO} AND created_at <= ${toISO}
       ORDER BY created_at DESC
       LIMIT 8
     `);
 
-    // Lead sources roll-up MTD
+    // Lead sources roll-up for the period
     const leadSources = await tx.execute(sql`
       SELECT source, COUNT(*)::int AS c
       FROM leads
-      WHERE created_at >= ${startOfMonth.toISOString()}
+      WHERE created_at >= ${fromISO} AND created_at <= ${toISO}
       GROUP BY source
       ORDER BY c DESC
     `);
@@ -64,31 +77,23 @@ export async function MarketingDashboard({ session }: { session: SessionUser }) 
     replied: Number(c.replied_count ?? 0),
   }));
 
-  const daysOfWeek = Array.from({ length: 7 }).map((_, idx) => {
-    const d = new Date(Date.now() + idx * 24 * 60 * 60 * 1000);
-    let scheduledItem = "";
-    if (idx === 0) scheduledItem = "SIP Reminders (WA)";
-    if (idx === 1) scheduledItem = "Market Insights (Mail)";
-    if (idx === 3) scheduledItem = "AINA Library Post";
-    return {
-      name: d.toLocaleDateString("en-US", { weekday: "short" }),
-      date: d.getDate(),
-      item: scheduledItem,
-    };
-  });
-
   return (
     <div className="space-y-6 max-w-7xl">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Marketing dashboard</h1>
-        <p className="text-muted-foreground text-sm">Campaigns, content, lead flow.</p>
+      <div className="flex items-end justify-between flex-wrap gap-3">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Marketing dashboard</h1>
+          <p className="text-muted-foreground text-sm">
+            Campaigns, content, lead flow · <span className="font-medium">{range.label}</span>
+          </p>
+        </div>
+        <PeriodSelector current={period ?? "mtd"} variant="light" />
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-        <Kpi label="Campaigns MTD" value={String(data.campaignsMtd)} />
+        <Kpi label="Campaigns" value={String(data.campaignsMtd)} />
         <Kpi label="Active right now" value={String(data.activeCampaigns)} />
-        <Kpi label="Leads (marketing) MTD" value={String(data.leadsMtd)} />
-        <Kpi label="Conversions MTD" value={String(data.conversionsMtd)} />
+        <Kpi label="Leads (marketing)" value={String(data.leadsMtd)} />
+        <Kpi label="Conversions" value={String(data.conversionsMtd)} />
         <Kpi label="Approval queue" value={String(data.pendingApproval)} tone={data.pendingApproval > 0 ? "amber" : "muted"} />
       </div>
 
@@ -103,14 +108,28 @@ export async function MarketingDashboard({ session }: { session: SessionUser }) 
               Open all →
             </Link>
           </div>
-          <CampaignRoiChart data={campaignRoiData} />
+          {data.campaigns.length === 0 ? (
+            <DashboardEmptyState
+              icon={Megaphone}
+              title="No campaigns this period"
+              hint="Broadcasts you send in this window will show their reach here."
+              cta={{ href: "/dashboard/campaigns/new", label: "Create broadcast" }}
+            />
+          ) : (
+            <CampaignRoiChart data={campaignRoiData} />
+          )}
         </div>
 
         {/* Lead sources list */}
         <div className="card-surface glass-card p-5">
-          <h2 className="font-semibold text-sm tracking-tight text-foreground/90 mb-3">Lead sources MTD</h2>
+          <h2 className="font-semibold text-sm tracking-tight text-foreground/90 mb-3">Lead sources · {range.label}</h2>
           {data.leadSources.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-6 text-center">No leads yet this month.</p>
+            <DashboardEmptyState
+              compact
+              title="No marketing leads this period"
+              hint="Lead sources will appear here as new leads come in."
+              cta={{ href: "/dashboard/leads", label: "View leads" }}
+            />
           ) : (
             <ul className="space-y-2 text-sm">
               {data.leadSources.map((s: any) => (
@@ -124,47 +143,16 @@ export async function MarketingDashboard({ session }: { session: SessionUser }) 
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Mini Content Calendar weekly grid */}
-        <div className="card-surface glass-card p-5">
-          <h2 className="font-semibold flex items-center gap-2 text-sm tracking-tight text-foreground/90 mb-4">
-            <ImageIcon className="size-4 text-brand-cyan-deep" /> Content Planner (Weekly Timeline)
-          </h2>
-          <div className="grid grid-cols-7 gap-2">
-            {daysOfWeek.map((d, idx) => (
-              <div key={idx} className="flex flex-col items-center p-2 rounded-lg bg-secondary/30 border border-border/40">
-                <div className="text-[10px] uppercase font-bold text-muted-foreground">{d.name}</div>
-                <div className="text-sm font-extrabold mt-1">{d.date}</div>
-                <div className="h-10 mt-2 flex items-center justify-center w-full text-center">
-                  {d.item ? (
-                    <span className="chip bg-brand-cyan-light text-brand-cyan-deep text-[8px] leading-tight px-1 py-0.5 rounded text-center truncate max-w-[80px] font-semibold" title={d.item}>
-                      {d.item}
-                    </span>
-                  ) : (
-                    <span className="text-[9px] text-muted-foreground/45">—</span>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-          <div className="mt-4 text-right">
-            <Link href="/dashboard/content-calendar" className="text-xs text-brand-cyan-deep hover:underline font-semibold">
-              Open content calendar →
-            </Link>
-          </div>
-        </div>
-
-        {/* Quick Actions */}
-        <div className="card-surface glass-card p-5">
-          <h2 className="font-semibold flex items-center gap-2 text-sm tracking-tight text-foreground/90 mb-4">
-            <Send className="size-4 text-brand-cyan-deep" /> Quick Actions
-          </h2>
-          <div className="grid grid-cols-2 gap-3">
-            <Action href="/dashboard/campaigns/new" label="Create broadcast" />
-            <Action href="/dashboard/templates/new" label="Create template" />
-            <Action href="/dashboard/content-calendar" label="Plan social content" />
-            <Action href="/dashboard/leads" label="Review new leads" />
-          </div>
+      {/* Quick Actions */}
+      <div className="card-surface glass-card p-5">
+        <h2 className="font-semibold flex items-center gap-2 text-sm tracking-tight text-foreground/90 mb-4">
+          <Send className="size-4 text-brand-cyan-deep" /> Quick Actions
+        </h2>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <Action href="/dashboard/campaigns/new" label="Create broadcast" />
+          <Action href="/dashboard/templates/new" label="Create template" />
+          <Action href="/dashboard/aina-library" label="Browse content library" />
+          <Action href="/dashboard/leads" label="Review new leads" />
         </div>
       </div>
 

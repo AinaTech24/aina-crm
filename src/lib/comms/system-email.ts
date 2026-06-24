@@ -14,6 +14,7 @@
  */
 
 import { emailAdapter } from "./adapters/resend";
+import { loadEmailConfig } from "./email-config";
 
 export type SystemEmailResult = { sent: boolean; reason?: string };
 
@@ -26,13 +27,16 @@ export async function sendSystemEmail(args: {
   /** Stable key so a retried send dedupes provider-side. */
   idempotencyKey?: string;
 }): Promise<SystemEmailResult> {
-  if (!process.env.RESEND_API_KEY) {
+  // Resolve the platform SMTP config — DB (Aina Admin → Email) first, env (SMTP_*)
+  // as fallback.
+  const cfg = await loadEmailConfig();
+  if (!cfg.configured || !cfg.host) {
     // In production this silently breaks onboarding (invited users / reset
     // links never arrive). Surface it loudly instead of failing invisibly.
     if (process.env.NODE_ENV === "production") {
       console.error(
-        "[system-email] RESEND_API_KEY is not configured — transactional auth email " +
-          `(to ${args.to}, subject "${args.subject}") was NOT sent. Configure platform email.`
+        "[system-email] SMTP is not configured (Aina Admin → Email, or SMTP_* env) — " +
+          `transactional auth email (to ${args.to}, subject "${args.subject}") was NOT sent.`
       );
     }
     return { sent: false, reason: "email_not_configured" };
@@ -45,6 +49,8 @@ export async function sendSystemEmail(args: {
       tokens: {},
       rendered: { subject: args.subject, text: args.text, tokens: {} },
       inlineHtml: args.html,
+      smtp: { host: cfg.host, port: cfg.port, secure: cfg.secure, user: cfg.user ?? "", pass: cfg.pass ?? "" },
+      fromOverride: cfg.from,
       idempotencyKey: args.idempotencyKey,
     });
     return { sent: true };

@@ -6,16 +6,27 @@ import { handleApiError } from "@/lib/api/error-handler";
  *   DELETE /api/insurance-claims/[id]
  */
 import { NextRequest, NextResponse } from "next/server";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
-import { insuranceClaims, investors, CLAIM_STATUSES, CLAIM_TYPES, CLAIM_MODES, INTIMATION_MODES, SUBMITTED_MODES } from "@/db/schema";
+import { insuranceClaims, insurancePolicies, investors, CLAIM_STATUSES, CLAIM_TYPES, CLAIM_MODES, INTIMATION_MODES, SUBMITTED_MODES } from "@/db/schema";
+import { policyStatusForClaim } from "@/lib/insurance/claim-status";
 
 export const dynamic = "force-dynamic";
+
+const ClaimDoc = z.object({
+  name: z.string().max(200),
+  docType: z.string().max(60).optional(),
+  key: z.string().max(400).optional(),
+  url: z.string().max(800).optional(),
+  mime: z.string().max(120).optional(),
+  size: z.number().optional(),
+  uploadedAt: z.string().optional(),
+});
 
 const Patch = z
   .object({
@@ -41,6 +52,7 @@ const Patch = z
     settledAmount: z.number().min(0).optional(),
     rmId: z.string().uuid().nullable().optional(),
     comments: z.string().max(2000).nullable().optional(),
+    documents: z.array(ClaimDoc).max(50).optional(),
   })
   .strict();
 
@@ -82,6 +94,22 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         if (patch[k] != null) patch[k] = String(patch[k]);
       }
       const r = await tx.update(insuranceClaims).set(patch).where(and(eq(insuranceClaims.id, id), eq(insuranceClaims.tenantId, session.tenantId))).returning();
+
+      // #5 Reconcile the linked policy's status with the claim's. Only move a
+      // live/claim policy (never clobber matured/lapsed/surrendered/cancelled).
+      if (before.policyId && parse.data.claimStatus && parse.data.claimStatus !== before.claimStatus) {
+        const next = policyStatusForClaim(parse.data.claimStatus);
+        if (next) {
+          await tx.update(insurancePolicies)
+            .set({ status: next, updatedAt: new Date() } as any)
+            .where(and(
+              eq(insurancePolicies.id, before.policyId),
+              eq(insurancePolicies.tenantId, session.tenantId),
+              inArray(insurancePolicies.status, ["active", "claim_filed", "claim_settled"]),
+            ));
+        }
+      }
+
       await recordAudit(tx, {
         tenantId: session.tenantId,
         actorUserId: session.userId,

@@ -17,7 +17,7 @@
     --popover: 0 0% 100%;
     --popover-foreground: 200 30% 12%;
 
-    --primary: 356 72% 45%;                  /* Aina red #C5202A */
+    --primary: 358 75% 41%;                  /* Aina red #B71A20 */
     --primary-foreground: 0 0% 100%;
 
     --secondary: 200 20% 95.5%;              /* soft neutral for hovers / chips */
@@ -40,9 +40,9 @@
 
     /* Extended brand tokens (consumed by gradients, badges, hero strips).
        Names are legacy; values are the Aina palette. */
-    --brand-navy: 356 72% 45%;               /* = Aina red */
-    --brand-navy-deep: 356 73% 35%;          /* deep red */
-    --brand-navy-light: 356 75% 96%;         /* red tint */
+    --brand-navy: 358 75% 41%;               /* = Aina red #B71A20 */
+    --brand-navy-deep: 358 78% 32%;          /* deep red */
+    --brand-navy-light: 358 70% 96%;         /* red tint */
     --brand-cyan: 176 48% 32%;               /* = Aina teal */
     --brand-cyan-deep: 180 52% 19%;          /* deep teal #1F3D3B */
     --brand-cyan-light: 176 38% 93%;         /* teal tint */
@@ -57,7 +57,7 @@
     --card-foreground: 200 20% 96%;
     --popover: 200 30% 10%;
     --popover-foreground: 200 20% 96%;
-    --primary: 356 74% 55%;                  /* brighter Aina red for dark bg */
+    --primary: 358 72% 52%;                  /* brighter Aina red (#B71A20) for dark bg */
     --primary-foreground: 0 0% 100%;
     --secondary: 200 22% 15%;
     --secondary-foreground: 200 20% 96%;
@@ -71,8 +71,8 @@
     --input: 200 22% 19%;
     --ring: 176 45% 44%;
     /* brand aliases for dark mode */
-    --brand-navy: 356 74% 55%;
-    --brand-navy-deep: 356 70% 42%;
+    --brand-navy: 358 72% 52%;
+    --brand-navy-deep: 358 74% 38%;
     --brand-cyan: 176 45% 44%;
     --brand-cyan-deep: 178 45% 30%;
   }
@@ -86,6 +86,17 @@
   input[type="checkbox"],
   input[type="radio"] {
     accent-color: hsl(var(--brand-cyan));
+  }
+  /* Checkboxes / radios must NEVER show the boxy native outline or the form
+     field's border-ring (which made a square halo around the tick). On mouse:
+     no outline. On keyboard: a small, tight on-brand ring. */
+  input[type="checkbox"]:focus,
+  input[type="radio"]:focus {
+    @apply outline-none ring-0;
+  }
+  input[type="checkbox"]:focus-visible,
+  input[type="radio"]:focus-visible {
+    @apply outline-none ring-2 ring-brand-cyan/40 ring-offset-1 ring-offset-background rounded;
   }
 
   html {
@@ -141,10 +152,37 @@
   /* Form fields NEVER show the native black outline or the dark focus ring —
      only a soft on-brand cue. Clicking any input on the site no longer flashes
      a black outline anywhere. */
-  input:focus, textarea:focus, select:focus,
-  input:focus-visible, textarea:focus-visible, select:focus-visible {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="search"]):focus,
+  textarea:focus, select:focus,
+  input:not([type="checkbox"]):not([type="radio"]):not([type="search"]):focus-visible,
+  textarea:focus-visible, select:focus-visible {
     @apply outline-none ring-2 ring-brand-cyan/25 ring-offset-0;
     border-color: hsl(var(--brand-cyan) / 0.55);
+  }
+  /* Search inputs render inside their own styled shell (e.g. GlobalSearch) —
+     no ring/border here so we never get a double outline. */
+  input[type="search"]:focus,
+  input[type="search"]:focus-visible {
+    @apply outline-none ring-0;
+    border-color: transparent;
+  }
+
+  /* Animated AI-assistant icon — a gentle "alive" twinkle so the AI entry
+     stands out (lightweight CSS, no Lottie runtime). Applied to the sidebar
+     AI Assistant nav item and anything tagged .ai-icon-animated. */
+  @keyframes ai-twinkle {
+    0%, 100% { transform: scale(1) rotate(0deg); opacity: 0.9; filter: drop-shadow(0 0 0 transparent); }
+    50% { transform: scale(1.18) rotate(8deg); opacity: 1; filter: drop-shadow(0 0 4px hsl(var(--brand-cyan) / 0.55)); }
+  }
+  [data-href="/dashboard/ai-assistant"] .nav-link-icon,
+  .ai-icon-animated {
+    animation: ai-twinkle 2.4s ease-in-out infinite;
+    color: hsl(var(--brand-cyan));
+    transform-origin: center;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    [data-href="/dashboard/ai-assistant"] .nav-link-icon,
+    .ai-icon-animated { animation: none; }
   }
 
   /* Native <select> not yet migrated to the custom <Select> component still get
@@ -530,6 +568,47 @@
   /* No-scrollbar — invisible but scrollable */
   .scrollbar-none::-webkit-scrollbar { display: none; }
   .scrollbar-none { scrollbar-width: none; }
+
+  /* Standard data-table scroll viewport — one consistent height for EVERY
+   * module's list table (so risk-profiles, clients, proposals… all match,
+   * whether the table is full or empty), butter-smooth momentum scroll, and
+   * no visible scrollbar on either axis. Tune the height via --table-scroll-h. */
+  .table-scroll {
+    /* max-height (not fixed height) so short lists don't create a scroll box
+       to get trapped in; only long lists scroll internally. */
+    max-height: var(--table-scroll-h, 30rem);
+    overflow: auto;
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+    /* `auto` (not `contain`) so once the table reaches its end the wheel chains
+       to the page — otherwise the cursor gets "stuck" inside the table. */
+    overscroll-behavior: auto;
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .table-scroll::-webkit-scrollbar { display: none; width: 0; height: 0; }
+
+  /* Uniform column gutters + row rhythm for every standardized list table, so
+   * columns line up with even spacing across all modules. Scoped to
+   * .table-scroll so it only touches the main list tables (not worksheets or
+   * detail sub-tables). Specificity (class + 2 types) intentionally beats the
+   * per-cell Tailwind padding utilities so spacing is consistent everywhere. */
+  .table-scroll table th,
+  .table-scroll table td {
+    padding-top: 0.625rem;
+    padding-bottom: 0.625rem;
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+    vertical-align: middle;
+    /* Never wrap cell text — keep every column on a single line and let the
+     * container scroll horizontally (scrollbar hidden) when it overflows. */
+    white-space: nowrap;
+  }
+  /* Comfortable breathing room at the table's left/right edges. */
+  .table-scroll table th:first-child,
+  .table-scroll table td:first-child { padding-left: 1.25rem; }
+  .table-scroll table th:last-child,
+  .table-scroll table td:last-child { padding-right: 1.25rem; }
 
   /* Truncate to N lines */
   .line-clamp-2 {

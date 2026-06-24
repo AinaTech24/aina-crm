@@ -8,7 +8,8 @@
  * illustration handed to a client looks like an official firm document.
  */
 
-import { Calculator } from "lucide-react";
+import Link from "next/link";
+import { Calculator, SlidersHorizontal } from "lucide-react";
 import { eq } from "drizzle-orm";
 import { CalculatorsApp } from "@/components/calculators/CalculatorsApp";
 import { FirmLogo } from "@/components/common/FirmLogo";
@@ -16,14 +17,16 @@ import { withTenant } from "@/db/client";
 import { tenants } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { formatDate } from "@/lib/utils";
+import { loadCalcAssumptions } from "@/lib/calculators/assumptions";
 
 export const dynamic = "force-dynamic";
 
 export default async function CalculatorsPage() {
   const session = await requireSession();
-  const tenant = await withTenant(session.tenantId, async (tx) =>
-    (await tx.select().from(tenants).where(eq(tenants.id, session.tenantId)).limit(1))[0] ?? null
-  );
+  const { tenant, assumptions } = await withTenant(session.tenantId, async (tx) => ({
+    tenant: (await tx.select().from(tenants).where(eq(tenants.id, session.tenantId)).limit(1))[0] ?? null,
+    assumptions: await loadCalcAssumptions(tx, session.tenantId),
+  }));
   const primary = (tenant as any)?.primaryColor || "#0e2557";
   const accent = (tenant as any)?.secondaryColor || (tenant as any)?.accentColor || "#0ea5e9";
   const firmName = tenant?.legalName ?? tenant?.displayName ?? "—";
@@ -75,17 +78,18 @@ export default async function CalculatorsPage() {
       </div>
 
       {/* On-screen heading — hidden on print (the letterhead replaces it) */}
-      <div className="print:hidden">
-        <h1 className="text-2xl font-semibold flex items-center gap-2">
-          <Calculator className="size-6" /> MF Investment Calculators
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Live calculators for client meetings. Results are illustrative;
-          all assume monthly compounding and SIPs in Begin Mode.
-        </p>
+      <div className="print:hidden flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold flex items-center gap-2">
+            <Calculator className="size-6" /> MF Investment Calculators
+          </h1>
+        </div>
+        <Link href="/dashboard/calculators/settings" className="btn-secondary text-xs shrink-0">
+          <SlidersHorizontal className="size-3.5" /> Assumptions
+        </Link>
       </div>
 
-      <CalculatorsApp firmName={firmName} />
+      <CalculatorsApp firmName={firmName} assumptions={assumptions} />
 
       {/* Disclaimer must stay visible in print/PDF — any illustration handed
           to a client has to carry the market-risk disclaimer (AMFI best

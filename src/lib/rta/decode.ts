@@ -35,23 +35,6 @@ function cellToStr(c: unknown): string {
   return String(c).replace(/\r?\n/g, " ").trim();
 }
 
-/** A header row is the first row (scanning the top 20) with the most non-empty
- *  cells — title banners have 1–2 filled cells, the real header has many. */
-function findHeaderRow(rows: string[][]): number {
-  let best = 0;
-  let bestScore = -1;
-  const scan = Math.min(rows.length, 20);
-  for (let i = 0; i < scan; i++) {
-    const nonEmpty = rows[i].filter((c) => c && c.trim() !== "").length;
-    // Require at least 3 populated columns to qualify as a header.
-    if (nonEmpty >= 3 && nonEmpty > bestScore) {
-      bestScore = nonEmpty;
-      best = i;
-    }
-  }
-  return best;
-}
-
 function spreadsheetToPipeText(buf: Buffer): string {
   const wb = XLSX.read(buf, { type: "buffer", cellDates: true });
   if (!wb.SheetNames.length) return "";
@@ -71,13 +54,48 @@ function spreadsheetToPipeText(buf: Buffer): string {
   }
 
   const ws = wb.Sheets[sheetName];
-  const matrix = XLSX.utils.sheet_to_json(ws, { header: 1, blankrows: false, defval: "" }) as unknown[][];
-  const rows: string[][] = matrix.map((r) => r.map(cellToStr));
-  if (!rows.length) return "";
+  if (!ws || !ws["!ref"]) return "";
+  const range = XLSX.utils.decode_range(ws["!ref"]);
 
-  const headerIdx = findHeaderRow(rows);
-  const out = rows.slice(headerIdx).map((r) => r.join("|"));
-  return out.join("\n");
+  // Stream the sheet row-by-row directly into pipe-delimited lines. We read
+  // cells off the worksheet ourselves instead of XLSX.utils.sheet_to_json,
+  // which would materialise the ENTIRE sheet as a JS matrix AND a second
+  // string[][] copy — on a large RTA master (tens of thousands of rows) those
+  // intermediates pile on top of an already-heavy SheetJS workbook and helped
+  // push big imports into a heap OOM. One pass, one output array, no copies.
+  const lines: string[] = [];
+  // Non-empty VALUE count per emitted line, kept only for the first 20 lines,
+  // to locate the header row below (banner/title rows fill 1–2 cells; the real
+  // header fills many). This replaces the old findHeaderRow(rows[][]) scan.
+  const headScores: number[] = [];
+  const cells: string[] = new Array(range.e.c - range.s.c + 1);
+  for (let R = range.s.r; R <= range.e.r; R++) {
+    let present = 0; // cells that EXIST in the sheet (matches blankrows:false)
+    let nonEmptyVal = 0; // cells with a non-empty value (header heuristic)
+    for (let C = range.s.c; C <= range.e.c; C++) {
+      const cell = (ws as Record<string, { v: unknown } | undefined>)[XLSX.utils.encode_cell({ r: R, c: C })];
+      if (cell != null) present++;
+      const v = cell == null ? "" : cellToStr(cell.v);
+      cells[C - range.s.c] = v;
+      if (v !== "") nonEmptyVal++;
+    }
+    if (present === 0) continue; // skip truly blank rows (no cells at all)
+    if (headScores.length < 20) headScores.push(nonEmptyVal);
+    lines.push(cells.join("|"));
+  }
+  if (!lines.length) return "";
+
+  // Header = first of the top-20 emitted lines with the most populated cells
+  // (≥3 to qualify) — title banners have far fewer.
+  let headerIdx = 0;
+  let bestScore = -1;
+  for (let i = 0; i < headScores.length; i++) {
+    if (headScores[i] >= 3 && headScores[i] > bestScore) {
+      bestScore = headScores[i];
+      headerIdx = i;
+    }
+  }
+  return lines.slice(headerIdx).join("\n");
 }
 
 /** Quote-aware split for a delimited line. */

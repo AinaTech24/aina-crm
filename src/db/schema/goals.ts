@@ -60,6 +60,10 @@ export const goals = pgTable("goals", {
   startedOn: date("started_on"),
   monthlyContribution: numeric("monthly_contribution", { precision: 18, scale: 2 }),
   expectedReturn: numeric("expected_return", { precision: 5, scale: 2 }),
+  /** Glide-path / de-risking profile. The effective expected return is shaved
+   *  as the target nears (none = the base return holds throughout). Applied at
+   *  compute time so it auto-de-risks each nightly recompute. */
+  glidePath: text("glide_path", { enum: ["none", "conservative", "moderate", "aggressive"] }).notNull().default("none"),
   currentValue: numeric("current_value", { precision: 18, scale: 2 }).default("0"),
   progressPct: numeric("progress_pct", { precision: 5, scale: 2 }).default("0"),
   /** Time-elapsed trajectory the goal SHOULD be at (months elapsed / total).

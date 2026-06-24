@@ -52,6 +52,7 @@ export async function POST(req: NextRequest) {
       logoUrl: tenant?.logoUrl ?? ((tenant as any)?.brandingConfig as any)?.logoUrl ?? null,
     },
     unsubscribeUrl: "#preview",
+    previewMarkers: true,
   });
   return NextResponse.json({ html });
 }

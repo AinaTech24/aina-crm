@@ -41,6 +41,8 @@ export function BulkTable<T extends { id: string }>({
   itemLabel = "item",
   tableKey,
   scrollBody = false,
+  onRowClick,
+  rowHref,
 }: {
   rows: T[];
   columns: BulkColumn<T>[];
@@ -51,6 +53,10 @@ export function BulkTable<T extends { id: string }>({
   tableKey?: string;
   /** Fixed-height scroll body (hidden scrollbar + sticky header) for long tables. */
   scrollBody?: boolean;
+  /** Make rows clickable — runs this callback (e.g. open a preview modal). */
+  onRowClick?: (row: T) => void;
+  /** Make rows clickable — navigates to this href (e.g. a detail page). */
+  rowHref?: (row: T) => string;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -155,9 +161,9 @@ export function BulkTable<T extends { id: string }>({
         </div>
       )}
 
-      <div className={scrollBody ? "overflow-auto max-h-[600px] scrollbar-none" : "overflow-x-auto"}>
+      <div className="table-scroll">
         <table className="w-full text-sm" data-table={tableKey}>
-          <thead className={`text-xs text-muted-foreground border-b${scrollBody ? " sticky top-0 z-10 bg-card" : ""}`}>
+          <thead className="text-xs text-muted-foreground border-b sticky top-0 z-10 bg-card">
             <tr>
               <th className="w-8 px-4 py-2">
                 <input type="checkbox" checked={allSel} onChange={toggleAll} className="size-3.5 rounded" aria-label="Select all" />
@@ -170,10 +176,20 @@ export function BulkTable<T extends { id: string }>({
           <tbody>
             {rows.map((row) => {
               const sel = selected.has(row.id);
+              const clickable = !!(onRowClick || rowHref);
+              // Ignore clicks that land on an interactive element (checkbox, the
+              // row's own links/buttons/menus) so row-navigation never hijacks them.
+              const handleRowClick = (e: React.MouseEvent) => {
+                if (!clickable) return;
+                if ((e.target as HTMLElement).closest("a, button, input, select, [role='menu'], [data-no-row-nav]")) return;
+                if (onRowClick) onRowClick(row);
+                else if (rowHref) router.push(rowHref(row));
+              };
               return (
                 <tr
                   key={row.id}
-                  className={`border-b last:border-0 transition-colors ${sel ? "bg-brand-cyan-light/30" : "hover:bg-brand-cyan-light/20"}`}
+                  onClick={handleRowClick}
+                  className={`border-b last:border-0 transition-colors ${sel ? "bg-brand-cyan-light/30" : "hover:bg-brand-cyan-light/20"} ${clickable ? "cursor-pointer" : ""}`}
                 >
                   <td className="px-4 py-2.5">
                     <input type="checkbox" checked={sel} onChange={() => toggle(row.id)} className="size-3.5 rounded" aria-label="Select row" />

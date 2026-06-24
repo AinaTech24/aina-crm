@@ -211,13 +211,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           dueAt?: string;
           taskId?: string;
         }>;
-        let createdAny = false;
+        // Build the new task rows, then insert them in ONE awaited batch. The
+        // previous code called tx.insert(...) WITHOUT await inside a .map(), so
+        // the inserts were fire-and-forget — the meeting got stamped
+        // "followUpTaskCreated" while the tasks themselves were never reliably
+        // committed. Collect → await → stamp.
+        const newTaskRows: any[] = [];
         const stamped = items.map((it) => {
           if (it.taskId) return it; // already created
           const taskId = uuid();
-          createdAny = true;
-          // Schedule the task now (inside the same tx)
-          tx.insert(tasks).values({
+          newTaskRows.push({
             id: taskId,
             tenantId: session.tenantId,
             assigneeId: it.assigneeId ?? before.rmId ?? session.userId,
@@ -232,9 +235,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             status: "open",
             dueAt: it.dueAt ? new Date(it.dueAt) : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
             workflowRunId: null,
-          } as any);
+          });
           return { ...it, taskId };
         });
+        const createdAny = newTaskRows.length > 0;
+        if (createdAny) {
+          await tx.insert(tasks).values(newTaskRows);
+        }
         if (createdAny || (body.actionItems && body.actionItems.length > 0)) {
           await tx
             .update(reviewMeetings)

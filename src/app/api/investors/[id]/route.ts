@@ -21,6 +21,7 @@ import { require as requireCap, can } from "@/lib/auth/rbac";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { healthFields } from "@/lib/investors/health";
 import { NomineesArray } from "@/lib/investors/nominee";
+import { ReferralsArray } from "@/lib/investors/referral";
 import { registerNomineePanDocs } from "@/lib/investors/nominee-docs";
 import { recomputeFamilyHealthForInvestor } from "@/lib/families/health-persist";
 import {
@@ -40,6 +41,10 @@ import {
 export const dynamic = "force-dynamic";
 
 const Patch = z.object({
+  /** Optimistic concurrency token — the updatedAt the client loaded. If the row
+   *  has changed since, the save is rejected (409) so two RMs don't silently
+   *  clobber each other. Optional: callers that don't send it skip the check. */
+  expectedUpdatedAt: z.string().optional(),
   name: z.string().optional(),
   // Master identity — editable so RMs can fix typos. PAN is uppercased + length-
   // capped; empty string clears it. (DOB is below.)
@@ -64,6 +69,7 @@ const Patch = z.object({
   // Multiple nominees / bank accounts. The legacy single columns above are kept
   // in sync with the first array entry (mirrored in the handler).
   nominees: NomineesArray,
+  referrals: ReferralsArray,
   bankAccounts: z.array(z.object({
     bankName: z.string().max(120),
     accountMasked: z.string().max(60).optional(),
@@ -209,11 +215,20 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const session = await requireSession();
     requireCap(session.roles, "investor.edit.all");
     const parse = Patch.safeParse(await req.json().catch(() => ({})));
-    if (!parse.success) return NextResponse.json({ error: "invalid body" }, { status: 400 });
+    if (!parse.success)
+      return NextResponse.json({ error: "invalid body", issues: parse.error.issues }, { status: 400 });
 
     const result = await withTenant(session.tenantId, async (tx) => {
       const before = (await tx.select().from(investors).where(and(eq(investors.id, id), eq(investors.tenantId, session.tenantId))).limit(1))[0];
       if (!before) return null;
+
+      // Optimistic concurrency: reject if the record moved under the editor.
+      // 1s tolerance absorbs sub-second clock/serialisation drift.
+      if (parse.data.expectedUpdatedAt && before.updatedAt) {
+        const dbTs = new Date(before.updatedAt as any).getTime();
+        const expTs = new Date(parse.data.expectedUpdatedAt).getTime();
+        if (Number.isFinite(expTs) && Math.abs(dbTs - expTs) > 1000) return "stale" as const;
+      }
 
       // Reassigning the RM must stay inside the firm: a uuid from another tenant
       // is a valid uuid but would orphan the client under an RM who can't see
@@ -329,6 +344,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     });
 
     if (result === "bad_rm") return NextResponse.json({ error: "selected RM is not a user in this firm" }, { status: 400 });
+    if (result === "stale") return NextResponse.json({ error: "This client was changed by someone else since you opened it. Reload and re-apply your edits." }, { status: 409 });
     if (!result) return NextResponse.json({ error: "not found" }, { status: 404 });
     return NextResponse.json(result);
   } catch (err: any) {
@@ -336,13 +352,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 }
 
-export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   try {
     const session = await requireSession();
     // Permanent erasure is far more dangerous than an edit — gate on the narrow
     // delete capability (owner / compliance), not the broad edit.all.
     requireCap(session.roles, "investor.delete");
+    // Default delete = soft-delete into the Trash bin (recoverable until the
+    // retention window elapses). `?purge=1` (Trash → "Delete permanently") does
+    // the irreversible hard delete + cascade.
+    const purge = req.nextUrl.searchParams.get("purge") === "1";
+
     const outcome = await withTenant(session.tenantId, async (tx) => {
       const [inv] = await tx
         .select({ name: investors.name, pan: investors.pan })
@@ -350,6 +371,24 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
         .where(and(eq(investors.id, id), eq(investors.tenantId, session.tenantId)))
         .limit(1);
       if (!inv) return "not_found" as const;
+
+      if (!purge) {
+        // ── Soft delete → Trash bin. Preserves the whole owned-data subgraph so
+        // recovery (clearing deleted_at) restores the client intact.
+        await tx
+          .update(investors)
+          .set({ deletedAt: new Date(), deletedBy: session.userId, updatedAt: new Date() } as any)
+          .where(and(eq(investors.id, id), eq(investors.tenantId, session.tenantId)));
+        await tx.insert(auditLog).values({
+          tenantId: session.tenantId,
+          actorUserId: session.userId,
+          action: "investor.trash",
+          entityType: "investor",
+          entityId: id,
+          before: { name: inv.name, pan: inv.pan } as any,
+        } as any);
+        return "trashed" as const;
+      }
 
       // Audit BEFORE the row + its owned-data subgraph are removed.
       await tx.insert(auditLog).values({
@@ -381,7 +420,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
       return "ok" as const;
     });
     if (outcome === "not_found") return NextResponse.json({ error: "not found" }, { status: 404 });
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, trashed: outcome === "trashed" });
   } catch (err: any) {
     return handleApiError(err);
   }

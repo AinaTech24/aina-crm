@@ -33,7 +33,7 @@ export default async function EditPackagePage({ params }: { params: Promise<{ id
       >
         <ChevronLeft className="size-4" /> Back to packages
       </Link>
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Edit package</h1>
           <p className="text-muted-foreground text-sm font-mono">{pkg.key}</p>

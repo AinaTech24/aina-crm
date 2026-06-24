@@ -71,12 +71,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           before React hydrates, which would otherwise log a hydration mismatch. */}
       <body
         suppressHydrationWarning
-        className="min-h-screen bg-background text-foreground antialiased scrollbar-thin"
+        className="min-h-screen bg-background text-foreground antialiased scrollbar-none"
       >
-        {/* Apply saved theme before paint — avoids a light→dark flash. */}
+        {/* Dark mode removed — the app is light-only. Strip any stale `dark`
+            class a previous build's toggle may have left on <html>. */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `try{if(localStorage.getItem('theme')==='dark')document.documentElement.classList.add('dark')}catch(e){}`,
+            __html: `try{document.documentElement.classList.remove('dark');localStorage.removeItem('theme')}catch(e){}`,
           }}
         />
         <NavProgress />

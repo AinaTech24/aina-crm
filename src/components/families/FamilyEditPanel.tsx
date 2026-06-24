@@ -11,6 +11,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Pencil, Save, X, Loader2 } from "lucide-react";
+import { SelectField } from "@/components/ui/SelectField";
+import { DatePicker } from "@/components/ui/DatePicker";
 
 export function FamilyEditPanel({
   family,
@@ -127,30 +129,36 @@ export function FamilyEditPanel({
           <input value={form.headName} onChange={(e) => set("headName", e.target.value)} className={inputCls} />
         </Field>
         <Field label="Primary client">
-          <select
+          <SelectField
             value={form.primaryInvestorId}
             onChange={(e) => set("primaryInvestorId", e.target.value)}
-            className={inputCls}
+            className="w-full"
+            aria-label="Primary client"
           >
             <option value="">— None set —</option>
             {members.map((m) => (
               <option key={m.id} value={m.id}>{m.name} · {m.pan}</option>
             ))}
-          </select>
+          </SelectField>
         </Field>
         <Field label="Family RM">
-          <select value={form.rmId} onChange={(e) => set("rmId", e.target.value)} className={inputCls}>
+          <SelectField
+            value={form.rmId}
+            onChange={(e) => set("rmId", e.target.value)}
+            className="w-full"
+            aria-label="Family RM"
+          >
             <option value="">— None assigned —</option>
             {rms.map((u) => (
               <option key={u.id} value={u.id}>{u.name}</option>
             ))}
-          </select>
+          </SelectField>
         </Field>
         <Field label="Last review">
-          <input type="date" value={form.lastReviewAt} onChange={(e) => set("lastReviewAt", e.target.value)} className={inputCls} />
+          <DatePicker value={form.lastReviewAt} onChange={(iso) => set("lastReviewAt", iso)} className="w-full" ariaLabel="Last review date" />
         </Field>
         <Field label="Next review">
-          <input type="date" value={form.nextReviewAt} onChange={(e) => set("nextReviewAt", e.target.value)} className={inputCls} />
+          <DatePicker value={form.nextReviewAt} onChange={(iso) => set("nextReviewAt", iso)} className="w-full" ariaLabel="Next review date" />
         </Field>
       </div>
       <Field label="Notes">

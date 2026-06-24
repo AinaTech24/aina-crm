@@ -110,9 +110,10 @@ export async function calculateDdqScore(tx: Tx, tenantId: string): Promise<DdqRe
           s.current_version_id AS sop_version_id
         FROM users u
         CROSS JOIN sops s
-        WHERE u.tenant_id = ${t}::uuid 
+        WHERE u.tenant_id = ${t}::uuid
           AND u.status = 'active'
           AND s.tenant_id = ${t}::uuid
+          AND s.deleted_at IS NULL
           AND s.current_version_id IS NOT NULL
           AND (
             EXISTS (

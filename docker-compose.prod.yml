@@ -1,27 +1,52 @@
 # Production stack for the cheap single-box path (one EC2 instance).
 #
-#   web + worker + redis + caddy(auto-HTTPS)  all on one VM.
+#   web (blue/green) + worker + redis + caddy(auto-HTTPS)  all on one VM.
 #   Postgres = managed RDS by default (durable, backed up).
-#   For the absolute-cheapest "everything on one box", enable the on-box DB:
-#       docker compose -f docker-compose.prod.yml --profile db-onbox up -d
-#   (then point DATABASE_URL / APP_DATABASE_URL at postgres:5432)
 #
-# First run on a FRESH database (order matters — numbered migrations only ALTER
-# existing tables, so the schema must exist first):
-#   1. put real values in  .env.production   (see .env.production.example)
-#   2. set  APP_DOMAIN=app.yourfirm.com  in the shell or .env.production
-#   3. docker compose -f docker-compose.prod.yml build
-#   4. docker compose -f docker-compose.prod.yml run --rm web npm run db:push
-#   5. docker compose -f docker-compose.prod.yml run --rm web npm run db:provision-app-role
-#   6. docker compose -f docker-compose.prod.yml up -d
+# ZERO-DOWNTIME DEPLOYS (blue-green):
+#   The app runs as two interchangeable web services — web-blue / web-green.
+#   Only ONE serves at a time (the "active" colour, tracked in ~/app/.active-color).
+#   A deploy builds the new image, starts the IDLE colour, waits until it is
+#   healthy, then stops the old colour. Caddy load-balances across both colours
+#   with request-retry, so users never hit the cold-start gap. The orchestration
+#   lives in ~/run-deploy.sh — DO NOT `docker compose up -d` web by hand; it
+#   won't start a colour (they're behind profiles). Migrations are additive, so
+#   the old colour keeps serving safely while the new colour boots.
 #
-# Redeploy after a code change (the EASY path — pending migrations run AUTOMATICALLY
-# via the `migrate` service before web/worker start):
-#   git pull && docker compose -f docker-compose.prod.yml up -d --build
-#   (or just: bash scripts/redeploy.sh)
-#
-# Upgrade path: when one box isn't enough, the SAME image moves to ECS Fargate;
-# Redis → ElastiCache, on-box Postgres → RDS. Nothing about the app changes.
+# First run on a FRESH database (order matters):
+#   1. real values in .env.production  2. APP_DOMAIN set  3. compose build
+#   4. compose run --rm web-blue npm run db:push
+#   5. compose run --rm web-blue npm run db:provision-app-role
+#   6. bash ~/run-deploy.sh
+
+x-web-common: &web-common
+  image: mfd-app:latest
+  build:
+    context: .
+    args:
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL}
+      NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL}
+      NEXT_PUBLIC_S3_PUBLIC_URL: ${NEXT_PUBLIC_S3_PUBLIC_URL}
+  restart: unless-stopped
+  env_file:
+    - .env.production
+  volumes:
+    - uploads_data:/app/node-local/uploads
+  expose:
+    - "3000"
+  # Health gate for blue-green cutover: deploy waits for this to read "healthy"
+  # before switching traffic. Lightweight — /api/health is force-dynamic.
+  healthcheck:
+    test: ["CMD", "curl", "-fsS", "http://localhost:3000/api/health"]
+    interval: 10s
+    timeout: 5s
+    retries: 3
+    start_period: 45s
+  depends_on:
+    migrate:
+      condition: service_completed_successfully
+    redis:
+      condition: service_started
 
 services:
   caddy:
@@ -36,42 +61,22 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
-    depends_on:
-      - web
 
-  web:
-    build:
-      context: .
-      args:
-        # NEXT_PUBLIC_* are inlined at build time — read from the shell/.env.production
-        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL}
-        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL}
-        NEXT_PUBLIC_S3_PUBLIC_URL: ${NEXT_PUBLIC_S3_PUBLIC_URL}
-    image: mfd-app:latest
-    restart: unless-stopped
-    env_file:
-      - .env.production
-    volumes:
-      # Persistent local uploads (logos/branding) for the no-S3-keys path — the
-      # /api/upload-local route reads/writes here; survives container recreate.
-      - uploads_data:/app/node-local/uploads
-    expose:
-      - "3000"
-    depends_on:
-      # Schema is migrated BEFORE the app serves traffic — every deploy.
-      migrate:
-        condition: service_completed_successfully
-      redis:
-        condition: service_started
+  web-blue:
+    <<: *web-common
+    container_name: app-web-blue
+    profiles: ["blue"]
 
-  # One-shot: applies pending DB migrations before web/worker start, on every
-  # `up`. Idempotent (skips already-applied), so re-running is a no-op. If it
-  # fails, web/worker won't start — we never serve against a half-migrated schema.
-  # NB: a BRAND-NEW database must be initialised first (db:push +
-  # db:provision-app-role) — see docs/deploy-aws.md; migrate:all only ALTERs
-  # tables that already exist.
+  web-green:
+    <<: *web-common
+    container_name: app-web-green
+    profiles: ["green"]
+
+  # One-shot: applies pending DB migrations. Idempotent (skips already-applied).
+  # Run explicitly by ~/run-deploy.sh BEFORE the new colour starts, so the old
+  # colour keeps serving against the (additively) migrated schema.
   migrate:
-    image: mfd-app:latest # reuses the image built by `web`
+    image: mfd-app:latest
     env_file:
       - .env.production
     command: ["npm", "run", "migrate:all"]
@@ -80,16 +85,13 @@ services:
       disable: true
 
   worker:
-    image: mfd-app:latest # reuses the image built by `web`
+    image: mfd-app:latest
     restart: unless-stopped
     env_file:
       - .env.production
     command: ["npm", "run", "worker:prod"]
     volumes:
       - uploads_data:/app/node-local/uploads
-    # The image's default HEALTHCHECK curls :3000 — correct for `web`, but the
-    # worker runs no HTTP server, so disable it here (liveness = the process is
-    # up; restart: unless-stopped already covers crash recovery).
     healthcheck:
       disable: true
     depends_on:
@@ -105,9 +107,6 @@ services:
     volumes:
       - redis_data:/data
 
-  # Optional on-box Postgres for the rock-bottom tier (no RDS). Enable with:
-  #   docker compose -f docker-compose.prod.yml --profile db-onbox up -d
-  # NB: you own backups — pair with a nightly `pg_dump → S3` cron.
   postgres:
     image: postgres:16-alpine
     profiles: ["db-onbox"]

@@ -22,11 +22,14 @@ export function LeaveForm({
   usage,
   currentUserId,
   isManager,
+  tenantEntitlements,
 }: {
   employees: Emp[];
   usage: Usage[];
   currentUserId: string;
   isManager: boolean;
+  /** Firm-wide annual entitlements (overlaid on built-in defaults). */
+  tenantEntitlements?: Record<string, number | null> | null;
 }) {
   const router = useRouter();
   const [employeeId, setEmployeeId] = useState(currentUserId);
@@ -75,8 +78,22 @@ export function LeaveForm({
 
   const selectedEmployee = useMemo(() => employees.find((e) => e.id === employeeId), [employees, employeeId]);
 
-  const days = duration === "half_day" ? 0.5 : computeDays(fromDate, toDate, "full_day");
-  const entitlement = getEntitlement(leaveType, selectedEmployee?.custom_leave_entitlements);
+  // Working-day count: show the instant client estimate, then replace with the
+  // server's authoritative number (excludes the firm's weekly-offs + holidays).
+  const [days, setDays] = useState<number>(duration === "half_day" ? 0.5 : computeDays(fromDate, toDate, "full_day"));
+  useEffect(() => {
+    if (duration === "half_day") { setDays(0.5); return; }
+    if (!fromDate || toDate < fromDate) { setDays(0); return; }
+    setDays(computeDays(fromDate, toDate, "full_day")); // optimistic estimate while fetching
+    let active = true;
+    fetch(`/api/leave-applications/preview-days?from=${fromDate}&to=${toDate}&duration=full_day`)
+      .then((r) => r.json())
+      .then((d) => { if (active && typeof d?.days === "number") setDays(d.days); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [fromDate, toDate, duration]);
+
+  const entitlement = getEntitlement(leaveType, selectedEmployee?.custom_leave_entitlements, tenantEntitlements);
   const used = usageMap[employeeId]?.[leaveType] ?? 0;
   const remaining = entitlement === null ? null : Math.max(0, entitlement - used);
   const overBalance = remaining !== null && days > remaining;

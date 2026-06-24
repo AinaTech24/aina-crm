@@ -231,6 +231,8 @@ export const WorkflowRuleSchema = z.object({
   branches: z.array(RuleBranchSchema).max(10).default([]),
   enabled: z.boolean().default(true),
   executionOrder: z.number().int().default(100),
+  /** Safety throttle — max event-triggered firings per trailing hour. NULL/omitted = unlimited. */
+  rateLimitPerHour: z.number().int().min(1).max(100000).nullable().optional(),
 });
 
 export type WorkflowRuleInput = z.infer<typeof WorkflowRuleSchema>;

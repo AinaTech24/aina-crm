@@ -7,7 +7,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, X, Plus, Pin, PinOff, Trash2, Megaphone, Save, Edit2, Eye, EyeOff } from "lucide-react";
+import { Loader2, X, Plus, Pin, PinOff, Trash2, Megaphone, Save, Edit2, Eye, EyeOff, Check, CheckCheck, ShieldAlert } from "lucide-react";
+import { useToast } from "@/components/ui/Toast";
 
 type Row = Record<string, any>;
 
@@ -39,9 +40,30 @@ export function AnnouncementBoard({
   isManager: boolean;
 }) {
   const router = useRouter();
+  const toast = useToast();
   const [compose, setCompose] = useState(false);
   const [editingRow, setEditingRow] = useState<Row | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+
+  async function markRead(r: Row, acknowledge: boolean) {
+    setBusyId(r.id);
+    try {
+      const res = await fetch(`/api/announcements/${r.id}/read`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(acknowledge ? { acknowledge: true } : {}),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        toast.error(j.error ?? `Failed (${res.status})`, "Could not update");
+        return;
+      }
+      toast.success(acknowledge ? "Acknowledged" : "Marked as read");
+      router.refresh();
+    } finally {
+      setBusyId(null);
+    }
+  }
 
   async function togglePin(r: Row) {
     setBusyId(r.id);
@@ -121,6 +143,11 @@ export function AnnouncementBoard({
                       <h3 className="font-semibold">{r.title}</h3>
                       {draft && <span className="chip text-[10px] bg-slate-100 text-slate-500">draft</span>}
                       {expired && <span className="chip text-[10px] bg-slate-100 text-slate-500">expired</span>}
+                      {r.requires_ack && (
+                        <span className="chip text-[10px] bg-amber-50 text-amber-700 inline-flex items-center gap-0.5">
+                          <ShieldAlert className="size-3" /> Requires ack
+                        </span>
+                      )}
                     </div>
                     <p className="text-sm text-muted-foreground mt-1 whitespace-pre-wrap">{r.body}</p>
                     <div className="text-[11px] text-muted-foreground mt-2 flex flex-wrap items-center gap-1.5">
@@ -144,6 +171,69 @@ export function AnnouncementBoard({
                         </>
                       ) : null}
                     </div>
+
+                    {!isManager && (
+                      <div className="mt-3">
+                        {r.requires_ack ? (
+                          r.is_acknowledged ? (
+                            <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600">
+                              <CheckCheck className="size-3.5" /> Acknowledged
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => markRead(r, true)}
+                              disabled={busyId === r.id}
+                              className="btn-primary text-xs inline-flex items-center gap-1"
+                            >
+                              {busyId === r.id ? (
+                                <Loader2 className="size-3.5 animate-spin" />
+                              ) : (
+                                <CheckCheck className="size-3.5" />
+                              )}
+                              I acknowledge
+                            </button>
+                          )
+                        ) : r.is_read ? (
+                          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                            <Check className="size-3.5" /> Read
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => markRead(r, false)}
+                            disabled={busyId === r.id}
+                            className="btn-secondary text-xs inline-flex items-center gap-1"
+                          >
+                            {busyId === r.id ? (
+                              <Loader2 className="size-3.5 animate-spin" />
+                            ) : (
+                              <Check className="size-3.5" />
+                            )}
+                            Mark as read
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    {isManager && (
+                      <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                        <span className="chip text-[10px] bg-slate-50 text-slate-600 inline-flex items-center gap-0.5">
+                          <Eye className="size-3" /> {r.read_count ?? 0} read
+                        </span>
+                        {r.requires_ack && (
+                          <span
+                            className={`chip text-[10px] inline-flex items-center gap-0.5 ${
+                              (r.read_count ?? 0) > 0 && (r.ack_count ?? 0) >= (r.read_count ?? 0)
+                                ? "bg-emerald-50 text-emerald-700"
+                                : (r.ack_count ?? 0) === 0
+                                ? "bg-rose-50 text-rose-700"
+                                : "bg-amber-50 text-amber-700"
+                            }`}
+                          >
+                            <CheckCheck className="size-3" /> {r.ack_count ?? 0} acknowledged
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
                   {isManager && (
                     <div className="flex items-center gap-1 shrink-0">
@@ -234,6 +324,7 @@ function Composer({
   const [body, setBody] = useState(row?.body ?? "");
   const [category, setCategory] = useState(row?.category ?? "general");
   const [pinned, setPinned] = useState(row?.is_pinned ?? false);
+  const [requiresAck, setRequiresAck] = useState(row?.requires_ack ?? false);
   const [roles, setRoles] = useState<string[]>(row?.audience_roles ?? []);
   const [branchId, setBranchId] = useState(row?.branch_id ?? "");
   const [expiresAt, setExpiresAt] = useState(
@@ -262,6 +353,7 @@ function Composer({
         body,
         category,
         isPinned: pinned,
+        requiresAck,
         audienceRoles: roles,
         branchId: branchId ? branchId : null,
         expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null,
@@ -380,6 +472,20 @@ function Composer({
             />{" "}
             Pin to top
           </label>
+          <div>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={requiresAck}
+                onChange={(e) => setRequiresAck(e.target.checked)}
+                className="size-4 rounded"
+              />{" "}
+              Requires acknowledgement
+            </label>
+            <p className="text-[11px] text-muted-foreground mt-0.5 ml-6">
+              Staff must click “I acknowledge” — for policy/urgent notices.
+            </p>
+          </div>
           {err && <div className="text-sm text-rose-600">{err}</div>}
         </div>
         <div className="flex items-center justify-end gap-2 px-4 py-3 border-t">

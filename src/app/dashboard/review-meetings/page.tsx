@@ -3,12 +3,15 @@ import { sql } from "drizzle-orm";
 import { Calendar, CheckCircle2, Clock, AlertTriangle } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { Avatar } from "@/components/ui/Avatar";
 import { FilterBar } from "@/components/common/FilterBar";
 import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
 import { CustomViews } from "@/components/common/CustomViews";
 import { ColumnManager } from "@/components/common/ColumnManager";
 import { AddMeetingButton } from "@/components/review-meetings/AddMeetingButton";
 import { MeetingsBulkTable } from "@/components/review-meetings/MeetingsBulkTable";
+import { MeetingsKanban } from "@/components/review-meetings/MeetingsKanban";
+import { LayoutList, KanbanSquare } from "lucide-react";
 
 const MEETINGS_COLUMNS = [
   { key: "date", label: "Date", required: true },
@@ -71,6 +74,16 @@ export default async function ReviewMeetingsPage({
   // Sort the (past) list by meeting date — newest or oldest first. The upcoming
   // list always leads with the soonest meeting, so this drives the past list.
   const sortKey = sp.sort === "meeting_asc" ? "meeting_asc" : "meeting_desc";
+  const view = sp.view === "kanban" ? "kanban" : "table";
+  // Preserve the active filters when toggling Table ⇄ Kanban.
+  const viewParams = new URLSearchParams(
+    Object.entries(sp).filter(([, v]) => typeof v === "string" && v) as [string, string][]
+  );
+  const viewHref = (v: string) => {
+    const p = new URLSearchParams(viewParams);
+    p.set("view", v);
+    return `?${p.toString()}`;
+  };
 
   const data = await withTenant(session.tenantId, async (tx) => {
     const filters: any[] = [sql`m.tenant_id = ${session.tenantId}::uuid`];
@@ -121,6 +134,7 @@ export default async function ReviewMeetingsPage({
              -- A meeting is tied to EITHER an investor or a lead (pre-conversion).
              -- Surface whichever name exists so the Client column is never blank.
              COALESCE(i.name, l.name) AS party_name,
+             COALESCE(i.avatar_url, l.avatar_url) AS party_avatar_url,
              CASE WHEN i.id IS NOT NULL THEN 'investor'
                   WHEN l.id IS NOT NULL THEN 'lead' END AS party_kind,
              i.pan AS investor_pan, i.segment_tag,
@@ -183,12 +197,22 @@ export default async function ReviewMeetingsPage({
           <h1 className="page-title">
             <Calendar className="size-6 text-brand-cyan" /> Meetings
           </h1>
-          <p className="page-subtitle">
-            Review · New · Follow-up — schedule, run, capture notes; action items auto-fan-out
-            into tasks.
-          </p>
         </div>
         <div className="flex items-center gap-2">
+          <div className="inline-flex rounded-lg border border-border overflow-hidden text-xs">
+            <Link
+              href={viewHref("table")}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 ${view === "table" ? "bg-brand-cyan text-white" : "bg-card text-muted-foreground hover:bg-secondary"}`}
+            >
+              <LayoutList className="size-3.5" /> Table
+            </Link>
+            <Link
+              href={viewHref("kanban")}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 border-l border-border ${view === "kanban" ? "bg-brand-cyan text-white" : "bg-card text-muted-foreground hover:bg-secondary"}`}
+            >
+              <KanbanSquare className="size-3.5" /> Kanban
+            </Link>
+          </div>
           <AddMeetingButton />
         </div>
       </div>
@@ -216,7 +240,14 @@ export default async function ReviewMeetingsPage({
                 <div className="text-lg font-bold tabular-nums">
                   {new Date(m.meeting_date).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" })}
                 </div>
-                <div className="text-sm font-medium truncate">{m.party_name ?? "—"}</div>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <Avatar
+                    src={m.party_avatar_url ? `/api/${m.party_kind === "lead" ? "leads" : "investors"}/${m.party_kind === "lead" ? m.lead_id : m.investor_id}/avatar` : null}
+                    name={m.party_name}
+                    size={24}
+                  />
+                  <div className="text-sm font-medium truncate">{m.party_name ?? "—"}</div>
+                </div>
                 <div className="text-xs text-muted-foreground truncate">
                   {m.subject
                     ? m.subject
@@ -306,7 +337,11 @@ export default async function ReviewMeetingsPage({
         }
       />
 
-      <MeetingsBulkTable upcoming={upcoming} past={past} rmOptions={rmOptions} />
+      {view === "kanban" ? (
+        <MeetingsKanban meetings={data.rows} />
+      ) : (
+        <MeetingsBulkTable upcoming={upcoming} past={past} rmOptions={rmOptions} />
+      )}
     </div>
   );
 }

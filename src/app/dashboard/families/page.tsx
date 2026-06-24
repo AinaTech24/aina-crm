@@ -199,9 +199,6 @@ export default async function FamiliesPage({
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Family mapping</h1>
-          <p className="text-muted-foreground text-sm">
-            Track family-level wealth — combined AUM, multi-gen onboarding, family goals.
-          </p>
         </div>
         <div className="flex gap-2">
           <Link
@@ -276,122 +273,121 @@ export default async function FamiliesPage({
             </div>
           ) : (
             <div className="table-scroll">
-            <table className="w-full text-sm">
-              <thead className="text-xs text-muted-foreground border-b sticky top-0 z-10 bg-card">
-                <tr>
-                  <th className="text-left px-4 py-2 font-medium">Family</th>
-                  <th className="text-right py-2 font-medium">Members</th>
-                  <th className="text-right py-2 font-medium">
-                    <Link href={sortHref("aum")} className={`hover:underline ${sortKey === "aum" ? "text-foreground" : ""}`}>
-                      Combined AUM {sortKey === "aum" ? "↓" : ""}
-                    </Link>
-                  </th>
-                  <th className="text-right py-2 font-medium">Combined SIP</th>
-                  <th className="text-left py-2 font-medium pl-4">
-                    <Link href={sortHref("health")} className={`hover:underline ${sortKey === "health" ? "text-foreground" : ""}`}>
-                      Health {sortKey === "health" ? "↑" : ""}
-                    </Link>
-                  </th>
-                  <th className="text-left py-2 font-medium pl-4">Updated</th>
-                  <th className="px-4 py-2"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((f) => {
-                  const name = (f.family_name as string) || (f.head_name as string);
-                  const memberCount = Number(f.member_count);
-                  const nomineeGap = Number(f.nominee_gap_count);
-                  const kycVerified = Number(f.kyc_verified_count);
-                  const reviewOverdue =
-                    !f.next_review_at || new Date(f.next_review_at as any) <= new Date();
-                  // Cheap derived signals — exact composite score lives on the
-                  // detail page; here we just light up flags.
-                  const flags: Array<{ tone: "rose" | "amber"; label: string }> = [];
-                  if (!f.primary_investor_id) flags.push({ tone: "rose", label: "no primary" });
-                  if (!f.rm_id) flags.push({ tone: "rose", label: "no RM" });
-                  if (nomineeGap > 0)
-                    flags.push({ tone: "rose", label: `${nomineeGap} nominee gap` });
-                  if (memberCount > 0 && kycVerified < memberCount)
-                    flags.push({
-                      tone: "amber",
-                      label: `${memberCount - kycVerified} KYC pending`,
-                    });
-                  if (reviewOverdue) flags.push({ tone: "amber", label: "review due" });
+              <table className="w-full text-sm">
+                <thead className="text-xs text-muted-foreground border-b sticky top-0 z-10 bg-card">
+                  <tr>
+                    <th className="text-left px-4 py-2 font-medium">Family</th>
+                    <th className="text-right py-2 font-medium">Members</th>
+                    <th className="text-right py-2 font-medium">
+                      <Link href={sortHref("aum")} className={`hover:underline ${sortKey === "aum" ? "text-foreground" : ""}`}>
+                        Combined AUM {sortKey === "aum" ? "↓" : ""}
+                      </Link>
+                    </th>
+                    <th className="text-right py-2 font-medium">Combined SIP</th>
+                    <th className="text-left py-2 font-medium pl-4">
+                      <Link href={sortHref("health")} className={`hover:underline ${sortKey === "health" ? "text-foreground" : ""}`}>
+                        Health {sortKey === "health" ? "↑" : ""}
+                      </Link>
+                    </th>
+                    <th className="text-left py-2 font-medium pl-4">Updated</th>
+                    <th className="px-4 py-2"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((f) => {
+                    const name = (f.family_name as string) || (f.head_name as string);
+                    const memberCount = Number(f.member_count);
+                    const nomineeGap = Number(f.nominee_gap_count);
+                    const kycVerified = Number(f.kyc_verified_count);
+                    const reviewOverdue =
+                      !f.next_review_at || new Date(f.next_review_at as any) <= new Date();
+                    // Cheap derived signals — exact composite score lives on the
+                    // detail page; here we just light up flags.
+                    const flags: Array<{ tone: "rose" | "amber"; label: string }> = [];
+                    if (!f.primary_investor_id) flags.push({ tone: "rose", label: "no primary" });
+                    if (!f.rm_id) flags.push({ tone: "rose", label: "no RM" });
+                    if (nomineeGap > 0)
+                      flags.push({ tone: "rose", label: `${nomineeGap} nominee gap` });
+                    if (memberCount > 0 && kycVerified < memberCount)
+                      flags.push({
+                        tone: "amber",
+                        label: `${memberCount - kycVerified} KYC pending`,
+                      });
+                    if (reviewOverdue) flags.push({ tone: "amber", label: "review due" });
 
-                  return (
-                    <tr key={f.id} className="border-b last:border-0 hover:bg-accent/40">
-                      <td className="px-4 py-3">
-                        <Link href={`/dashboard/families/${f.id}`} className="font-medium hover:underline">
-                          {name}
-                        </Link>
-                        {(() => {
-                          const wb = wealthBand(Number(f.family_aum ?? 0));
-                          return wb !== "empty" ? (
-                            <span className={`ml-2 text-[10px] font-semibold px-1.5 py-0.5 rounded ${BAND_BADGE[wb]}`}>
-                              {WEALTH_BAND_META[wb].label}
-                            </span>
-                          ) : null;
-                        })()}
-                        {f.notes && (
-                          <div className="text-xs text-muted-foreground truncate max-w-md mt-0.5">
-                            {f.notes}
-                          </div>
-                        )}
-                      </td>
-                      <td className="py-3 text-right tabular-nums">{memberCount}</td>
-                      <td className="py-3 text-right tabular-nums">{formatINR(Number(f.family_aum ?? 0))}</td>
-                      <td className="py-3 text-right tabular-nums text-muted-foreground">
-                        {formatINR(Number(f.family_sip ?? 0))}
-                      </td>
-                      <td className="py-3 pl-4">
-                        <div className="flex flex-col gap-1">
-                          <span
-                            className={`w-fit text-[10px] px-1.5 py-0.5 rounded-full border ${healthBandClasses((f.health_band as HealthBand) ?? "green").chip}`}
-                            title="Persisted family-health score (0–100)"
-                          >
-                            {healthBandClasses((f.health_band as HealthBand) ?? "green").label} · {f.health_score ?? 100}
-                          </span>
-                          {flags.length === 0 ? (
-                            <span className="text-[10px] text-emerald-700">✓ no data gaps</span>
-                          ) : (
-                            <div className="flex flex-wrap gap-1">
-                              {flags.slice(0, 3).map((fl, i) => (
-                                <span
-                                  key={i}
-                                  className={`text-[10px] px-1.5 py-0.5 rounded-full ${
-                                    fl.tone === "rose"
-                                      ? "bg-rose-50 text-rose-700"
-                                      : "bg-amber-50 text-amber-700"
-                                  }`}
-                                >
-                                  {fl.label}
-                                </span>
-                              ))}
-                              {flags.length > 3 && (
-                                <span className="text-[10px] text-muted-foreground">
-                                  +{flags.length - 3}
-                                </span>
-                              )}
+                    return (
+                      <tr key={f.id} className="border-b last:border-0 hover:bg-accent/40">
+                        <td className="px-4 py-3">
+                          <Link href={`/dashboard/families/${f.id}`} className="font-medium hover:underline">
+                            {name}
+                          </Link>
+                          {(() => {
+                            const wb = wealthBand(Number(f.family_aum ?? 0));
+                            return wb !== "empty" ? (
+                              <span className={`ml-2 text-[10px] font-semibold px-1.5 py-0.5 rounded ${BAND_BADGE[wb]}`}>
+                                {WEALTH_BAND_META[wb].label}
+                              </span>
+                            ) : null;
+                          })()}
+                          {f.notes && (
+                            <div className="text-xs text-muted-foreground truncate max-w-md mt-0.5">
+                              {f.notes}
                             </div>
                           )}
-                        </div>
-                      </td>
-                      <td className="py-3 pl-4 text-xs text-muted-foreground">{formatRelative(f.updated_at)}</td>
-                      <td className="px-4 py-3 text-right">
-                        <RowActions
-                          editHref={`/dashboard/families/${f.id}`}
-                          deleteUrl={`/api/families/${f.id}`}
-                          itemLabel="family"
-                          itemName={name}
-                          verb="Delete"
-                          permanent
-                        />
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                        </td>
+                        <td className="py-3 text-right tabular-nums">{memberCount}</td>
+                        <td className="py-3 text-right tabular-nums">{formatINR(Number(f.family_aum ?? 0))}</td>
+                        <td className="py-3 text-right tabular-nums text-muted-foreground">
+                          {formatINR(Number(f.family_sip ?? 0))}
+                        </td>
+                        <td className="py-3 pl-4">
+                          <div className="flex flex-col gap-1">
+                            <span
+                              className={`w-fit text-[10px] px-1.5 py-0.5 rounded-full border ${healthBandClasses((f.health_band as HealthBand) ?? "green").chip}`}
+                              title="Persisted family-health score (0–100)"
+                            >
+                              {healthBandClasses((f.health_band as HealthBand) ?? "green").label} · {f.health_score ?? 100}
+                            </span>
+                            {flags.length === 0 ? (
+                              <span className="text-[10px] text-emerald-700">✓ no data gaps</span>
+                            ) : (
+                              <div className="flex flex-wrap gap-1">
+                                {flags.slice(0, 3).map((fl, i) => (
+                                  <span
+                                    key={i}
+                                    className={`text-[10px] px-1.5 py-0.5 rounded-full ${fl.tone === "rose"
+                                        ? "bg-rose-50 text-rose-700"
+                                        : "bg-amber-50 text-amber-700"
+                                      }`}
+                                  >
+                                    {fl.label}
+                                  </span>
+                                ))}
+                                {flags.length > 3 && (
+                                  <span className="text-[10px] text-muted-foreground">
+                                    +{flags.length - 3}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-3 pl-4 text-xs text-muted-foreground">{formatRelative(f.updated_at)}</td>
+                        <td className="px-4 py-3 text-right">
+                          <RowActions
+                            editHref={`/dashboard/families/${f.id}`}
+                            deleteUrl={`/api/families/${f.id}`}
+                            itemLabel="family"
+                            itemName={name}
+                            verb="Delete"
+                            permanent
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           )}
           {rows.length > 0 && (

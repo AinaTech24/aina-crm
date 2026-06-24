@@ -23,13 +23,26 @@ export function ClockWidget({ today }: { today: Today }) {
   const inAt = today?.clock_in_at ?? null;
   const outAt = today?.clock_out_at ?? null;
 
+  /** Best-effort browser geolocation (3s timeout); resolves null if denied. */
+  function getGeo(): Promise<{ lat: number; lng: number } | null> {
+    return new Promise((resolve) => {
+      if (typeof navigator === "undefined" || !navigator.geolocation) return resolve(null);
+      navigator.geolocation.getCurrentPosition(
+        (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+        () => resolve(null),
+        { enableHighAccuracy: true, timeout: 3000, maximumAge: 60000 }
+      );
+    });
+  }
+
   async function punch(action: "in" | "out") {
     setBusy(true);
     try {
+      const geo = await getGeo();
       const res = await fetch("/api/attendance/clock", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ action }),
+        body: JSON.stringify({ action, ...(geo ? { lat: geo.lat, lng: geo.lng } : {}) }),
       });
       if (!res.ok) { const j = await res.json().catch(() => ({})); alert(j.error ?? "Punch failed"); return; }
       router.refresh();

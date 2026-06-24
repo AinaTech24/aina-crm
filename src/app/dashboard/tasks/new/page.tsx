@@ -50,6 +50,7 @@ export default function NewTaskPage() {
     title: "",
     description: "",
     type: "follow_up",
+    customType: "", // name entered when type === "custom"
     priority: "normal",
     dueDate: defaultDueDate(3),
     department: "",
@@ -78,13 +79,17 @@ export default function NewTaskPage() {
       setErr("Title is required.");
       return;
     }
+    if (form.type === "custom" && !form.customType.trim()) {
+      setErr("Enter a name for the custom task type.");
+      return;
+    }
     setBusy(true);
     setErr(null);
     try {
       const payload: any = {
         title: form.title,
         description: form.description || undefined,
-        type: form.type,
+        type: form.type === "custom" ? form.customType.trim() : form.type,
         priority: form.priority,
         dueAt: form.dueDate ? new Date(form.dueDate).toISOString() : undefined,
         department: form.department || undefined,
@@ -265,7 +270,7 @@ export default function NewTaskPage() {
           <div className="h-4 w-1 rounded-full brand-bar" />
           <h2 className="section-title">3. Routing + schedule</h2>
         </div>
-        <div className="grid grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <label className="block">
             <div className="text-xs font-medium mb-1">Type</div>
             <SelectField
@@ -280,6 +285,15 @@ export default function NewTaskPage() {
               <option value="mandate_renewal">Mandate renewal</option>
               <option value="custom">Custom</option>
             </SelectField>
+            {form.type === "custom" && (
+              <input
+                value={form.customType}
+                onChange={(e) => set("customType", e.target.value)}
+                placeholder="Custom type name (e.g. Portfolio rebalance)"
+                autoFocus
+                className="mt-2 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:border-brand-cyan focus:ring-2 focus:ring-brand-cyan/15"
+              />
+            )}
           </label>
           <label className="block">
             <div className="text-xs font-medium mb-1">Department</div>
@@ -317,7 +331,7 @@ export default function NewTaskPage() {
               className="w-full"
             />
           </label>
-          <label className="block col-span-2">
+          <label className="block sm:col-span-2">
             <div className="text-xs font-medium mb-1">
               Assign to
               <span className="ml-1 text-[10px] text-muted-foreground font-normal">
@@ -344,7 +358,7 @@ export default function NewTaskPage() {
             <span className="text-xs font-medium">Repeat this task (recurring)</span>
           </label>
           {form.recurrence && (
-            <div className="grid grid-cols-2 gap-3 mt-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
               <label className="block">
                 <div className="text-xs font-medium mb-1">Frequency</div>
                 <SelectField
@@ -367,7 +381,7 @@ export default function NewTaskPage() {
                   className="w-full"
                 />
               </label>
-              <p className="col-span-2 text-[11px] text-muted-foreground">
+              <p className="sm:col-span-2 text-[11px] text-muted-foreground">
                 When you complete this task, the next occurrence is created automatically with its due
                 date advanced — perfect for monthly SIP reviews, quarterly client reviews, or annual KYC/FATCA renewals.
               </p>
@@ -381,7 +395,7 @@ export default function NewTaskPage() {
           </div>
         )}
 
-        <div className="flex justify-end gap-2 pt-2 border-t border-border">
+        <div className="flex flex-wrap justify-end gap-2 pt-2 border-t border-border">
           <Link href="/dashboard/tasks" className="btn-secondary">
             Cancel
           </Link>
@@ -544,7 +558,7 @@ function MeetingPicker({
       <div className="text-xs font-medium mb-1">Related meeting</div>
       <SelectField
         value=""
-        placeholder="— Pick a recent meeting (optional) —"
+        placeholder="Pick a recent meeting (optional)"
         onChange={(e) => {
           const id = e.target.value;
           if (!id) return;

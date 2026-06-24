@@ -1,12 +1,13 @@
 import Link from "next/link";
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import { ListChecks, Plus, Workflow, Lock, BookMarked } from "lucide-react";
 import { withTenant } from "@/db/client";
-import { workflowRules } from "@/db/schema";
+import { workflowRules, workflowRuleExecutions } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { MODULES, type ModuleKey } from "@/lib/workflow-rules/modules";
 import { RuleToggle } from "@/components/workflow-rules/RuleToggle";
 import { MoveRuleButton } from "@/components/workflow-rules/MoveRuleButton";
+import { ClickableRow } from "@/components/common/ClickableRow";
 import { formatRelative } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -60,9 +61,22 @@ export default async function WorkflowRulesPage({
   const moduleFilter = sp.module ?? "";
   const view = sp.view === "summary" ? "summary" : "list";
 
-  const rules = await withTenant(session.tenantId, async (tx) => {
+  const { rules, failedByRule } = await withTenant(session.tenantId, async (tx) => {
     const all = await tx.select().from(workflowRules).where(eq(workflowRules.tenantId, session.tenantId)).orderBy(workflowRules.module, workflowRules.executionOrder, desc(workflowRules.createdAt));
-    return moduleFilter ? all.filter((r) => r.module === moduleFilter) : all;
+    // One grouped pass over this tenant's executions: failed/partial count per rule.
+    const execStats = await tx
+      .select({
+        ruleId: workflowRuleExecutions.ruleId,
+        failed: sql<number>`count(*) filter (where ${workflowRuleExecutions.status} in ('failed','partial'))`.mapWith(Number),
+      })
+      .from(workflowRuleExecutions)
+      .where(eq(workflowRuleExecutions.tenantId, session.tenantId))
+      .groupBy(workflowRuleExecutions.ruleId);
+    const failedMap = new Map<string, number>(execStats.map((s) => [s.ruleId, s.failed]));
+    return {
+      rules: moduleFilter ? all.filter((r) => r.module === moduleFilter) : all,
+      failedByRule: failedMap,
+    };
   });
 
   // Group by module
@@ -80,9 +94,6 @@ export default async function WorkflowRulesPage({
           <h1 className="page-title">
             <Workflow className="size-6 text-brand-cyan" /> Workflow Rules
           </h1>
-          <p className="page-subtitle">
-            Zoho-style automation rules · trigger → criteria → instant + scheduled actions.
-          </p>
         </div>
         <div className="flex gap-2">
           <Link href="/dashboard/workflows/rules/library" className="btn-secondary">
@@ -118,11 +129,10 @@ export default async function WorkflowRulesPage({
             <Link
               key={mod.key}
               href={`/dashboard/workflows/rules?module=${mod.key}`}
-              className={`chip text-[11px] ${
-                moduleFilter === mod.key
+              className={`chip text-[11px] ${moduleFilter === mod.key
                   ? "bg-brand-cyan text-white"
                   : "bg-secondary text-foreground hover:bg-brand-cyan-light"
-              }`}
+                }`}
             >
               {mod.label} · {count}
             </Link>
@@ -177,7 +187,7 @@ export default async function WorkflowRulesPage({
                             ? `${(r.triggerConfig as any)?.when ?? ""} ${(r.triggerConfig as any)?.offset ?? 0} ${(r.triggerConfig as any)?.unit ?? "day"}(s)`
                             : "";
                       return (
-                        <tr key={r.id} className="border-b last:border-0 hover:bg-secondary/40">
+                        <ClickableRow key={r.id} href={`/dashboard/workflows/rules/${r.id}`} className="border-b last:border-0 hover:bg-secondary/40">
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-1">
                               <MoveRuleButton id={r.id} direction="up" disabled={index === 0} />
@@ -223,16 +233,23 @@ export default async function WorkflowRulesPage({
                               {stats.fieldUpdates}
                             </td>
                           )}
-                          <td className="py-3 text-center tabular-nums text-muted-foreground">
-                            {r.executionCount ?? 0}
+                          <td className="py-3 text-center tabular-nums">
+                            <div className="flex items-center justify-center gap-1.5">
+                              <span className="text-muted-foreground">Fired {r.executionCount ?? 0}</span>
+                              {(failedByRule.get(r.id) ?? 0) > 0 && (
+                                <span className="chip text-[10px] bg-rose-100 text-rose-700">
+                                  {failedByRule.get(r.id)} failed
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <td className="py-3 text-center">
                             <RuleToggle id={r.id} enabled={r.enabled} locked={r.locked} />
                           </td>
                           <td className="py-3 text-right pr-4 text-[11px] text-muted-foreground">
-                            {r.lastExecutedAt ? formatRelative(r.lastExecutedAt) : "—"}
+                            {r.lastExecutedAt ? `last ${formatRelative(r.lastExecutedAt)}` : "—"}
                           </td>
-                        </tr>
+                        </ClickableRow>
                       );
                     })}
                   </tbody>

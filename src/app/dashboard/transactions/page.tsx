@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { desc, eq, inArray, sql } from "drizzle-orm";
-import { Repeat, Upload, ArrowDownToLine, TrendingUp, AlertCircle } from "lucide-react";
+import { desc, eq, sql } from "drizzle-orm";
+import { Repeat, FileDown, ArrowDownToLine, TrendingUp, AlertCircle, FileUp } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { transactions, investors, users } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
@@ -8,6 +8,7 @@ import { formatINR, formatDate } from "@/lib/utils";
 import { FilterBar } from "@/components/common/FilterBar";
 import { CustomViews } from "@/components/common/CustomViews";
 import { ColumnManager } from "@/components/common/ColumnManager";
+import { buildTransactionConditions } from "@/lib/transactions/list-filters";
 
 const TRANSACTIONS_COLUMNS = [
   { key: "date", label: "Date", required: true },
@@ -95,48 +96,14 @@ export default async function TransactionsPage({
   const session = await requireSession();
   const sp = await searchParams;
   const q = (sp.q ?? "").trim();
-  const typeFilterRaw = (sp.txtype ?? "").split(",").filter(Boolean);
-  const statusFilterRaw = (sp.status ?? "").split(",").filter(Boolean);
   const dateFrom = sp.date_from ?? "";
   const dateTo = sp.date_to ?? "";
   const cursor = sp.cursor;
 
-  // Map types to cover both canonical and legacy enums (defense against mismatch)
-  const typeFilter: string[] = [];
-  for (const t of typeFilterRaw) {
-    if (t === "lumpsum" || t === "purchase") {
-      typeFilter.push("lumpsum", "purchase");
-    } else if (t === "dividend" || t === "dividend_payout" || t === "dividend_reinvest") {
-      typeFilter.push("dividend_payout", "dividend_reinvest");
-    } else {
-      typeFilter.push(t);
-    }
-  }
-
-  // Map statuses to cover both canonical and legacy enums
-  const statusFilter: string[] = [];
-  for (const s of statusFilterRaw) {
-    if (s === "pending" || s === "submitted") {
-      statusFilter.push("pending", "submitted");
-    } else if (s === "processed" || s === "successful") {
-      statusFilter.push("processed", "successful");
-    } else if (s === "rejected" || s === "failed") {
-      statusFilter.push("rejected", "failed");
-    } else {
-      statusFilter.push(s);
-    }
-  }
-
-  const conds: any[] = [];
-  if (q) {
-    conds.push(
-      sql`(${transactions.schemeName} ILIKE ${`%${q}%`} OR ${investors.name} ILIKE ${`%${q}%`} OR ${transactions.folioNumber} ILIKE ${`%${q}%`})`
-    );
-  }
-  if (typeFilter.length) conds.push(inArray(transactions.type, typeFilter as any));
-  if (statusFilter.length) conds.push(inArray(transactions.status, statusFilter as any));
-  if (dateFrom) conds.push(sql`${transactions.orderDate} >= ${dateFrom}::date`);
-  if (dateTo) conds.push(sql`${transactions.orderDate} <= ${dateTo}::date`);
+  // Shared filter conditions (search / type / status / date / RM / AMC / source)
+  // — identical to the KPI cards and the Excel export, so all three agree.
+  const baseConds = buildTransactionConditions(sp);
+  const conds = [...baseConds];
 
   if (cursor) {
     const [cursorOrderDate, cursorCreatedMs, cursorId] = cursor.split(":");
@@ -148,23 +115,22 @@ export default async function TransactionsPage({
   }
 
   const data = await withTenant(session.tenantId, async (tx) => {
-    const stats = await tx.execute(sql`
-      SELECT
-        COUNT(*) FILTER (WHERE direction = 'inflow'
-          AND status IN ('successful','processed')
-          AND order_date >= date_trunc('day', now()))::int AS today_purchase_count,
-        COALESCE(SUM(CASE WHEN direction = 'inflow'
-          AND status IN ('successful','processed')
-          AND order_date >= date_trunc('day', now()) THEN amount::numeric ELSE 0 END), 0) AS today_purchase_amt,
-        COALESCE(SUM(CASE WHEN direction = 'outflow'
-          AND status IN ('successful','processed')
-          AND order_date >= date_trunc('day', now()) THEN amount::numeric ELSE 0 END), 0) AS today_redemption_amt,
-        COUNT(*) FILTER (WHERE status = 'rejected'
-          AND created_at >= now() - interval '7 days')::int AS rejected_7d
-      FROM transactions
-      WHERE tenant_id = ${session.tenantId}::uuid
-    `);
-    const s = stats.rows[0] as any;
+    // KPI cards reflect the CURRENT filter selection (period-aware) — picking a
+    // date range / type / RM updates the headline totals too, and each card
+    // links into the rows behind it.
+    const statWhere = baseConds.length ? (sql.join(baseConds, sql` AND `) as any) : undefined;
+    const statRows = await tx
+      .select({
+        inflowCount: sql<number>`COUNT(*) FILTER (WHERE ${transactions.direction}='inflow' AND ${transactions.status} IN ('successful','processed'))::int`,
+        inflowAmt: sql<number>`COALESCE(SUM(CASE WHEN ${transactions.direction}='inflow' AND ${transactions.status} IN ('successful','processed') THEN ${transactions.amount}::numeric ELSE 0 END),0)`,
+        outflowAmt: sql<number>`COALESCE(SUM(CASE WHEN ${transactions.direction}='outflow' AND ${transactions.status} IN ('successful','processed') THEN ${transactions.amount}::numeric ELSE 0 END),0)`,
+        rejectedCount: sql<number>`COUNT(*) FILTER (WHERE ${transactions.status} IN ('rejected','failed'))::int`,
+        total: sql<number>`COUNT(*)::int`,
+      })
+      .from(transactions)
+      .leftJoin(investors, eq(investors.id, transactions.investorId))
+      .where(statWhere);
+    const s = statRows[0] as any;
 
     const baseQ = tx
       .select({ tx: transactions, investorName: investors.name, rmName: users.name })
@@ -173,12 +139,12 @@ export default async function TransactionsPage({
       .leftJoin(users, eq(users.id, transactions.executedByUserId));
     const rows = conds.length
       ? await baseQ
-          .where(sql.join(conds, sql` AND `) as any)
-          .orderBy(desc(transactions.orderDate), desc(transactions.createdAt), desc(transactions.id))
-          .limit(51)
+        .where(sql.join(conds, sql` AND `) as any)
+        .orderBy(desc(transactions.orderDate), desc(transactions.createdAt), desc(transactions.id))
+        .limit(51)
       : await baseQ
-          .orderBy(desc(transactions.orderDate), desc(transactions.createdAt), desc(transactions.id))
-          .limit(51);
+        .orderBy(desc(transactions.orderDate), desc(transactions.createdAt), desc(transactions.id))
+        .limit(51);
 
     const hasMore = rows.length > 50;
     const displayRows = hasMore ? rows.slice(0, 50) : rows;
@@ -187,18 +153,55 @@ export default async function TransactionsPage({
       ? `${lastRow.tx.orderDate ?? "null"}:${lastRow.tx.createdAt.getTime()}:${lastRow.tx.id}`
       : "";
 
+    // RM roster + AMC list for the filter dropdowns.
+    const rmRows = await tx.execute(
+      sql`SELECT id, name FROM users WHERE tenant_id = ${session.tenantId}::uuid AND status='active' ORDER BY name ASC`
+    );
+    const amcRows = await tx.execute(
+      sql`SELECT amc_name, count(*) AS c FROM transactions WHERE tenant_id = ${session.tenantId}::uuid AND amc_name IS NOT NULL AND amc_name <> '' GROUP BY amc_name ORDER BY c DESC LIMIT 60`
+    );
+
     return {
-      todayPurchaseCount: Number(s.today_purchase_count),
-      todayPurchaseAmt: Number(s.today_purchase_amt),
-      todayRedemptionAmt: Number(s.today_redemption_amt),
-      rejected7d: Number(s.rejected_7d),
+      inflowCount: Number(s.inflowCount),
+      inflowAmt: Number(s.inflowAmt),
+      outflowAmt: Number(s.outflowAmt),
+      rejectedCount: Number(s.rejectedCount),
+      total: Number(s.total),
       displayRows,
       hasMore,
       nextCursor,
+      rms: rmRows.rows as any[],
+      amcs: amcRows.rows as any[],
     };
   });
 
-  const netToday = data.todayPurchaseAmt - data.todayRedemptionAmt;
+  const netFlow = data.inflowAmt - data.outflowAmt;
+  const pageAmt = data.displayRows.reduce((n, r) => n + (r.tx.amount != null ? Number(r.tx.amount) : 0), 0);
+
+  // Preserve the active filters when building card / export links.
+  const filterEntries = Object.entries(sp).filter(
+    ([k, v]) => typeof v === "string" && v && k !== "cursor"
+  ) as [string, string][];
+  const carry = (extra: Record<string, string>) => {
+    const p = new URLSearchParams(filterEntries);
+    for (const [k, v] of Object.entries(extra)) p.set(k, v);
+    return `/dashboard/transactions?${p.toString()}`;
+  };
+  const exportHref = `/api/transactions/export?${new URLSearchParams(filterEntries).toString()}`;
+  const periodLabel = dateFrom || dateTo ? `${dateFrom || "start"} → ${dateTo || "today"}` : "all dates";
+
+  const rmOptions = (data.rms ?? []).map((r: any) => ({ value: String(r.id), label: r.name ?? "—" }));
+  const amcOptions = (data.amcs ?? []).map((r: any) => ({ value: String(r.amc_name), label: String(r.amc_name) }));
+  const sourceOptions = [
+    { value: "cams", label: "CAMS" },
+    { value: "kfintech", label: "KFintech" },
+    { value: "manual", label: "Manual" },
+    { value: "import", label: "Import" },
+    { value: "nse", label: "NSE" },
+    { value: "bse", label: "BSE" },
+    { value: "mfu", label: "MFU" },
+    { value: "other", label: "Other" },
+  ];
 
   return (
     <div className="space-y-6 max-w-7xl">
@@ -207,44 +210,52 @@ export default async function TransactionsPage({
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
             <Repeat className="size-6 text-brand-cyan" /> MF Transactions
           </h1>
-          <p className="text-muted-foreground text-sm">
-            Purchase · Redemption · Switch · SIP · STP · SWP feed. Reconciled daily with CAMS + KFintech.
-          </p>
         </div>
-        <Link href="/dashboard/transactions/import" className="btn-secondary">
-          <Upload className="size-4" /> Import Excel
-        </Link>
+        <div className="flex items-center gap-2">
+          <a href={exportHref} className="btn-secondary" title="Download the filtered list as Excel">
+            <FileUp className="size-4" /> Export
+          </a>
+          <Link href="/dashboard/transactions/import" className="btn-secondary">
+            <FileDown className="size-4" /> Import Excel
+          </Link>
+        </div>
       </div>
 
+      {/* KPI cards — reflect the current filter (period: {periodLabel}) and link
+          into the rows behind each number. */}
       <div className="grid grid-cols-4 gap-3">
         <Stat
           icon={TrendingUp}
-          label="Today's purchases"
-          value={String(data.todayPurchaseCount)}
-          sub={formatINR(data.todayPurchaseAmt)}
+          label="Purchases"
+          value={String(data.inflowCount)}
+          sub={formatINR(data.inflowAmt)}
+          href={carry({ txtype: "lumpsum,sip", status: "processed" })}
         />
         <Stat
           icon={ArrowDownToLine}
-          label="Today's redemption"
-          value={formatINR(data.todayRedemptionAmt)}
-          tone={data.todayRedemptionAmt > 0 ? "rose" : "muted"}
+          label="Redemptions"
+          value={formatINR(data.outflowAmt)}
+          tone={data.outflowAmt > 0 ? "rose" : "muted"}
+          href={carry({ txtype: "redemption,swp", status: "processed" })}
         />
         <Stat
           icon={TrendingUp}
-          label="Net today"
-          value={formatINR(netToday)}
-          tone={netToday >= 0 ? "emerald" : "rose"}
+          label="Net flow"
+          value={formatINR(netFlow)}
+          sub={periodLabel}
+          tone={netFlow >= 0 ? "emerald" : "rose"}
         />
         <Stat
           icon={AlertCircle}
-          label="Rejected (7d)"
-          value={String(data.rejected7d)}
-          tone={data.rejected7d > 0 ? "rose" : "muted"}
+          label="Rejected"
+          value={String(data.rejectedCount)}
+          tone={data.rejectedCount > 0 ? "rose" : "muted"}
+          href={carry({ status: "rejected" })}
         />
       </div>
 
       <FilterBar
-        totalCount={data.displayRows.length}
+        totalCount={data.total}
         filters={[
           { type: "search", key: "q", placeholder: "Search scheme, client, or folio…" },
           {
@@ -275,6 +286,9 @@ export default async function TransactionsPage({
             ],
           },
           { type: "date_range", key: "date", label: "Order date" },
+          ...(rmOptions.length ? [{ type: "multi" as const, key: "rm", label: "RM", options: rmOptions }] : []),
+          ...(amcOptions.length ? [{ type: "multi" as const, key: "amc", label: "AMC", options: amcOptions }] : []),
+          { type: "multi" as const, key: "source", label: "Source", options: sourceOptions },
         ]}
         rightSlot={
           <div className="flex items-center gap-2">
@@ -304,9 +318,9 @@ export default async function TransactionsPage({
           </div>
         ) : (
           <>
-            <div className="overflow-x-auto">
+            <div className="table-scroll">
               <table className="w-full text-sm" data-table="transactions">
-                <thead className="text-xs text-muted-foreground border-b">
+                <thead className="text-xs text-muted-foreground border-b sticky top-0 z-10 bg-card">
                   <tr>
                     <th data-col="date" className="text-left px-4 py-2 font-medium">Date</th>
                     <th data-col="investor" className="text-left py-2 font-medium">Investor</th>
@@ -379,6 +393,15 @@ export default async function TransactionsPage({
                     </tr>
                   ))}
                 </tbody>
+                <tfoot className="border-t bg-secondary/30 text-xs font-medium sticky bottom-0">
+                  <tr>
+                    <td data-col="date" className="px-4 py-2 text-muted-foreground" colSpan={6}>
+                      {data.displayRows.length} on this page{data.total > data.displayRows.length ? ` of ${data.total} matching` : ""}
+                    </td>
+                    <td data-col="amount" className="py-2 text-right tabular-nums">{formatINR(pageAmt)}</td>
+                    <td colSpan={6} />
+                  </tr>
+                </tfoot>
               </table>
             </div>
             {data.hasMore && (
@@ -387,15 +410,7 @@ export default async function TransactionsPage({
                   href={{
                     pathname: "/dashboard/transactions",
                     query: {
-                      ...Object.fromEntries(
-                        Object.entries({
-                          q,
-                          txtype: sp.txtype,
-                          status: sp.status,
-                          date_from: dateFrom,
-                          date_to: dateTo,
-                        }).filter(([_, v]) => v !== undefined && v !== "")
-                      ),
+                      ...Object.fromEntries(filterEntries),
                       cursor: data.nextCursor,
                     },
                   }}
@@ -418,29 +433,39 @@ function Stat({
   sub,
   tone,
   icon: Icon,
+  href,
 }: {
   label: string;
   value: string;
   sub?: string;
   tone?: "rose" | "amber" | "emerald" | "muted";
   icon?: any;
+  href?: string;
 }) {
   const color =
     tone === "rose"
       ? "text-rose-600"
       : tone === "amber"
-      ? "text-amber-600"
-      : tone === "emerald"
-      ? "text-emerald-600"
-      : "text-foreground";
-  return (
-    <div className="card-surface p-4">
+        ? "text-amber-600"
+        : tone === "emerald"
+          ? "text-emerald-600"
+          : "text-foreground";
+  const inner = (
+    <>
       <div className="flex items-center justify-between">
         <span className="text-xs text-muted-foreground">{label}</span>
         {Icon && <Icon className="size-3.5 text-muted-foreground" />}
       </div>
       <div className={`text-2xl font-bold mt-1 tabular-nums ${color}`}>{value}</div>
       {sub && <div className="text-xs text-muted-foreground mt-1">{sub}</div>}
-    </div>
+    </>
   );
+  if (href) {
+    return (
+      <Link href={href} className="card-surface p-4 block transition-colors hover:bg-secondary/40 hover:border-brand-cyan/40">
+        {inner}
+      </Link>
+    );
+  }
+  return <div className="card-surface p-4">{inner}</div>;
 }

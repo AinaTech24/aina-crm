@@ -21,11 +21,18 @@ export const folios = pgTable(
     schemes: jsonb("schemes").$type<Array<{
       schemeCode: string;
       schemeName: string;
+      /** ISIN (when the RTA file carried it) — kept so holdings can be
+       *  re-resolved / re-priced against the AMFI master by ISIN later. */
+      isin?: string;
       category?: string;
       units?: number;
       nav?: number;
       value?: number;
     }>>(),
+    /** Extra folio attributes captured on import (holding mode, status, bank,
+     *  nominee, invested/current value, XIRR, units, SIP flag …) without needing
+     *  a dedicated column each. */
+    details: jsonb("details").$type<Record<string, unknown>>().default({}),
     ...timestamps,
   },
   (t) => ({

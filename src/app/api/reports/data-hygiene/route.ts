@@ -22,12 +22,14 @@ import { NextResponse } from "next/server";
 import { sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { requireAny } from "@/lib/auth/rbac";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
     const session = await requireSession();
+    requireAny(session.roles, ["reports.business", "reports.manage"], session.permissions);
     const rows = await withTenant(session.tenantId, async (tx) => {
       // One round-trip — Postgres aggregates with FILTER are very cheap
       // on an indexed table even at 5M clients.

@@ -31,6 +31,9 @@ export const sendWhatsappHandler: ActionHandler<any> = {
       leadId: ctx.subjectType === "lead" ? ctx.subjectId ?? undefined : undefined,
       workflowRunId: ctx.runId,
       workflowRunStepId: ctx.stepId,
+      // Stable across step retries (stepId is regenerated each attempt) so the
+      // provider dedupes a re-fired send instead of delivering twice.
+      idempotencyKey: `wf:${ctx.runId}:${node.id}`,
       meta: { outsideSession: cfg.outsideSession },
     });
 

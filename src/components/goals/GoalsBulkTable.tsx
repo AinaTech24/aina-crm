@@ -8,10 +8,12 @@
  */
 
 import Link from "next/link";
+import { Archive } from "lucide-react";
 import { formatINR } from "@/lib/utils";
 import { categoryLabel } from "@/lib/goal-planning/calc";
 import { RowActions } from "@/components/common/RowActions";
 import { BulkTable, type BulkColumn, type BulkAction } from "@/components/common/BulkTable";
+import { Avatar } from "@/components/ui/Avatar";
 
 const STATUS_TONE: Record<string, string> = {
   not_started: "bg-gray-100 text-gray-700",
@@ -41,7 +43,10 @@ export function GoalsBulkTable({ rows }: { rows: Row[] }) {
     {
       key: "investor", header: "Investor", tdClass: "py-3",
       render: (g) => (
-        <Link href={`/dashboard/investors/${g.investorId}`} className="hover:underline">{g.investorName ?? "—"}</Link>
+        <div className="flex items-center gap-2">
+          <Avatar src={g.investorAvatarUrl && g.investorId ? `/api/investors/${g.investorId}/avatar` : null} name={g.investorName} size={26} />
+          <Link href={`/dashboard/investors/${g.investorId}`} className="hover:underline">{g.investorName ?? "—"}</Link>
+        </div>
       ),
     },
     { key: "target", header: "Target", thClass: "text-right py-2 font-medium", tdClass: "py-3 text-right tabular-nums whitespace-nowrap", render: (g) => formatINR(Number(g.targetAmount)) },
@@ -63,10 +68,10 @@ export function GoalsBulkTable({ rows }: { rows: Row[] }) {
     {
       key: "actions", header: "", thClass: "px-4 py-2", tdClass: "px-4 py-3 text-right",
       render: (g) => (
-        <RowActions editHref={`/dashboard/goals/${g.id}`} deleteUrl={`/api/goals/${g.id}`} itemLabel="goal" itemName={g.name} verb="Archive" />
+        <RowActions inline deleteIcon={Archive} editHref={`/dashboard/goals/${g.id}`} deleteUrl={`/api/goals/${g.id}`} itemLabel="goal" itemName={g.name} verb="Archive" />
       ),
     },
   ];
 
-  return <BulkTable rows={rows} columns={columns} endpoint="/api/goals/bulk" actions={actions} itemLabel="goal" />;
+  return <BulkTable rows={rows} columns={columns} endpoint="/api/goals/bulk" actions={actions} itemLabel="goal" rowHref={(g) => `/dashboard/goals/${g.id}`} />;
 }

@@ -52,9 +52,9 @@ export default async function CalendarPage({
   const secret = process.env.NEXTAUTH_SECRET;
   const icalSubscriptionUrl = secret
     ? `${process.env.APP_URL ?? "http://localhost:3000"}/api/calendar/feed?userId=${session.userId}&token=${crypto
-        .createHmac("sha256", secret)
-        .update(session.userId)
-        .digest("hex")}`
+      .createHmac("sha256", secret)
+      .update(session.userId)
+      .digest("hex")}`
     : null;
 
   return (
@@ -64,7 +64,6 @@ export default async function CalendarPage({
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
             <Calendar className="size-6 text-brand-cyan" /> Calendar
           </h1>
-          <p className="text-muted-foreground text-sm">Tasks, follow-ups, reviews, SIPs, campaigns, compliance — one view.</p>
         </div>
         <div className="flex items-center gap-2">
           <Link

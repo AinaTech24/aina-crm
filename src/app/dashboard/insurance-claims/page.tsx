@@ -6,7 +6,9 @@ import { insuranceClaims, investors, insurancePolicies, users, CLAIM_STATUSES } 
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { formatINR } from "@/lib/utils";
+import { claimTatDays, claimAgeDays, OPEN_CLAIM_STATUSES } from "@/lib/insurance/claim-status";
 import { Pager } from "@/components/common/Pager";
+import { Avatar } from "@/components/ui/Avatar";
 
 export const dynamic = "force-dynamic";
 
@@ -43,7 +45,7 @@ export default async function ClaimsPage({ searchParams }: { searchParams: Promi
     const where = conds.length ? and(...conds) : undefined;
 
     const rows = await tx
-      .select({ c: insuranceClaims, investorName: investors.name, planName: insurancePolicies.planName, rmName: users.name })
+      .select({ c: insuranceClaims, investorName: investors.name, investorId: investors.id, investorAvatarUrl: investors.avatarUrl, planName: insurancePolicies.planName, rmName: users.name })
       .from(insuranceClaims)
       .leftJoin(investors, eq(investors.id, insuranceClaims.investorId))
       .leftJoin(insurancePolicies, eq(insurancePolicies.id, insuranceClaims.policyId))
@@ -85,9 +87,11 @@ export default async function ClaimsPage({ searchParams }: { searchParams: Promi
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
           <h1 className="page-title"><FileText className="size-6 text-brand-cyan" /> Insurance Claims</h1>
-          <p className="page-subtitle">Track every claim from intimation to settlement — across health, life and general.</p>
         </div>
-        <Link href="/dashboard/insurance-claims/new" className="btn-primary"><Plus className="size-4" /> New claim</Link>
+        <div className="flex items-center gap-2">
+          <Link href="/dashboard/insurance-claims/scorecard" className="btn-secondary"><Clock className="size-4" /> Settlement scorecard</Link>
+          <Link href="/dashboard/insurance-claims/new" className="btn-primary"><Plus className="size-4" /> New claim</Link>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -123,7 +127,7 @@ export default async function ClaimsPage({ searchParams }: { searchParams: Promi
             <Link href="/dashboard/insurance-claims/new" className="text-brand-cyan-deep hover:underline text-xs mt-1 inline-block">+ Log a claim</Link>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="table-scroll">
             <table className="w-full text-sm">
               <thead className="text-xs text-muted-foreground border-b bg-secondary/30">
                 <tr>
@@ -133,17 +137,23 @@ export default async function ClaimsPage({ searchParams }: { searchParams: Promi
                   <th className="text-right py-2 font-medium">Settled</th>
                   <th className="text-left py-2 font-medium pl-4">Status</th>
                   <th className="text-left py-2 font-medium">Type</th>
+                  <th className="text-left py-2 font-medium">TAT</th>
                   <th className="text-left py-2 font-medium pr-4">RM</th>
                 </tr>
               </thead>
               <tbody>
-                {data.rows.map(({ c, investorName, planName, rmName }) => {
+                {data.rows.map(({ c, investorName, investorId, investorAvatarUrl, planName, rmName }) => {
                   const meta = STATUS_META[c.claimStatus] ?? STATUS_META.empty;
                   return (
                     <tr key={c.id} className="border-b last:border-0 hover:bg-secondary/40 transition-colors">
                       <td className="px-4 py-2.5">
-                        <Link href={`/dashboard/insurance-claims/new?edit=${c.id}`} className="font-medium hover:underline">{c.proposerName}</Link>
-                        {investorName && <div className="text-[11px] text-muted-foreground">{investorName}</div>}
+                        <div className="flex items-center gap-2">
+                          <Avatar src={investorAvatarUrl && investorId ? `/api/investors/${investorId}/avatar` : null} name={investorName ?? c.proposerName} size={26} />
+                          <div>
+                            <Link href={`/dashboard/insurance-claims/${c.id}`} className="font-medium hover:underline">{c.proposerName}</Link>
+                            {investorName && <div className="text-[11px] text-muted-foreground">{investorName}</div>}
+                          </div>
+                        </div>
                       </td>
                       <td className="py-2.5">
                         <div className="text-sm">{c.insurer ?? "—"}</div>
@@ -153,6 +163,7 @@ export default async function ClaimsPage({ searchParams }: { searchParams: Promi
                       <td className="py-2.5 text-right tabular-nums">{formatINR(Number(c.settledAmount ?? 0))}</td>
                       <td className="py-2.5 pl-4"><span className={`chip ${meta.tone}`}>{meta.label}</span></td>
                       <td className="py-2.5 text-xs">{c.claimType ? TYPE_LABEL[c.claimType] ?? c.claimType : "—"}</td>
+                      <td className="py-2.5 text-xs"><TatCell status={c.claimStatus} intimationDate={c.intimationDate} settlementDate={c.settlementDate} /></td>
                       <td className="py-2.5 text-xs pr-4">{rmName ?? "—"}</td>
                     </tr>
                   );
@@ -167,6 +178,19 @@ export default async function ClaimsPage({ searchParams }: { searchParams: Promi
       </div>
     </div>
   );
+}
+
+const OPEN_SET = OPEN_CLAIM_STATUSES as readonly string[];
+function TatCell({ status, intimationDate, settlementDate }: { status: string; intimationDate: string | null; settlementDate: string | null }) {
+  if (OPEN_SET.includes(status)) {
+    const age = claimAgeDays(intimationDate);
+    if (age == null) return <span className="text-muted-foreground">—</span>;
+    const tone = age > 90 ? "text-rose-600" : age > 60 ? "text-amber-600" : "text-muted-foreground";
+    return <span className={`tabular-nums font-medium ${tone}`}>{age}d open</span>;
+  }
+  const tat = claimTatDays(intimationDate, settlementDate);
+  if (tat == null) return <span className="text-muted-foreground">—</span>;
+  return <span className="tabular-nums">{tat} days</span>;
 }
 
 function Kpi({ label, value, icon: Icon, tone }: { label: string; value: string; icon: any; tone: "cyan" | "amber" | "emerald" }) {

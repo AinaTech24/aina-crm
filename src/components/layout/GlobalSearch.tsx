@@ -23,6 +23,9 @@ export function GlobalSearch() {
   const [q, setQ] = useState("");
   const [results, setResults] = useState<Results>({});
   const [busy, setBusy] = useState(false);
+  // Guard: readOnly until first focus defeats Chrome autofilling a saved email
+  // into the search box (Chrome ignores autoComplete="off" on its own).
+  const [roGuard, setRoGuard] = useState(true);
   const inputRef = useRef<HTMLInputElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
 
@@ -88,17 +91,29 @@ export function GlobalSearch() {
       {/* Input shell — styled like a search field, focus-within highlights it */}
       <div
         className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 shadow-sm
-                   transition-colors duration-150 focus-within:border-brand-cyan/40"
+                   transition-colors duration-150 focus-within:border-brand-cyan/50 focus-within:ring-2 focus-within:ring-brand-cyan/10"
       >
         <Search className="size-3.5 text-brand-cyan shrink-0" />
         <input
           ref={inputRef}
+          type="search"
+          name="global-search-q"
+          readOnly={roGuard}
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
+          data-1p-ignore
+          data-lpignore="true"
           value={q}
           onChange={(e) => {
             setQ(e.target.value);
             setOpen(true);
           }}
-          onFocus={() => setOpen(true)}
+          onFocus={() => {
+            if (roGuard) setRoGuard(false);
+            setOpen(true);
+          }}
           placeholder="Search investors, leads, folios…"
           className="flex-1 min-w-0 bg-transparent text-sm outline-none focus:ring-0 focus-visible:ring-0 focus:shadow-none placeholder:text-muted-foreground"
           aria-label="Global search"

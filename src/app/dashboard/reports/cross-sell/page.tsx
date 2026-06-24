@@ -12,7 +12,7 @@ import { sql } from "drizzle-orm";
 import { TrendingUp, ArrowRight, Users } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { requireAny } from "@/lib/auth/rbac";
+import { requireAny, can } from "@/lib/auth/rbac";
 import { users } from "@/db/schema";
 import { formatINR } from "@/lib/utils";
 import {
@@ -40,6 +40,13 @@ export default async function CrossSellReportPage() {
     session.permissions
   );
 
+  // Managers see the firm; a plain RM (assigned-scope only) sees just their book.
+  const seesAll =
+    can(session.roles, "investor.view.all", session.permissions) ||
+    can(session.roles, "reports.business", session.permissions) ||
+    can(session.roles, "reports.team", session.permissions);
+  const scope = seesAll ? sql`` : sql` AND rm_id = ${session.userId}::uuid`;
+
   const data = await withTenant(
     session.tenantId,
     async (tx) => {
@@ -59,7 +66,7 @@ export default async function CrossSellReportPage() {
               SELECT 1 FROM jsonb_each_text(cross_sell) cs(k, v) WHERE cs.v IN ('held_elsewhere','interested','not_held')
             )), 0)::numeric AS aum_with_opp
           FROM investors
-          WHERE status = 'active'
+          WHERE status = 'active'${scope}
         `)
       ).rows[0] as any;
 
@@ -68,7 +75,7 @@ export default async function CrossSellReportPage() {
       const products = (
         await tx.execute(sql`
           SELECT ${sql.join(productCols, sql`, `)}
-          FROM investors WHERE status = 'active'
+          FROM investors WHERE status = 'active'${scope}
         `)
       ).rows[0] as any;
 
@@ -77,7 +84,7 @@ export default async function CrossSellReportPage() {
           (SELECT count(*) FROM jsonb_each_text(cross_sell) cs(k, v)
              WHERE cs.v IN ('held_elsewhere','interested','not_held'))::int AS opp_count
         FROM investors
-        WHERE status = 'active'
+        WHERE status = 'active'${scope}
           AND cross_sell IS NOT NULL
           AND EXISTS (
             SELECT 1 FROM jsonb_each_text(cross_sell) cs(k, v) WHERE cs.v IN ('held_elsewhere','interested','not_held')

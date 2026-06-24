@@ -64,18 +64,25 @@ export async function POST(req: NextRequest) {
       // the invite grants 2+ roles. sql.join keeps each role a single bound param.
       const rolesSql = sql`ARRAY[${sql.join(safeRoles.map((r) => sql`${r}`), sql`, `)}]::text[]`;
 
+      // Accepting an emailed invite token PROVES ownership of the address, so
+      // the new user is email-verified on creation. Without this they'd be
+      // permanently blocked from inviting their own team (the invite endpoint
+      // gates on email_verified_at, and verification is otherwise only wired
+      // into self-serve signup — an invited manager has no path to it).
       await tx.execute(sql`
         INSERT INTO users (
-          id, tenant_id, branch_id, email, name, password_hash, roles, status, activated_at, created_at, updated_at
+          id, tenant_id, branch_id, email, name, password_hash, roles, status,
+          email_verified_at, activated_at, created_at, updated_at
         )
         VALUES (
           ${userId}, ${inv.tenant_id}, ${inv.branch_id}, ${inv.email}, ${name ?? inv.name ?? inv.email},
-          ${pwHash}, ${rolesSql}, 'active', now(), now(), now()
+          ${pwHash}, ${rolesSql}, 'active', now(), now(), now(), now()
         )
         ON CONFLICT (tenant_id, email) DO UPDATE
         SET password_hash = EXCLUDED.password_hash,
             roles = EXCLUDED.roles,
             status = 'active',
+            email_verified_at = COALESCE(users.email_verified_at, now()),
             activated_at = now(),
             updated_at = now()
         RETURNING id

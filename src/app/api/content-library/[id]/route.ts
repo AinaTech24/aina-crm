@@ -95,20 +95,27 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 }
 
-export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   try {
     const session = await requireSession();
     if (!isPlatformAdmin(session.roles)) {
       return NextResponse.json({ error: "forbidden" }, { status: 403 });
     }
+    // Default is a soft delete (deactivate, reversible). ?hard=1 permanently
+    // removes the row — usage events cascade via the FK.
+    const hard = new URL(req.url).searchParams.get("hard") === "1";
     await withPlatformAdmin(session.userId, async (tx) => {
-      await tx
-        .update(contentLibraryAssets)
-        .set({ isActive: false, updatedAt: new Date() } as any)
-        .where(eq(contentLibraryAssets.id, id));
+      if (hard) {
+        await tx.delete(contentLibraryAssets).where(eq(contentLibraryAssets.id, id));
+      } else {
+        await tx
+          .update(contentLibraryAssets)
+          .set({ isActive: false, updatedAt: new Date() } as any)
+          .where(eq(contentLibraryAssets.id, id));
+      }
     });
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, hard });
   } catch (err: any) {
     return handleApiError(err);
   }

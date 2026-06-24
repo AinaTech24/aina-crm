@@ -58,7 +58,6 @@ export default async function ComplianceCommandCenterPage() {
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2"><ShieldCheck className="size-6 text-brand-cyan" /> Compliance Command Center</h1>
-          <p className="text-muted-foreground text-sm">Inspection-ready at a glance: consent coverage, the compliance gate, DLT registry, and the audit trail. Every outbound message is consent- and rule-checked before it sends.</p>
         </div>
         <a href="/api/compliance/inspection-pack" className="btn-primary text-sm inline-flex items-center gap-1"><Download className="size-4" /> SEBI inspection pack</a>
       </div>

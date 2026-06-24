@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { sql } from "drizzle-orm";
-import { IndianRupee, TrendingUp, FileText, Repeat, Shield } from "lucide-react";
+import { IndianRupee, TrendingUp, FileText, Repeat, Shield, Wallet } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap, can } from "@/lib/auth/rbac";
 import { formatINR } from "@/lib/utils";
+import { AddCommissionEntry } from "@/components/insurance/AddCommissionEntry";
+import { CommissionLedger } from "@/components/insurance/CommissionLedger";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +20,7 @@ export default async function InsuranceCommissionPage() {
   // non-managers to their own book.
   requireCap(session.roles, "insurance.view");
   const seesAll = can(session.roles, "investor.view.all", session.permissions) || can(session.roles, "compliance.view", session.permissions);
+  const canWrite = can(session.roles, "insurance.write", session.permissions);
 
   const data = await withTenant(session.tenantId, async (tx) => {
     // Own-book slice for non-managers (policies they sold OR for their clients).
@@ -42,25 +45,50 @@ export default async function InsuranceCommissionPage() {
       FROM insurance_policies WHERE tenant_id = ${session.tenantId}::uuid${scope}
       GROUP BY insurer ORDER BY premium_book DESC LIMIT 30
     `)).rows as any[];
-    return { totals, byInsurer };
+
+    // Manual commission ledger — actual receipts. Scoped to own entries for
+    // non-managers (matches the policy-book scope above).
+    const entryScope = seesAll ? sql`` : sql` AND recorded_by_user_id = ${session.userId}::uuid`;
+    const received = (await tx.execute(sql`
+      SELECT COALESCE(SUM(net_amount::numeric), 0)::numeric AS net_total,
+             COALESCE(SUM(net_amount::numeric) FILTER (WHERE date_trunc('year', entry_date) = date_trunc('year', current_date)), 0)::numeric AS net_ytd
+      FROM insurance_commission_entries WHERE tenant_id = ${session.tenantId}::uuid${entryScope}
+    `)).rows[0] as any;
+    const entries = (await tx.execute(sql`
+      SELECT ce.id, ce.entry_date, ce.insurer, ce.commission_type, ce.policy_number,
+             ce.gross_amount, ce.tds_amount, ce.net_amount, ce.period_label, ce.reference_no,
+             COALESCE(i.name, '') AS investor_name, COALESCE(u.name, '') AS recorded_by_name
+      FROM insurance_commission_entries ce
+      LEFT JOIN investors i ON i.id = ce.investor_id
+      LEFT JOIN users u ON u.id = ce.recorded_by_user_id
+      WHERE ce.tenant_id = ${session.tenantId}::uuid${entryScope}
+      ORDER BY ce.entry_date DESC, ce.created_at DESC LIMIT 200
+    `)).rows as any[];
+
+    return { totals, byInsurer, received, entries };
   });
 
   const t = data.totals ?? {};
   const premiumBook = Number(t.premium_book ?? 0);
   const estRenewal = premiumBook * RENEWAL_RATE;
+  const netReceived = Number(data.received?.net_total ?? 0);
+  const netYtd = Number(data.received?.net_ytd ?? 0);
 
   return (
     <div className="space-y-6 max-w-5xl">
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2"><IndianRupee className="size-6 text-brand-cyan" /> Insurance Commission</h1>
-          <p className="text-muted-foreground text-sm">Your insurance earnings — recorded commission + the recurring renewal income your active book throws off each year.</p>
         </div>
-        <Link href="/dashboard/insurance/renewals" className="btn-secondary text-sm"><Repeat className="size-4" /> Renewals due</Link>
+        <div className="flex items-center gap-2">
+          <Link href="/dashboard/insurance/renewals" className="btn-secondary text-sm"><Repeat className="size-4" /> Renewals due</Link>
+          <AddCommissionEntry />
+        </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Kpi icon={IndianRupee} label="Recorded commission" value={formatINR(Number(t.recorded ?? 0))} tone="emerald" />
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <Kpi icon={Wallet} label="Commission received (net)" value={formatINR(netReceived)} tone="emerald" />
+        <Kpi icon={IndianRupee} label="Recorded on policies" value={formatINR(Number(t.recorded ?? 0))} />
         <Kpi icon={Shield} label="Active premium book" value={formatINR(premiumBook)} />
         <Kpi icon={Repeat} label="Est. renewal income / yr" value={formatINR(estRenewal)} tone="emerald" />
         <Kpi icon={FileText} label="Active policies" value={String(t.active ?? 0)} />
@@ -90,7 +118,19 @@ export default async function InsuranceCommissionPage() {
           </table>
         )}
       </div>
-      <p className="text-[11px] text-muted-foreground italic">Renewal income is an estimate at {Math.round(RENEWAL_RATE * 100)}% of active annual premium — actual rates vary by line and insurer. Record per-policy commission on the policy to track real figures.</p>
+      {/* Manual commission ledger — actual receipts */}
+      <div className="card-surface table-scroll">
+        <div className="px-4 py-3 border-b font-semibold text-sm flex items-center justify-between">
+          <span className="flex items-center gap-2"><Wallet className="size-4 text-brand-cyan" /> Commission received</span>
+          <span className="text-xs text-muted-foreground font-normal">YTD net {formatINR(netYtd)}</span>
+        </div>
+        <CommissionLedger entries={data.entries as any} canDelete={canWrite} />
+      </div>
+
+      <p className="text-[11px] text-muted-foreground italic">
+        <strong>Recorded on policies</strong> is the commission captured per policy at entry (an estimate). <strong>Commission received</strong> is the
+        actual payouts you log above — net of TDS. Renewal income is an estimate at {Math.round(RENEWAL_RATE * 100)}% of active annual premium; actual rates vary by line and insurer.
+      </p>
     </div>
   );
 }

@@ -30,7 +30,7 @@ export const MARKETING_ASSETS: AssetGroup[] = [
       { title: "Email signature with branding" },
       { title: "Elevator pitch — what you do" },
       { title: "Initial proposal PPT deck", href: "/dashboard/proposals" },
-      { title: "Social accounts — LinkedIn / Instagram / Facebook (updated)", href: "/dashboard/content-calendar" },
+      { title: "Social accounts — LinkedIn / Instagram / Facebook (updated)" },
     ],
   },
   {

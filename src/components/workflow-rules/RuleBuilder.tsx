@@ -64,6 +64,7 @@ type SavedRule = {
   instantActions?: Action[] | null;
   scheduledActions?: ScheduledAction[] | null;
   branches?: Array<Partial<Branch>> | null;
+  rateLimitPerHour?: number | null;
 };
 
 const ACTION_TYPES: Array<{ key: string; label: string; description: string; instantOnly?: boolean }> = [
@@ -220,6 +221,10 @@ export function RuleBuilder({
   const [moduleKey, setModuleKey] = useState(initialRule?.module ?? modules[0]?.key ?? "");
   const [name, setName] = useState(initialRule?.name ?? "");
   const [description, setDescription] = useState(initialRule?.description ?? "");
+  // Optional safety cap — blank = unlimited. Stored as a string so the input can be cleared.
+  const [rateLimit, setRateLimit] = useState<string>(
+    initialRule?.rateLimitPerHour != null ? String(initialRule.rateLimitPerHour) : ""
+  );
 
   // Step 2
   const [trigger, setTrigger] = useState<Trigger>(() => triggerFromRule(initialRule));
@@ -259,6 +264,7 @@ export function RuleBuilder({
         description: description.trim() || undefined,
         triggerType: trigger.kind,
         triggerConfig: triggerConfigFromState(trigger),
+        rateLimitPerHour: rateLimit.trim() === "" ? null : Number(rateLimit),
         criteriaPattern: criteriaPattern.trim() || null,
         criteriaRows,
         instantActions,
@@ -371,6 +377,21 @@ export function RuleBuilder({
                 placeholder="Optional — what this rule does and why."
                 className="input-base mt-1 w-full"
               />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-muted-foreground">Rate limit (max firings / hour)</label>
+              <input
+                type="number"
+                min={1}
+                max={100000}
+                value={rateLimit}
+                onChange={(e) => setRateLimit(e.target.value)}
+                placeholder="Unlimited"
+                className="input-base mt-1 w-full max-w-[200px]"
+              />
+              <p className="text-[11px] text-muted-foreground mt-1">
+                Optional safety cap — skips extra firings within an hour (protects your message quota).
+              </p>
             </div>
           </>
         )}

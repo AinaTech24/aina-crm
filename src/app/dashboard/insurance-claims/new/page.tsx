@@ -6,6 +6,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, FileText, Loader2, Save } from "lucide-react";
 import { InvestorLookup } from "@/components/common/InvestorLookup";
 import { RmSelector } from "@/components/common/RmSelector";
+import { ThemeSelect } from "@/components/ui/ThemeSelect";
+import { ThemeDate } from "@/components/ui/ThemeDate";
 
 const CLAIM_STATUSES: [string, string][] = [
   ["empty", "Empty"], ["claim_intimated", "Claim Intimated"], ["file_awaited", "File Awaited"], ["file_received", "File Received"],
@@ -131,17 +133,15 @@ function ClaimForm() {
           </Field>
           <Field label="Proposer name *"><input value={form.proposerName} onChange={(e) => set("proposerName", e.target.value)} placeholder="Name on the policy" className="input-base" /></Field>
           <Field label="Insurance policy">
-            <select value={form.policyId} onChange={(e) => pickPolicy(e.target.value)} className="input-base">
+            <ThemeSelect value={form.policyId} onChange={pickPolicy}>
               <option value="">— pick a policy —</option>
               {policies.map((p) => <option key={p.id} value={p.id}>{[p.planName, p.policyNumber, p.insurer].filter(Boolean).join(" · ")}</option>)}
-            </select>
+            </ThemeSelect>
           </Field>
           <Field label="Policy number"><input value={form.policyNumber} onChange={(e) => set("policyNumber", e.target.value)} className="input-base" /></Field>
           <Field label="Insurance company"><input value={form.insurer} onChange={(e) => set("insurer", e.target.value)} placeholder="HDFC Ergo, Star Health…" className="input-base" /></Field>
           <Field label="Claim status">
-            <select value={form.claimStatus} onChange={(e) => set("claimStatus", e.target.value)} className="input-base">
-              {CLAIM_STATUSES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-            </select>
+            <ThemeSelect value={form.claimStatus} onChange={(v) => set("claimStatus", v)} options={CLAIM_STATUSES} />
           </Field>
           <Field label="Contact person"><input value={form.contactPerson} onChange={(e) => set("contactPerson", e.target.value)} className="input-base" /></Field>
           <Field label="Email"><input type="email" value={form.email} onChange={(e) => set("email", e.target.value)} className="input-base" /></Field>
@@ -156,14 +156,14 @@ function ClaimForm() {
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
           <Sel label="Claim type" value={form.claimType} onChange={(v) => set("claimType", v)} opts={CLAIM_TYPES} />
           <Sel label="Claim mode" value={form.claimMode} onChange={(v) => set("claimMode", v)} opts={CLAIM_MODES} />
-          <Field label="Admission date"><input type="date" value={form.admissionDate} onChange={(e) => set("admissionDate", e.target.value)} className="input-base" /></Field>
+          <Field label="Admission date"><ThemeDate value={form.admissionDate} onChange={(v) => set("admissionDate", v)} /></Field>
           <Sel label="Intimation mode" value={form.intimationMode} onChange={(v) => set("intimationMode", v)} opts={INTIMATION_MODES} />
-          <Field label="Intimation date"><input type="date" value={form.intimationDate} onChange={(e) => set("intimationDate", e.target.value)} className="input-base" /></Field>
+          <Field label="Intimation date"><ThemeDate value={form.intimationDate} onChange={(v) => set("intimationDate", v)} /></Field>
           <Sel label="Submitted mode" value={form.submittedMode} onChange={(v) => set("submittedMode", v)} opts={SUBMITTED_MODES} />
-          <Field label="Submission date"><input type="date" value={form.submissionDate} onChange={(e) => set("submissionDate", e.target.value)} className="input-base" /></Field>
+          <Field label="Submission date"><ThemeDate value={form.submissionDate} onChange={(v) => set("submissionDate", v)} /></Field>
           <Field label="Claimed amount (₹)"><input type="number" value={form.claimedAmount} onChange={(e) => set("claimedAmount", e.target.value)} className="input-base" /></Field>
           <Field label="Settled amount (₹)"><input type="number" value={form.settledAmount} onChange={(e) => set("settledAmount", e.target.value)} className="input-base" /></Field>
-          <Field label="Settlement date"><input type="date" value={form.settlementDate} onChange={(e) => set("settlementDate", e.target.value)} className="input-base" /></Field>
+          <Field label="Settlement date"><ThemeDate value={form.settlementDate} onChange={(v) => set("settlementDate", v)} /></Field>
           <Field label="Relationship manager"><RmSelector value={rmId} onChange={(id) => setRmId(id ?? null)} role="rm" placeholder="Assign RM…" /></Field>
         </div>
         <Field label="Comments">
@@ -196,9 +196,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 function Sel({ label, value, onChange, opts }: { label: string; value: string; onChange: (v: string) => void; opts: [string, string][] }) {
   return (
     <Field label={label}>
-      <select value={value} onChange={(e) => onChange(e.target.value)} className="input-base">
-        {opts.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-      </select>
+      <ThemeSelect value={value} onChange={onChange} options={opts} />
     </Field>
   );
 }

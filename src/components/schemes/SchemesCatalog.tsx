@@ -29,6 +29,25 @@ const OPTION_OPTS = [{ value: "", label: "—" }, ...["growth", "idcw_payout", "
 const RISK_OPTS = [{ value: "", label: "—" }, ...["very_low", "low", "moderate", "high", "very_high"].map((v) => ({ value: v, label: cap(v) }))];
 const SCHEME_RISK_OPTS = [{ value: "", label: "—" }, ...["low", "moderate", "high", "very_high"].map((v) => ({ value: v, label: cap(v) }))];
 const COARSE_OPTS = [{ value: "", label: "—" }, ...COARSE.map(([k, l]) => ({ value: k, label: l }))];
+
+/** Plan / Option columns are usually empty in the AMFI feed, but the scheme
+ *  name reliably encodes them (e.g. "… Direct Plan - Growth"). Derive as a
+ *  display fallback so the detail panel isn't blank. */
+function derivePlan(s: any): string {
+  if (s?.plan) return String(s.plan);
+  const n = String(s?.scheme_name ?? "");
+  if (/\bdirect\b/i.test(n)) return "Direct";
+  if (/\bregular\b/i.test(n)) return "Regular";
+  return "";
+}
+function deriveOption(s: any): string {
+  if (s?.option) return String(s.option).replace(/_/g, " ");
+  const n = String(s?.scheme_name ?? "");
+  if (/reinvest/i.test(n)) return "IDCW Reinvest";
+  if (/\bgrowth\b/i.test(n)) return "Growth";
+  if (/idcw|dividend|payout/i.test(n)) return "IDCW Payout";
+  return "";
+}
 const COARSE_TONE: Record<string, string> = {
   equity: "bg-emerald-50 text-emerald-700", hybrid: "bg-blue-50 text-blue-700", debt: "bg-amber-50 text-amber-700",
   liquid: "bg-cyan-50 text-cyan-700", commodity: "bg-orange-50 text-orange-700", international: "bg-violet-50 text-violet-700", other: "bg-slate-50 text-slate-600",
@@ -104,7 +123,7 @@ export function SchemesCatalog({ rows, amcs, canManage }: { rows: Scheme[]; amcs
         </div>
       )}
 
-      <div className="card-surface overflow-x-auto overflow-y-auto max-h-[calc(100vh-22rem)] min-h-[16rem]">
+      <div className="card-surface table-scroll">
         {rows.length === 0 ? (
           <div className="p-12 text-center text-sm text-muted-foreground">No schemes yet. {canManage && "Click “Sync from AMFI” (top-right) to pull the full AMFI scheme universe, or add one manually with “New scheme”."}</div>
         ) : (
@@ -194,7 +213,7 @@ function SchemeDetailDrawer({
     </div>
   );
   return (
-    <div className="fixed inset-0 z-[100] bg-black/40 grid place-items-end sm:place-items-center p-0 sm:p-4 animate-fade-in" onClick={onClose}>
+    <div className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm grid place-items-end sm:place-items-center p-0 sm:p-4 animate-fade-in" onClick={onClose}>
       <div className="bg-card w-full sm:max-w-lg sm:rounded-xl shadow-xl border border-border/60 max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
         <div className="border-b px-5 py-3 flex items-start justify-between gap-3">
           <div className="min-w-0">
@@ -218,8 +237,10 @@ function SchemeDetailDrawer({
             <Row label="AMC" value={s.amc_name ?? s.amc_code} />
             <Row label="Category" value={s.category} />
             <Row label="Sub-category" value={s.sub_category} />
-            <Row label="Plan" value={s.plan ? <span className="capitalize">{s.plan}</span> : undefined} />
-            <Row label="Option" value={s.option ? <span className="capitalize">{String(s.option).replace(/_/g, " ")}</span> : undefined} />
+            {/* Plan / Option: fall back to deriving from the scheme name — the
+                AMFI feed encodes them there but rarely fills the columns. */}
+            <Row label="Plan" value={derivePlan(s) ? <span className="capitalize">{derivePlan(s)}</span> : undefined} />
+            <Row label="Option" value={deriveOption(s) ? <span className="capitalize">{deriveOption(s)}</span> : undefined} />
             <Row label="Risk" value={s.risk_category ? <span className="capitalize">{String(s.risk_category).replace(/_/g, " ")}</span> : undefined} />
             <Row label="Exit load" value={s.exit_load} />
             <Row label="Min SIP" value={s.min_sip ? `₹${Number(s.min_sip).toLocaleString("en-IN")}` : undefined} />

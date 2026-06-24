@@ -6,8 +6,15 @@ import { requireSession } from "@/lib/auth/session";
 export const dynamic = "force-dynamic";
 
 const OUR_FIELDS = [
-  "pan", "folioNumber", "amcCode", "schemeCode", "schemeName",
+  "pan", "folioNumber", "amcCode", "amcName", "schemeCode", "schemeName",
   "type", "direction", "amount", "units", "nav", "orderDate", "status", "reasonCode", "sourceFeed",
+  // ── Folio-level attributes (stored on the folio the transaction belongs to) ──
+  "trnsId", "folioOwner", "holdingMode", "folioStatus", "folioUniqueKey", "sipFlag",
+  "bank", "branch", "bankCity", "ifsc",
+  "folioStartDate", "lastTransactionDate",
+  "investedAmount", "currentValue", "xirr", "totalUnits", "loadFreeUnits", "sipAmount", "dayChangeValue",
+  // ── Nominee (on the folio) ──
+  "nomineeName", "nomineeRelation", "nomineeAddress", "nomineeCity", "nomineeState", "nomineePincode", "nomineePercent",
 ];
 
 function suggestMapping(headers: string[]): Record<string, string> {
@@ -27,6 +34,34 @@ function suggestMapping(headers: string[]): Record<string, string> {
     [/status/i, "status"],
     [/(reason|reject).?code/i, "reasonCode"],
     [/source|feed/i, "sourceFeed"],
+    // Folio-level attributes
+    [/amc.?name/i, "amcName"],
+    [/trns.?id|transaction.?id/i, "trnsId"],
+    [/folio.?owner|mf.?folio.?owner|owner/i, "folioOwner"],
+    [/holding.?mode/i, "holdingMode"],
+    [/folio.?status/i, "folioStatus"],
+    [/folio.?unique/i, "folioUniqueKey"],
+    [/sip.?flag/i, "sipFlag"],
+    [/ifsc/i, "ifsc"],
+    [/bank.?city/i, "bankCity"],
+    [/branch/i, "branch"],
+    [/^bank|bank.?name/i, "bank"],
+    [/folio.?start|start.?date/i, "folioStartDate"],
+    [/last.?transaction/i, "lastTransactionDate"],
+    [/invested.?amount|investment.?amount/i, "investedAmount"],
+    [/current.?value|market.?value/i, "currentValue"],
+    [/xirr/i, "xirr"],
+    [/total.?units/i, "totalUnits"],
+    [/load.?free/i, "loadFreeUnits"],
+    [/sip.?amount/i, "sipAmount"],
+    [/day.?change/i, "dayChangeValue"],
+    [/nominee.?name/i, "nomineeName"],
+    [/nominee.?relation/i, "nomineeRelation"],
+    [/nominee.?address/i, "nomineeAddress"],
+    [/nominee.?city/i, "nomineeCity"],
+    [/nominee.?state/i, "nomineeState"],
+    [/nominee.?pin|nominee.?pincode/i, "nomineePincode"],
+    [/nominee.?percent|nominee.?%|nominee.?share/i, "nomineePercent"],
   ];
   for (const h of headers) {
     for (const [re, f] of p) {

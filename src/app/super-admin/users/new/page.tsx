@@ -80,7 +80,7 @@ export default function NewPlatformStaffPage() {
           </div>
         </div>
         {err && <div className="text-sm text-rose-600">{err}</div>}
-        <div className="flex justify-end gap-2 pt-2 border-t">
+        <div className="flex flex-wrap justify-end gap-2 pt-2 border-t">
           <Link href="/super-admin/users" className="rounded-md border px-4 py-2 text-sm">Cancel</Link>
           <button disabled={busy || !form.email || form.password.length < 8} className="rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm font-medium disabled:opacity-50">
             {busy ? "Creating…" : "Add staff member"}

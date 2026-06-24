@@ -110,8 +110,17 @@ export default async function ReviewReportPage({
             <p className="text-gray-600 mt-1">{period} · prepared for {inv.name}</p>
           </div>
           <div className="text-right text-sm">
-            <div className="font-semibold">{tenant?.legalName ?? "—"}</div>
-            <div className="text-gray-500 font-mono">{tenant?.arn ?? ""}</div>
+            {(tenant as any)?.logoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={(tenant as any).logoUrl}
+                alt={tenant?.legalName ?? "Firm logo"}
+                className="h-14 ml-auto mb-1 object-contain"
+              />
+            ) : (
+              <div className="font-semibold text-lg">{tenant?.legalName ?? "—"}</div>
+            )}
+            <div className="text-gray-500 font-mono text-xs">{tenant?.arn ?? ""}</div>
             <div className="text-xs text-gray-500 mt-1">Generated {formatDate(new Date())}</div>
           </div>
         </header>
@@ -327,7 +336,13 @@ export default async function ReviewReportPage({
       <style>{`
         @media print {
           @page { margin: 0.6in; size: A4; }
-          body { background: white !important; }
+          body { background: white !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          /* Keep each block whole so content never cuts mid-section across a page. */
+          section, header, footer { break-inside: avoid; page-break-inside: avoid; }
+          h1, h2, h3 { break-after: avoid; page-break-after: avoid; }
+          tr, li, img { break-inside: avoid; page-break-inside: avoid; }
+          /* Repeat table headers on each printed page. */
+          thead { display: table-header-group; }
         }
       `}</style>
     </>

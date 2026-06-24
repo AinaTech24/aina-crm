@@ -17,6 +17,7 @@ import { useRouter } from "next/navigation";
 import { X, Upload, CheckCircle2, AlertCircle, Loader2, Download } from "lucide-react";
 import { RTA_FILE_TYPES, cadenceLabel, type RtaFileTypeDef } from "@/lib/rta/file-types";
 import { RTA_SOURCES, type RtaSource } from "@/db/schema/rta_imports";
+import { SelectField } from "@/components/ui/SelectField";
 
 type Outcome = {
   importId?: string;
@@ -73,9 +74,20 @@ export function UploadDialog({
   const [uploading, setUploading] = useState(false);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Set true when the dialog closes so the background-status poll loop stops.
+  const cancelPollRef = useRef(false);
 
+  // Reset the form every time the dialog opens — the component stays mounted
+  // when closed, so otherwise a previous file's password/selection carries over
+  // (which then fails the next zip with "Invalid password").
   useEffect(() => {
-    if (open && defaultKind) setKind(defaultKind);
+    if (open) {
+      if (defaultKind) setKind(defaultKind);
+      setPassword("");
+      setFile(null);
+      setOutcome(null);
+      if (inputRef.current) inputRef.current.value = "";
+    }
   }, [open, defaultKind]);
 
   if (!open) return null;
@@ -87,11 +99,13 @@ export function UploadDialog({
     if (!file) return;
     setUploading(true);
     setOutcome(null);
+    cancelPollRef.current = false;
     try {
       const contentType = file.type || "application/octet-stream";
       // 1) Get a presigned S3 URL. 2) PUT the file DIRECTLY to S3 (bypasses the
       // app server's ~10MB body limit that truncated large zips). 3) Tell the
-      // backend to download + parse the object by its key.
+      // backend to QUEUE the parse — the heavy work runs in the background
+      // worker so a large file never blocks/crashes the web server.
       const presRes = await fetch("/api/rta-imports/upload-url", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -119,11 +133,49 @@ export function UploadDialog({
       const data = await res.json();
       if (!res.ok) {
         setOutcome({ status: "failed", error: data.error ?? "Upload failed" });
-      } else {
-        setOutcome(data);
-        if (data.status === "completed" || data.status === "partial") {
-          // Let the dashboard refresh on close so the new tile data shows up.
-          router.refresh();
+        return;
+      }
+
+      // 4) The parse runs in the background worker. Poll the import row until
+      //    it reaches a terminal status, then show the outcome.
+      const importId = data.importId as string;
+      const startedAt = Date.now();
+      const TIMEOUT_MS = 8 * 60 * 1000; // give big masters time on a small box
+      while (!cancelPollRef.current) {
+        await new Promise((r) => setTimeout(r, 2000));
+        if (cancelPollRef.current) return;
+        let row: any = null;
+        try {
+          const sres = await fetch(`/api/rta-imports/${importId}`, { cache: "no-store" });
+          if (sres.ok) row = await sres.json();
+        } catch {
+          // transient network blip — keep polling
+        }
+        const st = row?.status as string | undefined;
+        if (st === "completed" || st === "partial" || st === "failed" || st === "rejected") {
+          setOutcome({
+            importId,
+            // 'rejected' = duplicate; OutcomePanel renders the duplicate panel
+            // off the `duplicate` flag, so status here just needs to be non-success.
+            status: st === "rejected" ? "failed" : (st as Outcome["status"]),
+            duplicate: st === "rejected",
+            rowsTotal: row.rows_total ?? undefined,
+            rowsImported: row.rows_imported ?? undefined,
+            rowsSkipped: row.rows_skipped ?? undefined,
+            rowsFailed: row.rows_failed ?? undefined,
+            errors: row.errors ?? undefined,
+            error: row.remarks ?? undefined,
+          });
+          if (st === "completed" || st === "partial") router.refresh();
+          return;
+        }
+        if (Date.now() - startedAt > TIMEOUT_MS) {
+          setOutcome({
+            status: "failed",
+            error:
+              "Still processing in the background. Large files can take a few minutes — close this and check the imports list shortly.",
+          });
+          return;
         }
       }
     } catch (e: any) {
@@ -133,7 +185,13 @@ export function UploadDialog({
     }
   }
 
+  function handleClose() {
+    cancelPollRef.current = true; // stop any in-flight status poll
+    onClose();
+  }
+
   function reset() {
+    cancelPollRef.current = true;
     setFile(null);
     setPassword("");
     setOutcome(null);
@@ -142,10 +200,10 @@ export function UploadDialog({
   return (
     <div
       className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 animate-fade-in"
-      onClick={onClose}
+      onClick={handleClose}
     >
       <div
-        className="bg-card rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto"
+        className="bg-card rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto scrollbar-none"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -158,7 +216,7 @@ export function UploadDialog({
             </p>
           </div>
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="text-muted-foreground hover:text-foreground"
             aria-label="Close"
           >
@@ -175,10 +233,11 @@ export function UploadDialog({
                 <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
                   1. Which file are you uploading?
                 </label>
-                <select
+                <SelectField
                   value={kind}
                   onChange={(e) => setKind(e.target.value)}
-                  className="w-full border rounded-lg px-3 py-2 text-sm bg-background"
+                  className="w-full"
+                  aria-label="RTA file type"
                 >
                   {RTA_FILE_TYPES.map((t) => (
                     <option key={t.kind} value={t.kind}>
@@ -186,7 +245,7 @@ export function UploadDialog({
                       {optionSuffix(t)}
                     </option>
                   ))}
-                </select>
+                </SelectField>
                 {def && (
                   <div className="mt-2 text-xs text-muted-foreground leading-relaxed bg-secondary/40 rounded-lg p-3 border border-border/60">
                     <div className="font-semibold text-foreground">{def.short}</div>
@@ -284,7 +343,7 @@ export function UploadDialog({
 
               {/* Submit */}
               <div className="pt-2 flex justify-end gap-2">
-                <button onClick={onClose} className="btn-secondary text-sm">
+                <button onClick={handleClose} className="btn-secondary text-sm">
                   Cancel
                 </button>
                 <button
@@ -305,7 +364,7 @@ export function UploadDialog({
               </div>
             </>
           ) : (
-            <OutcomePanel outcome={outcome} onAnother={reset} onClose={onClose} />
+            <OutcomePanel outcome={outcome} onAnother={reset} onClose={handleClose} />
           )}
         </div>
       </div>
@@ -352,7 +411,7 @@ function OutcomePanel({
           <AlertCircle className="size-7 text-rose-700" />
         </div>
         <h3 className="font-bold mt-4">Upload failed</h3>
-        <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">
+        <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto break-words max-h-40 overflow-y-auto scrollbar-none">
           {outcome.error ?? "We couldn't parse this file. Confirm the source + kind match the layout, then retry."}
         </p>
         <div className="mt-5 flex justify-center gap-2">

@@ -14,7 +14,7 @@ export function CampaignRoiChart({ data }: { data: CampaignRoi[] }) {
   if (!data.length) {
     return (
       <div className="h-48 grid place-items-center text-xs text-muted-foreground">
-        No campaign broadcasts completed this month.
+        No campaign broadcasts in this period.
       </div>
     );
   }

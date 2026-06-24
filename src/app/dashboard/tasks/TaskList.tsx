@@ -8,14 +8,18 @@ import { SelectField } from "@/components/ui/SelectField";
 import { RmSelector } from "@/components/common/RmSelector";
 import { useToast } from "@/components/ui/Toast";
 import { TaskDetailDrawer } from "./TaskDetailDrawer";
+import { Avatar } from "@/components/ui/Avatar";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { taskChecklist, type Task } from "@/db/schema";
-import { Loader2, Plus, ListChecks } from "lucide-react";
+import { Loader2, ListChecks, Trash2 } from "lucide-react";
 
 interface TaskRow {
   task: Task;
   assignee: string | null;
   investorName: string | null;
+  investorAvatarUrl?: string | null;
   leadName: string | null;
+  leadAvatarUrl?: string | null;
 }
 
 interface TaskListProps {
@@ -30,13 +34,10 @@ export function TaskList({ initialRows, currentUserId }: TaskListProps) {
   const [selectedRow, setSelectedRow] = useState<TaskRow | null>(null);
   const [completingTaskId, setCompletingTaskId] = useState<string | null>(null);
 
-  // Quick Add states
-  const [quickTitle, setQuickTitle] = useState("");
-  const [quickBusy, setQuickBusy] = useState(false);
-
   // Bulk-select states
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
 
   // Sync rows from parent when query changes
   if (JSON.stringify(initialRows.map(r => r.task.id)) !== JSON.stringify(rows.map(r => r.task.id))) {
@@ -49,7 +50,7 @@ export function TaskList({ initialRows, currentUserId }: TaskListProps) {
     setSelected((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
   }
 
-  async function runBulk(action: "status" | "priority" | "assign" | "cancel", value?: string) {
+  async function runBulk(action: "status" | "priority" | "assign" | "cancel" | "delete", value?: string) {
     if (selected.size === 0 || bulkBusy) return;
     setBulkBusy(true);
     try {
@@ -60,8 +61,10 @@ export function TaskList({ initialRows, currentUserId }: TaskListProps) {
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j.error ?? "Bulk action failed");
-      toast.success(`Updated ${j.updated} task${j.updated === 1 ? "" : "s"}`);
+      const n = j.updated ?? j.deleted ?? 0;
+      toast.success(action === "delete" ? `Deleted ${n} task${n === 1 ? "" : "s"}` : `Updated ${n} task${n === 1 ? "" : "s"}`);
       setSelected(new Set());
+      setConfirmBulkDelete(false);
       router.refresh();
     } catch (e: any) {
       toast.error(e?.message ?? "Bulk action failed", "Action failed");
@@ -163,59 +166,12 @@ export function TaskList({ initialRows, currentUserId }: TaskListProps) {
     }
   }
 
-  async function handleQuickAdd(e: React.FormEvent) {
-    e.preventDefault();
-    if (!quickTitle.trim()) return;
-    setQuickBusy(true);
-    try {
-      const res = await fetch("/api/tasks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: quickTitle.trim(),
-          type: "follow_up",
-          priority: "normal",
-        }),
-      });
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}));
-        throw new Error(d?.error ?? "Failed to create task");
-      }
-      setQuickTitle("");
-      toast.success("Task added");
-      router.refresh();
-    } catch (err: any) {
-      toast.error(err?.message ?? "Could not add the task", "Add failed");
-    } finally {
-      setQuickBusy(false);
-    }
-  }
-
   const handleUpdate = () => {
     router.refresh();
   };
 
   return (
     <div className="border rounded-lg bg-card bg-white overflow-hidden shadow-sm flex flex-col">
-      {/* Inline Quick Add Input */}
-      <form onSubmit={handleQuickAdd} className="p-3 border-b bg-slate-50/50 flex gap-2 items-center">
-        <input
-          value={quickTitle}
-          onChange={(e) => setQuickTitle(e.target.value)}
-          disabled={quickBusy}
-          placeholder="⚡ Quick add a follow-up task... (Press Enter to save)"
-          className="flex-1 input-base text-xs py-1.5 px-3 bg-white"
-        />
-        <button
-          type="submit"
-          disabled={quickBusy || !quickTitle.trim()}
-          className="btn-primary text-xs py-1.5 px-3 flex-shrink-0 flex items-center gap-1"
-        >
-          {quickBusy ? <Loader2 className="size-3 animate-spin" /> : <Plus className="size-3.5" />}
-          Add Task
-        </button>
-      </form>
-
       {/* Bulk action bar — appears when rows are selected. */}
       {selected.size > 0 && (
         <div className="px-3 py-2 border-b bg-brand-cyan-light/20 flex items-center gap-2 flex-wrap text-xs">
@@ -234,6 +190,9 @@ export function TaskList({ initialRows, currentUserId }: TaskListProps) {
             <RmSelector value={null} onChange={(id) => id && runBulk("assign", id)} placeholder="Reassign to…" />
           </div>
           <button onClick={() => runBulk("cancel")} disabled={bulkBusy} className="btn-ghost text-xs py-1 px-2 text-rose-600">Cancel tasks</button>
+          <button onClick={() => setConfirmBulkDelete(true)} disabled={bulkBusy} className="text-xs py-1 px-2.5 rounded-md border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 inline-flex items-center gap-1 font-medium">
+            <Trash2 className="size-3.5" /> Delete
+          </button>
           {bulkBusy && <Loader2 className="size-3.5 animate-spin text-brand-cyan" />}
           <button onClick={() => setSelected(new Set())} className="ml-auto text-muted-foreground hover:underline">Clear</button>
         </div>
@@ -304,6 +263,21 @@ export function TaskList({ initialRows, currentUserId }: TaskListProps) {
                   className="size-3.5 rounded border-slate-300 flex-shrink-0"
                   aria-label="Select task"
                 />
+
+                {(row.investorName || row.leadName) && (
+                  <Avatar
+                    src={
+                      row.investorName && t.relatedInvestorId && row.investorAvatarUrl
+                        ? `/api/investors/${t.relatedInvestorId}/avatar`
+                        : row.leadName && t.relatedLeadId && row.leadAvatarUrl
+                          ? `/api/leads/${t.relatedLeadId}/avatar`
+                          : null
+                    }
+                    name={row.investorName ?? row.leadName}
+                    size={30}
+                    className="flex-shrink-0"
+                  />
+                )}
 
                 <div className="flex-1 min-w-0">
                   <div
@@ -408,7 +382,7 @@ export function TaskList({ initialRows, currentUserId }: TaskListProps) {
                     deleteUrl={`/api/tasks/${t.id}`}
                     itemLabel="task"
                     itemName={t.title}
-                    verb="Cancel"
+                    verb="Delete"
                   />
                 </div>
               </li>
@@ -430,6 +404,17 @@ export function TaskList({ initialRows, currentUserId }: TaskListProps) {
           onUpdate={handleUpdate}
         />
       )}
+
+      <ConfirmDialog
+        open={confirmBulkDelete}
+        title="Delete tasks?"
+        message={`Move ${selected.size} selected task${selected.size === 1 ? "" : "s"} to Trash? You can restore ${selected.size === 1 ? "it" : "them"} from the Trash bin.`}
+        confirmLabel="Delete"
+        tone="danger"
+        busy={bulkBusy}
+        onConfirm={() => runBulk("delete")}
+        onCancel={() => setConfirmBulkDelete(false)}
+      />
     </div>
   );
 }

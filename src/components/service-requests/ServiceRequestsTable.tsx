@@ -15,6 +15,7 @@ import { useRouter } from "next/navigation";
 import { Loader2, X, UserCog, RefreshCw, Ban } from "lucide-react";
 import { RowActions } from "@/components/common/RowActions";
 import { RmSelector } from "@/components/common/RmSelector";
+import { Avatar } from "@/components/ui/Avatar";
 import { formatDate } from "@/lib/utils";
 
 const TYPE_LABEL: Record<string, string> = {
@@ -129,9 +130,9 @@ export function ServiceRequestsTable({ rows }: { rows: any[] }) {
         </div>
       )}
 
-      <div className="overflow-x-auto">
+      <div className="table-scroll">
         <table className="w-full text-sm" data-table="service-requests">
-          <thead className="text-xs text-muted-foreground border-b">
+          <thead className="text-xs text-muted-foreground border-b sticky top-0 z-10 bg-card">
             <tr>
               <th className="px-3 py-2 w-8"><input type="checkbox" checked={allSelected} onChange={toggleAll} className="size-3.5 rounded" aria-label="Select all" /></th>
               <th data-col="ticket" className="text-left px-1 py-2 font-medium">Ticket</th>
@@ -157,9 +158,12 @@ export function ServiceRequestsTable({ rows }: { rows: any[] }) {
                     <Link href={`/dashboard/service-requests/${sr.id}`} className="hover:underline text-brand-cyan-deep">{sr.ticket_no}</Link>
                   </td>
                   <td data-col="client" className="py-3 whitespace-nowrap">
-                    {sr.investor_id ? (
-                      <Link href={`/dashboard/investors/${sr.investor_id}`} className="hover:underline">{sr.investor_name}</Link>
-                    ) : (sr.investor_name ?? "—")}
+                    <div className="flex items-center gap-2">
+                      <Avatar src={sr.investor_id && sr.investor_avatar_url ? `/api/investors/${sr.investor_id}/avatar` : null} name={sr.investor_name} size={26} />
+                      {sr.investor_id ? (
+                        <Link href={`/dashboard/investors/${sr.investor_id}`} className="hover:underline">{sr.investor_name}</Link>
+                      ) : (<span>{sr.investor_name ?? "—"}</span>)}
+                    </div>
                   </td>
                   <td data-col="type" className="py-3 text-xs">
                     <Link href={`/dashboard/service-requests/${sr.id}`} className="font-medium hover:underline">{TYPE_LABEL[sr.type] ?? sr.type}</Link>

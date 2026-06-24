@@ -50,6 +50,9 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
       expiresInDays: 365,
       createdBy: session.userId,
     });
+    // Share the portfolio STATEMENT PDF (same document as "Download statement"),
+    // served login-free against this token — not the lightweight web view.
+    const pdfUrl = `${url}/pdf`;
 
     let waUrl: string | null = null;
     const phone = normalizePhone(ctx.inv.phone);
@@ -57,8 +60,8 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
       const text = [
         `Hi ${ctx.inv.name ?? ""},`,
         "",
-        "You can view your live portfolio anytime here (no login needed):",
-        url,
+        "Here is your latest portfolio statement (no login needed):",
+        pdfUrl,
         "",
         `— ${ctx.tenant?.displayName ?? ""}`,
         `ARN ${ctx.tenant?.arn ?? "—"}`,
@@ -66,7 +69,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
       waUrl = `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
     }
 
-    return NextResponse.json({ ok: true, url, waUrl });
+    return NextResponse.json({ ok: true, url: pdfUrl, waUrl });
   } catch (err: any) {
     return handleApiError(err);
   }

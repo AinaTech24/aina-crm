@@ -55,6 +55,13 @@ const Body = z.object({
   callBackAt: z.string().optional(),
   /** When moving to "ucc_activated", store this UCC on the client (investor). */
   uccNumber: z.string().max(40).optional(),
+  /** When moving to "mandate_activated", record the active mandate on the
+   *  client: which bank it's on, the max debit amount, and the approval ref. */
+  mandateBank: z.string().max(140).optional(),
+  mandateIfsc: z.string().max(20).optional(),
+  mandateAccountMasked: z.string().max(40).optional(),
+  mandateAmount: z.number().nonnegative().optional(),
+  mandateRef: z.string().max(60).optional(),
 });
 
 /** Store the activated UCC on the client master (the lead's converted investor,
@@ -64,6 +71,30 @@ async function storeClientUcc(tx: any, tenantId: string, leadId: string, ucc: st
   if (!v) return;
   await tx.execute(sql`
     UPDATE investors SET bse_ucc_code = ${v}, updated_at = now()
+    WHERE tenant_id = ${tenantId}::uuid
+      AND (id = (SELECT converted_investor_id FROM leads WHERE id = ${leadId}::uuid AND tenant_id = ${tenantId}::uuid)
+           OR id = ${leadId}::uuid)
+  `);
+}
+
+/** Store the activated SIP mandate on the client master: status → active, the
+ *  approval reference, the max debit amount, and the bank it's drawn on (which
+ *  also fills the client's primary bank columns). */
+async function storeClientMandate(
+  tx: any,
+  tenantId: string,
+  leadId: string,
+  m: { bank?: string; ifsc?: string; masked?: string; amount?: number; ref?: string }
+): Promise<void> {
+  await tx.execute(sql`
+    UPDATE investors SET
+      mandate_status = 'active',
+      mandate_ref_no = COALESCE(${m.ref ?? null}, mandate_ref_no),
+      mandate_amount = COALESCE(${m.amount ?? null}, mandate_amount),
+      bank_name = COALESCE(${m.bank ?? null}, bank_name),
+      bank_ifsc = COALESCE(${m.ifsc ?? null}, bank_ifsc),
+      bank_account_masked = COALESCE(${m.masked ?? null}, bank_account_masked),
+      updated_at = now()
     WHERE tenant_id = ${tenantId}::uuid
       AND (id = (SELECT converted_investor_id FROM leads WHERE id = ${leadId}::uuid AND tenant_id = ${tenantId}::uuid)
            OR id = ${leadId}::uuid)
@@ -132,7 +163,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!parsed.success) {
       return NextResponse.json({ error: "invalid body", issues: parsed.error.issues }, { status: 400 });
     }
-    const { remarks, force, fields, callBackAt, uccNumber } = parsed.data;
+    const { remarks, force, fields, callBackAt, uccNumber, mandateBank, mandateIfsc, mandateAccountMasked, mandateAmount, mandateRef } = parsed.data;
 
     // Validate the target stage. normalizeLeadStage() falls back to "new" for
     // unrecognized input — detect that silent coercion and 400, instead of
@@ -186,6 +217,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         }
         if (toStageKey === "ucc_activated" && uccNumber) {
           await storeClientUcc(tx, session.tenantId, id, uccNumber);
+        }
+        if (toStageKey === "mandate_activated") {
+          await storeClientMandate(tx, session.tenantId, id, {
+            bank: mandateBank?.trim() || undefined,
+            ifsc: mandateIfsc?.trim() || undefined,
+            masked: mandateAccountMasked?.trim() || undefined,
+            amount: mandateAmount,
+            ref: mandateRef?.trim() || undefined,
+          });
         }
         if (toStageKey === "mandate_reject") {
           await createRedoMandateTask(tx, session.tenantId, id, session.userId);

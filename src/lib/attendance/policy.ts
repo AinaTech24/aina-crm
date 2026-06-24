@@ -35,6 +35,69 @@ export function isWeekOff(d: Date): boolean {
   return d.getDay() === 0;
 }
 
+/** Work-hours policy used to flag late-in / early-out + half days. */
+export type AttendancePolicy = {
+  workStart: string; // "HH:MM"
+  workEnd: string; // "HH:MM"
+  graceMinutes: number;
+  halfDayMinutes: number;
+  fullDayMinutes: number;
+  weekOffDays: number[];
+};
+
+export const DEFAULT_ATTENDANCE_POLICY: AttendancePolicy = {
+  workStart: "10:00",
+  workEnd: "18:30",
+  graceMinutes: 10,
+  halfDayMinutes: 240,
+  fullDayMinutes: 480,
+  weekOffDays: [0],
+};
+
+/** Is weekday `dow` (0=Sun) a weekly off under this policy? */
+export function isWeekOffDow(dow: number, weekOffDays: number[]): boolean {
+  return (weekOffDays ?? [0]).includes(dow);
+}
+
+/**
+ * Late-in / early-out flags for one day. Wall times are interpreted in IST
+ * (+05:30) — this is an India product, so the explicit offset keeps the result
+ * independent of the server's timezone.
+ */
+export function computeAttendanceFlags(
+  attendanceDate: string, // "YYYY-MM-DD"
+  clockInAt: Date | string | null | undefined,
+  clockOutAt: Date | string | null | undefined,
+  policy: AttendancePolicy
+): { isLate: boolean; lateMinutes: number; isEarlyOut: boolean; earlyMinutes: number } {
+  const inAt = clockInAt ? new Date(clockInAt) : null;
+  const outAt = clockOutAt ? new Date(clockOutAt) : null;
+  const grace = (policy.graceMinutes ?? 0) * 60000;
+  const expectedStart = new Date(`${attendanceDate}T${policy.workStart}:00+05:30`);
+  const expectedEnd = new Date(`${attendanceDate}T${policy.workEnd}:00+05:30`);
+
+  let isLate = false;
+  let lateMinutes = 0;
+  if (inAt && !isNaN(expectedStart.getTime())) {
+    const over = inAt.getTime() - (expectedStart.getTime() + grace);
+    if (over > 0) {
+      isLate = true;
+      lateMinutes = Math.round(over / 60000);
+    }
+  }
+
+  let isEarlyOut = false;
+  let earlyMinutes = 0;
+  if (outAt && !isNaN(expectedEnd.getTime())) {
+    const under = expectedEnd.getTime() - grace - outAt.getTime();
+    if (under > 0) {
+      isEarlyOut = true;
+      earlyMinutes = Math.round(under / 60000);
+    }
+  }
+  return { isLate, lateMinutes, isEarlyOut, earlyMinutes };
+}
+
 /** Worked minutes between clock-in and clock-out (clamped ≥ 0). */
 export function minutesBetween(clockIn: Date, clockOut: Date): number {
   const ms = clockOut.getTime() - clockIn.getTime();

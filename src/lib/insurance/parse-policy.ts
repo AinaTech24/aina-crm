@@ -217,6 +217,78 @@ export function parseInsurancePolicy(rawText: string, opts: { ocr?: boolean } = 
   const panMatch = text.match(PAN_RE);
   const proposerPan = panMatch ? panMatch[1] : null;
 
+  // ── Extended fields → details JSONB (auto-fill the new policyholder / agency /
+  // receipt / 80-D sections on the form). Best-effort, modest confidence.
+  const emailMatch = text.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/);
+  const mobileVal =
+    grabNear(text, ["mobile\\s*(?:number|no)", "phone\\s*no", "contact\\s*no"], /(\b[6-9]\d{9}\b)/) ||
+    (text.match(/\b[6-9]\d{9}\b/)?.[0] ?? null);
+  const uinVal = text.match(/\bUIN\s*:?\s*([A-Z0-9]{10,})/i)?.[1] ?? null;
+  const customerId = grabNear(text, ["customer\\s*id", "premium\\s*payer\\s*id"], /([0-9A-Z]{5,15})/);
+  const holderName = cleanName(grabNear(text, ["insured\\s*name", "name\\s*:", "proposer\\s*name"], /([A-Za-z][A-Za-z .]{2,40})/));
+  const addrLine1 = grabNear(text, ["line1", "address-1", "proposer\\s*address", "insured\\s*address", "\\baddress\\b"], /([A-Za-z0-9][A-Za-z0-9 ,.'/\-]{6,80})/);
+  const city = grabNear(text, ["\\bcity\\b"], /([A-Za-z][A-Za-z .]{2,30})/);
+  const stateVal = grabNear(text, ["\\bstate\\b"], /([0-9]{0,3}\s*-?\s*[A-Za-z][A-Za-z .]{2,30})/);
+  const postcode = grabNear(text, ["post\\s*code", "pin\\s*code", "pincode"], /(\d{6})/);
+  const agencyCode = grabNear(text, ["agency\\s*code"], /([0-9A-Z]{4,15})/);
+  const agencyName = cleanName(grabNear(text, ["agency\\s*name"], /([A-Za-z][A-Za-z .]{2,40})/));
+  const receiptNo = grabNear(text, ["receipt\\s*(?:number|no)"], /([0-9][0-9A-Z\-]{5,25})/);
+  const receiptDate = toIso(grabNear(text, ["receipt\\s*date", "receipt\\s*number.*?date"], DATE_RE));
+  const businessChannel = grabNear(text, ["business\\s*channel"], /([A-Za-z][A-Za-z0-9 ()\-]{3,40})/);
+  const grossPremium = toAmount(grabNear(text, ["gross\\s*premium", "total\\s*amount", "total\\s*invoice\\s*value"], AMOUNT_RE));
+  const financialYear = text.match(/financial\s*year[\s\S]{0,40}?(\d{4}\s*[-/]\s*\d{2,4})/i)?.[1]?.replace(/\s/g, "") ?? null;
+  const eightyDAmount = toAmount(grabNear(text, ["80[\\s-]?d", "financial\\s*year"], /([0-9][0-9,]*\.?[0-9]{0,2})/));
+
+  const extraDetails: Record<string, unknown> = {};
+  const put = (k: string, v: unknown) => {
+    if (v !== null && v !== undefined && v !== "") {
+      extraDetails[k] = v;
+      conf[k] = base - 0.15;
+    }
+  };
+  put("holderName", holderName);
+  put("customerId", customerId);
+  put("uin", uinVal);
+  put("email", emailMatch ? emailMatch[0] : null);
+  put("mobile", mobileVal);
+  put("addressLine1", addrLine1);
+  put("city", city);
+  put("state", stateVal ? stateVal.replace(/^\d+\s*-?\s*/, "").trim() : null);
+  put("postalCode", postcode);
+  put("country", addrLine1 || city ? "India" : null);
+  put("agencyCode", agencyCode);
+  put("agencyName", agencyName);
+  put("agencyContact", mobileVal);
+  put("agencyEmail", emailMatch ? emailMatch[0] : null);
+  put("receiptNo", receiptNo);
+  put("receiptDate", receiptDate);
+  put("businessChannel", businessChannel);
+  put("grossPremium", grossPremium);
+  put("financialYear", financialYear);
+  put("eightyDAmount", eightyDAmount);
+
+  // Best-effort insured-members table → details.insuredMembers[]. Conservative:
+  // only emits a row when it sees Name + Customer-ID + Gender + Relation in
+  // sequence (common floater layout). DOB/Age are often line-wrapped in the text
+  // layer, so they're left for the RM to confirm in the form's editable table.
+  const members: Array<Record<string, string>> = [];
+  const seen = new Set<string>();
+  const flat = text.replace(/\n/g, " ");
+  const memberRe =
+    /([A-Z][A-Za-z][A-Za-z .]{2,38}?)\s+((?:PI\d{6,9}|\d{7,8}))\b[\s\S]{0,60}?\b(Male|Female)\b[\s\S]{0,60}?\b(Self|Spouse|Son|Daughter|Father|Mother|Wife|Husband|Brother|Sister)\b/gi;
+  let mm: RegExpExecArray | null;
+  while ((mm = memberRe.exec(flat)) && members.length < 20) {
+    const name = cleanName(mm[1]);
+    const cid = mm[2];
+    if (!name || seen.has(cid)) continue;
+    seen.add(cid);
+    members.push({ name, customerId: cid, gender: mm[3], relation: mm[4] });
+  }
+  if (members.length) {
+    extraDetails.insuredMembers = members;
+    conf.insuredMembers = base - 0.2;
+  }
+
   // ── confidence + warnings ────────────────────────────────────────────────
   const confVals = Object.values(conf);
   const overallConfidence = confVals.length ? Number((confVals.reduce((a, b) => a + b, 0) / confVals.length).toFixed(2)) : 0;
@@ -247,7 +319,7 @@ export function parseInsurancePolicy(rawText: string, opts: { ocr?: boolean } = 
     businessType: null,
     proposerName: proposerName || null,
     proposerPan,
-    details: {},
+    details: extraDetails,
     fieldConfidence: conf,
     overallConfidence,
     warnings,

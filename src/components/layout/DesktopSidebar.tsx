@@ -36,6 +36,27 @@ export function DesktopSidebar({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // Pages that need maximum canvas (e.g. the email template designer) can ask the
+  // sidebar to collapse on mount and restore the user's saved pin on unmount — via
+  // window events, so the user's persisted preference is never overwritten.
+  useEffect(() => {
+    const collapse = () => setPinned("closed");
+    const restore = () => {
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        setPinned(saved === "open" ? "open" : "closed");
+      } catch {
+        setPinned("closed");
+      }
+    };
+    window.addEventListener("aina:sidebar-collapse", collapse);
+    window.addEventListener("aina:sidebar-restore", restore);
+    return () => {
+      window.removeEventListener("aina:sidebar-collapse", collapse);
+      window.removeEventListener("aina:sidebar-restore", restore);
+    };
+  }, []);
+
   function toggle() {
     setPinned((prev) => {
       const next = prev === "open" ? "closed" : "open";

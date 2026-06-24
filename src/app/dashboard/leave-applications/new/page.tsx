@@ -4,6 +4,7 @@ import { ChevronLeft, CalendarOff } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { currentFyStart } from "@/lib/leave/policy";
+import { loadLeaveEntitlements } from "@/lib/leave/settings";
 import { LeaveForm } from "@/components/leave/LeaveForm";
 
 export const dynamic = "force-dynamic";
@@ -12,7 +13,7 @@ export default async function NewLeavePage() {
   const session = await requireSession();
   const fyStart = currentFyStart();
 
-  const { employees, usage } = await withTenant(session.tenantId, async (tx) => {
+  const { employees, usage, tenantEntitlements } = await withTenant(session.tenantId, async (tx) => {
     const emp = await tx.execute(sql`
       SELECT id, name, custom_leave_entitlements FROM users
       WHERE tenant_id = ${session.tenantId}::uuid AND status = 'active'
@@ -24,7 +25,8 @@ export default async function NewLeavePage() {
       WHERE tenant_id = ${session.tenantId}::uuid AND status = 'approved' AND from_date >= ${fyStart}::date
       GROUP BY employee_user_id, leave_type
     `);
-    return { employees: emp.rows as any[], usage: use.rows as any[] };
+    const tenantEntitlements = await loadLeaveEntitlements(tx, session.tenantId);
+    return { employees: emp.rows as any[], usage: use.rows as any[], tenantEntitlements };
   });
 
   const isManager = session.roles.some((r) => ["owner", "branch_head"].includes(r));
@@ -51,6 +53,7 @@ export default async function NewLeavePage() {
         usage={usage}
         currentUserId={session.userId}
         isManager={isManager}
+        tenantEntitlements={tenantEntitlements}
       />
     </div>
   );

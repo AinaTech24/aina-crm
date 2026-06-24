@@ -33,6 +33,8 @@ const CreateBody = z.object({
   fileName: z.string().max(300).optional(),
   fileSizeBytes: z.number().int().nonnegative().optional(),
   mimeType: z.string().max(120).optional(),
+  width: z.number().int().nonnegative().optional(),
+  height: z.number().int().nonnegative().optional(),
   thumbnailUrl: z.string().url().optional(),
   tags: z.array(z.string().max(50)).optional(),
   brandingConfig: z
@@ -65,9 +67,15 @@ export async function GET() {
             .where(assetVisibleTo(session.tenantId))
             .orderBy(desc(contentLibraryAssets.createdAt))
         );
+    const now = new Date();
     const visible = platformAdmin
       ? rows
-      : rows.filter((r) => r.isActive && (!r.expireAt || new Date(r.expireAt) > new Date()));
+      : rows.filter(
+          (r) =>
+            r.isActive &&
+            (!r.publishAt || new Date(r.publishAt) <= now) &&
+            (!r.expireAt || new Date(r.expireAt) > now)
+        );
     // For non-admins, scrub the raw S3 URLs out of image assets — MFDs
     // can only access images via /api/content-library/[id]/branded.
     const safe = platformAdmin
@@ -123,8 +131,11 @@ export async function POST(req: NextRequest) {
           category: body.category,
           fileUrl: body.fileUrl,
           fileName: body.fileName ?? null,
-          fileSizeBytes: body.fileSizeBytes != null ? String(body.fileSizeBytes) : null,
+          fileSizeBytes: body.fileSizeBytes ?? null,
           mimeType: body.mimeType ?? null,
+          width: body.width ?? null,
+          height: body.height ?? null,
+          source: "platform",
           thumbnailUrl: body.thumbnailUrl ?? body.fileUrl,
           tags: body.tags ?? [],
           brandingConfig: body.brandingConfig ?? null,
@@ -145,8 +156,11 @@ export async function POST(req: NextRequest) {
           category: body.category,
           fileUrl: body.fileUrl,
           fileName: body.fileName ?? null,
-          fileSizeBytes: body.fileSizeBytes != null ? String(body.fileSizeBytes) : null,
+          fileSizeBytes: body.fileSizeBytes ?? null,
           mimeType: body.mimeType ?? null,
+          width: body.width ?? null,
+          height: body.height ?? null,
+          source: "tenant",
           thumbnailUrl: body.thumbnailUrl ?? body.fileUrl,
           tags: body.tags ?? [],
           brandingConfig: body.brandingConfig ?? null,

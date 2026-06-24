@@ -53,6 +53,15 @@ type ApiResult = {
   missingPan?: number;
   summary?: Summary;
 };
+type Progress = { phase: string; pct: number; done?: number; total?: number; etaSec: number | null };
+
+function fmtEta(sec: number | null): string {
+  if (sec == null) return "estimating…";
+  if (sec < 60) return `~${Math.max(1, sec)}s left`;
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return s ? `~${m}m ${s}s left` : `~${m}m left`;
+}
 
 export function RtaImporter() {
   const [rta, setRta] = useState("");
@@ -63,6 +72,7 @@ export function RtaImporter() {
   const [busy, setBusy] = useState<null | "preview" | "import">(null);
   const [result, setResult] = useState<ApiResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [progress, setProgress] = useState<Progress | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const fileTypeOptions = rta ? FILE_TYPES[rta] ?? [] : [];
@@ -71,6 +81,7 @@ export function RtaImporter() {
   function reset() {
     setResult(null);
     setError(null);
+    setProgress(null);
   }
 
   async function run(dryRun: boolean) {
@@ -79,17 +90,84 @@ export function RtaImporter() {
     setBusy(dryRun ? "preview" : "import");
     reset();
     try {
-      const fd = new FormData();
-      fd.append("file", file!);
-      fd.append("rta", rta);
-      fd.append("reportType", fileType);
-      if (password) fd.append("password", password);
-      fd.append("dryRun", dryRun ? "1" : "0");
-      fd.append("assignToMe", assignToMe ? "1" : "0");
-      const res = await fetch("/api/rta/import", { method: "POST", body: fd });
-      const json: ApiResult = await res.json();
-      if (!res.ok || json.error) setError(json.error ?? `Import failed (${res.status}).`);
-      else setResult(json);
+      const contentType = file!.type || "application/octet-stream";
+      // 1) Presigned URL → 2) PUT the file DIRECTLY to S3 (bypasses the app body
+      // limit) → 3) enqueue the parse for the worker (large CAMS R9 / KFintech
+      // masters parse in the isolated worker, never blocking/OOM-ing the site)
+      // → 4) poll for the result. Preview (dryRun) runs the same path read-only.
+      const presRes = await fetch("/api/rta/import-url", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ filename: file!.name, contentType }),
+      });
+      const pres = await presRes.json();
+      if (!presRes.ok) {
+        setError(pres.error ?? "Could not get an upload URL.");
+        return;
+      }
+      const putRes = await fetch(pres.url, { method: "PUT", body: file!, headers: { "content-type": contentType } });
+      if (!putRes.ok) {
+        setError(`Direct upload to storage failed (HTTP ${putRes.status}).`);
+        return;
+      }
+      const enqRes = await fetch("/api/rta/import-async", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          key: pres.key,
+          filename: file!.name,
+          rta,
+          reportType: fileType,
+          password: password || undefined,
+          dryRun,
+          assignToMe,
+        }),
+      });
+      const enq = await enqRes.json();
+      if (!enqRes.ok || !enq.jobId) {
+        setError(enq.error ?? "Could not start the import.");
+        return;
+      }
+
+      const jobId: string = enq.jobId;
+      const startedAt = Date.now();
+      const TIMEOUT_MS = 10 * 60 * 1000; // big masters take a while on this box
+      for (;;) {
+        await new Promise((r) => setTimeout(r, 2000));
+        let st: any = null;
+        try {
+          const sres = await fetch(`/api/rta/import-status?jobId=${encodeURIComponent(jobId)}`, { cache: "no-store" });
+          if (sres.ok) st = await sres.json();
+        } catch {
+          // transient — keep polling
+        }
+        if (st?.state === "completed") {
+          setProgress(null);
+          const r = st.result as ApiResult | null;
+          if (!r || r.ok === false) setError(r?.error ?? "Import failed.");
+          else setResult(r);
+          return;
+        }
+        if (st?.state === "failed") {
+          setProgress(null);
+          setError(st?.error ?? "Import failed.");
+          return;
+        }
+        // Live progress: phase + pct from the worker; derive an ETA from elapsed.
+        if (st?.progress && typeof st.progress.pct === "number") {
+          const p = st.progress;
+          const elapsed = Date.now() - startedAt;
+          const etaSec = p.pct > 3 ? Math.round((elapsed / p.pct) * (100 - p.pct) / 1000) : null;
+          setProgress({ phase: p.phase ?? "Working", pct: p.pct, done: p.done, total: p.total, etaSec });
+        } else if (!progress) {
+          setProgress({ phase: "Queued", pct: 2, etaSec: null });
+        }
+        // waiting | active | delayed | unknown → keep polling until the timeout
+        if (Date.now() - startedAt > TIMEOUT_MS) {
+          setError("Still processing in the background — large files can take a few minutes. Check back shortly.");
+          return;
+        }
+      }
     } catch (e: any) {
       setError(e?.message ?? "Upload failed.");
     } finally {
@@ -230,6 +308,36 @@ export function RtaImporter() {
           </div>
         </Step>
       </div>
+
+      {busy && progress && (
+        <div className="card-surface p-5 space-y-3">
+          <div className="flex items-center justify-between gap-3 text-sm">
+            <span className="inline-flex items-center gap-2 font-medium">
+              <Loader2 className="size-4 animate-spin text-brand-cyan" />
+              {progress.phase}
+              {progress.total ? (
+                <span className="text-muted-foreground font-normal">
+                  {progress.done != null
+                    ? ` · ${progress.done.toLocaleString("en-IN")} / ${progress.total.toLocaleString("en-IN")}`
+                    : ` · ${progress.total.toLocaleString("en-IN")} rows`}
+                </span>
+              ) : null}
+            </span>
+            <span className="tabular-nums text-muted-foreground">
+              {progress.pct}% · {fmtEta(progress.etaSec)}
+            </span>
+          </div>
+          <div className="h-2 rounded-full bg-secondary overflow-hidden">
+            <div
+              className="h-full bg-brand-cyan transition-[width] duration-500 ease-out"
+              style={{ width: `${Math.min(100, Math.max(2, progress.pct))}%` }}
+            />
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            Importing in the background — you can keep this open to watch progress, or close it and check the imports list later.
+          </p>
+        </div>
+      )}
 
       {error && (
         <div className="card-surface p-4 border-rose-200 bg-rose-50/50 flex items-start gap-2 text-sm text-rose-700">

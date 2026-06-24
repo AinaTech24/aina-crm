@@ -29,16 +29,22 @@ export async function POST() {
     const session = await requireSession();
     requireCap(session.roles, "compliance.edit");
 
-    // 0. Is the shared AMFI universe present? It's the source the per-tenant
-    //    catalog is copied from.
-    const navCount = await withTenant(session.tenantId, async (tx) => {
-      const r = await tx.execute(sql`SELECT COUNT(*)::int AS n FROM scheme_nav`);
-      return Number((r.rows[0] as any)?.n ?? 0);
+    // 0. Is the shared AMFI universe present AND carrying the scheme-type/category
+    //    metadata? A catalog seeded before that metadata existed has rows but no
+    //    scheme_type — re-fetch so the new fields (type/category/reinvest-ISIN)
+    //    backfill rather than staying NULL until the nightly NAV worker runs.
+    const { n: navCount, typed } = await withTenant(session.tenantId, async (tx) => {
+      const r = await tx.execute(
+        sql`SELECT COUNT(*)::int AS n, COUNT(scheme_type)::int AS typed FROM scheme_nav`
+      );
+      const row = r.rows[0] as any;
+      return { n: Number(row?.n ?? 0), typed: Number(row?.typed ?? 0) };
     });
 
-    // 0b. Empty → fetch the live AMFI feed now (network OUTSIDE the transaction).
+    // 0b. Empty OR un-enriched → fetch the live AMFI feed now (network OUTSIDE
+    //     the transaction). The upsert below then backfills the new columns.
     let navRecords: NavRecord[] = [];
-    if (navCount === 0) {
+    if (navCount === 0 || typed === 0) {
       const body = await fetchNavAll();
       navRecords = parseNavAll(body);
     }
@@ -52,17 +58,20 @@ export async function POST() {
           const batch = navRecords.slice(i, i + BATCH);
           const values = sql.join(
             batch.map(
-              (r) => sql`(${r.schemeCode}, ${r.isin}, ${r.schemeName}, ${r.amcName}, ${r.nav}, ${r.navDate}, now())`
+              (r) => sql`(${r.schemeCode}, ${r.isin}, ${r.isinReinvest}, ${r.schemeName}, ${r.amcName}, ${r.schemeType}, ${r.schemeCategory}, ${r.nav}, ${r.navDate}, now())`
             ),
             sql`, `
           );
           await tx.execute(sql`
-            INSERT INTO scheme_nav (scheme_code, isin, scheme_name, amc_name, nav, nav_date, updated_at)
+            INSERT INTO scheme_nav (scheme_code, isin, isin_reinvest, scheme_name, amc_name, scheme_type, scheme_category, nav, nav_date, updated_at)
             VALUES ${values}
             ON CONFLICT (scheme_code) DO UPDATE SET
               isin = EXCLUDED.isin,
+              isin_reinvest = EXCLUDED.isin_reinvest,
               scheme_name = EXCLUDED.scheme_name,
               amc_name = EXCLUDED.amc_name,
+              scheme_type = COALESCE(EXCLUDED.scheme_type, scheme_nav.scheme_type),
+              scheme_category = COALESCE(EXCLUDED.scheme_category, scheme_nav.scheme_category),
               nav = EXCLUDED.nav,
               nav_date = EXCLUDED.nav_date,
               updated_at = now()
@@ -84,22 +93,34 @@ export async function POST() {
         ON CONFLICT (tenant_id, code) DO NOTHING
       `);
 
-      // 2. Scheme master — the AMFI universe, with mfapi category + a coarse bucket.
+      // 2. Scheme master — the AMFI universe. Category prefers mfapi's detail but
+      //    falls back to the AMFI section-header category (so the WHOLE universe is
+      //    classified, not just the mfapi-matched subset). plan/option are derived
+      //    from the scheme name; is_closed from the AMFI scheme structure.
       const res = await tx.execute(sql`
         INSERT INTO scheme_master
-          (id, tenant_id, amc_code, scheme_code, scheme_name, category, coarse_category, is_active, created_at, updated_at)
+          (id, tenant_id, amc_code, scheme_code, scheme_name, category, sub_category,
+           coarse_category, plan, "option", is_closed, is_active, created_at, updated_at)
         SELECT gen_random_uuid(), ${session.tenantId}::uuid,
                COALESCE(NULLIF(TRIM(sn.amc_name), ''), m.fund_house, 'Unknown'),
-               sn.scheme_code, sn.scheme_name, m.scheme_category,
+               sn.scheme_code, sn.scheme_name,
+               COALESCE(m.scheme_category, sn.scheme_category),
+               sn.scheme_category,
                CASE
-                 WHEN m.scheme_category ILIKE '%liquid%' OR m.scheme_category ILIKE '%overnight%' OR m.scheme_category ILIKE '%money market%' THEN 'liquid'
-                 WHEN m.scheme_category ILIKE '%hybrid%' OR m.scheme_category ILIKE '%balanced%' THEN 'hybrid'
-                 WHEN m.scheme_category ILIKE '%equity%' OR m.scheme_category ILIKE '%elss%' OR m.scheme_category ILIKE '%index%' THEN 'equity'
-                 WHEN m.scheme_category ILIKE '%debt%' OR m.scheme_category ILIKE '%bond%' OR m.scheme_category ILIKE '%gilt%' OR m.scheme_category ILIKE '%duration%' THEN 'debt'
-                 WHEN m.scheme_category ILIKE '%gold%' OR m.scheme_category ILIKE '%silver%' OR m.scheme_category ILIKE '%commodit%' THEN 'commodity'
-                 WHEN m.scheme_category ILIKE '%international%' OR m.scheme_category ILIKE '%global%' THEN 'international'
+                 WHEN COALESCE(m.scheme_category, sn.scheme_category) ILIKE '%liquid%' OR COALESCE(m.scheme_category, sn.scheme_category) ILIKE '%overnight%' OR COALESCE(m.scheme_category, sn.scheme_category) ILIKE '%money market%' THEN 'liquid'
+                 WHEN COALESCE(m.scheme_category, sn.scheme_category) ILIKE '%hybrid%' OR COALESCE(m.scheme_category, sn.scheme_category) ILIKE '%balanced%' THEN 'hybrid'
+                 WHEN COALESCE(m.scheme_category, sn.scheme_category) ILIKE '%equity%' OR COALESCE(m.scheme_category, sn.scheme_category) ILIKE '%elss%' OR COALESCE(m.scheme_category, sn.scheme_category) ILIKE '%index%' THEN 'equity'
+                 WHEN COALESCE(m.scheme_category, sn.scheme_category) ILIKE '%debt%' OR COALESCE(m.scheme_category, sn.scheme_category) ILIKE '%bond%' OR COALESCE(m.scheme_category, sn.scheme_category) ILIKE '%gilt%' OR COALESCE(m.scheme_category, sn.scheme_category) ILIKE '%duration%' THEN 'debt'
+                 WHEN COALESCE(m.scheme_category, sn.scheme_category) ILIKE '%gold%' OR COALESCE(m.scheme_category, sn.scheme_category) ILIKE '%silver%' OR COALESCE(m.scheme_category, sn.scheme_category) ILIKE '%commodit%' THEN 'commodity'
+                 WHEN COALESCE(m.scheme_category, sn.scheme_category) ILIKE '%international%' OR COALESCE(m.scheme_category, sn.scheme_category) ILIKE '%global%' THEN 'international'
                  ELSE 'other'
                END,
+               CASE WHEN sn.scheme_name ILIKE '%direct%' THEN 'direct'
+                    WHEN sn.scheme_name ILIKE '%regular%' THEN 'regular' ELSE NULL END,
+               CASE WHEN sn.scheme_name ILIKE '%reinvest%' THEN 'idcw_reinvest'
+                    WHEN sn.scheme_name ILIKE '%idcw%' OR sn.scheme_name ILIKE '%dividend%' OR sn.scheme_name ILIKE '%payout%' THEN 'idcw_payout'
+                    WHEN sn.scheme_name ILIKE '%growth%' THEN 'growth' ELSE NULL END,
+               (sn.scheme_type IS NOT NULL AND sn.scheme_type NOT ILIKE 'open%'),
                true, now(), now()
         FROM scheme_nav sn
         LEFT JOIN mf_schemes m ON m.scheme_code = sn.scheme_code
@@ -107,7 +128,11 @@ export async function POST() {
         ON CONFLICT (tenant_id, amc_code, scheme_code) DO UPDATE
           SET scheme_name = EXCLUDED.scheme_name,
               category = COALESCE(EXCLUDED.category, scheme_master.category),
+              sub_category = COALESCE(EXCLUDED.sub_category, scheme_master.sub_category),
               coarse_category = COALESCE(scheme_master.coarse_category, EXCLUDED.coarse_category),
+              plan = COALESCE(EXCLUDED.plan, scheme_master.plan),
+              "option" = COALESCE(EXCLUDED."option", scheme_master."option"),
+              is_closed = EXCLUDED.is_closed,
               updated_at = now()
       `);
 

@@ -5,21 +5,12 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { formatINR } from "@/lib/utils";
 import { FilterBar } from "@/components/common/FilterBar";
-import { RunReconButton, ReconRowActions } from "@/components/reconciliation/ReconActions";
+import { RunReconButton } from "@/components/reconciliation/ReconActions";
+import { ReconTable } from "@/components/reconciliation/ReconTable";
 
 export const dynamic = "force-dynamic";
 
-const TYPE_LABEL: Record<string, string> = {
-  unit_mismatch: "Unit mismatch",
-  missing_in_crm: "Missing in CRM",
-  missing_in_feed: "Missing in feed",
-  value_drift: "Value drift",
-};
-const SEV_TONE: Record<string, string> = {
-  high: "bg-rose-50 text-rose-700 border-rose-200",
-  medium: "bg-amber-50 text-amber-700 border-amber-200",
-  low: "bg-slate-50 text-slate-600 border-slate-200",
-};
+const PAGE_SIZE = 50;
 
 export default async function ReconciliationPage({
   searchParams,
@@ -31,6 +22,7 @@ export default async function ReconciliationPage({
   const statusFilter = (sp.status ?? "open,investigating").split(",").filter(Boolean);
   const sevFilter = (sp.severity ?? "").split(",").filter(Boolean);
   const typeFilter = (sp.type ?? "").split(",").filter(Boolean);
+  const page = Math.max(1, Number(sp.page ?? "1") || 1);
 
   const data = await withTenant(session.tenantId, async (tx) => {
     const conds: any[] = [sql`e.tenant_id = ${session.tenantId}::uuid`];
@@ -42,15 +34,20 @@ export default async function ReconciliationPage({
       conds.push(sql`e.exception_type IN (${sql.join(typeFilter.map((v) => sql`${v}`), sql`, `)})`);
     const whereSql = sql.join(conds, sql` AND `);
 
+    const totalRes = await tx.execute(sql`
+      SELECT COUNT(*)::int AS c FROM reconciliation_exceptions e WHERE ${whereSql}
+    `);
+    const total = Number((totalRes.rows[0] as any)?.c ?? 0);
+
     const rows = await tx.execute(sql`
-      SELECT e.id, e.investor_id, i.name AS investor_name, e.scheme_code, e.scheme_name,
+      SELECT e.id, e.investor_id, i.name AS investor_name, e.scheme_code, e.scheme_name, e.folio_number,
              e.exception_type, e.severity, e.status,
              e.crm_units, e.feed_units, e.delta_units, e.delta_value, e.detected_at
       FROM reconciliation_exceptions e
       LEFT JOIN investors i ON i.id = e.investor_id
       WHERE ${whereSql}
       ORDER BY (e.severity = 'high') DESC, ABS(COALESCE(e.delta_value,0)) DESC, e.detected_at DESC
-      LIMIT 500
+      LIMIT ${PAGE_SIZE} OFFSET ${(page - 1) * PAGE_SIZE}
     `);
 
     const stats = await tx.execute(sql`
@@ -66,8 +63,17 @@ export default async function ReconciliationPage({
       WHERE tenant_id = ${session.tenantId}::uuid ORDER BY run_at DESC LIMIT 1
     `);
 
-    return { rows: rows.rows as any[], stats: stats.rows[0] as any, lastRun: lastRun.rows[0] as any };
+    return { rows: rows.rows as any[], total, stats: stats.rows[0] as any, lastRun: lastRun.rows[0] as any };
   });
+
+  const totalPages = Math.max(1, Math.ceil(data.total / PAGE_SIZE));
+  const pageHref = (p: number) => {
+    const params = new URLSearchParams(
+      Object.entries(sp).filter(([k, v]) => typeof v === "string" && v && k !== "page") as [string, string][]
+    );
+    params.set("page", String(p));
+    return `?${params.toString()}`;
+  };
 
   return (
     <div className="space-y-5 max-w-6xl">
@@ -77,8 +83,6 @@ export default async function ReconciliationPage({
             <Scale className="size-6 text-brand-cyan" /> Reconciliation
           </h1>
           <p className="text-muted-foreground text-sm">
-            Three-way holdings match — CRM ledger vs RTA/CAS feed vs live NAV. Breaks below are the
-            discrepancies to investigate.
             {data.lastRun?.run_at && (
               <> Last run {new Date(data.lastRun.run_at).toLocaleString("en-IN")}.</>
             )}
@@ -95,7 +99,7 @@ export default async function ReconciliationPage({
       </div>
 
       <FilterBar
-        totalCount={data.rows.length}
+        totalCount={data.total}
         filters={[
           {
             type: "multi",
@@ -131,60 +135,27 @@ export default async function ReconciliationPage({
         ]}
       />
 
-      <div className="card-surface overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-left text-[11px] uppercase tracking-wider text-muted-foreground border-b">
-              <th className="px-3 py-2">Client</th>
-              <th className="px-3 py-2">Scheme</th>
-              <th className="px-3 py-2">Break</th>
-              <th className="px-3 py-2 text-right">CRM units</th>
-              <th className="px-3 py-2 text-right">Feed units</th>
-              <th className="px-3 py-2 text-right">Δ units</th>
-              <th className="px-3 py-2 text-right">Δ value</th>
-              <th className="px-3 py-2">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.rows.length === 0 && (
-              <tr>
-                <td colSpan={8} className="px-3 py-10 text-center text-muted-foreground">
-                  No reconciliation breaks for this filter. Run reconciliation, or import an RTA/CAS feed first.
-                </td>
-              </tr>
+      <ReconTable rows={data.rows} />
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <span>
+            Page {page} of {totalPages} · {data.total} break{data.total === 1 ? "" : "s"}
+          </span>
+          <div className="flex items-center gap-2">
+            {page > 1 && (
+              <Link href={pageHref(page - 1)} className="rounded-md border bg-background px-3 py-1.5 font-medium hover:bg-accent">
+                ← Prev
+              </Link>
             )}
-            {data.rows.map((r) => (
-              <tr key={r.id} className="border-b last:border-0 hover:bg-muted/30">
-                <td className="px-3 py-2">
-                  {r.investor_id ? (
-                    <Link href={`/dashboard/investors/${r.investor_id}`} className="text-brand-cyan hover:underline">
-                      {r.investor_name ?? "—"}
-                    </Link>
-                  ) : (
-                    "—"
-                  )}
-                </td>
-                <td className="px-3 py-2">
-                  <div className="font-medium">{r.scheme_name ?? r.scheme_code ?? "—"}</div>
-                  <div className="text-[11px] text-muted-foreground font-mono">{r.scheme_code}</div>
-                </td>
-                <td className="px-3 py-2">
-                  <span className={`inline-block rounded-md border px-2 py-0.5 text-[11px] ${SEV_TONE[r.severity] ?? SEV_TONE.low}`}>
-                    {TYPE_LABEL[r.exception_type] ?? r.exception_type}
-                  </span>
-                </td>
-                <td className="px-3 py-2 text-right tabular-nums">{fmtUnits(r.crm_units)}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{fmtUnits(r.feed_units)}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{fmtUnits(r.delta_units)}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{formatINR(Math.abs(Number(r.delta_value ?? 0)))}</td>
-                <td className="px-3 py-2">
-                  <ReconRowActions id={r.id} status={r.status} />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            {page < totalPages && (
+              <Link href={pageHref(page + 1)} className="rounded-md border bg-background px-3 py-1.5 font-medium hover:bg-accent">
+                Next →
+              </Link>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -197,10 +168,4 @@ function Kpi({ label, value, tone }: { label: string; value: string | number; to
       <div className={`text-xl font-bold ${color}`}>{value}</div>
     </div>
   );
-}
-
-function fmtUnits(n: any): string {
-  const v = Number(n ?? 0);
-  if (!isFinite(v)) return "—";
-  return v.toLocaleString("en-IN", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
 }

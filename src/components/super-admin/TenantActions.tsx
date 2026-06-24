@@ -57,13 +57,13 @@ export function TenantActions({
           <Pause className="size-3.5" /> Suspend
         </button>
       )}
-      {!isActive && !isCancelled && (
+      {!isActive && (
         <button
           onClick={() => call("activate")}
           disabled={busy}
           className="rounded-md border px-3 py-1.5 text-sm flex items-center gap-1.5 text-emerald-700 hover:bg-emerald-50"
         >
-          <Play className="size-3.5" /> Activate
+          <Play className="size-3.5" /> {isCancelled ? "Reactivate" : "Activate"}
         </button>
       )}
       <button

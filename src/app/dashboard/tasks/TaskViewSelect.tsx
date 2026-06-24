@@ -1,14 +1,13 @@
 "use client";
 
 /**
- * View switcher for the Tasks page — a branded custom dropdown (replaces the old
- * row of tabs). Sets ?view=<key> while PRESERVING the other query params
- * (search, status, priority, sort…) so "Assigned to me / by me" compose with the
+ * View switcher for the Tasks page — a segmented TAB bar (All / Assigned to me /
+ * Assigned by me / Kanban board). Sets ?view=<key> while PRESERVING the other
+ * query params (search, status, priority, sort…) so the tabs compose with the
  * active filters instead of resetting the page.
  */
 
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
-import { Select } from "@/components/ui/Select";
 
 const VIEWS = [
   { value: "", label: "All tasks" },
@@ -22,19 +21,44 @@ export function TaskViewSelect({ current }: { current: string }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  function onChange(v: string) {
+  function go(v: string) {
+    if (v === current) return;
     const params = new URLSearchParams(searchParams.toString());
     if (v) params.set("view", v);
     else params.delete("view");
     // Re-scoping restarts from the first page of the new result set.
     params.delete("page");
+    // The kanban's columns ARE the statuses, so a lingering status/due filter
+    // (e.g. from clicking the "Open" / "Overdue" stat cards) would collapse the
+    // board to one column. Clear them when entering the board.
+    if (v === "kanban") {
+      params.delete("status");
+      params.delete("due");
+    }
     const qs = params.toString();
     router.push(qs ? `${pathname}?${qs}` : pathname);
   }
 
   return (
-    <div className="w-52">
-      <Select value={current} ariaLabel="View" options={VIEWS} onChange={onChange} />
+    <div className="inline-flex items-center gap-1 rounded-lg border border-border bg-secondary/40 p-1">
+      {VIEWS.map((v) => {
+        const active = current === v.value;
+        return (
+          <button
+            key={v.value || "all"}
+            type="button"
+            onClick={() => go(v.value)}
+            aria-pressed={active}
+            className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+              active
+                ? "bg-card text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground hover:bg-card/60"
+            }`}
+          >
+            {v.label}
+          </button>
+        );
+      })}
     </div>
   );
 }

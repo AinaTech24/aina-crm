@@ -101,6 +101,7 @@ export function parseCamsFile(rows: string[][]): {
     occupation: col("occupation"),
     ckyc: col("fh_ckyc_no"),
     amcCode: col("amc_code"),
+    isin: col("isin"),
     repDate: col("rep_date"),
     nom1: col("nom_name"),
     nom1Rel: col("relation"),
@@ -207,6 +208,7 @@ export function parseCamsFile(rows: string[][]): {
         rec.schemes.push({
           schemeCode: product,
           schemeName: get(C.schName),
+          isin: get(C.isin).toUpperCase() || undefined,
           units: units || undefined,
           nav: units > 0 && value > 0 ? +(value / units).toFixed(4) : undefined,
           value: value || undefined,

@@ -31,8 +31,8 @@ const KIND_LABEL: Record<string, string> = {
   whatsapp: "WhatsApp",
   email: "Email",
   sms: "SMS",
-  webinar: "Webinar",
-  seminar: "Seminar",
+  webinar: "Webinar / Seminar",
+  seminar: "Webinar / Seminar",
   referral: "Referral",
   google_business: "Google Business",
   paid_ads: "Paid Ads",
@@ -175,9 +175,6 @@ export default async function CampaignsPage({
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
             <Megaphone className="size-6 text-brand-cyan" /> Marketing Campaigns
           </h1>
-          <p className="text-muted-foreground text-sm">
-            8 campaign types · content & compliance gate · leads → meetings → conversions tracked end-to-end.
-          </p>
         </div>
         <div className="flex items-center gap-2">
           <Link href="/dashboard/reports/campaign_conversion" className="btn-secondary text-xs">
@@ -230,17 +227,9 @@ export default async function CampaignsPage({
             key: "kind",
             label: "Type",
             options: [
-              { value: "social_media", label: "Social Media" },
               { value: "whatsapp", label: "WhatsApp" },
               { value: "email", label: "Email" },
-              { value: "sms", label: "SMS" },
-              { value: "webinar", label: "Webinar" },
-              { value: "seminar", label: "Seminar" },
-              { value: "referral", label: "Referral" },
-              { value: "google_business", label: "Google Business" },
-              { value: "paid_ads", label: "Paid Ads" },
-              { value: "content", label: "Content" },
-              { value: "other", label: "Other" },
+              { value: "webinar", label: "Webinar / Seminar" },
             ],
           },
           {
@@ -288,7 +277,7 @@ export default async function CampaignsPage({
               { id: "awaiting", name: "Awaiting approval", params: "approval=pending" },
               { id: "blocked", name: "Compliance blocked", params: "compliance=blocked" },
               { id: "whatsapp", name: "WhatsApp only", params: "kind=whatsapp" },
-              { id: "events", name: "Events", params: "kind=webinar,seminar" },
+              { id: "events", name: "Events", params: "kind=webinar" },
             ]}
           />
         }
@@ -305,9 +294,9 @@ export default async function CampaignsPage({
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="table-scroll">
             <table className="w-full text-sm">
-              <thead className="text-xs text-muted-foreground border-b">
+              <thead className="text-xs text-muted-foreground border-b sticky top-0 z-10 bg-card">
                 <tr>
                   <th className="text-left px-4 py-2 font-medium">Campaign</th>
                   <th className="text-left py-2 font-medium">Type</th>
@@ -437,24 +426,23 @@ function Stat({
     tone === "rose"
       ? "text-rose-600 font-bold"
       : tone === "amber"
-      ? "text-amber-600 font-bold"
-      : tone === "emerald"
-      ? "text-emerald-600 font-bold"
-      : "text-foreground";
+        ? "text-amber-600 font-bold"
+        : tone === "emerald"
+          ? "text-emerald-600 font-bold"
+          : "text-foreground";
   const iconBg =
     tone === "rose"
       ? "bg-rose-50 text-rose-600"
       : tone === "amber"
-      ? "bg-amber-50 text-amber-600"
-      : tone === "emerald"
-      ? "bg-emerald-50 text-emerald-600"
-      : "bg-brand-cyan-light text-brand-cyan-deep";
+        ? "bg-amber-50 text-amber-600"
+        : tone === "emerald"
+          ? "bg-emerald-50 text-emerald-600"
+          : "bg-brand-cyan-light text-brand-cyan-deep";
   return (
-    <div className={`kpi-card transition-all ${
-      active 
-        ? "ring-2 ring-primary/65 border-primary bg-slate-50/50 shadow-sm" 
+    <div className={`kpi-card transition-all ${active
+        ? "ring-2 ring-primary/65 border-primary bg-slate-50/50 shadow-sm"
         : "hover:border-slate-300 bg-white"
-    }`}>
+      }`}>
       <div className="flex items-center justify-between">
         <span className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">
           {label}

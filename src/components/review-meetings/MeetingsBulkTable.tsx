@@ -12,6 +12,7 @@ import { Calendar } from "lucide-react";
 import { formatDate, formatRelative } from "@/lib/utils";
 import { REVIEW_MEETING_STATUSES } from "@/db/schema/review_meetings";
 import { BulkTable, type BulkColumn, type BulkAction } from "@/components/common/BulkTable";
+import { Avatar } from "@/components/ui/Avatar";
 
 const TYPE_LABEL: Record<string, string> = {
   portfolio_review: "Portfolio Review", goal_review: "Goal Review", new_investment_discussion: "New Investment",
@@ -34,14 +35,22 @@ const STATUS_TONE: Record<string, string> = {
 
 type Row = Record<string, any> & { id: string };
 
-const clientCell = (m: Row) =>
-  m.party_name ? (
-    <Link href={m.party_kind === "lead" ? `/dashboard/leads/${m.lead_id}` : `/dashboard/investors/${m.investor_id}`} className="hover:underline">
-      {m.party_name}
-    </Link>
-  ) : (
-    <span className="text-muted-foreground">—</span>
+const clientCell = (m: Row) => {
+  const isLead = m.party_kind === "lead";
+  const eid = isLead ? m.lead_id : m.investor_id;
+  return (
+    <div className="flex items-center gap-2">
+      <Avatar src={m.party_avatar_url && eid ? `/api/${isLead ? "leads" : "investors"}/${eid}/avatar` : null} name={m.party_name} size={26} />
+      {m.party_name ? (
+        <Link href={isLead ? `/dashboard/leads/${m.lead_id}` : `/dashboard/investors/${m.investor_id}`} className="hover:underline">
+          {m.party_name}
+        </Link>
+      ) : (
+        <span className="text-muted-foreground">—</span>
+      )}
+    </div>
   );
+};
 
 function actionsFor(rmOptions: { value: string; label: string }[]): BulkAction[] {
   return [

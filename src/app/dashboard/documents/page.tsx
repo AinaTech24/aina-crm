@@ -122,9 +122,6 @@ export default async function DocumentsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Documents</h1>
-          <p className="text-muted-foreground text-sm">
-            Encrypted vault — KYC, mandates, AMC empanelment, DDQ, SOPs, complaints.
-          </p>
         </div>
         <Link
           href="/dashboard/documents/upload"

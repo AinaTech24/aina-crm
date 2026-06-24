@@ -30,8 +30,14 @@ export const AMFI_NAVALL_URL =
 export type NavRecord = {
   schemeCode: string;
   isin: string | null;
+  /** Dividend-Reinvestment ISIN (AMFI col 2), kept distinct from `isin`. */
+  isinReinvest: string | null;
   schemeName: string;
   amcName: string | null;
+  /** "Open Ended" / "Close Ended" / "Interval" — from the section header. */
+  schemeType: string | null;
+  /** Granular AMFI category from the section header (e.g. "Equity Scheme - Flexi Cap Fund"). */
+  schemeCategory: string | null;
   nav: number;
   navDate: string; // ISO yyyy-mm-dd
 };
@@ -58,6 +64,8 @@ export function parseAmfiDate(s: string): string | null {
 export function parseNavAll(body: string): NavRecord[] {
   const out: NavRecord[] = [];
   let currentAmc: string | null = null;
+  let currentType: string | null = null;
+  let currentCategory: string | null = null;
   const lines = body.split(/\r?\n/);
 
   for (const line of lines) {
@@ -65,10 +73,24 @@ export function parseNavAll(body: string): NavRecord[] {
     if (!trimmed) continue;
 
     if (!trimmed.includes(";")) {
-      // Standalone line: an AMC name or a category header. Category headers
-      // describe a fund class ("Open Ended Schemes(...)", "Close Ended ...",
-      // "Interval Fund ..."); everything else we treat as the current AMC.
-      if (/^(open ended|close ended|interval)/i.test(trimmed)) continue;
+      // Standalone line: a section header ("Open Ended Schemes(Equity Scheme -
+      // Flexi Cap Fund)") or an AMC name. A header states the scheme STRUCTURE
+      // and the granular CATEGORY — capture both so every scheme below it is
+      // tagged, rather than discarding the header as before. Everything else is
+      // the current AMC name.
+      const hm = trimmed.match(/^(open ended|close ended|interval)\b[^(]*\((.+)\)\s*$/i);
+      if (hm) {
+        currentType = hm[1]
+          .toLowerCase()
+          .replace(/\b\w/g, (c) => c.toUpperCase()); // "Open Ended" / "Close Ended" / "Interval"
+        currentCategory = hm[2].trim() || null;
+        continue;
+      }
+      // A header keyword with no parenthesised category still isn't an AMC.
+      if (/^(open ended|close ended|interval)/i.test(trimmed)) {
+        currentCategory = null;
+        continue;
+      }
       currentAmc = trimmed;
       continue;
     }
@@ -88,9 +110,14 @@ export function parseNavAll(body: string): NavRecord[] {
 
     out.push({
       schemeCode,
+      // Primary keeps the existing fallback (some schemes list only the reinvest
+      // ISIN) so folio matching on scheme_nav.isin doesn't regress.
       isin: cols[1].trim() || cols[2].trim() || null,
+      isinReinvest: cols[2].trim() || null,
       schemeName: cols[3].trim(),
       amcName: currentAmc,
+      schemeType: currentType,
+      schemeCategory: currentCategory,
       nav,
       navDate,
     });
@@ -126,17 +153,20 @@ export async function upsertNavs(records: NavRecord[]): Promise<number> {
       const values = sql.join(
         batch.map(
           (r) =>
-            sql`(${r.schemeCode}, ${r.isin}, ${r.schemeName}, ${r.amcName}, ${r.nav}, ${r.navDate}, now())`
+            sql`(${r.schemeCode}, ${r.isin}, ${r.isinReinvest}, ${r.schemeName}, ${r.amcName}, ${r.schemeType}, ${r.schemeCategory}, ${r.nav}, ${r.navDate}, now())`
         ),
         sql`, `
       );
       await tx.execute(sql`
-        INSERT INTO scheme_nav (scheme_code, isin, scheme_name, amc_name, nav, nav_date, updated_at)
+        INSERT INTO scheme_nav (scheme_code, isin, isin_reinvest, scheme_name, amc_name, scheme_type, scheme_category, nav, nav_date, updated_at)
         VALUES ${values}
         ON CONFLICT (scheme_code) DO UPDATE SET
           isin = EXCLUDED.isin,
+          isin_reinvest = EXCLUDED.isin_reinvest,
           scheme_name = EXCLUDED.scheme_name,
           amc_name = EXCLUDED.amc_name,
+          scheme_type = COALESCE(EXCLUDED.scheme_type, scheme_nav.scheme_type),
+          scheme_category = COALESCE(EXCLUDED.scheme_category, scheme_nav.scheme_category),
           nav = EXCLUDED.nav,
           nav_date = EXCLUDED.nav_date,
           updated_at = now()

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { sql } from "drizzle-orm";
-import { Plus, CalendarOff, Clock, CheckCircle2, CalendarDays } from "lucide-react";
+import { Plus, CalendarOff, Clock, CheckCircle2, CalendarDays, SlidersHorizontal } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { FilterBar } from "@/components/common/FilterBar";
@@ -121,33 +121,33 @@ export default async function LeaveApplicationsPage({
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
             <CalendarOff className="size-6 text-brand-cyan" /> Leave Applications
           </h1>
-          <p className="text-muted-foreground text-sm">
-            Team leave requests · approval workflow · balances · coverage planning.
-          </p>
         </div>
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1 bg-secondary/30 border border-border p-0.5 rounded-lg text-xs">
             <Link
               href={getToggleUrl("list")}
-              className={`px-3 py-1.5 rounded-md font-medium transition-all ${
-                view === "list"
+              className={`px-3 py-1.5 rounded-md font-medium transition-all ${view === "list"
                   ? "bg-background text-foreground shadow-sm font-semibold"
                   : "text-muted-foreground hover:text-foreground"
-              }`}
+                }`}
             >
               List View
             </Link>
             <Link
               href={getToggleUrl("timeline")}
-              className={`px-3 py-1.5 rounded-md font-medium transition-all ${
-                view === "timeline"
+              className={`px-3 py-1.5 rounded-md font-medium transition-all ${view === "timeline"
                   ? "bg-background text-foreground shadow-sm font-semibold"
                   : "text-muted-foreground hover:text-foreground"
-              }`}
+                }`}
             >
               Team Timeline
             </Link>
           </div>
+          {canApprove && (
+            <Link href="/dashboard/leave-applications/settings" className="btn-secondary">
+              <SlidersHorizontal className="size-4" /> Leave policy
+            </Link>
+          )}
           <Link href="/dashboard/leave-applications/new" className="btn-primary">
             <Plus className="size-4" /> New request
           </Link>

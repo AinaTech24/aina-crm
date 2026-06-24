@@ -32,6 +32,9 @@ export function buildInvestorConditions(
 ): any[] {
   const conditions: any[] = [];
 
+  // Trash bin: soft-deleted clients never appear in the list / export / counts.
+  conditions.push(sql`${investors.deletedAt} IS NULL`);
+
   const q = (sp.q ?? "").trim();
   const segment = csv(sp.segment);
   const category = csv(sp.category);

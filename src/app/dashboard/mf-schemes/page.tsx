@@ -78,9 +78,9 @@ export default async function MfSchemeCatalogPage({
           {Number(stats.total) === 0 && "The catalog populates on the first daily sync."}
         </div>
       ) : (
-        <div className="card-surface overflow-x-auto">
+        <div className="card-surface table-scroll">
           <table className="w-full text-sm">
-            <thead className="text-xs text-muted-foreground border-b">
+            <thead className="text-xs text-muted-foreground border-b sticky top-0 z-10 bg-card">
               <tr>
                 <th className="text-left px-4 py-2 font-medium">Scheme</th>
                 <th className="text-left py-2 font-medium">AMC</th>

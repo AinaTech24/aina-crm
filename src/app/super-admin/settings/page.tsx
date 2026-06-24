@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { sql } from "drizzle-orm";
-import { Settings as SettingsIcon, Database, MessageCircle, Mail, Lock, Webhook, Activity, Bot } from "lucide-react";
+import { Settings as SettingsIcon, Database, MessageCircle, Lock, Webhook, Activity, Bot } from "lucide-react";
 import { withPlatformAdmin } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { ALL_MODULES } from "@/lib/platform";
@@ -33,7 +33,6 @@ export default async function PlatformSettingsPage() {
   const env: Record<string, "Configured" | "Stub" | "Missing"> = {
     db: process.env.DATABASE_URL ? "Configured" : "Missing",
     redis: process.env.REDIS_URL ? "Configured" : "Missing",
-    resend: process.env.RESEND_API_KEY && !process.env.RESEND_API_KEY.includes("xxx") ? "Configured" : "Stub",
     wapi: process.env.WAINA_API_KEY && !process.env.WAINA_API_KEY.includes("xxx") ? "Configured" : "Stub",
     msg91: process.env.MSG91_AUTH_KEY && !process.env.MSG91_AUTH_KEY.includes("xxx") ? "Configured" : "Stub",
     anthropic: process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_API_KEY.includes("xxx") ? "Configured" : "Stub",
@@ -50,7 +49,7 @@ export default async function PlatformSettingsPage() {
       </div>
 
       <Section title="Platform health (last 24h)" icon={Activity}>
-        <div className="grid grid-cols-7 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
           <Stat label="Tenants" value={health.tenants} />
           <Stat label="Users" value={health.users} />
           <Stat label="Investors" value={health.investors} />
@@ -62,10 +61,9 @@ export default async function PlatformSettingsPage() {
       </Section>
 
       <Section title="Integrations" icon={Webhook}>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <IntegrationRow icon={Database} label="Postgres database" status={env.db} />
           <IntegrationRow icon={Activity} label="Redis (BullMQ)" status={env.redis} />
-          <IntegrationRow icon={Mail} label="Resend (email)" status={env.resend} />
           <IntegrationRow icon={MessageCircle} label="Wapi (WhatsApp)" status={env.wapi} />
           <IntegrationRow icon={MessageCircle} label="MSG91 (SMS)" status={env.msg91} />
           <Link href="/super-admin/ai" className="contents">
@@ -95,7 +93,7 @@ export default async function PlatformSettingsPage() {
           {ALL_MODULES.length} modules available. Each package enables a subset; tenants only see what
           their package allows.
         </p>
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
           {ALL_MODULES.map((m) => (
             <div key={m} className="text-xs px-2.5 py-1.5 rounded border bg-background font-mono">
               {m}
@@ -108,7 +106,7 @@ export default async function PlatformSettingsPage() {
         <p className="text-xs text-muted-foreground mb-3">
           Cross-tenant operations. All actions audit-logged.
         </p>
-        <div className="grid grid-cols-2 gap-2 text-sm">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
           <button className="rounded border px-3 py-2 text-left hover:bg-accent" disabled>
             Re-run schema migrations (coming soon)
           </button>

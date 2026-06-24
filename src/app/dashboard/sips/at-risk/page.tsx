@@ -53,10 +53,6 @@ export default async function SipAtRiskPage() {
         <h1 className="page-title mt-1">
           <ShieldAlert className="size-6 text-rose-600" /> SIP At-Risk — save before they stop
         </h1>
-        <p className="page-subtitle">
-          Active SIPs likely to stop soon — dead/expiring mandates, repeated failures, or ending shortly. Act now to
-          protect the trail.
-        </p>
       </div>
 
       {/* Summary */}

@@ -11,6 +11,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { requireAny } from "@/lib/auth/rbac";
 import { handleApiError } from "@/lib/api/error-handler";
 import { loadMetricStatus, saveMetricStatus, currentPeriod } from "@/lib/finance/metric-status";
 import { isMetricKey } from "@/lib/finance/metric-config";
@@ -22,6 +23,7 @@ const PERIOD_RE = /^\d{4}-\d{2}$/;
 export async function GET(req: NextRequest) {
   try {
     const session = await requireSession();
+    requireAny(session.roles, ["reports.business", "reports.manage"], session.permissions);
     const metric = req.nextUrl.searchParams.get("metric") ?? "";
     if (!isMetricKey(metric)) {
       return NextResponse.json({ error: "unknown metric" }, { status: 400 });
@@ -54,6 +56,7 @@ const Body = z.object({
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
+    requireAny(session.roles, ["reports.business", "reports.manage"], session.permissions);
     const parsed = Body.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
       return NextResponse.json({ error: "invalid body", issues: parsed.error.issues }, { status: 400 });

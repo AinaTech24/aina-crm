@@ -53,7 +53,8 @@ export default async function TasksPage({
 
   const result = await withTenant(session.tenantId, async (tx) => {
     // Tenant predicate is mandatory under the superuser/RLS-bypass model.
-    const conds: any[] = [eq(tasks.tenantId, session.tenantId)];
+    // Trashed (soft-deleted) tasks never appear in any list — only in Trash.
+    const conds: any[] = [eq(tasks.tenantId, session.tenantId), isNull(tasks.deletedAt)];
     if (!canViewAll) {
       conds.push(or(eq(tasks.assigneeId, session.userId), eq(tasks.createdById, session.userId))!);
     }
@@ -62,12 +63,16 @@ export default async function TasksPage({
     if (view === "to_me") conds.push(eq(tasks.assigneeId, session.userId));
     else if (view === "by_me") conds.push(eq(tasks.createdById, session.userId));
 
-    // Status: an explicit filter always wins. Otherwise default the LIST to open
-    // tasks, but the KANBAN shows every status so each column populates.
-    if (statusFilter.length) {
-      conds.push(inArray(tasks.status, statusFilter as any));
-    } else if (!isKanban) {
-      conds.push(eq(tasks.status, "open"));
+    // Status filtering applies to the LIST only — the KANBAN's columns ARE the
+    // status dimension, so it must show every status (otherwise a lingering
+    // status=open from a stat-card click collapses the board to one column).
+    // List: an explicit filter wins, else default to open.
+    if (!isKanban) {
+      if (statusFilter.length) {
+        conds.push(inArray(tasks.status, statusFilter as any));
+      } else {
+        conds.push(eq(tasks.status, "open"));
+      }
     }
     
     if (q) {
@@ -120,7 +125,9 @@ export default async function TasksPage({
         task: tasks,
         assignee: users.name,
         investorName: investors.name,
+        investorAvatarUrl: investors.avatarUrl,
         leadName: leads.name,
+        leadAvatarUrl: leads.avatarUrl,
       })
       .from(tasks)
       .leftJoin(users, eq(users.id, tasks.assigneeId))
@@ -137,7 +144,7 @@ export default async function TasksPage({
     // We deliberately do NOT apply the `status` or `due` params here, because
     // the four cards ARE the open / due-today / overdue / SLA breakdown (each
     // FILTER already pins status = 'open').
-    const statsConds: any[] = [eq(tasks.tenantId, session.tenantId)];
+    const statsConds: any[] = [eq(tasks.tenantId, session.tenantId), isNull(tasks.deletedAt)];
     if (!canViewAll) statsConds.push(or(eq(tasks.assigneeId, session.userId), eq(tasks.createdById, session.userId))!);
     if (view === "to_me") statsConds.push(eq(tasks.assigneeId, session.userId));
     else if (view === "by_me") statsConds.push(eq(tasks.createdById, session.userId));
@@ -183,9 +190,6 @@ export default async function TasksPage({
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
             <ListChecks className="size-6 text-brand-cyan" /> Tasks
           </h1>
-          <p className="text-muted-foreground text-sm">
-            Most tasks are created by workflows. RMs see only what's assigned to them.
-          </p>
         </div>
         <div className="flex items-center gap-3">
           <WorkSwitcher current="/dashboard/tasks" />
@@ -210,11 +214,8 @@ export default async function TasksPage({
         </div>
       </div>
 
-      {/* View switcher — custom dropdown (list / mine / assigned-by-me / kanban) */}
-      <div className="flex items-center gap-2">
-        <span className="text-sm text-muted-foreground">View</span>
-        <TaskViewSelect current={view} />
-      </div>
+      {/* View switcher — segmented tabs (list / mine / assigned-by-me / kanban) */}
+      <TaskViewSelect current={view} />
 
       {/* Clickable Interactive Stats Ribbon */}
       <div className="grid grid-cols-4 gap-3">
@@ -250,18 +251,21 @@ export default async function TasksPage({
                 ],
               }]
             : []),
-          {
-            type: "multi",
-            key: "status",
-            label: "Status",
-            options: [
-              { value: "open", label: "Open" },
-              { value: "in_progress", label: "In progress" },
-              { value: "blocked", label: "Blocked" },
-              { value: "completed", label: "Completed" },
-              { value: "cancelled", label: "Cancelled" },
-            ],
-          },
+          // Status is hidden on the kanban — the columns already ARE the statuses.
+          ...(!isKanban
+            ? [{
+                type: "multi" as const,
+                key: "status",
+                label: "Status",
+                options: [
+                  { value: "open", label: "Open" },
+                  { value: "in_progress", label: "In progress" },
+                  { value: "blocked", label: "Blocked" },
+                  { value: "completed", label: "Completed" },
+                  { value: "cancelled", label: "Cancelled" },
+                ],
+              }]
+            : []),
           {
             type: "multi",
             key: "priority",

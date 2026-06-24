@@ -22,6 +22,10 @@ import { InvestorsTable, type InvestorTableRow } from "@/components/investors/In
 import { InvestorSortSelect } from "@/components/investors/InvestorSortSelect";
 import { buildInvestorWhere } from "@/lib/investors/list-filters";
 import { Pager } from "@/components/common/Pager";
+import { countPossibleDuplicates } from "@/lib/investors/duplicates";
+import { clientCompleteness } from "@/lib/investors/completeness";
+import { UpcomingDatesWidget } from "@/components/investors/UpcomingDatesWidget";
+import { CopyPlus } from "lucide-react";
 
 const INVESTORS_COLUMNS = [
   { key: "name", label: "Name", required: true },
@@ -33,6 +37,7 @@ const INVESTORS_COLUMNS = [
   { key: "sip", label: "Monthly SIP" },
   { key: "kyc", label: "KYC" },
   { key: "health", label: "Health" },
+  { key: "complete", label: "Profile %" },
   { key: "status", label: "Status" },
   { key: "actions", label: "Actions", required: true },
 ];
@@ -115,7 +120,7 @@ export default async function InvestorsPage({
   const PAGE_SIZE = 50;
   const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
 
-  const { rows, total, kanbanRows, rms } = await withTenant(session.tenantId, async (tx) => {
+  const { rows, total, kanbanRows, rms, allIds, dupCount, upcoming } = await withTenant(session.tenantId, async (tx) => {
     // Filters live in one shared helper so the page and the Excel export apply
     // identical WHERE logic. Tenant isolation is handled by RLS.
     const where = buildInvestorWhere(sp, userId);
@@ -140,6 +145,20 @@ export default async function InvestorsPage({
         healthBand: investors.healthBand,
         lastTransactionAt: investors.lastTransactionAt,
         updatedAt: investors.updatedAt,
+        // Lightweight fields for the profile-completeness column (scalar +
+        // small address jsonb; the heavy nominees/bank jsonb use the cheap
+        // legacy mirror columns instead).
+        dob: investors.dob,
+        gender: investors.gender,
+        email: investors.email,
+        phone: investors.phone,
+        occupation: investors.occupation,
+        riskProfile: investors.riskProfile,
+        panAadhaarLinkStatus: investors.panAadhaarLinkStatus,
+        rmId: investors.rmId,
+        nomineeName: investors.nomineeName,
+        bankName: investors.bankName,
+        address: investors.address,
       })
       .from(investors)
       .where(where as any)
@@ -163,6 +182,15 @@ export default async function InvestorsPage({
       .select({ c: sql<number>`count(*)::int` })
       .from(investors)
       .where(where as any);
+
+    // Every matching id (not just this page) — powers "Select all N clients"
+    // for bulk actions across the whole filtered book. Capped for safety.
+    const allIdRows = await tx
+      .select({ id: investors.id })
+      .from(investors)
+      .where(where as any)
+      .limit(20000);
+    const allIds = allIdRows.map((x) => x.id);
 
     // For the Kanban, also fetch each investor's blueprint stage. We join
     // through the source lead (leads.converted_investor_id = investor.id)
@@ -223,7 +251,31 @@ export default async function InvestorsPage({
       rms = rmRes.rows as any[];
     }
 
-    return { rows: r, total: Number(c[0]?.c ?? 0), kanbanRows, rms };
+    // Possible-duplicate count (same PAN / mobile) — surfaced as a banner.
+    const dupCount = await countPossibleDuplicates(tx as any, session.tenantId);
+
+    // Upcoming birthdays + anniversaries in the next 14 days (live clients).
+    // Build this year's occurrence by adding the source date's day-of-year
+    // offset to Jan 1 — leap-safe (Feb 29 lands on Mar 1 in non-leap years
+    // instead of throwing, which make_date(year,2,29) would).
+    const upcomingRes = await tx.execute(sql`
+      SELECT id, name, kind, occ_date, (occ_date - current_date) AS days FROM (
+        SELECT i.id, i.name, 'birthday' AS kind,
+               (make_date(extract(year from current_date)::int, 1, 1) + (i.dob - make_date(extract(year from i.dob)::int, 1, 1))) AS occ_date
+        FROM investors i
+        WHERE i.tenant_id = ${session.tenantId}::uuid AND i.merged_into_id IS NULL AND i.status <> 'closed' AND i.deleted_at IS NULL AND i.dob IS NOT NULL
+        UNION ALL
+        SELECT i.id, i.name, 'anniversary' AS kind,
+               (make_date(extract(year from current_date)::int, 1, 1) + (i.anniversary_date - make_date(extract(year from i.anniversary_date)::int, 1, 1))) AS occ_date
+        FROM investors i
+        WHERE i.tenant_id = ${session.tenantId}::uuid AND i.merged_into_id IS NULL AND i.status <> 'closed' AND i.deleted_at IS NULL AND i.anniversary_date IS NOT NULL
+      ) u
+      WHERE (occ_date - current_date) BETWEEN 0 AND 14
+      ORDER BY days ASC
+      LIMIT 10
+    `);
+
+    return { rows: r, total: Number(c[0]?.c ?? 0), kanbanRows, rms, allIds, dupCount, upcoming: upcomingRes.rows as any[] };
   }, { userId: session.userId, branchId: session.branchId, roles: session.roles });
 
   const rmOptions = (rms ?? []).map((r: any) => ({ value: String(r.id), label: r.name ?? "—" }));
@@ -246,6 +298,7 @@ export default async function InvestorsPage({
     healthScore: i.healthScore ?? 100,
     healthBand: (i.healthBand as HealthBand) ?? "green",
     dormDays: dormancyDays(i as any),
+    completeness: clientCompleteness(i as any).score,
   }));
 
   return (
@@ -253,9 +306,6 @@ export default async function InvestorsPage({
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Investors</h1>
-          <p className="text-muted-foreground text-sm">
-            {total === 0 ? "No investors yet." : `${total} investors in your firm.`}
-          </p>
         </div>
         <div className="flex gap-2 items-center">
           {/* View toggle — Table vs Kanban. Mirrors the leads page pattern.
@@ -309,6 +359,33 @@ export default async function InvestorsPage({
 
       {/* KPI strip — book-wide snapshot */}
       <InvestorKpiStrip session={session} />
+
+      {/* Possible-duplicate nudge — managers can merge from the duplicates tool.
+          Especially relevant now the importer allows duplicate PANs on purpose. */}
+      {canViewAll && (dupCount ?? 0) > 0 && (
+        <Link
+          href="/dashboard/duplicates"
+          className="flex items-center gap-2.5 rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-500/10 dark:border-amber-500/30 px-4 py-2.5 text-sm hover:bg-amber-100/70 transition-colors"
+        >
+          <CopyPlus className="size-4 text-amber-600 shrink-0" />
+          <span className="text-amber-800 dark:text-amber-200">
+            <strong>{dupCount}</strong> client{dupCount === 1 ? "" : "s"} look like possible duplicates (same PAN or mobile).
+          </span>
+          <span className="ml-auto text-xs font-medium text-amber-700 dark:text-amber-300">Review &amp; merge →</span>
+        </Link>
+      )}
+
+      {upcoming && upcoming.length > 0 && (
+        <UpcomingDatesWidget
+          items={(upcoming as any[]).map((u) => ({
+            id: u.id,
+            name: u.name,
+            type: u.kind,
+            date: String(u.occ_date),
+            days: Number(u.days),
+          }))}
+        />
+      )}
 
       {/* Quick-filter chips — hidden for now (re-enable later). */}
       {/* <div className="card-surface p-3">
@@ -449,6 +526,8 @@ export default async function InvestorsPage({
             rows={tableRows}
             sort={sortKey}
             dir={dir}
+            allIds={allIds}
+            total={total}
             flags={{ showPan, showCategory: true, showTier, showSegment, showAum, showSip, showKyc, showStatus }}
           />
           <Pager

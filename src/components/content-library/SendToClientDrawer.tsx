@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { X, Send, Search, Loader2, UserCircle2, Mail, MessageSquare, CheckCircle } from "lucide-react";
+import { X, Send, Search, Loader2, UserCircle2, Mail, MessageSquare, CheckCircle, Sparkles } from "lucide-react";
+import { useToast } from "@/components/ui/Toast";
 
 type Recipient = {
   id: string;
@@ -19,8 +20,11 @@ export type SendToClientDrawerProps = {
   assetTitle: string;
   assetType: string;
   assetFileUrl: string;
-  brandingPosition?: "top" | "bottom" | "both" | "split" | null;
+  brandingPosition?: "top" | "bottom" | "both" | "split" | "frame" | null;
   brandingHeightPct?: number;
+  brandingVariant?: "solid" | "light";
+  brandingSize?: string;
+  brandingFrameTheme?: "premium" | "minimal" | "bold";
 };
 
 export function SendToClientDrawer({
@@ -32,6 +36,9 @@ export function SendToClientDrawer({
   assetFileUrl,
   brandingPosition = "bottom",
   brandingHeightPct = 18,
+  brandingVariant = "solid",
+  brandingSize = "original",
+  brandingFrameTheme,
 }: SendToClientDrawerProps) {
   const [recipientType, setRecipientType] = useState<"investor" | "lead">("investor");
   const [q, setQ] = useState("");
@@ -44,8 +51,31 @@ export function SendToClientDrawer({
   const [sentSuccess, setSentSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  
+  const [generating, setGenerating] = useState(false);
+
+  const toast = useToast();
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  async function handleGenerateCaption() {
+    setGenerating(true);
+    try {
+      const res = await fetch(`/api/content-library/${assetId}/caption`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ channel, recipientName: selectedRecipient?.name }),
+      });
+      const j = await res.json();
+      if (!res.ok || !j.caption) {
+        toast.error(j.error ?? "Could not generate a caption.", "Generation failed");
+        return;
+      }
+      setCustomNote(j.caption);
+    } catch (e: any) {
+      toast.error(e?.message ?? "Could not generate a caption.", "Generation failed");
+    } finally {
+      setGenerating(false);
+    }
+  }
 
   // Click outside closes autocomplete dropdown
   useEffect(() => {
@@ -139,6 +169,9 @@ export function SendToClientDrawer({
           customNote,
           position: brandingPosition,
           heightPct: brandingHeightPct,
+          variant: brandingVariant,
+          size: brandingSize,
+          frameTheme: brandingFrameTheme,
         }),
       });
       const j = await res.json();
@@ -155,7 +188,7 @@ export function SendToClientDrawer({
   }
 
   const previewAssetUrl = assetType === "image"
-    ? `/api/content-library/${assetId}/branded?mode=preview&position=${brandingPosition}&h=${brandingHeightPct}`
+    ? `/api/content-library/${assetId}/branded?mode=preview&position=${brandingPosition}&h=${brandingHeightPct}&variant=${brandingVariant}&size=${brandingSize}${brandingFrameTheme ? `&frametheme=${brandingFrameTheme}` : ""}`
     : assetFileUrl;
 
   return (
@@ -347,9 +380,20 @@ export function SendToClientDrawer({
 
             {/* 4. Custom Message / Note */}
             <div>
-              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block mb-1">
-                Custom Message / Note
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block">
+                  Custom Message / Note
+                </label>
+                <button
+                  type="button"
+                  onClick={handleGenerateCaption}
+                  disabled={generating}
+                  className="btn-secondary text-xs flex items-center gap-1.5 disabled:opacity-60"
+                >
+                  {generating ? <Loader2 className="size-3 animate-spin" /> : <Sparkles className="size-3" />}
+                  {generating ? "Generating…" : "Generate caption"}
+                </button>
+              </div>
               <textarea
                 value={customNote}
                 onChange={(e) => setCustomNote(e.target.value)}

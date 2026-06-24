@@ -13,7 +13,7 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { require as requireCap } from "@/lib/auth/rbac";
+import { require as requireCap, can } from "@/lib/auth/rbac";
 import { assertActiveLicense, loadTenantLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { tenants } from "@/db/schema";
@@ -27,9 +27,20 @@ const Body = z.object({
   legalName: z.string().min(1).optional(),
   email: z.string().email().optional().or(z.literal("")),
   phone: z.string().optional(),
-  website: z.string().url().optional().or(z.literal("")),
+  // Accept a bare domain ("www.firm.in") by normalising to https:// before
+  // validating — owners routinely omit the scheme, and a hard url() reject was
+  // surfacing as an opaque "invalid body" on save.
+  website: z
+    .preprocess((v) => {
+      if (typeof v !== "string") return v;
+      const t = v.trim();
+      if (t === "") return "";
+      return /^https?:\/\//i.test(t) ? t : `https://${t}`;
+    }, z.string().url().optional().or(z.literal(""))),
   primaryColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
   secondaryColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+  textColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional().nullable(),
+  hoverColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional().nullable(),
   logoUrl: LocalOrAbsoluteUrl.optional().or(z.literal("")),
   // Additional brand-logo variants (migration 0083) — each maps to a product
   // context (square icon, monogram, favicon). All optional; empty string clears.
@@ -108,6 +119,14 @@ const Body = z.object({
     })
     .nullable()
     .optional(),
+  dataProtectionOfficer: z
+    .object({
+      name: z.string().optional(),
+      email: z.string().email().optional().or(z.literal("")),
+      phone: z.string().optional(),
+    })
+    .nullable()
+    .optional(),
 });
 
 export async function PATCH(req: NextRequest) {
@@ -162,10 +181,33 @@ export async function PATCH(req: NextRequest) {
 export async function GET(req: NextRequest) {
   try {
     const session = await requireSession();
+    // Org-profile admins (settings.users) get the full row; everyone else gets
+    // only the branding/identity fields the UI + template editors need. The
+    // sensitive firm financials — bank account, authorised-signatory PAN/DIN,
+    // GST/TAN/auditor — never leave the admin scope.
+    const isAdmin = can(session.roles, "settings.users", session.permissions);
     const result = await withTenant(session.tenantId, async (tx) => {
       const tenant = (await tx.select().from(tenants).where(eq(tenants.id, session.tenantId)).limit(1))[0];
       const license = await loadTenantLicense(session.tenantId, session.roles);
-      return { tenant, license };
+      if (!tenant || isAdmin) return { tenant, license };
+      const safe = {
+        id: tenant.id,
+        displayName: tenant.displayName,
+        legalName: tenant.legalName,
+        arn: tenant.arn,
+        principalEuin: tenant.principalEuin,
+        riaRegistered: tenant.riaRegistered,
+        logoUrl: tenant.logoUrl,
+        logoIconUrl: tenant.logoIconUrl,
+        logoMarkUrl: tenant.logoMarkUrl,
+        faviconUrl: tenant.faviconUrl,
+        primaryColor: tenant.primaryColor,
+        secondaryColor: tenant.secondaryColor,
+        textColor: tenant.textColor,
+        hoverColor: tenant.hoverColor,
+        website: tenant.website,
+      };
+      return { tenant: safe, license };
     });
     return NextResponse.json(result);
   } catch (err: any) {

@@ -238,6 +238,10 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     await assertActiveLicense(session.tenantId, session.roles);
     const canEditAll = can(session.roles, "task.edit.all", session.permissions);
     const clientMeta = clientMetaFromHeaders(req.headers);
+    // `?permanent=1` removes the row entirely (only from the Trash bin). The
+    // default soft-deletes the task to Trash (deleted_at) — recoverable until
+    // permanently removed. (Cancelling a task is a separate status change.)
+    const permanent = req.nextUrl.searchParams.get("permanent") === "1";
     const outcome = await withTenant(session.tenantId, async (tx) => {
       const before = (await tx
         .select()
@@ -246,14 +250,18 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
         .limit(1))[0];
       if (!before) return "not_found" as const;
       if (!canEditAll && !ownsTask(before, session.userId)) return "forbidden" as const;
-      await tx
-        .update(tasks)
-        .set({ status: "cancelled", updatedAt: new Date() } as any)
-        .where(and(eq(tasks.id, id), eq(tasks.tenantId, session.tenantId)));
+      if (permanent) {
+        await tx.delete(tasks).where(and(eq(tasks.id, id), eq(tasks.tenantId, session.tenantId)));
+      } else {
+        await tx
+          .update(tasks)
+          .set({ deletedAt: new Date(), deletedBy: session.userId, updatedAt: new Date() } as any)
+          .where(and(eq(tasks.id, id), eq(tasks.tenantId, session.tenantId)));
+      }
       await recordAudit(tx, {
         tenantId: session.tenantId,
         actorUserId: session.userId,
-        action: "task.cancel",
+        action: permanent ? "task.purge" : "task.delete",
         entityType: "task",
         entityId: id,
         ...clientMeta,
@@ -261,7 +269,8 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
       return "ok" as const;
     });
     if (outcome === "not_found") return NextResponse.json({ error: "not found" }, { status: 404 });
-    if (outcome === "forbidden") return NextResponse.json({ error: "you can only cancel tasks assigned to you" }, { status: 403 });
+    if (outcome === "forbidden")
+      return NextResponse.json({ error: `you can only ${permanent ? "delete" : "cancel"} tasks assigned to you` }, { status: 403 });
     return NextResponse.json({ ok: true });
   } catch (err: any) {
     return handleApiError(err);

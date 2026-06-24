@@ -165,7 +165,7 @@ export function DashboardBuilder({ boardId, initialName, initialLayout, initialR
           ) : (
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
               <SortableContext items={layout.map((w) => w.id)} strategy={rectSortingStrategy}>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 auto-rows-[140px]">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 [grid-auto-rows:minmax(140px,auto)]">
                   {layout.map((w) => (
                     <BuilderCard key={w.id} w={w} rm={rm} members={members} onRemove={() => removeWidget(w.id)} onSize={(f, v) => setSize(w.id, f, v)} onRm={(v) => setWidgetRm(w.id, v)} />
                   ))}

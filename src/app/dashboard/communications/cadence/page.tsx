@@ -55,9 +55,9 @@ export default async function CommunicationCadencePage() {
       {/* Communication matrix */}
       <div className="border rounded-lg bg-card overflow-hidden">
         <div className="border-b px-4 py-2.5 font-semibold text-sm">Communication matrix</div>
-        <div className="overflow-x-auto">
+        <div className="table-scroll">
           <table className="w-full text-sm min-w-[640px]">
-            <thead className="text-xs text-muted-foreground border-b">
+            <thead className="text-xs text-muted-foreground border-b sticky top-0 z-10 bg-card">
               <tr>
                 <th className="text-left px-4 py-2 font-medium">Purpose</th>
                 <th className="text-left py-2 font-medium">Frequency</th>

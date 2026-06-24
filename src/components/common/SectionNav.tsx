@@ -16,8 +16,13 @@ type SectionItem = { key: string; label: string; required?: boolean };
 export function SectionNav({ moduleKey, sections }: { moduleKey: string; sections: SectionItem[] }) {
   // Skip the always-on header (it's already at the top).
   const all = sections.filter((s) => !s.required);
-  const [visibleKeys, setVisibleKeys] = useState<string[]>(all.map((s) => s.key));
+  // Visible section keys IN PAGE ORDER. The "Customize page" manager reorders
+  // sections via CSS `order`, so the nav must follow the on-page position — not
+  // the static source order — and re-sort whenever the user reorders/hides.
+  const [orderedKeys, setOrderedKeys] = useState<string[]>(all.map((s) => s.key));
   const [active, setActive] = useState<string>("");
+  // Bumped when the customize prefs change so the order recomputes live.
+  const [tick, setTick] = useState(0);
   // Edge-fade affordance: the pill row scrolls horizontally with a hidden
   // scrollbar, so without a cue the user can't tell a label is cut off
   // ("Transact…"). Track whether there's more content off each edge.
@@ -39,37 +44,66 @@ export function SectionNav({ moduleKey, sections }: { moduleKey: string; section
   function go(key: string) {
     const el = anchor(key);
     if (el) {
-      el.scrollIntoView({ behavior: "smooth", block: "start" });
+      // Centre the section in the viewport (not the top) so it's obvious which
+      // section you jumped to — the old "block: start" tucked headings right
+      // under the sticky nav, making the active section hard to spot.
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
       setActive(key);
     }
   }
 
+  // Re-sort the pills whenever the "Customize page" manager changes prefs (it
+  // dispatches `aina:rl-prefs-changed`), so the nav order always mirrors the
+  // page's reorder/hide choices.
   useEffect(() => {
-    // Only show pills for sections that exist + aren't hidden (display:none from
-    // the user's Customize-page prefs).
-    const present = all.filter((s) => {
-      const el = anchor(s.key);
-      return el && getComputedStyle(el).display !== "none";
-    });
-    setVisibleKeys(present.map((s) => s.key));
+    function onPrefs(e: Event) {
+      const mk = (e as CustomEvent)?.detail?.moduleKey;
+      if (!mk || mk === moduleKey) setTick((t) => t + 1);
+    }
+    window.addEventListener("aina:rl-prefs-changed", onPrefs as EventListener);
+    return () => window.removeEventListener("aina:rl-prefs-changed", onPrefs as EventListener);
+  }, [moduleKey]);
 
-    const els = present.map((s) => anchor(s.key)).filter(Boolean) as HTMLElement[];
-    if (!els.length) return;
-    const obs = new IntersectionObserver(
-      (entries) => {
-        const top = entries
-          .filter((e) => e.isIntersecting)
-          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
-        if (top) setActive(top.target.getAttribute("data-rl-section") ?? "");
-      },
-      { rootMargin: "-15% 0px -75% 0px", threshold: [0, 0.2, 0.5, 1] }
-    );
-    els.forEach((el) => obs.observe(el));
-    return () => obs.disconnect();
+  useEffect(() => {
+    // Compute order from the LIVE page layout: keep only sections that exist and
+    // aren't hidden (display:none from Customize prefs), then sort by their
+    // actual vertical position — which reflects the CSS `order` the manager sets.
+    // rAF lets the manager's injected <style> settle before we read positions.
+    let raf = 0;
+    const compute = () => {
+      const present = all
+        .map((s) => ({ s, el: anchor(s.key) }))
+        .filter((x) => x.el && getComputedStyle(x.el).display !== "none") as { s: SectionItem; el: HTMLElement }[];
+      present.sort((a, b) => a.el.getBoundingClientRect().top - b.el.getBoundingClientRect().top);
+      setOrderedKeys(present.map((x) => x.s.key));
+
+      const els = present.map((x) => x.el);
+      if (!els.length) return;
+      const obs = new IntersectionObserver(
+        (entries) => {
+          const top = entries
+            .filter((e) => e.isIntersecting)
+            .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+          if (top) setActive(top.target.getAttribute("data-rl-section") ?? "");
+        },
+        // Active = whichever section sits in the middle band of the viewport, so
+        // the highlight matches the centre-scrolled section the user lands on.
+        { rootMargin: "-40% 0px -40% 0px", threshold: [0, 0.25, 0.5, 1] }
+      );
+      els.forEach((el) => obs.observe(el));
+      cleanup = () => obs.disconnect();
+    };
+    let cleanup: (() => void) | undefined;
+    raf = requestAnimationFrame(compute);
+    return () => {
+      cancelAnimationFrame(raf);
+      cleanup?.();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [moduleKey, sections.length]);
+  }, [moduleKey, sections.length, tick]);
 
-  const items = all.filter((s) => visibleKeys.includes(s.key));
+  const byKey = new Map(all.map((s) => [s.key, s]));
+  const items = orderedKeys.map((k) => byKey.get(k)).filter(Boolean) as SectionItem[];
 
   // Recompute the edge fades whenever the visible pill set changes, and on
   // window resize (a narrower window may newly clip the row).
@@ -81,10 +115,26 @@ export function SectionNav({ moduleKey, sections }: { moduleKey: string; section
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items.length]);
 
+  // Auto-scroll the pill row so the ACTIVE section's pill stays in view as the
+  // user scrolls the page — centred horizontally, without nudging the page
+  // vertically (scrollIntoView would; setting scrollLeft directly doesn't).
+  useEffect(() => {
+    const scroller = scrollerRef.current;
+    if (!scroller || !active) return;
+    const btn = scroller.querySelector<HTMLElement>(`[data-key="${CSS.escape(active)}"]`);
+    if (!btn) return;
+    const target = btn.offsetLeft - scroller.clientWidth / 2 + btn.clientWidth / 2;
+    scroller.scrollTo({ left: Math.max(0, target), behavior: "smooth" });
+    recomputeEdges();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active]);
+
   if (items.length < 2) return null;
 
   return (
-    <div className="relative sticky top-2 z-20 mb-1">
+    // Stick just below the global glass topbar (h-16 = 64px) so the jump-nav
+    // stays visible while scrolling instead of hiding underneath it.
+    <div className="relative sticky top-[4.5rem] z-30 mb-2">
       <nav
         ref={scrollerRef}
         onScroll={recomputeEdges}
@@ -94,6 +144,7 @@ export function SectionNav({ moduleKey, sections }: { moduleKey: string; section
           <button
             key={s.key}
             type="button"
+            data-key={s.key}
             onClick={() => go(s.key)}
             className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium transition-all duration-200 ${
               active === s.key

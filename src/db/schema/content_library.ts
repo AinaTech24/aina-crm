@@ -1,4 +1,4 @@
-import { boolean, index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { bigint, boolean, index, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { id, timestamps } from "./_shared";
 import { tenants } from "./tenants";
 
@@ -44,8 +44,13 @@ export const contentLibraryAssets = pgTable(
     /** Public-or-presigned URL where MFDs fetch the file from (S3, CDN, …). */
     fileUrl: text("file_url").notNull(),
     fileName: text("file_name"),
-    fileSizeBytes: text("file_size_bytes"),
+    fileSizeBytes: bigint("file_size_bytes", { mode: "number" }),
     mimeType: text("mime_type"),
+    /** Image pixel dimensions (captured at upload) — null for non-images. */
+    width: integer("width"),
+    height: integer("height"),
+    /** Whether AINA published this (platform) or an MFD uploaded it (tenant). */
+    source: text("source", { enum: ["platform", "tenant"] }).notNull().default("platform"),
     /** Thumbnail/preview shown in the browse grid. Defaults to fileUrl for images. */
     thumbnailUrl: text("thumbnail_url"),
     tags: jsonb("tags").$type<string[]>().default([]),
@@ -81,4 +86,31 @@ export const contentLibraryAssets = pgTable(
 
 export type ContentLibraryAsset = typeof contentLibraryAssets.$inferSelect;
 export type NewContentLibraryAsset = typeof contentLibraryAssets.$inferInsert;
+
+/**
+ * Usage log for content-library assets — one row per meaningful action an MFD
+ * takes (co-brand, download, send). Powers the platform-admin "most used /
+ * never used" analytics. Tenant-scoped via RLS (migration 0133).
+ */
+export const CONTENT_EVENT_TYPES = ["view", "cobrand", "download", "send"] as const;
+
+export const contentLibraryEvents = pgTable(
+  "content_library_events",
+  {
+    id,
+    assetId: uuid("asset_id").notNull().references(() => contentLibraryAssets.id, { onDelete: "cascade" }),
+    tenantId: uuid("tenant_id"),
+    userId: uuid("user_id"),
+    eventType: text("event_type", { enum: CONTENT_EVENT_TYPES }).notNull(),
+    channel: text("channel"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    assetIdx: index("cle_asset_idx").on(t.assetId, t.eventType),
+    tenantIdx: index("cle_tenant_idx").on(t.tenantId),
+    createdIdx: index("cle_created_idx").on(t.createdAt),
+  })
+);
+
+export type ContentLibraryEvent = typeof contentLibraryEvents.$inferSelect;
 

@@ -11,6 +11,7 @@
  */
 
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage, type PDFImage, type RGB } from "pdf-lib";
+import { drawReportHeader } from "@/lib/pdf/report-header";
 import type { StatementBrand } from "@/lib/finance/valuation-pdf";
 
 export type RiskProfilePdfData = {
@@ -219,27 +220,22 @@ function drawHeader(page: PDFPage, ctx: Ctx, full: boolean): number {
     return topY - 36;
   }
 
-  if (logo) {
-    const maxH = 38, maxW = 150;
-    let dw = (logo.width / logo.height) * maxH;
-    let dh = maxH;
-    if (dw > maxW) { dw = maxW; dh = (logo.height / logo.width) * maxW; }
-    page.drawImage(logo, { x: MARGIN, y: topY - dh, width: dw, height: dh });
-  }
-  // Firm name + ARN are intentionally NOT drawn next to the logo — the logo
-  // already carries the firm branding. ARN/EUIN/GSTIN remain in the footer.
-  const titleLabel = "RISK PROFILE";
-  const tlW = bold.widthOfTextAtSize(titleLabel, 11);
-  page.drawText(titleLabel, { x: W - MARGIN - tlW, y: topY - 13, size: 11, font: bold, color: primary });
-  const asOf = ascii(`As of ${fmtDate(ctx.generatedAt)}`);
-  const aoW = helv.widthOfTextAtSize(asOf, 9);
-  page.drawText(asOf, { x: W - MARGIN - aoW, y: topY - 28, size: 9, font: helv, color: SLATE });
-
-  // Theme-matched strip — primary → secondary brand colour (no off-brand blue).
   const secondary = brand.secondaryColor ? hexToRgb(brand.secondaryColor) : primary;
-  const stripY = topY - 46;
-  drawGradientStrip(page, MARGIN, stripY, W - 2 * MARGIN, 5, primary, secondary);
-  return stripY - 26;
+  return drawReportHeader({
+    page,
+    helv,
+    bold,
+    pageWidth: W,
+    pageHeight: H,
+    margin: MARGIN,
+    logo,
+    firmName: brand.legalName ?? brand.displayName,
+    title: "RISK PROFILE",
+    subtitles: [`As of ${fmtDate(ctx.generatedAt)}`],
+    arn: brand.arn,
+    primary,
+    secondary,
+  });
 }
 
 function drawFooter(page: PDFPage, ctx: Ctx) {

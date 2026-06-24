@@ -1,5 +1,8 @@
 import { or, isNull, eq } from "drizzle-orm";
 import { contentLibraryAssets } from "@/db/schema";
+import { bucket, getObjectBytes, getLocalUploadBytes } from "@/lib/storage/s3";
+
+const LOCAL_UPLOAD_PREFIX = "/api/upload-local/";
 
 /**
  * A content-library asset is visible to a tenant iff it's platform-global
@@ -45,6 +48,41 @@ const FETCH_TIMEOUT_MS = 10_000;
 const MAX_ASSET_BYTES = 25 * 1024 * 1024; // 25 MB
 
 /**
+ * If `fileUrl` points at our OWN storage (the configured private S3 bucket, or
+ * the local-disk dev fallback), return the object key — otherwise null.
+ *
+ * Our uploads bucket is private (objects are SSE-encrypted, no public-read ACL),
+ * so a plain HTTP GET of the "public" S3 URL 403s. Reads must go through the
+ * authenticated SDK. This recognises the URL shapes we emit on upload:
+ *   - virtual-hosted:  https://<bucket>.s3[.<region>].amazonaws.com/<key>
+ *   - path-style:      https://s3[.<region>].amazonaws.com/<bucket>/<key>
+ *
+ * NOTE: local-disk uploads (/api/upload-local/<key>) are handled separately in
+ * fetchAssetBytes — they must be read from disk, never via the S3 SDK.
+ */
+export function ownStorageKey(fileUrl: string): string | null {
+  let u: URL;
+  try {
+    u = new URL(fileUrl);
+  } catch {
+    return null;
+  }
+  if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+  const b = bucket();
+  const host = u.hostname.toLowerCase();
+  const key = decodeURIComponent(u.pathname.replace(/^\/+/, ""));
+  if (!key) return null;
+  // virtual-hosted-style: <bucket>.s3.amazonaws.com or <bucket>.s3.<region>.amazonaws.com
+  const vhost = host.match(/^([^.]+)\.s3(?:\.[a-z0-9-]+)?\.amazonaws\.com$/);
+  if (vhost) return vhost[1] === b ? key : null;
+  // path-style: s3.amazonaws.com/<bucket>/... or s3.<region>.amazonaws.com/<bucket>/...
+  if (/^s3(?:\.[a-z0-9-]+)?\.amazonaws\.com$/.test(host)) {
+    return key.startsWith(`${b}/`) ? key.slice(b.length + 1) || null : null;
+  }
+  return null;
+}
+
+/**
  * Fetch a content-library asset's bytes safely:
  *   - SSRF guard (no internal hosts — asset fileUrls are tenant-controllable)
  *   - 10s timeout (no hung connections)
@@ -52,6 +90,43 @@ const MAX_ASSET_BYTES = 25 * 1024 * 1024; // 25 MB
  *   - no redirect following (a 3xx to an internal host would bypass the guard)
  */
 export async function fetchAssetBytes(fileUrl: string): Promise<{ ok: true; buf: Buffer } | { ok: false; status: number; error: string }> {
+  // `/api/upload-local/<key>` is a UNIFIED asset URL — the object may live on
+  // the local uploads volume (legacy / no-S3 era) OR in the S3 bucket (current
+  // uploads, once keys were configured). Try local disk first, then fall back to
+  // S3, exactly like the /api/upload-local GET route — so logos/avatars load
+  // wherever the bytes actually landed.
+  if (fileUrl.startsWith(LOCAL_UPLOAD_PREFIX)) {
+    const lkey = decodeURIComponent(fileUrl.slice(LOCAL_UPLOAD_PREFIX.length));
+    try {
+      const buf = await getLocalUploadBytes(lkey);
+      if (buf.byteLength > MAX_ASSET_BYTES) return { ok: false, status: 413, error: "asset too large" };
+      return { ok: true, buf };
+    } catch {
+      // Not on the local volume — read it from S3.
+      try {
+        const buf = await getObjectBytes(lkey);
+        if (buf.byteLength > MAX_ASSET_BYTES) return { ok: false, status: 413, error: "asset too large" };
+        return { ok: true, buf };
+      } catch (e: any) {
+        return { ok: false, status: 502, error: `upload read failed: ${e?.message ?? String(e)}` };
+      }
+    }
+  }
+
+  // Our own S3 uploads live in a PRIVATE bucket — read them with the
+  // authenticated SDK, not a public fetch (which 403s). Only genuinely-external
+  // URLs fall through to the SSRF-guarded public fetch below.
+  const key = ownStorageKey(fileUrl);
+  if (key) {
+    try {
+      const buf = await getObjectBytes(key);
+      if (buf.byteLength > MAX_ASSET_BYTES) return { ok: false, status: 413, error: "asset too large" };
+      return { ok: true, buf };
+    } catch (e: any) {
+      return { ok: false, status: 502, error: `storage read failed: ${e?.message ?? String(e)}` };
+    }
+  }
+
   const unsafe = isUnsafeAssetUrl(fileUrl);
   if (unsafe) return { ok: false, status: 400, error: `Blocked asset URL (${unsafe})` };
 

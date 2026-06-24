@@ -79,9 +79,6 @@ export default async function EmployeesPage({
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
             <UserCog className="size-6 text-brand-cyan" /> Employees / Team
           </h1>
-          <p className="text-muted-foreground text-sm">
-            Roles, departments, reporting lines, targets, NISM compliance — all in one register.
-          </p>
         </div>
         <div className="flex items-center gap-2">
           <Link href="/dashboard/employees/org" className="rounded-md border px-3 py-1.5 text-sm font-medium flex items-center gap-1.5 hover:bg-secondary">

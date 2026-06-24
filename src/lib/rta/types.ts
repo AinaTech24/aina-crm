@@ -16,6 +16,9 @@ export type RtaScheme = {
   /** RTA scheme/product code, e.g. Kfintech "101BAGP". */
   schemeCode: string;
   schemeName: string;
+  /** ISIN from the file (when present) — the reliable key to resolve the
+   *  canonical AMFI scheme name + AMC name + AMFI scheme code. */
+  isin?: string;
   category?: string;
   /** Holdings (from a valuation report like MFSD203) — absent in master feeds. */
   units?: number;

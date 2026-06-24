@@ -18,6 +18,7 @@ import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { goals } from "@/db/schema";
 import { computeGoal, monthsBetween } from "@/lib/goal-planning/calc";
 import { expectedProgressPct } from "@/lib/goal-planning/recompute";
+import { effectiveGlideReturn } from "@/lib/goal-planning/glide-path";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +34,7 @@ const Patch = z.object({
   currentValue: z.number().nonnegative().optional(),
   existingMonthlySip: z.number().nonnegative().optional(),
   expectedReturnPct: z.number().min(1).max(30).optional(),
+  glidePath: z.enum(["none", "conservative", "moderate", "aggressive"]).optional(),
   status: z.enum([
     "not_started", "on_track", "behind_track", "achieved",
     "active", "on_hold", "abandoned",
@@ -102,7 +104,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         parse.data.targetDate !== undefined ||
         parse.data.currentValue !== undefined ||
         parse.data.existingMonthlySip !== undefined ||
-        parse.data.expectedReturnPct !== undefined;
+        parse.data.expectedReturnPct !== undefined ||
+        parse.data.glidePath !== undefined;
 
       if (inputsChanged) {
         const targetMode = parse.data.targetMode ?? before.targetMode ?? "future";
@@ -127,13 +130,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           futureTarget = parse.data.targetAmount ?? Number(before.targetAmount);
         }
 
+        const glidePath = parse.data.glidePath ?? (before as any).glidePath ?? "none";
+        const effReturn = effectiveGlideReturn(expectedReturnPct, monthsLeft / 12, glidePath);
         const calc = computeGoal({
           presentTarget,
           futureTarget,
           currentValue,
           existingMonthlySip: existingSip,
           monthsLeft,
-          expectedReturnPct,
+          expectedReturnPct: effReturn,
           inflationPct,
           stepUpPct,
         });

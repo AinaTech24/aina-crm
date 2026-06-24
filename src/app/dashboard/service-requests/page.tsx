@@ -94,7 +94,7 @@ export default async function ServiceRequestsPage({
              sr.escalated_at, sr.escalated_to_user_id, sr.remarks,
              jsonb_array_length(COALESCE(sr.attachments, '[]'::jsonb)) AS attach_count,
              sr.created_at,
-             i.name AS investor_name, u.name AS assignee_name,
+             i.name AS investor_name, i.avatar_url AS investor_avatar_url, u.name AS assignee_name,
              CASE
                WHEN sr.resolved_at IS NOT NULL
                  THEN EXTRACT(DAY FROM sr.resolved_at - sr.created_at)::int

@@ -1,9 +1,11 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { desc, eq, and, or, ilike, inArray, sql } from "drizzle-orm";
 import { Mail, PenSquare } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { communications, investors, leads } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
+import { can } from "@/lib/auth/rbac";
 import { FilterBar } from "@/components/common/FilterBar";
 import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
 import { CustomViews } from "@/components/common/CustomViews";
@@ -21,6 +23,22 @@ export default async function CommunicationsPage({
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const session = await requireSession();
+  // Comms is the most PII-dense surface in the app (client message bodies +
+  // inbound replies). Gate it to the roles that legitimately handle or oversee
+  // comms; an investor-portal / unprivileged session is bounced.
+  const canView =
+    can(session.roles, "communication.send", session.permissions) ||
+    can(session.roles, "compliance.view", session.permissions) ||
+    can(session.roles, "investor.view.all", session.permissions) ||
+    can(session.roles, "reports.business", session.permissions);
+  if (!canView) redirect("/dashboard");
+  // Managers / compliance / ops see the whole firm; a plain RM (or marketing)
+  // sees only threads they sent or that belong to their own clients/leads.
+  const seesAll =
+    can(session.roles, "investor.view.all", session.permissions) ||
+    can(session.roles, "compliance.view", session.permissions) ||
+    can(session.roles, "reports.business", session.permissions);
+  const me = session.userId;
   const sp = await searchParams;
   const q = (sp.q ?? "").trim();
   const channels = (sp.channel ?? "").split(",").filter(Boolean);
@@ -42,7 +60,13 @@ export default async function CommunicationsPage({
           count(*) FILTER (WHERE status IN ('delivered','read'))::int AS delivered,
           count(*) FILTER (WHERE status IN ('read','replied'))::int AS read,
           count(*) FILTER (WHERE status = 'failed')::int AS failed
-        FROM communications WHERE tenant_id = ${session.tenantId}::uuid
+        FROM communications
+        WHERE tenant_id = ${session.tenantId}::uuid${seesAll
+          ? sql``
+          : sql` AND (user_id = ${me}::uuid
+                OR investor_id IN (SELECT id FROM investors WHERE rm_id = ${me}::uuid)
+                OR lead_id IN (SELECT id FROM leads WHERE owner_id = ${me}::uuid))`
+        }
       `)
     ).rows[0] as any;
 
@@ -50,6 +74,16 @@ export default async function CommunicationsPage({
     // explicit predicate is the live protection. Without it this list (and the
     // filtered total) would render every tenant's inbox/outbox.
     const conds: any[] = [eq(communications.tenantId, session.tenantId)];
+    // Per-RM scope (the leftJoins to investors/leads below back this OR).
+    if (!seesAll) {
+      conds.push(
+        or(
+          eq(communications.userId, me),
+          eq(investors.rmId, me),
+          eq(leads.ownerId, me)
+        )!
+      );
+    }
     if (channels.length) conds.push(inArray(communications.channel, channels as any));
     if (statuses.length) conds.push(inArray(communications.status, statuses as any));
     if (flagged) conds.push(sql`${communications.flaggedAt} IS NOT NULL`);
@@ -122,9 +156,6 @@ export default async function CommunicationsPage({
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
             <Mail className="size-6 text-brand-cyan" /> Communications
           </h1>
-          <p className="text-muted-foreground text-sm">
-            Unified inbox + outbox. Every send carries a consent + compliance snapshot for audit.
-          </p>
         </div>
         <div className="flex items-center gap-2">
           <Link href="/dashboard/communications/cadence" className="btn-secondary text-xs whitespace-nowrap">
@@ -191,7 +222,7 @@ export default async function CommunicationsPage({
         }
       />
 
-      <div className="border rounded-lg bg-card overflow-auto max-h-[600px] scrollbar-none">
+      <div className="border rounded-lg bg-card table-scroll">
         <CommsList rows={listRows} />
       </div>
       <Pager

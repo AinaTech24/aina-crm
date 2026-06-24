@@ -53,11 +53,26 @@ export async function POST(req: NextRequest) {
   const payEntity = payload.payload?.payment?.entity;
   const rzpSubId: string | undefined = subEntity?.id ?? payEntity?.subscription_id;
   const tenantId: string | undefined = subEntity?.notes?.tenant_id ?? payEntity?.notes?.tenant_id;
+  // Razorpay delivers at-least-once; the SAME event redelivered carries the same
+  // x-razorpay-event-id. We dedup on it so a redelivered payment.failed can't
+  // double-bump the dunning counter and a redelivered charge can't write a
+  // duplicate payment row into the subscription_events audit.
+  const eventId = req.headers.get("x-razorpay-event-id");
 
   if (!rzpSubId && !tenantId) return NextResponse.json({ ok: true });
 
   try {
     await withSystem(async (tx) => {
+      // Idempotency guard — insert the event id in the SAME tx as processing, so
+      // a duplicate is skipped while a processing failure (rollback) still retries.
+      if (eventId) {
+        const seen = await tx.execute(sql`
+          INSERT INTO webhook_events (provider, event_id) VALUES ('razorpay', ${eventId})
+          ON CONFLICT (provider, event_id) DO NOTHING
+          RETURNING id
+        `);
+        if (seen.rows.length === 0) return; // already processed — ack + skip
+      }
       // Resolve OUR subscription row by the Razorpay subscription id, else tenant.
       const rows = rzpSubId
         ? await tx.select().from(subscriptions).where(eq(subscriptions.razorpaySubscriptionId, rzpSubId)).limit(1)

@@ -120,9 +120,6 @@ export default async function FinancialPlansPage({
           <h1 className="page-title">
             <ScrollText className="size-6 text-brand-cyan" /> Financial Plans
           </h1>
-          <p className="page-subtitle">
-            Comprehensive client profiling, cash flow analysis, goals calculators, and branded PDF generation.
-          </p>
         </div>
         <Link href="/dashboard/financial-plans/new" className="btn-primary">
           <Plus className="size-4" /> Create Financial Plan
@@ -259,6 +256,7 @@ export default async function FinancialPlansPage({
                               <ChevronRight className="size-4" />
                             </Link>
                             <RowActions
+                              inline
                               editHref={`/dashboard/financial-plans/new?edit=${p.id}`}
                               deleteUrl={`/api/financial-plans/${p.id}`}
                               itemLabel="financial plan"
@@ -304,22 +302,22 @@ function StatCard({
     tone === "rose"
       ? "text-rose-600"
       : tone === "amber"
-      ? "text-amber-600"
-      : tone === "emerald"
-      ? "text-emerald-600"
-      : tone === "cyan"
-      ? "text-brand-cyan-deep"
-      : "text-foreground";
+        ? "text-amber-600"
+        : tone === "emerald"
+          ? "text-emerald-600"
+          : tone === "cyan"
+            ? "text-brand-cyan-deep"
+            : "text-foreground";
   const iconBg =
     tone === "rose"
       ? "bg-rose-50 text-rose-600"
       : tone === "amber"
-      ? "bg-amber-50 text-amber-600"
-      : tone === "emerald"
-      ? "bg-emerald-50 text-emerald-600"
-      : tone === "cyan"
-      ? "bg-brand-cyan-light text-brand-cyan-deep"
-      : "bg-secondary text-muted-foreground";
+        ? "bg-amber-50 text-amber-600"
+        : tone === "emerald"
+          ? "bg-emerald-50 text-emerald-600"
+          : tone === "cyan"
+            ? "bg-brand-cyan-light text-brand-cyan-deep"
+            : "bg-secondary text-muted-foreground";
 
   return (
     <div className="kpi-card bg-card border border-border/60 rounded-xl p-4 shadow-sm">

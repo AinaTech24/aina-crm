@@ -17,8 +17,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { DashboardNavDropdown, type DashboardSubItem } from "./DashboardNavDropdown";
 import {
   Search, Pencil, Check, Plus, GripVertical, X, RotateCcw, Circle, ChevronDown, ChevronUp,
@@ -60,6 +59,11 @@ export type NavItemData = {
   label: string;
   iconName: string; // lucide displayName, resolved client-side via ICONS
   defaultGroup: string; // default section title ("" = the top, header-less group)
+  /** Optional count badge (e.g. active announcements). Survives reconcile
+   *  because the layout stores only hrefs and resolves item data from itemMap. */
+  badge?: number;
+  /** Module is in BETA (platform Module Controls) — shows a "Beta" tag. */
+  beta?: boolean;
 };
 
 type Group = { id: string; title: string; items: string[] /* hrefs */ };
@@ -123,10 +127,13 @@ export function CustomizableNav({
   items,
   storageKey,
   dashboardSubItems,
+  showDashboards = true,
 }: {
   items: NavItemData[];
   storageKey: string;
   dashboardSubItems?: DashboardSubItem[];
+  /** Platform "dashboards" module — hides the top Dashboards dropdown when off. */
+  showDashboards?: boolean;
 }) {
   const pathname = usePathname() ?? "";
   const itemMap = useMemo(() => new Map(items.map((i) => [i.href, i])), [items]);
@@ -338,7 +345,7 @@ export function CustomizableNav({
 
       <nav className="flex-1 overflow-y-auto overflow-x-hidden px-3 pb-4 pt-2 space-y-5 scrollbar-thin">
         {/* Combined Dashboards dropdown (Dashboard + My Dashboards + Team) — pinned top */}
-        {!searchResults && <DashboardNavDropdown items={dashboardSubItems} />}
+        {!searchResults && showDashboards && <DashboardNavDropdown items={dashboardSubItems} />}
         {/* Inline "new group" composer — name + pick modules; group lands at top. */}
         {editing && showAddGroup && !searchResults && (
           <AddGroupForm
@@ -500,18 +507,30 @@ function NavRow({
   onDragEnd?: () => void;
   onDropBefore?: () => void;
 }) {
+  const router = useRouter();
   const IconCmp = ICONS[item.iconName] ?? Circle;
   const content = (
     <>
       {editing && <GripVertical className="size-3.5 shrink-0 text-muted-foreground/60 cursor-grab" />}
       <IconCmp className="nav-link-icon" />
       <span className="truncate">{item.label}</span>
+      {item.beta ? (
+        <span className="shrink-0 rounded bg-amber-100 text-amber-700 px-1 text-[9px] font-bold uppercase leading-[1.3] tracking-wide">
+          Beta
+        </span>
+      ) : null}
+      {!editing && item.badge ? (
+        <span className="ml-auto shrink-0 rounded-full bg-rose-500 px-1.5 min-w-[1.1rem] text-center text-[10px] font-semibold leading-[1.1rem] text-white">
+          {item.badge > 99 ? "99+" : item.badge}
+        </span>
+      ) : null}
     </>
   );
 
   if (editing) {
     return (
       <div
+        data-href={item.href}
         draggable
         onDragStart={onDragStart}
         onDragEnd={onDragEnd}
@@ -524,10 +543,21 @@ function NavRow({
     );
   }
 
+  // Navigate programmatically (not via <a href>) so the browser never parks the
+  // raw URL in its hover status-bar — keyboard-accessible via role="link".
+  const go = () => { onNavigate?.(); router.push(item.href); };
   return (
-    <Link href={item.href} onClick={onNavigate} className={`group nav-link ${active ? "nav-link-active" : ""}`} aria-current={active ? "page" : undefined}>
+    <div
+      data-href={item.href}
+      role="link"
+      tabIndex={0}
+      aria-current={active ? "page" : undefined}
+      onClick={go}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } }}
+      className={`group nav-link cursor-pointer ${active ? "nav-link-active" : ""}`}
+    >
       {content}
-    </Link>
+    </div>
   );
 }
 

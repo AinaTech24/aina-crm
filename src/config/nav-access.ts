@@ -22,17 +22,27 @@ export type NavAccessGroup = { title: string; items: NavAccessItem[] };
 
 export const NAV_ACCESS_GROUPS: NavAccessGroup[] = [
   {
-    title: "General",
+    // The whole Dashboards module. Grouped on its own so an admin can disable the
+    // entire module for a tenant / user / package with one "Disable all" click.
+    // (No `module` key — these stay granted by default under coarse package
+    // gating; an explicit grant is what turns them off.)
+    title: "Dashboards",
     items: [
       { key: "/dashboard/boards", label: "My Dashboards" },
+      { key: "/dashboard/team", label: "Team Dashboard" },
+      { key: "/dashboard/team/scorecard", label: "Team Scorecard" },
+    ],
+  },
+  {
+    title: "General",
+    items: [
       { key: "/dashboard/command-center", label: "Command Center" },
       { key: "/dashboard/next-best-action", label: "Next Best Action" },
       { key: "/dashboard/tasks", label: "Tasks", module: "tasks" },
       { key: "/dashboard/review-meetings", label: "Meetings", module: "review_meetings" },
       { key: "/dashboard/calendar", label: "Calendar" },
       { key: "/dashboard/attendance", label: "Attendance" },
-      { key: "/dashboard/team", label: "Team Dashboard" },
-      { key: "/dashboard/team/scorecard", label: "Team Scorecard" },
+      { key: "/dashboard/trash", label: "Trash" },
     ],
   },
   {
@@ -43,6 +53,7 @@ export const NAV_ACCESS_GROUPS: NavAccessGroup[] = [
       { key: "/dashboard/investors", label: "Clients", module: "client_master" },
       { key: "/dashboard/families", label: "Family Mapping", module: "family_mapping" },
       { key: "/dashboard/risk-profiles", label: "Risk Profile", module: "risk_profile" },
+      { key: "/dashboard/discovery", label: "Discovery & Suitability" },
       { key: "/dashboard/calculators", label: "Calculators" },
       { key: "/dashboard/goals", label: "Goal Planning", module: "goal_planning" },
       { key: "/dashboard/proposals", label: "Proposals", module: "proposals" },
@@ -52,12 +63,12 @@ export const NAV_ACCESS_GROUPS: NavAccessGroup[] = [
       { key: "/dashboard/insurance/renewals", label: "Insurance Renewals", module: "insurance" },
       { key: "/dashboard/insurance/protection-gap", label: "Protection-Gap Radar", module: "insurance" },
       { key: "/dashboard/insurance/commission", label: "Insurance Commission", module: "insurance" },
-      { key: "/dashboard/celebrations", label: "Celebrations" },
     ],
   },
   {
     title: "Operations",
     items: [
+      { key: "/dashboard/business-entries", label: "Business Entries", module: "business_entries" },
       { key: "/dashboard/transactions", label: "MF Transactions", module: "transactions" },
       { key: "/dashboard/rta-imports", label: "RTA File Imports", module: "transactions" },
       { key: "/dashboard/reconciliation", label: "Reconciliation", module: "transactions" },
@@ -77,7 +88,6 @@ export const NAV_ACCESS_GROUPS: NavAccessGroup[] = [
       { key: "/dashboard/workflows/runs", label: "Automation Monitor", module: "automation_workflows" },
       { key: "/dashboard/templates", label: "Templates", module: "broadcasts" },
       { key: "/dashboard/campaigns", label: "Marketing Campaigns", module: "marketing_campaigns" },
-      { key: "/dashboard/content-calendar", label: "Social Media Calendar", module: "content_calendar" },
       { key: "/dashboard/aina-library", label: "AINA Content Library" },
       { key: "/dashboard/communications", label: "Communications", module: "broadcasts" },
     ],

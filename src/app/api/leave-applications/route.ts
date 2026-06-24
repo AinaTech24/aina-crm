@@ -18,7 +18,7 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { leaveApplications, users, notifications, eventsOutbox, LEAVE_TYPES, LEAVE_DURATIONS } from "@/db/schema";
-import { computeDays } from "@/lib/leave/policy";
+import { leaveWorkingDays } from "@/lib/leave/working-days";
 
 export const dynamic = "force-dynamic";
 
@@ -26,21 +26,34 @@ const Body = z.object({
   employeeUserId: z.string().uuid().optional(),
   leaveType: z.enum(LEAVE_TYPES),
   duration: z.enum(LEAVE_DURATIONS).default("full_day"),
-  fromDate: z.string(), // YYYY-MM-DD
-  toDate: z.string(),
+  fromDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "fromDate must be YYYY-MM-DD"),
+  toDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "toDate must be YYYY-MM-DD"),
   reason: z.string().max(2000).optional(),
 });
 
 export async function GET() {
   try {
     const session = await requireSession();
+    // Leave reasons are HR-sensitive (medical / bereavement / personal), so the
+    // list is scoped: owners + branch-heads see the whole firm; everyone else
+    // sees only their own applications plus those of their direct reports.
+    const isManager = session.roles.some((r) => ["owner", "branch_head"].includes(r));
     const rows = await withTenant(session.tenantId, async (tx) => {
+      const scope = isManager
+        ? sql``
+        : sql` AND (
+            la.employee_user_id = ${session.userId}::uuid
+            OR la.employee_user_id IN (
+              SELECT id FROM users
+              WHERE tenant_id = ${session.tenantId}::uuid AND reporting_manager_id = ${session.userId}::uuid
+            )
+          )`;
       const r = await tx.execute(sql`
         SELECT la.*, u.name AS employee_name, a.name AS approver_name
         FROM leave_applications la
         LEFT JOIN users u ON u.id = la.employee_user_id
         LEFT JOIN users a ON a.id = la.approver_user_id
-        WHERE la.tenant_id = ${session.tenantId}::uuid
+        WHERE la.tenant_id = ${session.tenantId}::uuid${scope}
         ORDER BY la.created_at DESC
         LIMIT 500
       `);
@@ -73,12 +86,30 @@ export async function POST(req: NextRequest) {
     if (toDate < fromDate) {
       return NextResponse.json({ error: "to-date is before from-date" }, { status: 400 });
     }
-    const days = computeDays(fromDate, toDate, body.duration);
 
     const id = uuid();
     const result = await withTenant(session.tenantId, async (tx) => {
       const emp = (await tx.select().from(users).where(and(eq(users.id, employeeUserId), eq(users.tenantId, session.tenantId))).limit(1))[0];
       if (!emp) throw Object.assign(new Error("employee not found"), { status: 404 });
+
+      // Reject a request that overlaps an existing live (requested/approved) one
+      // for the same employee — two overlapping ranges satisfy from <= toDate AND
+      // to >= fromDate. Stops accidental duplicate / double-booked leave.
+      const overlap = await tx.execute(sql`
+        SELECT 1 FROM leave_applications
+        WHERE tenant_id = ${session.tenantId}::uuid
+          AND employee_user_id = ${employeeUserId}::uuid
+          AND status IN ('requested', 'approved')
+          AND from_date <= ${toDate}::date AND to_date >= ${fromDate}::date
+        LIMIT 1
+      `);
+      if (overlap.rows.length) {
+        throw Object.assign(new Error("This employee already has a pending or approved leave overlapping these dates."), { status: 409 });
+      }
+
+      // Authoritative working-day count — excludes the firm's weekly-offs +
+      // holidays so a weekend/festival-spanning leave isn't over-charged.
+      const days = await leaveWorkingDays(tx as any, session.tenantId, fromDate, toDate, body.duration);
 
       await tx.insert(leaveApplications).values({
         id,

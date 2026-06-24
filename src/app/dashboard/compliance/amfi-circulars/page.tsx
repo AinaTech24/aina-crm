@@ -44,10 +44,6 @@ export default async function AmfiCircularsPage() {
         <h1 className="page-title flex items-center gap-2">
           <ScrollText className="size-6 text-brand-cyan" /> Regulatory circular digest
         </h1>
-        <p className="page-subtitle">
-          AMFI · SEBI · CBDT updates in plain English, with what each one means for your firm. Curated
-          by AINA — always confirm specifics from the official source before acting.
-        </p>
       </div>
 
       {canDraft && <CircularSummarizer />}

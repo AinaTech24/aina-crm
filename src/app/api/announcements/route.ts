@@ -18,6 +18,7 @@ import { requireSession } from "@/lib/auth/session";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { ANNOUNCEMENT_CATEGORIES, announcements } from "@/db/schema";
 import { audienceRolesSchema, checkBranchTarget } from "@/lib/announcements/validate";
+import { notifyAnnouncementPublished } from "@/lib/announcements/notify";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +31,7 @@ const Body = z.object({
   audienceRoles: audienceRolesSchema.default([]),
   branchId: z.string().uuid().nullable().optional(),
   isPinned: z.boolean().default(false),
+  requiresAck: z.boolean().default(false),
   publishNow: z.boolean().default(true),
   expiresAt: z.string().datetime().nullable().optional(),
 });
@@ -41,8 +43,11 @@ export async function GET(req: NextRequest) {
 
     const rows = await withTenant(session.tenantId, async (tx) => {
       if (manage) {
+        // Read/ack rollup per announcement for the manager view ("X of Y").
         const r = await tx.execute(sql`
-          SELECT a.*, u.name AS created_by_name
+          SELECT a.*, u.name AS created_by_name,
+                 (SELECT count(*)::int FROM announcement_reads ar WHERE ar.announcement_id = a.id) AS read_count,
+                 (SELECT count(*)::int FROM announcement_reads ar WHERE ar.announcement_id = a.id AND ar.acknowledged_at IS NOT NULL) AS ack_count
           FROM announcements a LEFT JOIN users u ON u.id = a.created_by_user_id
           WHERE a.tenant_id = ${session.tenantId}::uuid
           ORDER BY a.is_pinned DESC, COALESCE(a.published_at, a.created_at) DESC
@@ -52,9 +57,13 @@ export async function GET(req: NextRequest) {
       }
       const rolesJson = JSON.stringify(session.roles);
       const r = await tx.execute(sql`
-        SELECT a.id, a.title, a.body, a.category, a.is_pinned, a.published_at, a.expires_at,
-               u.name AS created_by_name
-        FROM announcements a LEFT JOIN users u ON u.id = a.created_by_user_id
+        SELECT a.id, a.title, a.body, a.category, a.is_pinned, a.requires_ack, a.published_at, a.expires_at,
+               u.name AS created_by_name,
+               (ar.read_at IS NOT NULL) AS is_read,
+               (ar.acknowledged_at IS NOT NULL) AS is_acknowledged
+        FROM announcements a
+        LEFT JOIN users u ON u.id = a.created_by_user_id
+        LEFT JOIN announcement_reads ar ON ar.announcement_id = a.id AND ar.user_id = ${session.userId}::uuid
         WHERE a.tenant_id = ${session.tenantId}::uuid
           AND a.published_at IS NOT NULL AND a.published_at <= now()
           AND (a.expires_at IS NULL OR a.expires_at > now())
@@ -103,10 +112,17 @@ export async function POST(req: NextRequest) {
         audienceRoles: b.audienceRoles,
         branchId: b.branchId ?? null,
         isPinned: b.isPinned,
+        requiresAck: b.requiresAck,
         publishedAt: b.publishNow ? new Date() : null,
         expiresAt: b.expiresAt ? new Date(b.expiresAt) : null,
         createdByUserId: session.userId,
       } as any);
+      // Notify targeted staff the moment it goes live (drafts notify on publish).
+      if (b.publishNow) {
+        await notifyAnnouncementPublished(tx as any, session.tenantId, {
+          id, title: b.title, category: b.category, audienceRoles: b.audienceRoles, branchId: b.branchId ?? null, createdByUserId: session.userId,
+        });
+      }
       await recordAudit(tx, {
         tenantId: session.tenantId,
         actorUserId: session.userId,

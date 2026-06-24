@@ -1,6 +1,6 @@
 "use client";
 
-import { Download, Printer } from "lucide-react";
+import { FileUp, Printer } from "lucide-react";
 
 export function ReportExportButtons({
   rows,
@@ -36,7 +36,7 @@ export function ReportExportButtons({
         onClick={downloadCsv}
         className="rounded-md border px-3 py-1.5 text-sm flex items-center gap-1.5 hover:bg-accent"
       >
-        <Download className="size-3.5" /> Export CSV
+        <FileUp className="size-3.5" /> Export CSV
       </button>
       <button
         onClick={() => window.print()}

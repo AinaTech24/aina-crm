@@ -6,7 +6,7 @@
 
 import Link from "next/link";
 import { Plus, FileText } from "lucide-react";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
@@ -50,51 +50,46 @@ export default async function LegalRegistrationsPage({
   const statusFilter = sp.status ?? "active";
   const authorityFilter = sp.authority ?? "all";
 
-  const rows = await withTenant(session.tenantId, async (tx) => {
-    const where = [eq(legalRegistrations.tenantId, session.tenantId)];
-    if (statusFilter !== "all") {
-      where.push(eq(legalRegistrations.status, statusFilter as any));
-    }
-    if (authorityFilter !== "all") {
-      where.push(eq(legalRegistrations.authority, authorityFilter as any));
-    }
-    return tx
+  // Single fetch — the register is small, so we load the tenant's rows once and
+  // derive both the (effective-status-)filtered table and the KPI counts in JS.
+  const all = await withTenant(session.tenantId, async (tx) =>
+    tx
       .select()
       .from(legalRegistrations)
-      .where(and(...where))
-      .orderBy(legalRegistrations.expiryAt);
-  });
+      .where(eq(legalRegistrations.tenantId, session.tenantId))
+      .orderBy(legalRegistrations.expiryAt)
+  );
 
-  // Counts for filter chips
-  const counts = await withTenant(session.tenantId, async (tx) => {
-    const all = await tx
-      .select()
-      .from(legalRegistrations)
-      .where(eq(legalRegistrations.tenantId, session.tenantId));
-    return {
-      total: all.length,
-      active: all.filter((r) => r.status === "active").length,
-      pending: all.filter((r) => r.status === "pending_renewal").length,
-      expired: all.filter((r) => r.status === "expired").length,
-      expiring60: all.filter((r) => {
-        if (!r.expiryAt) return false;
-        const d = new Date(r.expiryAt);
-        const cutoff = new Date();
-        cutoff.setDate(cutoff.getDate() + 60);
-        return r.status === "active" && d <= cutoff && d >= new Date();
-      }).length,
-    };
-  });
+  const rows = all.filter(
+    (r) =>
+      (statusFilter === "all" || effectiveStatus(r) === statusFilter) &&
+      (authorityFilter === "all" || r.authority === authorityFilter)
+  );
+
+  // KPIs use the EFFECTIVE status (date-derived), so a license that lapsed but
+  // was never manually flipped still shows up as expired — and one expiring
+  // today is counted in "≤ 60d" (both compared at midnight; perpetual never alarms).
+  const counts = {
+    total: all.length,
+    active: all.filter((r) => effectiveStatus(r) === "active").length,
+    pending: all.filter((r) => effectiveStatus(r) === "pending_renewal").length,
+    expired: all.filter((r) => effectiveStatus(r) === "expired").length,
+    expiring60: all.filter((r) => {
+      const d = daysToExpiry(r);
+      return (
+        d !== null &&
+        d >= 0 &&
+        d <= 60 &&
+        ["active", "pending_renewal"].includes(effectiveStatus(r))
+      );
+    }).length,
+  };
 
   return (
     <div className="space-y-5">
       <div className="flex items-end justify-between">
         <div>
           <h1 className="text-2xl font-semibold">Legal registrations</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Statutory and regulatory licenses / certificates your firm holds.
-            SEBI / AMFI / IRDAI / GST / MCA — everything in one register.
-          </p>
         </div>
         <Link
           href="/dashboard/legal-registrations/new"
@@ -135,14 +130,12 @@ export default async function LegalRegistrationsPage({
         ].map((s) => (
           <Link
             key={s.value}
-            href={`/dashboard/legal-registrations?status=${s.value}${
-              authorityFilter !== "all" ? `&authority=${authorityFilter}` : ""
-            }`}
-            className={`chip text-xs ${
-              statusFilter === s.value
+            href={`/dashboard/legal-registrations?status=${s.value}${authorityFilter !== "all" ? `&authority=${authorityFilter}` : ""
+              }`}
+            className={`chip text-xs ${statusFilter === s.value
                 ? "bg-slate-900 text-white"
                 : "bg-slate-100"
-            }`}
+              }`}
           >
             {s.label}
           </Link>
@@ -163,9 +156,9 @@ export default async function LegalRegistrationsPage({
           </Link>
         </div>
       ) : (
-        <div className="card-surface overflow-x-auto">
+        <div className="card-surface table-scroll">
           <table className="w-full text-xs min-w-[1024px]">
-            <thead className="bg-slate-50 text-slate-600">
+            <thead className="bg-muted/50 text-muted-foreground sticky top-0 z-10">
               <tr>
                 <th className="px-3 py-2 text-left">Registered in name of</th>
                 <th className="px-3 py-2 text-left">Authority</th>
@@ -204,7 +197,10 @@ export default async function LegalRegistrationsPage({
                     {r.registrationDate ? fmt(String(r.registrationDate)) : "—"}
                   </td>
                   <td className="px-3 py-2">
-                    <ExpiryBadge date={r.expiryAt ? String(r.expiryAt) : null} />
+                    <ExpiryBadge
+                      date={r.expiryAt ? String(r.expiryAt) : null}
+                      perpetual={r.renewalFrequency === "perpetual"}
+                    />
                   </td>
                   <td className="px-3 py-2 capitalize">
                     {r.renewalFrequency.replace("_", " ")}
@@ -220,13 +216,17 @@ export default async function LegalRegistrationsPage({
                     )}
                   </td>
                   <td className="px-3 py-2">
-                    <span
-                      className={`chip text-[10px] ${
-                        STATUS_TONE[r.status] ?? "bg-slate-100"
-                      }`}
-                    >
-                      {r.status.replace("_", " ")}
-                    </span>
+                    {(() => {
+                      const eff = effectiveStatus(r);
+                      return (
+                        <span
+                          className={`chip text-[10px] ${STATUS_TONE[eff] ?? "bg-slate-100"}`}
+                          title={eff !== r.status ? `Marked "${r.status}", but lapsed by date` : undefined}
+                        >
+                          {eff.replace("_", " ")}
+                        </span>
+                      );
+                    })()}
                   </td>
                 </tr>
               ))}
@@ -263,7 +263,10 @@ function Tile({
   );
 }
 
-function ExpiryBadge({ date }: { date: string | null }) {
+function ExpiryBadge({ date, perpetual }: { date: string | null; perpetual?: boolean }) {
+  // A perpetual license never expires — show a neutral chip, never a red alarm,
+  // even if an expiry date was entered by mistake.
+  if (perpetual) return <span className="chip bg-slate-100 text-[10px]">Perpetual</span>;
   if (!date) return <span className="chip bg-slate-100 text-[10px]">Perpetual</span>;
   const d = new Date(date);
   const today = new Date();
@@ -287,6 +290,28 @@ function ExpiryBadge({ date }: { date: string | null }) {
       )}
     </span>
   );
+}
+
+/** Whole days until expiry, both floored to midnight. null = no enforced expiry
+ *  (perpetual licenses, or no expiry date set) — these never alarm. */
+function daysToExpiry(r: { expiryAt: unknown; renewalFrequency: string }): number | null {
+  if (!r.expiryAt || r.renewalFrequency === "perpetual") return null;
+  const d = new Date(String(r.expiryAt));
+  if (isNaN(d.getTime())) return null;
+  d.setHours(0, 0, 0, 0);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.round((d.getTime() - today.getTime()) / 86400000);
+}
+
+/** Status as it ACTUALLY stands today: a still-"active"/"pending" license whose
+ *  date has passed reads as expired (the stored status field is only updated
+ *  manually or by the nightly scanner). Surrendered/rejected/expired are terminal. */
+function effectiveStatus(r: { status: string; expiryAt: unknown; renewalFrequency: string }): string {
+  if (r.status === "surrendered" || r.status === "rejected" || r.status === "expired") return r.status;
+  const d = daysToExpiry(r);
+  if (d !== null && d < 0) return "expired";
+  return r.status;
 }
 
 function fmt(d: string): string {

@@ -9,8 +9,9 @@
  * Plus a recent-uploads history table and a single + button that opens the
  * upload dialog.
  */
+import Link from "next/link";
 import { sql } from "drizzle-orm";
-import { Upload, FileText, CheckCircle2, AlertTriangle, Clock } from "lucide-react";
+import { FileText, CheckCircle2, AlertTriangle, Clock } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { formatDate, formatRelative } from "@/lib/utils";
@@ -22,6 +23,7 @@ import {
   cadenceLabel,
 } from "@/lib/rta/file-types";
 import { RtaUploadButton } from "./client";
+import { RtaImportsTable } from "@/components/rta/RtaImportsTable";
 
 export const dynamic = "force-dynamic";
 
@@ -34,7 +36,7 @@ export default async function RtaImportsPage() {
       SELECT DISTINCT ON (kind)
         kind, source, period_end, status, parsed_at, rows_imported, created_at, file_name
       FROM rta_file_imports
-      WHERE status IN ('completed', 'partial')
+      WHERE status IN ('completed', 'partial') AND deleted_at IS NULL
       ORDER BY kind, period_end DESC, created_at DESC
     `);
 
@@ -43,15 +45,30 @@ export default async function RtaImportsPage() {
       SELECT
         rfi.id, rfi.source, rfi.kind, rfi.period_start, rfi.period_end,
         rfi.file_name, rfi.status, rfi.rows_total, rfi.rows_imported,
-        rfi.rows_skipped, rfi.rows_failed, rfi.created_at, rfi.parsed_at,
+        rfi.rows_skipped, rfi.rows_failed, rfi.created_at, rfi.parsed_at, rfi.remarks,
         u.name AS uploaded_by_name
       FROM rta_file_imports rfi
       LEFT JOIN users u ON u.id = rfi.uploaded_by
+      WHERE rfi.deleted_at IS NULL
       ORDER BY rfi.created_at DESC
       LIMIT 30
     `);
 
-    return { latest: latest.rows as any[], recent: recent.rows as any[] };
+    // Trash — soft-deleted import records, recoverable.
+    const trashed = await tx.execute(sql`
+      SELECT
+        rfi.id, rfi.source, rfi.kind, rfi.period_start, rfi.period_end,
+        rfi.file_name, rfi.status, rfi.rows_total, rfi.rows_imported,
+        rfi.rows_skipped, rfi.rows_failed, rfi.created_at, rfi.parsed_at, rfi.remarks,
+        u.name AS uploaded_by_name
+      FROM rta_file_imports rfi
+      LEFT JOIN users u ON u.id = rfi.uploaded_by
+      WHERE rfi.deleted_at IS NOT NULL
+      ORDER BY rfi.deleted_at DESC
+      LIMIT 50
+    `);
+
+    return { latest: latest.rows as any[], recent: recent.rows as any[], trashed: trashed.rows as any[] };
   });
 
   const latestByKind: Record<string, any> = Object.fromEntries(
@@ -84,11 +101,6 @@ export default async function RtaImportsPage() {
           <h1 className="page-title">
             <FileText className="size-6 text-brand-cyan" /> RTA file imports
           </h1>
-          <p className="page-subtitle">
-            Every flat file from CAMS, KFintech, MFU and the exchanges in one
-            place — with the cadence each should arrive on and a warning when
-            it&apos;s late.
-          </p>
         </div>
         <RtaUploadButton />
       </div>
@@ -127,73 +139,9 @@ export default async function RtaImportsPage() {
         </div>
       </section>
 
-      {/* Recent uploads */}
-      <section>
-        <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-3">
-          Recent uploads
-        </h2>
-        <div className="card-surface overflow-hidden">
-          {data.recent.length === 0 ? (
-            <div className="p-12 text-center text-sm text-muted-foreground">
-              No files imported yet. Click <strong>Upload RTA file</strong> above
-              to start with your most recent daily transaction feed.
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="text-xs text-muted-foreground border-b">
-                  <tr>
-                    <th className="text-left px-4 py-2 font-medium">When</th>
-                    <th className="text-left py-2 font-medium">File</th>
-                    <th className="text-left py-2 font-medium">Type</th>
-                    <th className="text-left py-2 font-medium">Source</th>
-                    <th className="text-left py-2 font-medium">Period</th>
-                    <th className="text-right py-2 font-medium">Rows</th>
-                    <th className="text-left py-2 font-medium pl-4">Status</th>
-                    <th className="text-left py-2 font-medium pr-4">By</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.recent.map((r) => (
-                    <tr key={r.id} className="border-b last:border-0 hover:bg-accent/40">
-                      <td className="px-4 py-2.5 text-muted-foreground tabular-nums">
-                        {formatRelative(r.created_at)}
-                      </td>
-                      <td className="py-2.5 font-medium truncate max-w-[18rem]" title={r.file_name}>
-                        {r.file_name}
-                      </td>
-                      <td className="py-2.5 text-xs">
-                        {RTA_FILE_TYPE_BY_KIND[r.kind as keyof typeof RTA_FILE_TYPE_BY_KIND]?.label ?? r.kind}
-                      </td>
-                      <td className="py-2.5 text-xs uppercase tracking-wide">
-                        {r.source}
-                      </td>
-                      <td className="py-2.5 text-xs text-muted-foreground tabular-nums">
-                        {formatDate(r.period_start)} → {formatDate(r.period_end)}
-                      </td>
-                      <td className="py-2.5 text-right tabular-nums">
-                        <span className="text-emerald-700 font-medium">{r.rows_imported ?? 0}</span>
-                        {r.rows_skipped > 0 && (
-                          <span className="text-amber-700"> · {r.rows_skipped} skip</span>
-                        )}
-                        {r.rows_failed > 0 && (
-                          <span className="text-rose-700"> · {r.rows_failed} fail</span>
-                        )}
-                      </td>
-                      <td className="py-2.5 pl-4">
-                        <StatusBadge status={r.status} />
-                      </td>
-                      <td className="py-2.5 pr-4 text-xs text-muted-foreground">
-                        {r.uploaded_by_name ?? "—"}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      </section>
+      {/* Recent uploads + Trash (select / select-all / move-to-trash / recover /
+          delete permanently) — client-side table. */}
+      <RtaImportsTable recent={data.recent as any[]} trashed={data.trashed as any[]} />
     </div>
   );
 }
@@ -209,8 +157,8 @@ function FileKindTile({
     status === "fresh"
       ? "border-emerald-200"
       : status === "late"
-      ? "border-rose-300"
-      : "border-amber-200";
+        ? "border-rose-300"
+        : "border-amber-200";
 
   return (
     <div className={`card-elevated p-4 border ${ringCls}`}>
@@ -281,9 +229,8 @@ function Field({
     <div>
       <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</div>
       <div
-        className={`font-medium ${
-          tone === "rose" ? "text-rose-700" : tone === "muted" ? "text-muted-foreground" : ""
-        }`}
+        className={`font-medium ${tone === "rose" ? "text-rose-700" : tone === "muted" ? "text-muted-foreground" : ""
+          }`}
       >
         {value}
       </div>
@@ -306,8 +253,8 @@ function SummaryTile({
     tone === "emerald"
       ? "bg-emerald-50 text-emerald-700 border-emerald-200"
       : tone === "rose"
-      ? "bg-rose-50 text-rose-700 border-rose-200"
-      : "bg-secondary/40 text-muted-foreground border-border";
+        ? "bg-rose-50 text-rose-700 border-rose-200"
+        : "bg-secondary/40 text-muted-foreground border-border";
   return (
     <div className={`card-elevated p-4 border ${cls}`}>
       <div className="text-xs uppercase tracking-wider opacity-80">{label}</div>

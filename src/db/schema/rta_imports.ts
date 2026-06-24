@@ -96,10 +96,16 @@ export const rtaFileImports = pgTable(
 
     /** First few row-level errors, surfaced to the user. */
     errors: jsonb("errors").$type<Array<{ row: number; reason: string }>>(),
+    /** Rich reconciliation summary (investors/folios created vs updated, AUM,
+     *  per-AMC breakdown, data-drift) so the import detail shows what changed. */
+    summary: jsonb("summary").$type<Record<string, any>>(),
     /** Free-form remarks from the importer (auto or user). */
     remarks: text("remarks"),
 
     uploadedBy: uuid("uploaded_by").references(() => users.id),
+
+    /** Trash bin — soft-delete so an accidental delete is recoverable. */
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
 
     ...timestamps,
   },

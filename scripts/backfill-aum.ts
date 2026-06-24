@@ -19,7 +19,7 @@ import { sql } from "drizzle-orm";
 process.env.ALLOW_SYSTEM_TX = process.env.ALLOW_SYSTEM_TX ?? "1";
 
 import { withSystem, withTenant } from "../src/db/client";
-import { recomputeAllAum, revalueAllFolios } from "../src/lib/finance/aum-persist";
+import { recomputeCombinedAum, revalueAllFolios } from "../src/lib/finance/aum-persist";
 
 async function main() {
   const tenants = await withSystem(async (tx) =>
@@ -33,7 +33,7 @@ async function main() {
   for (const { id: tenantId } of tenants) {
     await withTenant(tenantId, async (tx) => {
       const f = await revalueAllFolios(tx);
-      const a = await recomputeAllAum(tx);
+      const a = await recomputeCombinedAum(tx);
       totFolios += f.folios;
       totInvestors += a.updated;
       console.log(

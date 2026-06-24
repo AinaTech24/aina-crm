@@ -24,6 +24,7 @@ import { resolveEmailSender } from "@/lib/comms/sender";
 import { emailLogoHeaderHtml } from "@/lib/comms/email-logo";
 import { dispatch } from "@/lib/comms/pipeline";
 import { getChecklist, type ClientType } from "@/lib/onboarding/doc-checklists";
+import { getFieldChecklist } from "@/lib/onboarding/kyc-fields";
 import { ensureDocCollectionTemplate } from "@/lib/onboarding/doc-template";
 
 export const dynamic = "force-dynamic";
@@ -70,12 +71,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     // 1. Mint the secure, single-use document-collection link.
     const requiredDocs = getChecklist(clientType);
+    const requiredFields = getFieldChecklist(clientType);
     const token = await createShareToken({
       tenantId: session.tenantId,
       kind: "document_collection",
       subjectType: investorId ? "investor" : "lead",
       subjectId: investorId ?? id,
-      payload: { requiredDocs, clientType },
+      payload: { requiredDocs, requiredFields, clientType },
       expiresInDays: 7,
       createdBy: session.userId,
     });

@@ -7,6 +7,11 @@ import { formatINR, formatRelative, formatDate } from "@/lib/utils";
 import type { SessionUser } from "@/lib/auth/session";
 import { RmInsightsSection } from "./RmInsightsSection";
 import { NbaDateFilter } from "@/components/nba/NbaDateFilter";
+import { Avatar } from "@/components/ui/Avatar";
+import { resolvePeriodRange } from "@/lib/dashboard/period";
+import { getDashboardThresholds } from "@/lib/dashboard/thresholds";
+import { DashboardEmptyState } from "@/components/dashboards/DashboardEmptyState";
+import { Sparkline } from "@/components/dashboards/Sparkline";
 
 /**
  * RM dashboard — shows only what's assigned to this RM. Per spec section 2:
@@ -41,17 +46,19 @@ export async function RmDashboard({
   const today = new Date();
   const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59);
   const next7 = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-  // Date-range window (replaces the old MTD/QTD period chips) drives the
-  // "net sales / converted" metrics; everything else (today's follow-ups,
-  // this week's reviews, etc.) is intentionally live. Defaults to month-to-date.
-  const fromISO = from && /^\d{4}-\d{2}-\d{2}$/.test(from)
-    ? new Date(`${from}T00:00:00`).toISOString()
-    : new Date(today.getFullYear(), today.getMonth(), 1).toISOString();
-  const toISO = to && /^\d{4}-\d{2}-\d{2}$/.test(to)
-    ? new Date(`${to}T23:59:59`).toISOString()
-    : endOfDay.toISOString();
-  const fmtD = (iso: string) => new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "2-digit" });
-  const periodLabel = `${fmtD(fromISO)} – ${fmtD(toISO)}`;
+  // Normalize the period window through the shared resolver so RmDashboard uses
+  // the same {fromISO,toISO,label} foundation as OwnerCockpit. We still accept
+  // from/to props (so existing deep-links keep working) — a given range resolves
+  // as "custom"; otherwise we default to month-to-date (MTD).
+  const hasRange = !!(from && /^\d{4}-\d{2}-\d{2}$/.test(from));
+  const range = hasRange
+    ? resolvePeriodRange("custom", today, { from, to })
+    : resolvePeriodRange("mtd", today);
+  const { fromISO, toISO, label: periodLabel } = range;
+
+  // Per-tenant business thresholds (SIP-rejection look-back, etc.).
+  const thresholds = getDashboardThresholds(session.tenantId);
+  const sipRejectionWindowDays = thresholds.sipRejectionWindowDays;
 
   const data = await withTenant(session.tenantId, async (tx) => {
     // My clients + AUM
@@ -87,6 +94,23 @@ export async function RmDashboard({
     `);
     const b = businessStats.rows[0] as any;
 
+    // Per-day net-sales series across the resolved window — drives the
+    // "My net sales" hero-tile sparkline. Cheap aggregate over the same rows
+    // businessStats already scans; ordered ascending so the line reads L→R.
+    const netSeriesRes = await tx.execute(sql`
+      SELECT t.order_date::date AS d,
+             COALESCE(SUM(CASE WHEN t.direction = 'inflow' THEN t.amount::numeric ELSE 0 END), 0)
+               - COALESCE(SUM(CASE WHEN t.direction = 'outflow' THEN t.amount::numeric ELSE 0 END), 0) AS net
+      FROM transactions t
+      WHERE t.status IN ('processed', 'successful')
+        AND t.order_date >= ${fromISO.slice(0, 10)}::date
+        AND t.order_date <= ${toISO.slice(0, 10)}::date
+        AND t.investor_id IN (SELECT id FROM investors WHERE rm_id = ${userId})
+      GROUP BY t.order_date::date
+      ORDER BY t.order_date::date ASC
+    `);
+    const netSeries = (netSeriesRes.rows as any[]).map((r) => Number(r.net));
+
     // Reviews due this week
     const reviewsDue = await tx
       .select()
@@ -116,7 +140,7 @@ export async function RmDashboard({
 
     // Birthdays this week (DOB month-day matches today + 7)
     const birthdays = await tx.execute(sql`
-      SELECT id, name, dob, segment_tag FROM investors
+      SELECT id, name, dob, segment_tag, avatar_url FROM investors
       WHERE rm_id = ${userId} AND dob IS NOT NULL
         AND to_char(dob, 'MM-DD') BETWEEN to_char(current_date, 'MM-DD')
                                        AND to_char(current_date + interval '7 days', 'MM-DD')
@@ -133,7 +157,7 @@ export async function RmDashboard({
 
     // SIP top-up opportunities (HNI / Affluent with active SIPs that haven't increased in 12mo)
     const topUpRes = await tx.execute(sql`
-      SELECT i.id, i.name, i.segment_tag, i.active_sip_amount
+      SELECT i.id, i.name, i.segment_tag, i.active_sip_amount, i.avatar_url
       FROM investors i
       WHERE i.rm_id = ${userId}
         AND i.segment_tag IN ('HNI', 'Affluent')
@@ -146,23 +170,24 @@ export async function RmDashboard({
       LIMIT 5
     `);
 
-    // SIP rejection follow-ups — rejected SIPs in last 14 days for my clients
+    // SIP rejection follow-ups — rejected SIPs within the configured look-back
+    // window (getDashboardThresholds.sipRejectionWindowDays) for my clients.
     const sipRejections = await tx.execute(sql`
       SELECT t.id, t.scheme_name, t.amount, t.reason_code, t.created_at,
-             i.id AS investor_id, i.name AS investor_name
+             i.id AS investor_id, i.name AS investor_name, i.avatar_url AS investor_avatar_url
       FROM transactions t
       JOIN investors i ON i.id = t.investor_id
       WHERE i.rm_id = ${userId}
         AND t.type = 'sip'
         AND t.status = 'rejected'
-        AND t.created_at >= now() - interval '14 days'
+        AND t.created_at >= now() - make_interval(days => ${sipRejectionWindowDays})
       ORDER BY t.created_at DESC
       LIMIT 8
     `);
 
     // Anniversaries (investor onboarded_at month-day matches today + 7)
     const anniversaries = await tx.execute(sql`
-      SELECT id, name, onboarded_at,
+      SELECT id, name, onboarded_at, avatar_url,
              EXTRACT(YEAR FROM age(current_date, onboarded_at))::int AS years
       FROM investors
       WHERE rm_id = ${userId} AND onboarded_at IS NOT NULL
@@ -174,7 +199,7 @@ export async function RmDashboard({
     // Pending service requests for assigned clients
     const myServiceReqs = await tx.execute(sql`
       SELECT sr.id, sr.ticket_no, sr.subject, sr.type, sr.status, sr.sla_resolution_at,
-             i.name AS investor_name
+             i.id AS investor_id, i.name AS investor_name, i.avatar_url AS investor_avatar_url
       FROM service_requests sr
       JOIN investors i ON i.id = sr.investor_id
       WHERE i.rm_id = ${userId}
@@ -206,6 +231,7 @@ export async function RmDashboard({
       followUpsToday: Number(l.follow_ups_today),
       grossMtd: Number(b.gross),
       netMtd: Number(b.gross) - Number(b.redemption),
+      netSeries,
       reviewsDue,
       followUps: followUps.rows as any[],
       birthdays: birthdays.rows as any[],
@@ -239,7 +265,19 @@ export async function RmDashboard({
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
         <Kpi label={`${who} clients`} value={String(data.myClients)} sub={formatINR(data.myAum) + " AUM"} />
         <Kpi label={`${who} SIP book`} value={formatINR(data.mySipBook)} sub="per month" />
-        <Kpi label={`${who} net sales`} value={formatINR(data.netMtd)} sub={`Gross ${formatINR(data.grossMtd)} · ${periodLabel}`} />
+        <Kpi
+          label={`${who} net sales`}
+          value={formatINR(data.netMtd)}
+          sub={`Gross ${formatINR(data.grossMtd)} · ${periodLabel}`}
+        >
+          {data.netSeries.length >= 2 && (
+            <Sparkline
+              data={data.netSeries}
+              className="mt-2 w-full"
+              strokeClass={data.netMtd >= 0 ? "text-emerald-500" : "text-rose-500"}
+            />
+          )}
+        </Kpi>
         <Kpi label="Open leads" value={String(data.openLeads)} sub={`${data.convertedMtd} converted · ${periodLabel}`} />
         {/* Sales Quota Ring — driven by users.annual_target / 12 */}
         {data.monthlyTarget > 0 ? (
@@ -307,7 +345,11 @@ export async function RmDashboard({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Section title="Follow-ups today" count={data.followUps.length}>
           {data.followUps.length === 0 ? (
-            <Empty text="No follow-ups due today. ✓" />
+            <DashboardEmptyState
+              compact
+              title="No follow-ups due today 🎉"
+              hint="You're all caught up — nothing on your plate for today."
+            />
           ) : (
             <ul className="divide-y">
               {data.followUps.map((f: any) => (
@@ -331,13 +373,18 @@ export async function RmDashboard({
 
         <Section title="Reviews due this week" count={data.reviewsDue.length}>
           {data.reviewsDue.length === 0 ? (
-            <Empty text="No reviews due this week. ✓" />
+            <DashboardEmptyState
+              compact
+              title="No reviews due this week 🎉"
+              hint="No client portfolio reviews are scheduled in the next 7 days."
+            />
           ) : (
             <ul className="divide-y">
               {data.reviewsDue.map((i) => (
                 <li key={i.id} className="py-2 flex items-center justify-between text-sm">
-                  <Link href={`/dashboard/investors/${i.id}`} className="hover:underline">
-                    {i.name}
+                  <Link href={`/dashboard/investors/${i.id}`} className="flex items-center gap-2 hover:underline">
+                    <Avatar src={(i as any).avatarUrl ? `/api/investors/${i.id}/avatar` : null} name={i.name} size={26} />
+                    <span>{i.name}</span>
                   </Link>
                   <span className="text-xs text-muted-foreground">
                     {i.segmentTag} · {i.nextReviewAt ? formatDate(i.nextReviewAt) : "—"}
@@ -352,17 +399,24 @@ export async function RmDashboard({
       {!limited && (
         <>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Section title="SIP rejection follow-ups (14d)" count={data.sipRejections.length}>
+            <Section title={`SIP rejection follow-ups (${sipRejectionWindowDays}d)`} count={data.sipRejections.length}>
               {data.sipRejections.length === 0 ? (
-                <Empty text="No recent SIP rejections. ✓" />
+                <DashboardEmptyState
+                  compact
+                  title="No SIP rejections to chase 🎉"
+                  hint={`No SIPs were rejected for your clients in the last ${sipRejectionWindowDays} days.`}
+                />
               ) : (
                 <ul className="divide-y">
                   {data.sipRejections.map((r: any) => (
                     <li key={r.id} className="py-2 flex items-center justify-between text-sm">
-                      <Link href={`/dashboard/investors/${r.investor_id}`} className="hover:underline">
-                        <div className="font-medium">{r.investor_name}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {r.scheme_name ?? "—"} · {r.reason_code ?? "unknown reason"}
+                      <Link href={`/dashboard/investors/${r.investor_id}`} className="flex items-center gap-2 hover:underline">
+                        <Avatar src={r.investor_avatar_url ? `/api/investors/${r.investor_id}/avatar` : null} name={r.investor_name} size={26} />
+                        <div>
+                          <div className="font-medium">{r.investor_name}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {r.scheme_name ?? "—"} · {r.reason_code ?? "unknown reason"}
+                          </div>
                         </div>
                       </Link>
                       <div className="text-right">
@@ -377,7 +431,11 @@ export async function RmDashboard({
 
             <Section title="Pending service requests" count={data.myServiceReqs.length}>
               {data.myServiceReqs.length === 0 ? (
-                <Empty text="No open service requests for your clients. ✓" />
+                <DashboardEmptyState
+                  compact
+                  title="No open service requests 🎉"
+                  hint="None of your clients have an open or in-progress ticket."
+                />
               ) : (
                 <ul className="divide-y">
                   {data.myServiceReqs.map((sr: any) => {
@@ -387,10 +445,13 @@ export async function RmDashboard({
                     const breached = slaMs != null && slaMs < 0;
                     return (
                       <li key={sr.id} className="py-2 flex items-center justify-between text-sm">
-                        <Link href="/dashboard/service-requests" className="hover:underline">
-                          <div className="font-medium">{sr.subject}</div>
-                          <div className="text-xs text-muted-foreground">
-                            {sr.investor_name} · {sr.type}
+                        <Link href="/dashboard/service-requests" className="flex items-center gap-2 hover:underline">
+                          <Avatar src={sr.investor_avatar_url ? `/api/investors/${sr.investor_id}/avatar` : null} name={sr.investor_name} size={26} />
+                          <div>
+                            <div className="font-medium">{sr.subject}</div>
+                            <div className="text-xs text-muted-foreground">
+                              {sr.investor_name} · {sr.type}
+                            </div>
                           </div>
                         </Link>
                         <span className={`text-xs ${breached ? "text-rose-600 font-medium" : "text-muted-foreground"}`}>
@@ -407,13 +468,18 @@ export async function RmDashboard({
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <Section title="Birthdays this week" count={data.birthdays.length}>
               {data.birthdays.length === 0 ? (
-                <Empty text="No birthdays this week." />
+                <DashboardEmptyState
+                  compact
+                  title="No birthdays this week"
+                  hint="No client birthdays fall in the next 7 days."
+                />
               ) : (
                 <ul className="divide-y">
                   {data.birthdays.map((b: any) => (
                     <li key={b.id} className="py-2 flex items-center justify-between text-sm">
-                      <Link href={`/dashboard/investors/${b.id}`} className="hover:underline">
-                        {b.name}
+                      <Link href={`/dashboard/investors/${b.id}`} className="flex items-center gap-2 hover:underline">
+                        <Avatar src={b.avatar_url ? `/api/investors/${b.id}/avatar` : null} name={b.name} size={26} />
+                        <span>{b.name}</span>
                       </Link>
                       <span className="text-xs text-muted-foreground">{formatDate(b.dob)}</span>
                     </li>
@@ -424,13 +490,18 @@ export async function RmDashboard({
 
             <Section title="Anniversaries this week" count={data.anniversaries.length}>
               {data.anniversaries.length === 0 ? (
-                <Empty text="No anniversaries this week." />
+                <DashboardEmptyState
+                  compact
+                  title="No anniversaries this week"
+                  hint="No client onboarding anniversaries fall in the next 7 days."
+                />
               ) : (
                 <ul className="divide-y">
                   {data.anniversaries.map((a: any) => (
                     <li key={a.id} className="py-2 flex items-center justify-between text-sm">
-                      <Link href={`/dashboard/investors/${a.id}`} className="hover:underline">
-                        {a.name}
+                      <Link href={`/dashboard/investors/${a.id}`} className="flex items-center gap-2 hover:underline">
+                        <Avatar src={a.avatar_url ? `/api/investors/${a.id}/avatar` : null} name={a.name} size={26} />
+                        <span>{a.name}</span>
                       </Link>
                       <span className="text-xs text-muted-foreground">
                         {a.years > 0 ? `${a.years} yr` : "today"}
@@ -443,13 +514,18 @@ export async function RmDashboard({
 
             <Section title="SIP top-up opportunities" count={data.topUps.length}>
               {data.topUps.length === 0 ? (
-                <Empty text="No top-up opportunities right now." />
+                <DashboardEmptyState
+                  compact
+                  title="No top-up opportunities right now"
+                  hint="No HNI/Affluent clients are due for a SIP step-up at the moment."
+                />
               ) : (
                 <ul className="divide-y">
                   {data.topUps.map((t: any) => (
                     <li key={t.id} className="py-2 flex items-center justify-between text-sm">
-                      <Link href={`/dashboard/investors/${t.id}`} className="hover:underline">
-                        {t.name}
+                      <Link href={`/dashboard/investors/${t.id}`} className="flex items-center gap-2 hover:underline">
+                        <Avatar src={t.avatar_url ? `/api/investors/${t.id}/avatar` : null} name={t.name} size={26} />
+                        <span>{t.name}</span>
                       </Link>
                       <span className="text-xs text-muted-foreground">
                         {t.segment_tag} · {formatINR(Number(t.active_sip_amount))}
@@ -465,7 +541,11 @@ export async function RmDashboard({
 
       <Section title={`${who} open tasks`} count={data.myTasks.length}>
         {data.myTasks.length === 0 ? (
-          <Empty text="No open tasks. ✓" />
+          <DashboardEmptyState
+            compact
+            title="No open tasks 🎉"
+            hint="Your task list is clear. Nice work staying on top of things."
+          />
         ) : (
           <ul className="divide-y">
             {data.myTasks.map((t) => (
@@ -490,12 +570,23 @@ export async function RmDashboard({
   );
 }
 
-function Kpi({ label, value, sub }: { label: string; value: string; sub?: string }) {
+function Kpi({
+  label,
+  value,
+  sub,
+  children,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  children?: React.ReactNode;
+}) {
   return (
     <div className="card-surface glass-card p-5 hover-glow-cyan">
       <div className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">{label}</div>
       <div className="text-2xl font-bold mt-2 tracking-tight text-gradient">{value}</div>
       {sub && <div className="text-xs text-muted-foreground mt-1 font-medium">{sub}</div>}
+      {children}
     </div>
   );
 }
@@ -514,8 +605,4 @@ function Section({ title, count, children }: { title: string; count?: number; ch
       {children}
     </div>
   );
-}
-
-function Empty({ text }: { text: string }) {
-  return <div className="text-sm text-muted-foreground text-center py-6">{text}</div>;
 }

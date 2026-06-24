@@ -6,6 +6,7 @@ import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap, ASSIGNABLE_ROLES } from "@/lib/auth/rbac";
+import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { sops, sopVersions } from "@/db/schema";
 
@@ -28,6 +29,7 @@ export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
     requireCap(session.roles, "sop.manage");
+    await assertActiveLicense(session.tenantId, session.roles);
     const parse = Body.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) return NextResponse.json({ error: "invalid body", issues: parse.error.issues }, { status: 400 });
     const meta = clientMetaFromHeaders(req.headers);

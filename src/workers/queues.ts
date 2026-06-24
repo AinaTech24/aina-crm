@@ -63,4 +63,9 @@ export const Q = {
   masterScheduler: () => queue("master.scheduler"),
   commDispatch: (channel: string, tenantId: string) => queue(`comm.dispatch.${channel}.${tenantId}`),
   campaignDispatch: (tenantId: string) => queue(`campaign.dispatch.${tenantId}`),
+  // Heavy RTA file parse — runs in the WORKER (concurrency 1) so a large CAMS /
+  // KFintech master never blocks the web event loop or OOM-crashes the web
+  // server. The job payload carries the zip password (Redis-only, removed on
+  // complete); the file itself stays in S3 and is fetched by the worker.
+  rtaImport: () => queue("rta.import"),
 };

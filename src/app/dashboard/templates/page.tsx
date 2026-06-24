@@ -111,9 +111,6 @@ export default async function TemplatesPage({
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
             <FileText className="size-6 text-brand-cyan" /> Message templates
           </h1>
-          <p className="text-muted-foreground text-sm">
-            Reusable, versioned WhatsApp · Email · SMS templates — every one compliance-checked before it can send.
-          </p>
         </div>
         <div className="flex items-center gap-2">
           <FetchWhatsappTemplatesButton />
@@ -142,18 +139,16 @@ export default async function TemplatesPage({
                 <Link
                   key={c.key || "all"}
                   href={hrefFor({ channel: c.key })}
-                  className={`px-2.5 py-1 rounded-md text-xs font-medium inline-flex items-center gap-1.5 transition-colors ${
-                    active
+                  className={`px-2.5 py-1 rounded-md text-xs font-medium inline-flex items-center gap-1.5 transition-colors ${active
                       ? "bg-card shadow-sm text-foreground"
                       : "text-muted-foreground hover:text-foreground"
-                  }`}
+                    }`}
                 >
                   <Icon className="size-3.5" />
                   {c.label}
                   <span
-                    className={`tabular-nums text-[10px] font-semibold rounded-full px-1.5 ${
-                      active ? "bg-brand-cyan-light text-brand-cyan-deep" : "bg-secondary text-muted-foreground"
-                    }`}
+                    className={`tabular-nums text-[10px] font-semibold rounded-full px-1.5 ${active ? "bg-brand-cyan-light text-brand-cyan-deep" : "bg-secondary text-muted-foreground"
+                      }`}
                   >
                     {channelCount(c.key)}
                   </span>
@@ -185,11 +180,10 @@ export default async function TemplatesPage({
                   <Link
                     key={s.key || "all"}
                     href={hrefFor({ status: s.key })}
-                    className={`text-xs rounded-md px-2 py-1 font-medium border transition-colors ${
-                      active
+                    className={`text-xs rounded-md px-2 py-1 font-medium border transition-colors ${active
                         ? "bg-primary text-primary-foreground border-primary"
                         : "bg-card text-muted-foreground border-border hover:bg-accent"
-                    }`}
+                      }`}
                   >
                     {s.label}
                   </Link>
@@ -221,9 +215,9 @@ export default async function TemplatesPage({
             </div>
           )
         ) : (
-          <div className="overflow-x-auto">
+          <div className="table-scroll">
             <table className="w-full text-sm">
-              <thead className="text-xs text-muted-foreground border-b">
+              <thead className="text-xs text-muted-foreground border-b sticky top-0 z-10 bg-card">
                 <tr>
                   <th className="text-left px-4 py-2 font-medium">Name</th>
                   <th className="text-left py-2 font-medium">Channel</th>
@@ -309,12 +303,12 @@ function Kpi({
     tone === "emerald"
       ? "text-emerald-600"
       : tone === "amber"
-      ? "text-amber-600"
-      : tone === "slate"
-      ? "text-slate-700"
-      : tone === "muted"
-      ? "text-muted-foreground"
-      : "text-foreground";
+        ? "text-amber-600"
+        : tone === "slate"
+          ? "text-slate-700"
+          : tone === "muted"
+            ? "text-muted-foreground"
+            : "text-foreground";
   return (
     <div className="card-surface p-4">
       <div className="text-xs text-muted-foreground">{label}</div>

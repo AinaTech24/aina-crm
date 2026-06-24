@@ -14,7 +14,7 @@ import { handleApiError } from "@/lib/api/error-handler";
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { and, eq, inArray, or, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
@@ -30,7 +30,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 const Body = z.object({
   ids: z.array(z.string().uuid()).min(1).max(500),
-  action: z.enum(["status", "priority", "assign", "cancel"]),
+  action: z.enum(["status", "priority", "assign", "cancel", "delete"]),
   value: z.string().nullable().optional(),
 });
 
@@ -77,10 +77,31 @@ export async function POST(req: NextRequest) {
         patch.assigneeId = value;
       }
 
-      const conds: any[] = [eq(tasks.tenantId, session.tenantId), inArray(tasks.id, ids)];
+      // Exclude already-trashed tasks from every bulk action.
+      const conds: any[] = [eq(tasks.tenantId, session.tenantId), inArray(tasks.id, ids), isNull(tasks.deletedAt)];
       // Assigned-only editors can only touch their own tasks.
       if (!canEditAll) {
         conds.push(or(eq(tasks.assigneeId, session.userId), eq(tasks.createdById, session.userId))!);
+      }
+
+      // Bulk delete — soft-delete to Trash (recoverable), matching the single
+      // delete. Permanent removal happens from the Trash bin.
+      if (action === "delete") {
+        const removed = await tx
+          .update(tasks)
+          .set({ deletedAt: new Date(), deletedBy: session.userId, updatedAt: new Date() } as any)
+          .where(and(...conds))
+          .returning({ id: tasks.id });
+        await recordAudit(tx, {
+          tenantId: session.tenantId,
+          actorUserId: session.userId,
+          action: "task.bulk_delete",
+          entityType: "task",
+          entityId: session.tenantId,
+          after: { count: removed.length, ids } as any,
+          ...meta,
+        });
+        return removed.length;
       }
 
       // Recurring chain-on-completion: capture the in-scope recurring tasks that

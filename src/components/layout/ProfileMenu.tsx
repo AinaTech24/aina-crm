@@ -146,9 +146,10 @@ export function ProfileMenu({
           style={{ position: "fixed", top: coords.top, right: coords.right }}
           className="w-64 z-[100] origin-top-right animate-scale-in"
         >
-          {/* Solid bg-white (not card-elevated, which is backdrop-blur-translucent
-              and lets busy page content bleed through). */}
-          <div className="rounded-2xl bg-white overflow-hidden shadow-xl border border-border/60">
+          {/* Solid theme surface (not card-elevated, which is backdrop-blur-
+              translucent and lets busy page content bleed through). bg-card so
+              it follows light/dark mode instead of forcing white. */}
+          <div className="rounded-2xl bg-card text-card-foreground overflow-hidden shadow-xl border border-border/60">
             {/* Identity header — brand background */}
             <div className="px-4 py-4 brand-gradient text-white">
               <div className="flex items-center gap-3 min-w-0">
@@ -188,7 +189,7 @@ export function ProfileMenu({
                 type="button"
                 onClick={requestLogout}
                 disabled={loggingOut}
-                className="w-full flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50 transition-colors disabled:opacity-50"
+                className="w-full flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium text-rose-600 hover:bg-rose-500/10 transition-colors disabled:opacity-50"
               >
                 {loggingOut ? <Loader2 className="size-4 animate-spin" /> : <LogOut className="size-4" />}
                 {loggingOut ? "Logging out…" : "Log out"}

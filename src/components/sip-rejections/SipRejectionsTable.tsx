@@ -147,9 +147,9 @@ export function SipRejectionsTable({ rows }: { rows: SipRejectionRow[] }) {
           </p>
         </div>
       ) : (
-        <div className="overflow-x-auto">
+        <div className="table-scroll">
           <table className="w-full text-sm" data-table="sip-rejections">
-            <thead className="text-xs text-muted-foreground border-b">
+            <thead className="text-xs text-muted-foreground border-b sticky top-0 z-10 bg-card">
               <tr>
                 <th className="px-3 py-2 w-8">
                   <input type="checkbox" checked={allSelected} onChange={toggleAll} className="size-3.5 rounded" aria-label="Select all" />

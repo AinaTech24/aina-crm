@@ -22,14 +22,24 @@ import { trailRate, sipAnnualAmount, FALLBACK_TRAIL } from "@/lib/finance/trail-
 
 export type SliceRow = { key: string; label: string; aum: number; annualTrail: number; sharePct: number };
 
+export type AtRiskSip = { id: string; client: string; investorId: string | null; monthly: number; annual: number; reason: string };
+export type RedeemedClient = { client: string; investorId: string | null; amount: number; trailLost: number };
+
 export type TrailForecast = {
   totalAum: number;
   weightedTrailPct: number; // blended annual trail %, e.g. 0.72
   projectedAnnual: number;
   projectedMonthly: number;
+  /** Net monthly SIP inflow from HEALTHY active SIPs — drives the forward curve. */
+  netMonthlySipInflow: number;
+  /** Trail commission actually received over the trailing 12 months (amc_payouts). */
+  received12mo: number;
   byAmc: SliceRow[];
   byCategory: SliceRow[];
   byRm: SliceRow[];
+  byClient: SliceRow[];
+  atRiskSipList: AtRiskSip[];
+  redeemedClients: RedeemedClient[];
   atRisk: {
     redemptionOutflow30d: number;
     redemptionTrailLost: number;
@@ -42,7 +52,7 @@ export type TrailForecast = {
   };
 };
 
-type DetailRow = { amc_code: string | null; amc_name: string | null; rm_id: string | null; category: string | null; aum: number };
+type DetailRow = { amc_code: string | null; amc_name: string | null; rm_id: string | null; category: string | null; aum: number; investor_id: string | null; investor_name: string | null };
 
 export async function computeTrailForecast(tx: Tx, tenantId: string): Promise<TrailForecast> {
   // ── 1. AUM at (AMC × RM × category) granularity ──────────────────────────
@@ -51,7 +61,7 @@ export async function computeTrailForecast(tx: Tx, tenantId: string): Promise<Tr
   // category → default trail). closed_at IS NULL excludes redeemed folios.
   const detail = await tx.execute(sql`
     WITH src AS (
-      SELECT f.amc_code, f.amc_name, i.rm_id,
+      SELECT f.amc_code, f.amc_name, i.rm_id, i.id AS investor_id, i.name AS investor_name,
              elem->>'category' AS category,
              COALESCE((elem->>'value')::numeric, 0) AS value
       FROM folios f
@@ -59,15 +69,15 @@ export async function computeTrailForecast(tx: Tx, tenantId: string): Promise<Tr
       CROSS JOIN LATERAL jsonb_array_elements(COALESCE(f.schemes, '[]'::jsonb)) elem
       WHERE f.tenant_id = ${tenantId} AND f.closed_at IS NULL
       UNION ALL
-      SELECT f.amc_code, f.amc_name, i.rm_id, NULL AS category, COALESCE(f.aum, 0) AS value
+      SELECT f.amc_code, f.amc_name, i.rm_id, i.id AS investor_id, i.name AS investor_name, NULL AS category, COALESCE(f.aum, 0) AS value
       FROM folios f
       JOIN investors i ON i.id = f.investor_id
       WHERE f.tenant_id = ${tenantId} AND f.closed_at IS NULL
         AND COALESCE(jsonb_array_length(COALESCE(f.schemes, '[]'::jsonb)), 0) = 0
     )
-    SELECT amc_code, MIN(amc_name) AS amc_name, rm_id, category, SUM(value) AS aum
+    SELECT amc_code, MIN(amc_name) AS amc_name, rm_id, investor_id, MIN(investor_name) AS investor_name, category, SUM(value) AS aum
     FROM src
-    GROUP BY amc_code, rm_id, category
+    GROUP BY amc_code, rm_id, investor_id, category
   `);
 
   // Per-AMC negotiated trail overrides (win over category fallback).
@@ -98,6 +108,7 @@ export async function computeTrailForecast(tx: Tx, tenantId: string): Promise<Tr
   const amcAgg = new Map<string, { label: string; aum: number; trail: number }>();
   const catAgg = new Map<string, { label: string; aum: number; trail: number }>();
   const rmAgg = new Map<string, { label: string; aum: number; trail: number }>();
+  const clientAgg = new Map<string, { label: string; aum: number; trail: number }>();
 
   for (const row of detail.rows as unknown as DetailRow[]) {
     const aum = Number(row.aum ?? 0);
@@ -105,6 +116,12 @@ export async function computeTrailForecast(tx: Tx, tenantId: string): Promise<Tr
     const annual = aum * rate(row.amc_code, row.category);
     totalAum += aum;
     projectedAnnual += annual;
+
+    const clientKey = row.investor_id ?? "__noclient__";
+    const client = clientAgg.get(clientKey) ?? { label: row.investor_name ?? "Unknown", aum: 0, trail: 0 };
+    client.aum += aum;
+    client.trail += annual;
+    clientAgg.set(clientKey, client);
 
     const amcKey = row.amc_code ?? "—";
     const amc = amcAgg.get(amcKey) ?? { label: row.amc_name ?? amcKey, aum: 0, trail: 0 };
@@ -161,12 +178,16 @@ export async function computeTrailForecast(tx: Tx, tenantId: string): Promise<Tr
     redemptionCount += Number(r.n ?? 0);
   }
 
-  // ── 3. Revenue at risk — at-risk active SIPs ──────────────────────────────
+  // ── 3. Revenue at risk — at-risk active SIPs (with the actionable list) ────
   // "At risk" = repeated mandate failures, ending soon, or a dead mandate.
   const sipRes = await tx.execute(sql`
-    SELECT s.amount::numeric AS amount, s.frequency
+    SELECT s.id, s.amount::numeric AS amount, s.frequency, s.investor_id,
+           i.name AS investor_name,
+           COALESCE(NULLIF(s.consecutive_failures, '')::int, 0) AS fails,
+           s.end_date, m.status AS mandate_status
     FROM sips s
     LEFT JOIN mandates m ON m.id = s.mandate_id
+    LEFT JOIN investors i ON i.id = s.investor_id
     WHERE s.tenant_id = ${tenantId}
       AND s.status = 'active'
       AND (
@@ -174,28 +195,83 @@ export async function computeTrailForecast(tx: Tx, tenantId: string): Promise<Tr
         OR (s.end_date IS NOT NULL AND s.end_date <= (CURRENT_DATE + INTERVAL '60 days'))
         OR m.status IN ('expired', 'rejected', 'cancelled')
       )
+    ORDER BY s.amount::numeric DESC
   `);
   let atRiskSipMonthly = 0;
   let atRiskSipAnnual = 0;
   let atRiskSipCount = 0;
+  const atRiskSipList: AtRiskSip[] = [];
   for (const r of sipRes.rows as any[]) {
     const amount = Number(r.amount ?? 0);
     const annual = sipAnnualAmount(amount, r.frequency);
     atRiskSipAnnual += annual;
     atRiskSipMonthly += annual / 12;
     atRiskSipCount += 1;
+    const reason =
+      Number(r.fails ?? 0) >= 2 ? `${r.fails} mandate failures`
+      : ["expired", "rejected", "cancelled"].includes(r.mandate_status) ? `mandate ${r.mandate_status}`
+      : r.end_date ? "ending within 60 days"
+      : "at risk";
+    if (atRiskSipList.length < 12) atRiskSipList.push({ id: String(r.id), client: r.investor_name ?? "Unknown", investorId: r.investor_id ?? null, monthly: annual / 12, annual, reason });
   }
   // SIP inflow is predominantly equity — use the equity trail as the estimate.
   const atRiskSipTrail = atRiskSipAnnual * FALLBACK_TRAIL.equity;
+
+  // ── 4. Top redeeming clients (last 30d) — the actionable redemption list ───
+  const redClientsRes = await tx.execute(sql`
+    SELECT t.investor_id, i.name AS investor_name, t.amc_code, t.scheme_category,
+           COALESCE(SUM(t.amount::numeric), 0) AS amt
+    FROM transactions t LEFT JOIN investors i ON i.id = t.investor_id
+    WHERE t.tenant_id = ${tenantId} AND t.type IN ('redemption','swp') AND t.direction = 'outflow'
+      AND t.status IN ('processed','successful','pending','submitted')
+      AND t.order_date >= (CURRENT_DATE - INTERVAL '30 days')
+    GROUP BY t.investor_id, i.name, t.amc_code, t.scheme_category
+    ORDER BY amt DESC LIMIT 12
+  `);
+  const redeemedClients: RedeemedClient[] = (redClientsRes.rows as any[]).map((r) => {
+    const amount = Number(r.amt ?? 0);
+    return { client: r.investor_name ?? "Unknown", investorId: r.investor_id ?? null, amount, trailLost: amount * rate(r.amc_code, r.scheme_category) };
+  });
+
+  // ── 5. Net monthly SIP inflow from HEALTHY active SIPs (drives the curve) ──
+  const healthySipRes = await tx.execute(sql`
+    SELECT COALESCE(SUM(
+      CASE s.frequency
+        WHEN 'monthly' THEN s.amount::numeric
+        WHEN 'quarterly' THEN s.amount::numeric / 3
+        WHEN 'weekly' THEN s.amount::numeric * 52 / 12
+        WHEN 'fortnightly' THEN s.amount::numeric * 26 / 12
+        WHEN 'annually' THEN s.amount::numeric / 12
+        ELSE s.amount::numeric
+      END), 0) AS monthly_inflow
+    FROM sips s
+    WHERE s.tenant_id = ${tenantId} AND s.status = 'active'
+      AND COALESCE(NULLIF(s.consecutive_failures, '')::int, 0) < 2
+  `);
+  const netMonthlySipInflow = Number((healthySipRes.rows[0] as any)?.monthly_inflow ?? 0);
+
+  // ── 6. Trail commission actually RECEIVED — trailing 12 months (amc_payouts) ─
+  const recvRes = await tx.execute(sql`
+    SELECT COALESCE(SUM(net_amount::numeric), 0) AS received
+    FROM amc_payouts
+    WHERE tenant_id = ${tenantId} AND payout_type = 'trail'
+      AND period >= to_char(CURRENT_DATE - INTERVAL '12 months', 'YYYY-MM')
+  `);
+  const received12mo = Number((recvRes.rows[0] as any)?.received ?? 0);
 
   return {
     totalAum,
     weightedTrailPct: totalAum > 0 ? (projectedAnnual / totalAum) * 100 : 0,
     projectedAnnual,
     projectedMonthly: projectedAnnual / 12,
+    netMonthlySipInflow,
+    received12mo,
     byAmc: toSlices(amcAgg),
     byCategory: toSlices(catAgg),
     byRm: toSlices(rmAgg),
+    byClient: toSlices(clientAgg),
+    atRiskSipList,
+    redeemedClients,
     atRisk: {
       redemptionOutflow30d,
       redemptionTrailLost,

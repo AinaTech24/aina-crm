@@ -9,6 +9,7 @@ import { formatDate, formatRelative, formatINR } from "@/lib/utils";
 import { TenantActions } from "@/components/super-admin/TenantActions";
 import { TenantAdminPanel } from "@/components/super-admin/TenantAdminPanel";
 import { TenantAccessControl } from "@/components/super-admin/TenantAccessControl";
+import { tenantAccessibleNavKeys } from "@/config/nav-access";
 
 const STATUS_COLORS: Record<string, string> = {
   trial: "bg-blue-50 text-blue-700",
@@ -121,19 +122,36 @@ export default async function TenantDetailPage({ params }: { params: Promise<{ i
           {data.events.length === 0 ? (
             <p className="text-sm text-muted-foreground mt-3">No events yet.</p>
           ) : (
-            <ul className="mt-3 space-y-2 text-sm">
-              {data.events.map((e) => (
-                <li key={e.id} className="border-l-2 border-muted pl-3 py-1">
-                  <div className="flex items-center justify-between">
-                    <span className="font-medium">{e.eventType.replace(/_/g, " ")}</span>
-                    <span className="text-xs text-muted-foreground">{formatRelative(e.at)}</span>
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    {e.actor} · {e.fromStatus ? `${e.fromStatus} → ` : ""}{e.toStatus ?? ""}
-                  </div>
-                  {e.notes && <div className="text-xs mt-0.5">{e.notes}</div>}
-                </li>
-              ))}
+            <ul className="mt-4 space-y-1 max-h-[28rem] overflow-y-auto scrollbar-none pr-1">
+              {data.events.map((e, i) => {
+                const tone = eventTone(e.eventType);
+                const last = i === data.events.length - 1;
+                return (
+                  <li key={e.id} className="flex gap-3">
+                    <div className="flex flex-col items-center">
+                      <span className={`size-2.5 rounded-full mt-1.5 ${tone.dot}`} />
+                      {!last && <span className="w-px flex-1 bg-border my-1" />}
+                    </div>
+                    <div className="flex-1 min-w-0 pb-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm font-medium">{eventLabel(e.eventType)}</span>
+                        <span className="text-xs text-muted-foreground whitespace-nowrap">{formatRelative(e.at)}</span>
+                      </div>
+                      <div className="text-xs text-muted-foreground flex items-center gap-1.5 mt-1 flex-wrap">
+                        <span>{actorLabel(e.actor)}</span>
+                        {(e.fromStatus || e.toStatus) && (
+                          <span className="inline-flex items-center gap-1">
+                            {e.fromStatus && <span className="px-1.5 py-0.5 rounded bg-muted capitalize">{e.fromStatus}</span>}
+                            {e.fromStatus && e.toStatus && <span aria-hidden>→</span>}
+                            {e.toStatus && <span className={`px-1.5 py-0.5 rounded capitalize ${tone.chip}`}>{e.toStatus}</span>}
+                          </span>
+                        )}
+                      </div>
+                      {e.notes && <div className="text-xs mt-1 text-foreground/80">{e.notes}</div>}
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>
@@ -152,6 +170,11 @@ export default async function TenantDetailPage({ params }: { params: Promise<{ i
           initialAllowedNav={(data.subscription as any).allowedNav as string[] | null}
           initialAllowedFields={data.subscription.allowedFields as string[] | null}
           initialAllowedDashboardWidgets={(data.subscription as any).allowedDashboardWidgets as string[] | null}
+          packageNavKeys={tenantAccessibleNavKeys({
+            allowedNav: null,
+            enabledModules: ((data.package as any)?.enabledModules as string[]) ?? [],
+            enabledFeatures: ((data.package as any)?.enabledFeatures as string[]) ?? null,
+          })}
         />
       )}
     </div>
@@ -165,6 +188,42 @@ function Row({ label, value }: { label: string; value: string }) {
       <dd className="font-medium">{value}</dd>
     </div>
   );
+}
+
+/** Human-friendly label for a subscription_events.eventType. */
+function eventLabel(t: string): string {
+  const map: Record<string, string> = {
+    license_extended: "License extended",
+    reactivated: "Reactivated",
+    suspended: "Suspended",
+    cancelled: "Cancelled",
+    created: "Created",
+    upgraded: "Plan changed",
+    downgraded: "Plan changed",
+    payment_succeeded: "Payment received",
+    payment_failed: "Payment failed",
+    renewed: "Renewed",
+  };
+  return map[t] ?? t.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/** Turn a raw actor token ("aina_admin:<uuid>", "system:self_serve_signup") into a name. */
+function actorLabel(a: string | null): string {
+  if (!a) return "System";
+  if (a.startsWith("aina_admin")) return "AINA Admin";
+  if (a.includes("self_serve_signup")) return "Self-serve signup";
+  if (a.startsWith("razorpay")) return "Razorpay";
+  if (a.startsWith("system")) return "System";
+  return a;
+}
+
+/** Colour for the timeline dot + the to-status chip. */
+function eventTone(t: string): { dot: string; chip: string } {
+  if (["reactivated", "payment_succeeded", "license_extended", "created", "renewed"].includes(t))
+    return { dot: "bg-emerald-500", chip: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300" };
+  if (["suspended", "cancelled", "payment_failed"].includes(t))
+    return { dot: "bg-rose-500", chip: "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300" };
+  return { dot: "bg-sky-500", chip: "bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300" };
 }
 
 function Kpi({ label, value, icon: Icon }: { label: string; value: number; icon?: any }) {

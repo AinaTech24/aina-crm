@@ -1,8 +1,6 @@
-import React from "react";
 import Link from "next/link";
 import { sql } from "drizzle-orm";
 import {
-  ShieldAlert,
   ShieldCheck,
   ShieldCheck as ShieldIcon,
   AlertTriangle,
@@ -13,17 +11,28 @@ import {
   ArrowRight,
   Clock,
   ExternalLink,
-  Users
 } from "lucide-react";
 import { withTenant } from "@/db/client";
-import { formatINR, formatDate, formatRelative } from "@/lib/utils";
+import { formatDate, formatRelative } from "@/lib/utils";
 import type { SessionUser } from "@/lib/auth/session";
-import { Group, Stat } from "./DashboardShared";
+import { resolvePeriodRange, type Period } from "@/lib/dashboard/period";
+import { PeriodSelector } from "./PeriodSelector";
+import { DashboardEmptyState } from "./DashboardEmptyState";
+import { Stat } from "./DashboardShared";
 
-export async function ComplianceCockpit({ session }: { session: SessionUser }) {
+export async function ComplianceCockpit({
+  session,
+  period,
+  customStart,
+}: {
+  session: SessionUser;
+  period?: Period;
+  customStart?: string;
+}) {
   const now = new Date();
-  const last30 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-  const last90 = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+  const range = resolvePeriodRange(period ?? "mtd", now, { customStart });
+  const fromISO = range.fromISO;
+  const toISO = range.toISO;
 
   const data = await withTenant(
     session.tenantId,
@@ -61,20 +70,26 @@ export async function ComplianceCockpit({ session }: { session: SessionUser }) {
           FROM investors WHERE status = 'active'
         `),
 
-        // 3. Marketing & Template approval pipeline
+        // 3. Marketing & Template approval pipeline.
+        //    Pending-approval counts are the live queue (templates still awaiting
+        //    a decision), but we ALSO scope a "submitted this period" count so the
+        //    dashboard reflects the chosen window.
         await tx.execute(sql`
           SELECT
-            (SELECT COUNT(*)::int FROM templates WHERE status = 'pending_approval' AND category = 'marketing') AS pending_marketing,
-            (SELECT COUNT(*)::int FROM templates WHERE status = 'pending_approval' AND category = 'transactional') AS pending_tx,
+            (SELECT COUNT(*)::int FROM templates WHERE status = 'pending_approval' AND category = 'marketing'
+                AND created_at >= ${fromISO} AND created_at <= ${toISO}) AS pending_marketing,
+            (SELECT COUNT(*)::int FROM templates WHERE status = 'pending_approval' AND category = 'transactional'
+                AND created_at >= ${fromISO} AND created_at <= ${toISO}) AS pending_tx,
             (SELECT COUNT(*)::int FROM whatsapp_templates WHERE meta_status = 'PENDING') AS meta_pending,
             (SELECT COUNT(*)::int FROM whatsapp_templates WHERE meta_status = 'REJECTED') AS meta_rejected
         `),
 
-        // 4. Recent Audit Logs
+        // 4. Recent Audit Logs — scoped to the selected period.
         await tx.execute(sql`
           SELECT a.id, a.action, a.actor_type, a.at, u.name AS actor_name
           FROM audit_log a
           LEFT JOIN users u ON u.id = a.actor_user_id
+          WHERE a.at >= ${fromISO} AND a.at <= ${toISO}
           ORDER BY a.at DESC
           LIMIT 8
         `),
@@ -108,7 +123,16 @@ export async function ComplianceCockpit({ session }: { session: SessionUser }) {
   );
 
   const ddqScore = data.ddq?.overall_score != null ? Number(data.ddq.overall_score) : null;
-  const ddqBreakdown = data.ddq?.breakdown ?? {};
+  const ddqBreakdown: Record<string, unknown> =
+    data.ddq?.breakdown && typeof data.ddq.breakdown === "object" ? data.ddq.breakdown : {};
+
+  /** Read a breakdown sub-score; `null` when the key is absent → "not assessed". */
+  const bd = (key: string): number | null => {
+    const v = ddqBreakdown[key];
+    if (v == null) return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
   const exp = data.expiries ?? {};
   const tpl = data.templates ?? {};
 
@@ -147,13 +171,14 @@ export async function ComplianceCockpit({ session }: { session: SessionUser }) {
                 Compliance Cockpit
               </h1>
               <p className="text-amber-100/80 text-sm mt-1">
-                {today} · Registered Distributor: <span className="font-semibold">{session.tenantId}</span>.
+                {today} · Activity window: <span className="font-semibold">{range.label}</span>.
               </p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="chip bg-amber-500/20 text-amber-300 backdrop-blur-sm border border-amber-500/30 text-xs">
                 <span className="pulse-dot bg-amber-400" /> Active Watch
               </span>
+              <PeriodSelector current={period ?? "mtd"} variant="light" />
             </div>
           </div>
         </div>
@@ -181,7 +206,7 @@ export async function ComplianceCockpit({ session }: { session: SessionUser }) {
           href="/dashboard/templates"
           label="Pending approvals"
           value={String(Number(tpl.pending_marketing ?? 0) + Number(tpl.pending_tx ?? 0))}
-          sub={`${tpl.pending_marketing ?? 0} marketing · ${tpl.pending_tx ?? 0} transactional`}
+          sub={`${tpl.pending_marketing ?? 0} mktg · ${tpl.pending_tx ?? 0} txn · ${range.label}`}
           tone={Number(tpl.pending_marketing ?? 0) + Number(tpl.pending_tx ?? 0) > 0 ? "amber" : "muted"}
           icon={FileCheck}
         />
@@ -205,12 +230,12 @@ export async function ComplianceCockpit({ session }: { session: SessionUser }) {
               <ShieldCheck className="size-4 text-amber-600" /> DDQ Breakdown Checklist
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <BreakdownProgress label="NISM Validity" score={Number(ddqBreakdown.nismValidity ?? 0)} />
-              <BreakdownProgress label="ARN Renewal Status" score={Number(ddqBreakdown.arnRenewalStatus ?? 0)} />
-              <BreakdownProgress label="KYD Completeness" score={Number(ddqBreakdown.kydCompleteness ?? 0)} />
-              <BreakdownProgress label="Empanelment Checklist" score={Number(ddqBreakdown.empanelmentCompleteness ?? 0)} />
-              <BreakdownProgress label="SOP Employee Signoffs" score={Number(ddqBreakdown.sopSignoffCoverage ?? 0)} />
-              <BreakdownProgress label="Audit Trail Integrity" score={Number(ddqBreakdown.auditTrailIntegrity ?? 0)} />
+              <BreakdownProgress label="NISM Validity" score={bd("nismValidity")} />
+              <BreakdownProgress label="ARN Renewal Status" score={bd("arnRenewalStatus")} />
+              <BreakdownProgress label="KYD Completeness" score={bd("kydCompleteness")} />
+              <BreakdownProgress label="Empanelment Checklist" score={bd("empanelmentCompleteness")} />
+              <BreakdownProgress label="SOP Employee Signoffs" score={bd("sopSignoffCoverage")} />
+              <BreakdownProgress label="Audit Trail Integrity" score={bd("auditTrailIntegrity")} />
             </div>
             <div className="mt-4 pt-3 border-t text-right">
               <Link href="/dashboard/compliance" className="text-xs text-amber-700 hover:underline font-semibold inline-flex items-center gap-1">
@@ -224,13 +249,19 @@ export async function ComplianceCockpit({ session }: { session: SessionUser }) {
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-semibold text-sm tracking-tight text-foreground/90 flex items-center gap-2">
                 <Activity className="size-4 text-amber-600" /> Audit Log Trail
+                <span className="text-[10px] font-medium text-muted-foreground normal-case">· {range.label}</span>
               </h2>
               <Link href="/dashboard/audit-log" className="text-xs text-amber-700 hover:underline font-semibold">
                 Open full audit register →
               </Link>
             </div>
             {data.auditLogs.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-6">No audit actions logged yet.</p>
+              <DashboardEmptyState
+                icon={Activity}
+                compact
+                title="No audit actions in this period"
+                hint="System and user actions recorded in this window will appear here."
+              />
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-xs text-left table-modern">
@@ -280,16 +311,25 @@ export async function ComplianceCockpit({ session }: { session: SessionUser }) {
             <h2 className="font-semibold text-sm tracking-tight text-foreground/90 mb-3 flex items-center gap-2">
               <FileText className="size-4 text-amber-600" /> Meta WhatsApp Templates
             </h2>
-            <div className="grid grid-cols-2 gap-3 text-center">
-              <div className="p-3 bg-secondary/30 rounded border border-border/40">
-                <div className="text-[10px] uppercase font-bold text-muted-foreground">Pending Meta</div>
-                <div className="text-xl font-bold mt-1 text-amber-600">{tpl.meta_pending ?? 0}</div>
+            {Number(tpl.meta_pending ?? 0) === 0 && Number(tpl.meta_rejected ?? 0) === 0 ? (
+              <DashboardEmptyState
+                icon={FileCheck}
+                compact
+                title="All templates clear"
+                hint="No WhatsApp templates pending or rejected at Meta."
+              />
+            ) : (
+              <div className="grid grid-cols-2 gap-3 text-center">
+                <div className="p-3 bg-secondary/30 rounded border border-border/40">
+                  <div className="text-[10px] uppercase font-bold text-muted-foreground">Pending Meta</div>
+                  <div className="text-xl font-bold mt-1 text-amber-600">{tpl.meta_pending ?? 0}</div>
+                </div>
+                <div className="p-3 bg-secondary/30 rounded border border-border/40">
+                  <div className="text-[10px] uppercase font-bold text-muted-foreground">Rejected Meta</div>
+                  <div className="text-xl font-bold mt-1 text-rose-600">{tpl.meta_rejected ?? 0}</div>
+                </div>
               </div>
-              <div className="p-3 bg-secondary/30 rounded border border-border/40">
-                <div className="text-[10px] uppercase font-bold text-muted-foreground">Rejected Meta</div>
-                <div className="text-xl font-bold mt-1 text-rose-600">{tpl.meta_rejected ?? 0}</div>
-              </div>
-            </div>
+            )}
             <div className="mt-3 text-right">
               <Link href="/dashboard/templates" className="text-xs text-amber-700 hover:underline font-semibold">
                 Manage WhatsApp templates →
@@ -303,7 +343,12 @@ export async function ComplianceCockpit({ session }: { session: SessionUser }) {
               <ExternalLink className="size-4 text-amber-600" /> Recent AMFI Circulars
             </h2>
             {data.circulars.length === 0 ? (
-              <p className="text-xs text-muted-foreground text-center py-4">No active regulatory circulars.</p>
+              <DashboardEmptyState
+                icon={ExternalLink}
+                compact
+                title="No circulars on file"
+                hint="AMFI / SEBI circulars synced to your tenant will list here."
+              />
             ) : (
               <ul className="space-y-3">
                 {data.circulars.map((c: any) => (
@@ -358,7 +403,21 @@ function ExpiryRow({
   );
 }
 
-function BreakdownProgress({ label, score }: { label: string; score: number }) {
+function BreakdownProgress({ label, score }: { label: string; score: number | null }) {
+  // A missing breakdown key renders as "not assessed" rather than a fake 0%.
+  if (score == null) {
+    return (
+      <div>
+        <div className="flex justify-between text-xs mb-1">
+          <span className="font-medium text-muted-foreground">{label}</span>
+          <span className="font-semibold text-muted-foreground/70 italic">Not assessed</span>
+        </div>
+        <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
+          <div className="h-full rounded-full bg-border" style={{ width: "0%" }} />
+        </div>
+      </div>
+    );
+  }
   const color = score >= 80 ? "bg-emerald-500" : score >= 60 ? "bg-amber-500" : "bg-rose-500";
   const textColor = score >= 80 ? "text-emerald-700" : score >= 60 ? "text-amber-700" : "text-rose-700";
   return (

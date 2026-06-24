@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { RmSelector } from "@/components/common/RmSelector";
+import { ThemeSelect } from "@/components/ui/ThemeSelect";
+import { ThemeDate } from "@/components/ui/ThemeDate";
 import { FAMILY_REVIEW_FREQUENCIES } from "@/lib/families/cadence";
 
 const CATEGORIES = ["HNI", "Affluent", "Retail", "NRI", "Corporate"] as const;
@@ -70,7 +72,7 @@ export default function NewFamilyPage() {
       </p>
       <form onSubmit={submit} className="border rounded-lg bg-card p-5 space-y-4">
         {/* Identity */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <label className="block">
             <div className="text-xs font-medium mb-1">
               Family / organisation name<span className="text-rose-600">*</span>
@@ -94,16 +96,15 @@ export default function NewFamilyPage() {
           </label>
           <label className="block">
             <div className="text-xs font-medium mb-1">Category</div>
-            <select
+            <ThemeSelect
               value={form.familyCategory}
-              onChange={(e) => set("familyCategory", e.target.value)}
-              className="w-full border rounded-md px-3 py-2 text-sm bg-background"
+              onChange={(val) => set("familyCategory", val)}
             >
               <option value="">—</option>
               {CATEGORIES.map((c) => (
                 <option key={c} value={c}>{c}</option>
               ))}
-            </select>
+            </ThemeSelect>
           </label>
           <label className="block">
             <div className="text-xs font-medium mb-1">
@@ -123,27 +124,25 @@ export default function NewFamilyPage() {
           <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
             Review cadence
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <label className="block">
               <div className="text-xs font-medium mb-1">Meeting frequency</div>
-              <select
+              <ThemeSelect
                 value={form.reviewFrequency}
-                onChange={(e) => set("reviewFrequency", e.target.value)}
-                className="w-full border rounded-md px-3 py-2 text-sm bg-background"
+                onChange={(val) => set("reviewFrequency", val)}
               >
                 <option value="">— None —</option>
                 {FAMILY_REVIEW_FREQUENCIES.map(([v, l]) => (
                   <option key={v} value={v}>{l}</option>
                 ))}
-              </select>
+              </ThemeSelect>
             </label>
             <label className="block">
               <div className="text-xs font-medium mb-1">First meeting date</div>
-              <input
+              <ThemeDate
                 type="date"
                 value={form.firstMeetingDate}
-                onChange={(e) => set("firstMeetingDate", e.target.value)}
-                className="w-full border rounded-md px-3 py-2 text-sm bg-background"
+                onChange={(val) => set("firstMeetingDate", val)}
               />
             </label>
           </div>

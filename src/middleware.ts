@@ -61,11 +61,13 @@ const PUBLIC_PATHS = new Set([
  *   /p/*    — public proposal-approval page
  *   /lf/*   — public lead-capture form (Sprint 3 #15) — MFD embeds on
  *             their own website; submissions create a new lead
+ *   /fd/*   — public Financial Discovery ("Financial Health Check") — client
+ *             fills the fact-find before the meeting via a share link
  *   /api/public/*  — submission endpoints for the above
  *   /api/webhooks/* — Wapi / Resend / etc.
  *   /api/health, /api/auth/*, /api/employees/accept-invite — auth flows
  */
-const PUBLIC_PATH_PREFIXES = ["/r/", "/lc/", "/d/", "/p/", "/lf/"];
+const PUBLIC_PATH_PREFIXES = ["/r/", "/lc/", "/d/", "/p/", "/lf/", "/fd/"];
 const PUBLIC_API_PREFIXES = [
   "/api/public/",
   "/api/webhooks/",

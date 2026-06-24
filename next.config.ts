@@ -3,6 +3,13 @@ import type { NextConfig } from "next";
 // Build rev: 2025-12 — trigger middleware reload (public form whitelist).
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  // Types are checked with `npx tsc --noEmit` before every deploy, so the
+  // in-build re-check is redundant — and on the 4GB prod box it added ~2 min and
+  // a memory spike that briefly starved the serving container during deploys.
+  // Skipping it keeps deploys fast + smooth. (No ESLint config exists, so
+  // ignoreDuringBuilds is a safe future-proof no-op.)
+  typescript: { ignoreBuildErrors: true },
+  eslint: { ignoreDuringBuilds: true },
   compiler: {
     // Strip console.* (keep warn/error) from production client bundles.
     removeConsole: process.env.NODE_ENV === "production" ? { exclude: ["error", "warn"] } : false,

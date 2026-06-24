@@ -99,8 +99,8 @@ export const AUTO_VERIFIERS: Record<
   },
   selection_procedure: async (tx, tenantId) => {
     const [row] = (await tx.execute(sql`
-      SELECT COUNT(*)::int as count FROM sops 
-      WHERE tenant_id = ${tenantId}::uuid AND (key = 'mf_selection' OR title ILIKE '%selection%')
+      SELECT COUNT(*)::int as count FROM sops
+      WHERE tenant_id = ${tenantId}::uuid AND deleted_at IS NULL AND (key = 'mf_selection' OR title ILIKE '%selection%')
     `)).rows as any[];
     const hasProcedure = (row?.count ?? 0) > 0;
     return {
@@ -227,7 +227,7 @@ export const AUTO_VERIFIERS: Record<
     // complaint. The channel merely existing is not proof of a policy.
     const [row] = (await tx.execute(sql`
       SELECT
-        (SELECT COUNT(*)::int FROM sops WHERE tenant_id = ${tenantId}::uuid
+        (SELECT COUNT(*)::int FROM sops WHERE tenant_id = ${tenantId}::uuid AND deleted_at IS NULL
            AND (key ILIKE '%grievance%' OR key ILIKE '%complaint%' OR title ILIKE '%grievance%' OR title ILIKE '%complaint%')) AS sop_count,
         (SELECT COUNT(*)::int FROM service_requests WHERE tenant_id = ${tenantId}::uuid AND type = 'complaint') AS complaint_count
     `)).rows as any[];
@@ -280,7 +280,7 @@ export const AUTO_VERIFIERS: Record<
     // Evidence-based: a grievance/complaint SOP, or at least one logged complaint.
     const [row] = (await tx.execute(sql`
       SELECT
-        (SELECT COUNT(*)::int FROM sops WHERE tenant_id = ${tenantId}::uuid
+        (SELECT COUNT(*)::int FROM sops WHERE tenant_id = ${tenantId}::uuid AND deleted_at IS NULL
            AND (key ILIKE '%grievance%' OR key ILIKE '%complaint%' OR title ILIKE '%grievance%' OR title ILIKE '%complaint%')) AS sop_count,
         (SELECT COUNT(*)::int FROM service_requests WHERE tenant_id = ${tenantId}::uuid AND type = 'complaint') AS complaint_count
     `)).rows as any[];

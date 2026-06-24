@@ -9,14 +9,15 @@
  */
 
 import Link from "next/link";
-import { ChevronLeft } from "lucide-react";
-import { sql } from "drizzle-orm";
+import { ChevronLeft, ArrowUpRight, ArrowDownRight, AlertTriangle } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { formatINR } from "@/lib/utils";
 import { PrintReportButton } from "@/components/investors/PrintReportButton";
-import { currentFyLabel, fyStartYear, recentFyLabels } from "@/lib/finance/fiscal-year";
+import { currentFyLabel, recentFyLabels } from "@/lib/finance/fiscal-year";
+import { getPracticeSummary } from "@/lib/finance/practice-summary";
+import { MonthlyTrendChart } from "@/components/finances/MonthlyTrendChart";
 
 export const dynamic = "force-dynamic";
 
@@ -39,45 +40,33 @@ export default async function PnlPage({
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const session = await requireSession();
-  requireCap(session.roles, "reports.commission");
+  requireCap(session.roles, "finances.view");
   const sp = await searchParams;
   const fy = sp.fy && /^\d{4}-\d{2}$/.test(sp.fy) ? sp.fy : currentFyLabel();
-  const sy = fyStartYear(fy);
-  const periodStart = `${sy}-04`; // 'YYYY-MM' lexicographic bounds
-  const periodEnd = `${sy + 1}-03`;
-  const dateStart = `${sy}-04-01`;
-  const dateEnd = `${sy + 1}-03-31`;
 
-  const data = await withTenant(
+  const s = await withTenant(
     session.tenantId,
-    async (tx) => {
-      const [income, expenses] = await Promise.all([
-        tx.execute(sql`
-          SELECT
-            COALESCE(SUM(gross_amount::numeric), 0)::numeric AS gross,
-            COALESCE(SUM(tds_amount::numeric), 0)::numeric AS tds,
-            COALESCE(SUM(net_amount::numeric), 0)::numeric AS net,
-            COUNT(DISTINCT amc_code)::int AS amc_count
-          FROM amc_payouts
-          WHERE period >= ${periodStart} AND period <= ${periodEnd}
-        `),
-        tx.execute(sql`
-          SELECT category, COALESCE(SUM(amount::numeric), 0)::numeric AS total
-          FROM business_expenses
-          WHERE expense_date >= ${dateStart}::date AND expense_date <= ${dateEnd}::date
-          GROUP BY category
-          ORDER BY total DESC
-        `),
-      ]);
-      return { inc: income.rows[0] as any, exp: expenses.rows as any[] };
-    },
+    (tx) => getPracticeSummary(tx, session.tenantId, fy),
     { userId: session.userId, branchId: session.branchId, roles: session.roles }
   );
 
-  const grossIncome = Number(data.inc.gross);
-  const tds = Number(data.inc.tds);
-  const netIncome = Number(data.inc.net);
-  const totalExpenses = data.exp.reduce((s, r) => s + Number(r.total), 0);
+  const data = { exp: s.expenses.byCategory.map((c) => ({ category: c.category, total: c.total })) };
+  const grossIncome = s.income.gross;
+  const tds = s.income.tds;
+  const netIncome = s.income.net;
+  const totalExpenses = s.expenses.total;
+
+  // YoY deltas (this FY vs last FY) — % change, null when last FY is zero.
+  const pct2 = (cur: number, prev: number) => (prev !== 0 ? ((cur - prev) / Math.abs(prev)) * 100 : null);
+  const incomeDelta = pct2(netIncome, s.prev.net);
+  const expenseDelta = pct2(totalExpenses, s.prev.expenses);
+  const profitDelta = pct2(s.netProfit, s.prev.netProfit);
+
+  // Recorded vs expected: projected annual trail on the live book. A large gap
+  // means commission isn't fully imported or an AMC is under-paying.
+  const expected = s.expectedAnnualIncome;
+  const incomeGap = expected > 0 ? expected - grossIncome : 0;
+  const showGap = expected > 0 && incomeGap > expected * 0.1; // flag only a >10% shortfall
   const netProfit = netIncome - totalExpenses;
   const margin = netIncome > 0 ? (netProfit / netIncome) * 100 : null;
   const pct = (n: number) => (netIncome > 0 ? `${((n / netIncome) * 100).toFixed(1)}%` : "—");
@@ -122,10 +111,37 @@ export default async function PnlPage({
 
       {/* Headline */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Card label="Net income" value={formatINR(netIncome)} tone="emerald" />
-        <Card label="Total expenses" value={formatINR(totalExpenses)} tone="rose" />
-        <Card label="Net profit" value={formatINR(netProfit)} tone={netProfit >= 0 ? "emerald" : "rose"} />
+        <Card label="Net income" value={formatINR(netIncome)} tone="emerald" delta={incomeDelta} />
+        <Card label="Total expenses" value={formatINR(totalExpenses)} tone="rose" delta={expenseDelta} invertDelta />
+        <Card label="Net profit" value={formatINR(netProfit)} tone={netProfit >= 0 ? "emerald" : "rose"} delta={profitDelta} />
         <Card label="Net margin" value={margin != null ? `${margin.toFixed(1)}%` : "—"} tone="cyan" />
+      </div>
+
+      {/* Year-on-year comparison */}
+      {(s.prev.net > 0 || s.prev.expenses > 0) && (
+        <div className="card-surface overflow-hidden print:hidden">
+          <div className="border-b px-4 py-2.5 font-semibold text-sm">This year vs last year</div>
+          <table className="w-full text-sm">
+            <thead className="text-xs text-muted-foreground border-b">
+              <tr>
+                <th className="text-left px-4 py-2 font-medium">Metric</th>
+                <th className="text-right py-2 font-medium">FY {prevFyLabel(fy)}</th>
+                <th className="text-right py-2 font-medium">FY {fy}</th>
+                <th className="text-right py-2 font-medium pr-4">Change</th>
+              </tr>
+            </thead>
+            <tbody>
+              <CompareRow label="Net income" prev={s.prev.net} cur={netIncome} />
+              <CompareRow label="Total expenses" prev={s.prev.expenses} cur={totalExpenses} invert />
+              <CompareRow label="Net profit" prev={s.prev.netProfit} cur={netProfit} bold />
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Monthly income vs expense trend */}
+      <div className="print:hidden">
+        <MonthlyTrendChart data={s.monthly.map((m) => ({ label: m.label, income: m.income, expense: m.expense }))} />
       </div>
 
       {/* Income */}
@@ -145,6 +161,18 @@ export default async function PnlPage({
               Commission Reconciliation
             </Link>
             .
+          </div>
+        )}
+        {showGap && (
+          <div className="px-4 py-2.5 border-t bg-amber-50/60 text-[11px] text-amber-800 flex items-start gap-2">
+            <AlertTriangle className="size-3.5 mt-0.5 shrink-0" />
+            <span>
+              Your live book should generate about <strong>{formatINR(Math.round(expected))}</strong> of annual
+              trail, but only <strong>{formatINR(Math.round(grossIncome))}</strong> is recorded for FY {fy} — a{" "}
+              <strong>{formatINR(Math.round(incomeGap))}</strong> gap. Either commission statements aren&apos;t
+              fully imported, or an AMC is under-paying. Reconcile under{" "}
+              <Link href="/dashboard/commission-reconciliation" className="underline">Commission Reconciliation</Link>.
+            </span>
           </div>
         )}
       </div>
@@ -212,16 +240,48 @@ function Card({
   label,
   value,
   tone,
+  delta,
+  invertDelta,
 }: {
   label: string;
   value: string;
   tone: "emerald" | "rose" | "cyan";
+  delta?: number | null;
+  invertDelta?: boolean; // for expenses, a rise is "bad" (rose), a fall is "good"
 }) {
   const cls = tone === "emerald" ? "text-emerald-700" : tone === "rose" ? "text-rose-700" : "text-brand-cyan-deep";
+  const good = delta != null && (invertDelta ? delta <= 0 : delta >= 0);
   return (
     <div className="card-surface glass-card p-4">
       <div className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">{label}</div>
       <div className={`text-xl font-bold mt-1 tabular-nums ${cls}`}>{value}</div>
+      {delta != null && (
+        <div className={`text-[11px] mt-0.5 inline-flex items-center gap-0.5 ${good ? "text-emerald-600" : "text-rose-600"}`}>
+          {delta >= 0 ? <ArrowUpRight className="size-3" /> : <ArrowDownRight className="size-3" />}
+          {Math.abs(delta).toFixed(0)}% vs last FY
+        </div>
+      )}
     </div>
+  );
+}
+
+/** Previous FY label, e.g. "2025-26" → "2024-25". */
+function prevFyLabel(fy: string): string {
+  const start = parseInt(fy.slice(0, 4), 10) - 1;
+  return `${start}-${String(start + 1).slice(-2)}`;
+}
+
+function CompareRow({ label, prev, cur, bold, invert }: { label: string; prev: number; cur: number; bold?: boolean; invert?: boolean }) {
+  const delta = prev !== 0 ? ((cur - prev) / Math.abs(prev)) * 100 : null;
+  const good = delta != null && (invert ? delta <= 0 : delta >= 0);
+  return (
+    <tr className={`border-b last:border-0 ${bold ? "bg-secondary/30" : ""}`}>
+      <td className={`px-4 py-2.5 ${bold ? "font-semibold" : ""}`}>{label}</td>
+      <td className="py-2.5 text-right tabular-nums text-muted-foreground">{formatINR(prev)}</td>
+      <td className={`py-2.5 text-right tabular-nums ${bold ? "font-bold" : ""}`}>{formatINR(cur)}</td>
+      <td className={`py-2.5 text-right tabular-nums pr-4 ${delta == null ? "text-muted-foreground" : good ? "text-emerald-600" : "text-rose-600"}`}>
+        {delta == null ? "—" : `${delta >= 0 ? "+" : ""}${delta.toFixed(0)}%`}
+      </td>
+    </tr>
   );
 }

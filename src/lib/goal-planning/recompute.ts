@@ -21,10 +21,11 @@
  * the auto progress buckets (not_started/on_track/behind_track/achieved) move.
  */
 
-import { inArray } from "drizzle-orm";
+import { inArray, eq } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import { goals, folios, sips } from "@/db/schema";
 import { computeGoal, monthsBetween } from "./calc";
+import { effectiveGlideReturn } from "./glide-path";
 
 /** Statuses a human owns — the nightly job never overwrites these. */
 const MANUAL_STATUSES = new Set(["on_hold", "abandoned"]);
@@ -63,9 +64,24 @@ export async function recomputeAllGoals(
   tx: Tx,
   now: Date = new Date()
 ): Promise<{ recomputed: number; onTrack: number; behind: number; achieved: number }> {
+  return recomputeGoals(tx, now);
+}
+
+/** Recompute a single goal on demand (the "Recompute now" button). */
+export async function recomputeOneGoal(tx: Tx, goalId: string, now: Date = new Date()) {
+  return recomputeGoals(tx, now, goalId);
+}
+
+async function recomputeGoals(
+  tx: Tx,
+  now: Date,
+  onlyGoalId?: string
+): Promise<{ recomputed: number; onTrack: number; behind: number; achieved: number }> {
   const tally = { recomputed: 0, onTrack: 0, behind: 0, achieved: 0 };
 
-  const all = await tx.select().from(goals);
+  const all = onlyGoalId
+    ? await tx.select().from(goals).where(eq(goals.id, onlyGoalId))
+    : await tx.select().from(goals);
   if (all.length === 0) return tally;
 
   // Collect linked ids across all goals → two batched value lookups.
@@ -121,12 +137,17 @@ export async function recomputeAllGoals(
     const monthsLeft = Math.max(0, monthsBetween(now, new Date(g.targetDate)));
     const futureTarget = Number(g.targetAmount);
 
+    // Glide path tapers the effective return as the target nears — and because
+    // this runs nightly with the CURRENT months-left, goals auto-de-risk over time.
+    const baseReturn = g.expectedReturn != null ? Number(g.expectedReturn) : 12;
+    const effReturn = effectiveGlideReturn(baseReturn, monthsLeft / 12, (g as any).glidePath);
+
     const calc = computeGoal({
       futureTarget,
       currentValue,
       existingMonthlySip,
       monthsLeft,
-      expectedReturnPct: g.expectedReturn != null ? Number(g.expectedReturn) : undefined,
+      expectedReturnPct: effReturn,
       inflationPct: g.inflationPct != null ? Number(g.inflationPct) : undefined,
       stepUpPct: g.stepUpPct != null ? Number(g.stepUpPct) : undefined,
     });

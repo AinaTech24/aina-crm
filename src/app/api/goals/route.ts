@@ -18,6 +18,7 @@ import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { goals, investors } from "@/db/schema";
 import { computeGoal, monthsBetween } from "@/lib/goal-planning/calc";
 import { expectedProgressPct } from "@/lib/goal-planning/recompute";
+import { effectiveGlideReturn } from "@/lib/goal-planning/glide-path";
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +39,7 @@ const Body = z.object({
   currentValue: z.number().nonnegative().default(0),
   existingMonthlySip: z.number().nonnegative().default(0),
   expectedReturnPct: z.number().min(1).max(30).default(12),
+  glidePath: z.enum(["none", "conservative", "moderate", "aggressive"]).default("none"),
   remarks: z.string().optional(),
   nextReviewAt: z.string().optional(),
 });
@@ -81,13 +83,15 @@ export async function POST(req: NextRequest) {
     const now = new Date();
     const target = new Date(body.targetDate);
     const monthsLeft = monthsBetween(now, target);
+    // Apply the glide path: the effective return tapers as the target nears.
+    const effReturn = effectiveGlideReturn(body.expectedReturnPct, monthsLeft / 12, body.glidePath);
     const calc = computeGoal({
       presentTarget: body.targetMode === "today" ? body.presentTargetAmount : undefined,
       futureTarget: body.targetMode === "future" ? body.targetAmount : undefined,
       currentValue: body.currentValue,
       existingMonthlySip: body.existingMonthlySip,
       monthsLeft,
-      expectedReturnPct: body.expectedReturnPct,
+      expectedReturnPct: effReturn,
       inflationPct: body.inflationPct,
       stepUpPct: body.stepUpPct,
     });
@@ -112,6 +116,7 @@ export async function POST(req: NextRequest) {
         monthlyContribution: body.existingMonthlySip.toString(),
         expectedReturn: body.expectedReturnPct.toString(),
         currentValue: body.currentValue.toString(),
+        glidePath: body.glidePath,
         progressPct: (calc.futureTarget > 0
           ? Math.min(100, (body.currentValue / calc.futureTarget) * 100)
           : 0

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { sql } from "drizzle-orm";
-import { CalendarCheck, CheckCircle2, XCircle, CalendarOff, Grid3x3 } from "lucide-react";
+import { CalendarCheck, CheckCircle2, XCircle, CalendarOff, Grid3x3, CalendarDays, Settings, ClipboardCheck, ChevronLeft, ChevronRight } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { FilterBar } from "@/components/common/FilterBar";
@@ -8,7 +8,10 @@ import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
 import { CustomViews } from "@/components/common/CustomViews";
 import { ClockWidget } from "@/components/attendance/ClockWidget";
 import { AttendanceTable } from "@/components/attendance/AttendanceTable";
-import { ATTENDANCE_STATUS_LABELS } from "@/lib/attendance/policy";
+import { ATTENDANCE_STATUS_LABELS, computeAttendanceFlags } from "@/lib/attendance/policy";
+import { loadAttendancePolicy } from "@/lib/attendance/settings";
+
+const PAGE_SIZE = 50;
 
 export const dynamic = "force-dynamic";
 
@@ -23,8 +26,11 @@ export default async function AttendancePage({
   const statusFilter = (sp.status ?? "").split(",").filter(Boolean);
   const todayOnly = sp.today === "1";
   const canManage = session.roles.some((r) => ["owner", "branch_head"].includes(r));
+  const page = Math.max(1, Number(sp.page) || 1);
+  const offset = (page - 1) * PAGE_SIZE;
 
   const data = await withTenant(session.tenantId, async (tx) => {
+    const policy = await loadAttendancePolicy(tx, session.tenantId);
     const conds: any[] = [sql`a.tenant_id = ${session.tenantId}::uuid`];
     if (q) conds.push(sql`u.name ILIKE ${`%${q}%`}`);
     if (statusFilter.length) conds.push(sql`a.status IN (${sql.join(statusFilter.map((v) => sql`${v}`), sql`, `)})`);
@@ -34,14 +40,32 @@ export default async function AttendancePage({
     else conds.push(sql`a.attendance_date >= current_date - interval '30 days'`);
     const whereSql = sql`WHERE ${sql.join(conds, sql` AND `)}`;
 
-    const rows = await tx.execute(sql`
+    const totalRow = await tx.execute(sql`
+      SELECT COUNT(*)::int AS total
+      FROM attendance a LEFT JOIN users u ON u.id = a.employee_user_id
+      ${whereSql}
+    `);
+    const total = Number((totalRow.rows[0] as any)?.total ?? 0);
+
+    const rowsRes = await tx.execute(sql`
       SELECT a.id, a.employee_user_id, a.attendance_date, a.status, a.clock_in_at, a.clock_out_at,
-             a.total_minutes, a.note, u.name AS employee_name
+             a.total_minutes, a.note, a.source, u.name AS employee_name, u.avatar_url AS employee_avatar_url
       FROM attendance a LEFT JOIN users u ON u.id = a.employee_user_id
       ${whereSql}
       ORDER BY a.attendance_date DESC, u.name ASC
-      LIMIT 300
+      LIMIT ${PAGE_SIZE} OFFSET ${offset}
     `);
+    // Flag late-in / early-out per row from the tenant's work-hours policy.
+    const rows = (rowsRes.rows as any[]).map((r) => {
+      const f = computeAttendanceFlags(String(r.attendance_date), r.clock_in_at, r.clock_out_at, policy);
+      return {
+        ...r,
+        is_late: f.isLate,
+        late_minutes: f.lateMinutes,
+        is_early_out: f.isEarlyOut,
+        early_minutes: f.earlyMinutes,
+      };
+    });
 
     const stats = await tx.execute(sql`
       SELECT
@@ -58,10 +82,18 @@ export default async function AttendancePage({
       LIMIT 1
     `);
 
-    return { rows: rows.rows as any[], stats: stats.rows[0] as any, myToday: (myToday.rows[0] as any) ?? null };
+    return { rows, total, stats: stats.rows[0] as any, myToday: (myToday.rows[0] as any) ?? null };
   });
 
   const s = data.stats;
+  const pageCount = Math.max(1, Math.ceil(data.total / PAGE_SIZE));
+  const pageHref = (p: number) => {
+    const params = new URLSearchParams();
+    for (const [k, v] of Object.entries(sp)) if (v && k !== "page") params.set(k, v);
+    if (p > 1) params.set("page", String(p));
+    const qs = params.toString();
+    return qs ? `/dashboard/attendance?${qs}` : "/dashboard/attendance";
+  };
 
   return (
     <div className="space-y-6 max-w-7xl">
@@ -70,11 +102,23 @@ export default async function AttendancePage({
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
             <CalendarCheck className="size-6 text-brand-cyan" /> Attendance
           </h1>
-          <p className="text-muted-foreground text-sm">Daily team attendance · clock in/out · worked hours.</p>
         </div>
-        <Link href="/dashboard/attendance/grid" className="btn-secondary text-xs">
-          <Grid3x3 className="size-3.5" /> Monthly grid
-        </Link>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <Link href="/dashboard/attendance/regularizations" className="btn-secondary text-xs">
+            <ClipboardCheck className="size-3.5" /> Corrections
+          </Link>
+          <Link href="/dashboard/attendance/holidays" className="btn-secondary text-xs">
+            <CalendarDays className="size-3.5" /> Holidays
+          </Link>
+          {canManage && (
+            <Link href="/dashboard/attendance/settings" className="btn-secondary text-xs">
+              <Settings className="size-3.5" /> Settings
+            </Link>
+          )}
+          <Link href="/dashboard/attendance/grid" className="btn-secondary text-xs">
+            <Grid3x3 className="size-3.5" /> Monthly grid
+          </Link>
+        </div>
       </div>
 
       <ClockWidget today={data.myToday} />
@@ -112,6 +156,26 @@ export default async function AttendancePage({
       />
 
       <AttendanceTable rows={data.rows} canManage={canManage} />
+
+      {pageCount > 1 && (
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <span>
+            Page {page} of {pageCount} · {data.total} record{data.total === 1 ? "" : "s"}
+          </span>
+          <div className="flex items-center gap-1.5">
+            {page > 1 ? (
+              <Link href={pageHref(page - 1)} className="btn-secondary text-xs"><ChevronLeft className="size-3.5" /> Prev</Link>
+            ) : (
+              <span className="btn-secondary text-xs opacity-40 pointer-events-none"><ChevronLeft className="size-3.5" /> Prev</span>
+            )}
+            {page < pageCount ? (
+              <Link href={pageHref(page + 1)} className="btn-secondary text-xs">Next <ChevronRight className="size-3.5" /></Link>
+            ) : (
+              <span className="btn-secondary text-xs opacity-40 pointer-events-none">Next <ChevronRight className="size-3.5" /></span>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

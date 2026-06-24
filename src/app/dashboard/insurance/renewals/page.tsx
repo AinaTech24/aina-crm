@@ -75,7 +75,6 @@ export default async function RenewalsPage({ searchParams }: { searchParams: Pro
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2"><CalendarClock className="size-6 text-brand-cyan" /> Insurance Renewals</h1>
-          <p className="text-muted-foreground text-sm">Every premium coming due — collect before it lapses. One-tap reminder + mark renewed.</p>
         </div>
         <Link href="/dashboard/insurance" className="btn-secondary text-sm"><Shield className="size-4" /> All policies</Link>
       </div>

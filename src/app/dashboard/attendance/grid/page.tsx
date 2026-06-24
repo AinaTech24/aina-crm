@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { sql } from "drizzle-orm";
-import { ChevronLeft, ChevronRight, Grid3x3 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Grid3x3, Download } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { ATTENDANCE_STATUS_SHORT, ATTENDANCE_STATUS_TONE, ATTENDANCE_STATUS_LABELS } from "@/lib/attendance/policy";
@@ -49,6 +49,7 @@ export default async function AttendanceGridPage({
   }
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
   const todayDay = month === current ? now.getDate() : -1;
+  const isManager = session.roles.some((r) => ["owner", "branch_head"].includes(r));
 
   function totals(eid: string) {
     const row = grid[eid] ?? {};
@@ -76,6 +77,9 @@ export default async function AttendanceGridPage({
           <Link href={`/dashboard/attendance/grid?month=${shiftMonth(month, -1)}`} className="btn-ghost text-sm inline-flex items-center gap-1"><ChevronLeft className="size-4" /> {shiftMonth(month, -1)}</Link>
           <span className="font-bold tabular-nums">{label}</span>
           <Link href={`/dashboard/attendance/grid?month=${shiftMonth(month, 1)}`} className="btn-ghost text-sm inline-flex items-center gap-1">{shiftMonth(month, 1)} <ChevronRight className="size-4" /></Link>
+          {isManager && (
+            <a href={`/api/attendance/export?month=${month}`} download className="btn-ghost text-sm inline-flex items-center gap-1"><Download className="size-4" /> Export CSV</a>
+          )}
         </div>
       </div>
 

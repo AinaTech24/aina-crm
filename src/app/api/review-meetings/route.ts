@@ -20,6 +20,7 @@ import { can, requireAny } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { autoAdvance, resolveLeadIdForInvestor } from "@/lib/blueprints/auto-advance";
+import { findRmConflicts } from "@/lib/review-meetings/conflicts";
 import {
   reviewMeetings,
   investors,
@@ -52,6 +53,8 @@ const Body = z
     discussionPoints: z.string().optional(),
     /** Initial status — defaults to scheduled. */
     status: z.enum(["scheduled", "confirmed"]).default("scheduled"),
+    /** Override the RM double-booking guard (user clicked "Schedule anyway"). */
+    force: z.boolean().default(false),
   })
   .refine((b) => Boolean(b.investorId) !== Boolean(b.leadId), {
     message: "Provide exactly one of investorId or leadId",
@@ -125,6 +128,21 @@ export async function POST(req: NextRequest) {
       const id = uuid();
       const rmId = body.rmId ?? subjectRmId ?? session.userId;
       const meetingDate = new Date(body.meetingDate);
+
+      // ─── Double-booking guard ──────────────────────────────────────
+      // Bail BEFORE any write if this RM already has an overlapping meeting,
+      // unless the user explicitly chose "Schedule anyway". Returning here
+      // leaves the transaction untouched (no partial reminder/meeting rows).
+      if (!body.force) {
+        const conflicts = await findRmConflicts(
+          tx,
+          session.tenantId,
+          rmId,
+          meetingDate.toISOString(),
+          body.durationMinutes
+        );
+        if (conflicts.length) return { conflicts } as const;
+      }
 
       // ─── Automation 1 — reminder task (1 day before) ───────────────
       const reminderTaskId = uuid();
@@ -215,6 +233,11 @@ export async function POST(req: NextRequest) {
 
       return { id, rmId, reminderTaskId };
     });
+
+    // Double-booking: surface the clash so the UI can offer "Schedule anyway".
+    if (result && "conflicts" in result) {
+      return NextResponse.json({ error: "rm_conflict", conflicts: result.conflicts }, { status: 409 });
+    }
 
     return NextResponse.json(result, { status: 201 });
   } catch (err: any) {

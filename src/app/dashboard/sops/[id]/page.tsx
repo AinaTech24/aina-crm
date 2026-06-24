@@ -1,12 +1,14 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { eq, desc, and } from "drizzle-orm";
+import { eq, desc, and, isNull } from "drizzle-orm";
 import { ChevronLeft, ScrollText } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { sops, sopVersions, sopAcknowledgements } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
+import { can } from "@/lib/auth/rbac";
 import { formatDate } from "@/lib/utils";
 import { AcknowledgeButton } from "@/components/sops/AcknowledgeButton";
+import { PublishVersionForm } from "@/components/sops/PublishVersionForm";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +21,7 @@ export default async function SopDetailPage({ params }: { params: Promise<{ id: 
       await tx
         .select()
         .from(sops)
-        .where(and(eq(sops.id, id), eq(sops.tenantId, session.tenantId)))
+        .where(and(eq(sops.id, id), eq(sops.tenantId, session.tenantId), isNull(sops.deletedAt)))
         .limit(1)
     )[0];
     if (!sop) return null;
@@ -53,6 +55,9 @@ export default async function SopDetailPage({ params }: { params: Promise<{ id: 
     return { sop, versions, current, acks, myAck };
   });
   if (!data) notFound();
+  const canManage = can(session.roles, "sop.manage", session.permissions);
+  const currentMarkdown =
+    ((data.current?.body as any)?.markdown as string | undefined) ?? "";
 
   return (
     <div className="space-y-6 max-w-4xl">
@@ -103,6 +108,11 @@ export default async function SopDetailPage({ params }: { params: Promise<{ id: 
           <div className="prose prose-sm max-w-none mt-3 whitespace-pre-wrap">
             {(data.current.body as any)?.markdown ?? JSON.stringify(data.current.body, null, 2)}
           </div>
+          {canManage && (
+            <div className="mt-5 pt-4 border-t">
+              <PublishVersionForm sopId={data.sop.id} currentMarkdown={currentMarkdown} />
+            </div>
+          )}
         </div>
       )}
 

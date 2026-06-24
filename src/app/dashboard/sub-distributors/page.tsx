@@ -77,10 +77,6 @@ export default async function SubDistributorsListPage({
       <div className="flex items-end justify-between">
         <div>
           <h1 className="text-2xl font-semibold">Sub-distributors</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Channel partners and external distributors registered under your
-            ARN. SEBI requires this register to be maintained.
-          </p>
         </div>
         <Link href="/dashboard/sub-distributors/new" className="btn-primary text-sm">
           <Plus className="size-4" /> Add sub-distributor
@@ -98,11 +94,10 @@ export default async function SubDistributorsListPage({
           <Link
             key={s.value}
             href={`/dashboard/sub-distributors?status=${s.value}`}
-            className={`chip text-xs ${
-              statusFilter === s.value
+            className={`chip text-xs ${statusFilter === s.value
                 ? "bg-slate-900 text-white"
                 : "bg-slate-100"
-            }`}
+              }`}
           >
             {s.label}
           </Link>
@@ -123,9 +118,9 @@ export default async function SubDistributorsListPage({
           </Link>
         </div>
       ) : (
-        <div className="card-surface overflow-x-auto">
+        <div className="card-surface table-scroll">
           <table className="w-full text-xs min-w-[960px]">
-            <thead className="bg-slate-50 text-slate-600">
+            <thead className="bg-slate-50 text-slate-600 sticky top-0 z-10 bg-card">
               <tr>
                 <th className="px-3 py-2 text-left">Name</th>
                 <th className="px-3 py-2 text-left">Code</th>
@@ -177,9 +172,8 @@ export default async function SubDistributorsListPage({
                   </td>
                   <td className="px-3 py-2">
                     <span
-                      className={`chip text-[10px] ${
-                        STATUS_TONE[r.status] ?? "bg-slate-100"
-                      }`}
+                      className={`chip text-[10px] ${STATUS_TONE[r.status] ?? "bg-slate-100"
+                        }`}
                     >
                       {r.status}
                     </span>

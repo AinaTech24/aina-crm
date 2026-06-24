@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { and, asc, eq, inArray, isNotNull, lt, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull, lt, sql } from "drizzle-orm";
 import { withSystem } from "@/db/client";
 import { tasks } from "@/db/schema";
 
@@ -54,6 +54,7 @@ export async function POST(req: NextRequest) {
         and(
           eq(tasks.tenantId, body.tenantId!),
           eq(tasks.assigneeId, body.userId!),
+          isNull(tasks.deletedAt),
           inArray(tasks.status, ["open", "in_progress"] as any),
           isNotNull(tasks.dueAt)
         )

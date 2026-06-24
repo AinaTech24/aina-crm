@@ -19,6 +19,7 @@ const Body = z.object({
   intent: z.string().min(2).max(2000),
   audienceContext: z.string().optional(),
   variables: z.array(z.string()).optional(),
+  theme: z.string().max(40).optional(),
 });
 
 export async function POST(req: NextRequest) {

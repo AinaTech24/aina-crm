@@ -1,5 +1,6 @@
+import Link from "next/link";
 import { eq } from "drizzle-orm";
-import { CreditCard, Package } from "lucide-react";
+import { CreditCard, Package, Users, FolderOpen, HardDrive, MessageSquare, Clock, AlertTriangle, FileText } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { subscriptions, packages, subscriptionEvents } from "@/db/schema";
 import { desc } from "drizzle-orm";
@@ -8,6 +9,7 @@ import { formatDate, formatRelative } from "@/lib/utils";
 import { BillingCycleChooser } from "@/components/billing/BillingCycleChooser";
 import { AutoPaySetup } from "@/components/billing/AutoPaySetup";
 import { computeAnnualAmountPaise, razorpayConfigured } from "@/lib/billing/razorpay";
+import { getBillingUsage, type UsageMetric } from "@/lib/billing/usage";
 
 const STATUS_COLORS: Record<string, string> = {
   trial: "bg-blue-50 text-blue-700",
@@ -22,7 +24,7 @@ export const dynamic = "force-dynamic";
 
 export default async function BillingPage() {
   const session = await requireSession();
-  const { sub, pkg, events } = await withTenant(session.tenantId, async (tx) => {
+  const { sub, pkg, events, usage } = await withTenant(session.tenantId, async (tx) => {
     const s = (await tx.select().from(subscriptions).where(eq(subscriptions.tenantId, session.tenantId)).limit(1))[0] ?? null;
     const p = s ? (await tx.select().from(packages).where(eq(packages.id, s.packageId)).limit(1))[0] ?? null : null;
     const ev = s
@@ -33,10 +35,24 @@ export default async function BillingPage() {
           .orderBy(desc(subscriptionEvents.at))
           .limit(20)
       : [];
-    return { sub: s, pkg: p, events: ev };
+    const u = p
+      ? await getBillingUsage(tx, session.tenantId, {
+          seatLimit: s?.seatsOverride ?? p.maxUsers,
+          investorLimit: p.maxInvestors,
+          storageGb: p.storageLimitGb,
+          messageCap: Number((p.featureFlags as any)?.maxMessagesPerMonth ?? 0),
+        })
+      : null;
+    return { sub: s, pkg: p, events: ev, usage: u };
   });
 
   const razorpayReady = await razorpayConfigured();
+
+  // Trial / expiry countdown.
+  const endDate = sub?.licenseEndAt ? new Date(sub.licenseEndAt) : null;
+  const daysLeft = endDate ? Math.ceil((endDate.getTime() - Date.now()) / 86_400_000) : null;
+  const isTrial = sub?.status === "trial";
+  const nextDebit = pkg && sub ? computeAnnualAmountPaise(pkg as any, sub as any).amountPaise : 0;
 
   return (
     <div className="space-y-6 max-w-4xl">
@@ -47,6 +63,37 @@ export default async function BillingPage() {
 
       {sub && pkg ? (
         <>
+          {/* Trial / expiry countdown */}
+          {isTrial && daysLeft != null && (
+            <div className={`rounded-lg border p-4 flex items-start gap-3 ${daysLeft <= 14 ? "border-amber-300 bg-amber-50" : "border-blue-200 bg-blue-50/60"}`}>
+              <Clock className={`size-5 mt-0.5 ${daysLeft <= 14 ? "text-amber-600" : "text-blue-600"}`} />
+              <div className="flex-1">
+                <div className="font-semibold text-sm">
+                  {daysLeft > 0 ? `Your trial ends in ${daysLeft} day${daysLeft === 1 ? "" : "s"}` : "Your trial has ended"}
+                  {endDate ? ` · ${formatDate(endDate)}` : ""}
+                </div>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Set up auto-pay below to keep uninterrupted access — when a license lapses, the workspace is limited to
+                  billing &amp; support until payment resumes.
+                </p>
+              </div>
+              <a href="#autopay" className="btn-primary text-xs whitespace-nowrap print:hidden">Set up auto-pay</a>
+            </div>
+          )}
+
+          {/* Usage vs plan limits */}
+          {usage && (
+            <div className="border rounded-lg bg-card p-6">
+              <h2 className="font-semibold flex items-center gap-2 mb-4">Plan usage</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4">
+                <UsageRow icon={Users} label="Users" m={usage.users} unit="" />
+                <UsageRow icon={FolderOpen} label="Clients" m={usage.investors} unit="" />
+                <UsageRow icon={HardDrive} label="Storage" m={usage.storage} unit=" GB" />
+                <UsageRow icon={MessageSquare} label="Messages this month" m={usage.messages} unit="" />
+              </div>
+            </div>
+          )}
+
           <div className="border rounded-lg bg-card p-6">
             <div className="flex items-start justify-between">
               <div>
@@ -82,14 +129,23 @@ export default async function BillingPage() {
             canManage={(session.roles ?? []).includes("owner")}
           />
 
-          <AutoPaySetup
-            configured={razorpayReady}
-            mandateStatus={(sub as any).mandateStatus ?? "none"}
-            status={sub.status}
-            amountPaise={computeAnnualAmountPaise(pkg as any, sub as any).amountPaise}
-            seats={computeAnnualAmountPaise(pkg as any, sub as any).seats}
-            canManage={(session.roles ?? []).includes("owner")}
-          />
+          <div id="autopay" className="scroll-mt-20 space-y-2">
+            {nextDebit > 0 && (
+              <p className="text-xs text-muted-foreground px-1">
+                {(sub as any).mandateStatus === "active"
+                  ? `Auto-pay is active — ₹${(nextDebit / 100).toLocaleString("en-IN")} will be debited on ${sub.nextRenewalAt ? formatDate(sub.nextRenewalAt) : "renewal"} via your saved mandate.`
+                  : `Next charge: ₹${(nextDebit / 100).toLocaleString("en-IN")} on ${sub.nextRenewalAt ? formatDate(sub.nextRenewalAt) : "renewal"}. Set up auto-pay so it's collected automatically.`}
+              </p>
+            )}
+            <AutoPaySetup
+              configured={razorpayReady}
+              mandateStatus={(sub as any).mandateStatus ?? "none"}
+              status={sub.status}
+              amountPaise={computeAnnualAmountPaise(pkg as any, sub as any).amountPaise}
+              seats={computeAnnualAmountPaise(pkg as any, sub as any).seats}
+              canManage={(session.roles ?? []).includes("owner")}
+            />
+          </div>
 
           <div className="border rounded-lg bg-card p-6">
             <h2 className="font-semibold">Modules enabled</h2>
@@ -112,9 +168,21 @@ export default async function BillingPage() {
               <ul className="mt-3 space-y-2 text-sm">
                 {events.map((e) => (
                   <li key={e.id} className="border-l-2 border-muted pl-3 py-1">
-                    <div className="flex items-center justify-between">
-                      <span className="font-medium">{e.eventType.replace(/_/g, " ")}</span>
-                      <span className="text-xs text-muted-foreground">{formatRelative(e.at)}</span>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium">
+                        {e.eventType.replace(/_/g, " ")}
+                        {e.amountPaise != null && (
+                          <span className="text-muted-foreground font-normal"> · ₹{(e.amountPaise / 100).toLocaleString("en-IN")}</span>
+                        )}
+                      </span>
+                      <span className="flex items-center gap-2">
+                        {e.amountPaise != null && (
+                          <Link href={`/dashboard/billing/receipt/${e.id}`} className="text-xs text-brand-cyan-deep hover:underline inline-flex items-center gap-1">
+                            <FileText className="size-3" /> Receipt
+                          </Link>
+                        )}
+                        <span className="text-xs text-muted-foreground">{formatRelative(e.at)}</span>
+                      </span>
                     </div>
                     {e.notes && <div className="text-xs text-muted-foreground mt-0.5">{e.notes}</div>}
                   </li>
@@ -139,6 +207,31 @@ function Row({ label, value }: { label: string; value: string }) {
     <div>
       <div className="text-xs text-muted-foreground">{label}</div>
       <div className="font-medium mt-0.5 capitalize">{value}</div>
+    </div>
+  );
+}
+
+function UsageRow({ icon: Icon, label, m, unit }: { icon: any; label: string; m: UsageMetric; unit: string }) {
+  const fmt = (n: number) => n.toLocaleString("en-IN");
+  const pct = m.pct;
+  const tone = pct == null ? "bg-brand-cyan" : pct >= 90 ? "bg-rose-500" : pct >= 75 ? "bg-amber-500" : "bg-emerald-500";
+  return (
+    <div>
+      <div className="flex items-center justify-between text-sm">
+        <span className="flex items-center gap-1.5 text-muted-foreground">
+          <Icon className="size-3.5" /> {label}
+        </span>
+        <span className="tabular-nums font-medium">
+          {fmt(m.used)}{unit}
+          {m.limit != null ? <span className="text-muted-foreground font-normal"> / {fmt(m.limit)}{unit}</span> : <span className="text-muted-foreground font-normal"> · unlimited</span>}
+        </span>
+      </div>
+      <div className="h-2 rounded-full bg-secondary overflow-hidden mt-1.5">
+        <div className={`h-full rounded-full ${tone}`} style={{ width: `${pct ?? 4}%` }} />
+      </div>
+      {pct != null && pct >= 90 && (
+        <div className="text-[11px] text-rose-600 mt-0.5">{pct}% used — approaching your plan limit</div>
+      )}
     </div>
   );
 }

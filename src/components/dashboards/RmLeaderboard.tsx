@@ -5,8 +5,20 @@ import { Users } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { formatINR } from "@/lib/utils";
 import type { SessionUser } from "@/lib/auth/session";
+import { DashboardEmptyState } from "./DashboardEmptyState";
 
-export async function RmLeaderboard({ session }: { session: SessionUser }) {
+export async function RmLeaderboard({
+  session,
+  period,
+  periodQuery = "",
+}: {
+  session: SessionUser;
+  /** Active cockpit period — kept for drill-down scoping (the AUM/SIP figures
+   *  shown here are current snapshots, so the aggregate itself is period-independent). */
+  period?: string;
+  /** Pre-built "?period=…&pstart=…" suffix so the drill-down opens in the same window. */
+  periodQuery?: string;
+}) {
   const data = await withTenant(
     session.tenantId,
     async (tx) => {
@@ -27,6 +39,9 @@ export async function RmLeaderboard({ session }: { session: SessionUser }) {
     { userId: session.userId, branchId: session.branchId, roles: session.roles }
   );
 
+  // A leaderboard where every RM has zero clients/AUM is as empty as no rows.
+  const hasSignal = data.some((r) => Number(r.clients) > 0 || Number(r.aum) > 0);
+
   return (
     <div className="card-surface glass-card p-5">
       <div className="flex items-center justify-between mb-3">
@@ -37,16 +52,28 @@ export async function RmLeaderboard({ session }: { session: SessionUser }) {
           RM Leaderboard
         </h2>
         <Link
-          href="/dashboard/reports/rm_business"
+          href={`/dashboard/reports/rm_business${periodQuery}`}
           className="text-xs text-violet-700 hover:underline font-medium"
         >
           All RMs →
         </Link>
       </div>
       {data.length === 0 ? (
-        <p className="text-sm text-muted-foreground py-6 text-center">
-          No RMs configured yet.
-        </p>
+        <DashboardEmptyState
+          icon={Users}
+          title="No RMs configured yet"
+          hint="Invite relationship managers and assign clients to them to rank business by RM."
+          cta={{ href: "/dashboard/settings/team", label: "Manage team" }}
+          compact
+        />
+      ) : !hasSignal ? (
+        <DashboardEmptyState
+          icon={Users}
+          title="No client business mapped to RMs"
+          hint="Assign clients to your RMs to see AUM and SIP book ranked per relationship manager."
+          cta={{ href: `/dashboard/investors${periodQuery}`, label: "Assign clients" }}
+          compact
+        />
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-xs table-modern">

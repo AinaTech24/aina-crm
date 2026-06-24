@@ -21,7 +21,7 @@ export default async function ProfilePage() {
       .select({
         name: users.name,
         email: users.email,
-        phone: users.phone,
+        emailVerifiedAt: users.emailVerifiedAt,
         avatarUrl: users.avatarUrl,
         department: users.department,
         joiningDate: users.joiningDate,
@@ -76,12 +76,8 @@ export default async function ProfilePage() {
         <UserCircle className="size-5" /> My profile
       </h1>
 
-      {/* Identity (read-only) */}
-      <div className="border rounded-lg bg-card p-5 grid sm:grid-cols-3 gap-4 text-sm">
-        <div>
-          <div className="text-xs text-muted-foreground">Email</div>
-          <div className="font-medium">{me?.email ?? "—"}</div>
-        </div>
+      {/* Identity (read-only) — email + verification live in "Your details" below. */}
+      <div className="border rounded-lg bg-card p-5 grid sm:grid-cols-2 gap-4 text-sm">
         <div>
           <div className="text-xs text-muted-foreground">Role</div>
           <div className="font-medium">{primaryRoleLabel(session.roles)}</div>
@@ -109,7 +105,12 @@ export default async function ProfilePage() {
       </div>
 
       {/* Editable details + password */}
-      <ProfileForm initialName={me?.name ?? ""} initialPhone={me?.phone ?? ""} initialAvatarUrl={me?.avatarUrl ?? ""} />
+      <ProfileForm
+        initialName={me?.name ?? ""}
+        email={me?.email ?? ""}
+        emailVerified={!!me?.emailVerifiedAt}
+        initialAvatarUrl={me?.avatarUrl ?? ""}
+      />
 
       {/* Targets */}
       <div className="border rounded-lg bg-card p-5">

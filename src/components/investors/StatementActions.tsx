@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { FileDown, Mail, MessageCircle, Loader2, Check, Link2, CalendarClock, Receipt } from "lucide-react";
+import { SelectField } from "@/components/ui/SelectField";
 
 /**
  * Client-360 actions for the live valuation statement + transparency:
@@ -93,42 +94,57 @@ export function StatementActions({
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <a href={`/api/investors/${investorId}/statement/pdf?download=1`} target="_blank" rel="noopener" className="btn-secondary text-xs">
-        <FileDown className="size-3.5" /> Download statement
-      </a>
-      <a href={`/dashboard/investors/${investorId}/capital-gains`} className="btn-secondary text-xs">
-        <Receipt className="size-3.5" /> Capital gains
-      </a>
-      <button onClick={() => send("email")} disabled={busy !== null} className="btn-secondary text-xs">
-        {busy === "email" ? <Loader2 className="size-3.5 animate-spin" /> : <Mail className="size-3.5" />} Email PDF
-      </button>
-      <button onClick={() => send("whatsapp")} disabled={busy !== null} className="btn-secondary text-xs">
-        {busy === "whatsapp" ? <Loader2 className="size-3.5 animate-spin" /> : <MessageCircle className="size-3.5" />} WhatsApp summary
-      </button>
-      <button onClick={sharePortfolio} disabled={busy !== null} className="btn-secondary text-xs">
-        {busy === "link" ? <Loader2 className="size-3.5 animate-spin" /> : <Link2 className="size-3.5" />} Share live portfolio
-      </button>
-      <label className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-        <CalendarClock className="size-3.5" />
-        Auto-statement
-        <select
+    <div className="card-surface p-4 space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold">Statements &amp; sharing</h3>
+        {done && (
+          <span className="text-xs text-emerald-600 inline-flex items-center gap-1">
+            <Check className="size-3.5" /> {done}
+          </span>
+        )}
+        {err && <span className="text-xs text-rose-600">{err}</span>}
+      </div>
+
+      {/* Action buttons */}
+      <div className="flex flex-wrap items-center gap-2">
+        <a href={`/api/investors/${investorId}/statement/pdf?download=1`} target="_blank" rel="noopener" className="btn-secondary text-xs">
+          <FileDown className="size-3.5" /> Download statement
+        </a>
+        <a href={`/dashboard/investors/${investorId}/capital-gains`} className="btn-secondary text-xs">
+          <Receipt className="size-3.5" /> Capital gains
+        </a>
+        <button onClick={() => send("email")} disabled={busy !== null} className="btn-secondary text-xs">
+          {busy === "email" ? <Loader2 className="size-3.5 animate-spin" /> : <Mail className="size-3.5" />} Email PDF
+        </button>
+        <button onClick={() => send("whatsapp")} disabled={busy !== null} className="btn-secondary text-xs">
+          {busy === "whatsapp" ? <Loader2 className="size-3.5 animate-spin" /> : <MessageCircle className="size-3.5" />} WhatsApp summary
+        </button>
+        <button onClick={sharePortfolio} disabled={busy !== null} className="btn-secondary text-xs">
+          {busy === "link" ? <Loader2 className="size-3.5 animate-spin" /> : <Link2 className="size-3.5" />} Share live portfolio
+        </button>
+      </div>
+
+      {/* Auto-statement cadence */}
+      <div className="flex flex-wrap items-center gap-2 border-t pt-3">
+        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-foreground">
+          <CalendarClock className="size-3.5 text-muted-foreground" />
+          Auto-statement
+        </span>
+        <SelectField
           value={cadence}
           disabled={busy !== null}
           onChange={(e) => setStatementCadence(e.target.value as any)}
-          className="input-base text-xs py-1 px-2 w-auto"
+          className="w-36"
+          size="sm"
         >
           <option value="off">Off</option>
           <option value="monthly">Monthly</option>
           <option value="quarterly">Quarterly</option>
-        </select>
-      </label>
-      {done && (
-        <span className="text-xs text-emerald-600 inline-flex items-center gap-1">
-          <Check className="size-3.5" /> {done}
+        </SelectField>
+        <span className="text-xs text-muted-foreground">
+          Email a live portfolio statement automatically on this cadence.
         </span>
-      )}
-      {err && <span className="text-xs text-rose-600">{err}</span>}
+      </div>
     </div>
   );
 }

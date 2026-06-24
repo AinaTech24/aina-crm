@@ -286,6 +286,14 @@ export function FeatureAccessGrid({
     onChange(enabled, adds);
   }
 
+  // Batch-set a whole group (e.g. the Dashboards module) to Included or Off in one click.
+  function setGroupState(keys: string[], next: "included" | "off") {
+    const enabled = enabledFeatures.filter((x) => !keys.includes(x));
+    const adds = addons.filter((a) => !keys.includes(a.key));
+    if (next === "included") enabled.push(...keys);
+    onChange(enabled, adds);
+  }
+
   function setPrice(k: string, field: "monthlyRupees" | "yearlyRupees", v: number) {
     onChange(
       enabledFeatures,
@@ -322,10 +330,16 @@ export function FeatureAccessGrid({
         <span className="font-medium">Off</span> = hidden from this firm.
       </p>
       <div className="max-h-96 overflow-y-auto border rounded bg-muted/20">
-        {NAV_ACCESS_GROUPS.map((group) => (
+        {NAV_ACCESS_GROUPS.map((group) => {
+          const groupKeys = group.items.map((i) => i.key);
+          return (
           <div key={group.title}>
-            <div className="sticky top-0 z-10 bg-secondary/90 backdrop-blur px-3 py-1 text-[10px] font-bold uppercase tracking-wide text-muted-foreground border-y">
-              {group.title}
+            <div className="sticky top-0 z-10 bg-secondary/90 backdrop-blur px-3 py-1 flex items-center justify-between border-y">
+              <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">{group.title}</span>
+              <span className="flex items-center gap-2 text-[10px] font-medium">
+                <button type="button" onClick={() => setGroupState(groupKeys, "included")} className="text-emerald-700 hover:underline">Include all</button>
+                <button type="button" onClick={() => setGroupState(groupKeys, "off")} className="text-muted-foreground hover:underline">Off</button>
+              </span>
             </div>
             <div className="divide-y">
               {group.items.map((item) => {
@@ -367,7 +381,8 @@ export function FeatureAccessGrid({
               })}
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

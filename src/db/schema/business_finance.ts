@@ -12,7 +12,7 @@
  * Both are tenant-scoped — added to tenant_tables in the RLS migration.
  */
 
-import { date, index, numeric, pgTable, text, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, date, index, integer, numeric, pgTable, text, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { id, tenantId, timestamps } from "./_shared";
 import { tenants } from "./tenants";
 import { users } from "./users";
@@ -50,12 +50,54 @@ export const businessExpenses = pgTable(
     paidFrom: text("paid_from", { enum: PAID_FROM }).notNull().default("current_account"),
     amount: numeric("amount", { precision: 18, scale: 2 }).notNull(),
     notes: text("notes"),
+    /** When this row was auto-posted from a recurring template, these link it
+     *  back so the same template can't post twice in one month. */
+    recurringId: uuid("recurring_id"),
+    recurringPeriod: text("recurring_period"), // 'YYYY-MM'
     createdBy: uuid("created_by").references(() => users.id),
     ...timestamps,
   },
   (t) => ({
     dateIdx: index("business_expenses_date_idx").on(t.tenantId, t.expenseDate),
     categoryIdx: index("business_expenses_category_idx").on(t.tenantId, t.category),
+  })
+);
+
+/** Recurring expense templates — fixed monthly costs posted to the ledger with
+ *  one click each month (rent, salaries, software subscriptions). */
+export const recurringExpenses = pgTable(
+  "recurring_expenses",
+  {
+    id,
+    tenantId: tenantId.references(() => tenants.id),
+    description: text("description").notNull(),
+    category: text("category", { enum: EXPENSE_CATEGORIES }).notNull().default("others"),
+    paidFrom: text("paid_from", { enum: PAID_FROM }).notNull().default("current_account"),
+    amount: numeric("amount", { precision: 18, scale: 2 }).notNull(),
+    dayOfMonth: integer("day_of_month").notNull().default(1),
+    active: boolean("active").notNull().default(true),
+    notes: text("notes"),
+    createdBy: uuid("created_by").references(() => users.id),
+    ...timestamps,
+  },
+  (t) => ({
+    tenantIdx: index("recurring_expenses_tenant_idx").on(t.tenantId),
+  })
+);
+
+/** Per-category monthly expense budgets — drive the budget-vs-actual view. */
+export const expenseBudgets = pgTable(
+  "expense_budgets",
+  {
+    id,
+    tenantId: tenantId.references(() => tenants.id),
+    category: text("category", { enum: EXPENSE_CATEGORIES }).notNull(),
+    monthlyBudget: numeric("monthly_budget", { precision: 18, scale: 2 }).notNull().default("0"),
+    updatedBy: uuid("updated_by").references(() => users.id),
+    ...timestamps,
+  },
+  (t) => ({
+    uniqueCell: uniqueIndex("expense_budgets_unique").on(t.tenantId, t.category),
   })
 );
 
@@ -90,3 +132,7 @@ export type BusinessExpense = typeof businessExpenses.$inferSelect;
 export type NewBusinessExpense = typeof businessExpenses.$inferInsert;
 export type BusinessTarget = typeof businessTargets.$inferSelect;
 export type NewBusinessTarget = typeof businessTargets.$inferInsert;
+export type RecurringExpense = typeof recurringExpenses.$inferSelect;
+export type NewRecurringExpense = typeof recurringExpenses.$inferInsert;
+export type ExpenseBudget = typeof expenseBudgets.$inferSelect;
+export type NewExpenseBudget = typeof expenseBudgets.$inferInsert;

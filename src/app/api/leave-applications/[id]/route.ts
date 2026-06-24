@@ -33,12 +33,20 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const { action, decisionNotes } = parse.data;
     const clientMeta = clientMetaFromHeaders(req.headers);
     const isManager = session.roles.some((r) => ["owner", "branch_head"].includes(r));
+    const isOwner = session.roles.includes("owner");
 
     const result = await withTenant(session.tenantId, async (tx) => {
       const before = (await tx.select().from(leaveApplications).where(and(eq(leaveApplications.id, id), eq(leaveApplications.tenantId, session.tenantId))).limit(1))[0];
       if (!before) return { notFound: true as const };
 
       if (action === "approve" || action === "reject") {
+        // Segregation of duties: you can't approve/reject your OWN leave. A solo
+        // owner is legitimately both maker and checker (mirrors the templates
+        // maker-checker), so owners are exempt; a branch_head must route their
+        // own request to an owner.
+        if (before.employeeUserId === session.userId && !isOwner) {
+          return { forbidden: "You can't approve your own leave — an owner must decide it." };
+        }
         // Owner/branch_head can always decide; otherwise the applicant's own
         // reporting manager may decide (delegated approval).
         let canDecide = isManager;
@@ -46,7 +54,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           const [applicant] = await tx
             .select({ mgr: users.reportingManagerId })
             .from(users)
-            .where(eq(users.id, before.employeeUserId))
+            .where(and(eq(users.id, before.employeeUserId), eq(users.tenantId, session.tenantId)))
             .limit(1);
           canDecide = !!applicant?.mgr && applicant.mgr === session.userId;
         }

@@ -11,11 +11,11 @@ import { handleApiError } from "@/lib/api/error-handler";
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { require as requireCap } from "@/lib/auth/rbac";
+import { require as requireCap, can } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { investors, leads } from "@/db/schema";
@@ -51,6 +51,13 @@ export async function POST(req: NextRequest) {
     const b = parsed.data;
     const clientMeta = clientMetaFromHeaders(req.headers);
 
+    // Managers / ops / compliance may compose to any client in the firm; a plain
+    // RM (or marketing) may only email their own clients / leads.
+    const seesAll =
+      can(session.roles, "investor.view.all", session.permissions) ||
+      can(session.roles, "compliance.view", session.permissions) ||
+      can(session.roles, "reports.business", session.permissions);
+
     const scheduledAt = b.scheduledAt ? new Date(b.scheduledAt) : null;
     if (scheduledAt && scheduledAt.getTime() <= Date.now()) {
       return NextResponse.json({ error: "scheduledAt must be in the future" }, { status: 400 });
@@ -61,22 +68,30 @@ export async function POST(req: NextRequest) {
       let recipient = b.toEmail ?? "";
       let recipientName: string | null = null;
       if (b.investorId) {
+        // Tenant predicate is the live cross-tenant guard (RLS-bypass model) —
+        // mirror the sibling actions route. Pull rmId to enforce own-client scope.
         const [inv] = await tx
-          .select({ email: investors.email, name: investors.name })
+          .select({ email: investors.email, name: investors.name, rmId: investors.rmId })
           .from(investors)
-          .where(eq(investors.id, b.investorId))
+          .where(and(eq(investors.id, b.investorId), eq(investors.tenantId, session.tenantId)))
           .limit(1);
         if (!inv) throw Object.assign(new Error("investor not found"), { status: 404 });
+        if (!seesAll && inv.rmId !== session.userId) {
+          throw Object.assign(new Error("not your client"), { status: 403 });
+        }
         if (!inv.email) throw Object.assign(new Error("investor has no email on file"), { status: 400 });
         recipient = inv.email;
         recipientName = inv.name;
       } else if (b.leadId) {
         const [ld] = await tx
-          .select({ email: leads.email, name: leads.name })
+          .select({ email: leads.email, name: leads.name, ownerId: leads.ownerId })
           .from(leads)
-          .where(eq(leads.id, b.leadId))
+          .where(and(eq(leads.id, b.leadId), eq(leads.tenantId, session.tenantId)))
           .limit(1);
         if (!ld) throw Object.assign(new Error("lead not found"), { status: 404 });
+        if (!seesAll && ld.ownerId !== session.userId) {
+          throw Object.assign(new Error("not your lead"), { status: 403 });
+        }
         if (!ld.email) throw Object.assign(new Error("lead has no email on file"), { status: 400 });
         recipient = ld.email;
         recipientName = ld.name;

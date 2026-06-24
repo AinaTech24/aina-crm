@@ -320,6 +320,34 @@ async function applyRule(tx: any, rule: any, ctx: ApplyRuleContext): Promise<Run
     executionId = claimed[0].id;
   }
 
+  // Step 3.7 — rate cap. A pathological high-frequency rule (or a misconfigured
+  // recurrence) could fire a comms storm and burn the per-tenant message quota.
+  // If this rule already fired `rateLimitPerHour` times in the trailing hour,
+  // skip the actions (the claimed row is marked 'skipped'). Manual/test runs
+  // (no executionId) are exempt.
+  const cap = (rule as any).rateLimitPerHour as number | null | undefined;
+  if (cap && cap > 0 && executionId) {
+    const recent = (await tx.execute(sql`
+      SELECT count(*)::int c FROM workflow_rule_executions
+      WHERE rule_id = ${rule.id}::uuid
+        AND executed_at > now() - interval '1 hour'
+        AND id <> ${executionId}::uuid
+    `)).rows[0] as { c?: number } | undefined;
+    if (Number(recent?.c ?? 0) >= cap) {
+      await tx
+        .update(workflowRuleExecutions)
+        .set({ status: "skipped", error: `Rate limit reached: ${cap}/hour` })
+        .where(eq(workflowRuleExecutions.id, executionId));
+      return {
+        ruleId: rule.id,
+        matched: false,
+        reason: `rate_limited (${cap}/hour)`,
+        instantOutcomes: [],
+        scheduledQueued: 0,
+      };
+    }
+  }
+
   // Step 4 — execute the branch's instant actions
   const instantOutcomes: ActionResult[] = [];
   for (const action of branch.instantActions) {

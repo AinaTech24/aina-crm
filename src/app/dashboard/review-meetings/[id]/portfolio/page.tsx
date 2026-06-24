@@ -20,7 +20,7 @@ import { ChevronLeft } from "lucide-react";
 import { and, eq } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { require as requireCap } from "@/lib/auth/rbac";
+import { requireAny, can } from "@/lib/auth/rbac";
 import {
   reviewMeetings,
   folios,
@@ -37,7 +37,8 @@ export default async function MeetingPortfolioPage({
   params: Promise<{ id: string }>;
 }) {
   const session = await requireSession();
-  requireCap(session.roles, "review_meeting.manage.all");
+  requireAny(session.roles, ["review_meeting.manage.all", "review_meeting.manage.assigned"], session.permissions);
+  const canAll = can(session.roles, "review_meeting.manage.all", session.permissions);
   const { id } = await params;
 
   const data = await withTenant(session.tenantId, async (tx) => {
@@ -52,6 +53,8 @@ export default async function MeetingPortfolioPage({
       )
       .limit(1);
     if (!meeting) return null;
+    // manage.assigned RMs may only open their OWN meeting's worksheet.
+    if (!canAll && meeting.rmId !== session.userId) return null;
 
     const [investor] = meeting.investorId
       ? await tx

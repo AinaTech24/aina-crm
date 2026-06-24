@@ -6,7 +6,7 @@
  * widget, the manager upsert, or the daily auto-seed worker.
  */
 
-import { date, index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { date, index, integer, numeric, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { id, tenantId, timestamps } from "./_shared";
 
 export const ATTENDANCE_STATUSES = [
@@ -33,6 +33,13 @@ export const attendance = pgTable(
     note: text("note"),
     /** manual | clock | auto (daily seed). */
     source: text("source").notNull().default("manual"),
+    /** Geolocation + IP captured at punch time (field-attendance proof). */
+    clockInLat: numeric("clock_in_lat"),
+    clockInLng: numeric("clock_in_lng"),
+    clockInIp: text("clock_in_ip"),
+    clockOutLat: numeric("clock_out_lat"),
+    clockOutLng: numeric("clock_out_lng"),
+    clockOutIp: text("clock_out_ip"),
     ...timestamps,
   },
   (t) => ({

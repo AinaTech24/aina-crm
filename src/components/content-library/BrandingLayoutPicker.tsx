@@ -13,12 +13,15 @@
  */
 
 import { useState } from "react";
-import { Download, LayoutTemplate, Send } from "lucide-react";
+import { Download, LayoutTemplate, Send, Crop, Users } from "lucide-react";
 import { SendToClientDrawer } from "./SendToClientDrawer";
+import { BulkSendDrawer } from "./BulkSendDrawer";
 import {
   BRANDING_TEMPLATES,
   DEFAULT_TEMPLATE_ID,
   getBrandingTemplate,
+  OUTPUT_SIZES,
+  DEFAULT_SIZE_ID,
 } from "@/lib/branding/templates";
 
 export function BrandingLayoutPicker({
@@ -39,12 +42,14 @@ export function BrandingLayoutPicker({
   const initial = getBrandingTemplate(defaultTemplateId);
   const [templateId, setTemplateId] = useState(initial.id);
   const [heightPct, setHeightPct] = useState(defaultHeightPct ?? initial.image.heightPct);
+  const [sizeId, setSizeId] = useState(DEFAULT_SIZE_ID);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
   // Cache-buster so React swaps the <img> when params change.
   const [refreshKey, setRefreshKey] = useState(0);
 
   const template = getBrandingTemplate(templateId);
-  const params = `template=${templateId}&h=${heightPct}&v=${refreshKey}`;
+  const params = `template=${templateId}&h=${heightPct}&size=${sizeId}&v=${refreshKey}`;
   const previewSrc = `/api/content-library/${assetId}/branded?mode=preview&${params}`;
   const downloadHref = `/api/content-library/${assetId}/branded?mode=download&${params}`;
 
@@ -99,9 +104,11 @@ export function BrandingLayoutPicker({
             <span className="opacity-70"> of image</span>
           </span>
           <span className="text-[10px] italic">
-            {template.image.position === "split"
-              ? "Bottom strip only — top header is fixed compact"
-              : "Fine-tune the strip"}
+            {template.image.position === "frame"
+              ? "Header & footer band size — creative is never covered"
+              : template.image.position === "split"
+                ? "Bottom strip only — top header is fixed compact"
+                : "Fine-tune the strip"}
           </span>
         </div>
         <input
@@ -116,6 +123,39 @@ export function BrandingLayoutPicker({
           }}
           className="w-full accent-brand-cyan"
         />
+      </div>
+
+      {/* Output size — multi-size export (square / portrait / story) */}
+      <div>
+        <div className="flex items-center gap-2 mb-2">
+          <Crop className="size-3.5 text-brand-cyan" />
+          <span className="text-[11px] uppercase tracking-wider font-bold text-muted-foreground">
+            Output size
+          </span>
+        </div>
+        <div className="grid grid-cols-4 gap-2">
+          {OUTPUT_SIZES.map((s) => {
+            const active = sizeId === s.id;
+            return (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => {
+                  setSizeId(s.id);
+                  setRefreshKey((k) => k + 1);
+                }}
+                className={`text-left rounded-lg border p-2 text-xs transition ${
+                  active
+                    ? "border-brand-cyan bg-brand-cyan-light/40 ring-2 ring-brand-cyan/20"
+                    : "border-border hover:bg-secondary"
+                }`}
+              >
+                <div className="font-semibold text-[12px]">{s.label}</div>
+                <div className="text-[10px] text-muted-foreground mt-0.5 leading-tight">{s.hint}</div>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Preview */}
@@ -142,6 +182,13 @@ export function BrandingLayoutPicker({
           >
             <Send className="size-3.5" /> Send to Client
           </button>
+          <button
+            type="button"
+            onClick={() => setBulkOpen(true)}
+            className="rounded-md bg-secondary hover:bg-secondary/80 border text-secondary-foreground px-3 py-1.5 text-xs font-semibold flex items-center gap-1.5"
+          >
+            <Users className="size-3.5" /> Send to many
+          </button>
           <a href={downloadHref} className="btn-primary" download>
             <Download className="size-4" /> Download branded PNG
           </a>
@@ -157,6 +204,16 @@ export function BrandingLayoutPicker({
         assetFileUrl={assetFileUrl}
         brandingPosition={template.image.position}
         brandingHeightPct={heightPct}
+        brandingVariant={template.image.variant ?? "solid"}
+        brandingSize={sizeId}
+        brandingFrameTheme={template.image.frameTheme}
+      />
+
+      <BulkSendDrawer
+        open={bulkOpen}
+        onClose={() => setBulkOpen(false)}
+        assetId={assetId}
+        assetType={assetType}
       />
     </div>
   );

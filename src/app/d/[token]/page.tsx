@@ -14,6 +14,8 @@ import { withSystem } from "@/db/client";
 import { tenants, leads, investors } from "@/db/schema";
 import { resolveShareToken } from "@/lib/share-tokens";
 import { PublicDocsForm } from "@/components/public/PublicDocsForm";
+import { getFieldChecklist, type KycField } from "@/lib/onboarding/kyc-fields";
+import type { ClientType } from "@/lib/onboarding/doc-checklists";
 
 export const dynamic = "force-dynamic";
 
@@ -55,6 +57,16 @@ export default async function PublicDocsFormPage({ params }: { params: Promise<{
     (info.payload?.requiredDocs as Array<{ key: string; label: string; required?: boolean }>) ??
     DEFAULT_REQUIRED_DOCS;
 
+  // KYC data fields — present on links minted after this feature shipped.
+  // Older links carry only the clientType (or nothing): derive the field set
+  // so existing pending links still collect the data. Either way, strip any
+  // back-office field so the customer only ever sees details they can fill
+  // themselves (the MFD/back office completes the technical ones in-app).
+  const requiredFields: KycField[] = (
+    (info.payload?.requiredFields as KycField[] | undefined) ??
+    getFieldChecklist((info.payload?.clientType as ClientType) ?? "individual")
+  ).filter((f) => !f.backOffice);
+
   return (
     <div className="min-h-screen bg-slate-50">
       <header className="bg-white border-b">
@@ -72,6 +84,7 @@ export default async function PublicDocsFormPage({ params }: { params: Promise<{
           tokenId={info.id}
           recipientName={recipientName}
           requiredDocs={requiredDocs}
+          requiredFields={requiredFields}
         />
       </main>
 

@@ -15,8 +15,10 @@ import { and, eq } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
+import { handleApiError } from "@/lib/api/error-handler";
 import { templates, templateVersions, templateApprovals, tenants } from "@/db/schema";
 import { runComplianceChecks } from "@/lib/comms/compliance";
+import { templateBodyToText } from "@/lib/comms/tokens";
 import { getTenantIntegration } from "@/lib/comms/integrations";
 import { whatsappProviderId } from "@/lib/comms/adapters/whatsapp";
 import { wainaWhatsappAdapter } from "@/lib/comms/adapters/waina";
@@ -33,17 +35,22 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     const result = await withTenant(session.tenantId, async (tx) => {
       const tpl = (await tx.select().from(templates).where(and(eq(templates.id, id), eq(templates.tenantId, session.tenantId))).limit(1))[0];
       if (!tpl) throw Object.assign(new Error("template not found"), { status: 404 });
+      // Lock the draft version FOR UPDATE so two concurrent submits (double-click)
+      // serialise: the first flips it to 'submitted' and the second's locked read
+      // no longer matches `approvalStatus='draft'` → "no draft version", instead of
+      // both proceeding and double-submitting the template to Meta/WAina.
       const ver = (await tx
         .select()
         .from(templateVersions)
         .where(and(eq(templateVersions.templateId, id), eq(templateVersions.tenantId, session.tenantId), eq(templateVersions.approvalStatus, "draft")))
-        .limit(1))[0];
+        .limit(1)
+        .for("update"))[0];
       if (!ver) throw Object.assign(new Error("no draft version"), { status: 400 });
 
       const t = (await tx.select().from(tenants).where(eq(tenants.id, session.tenantId)).limit(1))[0];
 
-      // Re-run compliance gate
-      const text = extractText(tpl.channel, ver.body);
+      // Re-run compliance gate (shared extractor — see tokens.ts)
+      const text = templateBodyToText(tpl.channel, ver.body);
       const compliance = runComplianceChecks({
         channel: tpl.channel as any,
         category: tpl.category as any,
@@ -156,26 +163,12 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
 
     return NextResponse.json(result);
   } catch (err: any) {
-    return NextResponse.json(
-      { error: err.message ?? "internal", compliance: err.compliance },
-      { status: err.status ?? 500 }
-    );
+    // Only the compliance-block case (422) carries a structured `compliance`
+    // payload the authoring UI renders inline. Every other error goes through
+    // the sanitising handler so we don't leak raw internals as a bare 500.
+    if (err?.status === 422 && err?.compliance) {
+      return NextResponse.json({ error: err.message ?? "compliance blocked", compliance: err.compliance }, { status: 422 });
+    }
+    return handleApiError(err);
   }
-}
-
-function extractText(channel: string, body: any): string {
-  if (!body) return "";
-  if (channel === "whatsapp")
-    return [body?.header?.text, body?.body?.text, body?.footer?.text].filter(Boolean).join("\n");
-  if (channel === "email")
-    return [
-      body?.subject,
-      body?.preheader,
-      (body?.blocks ?? []).map((b: any) => b?.text ?? b?.content ?? "").filter(Boolean).join("\n"),
-      body?.textFallback,
-    ]
-      .filter(Boolean)
-      .join("\n");
-  if (channel === "sms") return body?.text ?? "";
-  return JSON.stringify(body);
 }

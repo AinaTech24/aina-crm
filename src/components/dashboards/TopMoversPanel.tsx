@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { sql } from "drizzle-orm";
 import { TrendingUp, TrendingDown, Repeat, ArrowUpRight } from "lucide-react";
+import { Avatar } from "@/components/ui/Avatar";
 import { withTenant } from "@/db/client";
 import { formatINR } from "@/lib/utils";
 import type { SessionUser } from "@/lib/auth/session";
@@ -31,13 +32,13 @@ export async function TopMoversPanel({
       const [inflows, outflows, newSips] = await Promise.all([
         // Biggest net inflows per client
         await tx.execute(sql`
-          SELECT i.id, i.name, i.segment_tag,
+          SELECT i.id, i.name, i.segment_tag, i.avatar_url,
             COALESCE(SUM(CASE WHEN t.direction = 'inflow' THEN t.amount::numeric ELSE -t.amount::numeric END), 0)::numeric AS net_flow
           FROM transactions t
           JOIN investors i ON i.id = t.investor_id
           WHERE t.status IN ('successful','processed')
             AND t.order_date >= ${startISO}::date
-          GROUP BY i.id, i.name, i.segment_tag
+          GROUP BY i.id, i.name, i.segment_tag, i.avatar_url
           HAVING COALESCE(SUM(CASE WHEN t.direction = 'inflow' THEN t.amount::numeric ELSE -t.amount::numeric END), 0) > 0
           ORDER BY net_flow DESC
           LIMIT 5
@@ -45,13 +46,13 @@ export async function TopMoversPanel({
 
         // Biggest net outflows per client (redemption watch)
         await tx.execute(sql`
-          SELECT i.id, i.name, i.segment_tag,
+          SELECT i.id, i.name, i.segment_tag, i.avatar_url,
             COALESCE(SUM(CASE WHEN t.direction = 'outflow' THEN t.amount::numeric ELSE -t.amount::numeric END), 0)::numeric AS net_out
           FROM transactions t
           JOIN investors i ON i.id = t.investor_id
           WHERE t.status IN ('successful','processed')
             AND t.order_date >= ${startISO}::date
-          GROUP BY i.id, i.name, i.segment_tag
+          GROUP BY i.id, i.name, i.segment_tag, i.avatar_url
           HAVING COALESCE(SUM(CASE WHEN t.direction = 'outflow' THEN t.amount::numeric ELSE -t.amount::numeric END), 0) > 0
           ORDER BY net_out DESC
           LIMIT 5
@@ -60,7 +61,7 @@ export async function TopMoversPanel({
         // Biggest new SIPs registered this period
         await tx.execute(sql`
           SELECT s.id, s.amount, s.scheme_name, s.frequency,
-            i.id AS investor_id, i.name AS investor_name
+            i.id AS investor_id, i.name AS investor_name, i.avatar_url AS investor_avatar_url
           FROM sips s
           JOIN investors i ON i.id = s.investor_id
           WHERE s.created_at >= ${startISO}
@@ -126,6 +127,8 @@ export async function TopMoversPanel({
               tag={r.segment_tag}
               value={`+${formatINR(Number(r.net_flow))}`}
               valueTone="emerald"
+              investorId={r.id}
+              avatarUrl={r.avatar_url}
             />
           ))}
         </MoverColumn>
@@ -146,6 +149,8 @@ export async function TopMoversPanel({
               tag={r.segment_tag}
               value={`−${formatINR(Number(r.net_out))}`}
               valueTone="rose"
+              investorId={r.id}
+              avatarUrl={r.avatar_url}
             />
           ))}
         </MoverColumn>
@@ -166,6 +171,8 @@ export async function TopMoversPanel({
               tag={r.scheme_name ? String(r.scheme_name).slice(0, 18) : r.frequency}
               value={`${formatINR(Number(r.amount))}/mo`}
               valueTone="violet"
+              investorId={r.investor_id}
+              avatarUrl={r.investor_avatar_url}
             />
           ))}
         </MoverColumn>
@@ -210,12 +217,16 @@ function MoverRow({
   tag,
   value,
   valueTone,
+  investorId,
+  avatarUrl,
 }: {
   href: string;
   name: string;
   tag?: string | null;
   value: string;
   valueTone: "emerald" | "rose" | "violet";
+  investorId?: string | null;
+  avatarUrl?: string | null;
 }) {
   const toneCls =
     valueTone === "emerald"
@@ -229,6 +240,7 @@ function MoverRow({
         href={href}
         className="flex items-center justify-between gap-2 group hover:bg-accent/30 -mx-1 px-1 rounded"
       >
+        <Avatar src={avatarUrl && investorId ? `/api/investors/${investorId}/avatar` : null} name={name} size={26} className="shrink-0" />
         <div className="min-w-0 flex-1">
           <div className="text-sm font-medium truncate flex items-center gap-1">
             {name}

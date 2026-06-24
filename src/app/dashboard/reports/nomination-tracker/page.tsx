@@ -78,9 +78,6 @@ export default async function NominationTrackerPage() {
         <h1 className="page-title">
           <ShieldCheck className="size-6 text-brand-cyan" /> Nomination Compliance
         </h1>
-        <p className="page-subtitle">
-          SEBI requires a nominee (or explicit opt-out) on every folio. Clients missing one — prioritised by AUM.
-        </p>
       </div>
 
       {/* KPIs */}
@@ -92,9 +89,8 @@ export default async function NominationTrackerPage() {
         <div className="kpi-card">
           <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Coverage</div>
           <div
-            className={`text-2xl font-bold mt-1.5 tabular-nums ${
-              coverage >= 95 ? "text-emerald-700" : coverage >= 80 ? "text-amber-700" : "text-rose-700"
-            }`}
+            className={`text-2xl font-bold mt-1.5 tabular-nums ${coverage >= 95 ? "text-emerald-700" : coverage >= 80 ? "text-amber-700" : "text-rose-700"
+              }`}
           >
             {coverage.toFixed(0)}%
           </div>
@@ -126,7 +122,7 @@ export default async function NominationTrackerPage() {
           <div className="border-b px-4 py-2.5 text-sm font-medium">
             Missing nominee — top {Math.min(missingCount, 100)} by AUM
           </div>
-          <div className="overflow-auto max-h-[600px] scrollbar-none">
+          <div className="table-scroll">
             <table className="w-full text-sm table-modern">
               <thead className="sticky top-0 z-10 bg-card">
                 <tr>

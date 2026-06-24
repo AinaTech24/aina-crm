@@ -107,7 +107,6 @@ export type Capability =
   | "template.approve"
   | "campaign.send"
   | "communication.send"
-  | "content_calendar.manage"
   // Segments (audience lists for campaigns + workflow triggers)
   | "segments.view"
   | "segments.manage"
@@ -133,6 +132,10 @@ export type Capability =
   | "reports.team"
   | "reports.commission"
   | "reports.manage"
+  // Practice finances — the firm's OWN books (P&L, net profit, margin, the
+  // expense ledger incl. team salaries). Owner-confidential; distinct from
+  // reports.commission (which is broader, for commission MIS / reconciliation).
+  | "finances.view"
   // Dashboards
   | "dashboard.view.owner"
   | "dashboard.view.compliance"
@@ -214,7 +217,6 @@ const MATRIX: Record<Capability, Role[]> = {
   // Ad-hoc 1:1 client email (Compose) — the front-line + ops who actually
   // correspond with clients; marketing already has campaign.send for bulk.
   "communication.send": ["rm", "branch_head", "back_office", "ops", "marketing"],
-  "content_calendar.manage": ["marketing"],
 
   // Segments (audience lists). Marketing builds them for campaigns;
   // back-office reads to seed workflow triggers.
@@ -253,6 +255,11 @@ const MATRIX: Record<Capability, Role[]> = {
   // branch heads (team payout view) and compliance. Owner sees all via the
   // hard-case in can(). RMs are intentionally excluded (firm-level economics).
   "reports.commission": ["back_office", "ops", "branch_head", "compliance"],
+  // Practice finances (firm P&L + salaries) — owner-grade. Back-office keeps
+  // access as the bookkeeper who maintains the expense ledger; ops / branch_head
+  // / compliance are deliberately excluded (the firm's profit + team salaries are
+  // owner-confidential). Owner wins via the hard-case in can().
+  "finances.view": ["back_office"],
   // Custom report builder — can compose reports over any catalog field
   // (incl. PII columns), so it's limited to management/back-office roles.
   // Owner wins via can(). RM/ops excluded until per-field gating lands.

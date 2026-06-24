@@ -66,11 +66,6 @@ export default async function AmcEmpanelmentsListPage({
       <div className="flex items-end justify-between">
         <div>
           <h1 className="text-2xl font-semibold">AMC empanelments</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Every AMC you're empanelled with — and the people to call when
-            something needs to move at the AMC's end. Trail-rate overrides
-            here feed the brokerage reconciler.
-          </p>
         </div>
         <Link href="/dashboard/amc-empanelments/new" className="btn-primary text-sm">
           <Plus className="size-4" /> Add empanelment
@@ -88,11 +83,10 @@ export default async function AmcEmpanelmentsListPage({
           <Link
             key={s.value}
             href={`/dashboard/amc-empanelments?status=${s.value}`}
-            className={`chip text-xs ${
-              statusFilter === s.value
+            className={`chip text-xs ${statusFilter === s.value
                 ? "bg-slate-900 text-white"
                 : "bg-slate-100"
-            }`}
+              }`}
           >
             {s.label}
           </Link>
@@ -112,9 +106,9 @@ export default async function AmcEmpanelmentsListPage({
           </Link>
         </div>
       ) : (
-        <div className="card-surface overflow-x-auto">
+        <div className="card-surface table-scroll">
           <table className="w-full text-xs min-w-[1100px]">
-            <thead className="bg-slate-50 text-slate-600">
+            <thead className="bg-muted/50 text-muted-foreground sticky top-0 z-10">
               <tr>
                 <th className="px-3 py-2 text-left">AMC</th>
                 <th className="px-3 py-2 text-left">Distributor code</th>
@@ -147,10 +141,10 @@ export default async function AmcEmpanelmentsListPage({
                   <td className="px-3 py-2">
                     {r.empanelmentDate
                       ? new Date(r.empanelmentDate).toLocaleDateString("en-GB", {
-                          day: "2-digit",
-                          month: "short",
-                          year: "numeric",
-                        })
+                        day: "2-digit",
+                        month: "short",
+                        year: "numeric",
+                      })
                       : "—"}
                   </td>
                   <ContactCell
@@ -193,9 +187,8 @@ export default async function AmcEmpanelmentsListPage({
                   </td>
                   <td className="px-3 py-2">
                     <span
-                      className={`chip text-[10px] ${
-                        STATUS_TONE[r.status] ?? "bg-slate-100"
-                      }`}
+                      className={`chip text-[10px] ${STATUS_TONE[r.status] ?? "bg-slate-100"
+                        }`}
                     >
                       {r.status.replace("_", " ")}
                     </span>

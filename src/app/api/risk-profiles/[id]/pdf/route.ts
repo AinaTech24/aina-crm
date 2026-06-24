@@ -95,7 +95,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       headers: {
         "content-type": "application/pdf",
         "content-disposition": `${disposition}; filename="risk_profile_${safe}.pdf"`,
-        "cache-control": "no-store",
+        // Inline previews re-open instantly within the window (the statement is
+        // generated server-side and rarely changes); downloads stay uncached.
+        "cache-control": download ? "no-store" : "private, max-age=120, must-revalidate",
       },
     });
   } catch (err: any) {

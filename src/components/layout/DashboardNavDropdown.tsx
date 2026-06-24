@@ -7,8 +7,7 @@
  */
 
 import { useState } from "react";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { LayoutDashboard, ChevronDown } from "lucide-react";
 
 export type DashboardSubItem = { href: string; label: string };
@@ -23,6 +22,7 @@ const isOn = (pathname: string, href: string) =>
 
 export function DashboardNavDropdown({ items }: { items?: DashboardSubItem[] }) {
   const pathname = usePathname() ?? "";
+  const router = useRouter();
   const sub = items && items.length ? items : DEFAULT_SUB;
   // Pick a SINGLE active item — the longest matching href — so a nested path
   // (e.g. /dashboard/team/scorecard) highlights only "Team Scorecard" and not
@@ -50,16 +50,20 @@ export function DashboardNavDropdown({ items }: { items?: DashboardSubItem[] }) 
         <div className="ml-4 pl-3 border-l border-border/60 space-y-0.5 sidebar-when-expanded">
           {sub.map((s) => {
             const active = s.href === activeHref;
+            const go = () => router.push(s.href);
             return (
-              <Link
+              <div
                 key={s.href}
-                href={s.href}
-                className={`block rounded-md px-2.5 py-1.5 text-xs transition-colors ${
+                role="link"
+                tabIndex={0}
+                onClick={go}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } }}
+                className={`block rounded-md px-2.5 py-1.5 text-xs cursor-pointer transition-colors ${
                   active ? "bg-brand-cyan-light/50 text-brand-cyan-deep font-medium" : "text-muted-foreground hover:bg-brand-cyan-light/40 hover:text-foreground"
                 }`}
               >
                 {s.label}
-              </Link>
+              </div>
             );
           })}
         </div>

@@ -13,6 +13,7 @@ import { withTenant } from "@/db/client";
 import { loadScorecard, type MemberRow, type Kpi } from "@/lib/team/scorecard";
 import { resolvePeriodDates, type Period } from "@/lib/dashboard/period";
 import { PeriodSelector } from "@/components/dashboards/PeriodSelector";
+import { AutoRefresh } from "@/components/common/AutoRefresh";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +33,16 @@ function fmtVal(n: number, unit: Kpi["unit"]): string {
   return String(n);
 }
 const kpi = (r: MemberRow, key: string) => r.kpis.find((k) => k.key === key);
+
+/** Plain-text summary of how a member's KRA score was built — one line per KPI
+ *  with its value, 0–100 score and weight — surfaced as a hover tooltip so the
+ *  red/amber/green band has an explanation. Uses data already on the row. */
+function scoreBreakdown(r: MemberRow): string {
+  const lines = r.kpis.map(
+    (k) => `${k.label}: ${fmtVal(k.actual, k.unit)} → ${Math.round(k.score)}/100 (weight ${Math.round(k.weight * 100)}%)`
+  );
+  return `KRA score ${r.kraScore} (${r.band})\n${lines.join("\n")}`;
+}
 
 export default async function ScorecardPage({
   searchParams,
@@ -59,6 +70,8 @@ export default async function ScorecardPage({
 
   return (
     <div className="space-y-6 max-w-5xl">
+      {/* Leaderboard reflects live activity — keep it current as work lands. */}
+      <AutoRefresh intervalMs={60000} />
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
           <Link href="/dashboard/team" className="text-xs text-muted-foreground hover:underline inline-flex items-center gap-1 mb-1">
@@ -137,9 +150,9 @@ function ScoreTable({
           No active {title.toLowerCase()} members (by role).
         </div>
       ) : (
-        <div className="card-surface overflow-x-auto scrollbar-thin">
+        <div className="card-surface table-scroll">
           <table className="w-full text-sm">
-            <thead className="text-xs text-muted-foreground border-b border-border">
+            <thead className="text-xs text-muted-foreground border-b border-border sticky top-0 z-10 bg-card">
               <tr>
                 <th className="text-left font-medium px-3 py-2">#</th>
                 <th className="text-left font-medium px-3 py-2">Member</th>
@@ -155,7 +168,10 @@ function ScoreTable({
                   <td className="px-3 py-2 text-muted-foreground tabular-nums">{i + 1}</td>
                   <td className="px-3 py-2 font-medium whitespace-nowrap">{r.name}</td>
                   <td className="px-3 py-2">
-                    <span className="inline-flex items-center gap-2 font-bold tabular-nums">
+                    <span
+                      className="inline-flex items-center gap-2 font-bold tabular-nums cursor-help"
+                      title={scoreBreakdown(r)}
+                    >
                       <span className={`size-2 rounded-full ${BAND[r.band]}`} /> {r.kraScore}
                     </span>
                   </td>

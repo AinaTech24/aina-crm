@@ -43,6 +43,7 @@ type Tenant = {
   auditorFrn: string | null;
   bankAccount: any;
   authorizedSignatory: any;
+  dataProtectionOfficer: any;
   address: any;
 };
 
@@ -67,6 +68,7 @@ export function FirmProfileEditor({ tenant }: { tenant: Tenant }) {
     auditorFrn: tenant.auditorFrn ?? "",
     bankAccount: tenant.bankAccount ?? {},
     authorizedSignatory: tenant.authorizedSignatory ?? {},
+    dataProtectionOfficer: tenant.dataProtectionOfficer ?? {},
   });
 
   function setField<K extends keyof typeof v>(k: K, val: (typeof v)[K]) {
@@ -83,6 +85,15 @@ export function FirmProfileEditor({ tenant }: { tenant: Tenant }) {
       ...p,
       authorizedSignatory: {
         ...(p.authorizedSignatory ?? {}),
+        [k]: val || undefined,
+      },
+    }));
+  }
+  function setDpo(k: string, val: string) {
+    setV((p) => ({
+      ...p,
+      dataProtectionOfficer: {
+        ...(p.dataProtectionOfficer ?? {}),
         [k]: val || undefined,
       },
     }));
@@ -107,6 +118,13 @@ export function FirmProfileEditor({ tenant }: { tenant: Tenant }) {
         )
       )
         body.authorizedSignatory = null;
+      if (
+        body.dataProtectionOfficer &&
+        Object.keys(body.dataProtectionOfficer).every(
+          (k) => !body.dataProtectionOfficer[k]
+        )
+      )
+        body.dataProtectionOfficer = null;
       const res = await fetch("/api/tenant", {
         method: "PATCH",
         headers: { "content-type": "application/json" },
@@ -287,6 +305,22 @@ export function FirmProfileEditor({ tenant }: { tenant: Tenant }) {
               mono
             />
           </Grid>
+        </section>
+
+        {/* Data Protection Officer (DPDP Act) */}
+        <section className="card-surface p-5 space-y-3">
+          <h2 className="font-semibold text-base">Data Protection Officer</h2>
+          {tenant.dataProtectionOfficer?.name ? (
+            <Grid>
+              <Read label="Name" value={tenant.dataProtectionOfficer?.name ?? "—"} />
+              <Read label="Email" value={tenant.dataProtectionOfficer?.email ?? "—"} />
+              <Read label="Phone" value={tenant.dataProtectionOfficer?.phone ?? "—"} />
+            </Grid>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              Not set. Required under the DPDP Act for handling client personal data.
+            </p>
+          )}
         </section>
       </div>
     );
@@ -519,6 +553,32 @@ export function FirmProfileEditor({ tenant }: { tenant: Tenant }) {
               value={v.auditorFrn}
               onChange={(e) => setField("auditorFrn", e.target.value)}
               className="input-base text-sm w-full font-mono"
+            />
+          </Field>
+        </Grid>
+      </Section>
+
+      <Section title="Data Protection Officer (DPDP Act)">
+        <Grid>
+          <Field label="Name">
+            <input
+              value={v.dataProtectionOfficer?.name ?? ""}
+              onChange={(e) => setDpo("name", e.target.value)}
+              className="input-base text-sm w-full"
+            />
+          </Field>
+          <Field label="Email">
+            <input
+              value={v.dataProtectionOfficer?.email ?? ""}
+              onChange={(e) => setDpo("email", e.target.value)}
+              className="input-base text-sm w-full"
+            />
+          </Field>
+          <Field label="Phone">
+            <input
+              value={v.dataProtectionOfficer?.phone ?? ""}
+              onChange={(e) => setDpo("phone", e.target.value)}
+              className="input-base text-sm w-full"
             />
           </Field>
         </Grid>

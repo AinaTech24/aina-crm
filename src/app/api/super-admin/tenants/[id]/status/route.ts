@@ -59,19 +59,52 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           patch.suspendedReason = reason ?? "Suspended by AINA";
           eventType = "suspended";
           break;
-        case "activate":
+        case "activate": {
           patch.status = "active";
           patch.suspendedAt = null;
           patch.suspendedReason = null;
           patch.cancelledAt = null;
           patch.cancelledReason = null;
+          // Reactivation must restore a USABLE window — if the licence end is
+          // missing or already past, grant a 30-day grace so the tenant can use
+          // the app immediately (the admin can extend further). Without this,
+          // "activate" sets status=active but the past licence-end makes the
+          // gate re-derive "expired" → still locked out.
+          const endMs = sub.licenseEndAt ? new Date(sub.licenseEndAt).getTime() : 0;
+          if (endMs < Date.now()) {
+            const grace = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+            patch.licenseEndAt = grace;
+            patch.nextRenewalAt = grace;
+          }
           eventType = "reactivated";
           break;
+        }
         case "extend": {
           if (!extendDays) throw new Error("extendDays required");
-          const cur = sub.licenseEndAt ?? new Date();
-          patch.licenseEndAt = new Date(new Date(cur).getTime() + extendDays * 24 * 60 * 60 * 1000);
-          patch.nextRenewalAt = patch.licenseEndAt;
+          const ms = extendDays * 24 * 60 * 60 * 1000;
+          // Extend from the LATER of the current licence/trial end or now, so
+          // extending an already-lapsed licence starts the new window from today.
+          const base = Math.max(
+            sub.licenseEndAt ? new Date(sub.licenseEndAt).getTime() : 0,
+            sub.trialEndsAt ? new Date(sub.trialEndsAt).getTime() : 0,
+            Date.now()
+          );
+          const newEnd = new Date(base + ms);
+          patch.licenseEndAt = newEnd;
+          patch.nextRenewalAt = newEnd;
+          // For a trial, the gate reads trial_ends (NOT license_end) — so a
+          // trial whose trial_ends has passed stays "expired" no matter how far
+          // we push license_end. Bump trial_ends too so the extension actually
+          // takes effect.
+          if (sub.status === "trial") patch.trialEndsAt = newEnd;
+          // If the licence had lapsed, bring it back so the tenant can use the app.
+          if (["suspended", "cancelled", "past_due", "expired"].includes(sub.status as string)) {
+            patch.status = "active";
+            patch.suspendedAt = null;
+            patch.suspendedReason = null;
+            patch.cancelledAt = null;
+            patch.cancelledReason = null;
+          }
           eventType = "license_extended";
           break;
         }

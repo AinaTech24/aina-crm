@@ -1,14 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { Bot, Send, Loader2, Sparkles, FileText, Save, CheckCircle2, Megaphone, UserSearch, ShieldCheck, ClipboardList, ArrowRight } from "lucide-react";
+import { Bot, Send, Loader2, Sparkles, FileText, Megaphone, UserSearch, ShieldCheck, ClipboardList, ArrowRight, Users, IndianRupee, ShieldAlert, TrendingDown, Repeat, Briefcase, CalendarClock, ListChecks } from "lucide-react";
 import Link from "next/link";
 import { InvestorLookup } from "@/components/common/InvestorLookup";
 
+type Metrics = Record<string, any>;
+
 type Result =
-  | { kind: "ask"; question: string; answer: string }
-  | { kind: "filter"; query: string; ast: any; explanation: string; preview?: any }
-  | { kind: "draft"; intent: string; channel: string; text: string }
+  | { kind: "search"; question: string; answer: string; metrics?: Metrics; aiUsed?: boolean }
+  | { kind: "draft"; intent: string; channel: string; theme: string; text: string }
   | { kind: "error"; message: string };
 
 const STARTERS = [
@@ -17,10 +18,9 @@ const STARTERS = [
   "Top 10 clients by AUM",
   "AUM by RM",
   "How many new clients this month?",
+  "How many open tasks are overdue?",
 ];
 
-// Existing AI-powered features elsewhere in the app — surfaced so the firm
-// discovers what Aina AI can do beyond this hub.
 const TOOLS: Array<{ label: string; desc: string; href: string; icon: any }> = [
   { label: "Client brief", desc: "AI 360° summary on any client", href: "/dashboard/investors", icon: UserSearch },
   { label: "Lead scoring", desc: "AI-rank leads by conversion likelihood", href: "/dashboard/leads", icon: ClipboardList },
@@ -28,10 +28,50 @@ const TOOLS: Array<{ label: string; desc: string; href: string; icon: any }> = [
   { label: "DDQ draft", desc: "AI-assisted compliance answers", href: "/dashboard/compliance", icon: ShieldCheck },
 ];
 
+// Message tones for the drafter — passed to /api/ai/draft-message as `theme`.
+const THEMES = [
+  { value: "professional", label: "Professional" },
+  { value: "friendly", label: "Friendly" },
+  { value: "concise", label: "Concise" },
+  { value: "warm", label: "Warm / reassuring" },
+  { value: "festive", label: "Festive / greeting" },
+  { value: "urgent", label: "Urgent / action-needed" },
+  { value: "educational", label: "Educational" },
+];
+
+const inr = (n: any) => "₹" + Math.round(Number(n) || 0).toLocaleString("en-IN");
+const inrCompact = (n: any) => {
+  const v = Number(n) || 0;
+  if (v >= 1e7) return `₹${(v / 1e7).toFixed(2)} Cr`;
+  if (v >= 1e5) return `₹${(v / 1e5).toFixed(2)} L`;
+  if (v >= 1e3) return `₹${(v / 1e3).toFixed(1)}K`;
+  return inr(v);
+};
+
+/** Module-wise metric tiles with REDIRECTION — each links to the relevant module
+ *  so the answer is a worklist, not just a number. */
+function metricTiles(m: Metrics): Array<{ label: string; value: string; href: string; icon: any; tone?: string }> {
+  return [
+    { label: "Active clients", value: String(m.active_clients ?? 0), href: "/dashboard/investors", icon: Users },
+    { label: "Total AUM", value: inrCompact(m.total_aum_inr), href: "/dashboard/reports/business-mis", icon: IndianRupee, tone: "emerald" },
+    { label: "Monthly SIP book", value: inrCompact(m.monthly_sip_book_inr), href: "/dashboard/sips", icon: Repeat, tone: "emerald" },
+    { label: "Active SIPs", value: String(m.active_sips ?? 0), href: "/dashboard/sips", icon: Repeat },
+    { label: "KYC pending", value: String(m.kyc_pending_clients ?? 0), href: "/dashboard/reports/kyc-tracker", icon: ShieldAlert, tone: m.kyc_pending_clients ? "amber" : undefined },
+    { label: "No nominee", value: String(m.clients_without_nominee ?? 0), href: "/dashboard/reports/nomination-tracker", icon: ShieldAlert, tone: m.clients_without_nominee ? "amber" : undefined },
+    { label: "Dormant (365d)", value: String(m.dormant_clients_365d ?? 0), href: "/dashboard/reports/churn-risk", icon: TrendingDown, tone: m.dormant_clients_365d ? "rose" : undefined },
+    { label: "Open leads", value: String(m.open_leads ?? 0), href: "/dashboard/leads", icon: ClipboardList },
+    { label: "Open tasks", value: String(m.open_tasks ?? 0), href: "/dashboard/tasks", icon: ListChecks, tone: m.overdue_tasks ? "rose" : undefined },
+    { label: "Active policies", value: String(m.active_insurance_policies ?? 0), href: "/dashboard/insurance", icon: Briefcase },
+    { label: "Upcoming meetings", value: String(m.upcoming_meetings ?? 0), href: "/dashboard/review-meetings", icon: CalendarClock },
+    { label: "New this month", value: String(m.new_clients_this_month ?? 0), href: "/dashboard/investors", icon: Users },
+  ];
+}
+
 export default function AiAssistantPage() {
-  const [mode, setMode] = useState<"ask" | "filter" | "draft">("ask");
+  const [mode, setMode] = useState<"search" | "draft">("search");
   const [query, setQuery] = useState("");
   const [channel, setChannel] = useState<"whatsapp" | "email" | "sms">("whatsapp");
+  const [theme, setTheme] = useState("professional");
   const [results, setResults] = useState<Result[]>([]);
   const [busy, setBusy] = useState(false);
 
@@ -40,10 +80,9 @@ export default function AiAssistantPage() {
     if (!question) return;
     setBusy(true);
     try {
-      if (mode === "ask") {
-        // Pass prior Q&A as history for multi-turn follow-ups.
+      if (mode === "search") {
         const history = results
-          .filter((r): r is Extract<Result, { kind: "ask" }> => r.kind === "ask")
+          .filter((r): r is Extract<Result, { kind: "search" }> => r.kind === "search")
           .slice(0, 6)
           .reverse()
           .flatMap((r) => [
@@ -56,34 +95,20 @@ export default function AiAssistantPage() {
           body: JSON.stringify({ question, history }),
         });
         const j = await res.json();
-        if (j.error || !j.answer) setResults((r) => [{ kind: "error", message: j.error ?? "Couldn't answer that." }, ...r]);
-        else setResults((r) => [{ kind: "ask", question, answer: j.answer }, ...r]);
-      } else if (mode === "filter") {
-        const res = await fetch("/api/ai/nl-to-filter", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ query: question, subject: "investor" }),
-        });
-        const j = await res.json();
-        if (j.error || !j.ast) {
-          setResults((r) => [{ kind: "error", message: j.error ?? "The AI couldn't build a filter for that. Try rephrasing." }, ...r]);
+        if (!res.ok && !j.answer) {
+          setResults((r) => [{ kind: "error", message: j.error ?? "Couldn't answer that." }, ...r]);
         } else {
-          const preview = await fetch("/api/segments/preview", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ subject: "investor", ast: j.ast }),
-          }).then((r) => r.json());
-          setResults((r) => [{ kind: "filter", query: question, ast: j.ast, explanation: j.explanation, preview }, ...r]);
+          setResults((r) => [{ kind: "search", question, answer: j.answer ?? "", metrics: j.metrics, aiUsed: j.aiUsed }, ...r]);
         }
       } else {
         const res = await fetch("/api/ai/draft-message", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ channel, intent: question }),
+          body: JSON.stringify({ channel, intent: question, theme }),
         });
         const j = await res.json();
         if (j.error) setResults((r) => [{ kind: "error", message: j.error }, ...r]);
-        else setResults((r) => [{ kind: "draft", intent: question, channel, text: j.text }, ...r]);
+        else setResults((r) => [{ kind: "draft", intent: question, channel, theme, text: j.text }, ...r]);
       }
       setQuery("");
     } finally {
@@ -97,24 +122,30 @@ export default function AiAssistantPage() {
         <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
           <Sparkles className="size-6 ai-icon-animated" /> AI Assistant
         </h1>
-        <p className="text-muted-foreground text-sm">
-          Smart search and message drafting. Powered by Aina AI. All drafts re-pass the compliance gate before they can be sent.
+        <p className="text-muted-foreground text-sm mt-1">
+          Ask anything about your live data, or draft a client message. Drafts re-pass the compliance gate before they can be sent.
         </p>
       </div>
 
       <div className="border rounded-lg bg-card p-5">
         <div className="flex gap-2 mb-3">
-          <ModeBtn active={mode === "ask"} onClick={() => setMode("ask")} icon={Bot} label="Ask data" />
-          <ModeBtn active={mode === "filter"} onClick={() => setMode("filter")} icon={Sparkles} label="Smart search" />
+          <ModeBtn active={mode === "search"} onClick={() => setMode("search")} icon={Sparkles} label="Smart search" />
           <ModeBtn active={mode === "draft"} onClick={() => setMode("draft")} icon={FileText} label="Draft message" />
         </div>
 
         {mode === "draft" && (
-          <div className="mb-2">
+          <div className="mb-2 flex flex-wrap items-center gap-2">
             <select value={channel} onChange={(e) => setChannel(e.target.value as any)} className="text-sm border rounded px-2 py-1 bg-background">
               <option value="whatsapp">WhatsApp</option>
               <option value="email">Email</option>
               <option value="sms">SMS</option>
+            </select>
+            {/* Dynamic theme/tone — drives the drafted message's voice. */}
+            <label className="text-xs text-muted-foreground">Theme</label>
+            <select value={theme} onChange={(e) => setTheme(e.target.value)} className="text-sm border rounded px-2 py-1 bg-background">
+              {THEMES.map((t) => (
+                <option key={t.value} value={t.value}>{t.label}</option>
+              ))}
             </select>
           </div>
         )}
@@ -125,11 +156,9 @@ export default function AiAssistantPage() {
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); run(); } }}
             placeholder={
-              mode === "ask"
+              mode === "search"
                 ? "e.g. What's my total AUM? · How many clients are KYC-pending? · Top 10 clients by AUM"
-                : mode === "filter"
-                  ? "e.g. HNI clients in Mumbai with no contact in 60 days"
-                  : "e.g. Friendly WhatsApp message for SIP rejection — low balance reason"
+                : "e.g. Message for a client whose SIP bounced — low balance reason"
             }
             className="flex-1 border rounded-md px-3 py-2 text-sm bg-background"
           />
@@ -138,7 +167,7 @@ export default function AiAssistantPage() {
           </button>
         </div>
 
-        {mode === "ask" && (
+        {mode === "search" && (
           <div className="flex flex-wrap gap-1.5 mt-3">
             {STARTERS.map((s) => (
               <button key={s} onClick={() => run(s)} disabled={busy} className="text-[11px] rounded-full border px-2.5 py-1 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-50">
@@ -170,40 +199,47 @@ export default function AiAssistantPage() {
 
         {results.map((r, i) => (
           <div key={i} className="border rounded-lg bg-card p-4">
-            {r.kind === "ask" && (
+            {r.kind === "search" && (
               <>
-                <div className="text-xs text-muted-foreground flex items-center gap-1"><Bot className="size-3.5" /> Answer from your live data</div>
+                <div className="text-xs text-muted-foreground flex items-center gap-1">
+                  <Bot className="size-3.5" /> Answer from your live data
+                  {r.aiUsed === false && <span className="ml-1 text-amber-600">· AI busy, showing live figures</span>}
+                </div>
                 <div className="font-medium mt-1">{r.question}</div>
-                <div className="mt-2 border-t pt-2 text-sm whitespace-pre-wrap leading-relaxed">{r.answer}</div>
-              </>
-            )}
-            {r.kind === "filter" && (
-              <>
-                <div className="text-xs text-muted-foreground">Smart search</div>
-                <div className="font-medium mt-1">{r.query}</div>
-                <div className="text-sm text-muted-foreground mt-2">{r.explanation}</div>
-                {r.preview && (
-                  <div className="mt-3 border-t pt-3">
-                    <div className="text-sm font-medium">{r.preview.count ?? 0} matching investor{r.preview.count === 1 ? "" : "s"}</div>
-                    {r.preview.sample?.length > 0 && (
-                      <ul className="mt-2 text-xs space-y-0.5">
-                        {r.preview.sample.slice(0, 10).map((s: any) => (
-                          <li key={s.id}><Link href={`/dashboard/investors/${s.id}`} className="hover:underline">{s.name ?? s.id}</Link></li>
-                        ))}
-                      </ul>
-                    )}
-                    <SaveSegmentAction ast={r.ast} query={r.query} count={r.preview.count ?? 0} />
+                {r.answer && <div className="mt-2 border-t pt-2 text-sm whitespace-pre-wrap leading-relaxed">{r.answer}</div>}
+
+                {/* Structured, module-wise tiles — each redirects to its module. */}
+                {r.metrics && (
+                  <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                    {metricTiles(r.metrics).map((t) => (
+                      <Link key={t.label} href={t.href} className="group border rounded-lg p-2.5 hover:border-brand-cyan/50 hover:bg-accent/30 transition-colors">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] uppercase tracking-wide text-muted-foreground">{t.label}</span>
+                          <t.icon className="size-3.5 text-muted-foreground group-hover:text-brand-cyan" />
+                        </div>
+                        <div className={`text-lg font-bold tabular-nums mt-0.5 ${t.tone === "emerald" ? "text-emerald-600" : t.tone === "amber" ? "text-amber-600" : t.tone === "rose" ? "text-rose-600" : ""}`}>{t.value}</div>
+                      </Link>
+                    ))}
                   </div>
                 )}
-                <details className="mt-3 text-xs">
-                  <summary className="cursor-pointer text-muted-foreground">View AST</summary>
-                  <pre className="mt-2 bg-muted p-2 rounded text-[10px] overflow-x-auto">{JSON.stringify(r.ast, null, 2)}</pre>
-                </details>
+
+                {/* Drill-throughs the answer references. */}
+                {r.metrics && (r.metrics.top_clients_by_aum?.length ?? 0) > 0 && (
+                  <details className="mt-3 text-sm">
+                    <summary className="cursor-pointer text-xs text-muted-foreground">Top clients by AUM</summary>
+                    <ul className="mt-2 space-y-0.5">
+                      {r.metrics.top_clients_by_aum.slice(0, 10).map((c: any, idx: number) => (
+                        <li key={idx} className="flex justify-between text-xs"><span>{idx + 1}. {c.name}</span><span className="tabular-nums text-muted-foreground">{inr(c.aum_inr)}</span></li>
+                      ))}
+                    </ul>
+                    <Link href="/dashboard/investors" className="text-[11px] text-brand-cyan-deep hover:underline mt-1 inline-flex items-center gap-1">Open Clients <ArrowRight className="size-3" /></Link>
+                  </details>
+                )}
               </>
             )}
             {r.kind === "draft" && (
               <>
-                <div className="text-xs text-muted-foreground">AI-drafted {r.channel} message · compliance is re-checked on send</div>
+                <div className="text-xs text-muted-foreground">AI-drafted {r.channel} message · {THEMES.find((t) => t.value === r.theme)?.label ?? r.theme} tone · compliance is re-checked on send</div>
                 <div className="font-medium mt-1 italic text-muted-foreground">&ldquo;{r.intent}&rdquo;</div>
                 <div className="mt-3 border-t pt-3 text-sm whitespace-pre-wrap">{r.text}</div>
                 <div className="mt-3 flex flex-wrap gap-2">
@@ -229,53 +265,6 @@ function ModeBtn({ active, onClick, icon: Icon, label }: { active: boolean; onCl
     <button onClick={onClick} className={`text-sm px-3 py-1.5 rounded-md ${active ? "bg-primary text-primary-foreground" : "border"}`}>
       <Icon className="size-3.5 inline mr-1" /> {label}
     </button>
-  );
-}
-
-/** Save a smart-search AST as a reusable segment, then offer to message it. */
-function SaveSegmentAction({ ast, query, count }: { ast: any; query: string; count: number }) {
-  const [name, setName] = useState(query.slice(0, 60));
-  const [state, setState] = useState<"idle" | "saving" | "saved" | "error">("idle");
-  const [err, setErr] = useState<string | null>(null);
-  const [segmentId, setSegmentId] = useState<string | null>(null);
-
-  async function save() {
-    if (!name.trim()) return;
-    setState("saving");
-    setErr(null);
-    try {
-      const res = await fetch("/api/segments", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), subjectType: "investor", ast }),
-      });
-      const j = await res.json().catch(() => ({}));
-      if (!res.ok) { setErr(j.error ?? "Could not save"); setState("error"); return; }
-      setSegmentId(j.id ?? null);
-      setState("saved");
-    } catch {
-      setErr("Network error"); setState("error");
-    }
-  }
-
-  if (state === "saved") {
-    return (
-      <div className="mt-3 text-xs text-emerald-700 flex items-center flex-wrap gap-2">
-        <CheckCircle2 className="size-3.5" /> Saved as segment.
-        <Link href={`/dashboard/campaigns/new${segmentId ? `?segmentId=${segmentId}` : ""}`} className="inline-flex items-center gap-1 underline font-medium text-brand-cyan">
-          Create campaign to these {count} <ArrowRight className="size-3" />
-        </Link>
-      </div>
-    );
-  }
-  return (
-    <div className="mt-3 flex flex-wrap items-center gap-2">
-      <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Segment name" className="text-xs border rounded px-2 py-1 bg-background flex-1 min-w-[160px]" />
-      <button onClick={save} disabled={state === "saving" || !name.trim()} className="text-xs rounded border px-2 py-1 inline-flex items-center gap-1 hover:bg-accent disabled:opacity-50">
-        {state === "saving" ? <Loader2 className="size-3 animate-spin" /> : <Save className="size-3" />} Save as segment
-      </button>
-      {err && <span className="text-xs text-rose-600">{err}</span>}
-    </div>
   );
 }
 

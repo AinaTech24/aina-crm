@@ -19,10 +19,12 @@ import { RowActions } from "@/components/common/RowActions";
 import { RmSelector } from "@/components/common/RmSelector";
 import { formatINR, formatDate } from "@/lib/utils";
 import { leadScoreBand } from "@/lib/leads/scoring";
+import { Avatar } from "@/components/ui/Avatar";
 
 type Row = {
   id: string;
   name: string;
+  avatarUrl: string | null;
   phone: string | null;
   email: string | null;
   stage: string;
@@ -190,9 +192,9 @@ export function LeadsTable({ rows, sort, dir = "desc" }: { rows: Row[]; sort: st
         </div>
       )}
 
-      <div className="overflow-x-auto">
+      <div className="table-scroll">
         <table className="w-full text-sm table-modern text-left" data-table="leads">
-          <thead className="text-xs text-muted-foreground border-b">
+          <thead className="text-xs text-muted-foreground border-b sticky top-0 z-10 bg-card">
             <tr>
               <th className="px-3 py-2.5 w-8">
                 <input type="checkbox" checked={allSelected} onChange={toggleAll} className="size-3.5 rounded" aria-label="Select all" />
@@ -233,14 +235,19 @@ export function LeadsTable({ rows, sort, dir = "desc" }: { rows: Row[]; sort: st
                     </span>
                   </td>
                   <td data-col="name" className="px-1 py-3 font-medium">
-                    <Link href={`/dashboard/leads/${l.id}`} className="hover:underline text-[14px]">{l.name}</Link>
-                    {(l.phone || l.email) && (
-                      <div className="text-[11px] text-muted-foreground mt-0.5 space-x-2 font-mono">
-                        {l.phone && <span>{l.phone}</span>}
-                        {l.phone && l.email && <span>·</span>}
-                        {l.email && <span>{l.email}</span>}
+                    <div className="flex items-center gap-2">
+                      <Avatar src={l.avatarUrl ? `/api/leads/${l.id}/avatar` : null} name={l.name} size={28} />
+                      <div>
+                        <Link href={`/dashboard/leads/${l.id}`} className="hover:underline text-[14px]">{l.name}</Link>
+                        {(l.phone || l.email) && (
+                          <div className="text-[11px] text-muted-foreground mt-0.5 space-x-2 font-mono">
+                            {l.phone && <span>{l.phone}</span>}
+                            {l.phone && l.email && <span>·</span>}
+                            {l.email && <span>{l.email}</span>}
+                          </div>
+                        )}
                       </div>
-                    )}
+                    </div>
                   </td>
                   <td data-col="stage" className="py-3">
                     <span className={`chip text-xs border font-medium ${toneStyles[l.stageTone] ?? "bg-muted"}`}>{l.stageLabel}</span>

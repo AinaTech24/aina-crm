@@ -62,6 +62,10 @@ export const tasks = pgTable(
     startedAt: timestamp("started_at", { withTimezone: true }),
     completedAt: timestamp("completed_at", { withTimezone: true }),
 
+    /** Soft-delete (Trash) — recoverable until permanently removed (migration 0155). */
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    deletedBy: uuid("deleted_by"),
+
     /**
      * Recurrence (Sanchay "Enable Recurring" parity). NULL = one-off. When a
      * recurring task is completed, the API spawns the next occurrence with its

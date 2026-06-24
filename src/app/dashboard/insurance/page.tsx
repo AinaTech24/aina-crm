@@ -205,10 +205,6 @@ export default async function InsurancePage({
           <h1 className="page-title">
             <Shield className="size-6 text-brand-cyan" /> Insurance Policies
           </h1>
-          <p className="page-subtitle">
-            Term · ULIP · Endowment · Health · Motor · Travel — every policy a client owns, in
-            one register.
-          </p>
         </div>
         <div className="flex items-center gap-2">
           <Link href="/dashboard/insurance/renewals" className="btn-secondary"><CalendarClock className="size-4" /> Renewals</Link>

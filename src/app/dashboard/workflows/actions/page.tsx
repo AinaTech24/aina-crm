@@ -75,9 +75,6 @@ export default async function WorkflowActionsPage() {
           <h1 className="page-title">
             <ListChecks className="size-6 text-brand-cyan" /> Workflow Actions
           </h1>
-          <p className="page-subtitle">
-            Rule action inventory for audit, reuse planning, and investor demos.
-          </p>
         </div>
         <div className="flex gap-2">
           <Link href="/dashboard/workflows/rules" className="btn-secondary">

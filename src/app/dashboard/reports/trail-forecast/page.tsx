@@ -12,6 +12,7 @@ import {
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { computeTrailForecast, type SliceRow } from "@/lib/finance/trail-forecast";
+import { TrailProjectionChart } from "@/components/finance/TrailProjectionChart";
 import { formatINR } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -58,10 +59,6 @@ export default async function TrailForecastPage() {
         <h1 className="page-title">
           <TrendingUp className="size-6 text-brand-cyan" /> Trail Forecast &amp; Revenue-at-Risk
         </h1>
-        <p className="page-subtitle">
-          Projected trail income from your live book, and how much of it is exposed to redemptions and
-          at-risk SIPs.
-        </p>
       </div>
 
       {!hasData ? (
@@ -107,6 +104,49 @@ export default async function TrailForecastPage() {
             />
           </div>
 
+          {/* Forward 12-month projection (SIP inflow + market-growth assumption) */}
+          <TrailProjectionChart
+            baseAum={f.totalAum}
+            monthlySipInflow={f.netMonthlySipInflow}
+            weightedTrailPct={f.weightedTrailPct}
+            staticAnnual={f.projectedAnnual}
+          />
+
+          {/* Projected vs actually received (amc_payouts trail, last 12 mo) */}
+          <div className="card-surface p-5">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="section-title flex items-center gap-2"><Percent className="size-4 text-brand-cyan" /> Projected vs received</h2>
+              {f.received12mo > 0 ? (
+                (() => {
+                  const gapPct = f.projectedAnnual > 0 ? ((f.projectedAnnual - f.received12mo) / f.projectedAnnual) * 100 : 0;
+                  return (
+                    <span className={`chip text-[11px] ${gapPct >= 10 ? "bg-rose-50 text-rose-700" : gapPct >= 3 ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700"}`}>
+                      {gapPct >= 0 ? `${gapPct.toFixed(0)}% under-recovery` : `${Math.abs(gapPct).toFixed(0)}% over`}
+                    </span>
+                  );
+                })()
+              ) : (
+                <span className="chip text-[11px] bg-secondary text-muted-foreground">No payouts recorded</span>
+              )}
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <div className="rounded-lg border border-border bg-card p-3">
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Projected / year</div>
+                <div className="text-xl font-bold tabular-nums">{formatINR(f.projectedAnnual)}</div>
+              </div>
+              <div className="rounded-lg border border-border bg-card p-3">
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Received (last 12 mo)</div>
+                <div className="text-xl font-bold tabular-nums">{f.received12mo > 0 ? formatINR(f.received12mo) : "—"}</div>
+              </div>
+              <Link href="/dashboard/commission-reconciliation" className="rounded-lg border border-border bg-card p-3 hover:border-brand-cyan/40 transition-colors">
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Gap (potential leak)</div>
+                <div className="text-xl font-bold tabular-nums text-rose-700">{f.received12mo > 0 ? formatINR(Math.max(0, f.projectedAnnual - f.received12mo)) : "—"}</div>
+                <div className="text-[11px] text-muted-foreground">Reconcile →</div>
+              </Link>
+            </div>
+            <p className="text-[11px] text-muted-foreground mt-2">AMC trail under-payment (wrong ARN mapping, missed trail-on-transfer) is a common leak — record payouts in Commission Reconciliation to track recovery.</p>
+          </div>
+
           {/* Revenue at risk */}
           <div className="card-surface p-5">
             <div className="flex items-center justify-between mb-4">
@@ -114,13 +154,12 @@ export default async function TrailForecastPage() {
                 <AlertTriangle className="size-4 text-rose-600" /> Revenue at risk
               </h2>
               <span
-                className={`chip text-[11px] ${
-                  riskPctOfAnnual >= 10
+                className={`chip text-[11px] ${riskPctOfAnnual >= 10
                     ? "bg-rose-50 text-rose-700"
                     : riskPctOfAnnual >= 3
-                    ? "bg-amber-50 text-amber-700"
-                    : "bg-emerald-50 text-emerald-700"
-                }`}
+                      ? "bg-amber-50 text-amber-700"
+                      : "bg-emerald-50 text-emerald-700"
+                  }`}
               >
                 {riskPctOfAnnual.toFixed(1)}% of annual trail
               </span>
@@ -178,10 +217,56 @@ export default async function TrailForecastPage() {
             </p>
           </div>
 
+          {/* Actionable at-risk lists — who to save */}
+          {(f.atRiskSipList.length > 0 || f.redeemedClients.length > 0) && (
+            <div className="grid lg:grid-cols-2 gap-4">
+              <div className="card-surface p-5">
+                <h2 className="section-title flex items-center gap-2 mb-3"><Repeat className="size-4 text-amber-600" /> At-risk SIPs to save</h2>
+                {f.atRiskSipList.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">None — your active SIPs look healthy.</p>
+                ) : (
+                  <div className="divide-y">
+                    {f.atRiskSipList.map((s) => (
+                      <Link key={s.id} href={s.investorId ? `/dashboard/investors/${s.investorId}` : "/dashboard/sips"} className="flex items-center gap-3 py-2 hover:bg-accent/40 -mx-2 px-2 rounded">
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm font-medium truncate">{s.client}</div>
+                          <div className="text-[11px] text-amber-700">{s.reason}</div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <div className="text-sm tabular-nums">{formatINR(s.monthly)}/mo</div>
+                          <div className="text-[11px] text-muted-foreground tabular-nums">{formatINR(s.annual)}/yr</div>
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="card-surface p-5">
+                <h2 className="section-title flex items-center gap-2 mb-3"><ArrowDownRight className="size-4 text-rose-600" /> Recent redemptions (30d)</h2>
+                {f.redeemedClients.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No redemptions in the last 30 days.</p>
+                ) : (
+                  <div className="divide-y">
+                    {f.redeemedClients.map((c, i) => (
+                      <Link key={i} href={c.investorId ? `/dashboard/investors/${c.investorId}` : "/dashboard/transactions"} className="flex items-center gap-3 py-2 hover:bg-accent/40 -mx-2 px-2 rounded">
+                        <div className="min-w-0 flex-1 text-sm font-medium truncate">{c.client}</div>
+                        <div className="text-right shrink-0">
+                          <div className="text-sm tabular-nums">{formatINR(c.amount)}</div>
+                          <div className="text-[11px] text-rose-600 tabular-nums">−{formatINR(c.trailLost)}/yr trail</div>
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Slices */}
-          <div className="grid lg:grid-cols-3 gap-4">
-            <SliceCard title="By AMC" rows={f.byAmc.slice(0, 8)} />
+          <div className="grid lg:grid-cols-2 gap-4">
+            <SliceCard title="Top clients by trail" rows={f.byClient.slice(0, 8)} />
             <SliceCard title="By asset class" rows={f.byCategory} />
+            <SliceCard title="By AMC" rows={f.byAmc.slice(0, 8)} />
             <SliceCard title="By relationship manager" rows={f.byRm.slice(0, 8)} />
           </div>
 
@@ -217,9 +302,8 @@ function Kpi({
   return (
     <div className={hero ? "kpi-hero" : "kpi-card"}>
       <div
-        className={`text-[10px] uppercase tracking-wider font-semibold flex items-center gap-1.5 ${
-          hero ? "opacity-90" : "text-muted-foreground"
-        }`}
+        className={`text-[10px] uppercase tracking-wider font-semibold flex items-center gap-1.5 ${hero ? "opacity-90" : "text-muted-foreground"
+          }`}
       >
         {icon}
         {label}

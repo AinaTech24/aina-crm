@@ -141,13 +141,18 @@ export function RelatedListsManager({
     });
   }, [storageKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Persist on change.
+  // Persist on change + tell the SectionNav to re-sort its pills to match the
+  // new page order (it listens for `aina:rl-prefs-changed`). Fires on initial
+  // hydration too, so the nav matches saved prefs on first paint.
   useEffect(() => {
     if (prefs == null) return;
     try {
       localStorage.setItem(storageKey, JSON.stringify(prefs));
     } catch {}
-  }, [prefs, storageKey]);
+    try {
+      window.dispatchEvent(new CustomEvent("aina:rl-prefs-changed", { detail: { moduleKey } }));
+    } catch {}
+  }, [prefs, storageKey, moduleKey]);
 
   // Effective ordered list — sections in `prefs.order` first, then any
   // remaining sections in source order.

@@ -33,17 +33,21 @@ import {
   ChevronDown,
   PaintBucket,
   Eye,
-  Smartphone,
-  Monitor,
   Palette,
   Variable,
   Sparkles,
   X,
+  Send,
+  Loader2,
+  Check,
+  UploadCloud,
+  Layers as LayersIcon,
 } from "lucide-react";
 import type { EmailDesignerBody, EmailBlock, EmailTheme } from "@/lib/email-designer/types";
 import { mergeFieldsByCategory, type MergeField } from "@/lib/email-designer/merge-fields";
 
 type Mode = "designer" | "html";
+type SectionId = "properties" | "blocks" | "theme" | "fields";
 
 export function EmailDesigner({
   value,
@@ -56,9 +60,21 @@ export function EmailDesigner({
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
-  const [device, setDevice] = useState<"desktop" | "mobile">("desktop");
-  const [sidebarTab, setSidebarTab] = useState<"blocks" | "theme" | "fields">("blocks");
+  // Expand/shrink accordion sections in the left rail — several may be open at
+  // once; the rail scrolls (hidden scrollbar) when content overflows.
+  const [open, setOpen] = useState<Record<SectionId, boolean>>({
+    properties: true,
+    blocks: true,
+    theme: false,
+    fields: false,
+  });
+  const toggleSection = (id: SectionId) => setOpen((o) => ({ ...o, [id]: !o[id] }));
   const [previewHtml, setPreviewHtml] = useState<string>("");
+  const [testState, setTestState] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [testMsg, setTestMsg] = useState<string | null>(null);
+  // Remember the last designer input the user touched so "Insert field" / the
+  // Fields tab drop the token into the right place even after the click blurs it.
+  const lastFocused = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
 
   const mode = (value.mode ?? "designer") as Mode;
   const theme: EmailTheme = useMemo(
@@ -80,6 +96,15 @@ export function EmailDesigner({
       }) as EmailTheme,
     [value.theme, tenant]
   );
+
+  // Give the designer maximum width: collapse the app sidebar while this module
+  // is open, then restore the user's saved pin state on leave.
+  useEffect(() => {
+    try { window.dispatchEvent(new CustomEvent("aina:sidebar-collapse")); } catch { /* SSR/no-window */ }
+    return () => {
+      try { window.dispatchEvent(new CustomEvent("aina:sidebar-restore")); } catch { /* noop */ }
+    };
+  }, []);
 
   // Initialise blocks with sensible defaults
   useEffect(() => {
@@ -118,7 +143,7 @@ export function EmailDesigner({
         })
         .then((d) => setPreviewHtml(d.html ?? ""))
         .catch(() => setPreviewHtml(""));
-    }, 250);
+    }, 120);
     return () => {
       if (debounce.current) clearTimeout(debounce.current);
     };
@@ -130,11 +155,15 @@ export function EmailDesigner({
   function updateTheme(patch: Partial<EmailTheme>) {
     onChange({ ...value, theme: { ...theme, ...patch } });
   }
+  // Select a block and make sure its editor (the Properties section) is visible.
+  function selectBlock(id: string) {
+    setSelectedId(id);
+    setOpen((o) => ({ ...o, properties: true }));
+  }
   function addBlock(type: any) {
     const b = mkBlock(type, {});
     update({ blocks: [...(value.blocks ?? []), b] });
-    setSelectedId(b.id);
-    setSidebarTab("blocks");
+    selectBlock(b.id);
   }
   function updateBlock(id: string, patch: any) {
     update({
@@ -165,11 +194,31 @@ export function EmailDesigner({
     arr.splice(to, 0, moved);
     update({ blocks: arr });
   }
+  async function sendTest() {
+    setTestState("sending");
+    setTestMsg(null);
+    try {
+      const res = await fetch("/api/email-designer/test-send", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ body: value }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) { setTestState("error"); setTestMsg(j.error ?? "Send failed"); return; }
+      setTestState("sent"); setTestMsg(`Sent to ${j.sentTo}`);
+      setTimeout(() => setTestState("idle"), 3500);
+    } catch (e: any) {
+      setTestState("error"); setTestMsg(e?.message ?? "Network error");
+    }
+  }
+
   function insertMergeField(field: MergeField) {
-    // Insert into the currently-focused input if any; otherwise into the
-    // selected block's primary text field.
+    // Insert into the last-touched designer input (preferred — survives the
+    // click that blurs it); fall back to whatever's focused, else the subject.
     const token = `{{${field.token}}}`;
-    const active = document.activeElement as HTMLInputElement | HTMLTextAreaElement | null;
+    const active = (lastFocused.current && document.contains(lastFocused.current))
+      ? lastFocused.current
+      : (document.activeElement as HTMLInputElement | HTMLTextAreaElement | null);
     if (active && ("value" in active) && (active.tagName === "INPUT" || active.tagName === "TEXTAREA")) {
       const start = (active as any).selectionStart ?? active.value.length;
       const end = (active as any).selectionEnd ?? active.value.length;
@@ -193,126 +242,139 @@ export function EmailDesigner({
     }
   }
   const selectedBlock = (value.blocks ?? []).find((b: any) => b.id === selectedId);
+  const blocks = value.blocks ?? [];
 
   return (
-    <div className="card-surface overflow-hidden grid grid-cols-[280px_1fr_320px] min-h-[700px]">
-      {/* LEFT SIDEBAR — palette / theme / merge fields */}
-      <div className="border-r border-border flex flex-col">
-        <div className="px-3 py-2 border-b border-border flex gap-1">
-          <TabButton active={sidebarTab === "blocks"} onClick={() => setSidebarTab("blocks")} icon={Sparkles} label="Blocks" />
-          <TabButton active={sidebarTab === "theme"} onClick={() => setSidebarTab("theme")} icon={Palette} label="Theme" />
-          <TabButton active={sidebarTab === "fields"} onClick={() => setSidebarTab("fields")} icon={Variable} label="Fields" />
-        </div>
-        <div className="flex-1 overflow-y-auto p-3">
-          {sidebarTab === "blocks" && <BlockPalette onAdd={addBlock} disabled={mode === "html"} />}
-          {sidebarTab === "theme" && <ThemePanel theme={theme} onChange={updateTheme} footer={value.footer ?? {}} onFooterChange={(f) => update({ footer: f })} />}
-          {sidebarTab === "fields" && <MergeFieldPicker onPick={insertMergeField} />}
-        </div>
-      </div>
-
-      {/* CENTER — header + canvas (designer or html) + preview */}
-      <div className="flex flex-col min-w-0">
-        {/* Header bar — subject, preheader, mode toggle, preview device */}
-        <div className="border-b border-border p-3 space-y-2">
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-[10px] text-muted-foreground">Subject</label>
-              <input
-                value={value.subject ?? ""}
-                onChange={(e) => update({ subject: e.target.value })}
-                placeholder="Subject line — visible in the inbox"
-                className="input-base text-xs w-full"
-              />
-            </div>
-            <div>
-              <label className="text-[10px] text-muted-foreground">Preheader (inbox preview)</label>
-              <input
-                value={value.preheader ?? ""}
-                onChange={(e) => update({ preheader: e.target.value })}
-                placeholder="Short preview text shown after the subject"
-                className="input-base text-xs w-full"
-              />
-            </div>
+    <div
+      className="card-surface overflow-hidden grid grid-cols-[minmax(0,380px)_minmax(0,1fr)] h-[calc(100vh-11rem)] min-h-[560px]"
+      onFocusCapture={(e) => {
+        const t = e.target as HTMLElement;
+        if (t.tagName === "INPUT" || t.tagName === "TEXTAREA") lastFocused.current = t as any;
+      }}
+    >
+      {/* ============================ LEFT — properties rail ==================== */}
+      <div className="border-r border-border flex flex-col min-h-0 bg-card">
+        {/* Header: subject / preheader / mode */}
+        <div className="px-3.5 py-3 border-b border-border space-y-2 shrink-0">
+          <div>
+            <label className="text-[10px] font-medium text-muted-foreground">Subject</label>
+            <input value={value.subject ?? ""} onChange={(e) => update({ subject: e.target.value })} placeholder="Subject line — visible in the inbox" className="input-base text-sm w-full mt-0.5" />
           </div>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1 rounded-md border border-border p-0.5">
-              <ModeChip active={mode === "designer"} onClick={() => update({ mode: "designer" })} label="Designer" />
-              <ModeChip active={mode === "html"} onClick={() => update({ mode: "html" })} label="HTML" />
-            </div>
-            <div className="flex items-center gap-1 rounded-md border border-border p-0.5">
-              <button
-                onClick={() => setDevice("desktop")}
-                className={`px-2 py-1 rounded text-xs flex items-center gap-1 ${device === "desktop" ? "bg-brand-cyan-light text-brand-cyan-deep" : ""}`}
-              >
-                <Monitor className="size-3.5" /> Desktop
-              </button>
-              <button
-                onClick={() => setDevice("mobile")}
-                className={`px-2 py-1 rounded text-xs flex items-center gap-1 ${device === "mobile" ? "bg-brand-cyan-light text-brand-cyan-deep" : ""}`}
-              >
-                <Smartphone className="size-3.5" /> Mobile
-              </button>
-            </div>
+          <div>
+            <label className="text-[10px] font-medium text-muted-foreground">Preheader (inbox preview)</label>
+            <input value={value.preheader ?? ""} onChange={(e) => update({ preheader: e.target.value })} placeholder="Short preview text after the subject" className="input-base text-sm w-full mt-0.5" />
+          </div>
+          <div className="flex items-center gap-0.5 rounded-lg border border-border p-0.5 bg-background w-fit">
+            <ModeChip active={mode === "designer"} onClick={() => update({ mode: "designer" })} label="Designer" />
+            <ModeChip active={mode === "html"} onClick={() => update({ mode: "html" })} label="HTML" />
           </div>
         </div>
 
-        {/* Canvas — designer list or HTML textarea */}
-        <div className="flex-1 overflow-y-auto bg-secondary/30 p-4">
+        {/* Scrollable accordion rail — hidden scrollbar, mouse-wheel scrolls */}
+        <div className="flex-1 overflow-y-auto scrollbar-none min-h-0">
           {mode === "designer" ? (
-            <div className="space-y-2">
-              {(value.blocks ?? []).length === 0 && (
-                <div className="text-center text-xs text-muted-foreground py-10">
-                  Add a block from the left to start building your email.
+            <>
+              {/* Properties of the selected block */}
+              <AccordionSection
+                id="properties"
+                title={selectedBlock ? selectedBlock.type.replace(/_/g, " ") : "Properties"}
+                icon={PaintBucket}
+                open={open.properties}
+                onToggle={() => toggleSection("properties")}
+                titleClassName="capitalize"
+                action={
+                  selectedBlock ? (
+                    <div className="flex items-center gap-1">
+                      <FieldMenu onPick={insertMergeField} />
+                      <span
+                        role="button"
+                        onClick={(e) => { e.stopPropagation(); removeBlock(selectedBlock.id); }}
+                        title="Delete block"
+                        className="btn-icon h-6 w-6 text-rose-600 inline-flex items-center justify-center"
+                      >
+                        <Trash2 className="size-3.5" />
+                      </span>
+                    </div>
+                  ) : undefined
+                }
+              >
+                {selectedBlock ? (
+                  <BlockEditor block={selectedBlock} onChange={(patch) => updateBlock(selectedBlock.id, patch)} />
+                ) : (
+                  <div className="text-center text-xs text-muted-foreground py-6 px-3">
+                    <Sparkles className="size-6 mx-auto text-muted-foreground/40 mb-2" />
+                    {blocks.length === 0 ? "Add a block below to start building." : "Select a layer to edit it here."}
+                  </div>
+                )}
+              </AccordionSection>
+
+              {/* Blocks — palette + layers */}
+              <AccordionSection id="blocks" title="Blocks" icon={Sparkles} open={open.blocks} onToggle={() => toggleSection("blocks")} count={blocks.length}>
+                <BlockPalette onAdd={addBlock} />
+                <div className="mt-4 mb-1.5 flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
+                  <LayersIcon className="size-3" /> Layers
                 </div>
-              )}
-              {(value.blocks ?? []).map((b: any) => (
-                <BlockCard
-                  key={b.id}
-                  block={b}
-                  selected={selectedId === b.id}
-                  onSelect={() => setSelectedId(b.id)}
-                  onChange={(patch) => updateBlock(b.id, patch)}
-                  onRemove={() => removeBlock(b.id)}
-                  onMoveUp={() => moveBlock(b.id, -1)}
-                  onMoveDown={() => moveBlock(b.id, 1)}
-                  dragging={dragId === b.id}
-                  onDragStartBlock={() => setDragId(b.id)}
-                  onDragEndBlock={() => setDragId(null)}
-                  onDropOnBlock={() => { if (dragId) moveBlockTo(dragId, b.id); setDragId(null); }}
+                <OutlineList
+                  blocks={blocks}
+                  selectedId={selectedId}
+                  dragId={dragId}
+                  onSelect={selectBlock}
+                  onMoveUp={(id) => moveBlock(id, -1)}
+                  onMoveDown={(id) => moveBlock(id, 1)}
+                  onRemove={removeBlock}
+                  onDragStart={setDragId}
+                  onDragEnd={() => setDragId(null)}
+                  onDropOn={(toId) => { if (dragId) moveBlockTo(dragId, toId); setDragId(null); }}
                 />
-              ))}
-            </div>
+              </AccordionSection>
+
+              {/* Theme */}
+              <AccordionSection id="theme" title="Theme" icon={Palette} open={open.theme} onToggle={() => toggleSection("theme")}>
+                <ThemePanel theme={theme} onChange={updateTheme} footer={value.footer ?? {}} onFooterChange={(f) => update({ footer: f })} />
+              </AccordionSection>
+
+              {/* Merge fields */}
+              <AccordionSection id="fields" title="Fields" icon={Variable} open={open.fields} onToggle={() => toggleSection("fields")}>
+                <MergeFieldPicker onPick={insertMergeField} />
+              </AccordionSection>
+            </>
           ) : (
-            <HtmlMode
-              html={value.html ?? ""}
-              onChange={(html) => update({ html })}
-            />
+            <>
+              {/* HTML mode — raw editor + fields */}
+              <div className="p-3.5">
+                <HtmlMode html={value.html ?? ""} onChange={(html) => update({ html })} />
+              </div>
+              <AccordionSection id="fields" title="Fields" icon={Variable} open={open.fields} onToggle={() => toggleSection("fields")}>
+                <MergeFieldPicker onPick={insertMergeField} />
+              </AccordionSection>
+            </>
           )}
         </div>
       </div>
 
-      {/* RIGHT — live preview */}
-      <div className="border-l border-border flex flex-col">
-        <div className="px-3 py-2 border-b border-border text-xs font-semibold flex items-center gap-1.5">
-          <Eye className="size-3.5 text-brand-cyan" /> Live preview
-        </div>
-        <div className="flex-1 overflow-y-auto bg-secondary/30 p-3">
-          <div
-            className="bg-white shadow rounded overflow-hidden mx-auto"
-            style={{ width: device === "mobile" ? 320 : "100%", maxWidth: device === "mobile" ? 320 : 600 }}
-          >
-            <iframe
-              title="Email preview"
-              srcDoc={
-                previewHtml ||
-                (previewError
-                  ? `<div style='padding:32px;color:#b91c1c;text-align:center;font-family:system-ui;'>Preview unavailable — ${previewError}.<br/><span style='color:#6b7280;font-size:12px'>Your email content is saved; this is just a preview issue.</span></div>`
-                  : "<div style='padding:32px;color:#6b7280;text-align:center;font-family:system-ui;'>Rendering preview…</div>")
-              }
-              className="w-full"
-              style={{ height: 800, border: 0 }}
-            />
+      {/* ============================ RIGHT — full-width live preview ========== */}
+      <div className="flex flex-col min-w-0 min-h-0 bg-white">
+        <div className="border-b border-border px-4 py-2.5 flex items-center justify-between gap-2 flex-wrap bg-card shrink-0">
+          <span className="text-xs font-semibold flex items-center gap-1.5 text-muted-foreground">
+            <Eye className="size-3.5 text-primary" /> Live preview
+          </span>
+          <div className="flex items-center gap-2">
+            {testMsg && (
+              <span className={`text-[11px] ${testState === "error" ? "text-rose-600" : "text-emerald-600"}`}>{testMsg}</span>
+            )}
+            <button
+              onClick={sendTest}
+              disabled={testState === "sending"}
+              className="text-xs px-2.5 py-1.5 rounded-lg border border-border hover:bg-secondary inline-flex items-center gap-1.5 disabled:opacity-50"
+              title="Send a sample render of this email to yourself"
+            >
+              {testState === "sending" ? <Loader2 className="size-3.5 animate-spin" /> : testState === "sent" ? <Check className="size-3.5 text-emerald-600" /> : <Send className="size-3.5" />}
+              Send test
+            </button>
           </div>
+        </div>
+        <div className="flex-1 min-h-0">
+          <LivePreview html={previewHtml} error={previewError} scrollToId={mode === "designer" ? selectedId : null} />
         </div>
       </div>
     </div>
@@ -320,21 +382,180 @@ export function EmailDesigner({
 }
 
 // =============================================================================
-// SIDEBAR — palette, theme, merge fields
+// Full-width live preview + layer outline
 // =============================================================================
 
-function TabButton({ active, onClick, icon: Icon, label }: any) {
+/** Full-width email preview. Hides the iframe's own scrollbar and — whenever the
+ *  content re-renders or the selected block changes — scrolls that block to the
+ *  centre of the viewport so the author always sees what they're editing. */
+function LivePreview({ html, error, scrollToId }: { html: string; error: string | null; scrollToId: string | null }) {
+  const ref = useRef<HTMLIFrameElement>(null);
+  const srcDoc =
+    html ||
+    (error
+      ? `<div style='padding:40px;color:#b91c1c;text-align:center;font-family:system-ui;'>Preview unavailable — ${error}.<br/><span style='color:#6b7280;font-size:12px'>Your email content is saved; this is just a preview issue.</span></div>`
+      : "<div style='padding:48px;color:#9ca3af;text-align:center;font-family:system-ui;'>Rendering preview…</div>");
+
+  const sync = () => {
+    const doc = ref.current?.contentDocument;
+    if (!doc) return;
+    // Hide the email's own scrollbar (srcDoc is same-origin).
+    if (doc.head && !doc.getElementById("__hide_sb")) {
+      const st = doc.createElement("style");
+      st.id = "__hide_sb";
+      st.textContent = "html{scrollbar-width:none;-ms-overflow-style:none;} ::-webkit-scrollbar{width:0;height:0;display:none;}";
+      doc.head.appendChild(st);
+    }
+    if (scrollToId) {
+      doc.getElementById(`eb-${scrollToId}`)?.scrollIntoView({ block: "center", behavior: "auto" });
+    }
+  };
+
+  // Re-centre when the selection changes (no reload) — the load handler covers
+  // content edits (which reload the iframe and reset scroll).
+  useEffect(() => {
+    sync();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scrollToId, html]);
+
   return (
-    <button
-      onClick={onClick}
-      className={`flex items-center gap-1 px-2 py-1 rounded text-[11px] flex-1 justify-center ${
-        active ? "bg-brand-cyan-light text-brand-cyan-deep font-semibold" : "text-muted-foreground hover:bg-secondary/40"
-      }`}
-    >
-      <Icon className="size-3.5" /> {label}
-    </button>
+    <iframe
+      ref={ref}
+      title="Email preview"
+      srcDoc={srcDoc}
+      onLoad={sync}
+      className="w-full h-full bg-white block"
+      style={{ border: 0 }}
+    />
   );
 }
+
+/** Collapsible (expand/shrink) accordion section for the left properties rail. */
+function AccordionSection({
+  title,
+  icon: Icon,
+  open,
+  onToggle,
+  count,
+  action,
+  titleClassName,
+  children,
+}: {
+  id: SectionId;
+  title: string;
+  icon: any;
+  open: boolean;
+  onToggle: () => void;
+  count?: number;
+  action?: React.ReactNode;
+  titleClassName?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="border-b border-border">
+      <button
+        onClick={onToggle}
+        className="w-full flex items-center gap-2 px-3.5 py-2.5 text-xs font-semibold hover:bg-secondary/30 transition-colors"
+      >
+        <Icon className="size-3.5 text-primary shrink-0" />
+        <span className={`flex-1 text-left truncate ${titleClassName ?? ""}`}>{title}</span>
+        {action}
+        {count != null && (
+          <span className="text-[10px] text-muted-foreground bg-secondary rounded-full px-1.5 leading-5">{count}</span>
+        )}
+        <ChevronDown className={`size-4 text-muted-foreground shrink-0 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
+      </button>
+      {/* grid-rows 0fr↔1fr gives a smooth height transition without measuring */}
+      <div className={`grid transition-[grid-template-rows] duration-200 ease-out ${open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}>
+        <div className="overflow-hidden">
+          <div className="px-3.5 pb-3.5 pt-0.5">{children}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function blockSummary(b: any): string {
+  switch (b.type) {
+    case "logo": return "Brand logo";
+    case "hero": return b.title || "Hero";
+    case "heading": return b.text || "Heading";
+    case "text": return (b.html || "").replace(/<[^>]+>/g, "").slice(0, 36) || "Text";
+    case "button": return b.label || "Button";
+    case "image": return b.alt || b.url || "Image";
+    case "image_row": return `${(b.items ?? []).length} images`;
+    case "data_table": return b.caption || `${(b.rows ?? []).length}-row table`;
+    case "divider": return "Divider";
+    case "spacer": return `Spacer · ${b.height ?? 24}px`;
+    case "quote": return b.text || "Quote";
+    case "social": return "Social links";
+    case "html": return "Custom HTML";
+    default: return b.type;
+  }
+}
+
+function OutlineList({
+  blocks, selectedId, dragId, onSelect, onMoveUp, onMoveDown, onRemove, onDragStart, onDragEnd, onDropOn,
+}: {
+  blocks: any[];
+  selectedId: string | null;
+  dragId: string | null;
+  onSelect: (id: string) => void;
+  onMoveUp: (id: string) => void;
+  onMoveDown: (id: string) => void;
+  onRemove: (id: string) => void;
+  onDragStart: (id: string) => void;
+  onDragEnd: () => void;
+  onDropOn: (id: string) => void;
+}) {
+  if (blocks.length === 0) {
+    return <div className="mt-2 text-[11px] text-muted-foreground italic">No blocks yet — add one above.</div>;
+  }
+  return (
+    <div className="mt-1.5 space-y-1">
+      {blocks.map((b, i) => {
+        const Icon = PALETTE.find((p) => p.type === b.type)?.icon ?? TypeIcon;
+        const sel = selectedId === b.id;
+        return (
+          <div
+            key={b.id}
+            onClick={() => onSelect(b.id)}
+            onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
+            onDrop={(e) => { e.preventDefault(); onDropOn(b.id); }}
+            className={`group flex items-center gap-1.5 rounded-lg border px-2 py-1.5 cursor-pointer transition-colors ${
+              sel ? "border-primary bg-primary/5" : "border-border hover:bg-secondary/40"
+            } ${dragId === b.id ? "opacity-40" : ""}`}
+          >
+            <span
+              draggable
+              onDragStart={(e) => { e.stopPropagation(); onDragStart(b.id); }}
+              onDragEnd={onDragEnd}
+              onClick={(e) => e.stopPropagation()}
+              title="Drag to reorder"
+              className="cursor-grab text-muted-foreground/50 hover:text-muted-foreground active:cursor-grabbing shrink-0"
+            >
+              <GripVertical className="size-3.5" />
+            </span>
+            <Icon className={`size-3.5 shrink-0 ${sel ? "text-primary" : "text-muted-foreground"}`} />
+            <div className="min-w-0 flex-1">
+              <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground leading-none">{b.type.replace(/_/g, " ")}</div>
+              <div className="text-[11px] truncate text-foreground/80 leading-tight mt-0.5">{blockSummary(b)}</div>
+            </div>
+            <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+              <button onClick={(e) => { e.stopPropagation(); onMoveUp(b.id); }} disabled={i === 0} className="btn-icon h-5 w-5 disabled:opacity-30"><ChevronUp className="size-3" /></button>
+              <button onClick={(e) => { e.stopPropagation(); onMoveDown(b.id); }} disabled={i === blocks.length - 1} className="btn-icon h-5 w-5 disabled:opacity-30"><ChevronDown className="size-3" /></button>
+              <button onClick={(e) => { e.stopPropagation(); onRemove(b.id); }} className="btn-icon h-5 w-5 text-rose-600"><Trash2 className="size-3" /></button>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// =============================================================================
+// SIDEBAR — palette, theme, merge fields
+// =============================================================================
 
 const PALETTE: Array<{ type: any; label: string; icon: any }> = [
   { type: "logo", label: "Logo", icon: ImageIcon },
@@ -367,9 +588,9 @@ function BlockPalette({ onAdd, disabled }: { onAdd: (t: any) => void; disabled?:
             key={p.type}
             disabled={disabled}
             onClick={() => onAdd(p.type)}
-            className="flex flex-col items-center gap-1 p-2 rounded-md border border-border hover:bg-brand-cyan-light/30 disabled:opacity-40 text-xs"
+            className="flex flex-col items-center gap-1 p-2 rounded-lg border border-border hover:border-primary/40 hover:bg-primary/5 disabled:opacity-40 text-xs transition-colors"
           >
-            <p.icon className="size-4 text-brand-cyan" />
+            <p.icon className="size-4 text-primary" />
             {p.label}
           </button>
         ))}
@@ -399,13 +620,8 @@ function ThemePanel({
       </Section>
 
       <Section title="Logo">
-        <label className="text-[10px] text-muted-foreground">Logo URL</label>
-        <input
-          value={theme.logoUrl ?? ""}
-          onChange={(e) => onChange({ logoUrl: e.target.value })}
-          placeholder="https://…/logo.png"
-          className="input-base text-xs w-full"
-        />
+        <label className="text-[10px] text-muted-foreground">Logo image</label>
+        <ImageUploadInput value={theme.logoUrl ?? ""} onChange={(v) => onChange({ logoUrl: v })} placeholder="https://…/logo.png" />
         <div className="grid grid-cols-2 gap-2 mt-1">
           <div>
             <label className="text-[10px] text-muted-foreground">Logo height</label>
@@ -522,26 +738,44 @@ function ThemePanel({
 
 function MergeFieldPicker({ onPick }: { onPick: (f: MergeField) => void }) {
   const cats = mergeFieldsByCategory();
+  const entries = Object.entries(cats);
+  // Each category is its own expand/shrink dropdown (first one open by default).
+  const [open, setOpen] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(entries.map(([c], i) => [c, i === 0]))
+  );
   return (
-    <div className="space-y-3 text-xs">
-      <div className="text-[10px] text-muted-foreground">
-        Click any field to insert it into the focused input. Use{" "}
+    <div className="space-y-1.5 text-xs">
+      <div className="text-[10px] text-muted-foreground mb-1">
+        Click a field to insert it at the cursor. Use{" "}
         <code className="bg-secondary px-1 rounded">{`{{token}}`}</code> syntax anywhere in your text.
       </div>
-      {Object.entries(cats).map(([cat, fields]) => (
-        <div key={cat}>
-          <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-1">{cat}</div>
-          <div className="space-y-0.5">
-            {fields.map((f) => (
-              <button
-                key={f.token}
-                onClick={() => onPick(f)}
-                className="w-full text-left rounded hover:bg-brand-cyan-light/40 p-1.5"
-              >
-                <div className="text-xs font-medium">{f.label}</div>
-                <div className="text-[10px] text-muted-foreground font-mono">{`{{${f.token}}}`}</div>
-              </button>
-            ))}
+      {entries.map(([cat, fields]) => (
+        <div key={cat} className="rounded-lg border border-border overflow-hidden bg-card">
+          <button
+            onClick={() => setOpen((o) => ({ ...o, [cat]: !o[cat] }))}
+            className="w-full flex items-center gap-2 px-2.5 py-2 text-[11px] font-semibold bg-secondary/30 hover:bg-secondary/50 transition-colors"
+          >
+            <span className="size-1.5 rounded-full bg-primary shrink-0" />
+            <span className="flex-1 text-left uppercase tracking-wider text-muted-foreground">{cat}</span>
+            <span className="text-[10px] text-muted-foreground bg-background rounded-full px-1.5 leading-4">{fields.length}</span>
+            <ChevronDown className={`size-3.5 text-muted-foreground shrink-0 transition-transform duration-200 ${open[cat] ? "rotate-180" : ""}`} />
+          </button>
+          <div className={`grid transition-[grid-template-rows] duration-200 ease-out ${open[cat] ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}>
+            <div className="overflow-hidden">
+              <div className="p-1 space-y-0.5">
+                {fields.map((f) => (
+                  <button
+                    key={f.token}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => onPick(f)}
+                    className="w-full text-left rounded hover:bg-primary/10 p-1.5"
+                  >
+                    <div className="text-xs font-medium">{f.label}</div>
+                    <div className="text-[10px] text-muted-foreground font-mono">{`{{${f.token}}}`}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       ))}
@@ -549,68 +783,83 @@ function MergeFieldPicker({ onPick }: { onPick: (f: MergeField) => void }) {
   );
 }
 
-// =============================================================================
-// CANVAS — block card + per-type editor
-// =============================================================================
-
-function BlockCard({
-  block,
-  selected,
-  onSelect,
-  onChange,
-  onRemove,
-  onMoveUp,
-  onMoveDown,
-  dragging,
-  onDragStartBlock,
-  onDragEndBlock,
-  onDropOnBlock,
-}: {
-  block: any;
-  selected: boolean;
-  onSelect: () => void;
-  onChange: (patch: any) => void;
-  onRemove: () => void;
-  onMoveUp: () => void;
-  onMoveDown: () => void;
-  dragging?: boolean;
-  onDragStartBlock?: () => void;
-  onDragEndBlock?: () => void;
-  onDropOnBlock?: () => void;
-}) {
+/** Compact "Insert field" dropdown — drops a merge token into the last-touched
+ *  input. preventDefault on mousedown keeps that input focused through the click. */
+function FieldMenu({ onPick }: { onPick: (f: MergeField) => void }) {
+  const [open, setOpen] = useState(false);
+  const cats = mergeFieldsByCategory();
   return (
-    <div
-      onClick={onSelect}
-      onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
-      onDrop={(e) => { e.preventDefault(); onDropOnBlock?.(); }}
-      className={`bg-white border rounded-lg p-3 cursor-pointer transition-shadow ${
-        selected ? "border-brand-cyan shadow-md" : "border-border hover:shadow-sm"
-      } ${dragging ? "opacity-40" : ""}`}
-    >
-      <div className="flex items-center justify-between mb-2 -mt-1">
-        <div className="flex items-center gap-1">
-          <span
-            draggable
-            onDragStart={onDragStartBlock}
-            onDragEnd={onDragEndBlock}
-            onClick={(e) => e.stopPropagation()}
-            title="Drag to reorder"
-            className="cursor-grab text-muted-foreground/60 hover:text-muted-foreground active:cursor-grabbing"
-          >
-            <GripVertical className="size-3.5" />
-          </span>
-          <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">{block.type.replace(/_/g, " ")}</div>
-        </div>
-        <div className="flex items-center gap-0.5 opacity-60 hover:opacity-100">
-          <button onClick={(e) => { e.stopPropagation(); onMoveUp(); }} className="btn-icon h-6 w-6"><ChevronUp className="size-3" /></button>
-          <button onClick={(e) => { e.stopPropagation(); onMoveDown(); }} className="btn-icon h-6 w-6"><ChevronDown className="size-3" /></button>
-          <button onClick={(e) => { e.stopPropagation(); onRemove(); }} className="btn-icon h-6 w-6 text-rose-600"><Trash2 className="size-3" /></button>
-        </div>
-      </div>
-      <BlockEditor block={block} onChange={onChange} />
+    <div className="relative">
+      <button
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => setOpen((o) => !o)}
+        title="Insert a personalisation field"
+        className="text-[11px] px-1.5 py-1 rounded-md border border-border hover:bg-secondary inline-flex items-center gap-1"
+      >
+        <Variable className="size-3" /> Field
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 mt-1 z-50 w-60 max-h-72 overflow-y-auto scrollbar-thin card-elevated bg-card p-1.5 text-xs">
+            {Object.entries(cats).map(([cat, fields]) => (
+              <div key={cat}>
+                <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground px-1.5 pt-1.5">{cat}</div>
+                {fields.map((f) => (
+                  <button
+                    key={f.token}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => { onPick(f); setOpen(false); }}
+                    className="w-full text-left rounded hover:bg-primary/10 p-1.5"
+                  >
+                    <div className="font-medium">{f.label}</div>
+                    <div className="text-[10px] text-muted-foreground font-mono">{`{{${f.token}}}`}</div>
+                  </button>
+                ))}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }
+
+/** Image field with a real upload button (presigned S3 PUT → public URL). */
+function ImageUploadInput({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  async function pick(file: File) {
+    setBusy(true); setErr(null);
+    try {
+      const presign = await fetch("/api/content-library/upload-url", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ filename: file.name, contentType: file.type || "image/png" }),
+      });
+      const pj = await presign.json();
+      if (!presign.ok) throw new Error(pj.error ?? "Could not start upload");
+      const put = await fetch(pj.url, { method: "PUT", headers: { "content-type": file.type || "image/png" }, body: file });
+      if (!put.ok) throw new Error(`Upload failed (HTTP ${put.status})`);
+      onChange(pj.publicUrl);
+    } catch (e: any) { setErr(e?.message ?? "Upload failed"); } finally { setBusy(false); }
+  }
+  return (
+    <div className="space-y-1">
+      <div className="flex gap-1.5">
+        <input value={value ?? ""} onChange={(e) => onChange(e.target.value)} placeholder={placeholder ?? "https://…/image.png"} className="input-base text-xs flex-1 font-mono" />
+        <label className="shrink-0 inline-flex items-center gap-1 px-2 rounded-md border border-border hover:bg-secondary cursor-pointer text-[11px]" title="Upload image">
+          {busy ? <Loader2 className="size-3.5 animate-spin" /> : <UploadCloud className="size-3.5" />} Upload
+          <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) pick(f); e.currentTarget.value = ""; }} />
+        </label>
+      </div>
+      {err && <div className="text-[10px] text-rose-600">{err}</div>}
+    </div>
+  );
+}
+
+// =============================================================================
+// CANVAS — per-type block editor (rendered in the right properties panel)
+// =============================================================================
 
 function BlockEditor({ block, onChange }: { block: any; onChange: (patch: any) => void }) {
   switch (block.type) {
@@ -621,7 +870,8 @@ function BlockEditor({ block, onChange }: { block: any; onChange: (patch: any) =
         <div className="space-y-1.5">
           <input value={block.title ?? ""} onChange={(e) => onChange({ title: e.target.value })} placeholder="Hero title" className="input-base text-sm w-full" />
           <input value={block.subtitle ?? ""} onChange={(e) => onChange({ subtitle: e.target.value })} placeholder="Subtitle" className="input-base text-xs w-full" />
-          <input value={block.imageUrl ?? ""} onChange={(e) => onChange({ imageUrl: e.target.value })} placeholder="Hero image URL (optional)" className="input-base text-xs w-full" />
+          <label className="text-[10px] text-muted-foreground">Hero image (optional)</label>
+          <ImageUploadInput value={block.imageUrl ?? ""} onChange={(v) => onChange({ imageUrl: v })} placeholder="Hero image URL (optional)" />
           <SelectInline label="Align" value={block.align ?? "center"} onChange={(v) => onChange({ align: v })} options={[{ value: "left", label: "Left" }, { value: "center", label: "Center" }]} />
         </div>
       );
@@ -665,7 +915,7 @@ function BlockEditor({ block, onChange }: { block: any; onChange: (patch: any) =
     case "image":
       return (
         <div className="space-y-1.5">
-          <input value={block.url ?? ""} onChange={(e) => onChange({ url: e.target.value })} placeholder="https://…/image.png" className="input-base text-xs w-full font-mono" />
+          <ImageUploadInput value={block.url ?? ""} onChange={(v) => onChange({ url: v })} />
           <div className="grid grid-cols-3 gap-1.5">
             <input value={block.alt ?? ""} onChange={(e) => onChange({ alt: e.target.value })} placeholder="Alt text" className="input-base text-xs col-span-2" />
             <input type="number" value={block.width ?? 560} onChange={(e) => onChange({ width: Number(e.target.value) })} placeholder="Width" className="input-base text-xs" />
@@ -677,9 +927,10 @@ function BlockEditor({ block, onChange }: { block: any; onChange: (patch: any) =
       return (
         <div className="space-y-1.5">
           {(block.items ?? []).map((it: any, i: number) => (
-            <div key={i} className="flex gap-1.5">
-              <input value={it.url} onChange={(e) => onChange({ items: block.items.map((x: any, ix: number) => (ix === i ? { ...x, url: e.target.value } : x)) })} placeholder={`Image ${i + 1} URL`} className="input-base text-xs flex-1 font-mono" />
-              <input value={it.alt ?? ""} onChange={(e) => onChange({ items: block.items.map((x: any, ix: number) => (ix === i ? { ...x, alt: e.target.value } : x)) })} placeholder="Alt" className="input-base text-xs w-24" />
+            <div key={i} className="space-y-1 rounded-md border border-border p-1.5">
+              <div className="text-[10px] text-muted-foreground">Image {i + 1}</div>
+              <ImageUploadInput value={it.url} onChange={(v) => onChange({ items: block.items.map((x: any, ix: number) => (ix === i ? { ...x, url: v } : x)) })} placeholder={`Image ${i + 1} URL`} />
+              <input value={it.alt ?? ""} onChange={(e) => onChange({ items: block.items.map((x: any, ix: number) => (ix === i ? { ...x, alt: e.target.value } : x)) })} placeholder="Alt text" className="input-base text-xs w-full" />
             </div>
           ))}
           <button
@@ -775,7 +1026,7 @@ function HtmlMode({ html, onChange }: { html: string; onChange: (v: string) => v
   return (
     <div className="card-surface">
       <div className="border-b border-border px-3 py-2 text-xs text-muted-foreground flex items-center gap-2">
-        <Code className="size-3.5 text-brand-cyan" />
+        <Code className="size-3.5 text-primary" />
         Paste any HTML — Outlook/Gmail-safe code is recommended. Merge fields like{" "}
         <code className="bg-secondary px-1 rounded">{`{{investor.name}}`}</code> are substituted at send time.
       </div>
@@ -822,7 +1073,7 @@ function ModeChip({ active, onClick, label }: { active: boolean; onClick: () => 
   return (
     <button
       onClick={onClick}
-      className={`px-2.5 py-1 rounded text-xs ${active ? "bg-brand-cyan-light text-brand-cyan-deep font-semibold" : "text-muted-foreground hover:bg-secondary/40"}`}
+      className={`px-2.5 py-1 rounded-md text-xs ${active ? "bg-primary/10 text-primary font-semibold" : "text-muted-foreground hover:bg-secondary/40"}`}
     >
       {label}
     </button>

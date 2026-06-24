@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { requireAny } from "@/lib/auth/rbac";
 import { handleApiError } from "@/lib/api/error-handler";
 import { loadSifStatus, saveSifTargets, currentFiscalYear } from "@/lib/business/sif-status";
 
@@ -18,6 +19,7 @@ const FY_RE = /^\d{4}-\d{2}$/;
 export async function GET(req: NextRequest) {
   try {
     const session = await requireSession();
+    requireAny(session.roles, ["reports.business", "reports.manage"], session.permissions);
     const raw = req.nextUrl.searchParams.get("fy") ?? "";
     const fy = FY_RE.test(raw) ? raw : currentFiscalYear();
     const data = await withTenant(session.tenantId, async (tx) => loadSifStatus(tx, fy));
@@ -43,6 +45,7 @@ const Body = z.object({
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
+    requireAny(session.roles, ["reports.business", "reports.manage"], session.permissions);
     const parsed = Body.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
       return NextResponse.json({ error: "invalid body", issues: parsed.error.issues }, { status: 400 });

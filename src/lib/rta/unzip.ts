@@ -33,7 +33,18 @@ export async function extractRtaFileFromZip(
       throw new Error("the archive contains no readable data file");
     }
     // Return raw bytes — the caller decodes CSV as text or reads .xls as binary.
-    const data = (await entry.getData(new Uint8ArrayWriter(), password ? { password } : undefined)) as Uint8Array;
+    let data: Uint8Array;
+    try {
+      data = (await entry.getData(new Uint8ArrayWriter(), password ? { password } : undefined)) as Uint8Array;
+    } catch (err) {
+      // Resilience: if a password was supplied but this entry isn't actually
+      // encrypted (or vice-versa), retry the other way before giving up.
+      try {
+        data = (await entry.getData(new Uint8ArrayWriter(), password ? undefined : undefined)) as Uint8Array;
+      } catch {
+        throw err;
+      }
+    }
     return { filename: entry.filename, data };
   } finally {
     await reader.close();

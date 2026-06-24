@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { CampaignAudienceBuilder, type AudienceSelection } from "@/components/campaigns/CampaignAudienceBuilder";
+import { ThemeSelect } from "@/components/ui/ThemeSelect";
+import { ThemeDate } from "@/components/ui/ThemeDate";
 import {
   ChevronLeft,
   MessageCircle,
@@ -233,21 +235,11 @@ export default function NewCampaignPage() {
         <div className="grid grid-cols-2 gap-3">
           <label className="block">
             <div className="text-xs font-medium mb-1">Start date</div>
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              className="input-base"
-            />
+            <ThemeDate value={startDate} onChange={setStartDate} />
           </label>
           <label className="block">
             <div className="text-xs font-medium mb-1">End date</div>
-            <input
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              className="input-base"
-            />
+            <ThemeDate value={endDate} onChange={setEndDate} />
           </label>
         </div>
 
@@ -273,18 +265,14 @@ export default function NewCampaignPage() {
             </div>
             <label className="block">
               <div className="text-xs font-medium mb-1">Template (approved {kind})</div>
-              <select
-                value={templateId}
-                onChange={(e) => setTemplateId(e.target.value)}
-                className="input-base"
-              >
+              <ThemeSelect value={templateId} onChange={setTemplateId}>
                 <option value="">Select template…</option>
                 {filteredTemplates.map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.name} ({t.key})
                   </option>
                 ))}
-              </select>
+              </ThemeSelect>
               {filteredTemplates.length === 0 && (
                 <p className="text-[11px] text-amber-700 mt-1">No approved {kind} template yet — create &amp; approve one under Templates first.</p>
               )}
@@ -300,12 +288,12 @@ export default function NewCampaignPage() {
                   <div className="grid grid-cols-2 gap-3 pt-1">
                     <label className="block">
                       <div className="text-[11px] text-muted-foreground mb-1">Variant B template</div>
-                      <select value={variantTemplateId} onChange={(e) => setVariantTemplateId(e.target.value)} className="input-base">
+                      <ThemeSelect value={variantTemplateId} onChange={setVariantTemplateId}>
                         <option value="">Select template…</option>
                         {filteredTemplates.filter((t) => t.id !== templateId).map((t) => (
                           <option key={t.id} value={t.id}>{t.name} ({t.key})</option>
                         ))}
-                      </select>
+                      </ThemeSelect>
                     </label>
                     <label className="block">
                       <div className="text-[11px] text-muted-foreground mb-1">% of audience to variant B: <strong>{abSplitPct}%</strong></div>
@@ -339,12 +327,7 @@ export default function NewCampaignPage() {
                 <div className="text-xs font-medium mb-1">
                   Schedule (blank = send now after launch)
                 </div>
-                <input
-                  type="datetime-local"
-                  value={scheduledAt}
-                  onChange={(e) => setScheduledAt(e.target.value)}
-                  className="input-base"
-                />
+                <ThemeDate type="datetime-local" value={scheduledAt} onChange={setScheduledAt} />
               </label>
               <label className="block">
                 <div className="text-xs font-medium mb-1">Throttle (per min)</div>
@@ -361,17 +344,17 @@ export default function NewCampaignPage() {
             <div className="grid grid-cols-2 gap-3">
               <label className="block">
                 <div className="text-xs font-medium mb-1">Repeat</div>
-                <select value={recurrence} onChange={(e) => setRecurrence(e.target.value)} className="input-base">
+                <ThemeSelect value={recurrence} onChange={setRecurrence}>
                   <option value="none">One-time</option>
                   <option value="daily">Daily</option>
                   <option value="weekly">Weekly</option>
                   <option value="monthly">Monthly</option>
-                </select>
+                </ThemeSelect>
               </label>
               {recurrence !== "none" && (
                 <label className="block">
                   <div className="text-xs font-medium mb-1">Repeat until</div>
-                  <input type="date" value={recurrenceUntil} onChange={(e) => setRecurrenceUntil(e.target.value)} className="input-base" />
+                  <ThemeDate value={recurrenceUntil} onChange={setRecurrenceUntil} />
                 </label>
               )}
             </div>
@@ -400,40 +383,28 @@ export default function NewCampaignPage() {
         <div className="grid grid-cols-3 gap-3">
           <label className="block">
             <div className="text-xs font-medium mb-1">Content status</div>
-            <select
-              value={contentStatus}
-              onChange={(e) => setContentStatus(e.target.value)}
-              className="input-base"
-            >
+            <ThemeSelect value={contentStatus} onChange={setContentStatus}>
               <option value="not_started">Not started</option>
               <option value="drafting">Drafting</option>
               <option value="ready">Ready</option>
               <option value="published">Published</option>
-            </select>
+            </ThemeSelect>
           </label>
           <label className="block">
             <div className="text-xs font-medium mb-1">Compliance check</div>
-            <select
-              value={complianceCheckStatus}
-              onChange={(e) => setComplianceCheckStatus(e.target.value)}
-              className="input-base"
-            >
+            <ThemeSelect value={complianceCheckStatus} onChange={setComplianceCheckStatus}>
               <option value="pending">Pending</option>
               <option value="cleared">Cleared</option>
               <option value="blocked">Blocked</option>
               <option value="not_required">Not required</option>
-            </select>
+            </ThemeSelect>
           </label>
           <label className="block">
             <div className="text-xs font-medium mb-1">Approval status</div>
-            <select
-              value={approvalStatus}
-              onChange={(e) => setApprovalStatus(e.target.value)}
-              className="input-base"
-            >
+            <ThemeSelect value={approvalStatus} onChange={setApprovalStatus}>
               <option value="pending">Pending</option>
               <option value="not_required">Not required</option>
-            </select>
+            </ThemeSelect>
             <p className="text-[10px] text-muted-foreground mt-1">Approve from the campaign page, or use Save &amp; send.</p>
           </label>
         </div>

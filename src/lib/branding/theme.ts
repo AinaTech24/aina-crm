@@ -151,13 +151,44 @@ export function buildThemeVars(primaryHex: string, accentHex: string): Record<st
  * into a `<style>` tag in the dashboard layout. Returns `""` when the colours
  * are the stock AINA palette (nothing to override).
  */
-export function buildTenantThemeCss(primaryColor?: string | null, secondaryColor?: string | null): string {
+/**
+ * Optional per-tenant overrides for body TEXT colour and the HOVER / secondary
+ * surface colour. Text maps to --foreground (exact hue); hover maps to
+ * --secondary as a light brand tint (it's a background surface, so we force a
+ * high lightness for legibility). Returns only the vars that are set + valid.
+ */
+function extraThemeVars(textColor?: string | null, hoverColor?: string | null): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (isHexColor(textColor)) {
+    const t = hexToHsl(textColor);
+    const v = hslVar(t.h, t.s, t.l);
+    out["--foreground"] = v;
+    out["--card-foreground"] = v;
+  }
+  if (isHexColor(hoverColor)) {
+    const h = hexToHsl(hoverColor);
+    out["--secondary"] = hslVar(h.h, clamp(h.s, 12, 80), 94);
+  }
+  return out;
+}
+
+export function buildTenantThemeCss(
+  primaryColor?: string | null,
+  secondaryColor?: string | null,
+  textColor?: string | null,
+  hoverColor?: string | null
+): string {
   const { primary, accent } = resolveThemeColors(primaryColor, secondaryColor);
-  if (primary === DEFAULT_THEME.primary && accent === DEFAULT_THEME.accent) return "";
-  const vars = buildThemeVars(primary, accent);
-  const body = Object.entries(vars)
-    .map(([k, v]) => `${k}: ${v};`)
-    .join(" ");
+  const vars: Record<string, string> = {};
+  // Brand colours only when actually customised (stock palette → nothing).
+  if (!(primary === DEFAULT_THEME.primary && accent === DEFAULT_THEME.accent)) {
+    Object.assign(vars, buildThemeVars(primary, accent));
+  }
+  // Text + hover apply independently of the brand colours.
+  Object.assign(vars, extraThemeVars(textColor, hoverColor));
+  const keys = Object.keys(vars);
+  if (keys.length === 0) return "";
+  const body = keys.map((k) => `${k}: ${vars[k]};`).join(" ");
   // Scope to light mode only — in dark mode the `.dark` palette wins, so the
   // per-tenant light tints never bleed onto the dark theme.
   return `:root:not(.dark){ ${body} }`;
@@ -167,6 +198,11 @@ export function buildTenantThemeCss(primaryColor?: string | null, secondaryColor
  * Same vars as an inline-style object — used by the client live-preview to
  * scope the theme to a single container without touching `:root`.
  */
-export function buildThemeStyleObject(primaryHex: string, accentHex: string): Record<string, string> {
-  return buildThemeVars(primaryHex, accentHex);
+export function buildThemeStyleObject(
+  primaryHex: string,
+  accentHex: string,
+  textColor?: string | null,
+  hoverColor?: string | null
+): Record<string, string> {
+  return { ...buildThemeVars(primaryHex, accentHex), ...extraThemeVars(textColor, hoverColor) };
 }

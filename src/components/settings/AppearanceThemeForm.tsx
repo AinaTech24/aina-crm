@@ -20,19 +20,27 @@ import {
 
 export function AppearanceThemeForm({ tenant }: { tenant: any }) {
   const router = useRouter();
+  // Stock equivalents of the app's light-mode --foreground / --secondary.
+  const TEXT_DEFAULT = "#0f172a";
+  const HOVER_DEFAULT = "#f1f5f9";
   const initialPrimary = isHexColor(tenant.primaryColor) ? tenant.primaryColor : DEFAULT_THEME.primary;
   const initialAccent = isHexColor(tenant.secondaryColor) ? tenant.secondaryColor : DEFAULT_THEME.accent;
+  const initialText = isHexColor(tenant.textColor) ? tenant.textColor : TEXT_DEFAULT;
+  const initialHover = isHexColor(tenant.hoverColor) ? tenant.hoverColor : HOVER_DEFAULT;
 
   const [primary, setPrimary] = useState(initialPrimary);
   const [accent, setAccent] = useState(initialAccent);
+  const [text, setText] = useState(initialText);
+  const [hover, setHover] = useState(initialHover);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  const dirty = primary !== initialPrimary || accent !== initialAccent;
+  const dirty =
+    primary !== initialPrimary || accent !== initialAccent || text !== initialText || hover !== initialHover;
   const previewVars = useMemo(
-    () => buildThemeStyleObject(primary, accent) as React.CSSProperties,
-    [primary, accent]
+    () => buildThemeStyleObject(primary, accent, text, hover) as React.CSSProperties,
+    [primary, accent, text, hover]
   );
 
   const activePresetId = THEME_PRESETS.find(
@@ -46,7 +54,7 @@ export function AppearanceThemeForm({ tenant }: { tenant: any }) {
       const res = await fetch("/api/tenant", {
         method: "PATCH",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ primaryColor: primary, secondaryColor: accent }),
+        body: JSON.stringify({ primaryColor: primary, secondaryColor: accent, textColor: text, hoverColor: hover }),
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -66,6 +74,8 @@ export function AppearanceThemeForm({ tenant }: { tenant: any }) {
   function resetDefault() {
     setPrimary(DEFAULT_THEME.primary);
     setAccent(DEFAULT_THEME.accent);
+    setText(TEXT_DEFAULT);
+    setHover(HOVER_DEFAULT);
   }
 
   return (
@@ -119,6 +129,18 @@ export function AppearanceThemeForm({ tenant }: { tenant: any }) {
               hint="Links, active items, focus, accents"
               value={accent}
               onChange={setAccent}
+            />
+            <Swatch
+              label="Text colour"
+              hint="Body text across the workspace"
+              value={text}
+              onChange={setText}
+            />
+            <Swatch
+              label="Hover colour"
+              hint="Hover & secondary surfaces (applied as a soft tint)"
+              value={hover}
+              onChange={setHover}
             />
           </div>
           <p className="text-[11px] text-muted-foreground">

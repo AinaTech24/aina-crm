@@ -1,21 +1,25 @@
 import Link from "next/link";
 import {
-  Sparkles, Target, IndianRupee, Users, AlertTriangle, TrendingDown, XOctagon,
-  ShieldAlert, CalendarClock, Moon, ShieldCheck, TrendingUp, Cake,
+  Sparkles, Target, IndianRupee, AlertTriangle, TrendingDown, XOctagon,
+  ShieldAlert, CalendarClock, Moon, ShieldCheck, TrendingUp, Cake, MessageCircle, FileText,
+  ListChecks, LayoutList, Rows3,
 } from "lucide-react";
 import { sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { buildNextBestActions, NBA_META, type NbaType, type NbaAction } from "@/lib/nba/engine";
+import { Avatar } from "@/components/ui/Avatar";
 import { ContactQuickActions } from "@/components/common/ContactQuickActions";
 import { LogActivityButton } from "@/components/activities/ActivityLogger";
 import { NbaDateFilter } from "@/components/nba/NbaDateFilter";
 import { NbaUserFilter } from "@/components/nba/NbaUserFilter";
+import { NbaRowActions } from "@/components/nba/NbaRowActions";
+import { NbaFocusMode, type FocusAction } from "@/components/nba/NbaFocusMode";
 
 export const dynamic = "force-dynamic";
 
-const ICONS: Record<string, any> = { TrendingDown, XOctagon, ShieldAlert, Sparkles, CalendarClock, Moon, ShieldCheck, TrendingUp, Cake };
+const ICONS: Record<string, any> = { TrendingDown, XOctagon, ShieldAlert, Sparkles, CalendarClock, Moon, ShieldCheck, TrendingUp, Cake, MessageCircle, FileText };
 const TONE: Record<string, string> = {
   rose: "border-l-rose-500", amber: "border-l-amber-500", sky: "border-l-sky-500", violet: "border-l-violet-500", emerald: "border-l-emerald-500",
 };
@@ -38,8 +42,9 @@ export default async function NextBestActionPage({ searchParams }: { searchParam
   const scopedUserId = userParam || session.userId;
   const firmWide = canFirm && !userParam;
   const scopeLabel = firmWide ? "across the firm" : userParam ? "in this member's book" : "in your book";
+  const focusMode = (sp.focus ?? "") === "1";
 
-  const { actions, userOptions } = await withTenant(
+  const { actions, userOptions, handledThisWeek } = await withTenant(
     session.tenantId,
     async (tx) => {
       const actions = await buildNextBestActions(tx as any, { userId: scopedUserId, firmWide, limit: 150 });
@@ -52,13 +57,24 @@ export default async function NextBestActionPage({ searchParams }: { searchParam
         `);
         userOptions = (r.rows as { id: string; name: string }[]).map((u) => ({ value: String(u.id), label: u.name ?? "—" }));
       }
-      return { actions, userOptions };
+      // Outcome KPI — NBA actions the viewer snoozed/done/dismissed in 7 days.
+      let handledThisWeek = 0;
+      try {
+        const h = await tx.execute(sql`
+          SELECT count(*)::int AS n FROM command_center_snoozes
+          WHERE user_id = ${session.userId}::uuid AND item_key LIKE 'nba:%'
+            AND updated_at > now() - interval '7 days'
+        `);
+        handledThisWeek = Number((h.rows[0] as any)?.n ?? 0);
+      } catch { /* pre-migration */ }
+      return { actions, userOptions, handledThisWeek };
     },
     { userId: session.userId, branchId: session.branchId, roles: session.roles }
   );
 
   const totalImpact = actions.reduce((a, x) => a + x.impactInr, 0);
   const nowCount = actions.filter((a) => a.severity === "now").length;
+  const signalsTotal = actions.reduce((n, a) => n + 1 + (a.others?.length ?? 0), 0);
   const byType = actions.reduce((m, a) => ((m[a.type] = (m[a.type] ?? 0) + 1), m), {} as Record<string, number>);
   // Date-range filter over each action's relevant date. Once a range is set,
   // undated actions (e.g. cross-sell) drop out.
@@ -89,17 +105,27 @@ export default async function NextBestActionPage({ searchParams }: { searchParam
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2"><Sparkles className="size-6 text-brand-cyan" /> Next Best Action</h1>
-          <p className="text-muted-foreground text-sm">Your single ranked worklist — every client signal scored by ₹-impact and urgency, highest-value first. {canFirm ? "" : "Your book."}</p>
         </div>
-        {canFirm && <NbaUserFilter value={userParam} options={userOptions} />}
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="inline-flex rounded-lg border border-border bg-card p-0.5 gap-0.5">
+            <Link href={hrefWith({ focus: undefined })} className={`px-2.5 py-1 rounded-md text-xs font-medium inline-flex items-center gap-1.5 ${!focusMode ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
+              <Rows3 className="size-3" /> List
+            </Link>
+            <Link href={hrefWith({ focus: "1" })} className={`px-2.5 py-1 rounded-md text-xs font-medium inline-flex items-center gap-1.5 ${focusMode ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
+              <LayoutList className="size-3" /> Focus
+            </Link>
+          </div>
+          {canFirm && <NbaUserFilter value={userParam} options={userOptions} />}
+        </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Kpi icon={Target} label="Actions queued" value={String(actions.length)} />
+        <Kpi icon={Target} label="Clients to act on" value={String(actions.length)} />
         <Kpi icon={AlertTriangle} label="Act now" value={String(nowCount)} tone="rose" />
         <Kpi icon={IndianRupee} label="₹ value at stake" value={inr(totalImpact)} tone="emerald" />
-        <Kpi icon={Users} label="Clients to touch" value={String(actions.length)} tone="sky" />
+        <Kpi icon={ListChecks} label="Handled this week" value={String(handledThisWeek)} tone="sky" />
       </div>
+      <p className="text-[11px] text-muted-foreground -mt-3">{signalsTotal} signals across {actions.length} clients (one headline each; the rest shown as “+N more”).</p>
 
       {/* Date-range filter — over each action's relevant date */}
       <div className="flex flex-wrap items-center gap-2">
@@ -142,6 +168,8 @@ export default async function NextBestActionPage({ searchParams }: { searchParam
           <div className="mt-3 font-medium">You&apos;re all caught up. ✓</div>
           <p className="text-sm text-muted-foreground mt-1">No high-priority actions {scopeLabel} right now.</p>
         </div>
+      ) : focusMode ? (
+        <NbaFocusMode actions={shown.map(toFocusAction)} />
       ) : (
         // Fixed-height worklist — scrolls inside the page, scrollbar hidden.
         <div className="max-h-[calc(100vh-20rem)] min-h-[18rem] overflow-y-auto scrollbar-none pr-0.5">
@@ -157,19 +185,32 @@ export default async function NextBestActionPage({ searchParams }: { searchParam
 function Row({ a, rank }: { a: NbaAction; rank: number }) {
   const meta = NBA_META[a.type];
   const Icon = ICONS[meta.icon] ?? Sparkles;
-  const firstName = a.subjectName?.split(" ")[0] ?? "";
-  const msg = a.type === "birthday_today"
-    ? `Dear ${firstName}, wishing you a very Happy Birthday! 🎂`
-    : `Hi ${firstName}, `;
+  // Suggested channel first, then the rest.
+  const show: Array<"whatsapp" | "call" | "email"> =
+    a.suggestedChannel === "whatsapp" ? ["whatsapp", "call"] : ["call", "whatsapp"];
   return (
     <li className={`card-surface border-l-4 ${TONE[meta.tone]} p-3 flex items-center gap-3`}>
       <div className="text-sm font-bold text-muted-foreground tabular-nums w-6 text-center shrink-0">{rank}</div>
       <div className={`size-9 rounded-lg grid place-items-center shrink-0 ${CHIP_TONE[meta.tone]}`}><Icon className="size-4" /></div>
+      <Avatar
+        src={a.avatarUrl ? `/api/${a.subjectType === "lead" ? "leads" : "investors"}/${a.subjectId}/avatar` : null}
+        name={a.subjectName}
+        size={32}
+        className="shrink-0"
+      />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 flex-wrap">
           <Link href={a.href} className="font-semibold text-sm hover:underline truncate">{a.subjectName}</Link>
           <span className={`chip text-[10px] ${CHIP_TONE[meta.tone]}`}>{meta.label}</span>
           {a.subjectType === "lead" && <span className="chip text-[10px] bg-amber-50 text-amber-700">Lead</span>}
+          {a.others && a.others.length > 0 && (
+            <span
+              className="chip text-[10px] bg-secondary text-muted-foreground"
+              title={a.others.map((o) => `${o.label}: ${o.reason}`).join("\n")}
+            >
+              +{a.others.length} more
+            </span>
+          )}
         </div>
         <div className="text-xs text-muted-foreground truncate">{a.reason}{a.rmName ? <span className="opacity-60"> · RM {a.rmName}</span> : ""}</div>
       </div>
@@ -180,11 +221,35 @@ function Row({ a, rank }: { a: NbaAction; rank: number }) {
         </div>
       )}
       <div className="flex items-center gap-1.5 shrink-0">
-        <ContactQuickActions phone={a.phone} email={a.email} message={msg} show={["whatsapp", "call"]} size={15} />
+        <ContactQuickActions phone={a.phone} email={a.email} message={a.message} show={show} size={15} />
         <LogActivityButton subject={{ type: a.subjectType, id: a.subjectId, name: a.subjectName, phone: a.phone }} label="Log" variant="secondary" />
+        <NbaRowActions snoozeKey={a.snoozeKey} name={a.subjectName} label={meta.label} reason={a.reason} phone={a.phone} email={a.email} />
       </div>
     </li>
   );
+}
+
+/** Map a ranked action to the serialisable shape the focus stepper renders. */
+function toFocusAction(a: NbaAction): FocusAction {
+  const meta = NBA_META[a.type];
+  return {
+    key: a.key,
+    type: a.type,
+    label: meta.label,
+    toneChip: CHIP_TONE[meta.tone],
+    subjectType: a.subjectType,
+    subjectId: a.subjectId,
+    subjectName: a.subjectName,
+    phone: a.phone,
+    email: a.email,
+    reason: a.reason,
+    rmName: a.rmName,
+    impactLabel: a.impactInr > 0 ? inr(a.impactInr) : null,
+    message: a.message,
+    snoozeKey: a.snoozeKey,
+    href: a.href,
+    othersCount: a.others?.length ?? 0,
+  };
 }
 
 function Kpi({ icon: Icon, label, value, tone }: { icon: any; label: string; value: string; tone?: "rose" | "emerald" | "sky" }) {

@@ -78,7 +78,6 @@ export default async function ActivitiesPage({ searchParams }: { searchParams: P
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2"><ActivityIcon className="size-6 text-brand-cyan" /> Activity Log</h1>
-          <p className="text-muted-foreground text-sm">Every call, field visit, and interaction with your clients &amp; leads — one feed. {!firmWide && "Showing your activity."}</p>
         </div>
         <LogActivityButton />
       </div>
@@ -106,12 +105,12 @@ export default async function ActivitiesPage({ searchParams }: { searchParams: P
         }
       />
 
-      <div className="card-surface overflow-x-auto">
+      <div className="card-surface table-scroll">
         {data.rows.length === 0 ? (
           <div className="p-12 text-center text-sm text-muted-foreground">No activities yet. Use <strong>Log activity</strong>, or <strong>Check In</strong> / <strong>Log activity</strong> from a client or lead.</div>
         ) : (
           <table className="w-full text-sm">
-            <thead className="text-xs text-muted-foreground border-b">
+            <thead className="text-xs text-muted-foreground border-b sticky top-0 z-10 bg-card">
               <tr>
                 <th className="text-left px-4 py-2 font-medium">Type</th>
                 <th className="text-left py-2 font-medium">Subject / Client</th>

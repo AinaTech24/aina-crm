@@ -24,7 +24,7 @@ export const shareTokens = pgTable(
     tenantId: tenantId.references(() => tenants.id),
 
     kind: text("kind", {
-      enum: ["risk_profile", "document_collection", "proposal_approval", "onboarding_progress", "portfolio_view", "feedback"],
+      enum: ["risk_profile", "document_collection", "proposal_approval", "onboarding_progress", "portfolio_view", "feedback", "financial_discovery"],
     }).notNull(),
 
     /** SHA-256 hex of the plaintext token. */

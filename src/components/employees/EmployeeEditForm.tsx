@@ -103,7 +103,6 @@ const ALL_CAPABILITIES = [
       { key: "template.edit", label: "Edit Comms Templates" },
       { key: "template.approve", label: "Approve Comms Templates" },
       { key: "campaign.send", label: "Send Marketing Campaigns" },
-      { key: "content_calendar.manage", label: "Manage Content Calendar" },
       { key: "consent.manage", label: "Manage Client Consents" },
       { key: "sop.manage", label: "Manage SOP Library" },
     ]
@@ -251,6 +250,8 @@ export function EmployeeEditForm({
           filename: file.name,
           contentType: file.type || "application/octet-stream",
           kind: category === "other" ? "general" : category,
+          docType: fieldName,
+          clientName: employee?.name ?? undefined,
         }),
       });
       const presignJson = await presign.json();
@@ -704,10 +705,28 @@ export function EmployeeEditForm({
                     {v.enabledModules?.length ?? 0}/{tenantNavKeys.length}
                   </span>
                 </div>
-                {accessibleNavGroups.map((grp) => (
+                {accessibleNavGroups.map((grp) => {
+                  const groupKeys = grp.items.map((i) => i.key);
+                  const allOn = groupKeys.every((k) => v.enabledModules?.includes(k));
+                  return (
                   <div key={grp.title} className="space-y-1.5">
-                    <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground border-b pb-0.5">
-                      {grp.title}
+                    <div className="flex items-center justify-between border-b pb-0.5">
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                        {grp.title}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setV((p) => {
+                            const prev = p.enabledModules || [];
+                            const next = allOn ? prev.filter((k) => !groupKeys.includes(k)) : [...new Set([...prev, ...groupKeys])];
+                            return { ...p, enabledModules: next };
+                          })
+                        }
+                        className="text-[10px] font-medium text-primary hover:underline"
+                      >
+                        {allOn ? "Disable all" : "Enable all"}
+                      </button>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-1.5">
                       {grp.items.map((item) => (
@@ -725,7 +744,8 @@ export function EmployeeEditForm({
                       ))}
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

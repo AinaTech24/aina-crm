@@ -333,7 +333,7 @@ export async function OwnerInsightsSection({ session }: { session: SessionUser }
               Automation pulse — what the bots did for you this month
             </h2>
             <Link
-              href="/dashboard/workflows"
+              href="/dashboard/workflows/rules"
               className="text-xs text-brand-cyan-deep hover:underline font-semibold inline-flex items-center gap-1"
             >
               Workflows <ArrowRight className="size-3" />

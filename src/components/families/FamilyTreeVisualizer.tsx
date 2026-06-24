@@ -1,13 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { User, ShieldAlert, Award, TrendingUp } from "lucide-react";
+import { ShieldAlert, Award, TrendingUp } from "lucide-react";
 import { formatINR } from "@/lib/utils";
+import { Avatar } from "@/components/ui/Avatar";
 
 type Member = {
   id: string;
   name: string;
   pan: string;
+  avatarUrl?: string | null;
   familyRole: string | null;
   aum: string | number;
   activeSipAmount: string | number;
@@ -164,11 +166,12 @@ function MemberNode({
       )}
 
       <div className="flex items-start gap-2.5">
-        <div className={`size-8 rounded-full grid place-items-center flex-shrink-0 ${
-          isPrimary ? "bg-brand-cyan-light text-brand-cyan-deep" : "bg-secondary text-muted-foreground"
-        }`}>
-          <User className="size-4" />
-        </div>
+        <Avatar
+          src={member.avatarUrl ? `/api/investors/${member.id}/avatar` : null}
+          name={member.name}
+          size={32}
+          className="flex-shrink-0"
+        />
         <div className="min-w-0 flex-1">
           <Link
             href={`/dashboard/investors/${member.id}`}

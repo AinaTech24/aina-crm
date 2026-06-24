@@ -151,6 +151,48 @@ export async function POST(req: NextRequest) {
             continue;
           }
 
+          // ── Upsert the folio so the sheet's FOLIO-level columns (bank,
+          // nominee, invested / current value, XIRR, units, status, SIP flag …)
+          // land on the folio this transaction belongs to. amc_code is part of
+          // the folio key — derive it from the AMC name when the sheet has only
+          // a name. Best-effort: a folio error never aborts the row's txn.
+          try {
+            const amcNameRaw = pick(row, (reverse as any).amcName);
+            const amcCodeF = pick(row, reverse.amcCode) || (amcNameRaw ? amcNameRaw.slice(0, 40) : null);
+            if (folioNumber && amcCodeF) {
+              const fnum = (k: string) => {
+                const n = Number(pick(row, (reverse as any)[k]).replace(/[,₹%\s]/g, ""));
+                return Number.isFinite(n) ? n : null;
+              };
+              const fstr = (k: string) => pick(row, (reverse as any)[k]) || null;
+              const fdetails: Record<string, any> = {};
+              for (const k of ["trnsId", "folioOwner", "holdingMode", "folioStatus", "folioUniqueKey", "sipFlag", "bank", "branch", "bankCity", "ifsc", "lastTransactionDate", "nomineeName", "nomineeRelation", "nomineeAddress", "nomineeCity", "nomineeState", "nomineePincode", "nomineePercent"]) {
+                const v = fstr(k);
+                if (v) fdetails[k] = v;
+              }
+              for (const k of ["investedAmount", "currentValue", "xirr", "totalUnits", "loadFreeUnits", "sipAmount", "dayChangeValue"]) {
+                const v = fnum(k);
+                if (v != null) fdetails[k] = v;
+              }
+              const currentValue = fnum("currentValue");
+              const sd = pick(row, (reverse as any).folioStartDate);
+              const openedRaw = sd ? normaliseDate(sd) : null;
+              const openedAt = openedRaw && /^\d{4}-\d{2}-\d{2}$/.test(openedRaw) ? openedRaw : null;
+              await tx.execute(sql`
+                INSERT INTO folios (id, tenant_id, investor_id, folio_number, amc_code, amc_name, aum, opened_at, details, created_at, updated_at)
+                VALUES (${uuid()}, ${session.tenantId}, ${investor.id}, ${folioNumber}, ${amcCodeF}, ${amcNameRaw || amcCodeF}, ${currentValue ?? 0}, ${openedAt}::date, ${JSON.stringify(fdetails)}::jsonb, now(), now())
+                ON CONFLICT (tenant_id, amc_code, folio_number) DO UPDATE SET
+                  amc_name = EXCLUDED.amc_name,
+                  aum = CASE WHEN EXCLUDED.aum > 0 THEN EXCLUDED.aum ELSE folios.aum END,
+                  opened_at = COALESCE(folios.opened_at, EXCLUDED.opened_at),
+                  details = COALESCE(folios.details, '{}'::jsonb) || EXCLUDED.details,
+                  updated_at = now()
+              `);
+            }
+          } catch (fe: any) {
+            errors.push({ rowIndex: i, error: `folio upsert: ${String(fe?.message ?? "failed").slice(0, 120)}` });
+          }
+
           const dedupKey = dedupKeyFor(orderId, [
             investor.id, schemeCode ?? schemeName, orderDate, type, amount, units, direction,
           ]);

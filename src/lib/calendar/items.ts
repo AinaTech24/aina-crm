@@ -74,6 +74,7 @@ export async function getCalendarItems(
       SELECT id, title, description, due_at, due_at::date AS d, priority
       FROM tasks
       WHERE due_at IS NOT NULL
+        AND deleted_at IS NULL
         AND due_at::date >= ${fromIso} AND due_at::date <= ${toIso}
         AND status NOT IN ('completed', 'cancelled')${taskScope}
       ORDER BY due_at ASC LIMIT 500

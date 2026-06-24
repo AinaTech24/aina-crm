@@ -21,13 +21,13 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
-import { investors, complianceDocuments, users } from "@/db/schema";
+import { investors, users } from "@/db/schema";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
 
 const Body = z.object({
-  ids: z.array(z.string().uuid()).min(1).max(1000),
+  ids: z.array(z.string().uuid()).min(1).max(20000),
   action: z.enum(["assign", "review", "tier", "segment", "category", "delete"]),
   value: z.string().nullable().optional(),
 });
@@ -101,8 +101,9 @@ export async function POST(req: NextRequest) {
         patch.clientCategory = value;
         break;
       case "delete":
-        // Permanent hard delete — handled in the tx below (the owned-data
-        // subgraph cascades via migration 0131).
+        // Soft delete → Trash bin (recoverable). Stamped in the tx below; the
+        // owned-data subgraph is preserved until the retention window elapses,
+        // when daily-ops permanently purges it.
         break;
     }
 
@@ -112,17 +113,12 @@ export async function POST(req: NextRequest) {
       const scope = and(eq(investors.tenantId, session.tenantId), inArray(investors.id, ids));
       let updated: { id: string }[];
       if (action === "delete") {
-        // Documents link polymorphically (no FK) — remove them, then hard delete.
-        await tx
-          .delete(complianceDocuments)
-          .where(
-            and(
-              eq(complianceDocuments.tenantId, session.tenantId),
-              eq(complianceDocuments.relatedEntityType, "investor"),
-              inArray(complianceDocuments.relatedEntityId, ids)
-            )
-          );
-        updated = await tx.delete(investors).where(scope).returning({ id: investors.id });
+        // Soft delete into the Trash bin — preserves all related data.
+        updated = await tx
+          .update(investors)
+          .set({ deletedAt: new Date(), deletedBy: session.userId, updatedAt: new Date() } as any)
+          .where(scope)
+          .returning({ id: investors.id });
       } else {
         updated = await tx.update(investors).set(patch as any).where(scope).returning({ id: investors.id });
       }

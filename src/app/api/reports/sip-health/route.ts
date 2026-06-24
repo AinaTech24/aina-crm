@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { requireAny } from "@/lib/auth/rbac";
 import { handleApiError } from "@/lib/api/error-handler";
 import { loadSipHealth } from "@/lib/finance/sip-health";
 
@@ -22,6 +23,7 @@ function defaultPeriod(): string {
 export async function GET(req: NextRequest) {
   try {
     const session = await requireSession();
+    requireAny(session.roles, ["reports.business", "reports.manage"], session.permissions);
     const raw = req.nextUrl.searchParams.get("period") ?? "";
     const period = PERIOD_RE.test(raw) ? raw : defaultPeriod();
     const data = await withTenant(session.tenantId, async (tx) => loadSipHealth(tx, period));

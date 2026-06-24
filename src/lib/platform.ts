@@ -28,6 +28,8 @@ export function isPlatformStaff(roles: string[] | undefined): boolean {
  */
 export const ALL_MODULES = [
   "crm",
+  "dashboards",
+  "business_entries",
   "lead_management",
   "client_master",
   "family_mapping",
@@ -44,7 +46,6 @@ export const ALL_MODULES = [
   "complaints",
   "ddq",
   "marketing_campaigns",
-  "content_calendar",
   "tasks",
   "employees",
   "reports",
@@ -67,6 +68,8 @@ export type ModuleKey = (typeof ALL_MODULES)[number];
  */
 export const MODULE_LABELS: Record<ModuleKey, string> = {
   crm: "CRM Dashboard",
+  dashboards: "Dashboards",
+  business_entries: "Business Entries",
   lead_management: "Leads",
   client_master: "Clients",
   family_mapping: "Family Mapping",
@@ -83,7 +86,6 @@ export const MODULE_LABELS: Record<ModuleKey, string> = {
   complaints: "Complaints",
   ddq: "DDQ Readiness",
   marketing_campaigns: "Marketing Campaigns",
-  content_calendar: "Social Content Calendar",
   tasks: "Tasks",
   employees: "Employees / Team",
   reports: "Reports & MIS",
@@ -110,6 +112,8 @@ export const PACKAGE_PRESETS: Record<string, { modules: ModuleKey[]; flags: Reco
   starter: {
     modules: [
       "crm",
+      "dashboards",
+      "business_entries",
       "lead_management",
       "client_master",
       "tasks",
@@ -124,6 +128,8 @@ export const PACKAGE_PRESETS: Record<string, { modules: ModuleKey[]; flags: Reco
   growth: {
     modules: [
       "crm",
+      "dashboards",
+      "business_entries",
       "lead_management",
       "client_master",
       "family_mapping",
@@ -139,7 +145,6 @@ export const PACKAGE_PRESETS: Record<string, { modules: ModuleKey[]; flags: Reco
       "complaints",
       "ddq",
       "marketing_campaigns",
-      "content_calendar",
       "automation_workflows",
       "broadcasts",
       "documents",

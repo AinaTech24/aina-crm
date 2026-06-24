@@ -8,7 +8,7 @@ import { handleApiError } from "@/lib/api/error-handler";
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
@@ -40,7 +40,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       (await tx
         .select()
         .from(sops)
-        .where(and(eq(sops.id, id), eq(sops.tenantId, session.tenantId)))
+        .where(and(eq(sops.id, id), eq(sops.tenantId, session.tenantId), isNull(sops.deletedAt)))
         .limit(1))[0] ?? null
     );
     if (!row) return NextResponse.json({ error: "not found" }, { status: 404 });
@@ -64,7 +64,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       const r = await tx
         .update(sops)
         .set({ ...parse.data, updatedAt: new Date() } as any)
-        .where(and(eq(sops.id, id), eq(sops.tenantId, session.tenantId)))
+        .where(and(eq(sops.id, id), eq(sops.tenantId, session.tenantId), isNull(sops.deletedAt)))
         .returning();
       if (!r[0]) return null;
       await recordAudit(tx, {
@@ -92,8 +92,17 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     requireCap(session.roles, "sop.manage");
     await assertActiveLicense(session.tenantId, session.roles);
     const clientMeta = clientMetaFromHeaders(req.headers);
-    await withTenant(session.tenantId, async (tx) => {
-      await tx.delete(sops).where(and(eq(sops.id, id), eq(sops.tenantId, session.tenantId)));
+    const ok = await withTenant(session.tenantId, async (tx) => {
+      // Soft-delete: stamp deleted_at instead of hard-deleting. A hard delete
+      // would cascade away every sop_versions row and orphan the
+      // sop_acknowledgements (no FK), destroying the sign-off evidence this
+      // module exists to keep for DDQ / inspection. Versions + acks are retained.
+      const r = await tx
+        .update(sops)
+        .set({ deletedAt: new Date(), deletedBy: session.userId, updatedAt: new Date() } as any)
+        .where(and(eq(sops.id, id), eq(sops.tenantId, session.tenantId), isNull(sops.deletedAt)))
+        .returning({ id: sops.id });
+      if (!r[0]) return false;
       await recordAudit(tx, {
         tenantId: session.tenantId,
         actorUserId: session.userId,
@@ -102,7 +111,9 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
         entityId: id,
         ...clientMeta,
       });
+      return true;
     });
+    if (!ok) return NextResponse.json({ error: "not found" }, { status: 404 });
     return NextResponse.json({ ok: true });
   } catch (err: any) {
     return handleApiError(err);

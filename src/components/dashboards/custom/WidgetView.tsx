@@ -7,16 +7,32 @@
  * preview. Pure presentation — drag/resize/remove chrome is added by the editor.
  */
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ResponsiveContainer, AreaChart, Area, LineChart, Line, BarChart, Bar,
   PieChart, Pie, Cell, XAxis, YAxis, Tooltip, CartesianGrid,
 } from "recharts";
-import { Loader2, AlertCircle, Download } from "lucide-react";
+import { Loader2, AlertCircle, Download, RefreshCw } from "lucide-react";
 import { formatINR, formatDate } from "@/lib/utils";
 import { WIDGET_META_BY_KEY } from "@/lib/dashboards/widgets";
 
 const PALETTE = ["#0ea5e9", "#6366f1", "#10b981", "#f59e0b", "#ef4444", "#a855f7", "#14b8a6", "#ec4899"];
+
+/**
+ * Module-level in-memory cache keyed by widgetKey+rm+period. Keeps re-renders
+ * and remounts (e.g. toggling Present mode, reordering in the builder) from
+ * re-hitting the API. Short TTL so a viewed board stays reasonably fresh, with
+ * an opt-in periodic refetch on top. No persistence, no deps — cleared on full
+ * page reload.
+ */
+const CACHE_TTL_MS = 60_000;
+const REFRESH_MS = 60_000;
+type FetchResult = { view?: View; rows: any[]; chart?: string; error?: string };
+const widgetCache = new Map<string, { at: number; data: FetchResult }>();
+
+function cacheKey(widgetKey: string, rm: string, period: string, custom?: any): string {
+  return custom ? `custom:${JSON.stringify(custom)}` : `${widgetKey}|${rm}|${period}`;
+}
 
 type View =
   | { kind: "kpi"; valueKey: string; format: "inr" | "number" | "pct" }
@@ -49,20 +65,35 @@ function fmt(v: any, format?: string): string {
   return String(v);
 }
 
-export function WidgetView({ widgetKey, rm, titleOverride, config }: { widgetKey: string; rm?: string; titleOverride?: string; config?: any }) {
+export function WidgetView({ widgetKey, rm, period, titleOverride, config }: { widgetKey: string; rm?: string; period?: string; titleOverride?: string; config?: any }) {
   const meta = WIDGET_META_BY_KEY[widgetKey];
   // A custom component carries its own definition (subject + chartType) in config
   // and is rendered by the custom-chart aggregate API instead of a static widget.
   const isCustom = !!(config && config.subject && config.chartType);
+  const configJson = JSON.stringify(config);
   const [state, setState] = useState<{ loading: boolean; error?: string; view?: View; rows?: any[]; chart?: string }>({ loading: true });
 
-  useEffect(() => {
+  // `force` bypasses the cache (Retry button + periodic refresh).
+  const load = useCallback((force: boolean) => {
     let alive = true;
-    setState({ loading: true });
+    const key = cacheKey(widgetKey, rm ?? "", period ?? "", isCustom ? config : undefined);
+
+    if (!force) {
+      const hit = widgetCache.get(key);
+      if (hit && Date.now() - hit.at < CACHE_TTL_MS) {
+        setState({ loading: false, ...hit.data });
+        return () => { alive = false; };
+      }
+    }
+
+    setState((s) => (s.view ? s : { loading: true }));
     const apply = (j: any, chart?: string) => {
-      if (alive) setState({ loading: false, view: j.view, rows: j.rows ?? [], error: j.error, chart: chart ?? j.chart });
+      const data: FetchResult = { view: j.view, rows: j.rows ?? [], error: j.error, chart: chart ?? j.chart };
+      widgetCache.set(key, { at: Date.now(), data });
+      if (alive) setState({ loading: false, ...data });
     };
-    const fail = (e: any) => { if (alive) setState({ loading: false, error: e?.message ?? "Failed" }); };
+    const fail = (e: any) => { if (alive) setState((s) => ({ ...s, loading: false, error: e?.message ?? "Failed to load" })); };
+
     if (isCustom) {
       fetch(`/api/dashboard/custom-chart`, {
         method: "POST",
@@ -70,12 +101,24 @@ export function WidgetView({ widgetKey, rm, titleOverride, config }: { widgetKey
         body: JSON.stringify(config),
       }).then((r) => r.json()).then((j) => apply(j, j.chart)).catch(fail);
     } else {
-      const qs = rm ? `?rm=${encodeURIComponent(rm)}` : "";
-      fetch(`/api/dashboard/widgets/${widgetKey}${qs}`).then((r) => r.json()).then((j) => apply(j, meta?.chart)).catch(fail);
+      const params = new URLSearchParams();
+      if (rm) params.set("rm", rm);
+      if (period) params.set("period", period);
+      const qs = params.toString();
+      fetch(`/api/dashboard/widgets/${widgetKey}${qs ? `?${qs}` : ""}`).then((r) => r.json()).then((j) => apply(j, meta?.chart)).catch(fail);
     }
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [widgetKey, rm, isCustom, JSON.stringify(config)]);
+  }, [widgetKey, rm, period, isCustom, configJson]);
+
+  useEffect(() => load(false), [load]);
+
+  // Light auto-refresh: refetch on an interval, paused while the tab is hidden.
+  useEffect(() => {
+    const tick = () => { if (!document.hidden) load(true); };
+    const t = setInterval(tick, REFRESH_MS);
+    return () => clearInterval(t);
+  }, [load]);
 
   const title = titleOverride || config?.title || meta?.title || widgetKey;
 
@@ -98,7 +141,22 @@ export function WidgetView({ widgetKey, rm, titleOverride, config }: { widgetKey
         {state.loading ? (
           <div className="h-full grid place-items-center text-muted-foreground"><Loader2 className="size-4 animate-spin" /></div>
         ) : state.error || !state.view ? (
-          <div className="h-full grid place-items-center text-xs text-rose-600"><span className="inline-flex items-center gap-1"><AlertCircle className="size-3.5" /> {state.error ?? "No data"}</span></div>
+          <div className="h-full grid place-items-center text-center px-2">
+            <div className="space-y-1.5">
+              <div className="inline-flex items-center gap-1 text-xs text-rose-600"><AlertCircle className="size-3.5" /> {state.error ? "Couldn’t load" : "No data"}</div>
+              {state.error && (
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => load(true)}
+                    className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                  >
+                    <RefreshCw className="size-3" /> Retry
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
         ) : (
           <Body view={state.view} rows={state.rows ?? []} chart={state.chart ?? meta?.chart} />
         )}

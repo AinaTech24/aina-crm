@@ -51,8 +51,38 @@ function normFreq(v: string): string {
   if (/month/.test(s)) return "monthly";
   return "annual";
 }
+const STATUSES = ["proposed", "in_underwriting", "active", "lapsed", "matured", "surrendered", "cancelled"];
 const numOrNull = (v: string) => { const n = Number(String(v).replace(/[,₹\s]/g, "")); return Number.isFinite(n) && n > 0 ? n : null; };
-const dateOrNull = (v: string) => { if (!v) return null; const d = new Date(v); return isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10); };
+const intOrNull = (v: string) => { const n = parseInt(String(v).replace(/[^\d-]/g, ""), 10); return Number.isFinite(n) ? n : null; };
+function normStatus(v: string): string {
+  const s = v.toLowerCase().trim().replace(/\s+/g, "_");
+  return STATUSES.includes(s) ? s : "active";
+}
+/** Lenient date parse → YYYY-MM-DD (handles DD-MM-YYYY, DD/MM/YYYY, Excel serial, ISO). */
+function dateOrNull(v: string): string | null {
+  const s = String(v ?? "").trim();
+  if (!s) return null;
+  if (/^\d{4,6}$/.test(s)) {
+    const serial = parseInt(s, 10);
+    if (serial > 0 && serial < 100000) {
+      const d = new Date(Date.UTC(1899, 11, 30) + serial * 86_400_000);
+      if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+    }
+  }
+  const m = s.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})$/);
+  if (m) {
+    let day = +m[1]; let mon = +m[2]; let year = +m[3];
+    if (year < 100) year += year < 50 ? 2000 : 1900;
+    if (mon > 12 && day <= 12) { const t = day; day = mon; mon = t; }
+    if (mon >= 1 && mon <= 12 && day >= 1 && day <= 31) {
+      const d = new Date(Date.UTC(year, mon - 1, day));
+      if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+    }
+    return null;
+  }
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
+}
 const pick = (row: Record<string, any>, h: string | undefined) => (h && row[h] != null ? String(row[h]).trim() : "");
 
 export async function POST(req: NextRequest) {
@@ -91,19 +121,51 @@ export async function POST(req: NextRequest) {
           if (dup) { skipped++; continue; }
         }
 
+        // Category-specific + cross-category extras land in the details JSONB.
+        const detailKeys = [
+          "businessType", "proposerName", "proposerPan", "vehicleRegNo", "makeModel",
+          "ncbPercent", "coverType", "roomRentCapInr", "coPayPercent", "preExistingWaitingMonths", "coverageNotes",
+          // Policyholder & address
+          "holderName", "customerId", "uin", "email", "mobile",
+          "addressLine1", "city", "state", "postalCode", "country",
+          // Agency
+          "agencyCode", "agencyName", "agencyContact", "agencyEmail",
+          // Receipt / payment / tax
+          "receiptNo", "receiptDate", "businessChannel", "paymentDetails",
+          "taxInvoiceNo", "taxInvoiceDate", "gstin", "financialYear", "eightyDAmount", "grossPremium",
+          // Proposer extras
+          "proposerCustomerId", "proposerPhone", "proposerEmail",
+          "proposerAddressLine1", "proposerCity", "proposerState", "proposerPostalCode",
+        ];
+        // Date-ish detail fields are normalised to YYYY-MM-DD so the form's date
+        // pickers render them.
+        const DATE_DETAILS = new Set(["receiptDate", "taxInvoiceDate"]);
+        const details: Record<string, any> = {};
+        for (const k of detailKeys) {
+          const v = pick(row, reverse[k]);
+          if (v) details[k] = DATE_DETAILS.has(k) ? (dateOrNull(v) ?? v) : v;
+        }
+        if (!details.country && (details.addressLine1 || details.city)) details.country = "India";
+
         try {
           await tx.execute(sql`
             INSERT INTO insurance_policies (
               id, tenant_id, branch_id, investor_id, policy_number, insurer, plan_name, policy_type,
-              sum_assured, annual_premium, premium_frequency, policy_start_date, maturity_date, next_premium_due_date,
-              nominee_name, nominee_relation, status, sold_by_user_id, sold_at, created_at, updated_at
+              sum_assured, annual_premium, commission_paisa, premium_frequency,
+              premium_paying_term_years, policy_term_years, lives_covered,
+              policy_start_date, maturity_date, next_premium_due_date,
+              nominee_name, nominee_relation, nominee_share, remarks, details,
+              status, sold_by_user_id, sold_at, created_at, updated_at
             ) VALUES (
               ${uuid()}, ${session.tenantId}, ${session.branchId ?? null}, ${inv.id}::uuid, ${policyNumber}, ${insurer}, ${planName},
               ${normType(pick(row, reverse.policyType))},
-              ${numOrNull(pick(row, reverse.sumAssured))}, ${numOrNull(pick(row, reverse.annualPremium))}, ${normFreq(pick(row, reverse.premiumFrequency))},
+              ${numOrNull(pick(row, reverse.sumAssured))}, ${numOrNull(pick(row, reverse.annualPremium))}, ${numOrNull(pick(row, reverse.commission))},
+              ${normFreq(pick(row, reverse.premiumFrequency))},
+              ${intOrNull(pick(row, reverse.premiumPayingTermYears))}, ${intOrNull(pick(row, reverse.policyTermYears))}, ${intOrNull(pick(row, reverse.livesCovered)) ?? 1},
               ${dateOrNull(pick(row, reverse.policyStartDate))}, ${dateOrNull(pick(row, reverse.maturityDate))}, ${dateOrNull(pick(row, reverse.nextPremiumDueDate))},
-              ${pick(row, reverse.nomineeName) || null}, ${pick(row, reverse.nomineeRelation) || null},
-              'active', ${session.userId}::uuid, now(), now(), now()
+              ${pick(row, reverse.nomineeName) || null}, ${pick(row, reverse.nomineeRelation) || null}, ${intOrNull(pick(row, reverse.nomineeShare)) ?? 100},
+              ${pick(row, reverse.remarks) || null}, ${JSON.stringify(details)}::jsonb,
+              ${normStatus(pick(row, reverse.status))}, ${session.userId}::uuid, now(), now(), now()
             )`);
           inserted++;
         } catch (err: any) {

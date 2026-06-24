@@ -54,6 +54,8 @@ export function InvestorAvatarEditor({
       const fd = new FormData();
       fd.append("file", file);
       fd.append("kind", "general");
+      fd.append("docType", "avatar");
+      if (name) fd.append("clientName", name);
       const up = await fetch("/api/compliance/upload", { method: "POST", body: fd })
         .then((r) => r.json())
         .catch(() => ({}));

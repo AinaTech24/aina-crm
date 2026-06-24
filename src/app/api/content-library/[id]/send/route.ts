@@ -12,6 +12,7 @@ import { runComplianceChecks } from "@/lib/comms/compliance";
 import { assetVisibleTo } from "@/lib/content/asset-url";
 import {
   contentLibraryAssets,
+  contentLibraryEvents,
   investors,
   leads,
   templates,
@@ -40,6 +41,9 @@ export async function POST(
       customNote,
       position = "bottom",
       heightPct = 18,
+      variant = "solid",
+      size = "original",
+      frameTheme,
     } = body;
 
     if (!recipientType || !recipientId || !channel) {
@@ -200,7 +204,7 @@ export async function POST(
       // 5. Build branded absolute asset link
       const baseUrl = process.env.APP_URL ?? "http://localhost:3000";
       const assetUrl = asset.type === "image"
-        ? `${baseUrl}/api/content-library/${asset.id}/branded?mode=download&position=${position}&h=${heightPct}`
+        ? `${baseUrl}/api/content-library/${asset.id}/branded?mode=download&position=${position}&h=${heightPct}&variant=${variant}&size=${size}${frameTheme ? `&frametheme=${frameTheme}` : ""}`
         : `${baseUrl}${asset.fileUrl}`;
 
       // 6. Dispatch
@@ -231,6 +235,14 @@ export async function POST(
         after: { recipientType, recipientId, channel, assetTitle: asset.title },
         ...clientMeta,
       });
+      // Usage analytics — record the send (with channel) for the admin library stats.
+      await tx.insert(contentLibraryEvents).values({
+        assetId,
+        tenantId: session.tenantId,
+        userId: session.userId,
+        eventType: "send",
+        channel,
+      } as any);
       return sent;
     });
 

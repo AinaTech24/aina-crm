@@ -34,6 +34,9 @@ export interface RenderContext {
    *  staying visible. The designer PREVIEW leaves this false so the author can see
    *  which fields are still unfilled. */
   blankUnresolved?: boolean;
+  /** Designer-only: wrap each block in `<div id="eb-<blockId>">` so the live
+   *  preview can scroll the edited block into view. Never set on a real send. */
+  previewMarkers?: boolean;
 }
 
 const FONT_STACKS: Record<string, string> = {
@@ -64,7 +67,14 @@ export function renderEmailHtml(body: EmailDesignerBody, ctx: RenderContext): st
     !hasLogoBlock && autoLogoUrl
       ? `<div style="text-align:${theme.logoAlign ?? "center"};margin-bottom:18px;"><img src="${escape(autoLogoUrl)}" alt="${escape(ctx.tenant?.displayName ?? "Logo")}" height="${theme.logoHeight ?? 40}" style="height:${theme.logoHeight ?? 40}px;max-height:${theme.logoHeight ?? 40}px;display:inline-block;"/></div>`
       : "";
-  const inner = autoLogo + blocks.map((b) => renderBlock(b, theme, ctx)).join("");
+  const inner =
+    autoLogo +
+    blocks
+      .map((b) => {
+        const rendered = renderBlock(b, theme, ctx);
+        return ctx.previewMarkers ? `<div id="eb-${escape(String((b as any).id ?? ""))}">${rendered}</div>` : rendered;
+      })
+      .join("");
   const footerHtml = renderFooter(footer, theme, ctx);
   const subject = substituteVariables(body.subject ?? "", ctx);
   const preheader = substituteVariables(body.preheader ?? "", ctx);

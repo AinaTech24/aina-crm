@@ -33,7 +33,6 @@ export default async function PortfolioIntelligencePage({ searchParams }: { sear
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2"><PieChart className="size-6 text-brand-cyan" /> Portfolio Intelligence</h1>
-          <p className="text-muted-foreground text-sm">Asset-class allocation, AMC concentration, and risk across {mine ? "your book" : "the whole book"} — the analytics a generic CRM can&apos;t produce.</p>
         </div>
         <div className="flex items-center gap-2">
           {intel.totalAum > 0 && (

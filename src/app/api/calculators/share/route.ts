@@ -22,7 +22,6 @@ import { pickLogo } from "@/lib/branding/logo";
 import { emailAdapter } from "@/lib/comms/adapters/resend";
 import { resolveEmailSender } from "@/lib/comms/sender";
 import { emailLogoHeaderHtml } from "@/lib/comms/email-logo";
-import { isS3Configured, putObject, presignedGetUrl } from "@/lib/storage/s3";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -119,19 +118,16 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // WhatsApp — host the PDF, return a wa.me link the advisor opens.
-    let pdfUrl: string | null = null;
-    if (isS3Configured()) {
-      try {
-        const key = `calculators/${session.tenantId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.pdf`;
-        await putObject(key, pdf, "application/pdf");
-        pdfUrl = await presignedGetUrl(key, 7 * 24 * 3600, fname);
-      } catch { pdfUrl = null; }
-    }
+    // WhatsApp — return a wa.me link the advisor opens. Calculator PDFs are
+    // illustrations only and must NOT be persisted (no S3, no DB) — so we send
+    // the PDF back to the browser as base64 for the advisor to download and
+    // attach in WhatsApp themselves, rather than hosting it.
+    const pdfUrl: string | null = null;
+    const pdfBase64 = pdf.toString("base64");
     const phone = to ? normalizeWaPhone(to) : null;
     const text = `Hi${clientName ? " " + clientName : ""}, here's your ${calcName} illustration from ${firmName}.${pdfUrl ? "\n\n" + pdfUrl : ""}`;
     const waLink = `https://wa.me/${phone ?? ""}?text=${encodeURIComponent(text)}`;
-    return NextResponse.json({ ok: true, waLink, pdfUrl, hosted: !!pdfUrl });
+    return NextResponse.json({ ok: true, waLink, pdfUrl, hosted: false, pdfBase64, filename: fname });
   } catch (err: any) {
     return NextResponse.json({ error: err?.message ?? "Could not share" }, { status: err?.status ?? 500 });
   }

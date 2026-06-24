@@ -442,6 +442,16 @@ export function BusinessEntryForm({
                             {CLASS_OPTS.map(([v, lab]) => <option key={v} value={v}>{lab}</option>)}
                           </SelectField>
                         </div>
+                        {/* Destination class for the switch / STP / SWP — the
+                            money moves INTO this asset class (= the line's scheme
+                            class above; kept in sync). */}
+                        <div className="lg:col-span-3">
+                          <Label sm>To class</Label>
+                          <SelectField size="sm" value={l.assetClass} onChange={(e) => patchLine(i, { assetClass: e.target.value })} className="w-full">
+                            <option value="">—</option>
+                            {CLASS_OPTS.map(([v, lab]) => <option key={v} value={v}>{lab}</option>)}
+                          </SelectField>
+                        </div>
                       </>
                     )}
                   </div>

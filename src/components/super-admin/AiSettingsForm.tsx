@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Bot, KeyRound, Loader2, CheckCircle2, XCircle, Save, Plug } from "lucide-react";
+import { Bot, KeyRound, Loader2, CheckCircle2, XCircle, Save, Plug, Eye, EyeOff } from "lucide-react";
 
 type Provider = "anthropic" | "google" | "openai";
 type ProviderDef = { value: Provider; label: string; fast: string; reasoning: string; keyHint: string; docsUrl: string };
@@ -28,7 +28,30 @@ export function AiSettingsForm({ initial, providers }: { initial: Status; provid
 
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [revealing, setRevealing] = useState(false);
+  const [showKey, setShowKey] = useState(false);
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+
+  // Pull the FULL saved key (decrypted) into the input so the operator can see /
+  // copy / verify it. Platform-admin gated server-side.
+  async function reveal() {
+    setRevealing(true);
+    setMsg(null);
+    try {
+      const res = await fetch("/api/super-admin/ai-config/reveal");
+      const j = await res.json();
+      if (j.apiKey) {
+        setApiKey(j.apiKey);
+        setShowKey(true);
+      } else {
+        setMsg({ kind: "err", text: "No saved key to reveal." });
+      }
+    } catch (e: any) {
+      setMsg({ kind: "err", text: e?.message || "Couldn't reveal the key." });
+    } finally {
+      setRevealing(false);
+    }
+  }
 
   const def = providers.find((p) => p.value === provider)!;
   // A saved key only applies to the saved provider. If the operator picks a
@@ -137,6 +160,16 @@ export function AiSettingsForm({ initial, providers }: { initial: Status; provid
         >
           {keyConfigured ? `Key set ••••${keyLast4 ?? ""}` : "No key"}
         </span>
+        {keyConfigured && (
+          <button
+            type="button"
+            onClick={reveal}
+            disabled={revealing}
+            className="px-2 py-1 rounded-full bg-muted hover:bg-accent inline-flex items-center gap-1 disabled:opacity-60"
+          >
+            {revealing ? <Loader2 className="size-3 animate-spin" /> : <Eye className="size-3" />} Show full key
+          </button>
+        )}
         <span className="px-2 py-1 rounded-full bg-muted">
           Source: {source === "db" ? "Aina Admin" : source === "env" ? "env var" : "none"}
         </span>
@@ -145,14 +178,16 @@ export function AiSettingsForm({ initial, providers }: { initial: Status; provid
       {/* Provider */}
       <div className="space-y-2">
         <label className="text-sm font-medium">Provider</label>
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           {providers.map((p) => (
             <button
               key={p.value}
               type="button"
               onClick={() => switchProvider(p.value)}
-              className={`text-left border rounded-md px-3 py-2.5 text-sm transition ${
-                provider === p.value ? "border-primary ring-1 ring-primary bg-accent" : "hover:bg-accent"
+              className={`text-left border rounded-md px-3 py-2.5 text-sm transition-colors ${
+                provider === p.value
+                  ? "border-brand-cyan ring-1 ring-brand-cyan bg-brand-cyan-light/30"
+                  : "border-border hover:bg-brand-cyan-light/20 hover:border-brand-cyan/40"
               }`}
             >
               <div className="font-medium">{p.label}</div>
@@ -167,14 +202,25 @@ export function AiSettingsForm({ initial, providers }: { initial: Status; provid
         <label className="text-sm font-medium flex items-center gap-1.5">
           <KeyRound className="size-3.5" /> API key
         </label>
-        <input
-          type="password"
-          autoComplete="off"
-          value={apiKey}
-          onChange={(e) => setApiKey(e.target.value)}
-          placeholder={keyAppliesToSelected ? `•••• saved (leave blank to keep ••••${keyLast4 ?? ""})` : `Paste your ${def.label} key (starts with…)`}
-          className={`w-full rounded-md border px-3 py-2 text-sm font-mono ${needsKey ? "border-rose-300 focus:ring-rose-300" : ""}`}
-        />
+        <div className="relative">
+          <input
+            type={showKey ? "text" : "password"}
+            autoComplete="off"
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            placeholder={keyAppliesToSelected ? `•••• saved (leave blank to keep ••••${keyLast4 ?? ""})` : `Paste your ${def.label} key (starts with…)`}
+            className={`w-full rounded-md border pl-3 pr-10 py-2 text-sm font-mono break-all ${needsKey ? "border-rose-300 focus:ring-rose-300" : ""}`}
+          />
+          <button
+            type="button"
+            onClick={() => setShowKey((s) => !s)}
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-1"
+            aria-label={showKey ? "Hide key" : "Show key"}
+            title={showKey ? "Hide key" : "Show key"}
+          >
+            {showKey ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+          </button>
+        </div>
         {provider !== savedProvider && (
           <p className="text-[11px] text-amber-600 font-medium">
             You&apos;re switching to {def.label} — paste its own API key. The saved key belongs to{" "}
@@ -191,7 +237,7 @@ export function AiSettingsForm({ initial, providers }: { initial: Status; provid
       </div>
 
       {/* Models */}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="space-y-1.5">
           <label className="text-sm font-medium">Fast model</label>
           <input
@@ -225,7 +271,7 @@ export function AiSettingsForm({ initial, providers }: { initial: Status; provid
       )}
 
       {/* Actions */}
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
           onClick={save}

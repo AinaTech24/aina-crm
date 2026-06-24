@@ -145,9 +145,6 @@ export default function NewCustomAssetPage() {
         <h1 className="page-title">
           <ImageIcon className="size-6 text-brand-cyan" /> Upload custom asset
         </h1>
-        <p className="page-subtitle">
-          Upload your MFD firm flyer, brochure, or creative. The co-branding compositor will overlay your logo, ARN, and details.
-        </p>
       </div>
 
       <div className="card-surface p-5 space-y-3">

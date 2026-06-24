@@ -71,7 +71,6 @@ export default async function ProtectionGapPage({ searchParams }: { searchParams
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2"><ShieldAlert className="size-6 text-brand-cyan" /> Protection-Gap Radar</h1>
-          <p className="text-muted-foreground text-sm">Clients with no active <strong>life</strong> or <strong>health</strong> cover — your warmest insurance leads, biggest first. {!canFirm && "Your book."}</p>
         </div>
         {canFirm && (
           <div className="inline-flex rounded-lg border bg-secondary/40 p-0.5 gap-0.5 text-xs">

@@ -10,7 +10,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  Plus, LayoutDashboard, Star, Copy, Pencil, Trash2, RotateCcw, Share2, Lock, Loader2, Users, ExternalLink,
+  Plus, LayoutDashboard, Star, Copy, Pencil, Trash2, RotateCcw, Share2, Lock, Loader2, Users, ExternalLink, Sparkles,
 } from "lucide-react";
 
 export interface BoardLite {
@@ -25,7 +25,14 @@ export interface BoardLite {
   canEdit: boolean;
 }
 
-export function BoardsManager({ mine, shared, deleted }: { mine: BoardLite[]; shared: BoardLite[]; deleted: BoardLite[] }) {
+export interface BoardTemplateLite {
+  key: string;
+  name: string;
+  description: string;
+  widgetCount: number;
+}
+
+export function BoardsManager({ mine, shared, deleted, templates = [] }: { mine: BoardLite[]; shared: BoardLite[]; deleted: BoardLite[]; templates?: BoardTemplateLite[] }) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -50,6 +57,11 @@ export function BoardsManager({ mine, shared, deleted }: { mine: BoardLite[]; sh
 
   async function clone(id: string) {
     const j = await act(`/api/dashboards/${id}/clone`, "POST");
+    if (j?.id) router.push(`/dashboard/boards/${j.id}/edit`);
+  }
+
+  async function createFromTemplate(key: string, name: string) {
+    const j = await act("/api/dashboards/templates", "POST", { template: key, name });
     if (j?.id) router.push(`/dashboard/boards/${j.id}/edit`);
   }
 
@@ -81,6 +93,35 @@ export function BoardsManager({ mine, shared, deleted }: { mine: BoardLite[]; sh
           ))
         )}
       </Section>
+
+      {templates.length > 0 && (
+        <div className="space-y-2">
+          <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+            <Sparkles className="size-3.5 text-brand-cyan" /> Start from a template
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {templates.map((t) => (
+              <button
+                key={t.key}
+                onClick={() => createFromTemplate(t.key, t.name)}
+                disabled={!!busy}
+                className="text-left border rounded-lg bg-card p-3 hover:border-brand-cyan/60 hover:bg-accent transition-colors disabled:opacity-50 group"
+              >
+                <div className="font-medium truncate flex items-center justify-between gap-2">
+                  {t.name}
+                  {busy === "/api/dashboards/templates" ? (
+                    <Loader2 className="size-4 animate-spin text-muted-foreground shrink-0" />
+                  ) : (
+                    <Plus className="size-4 text-muted-foreground shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+                  )}
+                </div>
+                <div className="text-xs text-muted-foreground mt-0.5">{t.description}</div>
+                <div className="text-[11px] text-muted-foreground/70 mt-1">{t.widgetCount} widgets</div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {shared.length > 0 && (
         <Section title="Shared with the firm">

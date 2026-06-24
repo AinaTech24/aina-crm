@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Building2, Database, Users, CreditCard, MessageCircle, Mail, Webhook, ShieldCheck, Workflow, KeyRound, Palette, UserCircle, GitBranch, Target, Network } from "lucide-react";
+import { Building2, Database, Users, CreditCard, MessageCircle, Mail, Webhook, ShieldCheck, Workflow, KeyRound, Palette, UserCircle, GitBranch, Target, Network, BellRing } from "lucide-react";
 
 const SECTIONS = [
   {
@@ -39,7 +39,7 @@ const SECTIONS = [
     href: "/dashboard/settings/blueprints",
   },
   {
-    icon: Mail,
+    icon: BellRing,
     title: "Notification templates",
     desc: "Edit the 18 lead-journey templates — welcome, referral, meeting, proposal, docs, portal.",
     href: "/dashboard/settings/notification-templates",

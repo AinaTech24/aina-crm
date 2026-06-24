@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Calendar, Loader2, Save, Users, Sparkles, Home, ChevronsUpDown } from "lucide-react";
+import { Calendar, Loader2, Save, Users, Sparkles, Home, ChevronsUpDown, Video, AlertTriangle } from "lucide-react";
 import { RmSelector } from "@/components/common/RmSelector";
 import { SelectField } from "@/components/ui/SelectField";
 import { DateField } from "@/components/ui/DateField";
@@ -45,10 +45,23 @@ const MODES = [
   ["phone", "Phone"],
 ] as const;
 
+/** "portfolio_review" → "Portfolio Review" for conflict-list display. */
+function labelType(t: string): string {
+  return t.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 type InvestorOpt = { id: string; name: string; pan: string; segment_tag: string | null };
 type LeadOpt = { id: string; name: string; phone: string | null; stage: string };
 type FamilyOpt = { id: string; family_name: string; primary_investor_id: string; primary_name: string };
 type Kind = "client" | "lead" | "family";
+type MeetingConflict = {
+  id: string;
+  subject: string | null;
+  meeting_type: string;
+  meeting_date: string;
+  duration_minutes: string | null;
+  name: string | null;
+};
 
 /**
  * Schedule-meeting form. MFDs meet clients, pre-conversion leads, and whole
@@ -92,6 +105,9 @@ export function ScheduleMeetingForm({
   });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // RM double-booking: when the API returns 409, hold the clashing meetings so
+  // the user can confirm "Schedule anyway".
+  const [conflicts, setConflicts] = useState<MeetingConflict[] | null>(null);
 
   function set<K extends keyof typeof form>(k: K, v: (typeof form)[K]) {
     setForm((s) => ({ ...s, [k]: v }));
@@ -103,7 +119,17 @@ export function ScheduleMeetingForm({
     if (k === "family" && form.category !== "review") set("category", "review");
   }
 
-  async function save() {
+  /** Generate a ready-to-use video room (Jitsi — no account/setup needed). */
+  function generateVideoLink() {
+    const rand =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID().replace(/-/g, "").slice(0, 12)
+        : Math.random().toString(36).slice(2, 14);
+    set("locationOrLink", `https://meet.jit.si/mfd-${rand}`);
+    if (form.meetingMode !== "online") set("meetingMode", "online");
+  }
+
+  async function save(force = false) {
     setBusy(true);
     setErr(null);
     try {
@@ -118,6 +144,7 @@ export function ScheduleMeetingForm({
         discussionPoints: form.discussionPoints || undefined,
         rmId: form.rmId || undefined,
         status: form.status,
+        force,
       };
       if (subjectKind === "client") body.investorId = form.investorId;
       else if (subjectKind === "lead") body.leadId = form.leadId;
@@ -135,6 +162,10 @@ export function ScheduleMeetingForm({
         body: JSON.stringify(body),
       });
       const j = await res.json();
+      if (res.status === 409 && j.error === "rm_conflict") {
+        setConflicts(j.conflicts ?? []);
+        return;
+      }
       if (!res.ok) {
         setErr(j.error ?? `Save failed (${res.status})`);
         return;
@@ -275,12 +306,34 @@ export function ScheduleMeetingForm({
       </div>
 
       <Field label="Location / link">
-        <input
-          value={form.locationOrLink}
-          onChange={(e) => set("locationOrLink", e.target.value)}
-          placeholder={form.meetingMode === "online" ? "Zoom / Meet / Teams URL" : form.meetingMode === "phone" ? "Phone number to call" : "Address"}
-          className="input-base"
-        />
+        <div className="flex gap-2">
+          <input
+            value={form.locationOrLink}
+            onChange={(e) => set("locationOrLink", e.target.value)}
+            placeholder={form.meetingMode === "online" ? "Zoom / Meet / Teams URL" : form.meetingMode === "phone" ? "Phone number to call" : "Address"}
+            className="input-base flex-1"
+          />
+          {form.meetingMode === "online" && (
+            <button
+              type="button"
+              onClick={generateVideoLink}
+              title="Create an instant video room (no account needed)"
+              className="shrink-0 inline-flex items-center gap-1.5 rounded-md border border-border px-3 text-sm font-medium hover:bg-secondary/60 transition-colors"
+            >
+              <Video className="size-4" /> Generate link
+            </button>
+          )}
+        </div>
+        {form.meetingMode === "online" && form.locationOrLink && /^https?:\/\//.test(form.locationOrLink) && (
+          <a
+            href={form.locationOrLink}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[11px] text-brand-cyan hover:underline mt-1 inline-block break-all"
+          >
+            {form.locationOrLink}
+          </a>
+        )}
       </Field>
 
       <Field label="Discussion points (agenda)">
@@ -297,8 +350,41 @@ export function ScheduleMeetingForm({
         <div className="border border-destructive/30 bg-destructive/5 text-destructive rounded-lg px-3 py-2 text-sm">{err}</div>
       )}
 
+      {conflicts && conflicts.length > 0 && (
+        <div className="border border-amber-300 bg-amber-50 dark:bg-amber-500/10 dark:border-amber-500/30 rounded-lg px-3 py-2.5 text-sm">
+          <div className="flex items-center gap-1.5 font-medium text-amber-700 dark:text-amber-300">
+            <AlertTriangle className="size-4" /> This RM is already booked at that time
+          </div>
+          <ul className="mt-1.5 space-y-1 text-xs text-amber-800 dark:text-amber-200/90">
+            {conflicts.map((c) => (
+              <li key={c.id}>
+                • {c.subject || labelType(c.meeting_type)}
+                {c.name ? ` with ${c.name}` : ""} —{" "}
+                {new Date(c.meeting_date).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}
+                {" "}({c.duration_minutes || "30"} min)
+              </li>
+            ))}
+          </ul>
+          <div className="flex gap-2 mt-2.5">
+            <button
+              onClick={() => { setConflicts(null); save(true); }}
+              disabled={busy}
+              className="rounded-md bg-amber-600 text-white px-3 py-1.5 text-xs font-medium hover:bg-amber-700 disabled:opacity-50"
+            >
+              Schedule anyway
+            </button>
+            <button
+              onClick={() => setConflicts(null)}
+              className="rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-secondary/60"
+            >
+              Pick another time
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="flex justify-end pt-2 border-t border-border">
-        <button onClick={save} disabled={!canSave || busy} className="btn-primary">
+        <button onClick={() => save()} disabled={!canSave || busy} className="btn-primary">
           {busy ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
           {busy ? "Scheduling…" : "Schedule meeting"}
         </button>

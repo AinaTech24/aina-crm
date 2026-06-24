@@ -10,7 +10,6 @@ import {
   Video,
   Music,
   File,
-  Calendar,
 } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { contentLibraryAssets, tenants } from "@/db/schema";
@@ -71,15 +70,6 @@ export default async function AinaLibraryDetailPage({
   // through /api/content-library/[id]/branded, which composites the
   // tenant's logo / ARN / contact details server-side.
   const brandedPreview = `/api/content-library/${asset.id}/branded?mode=preview`;
-  const brandedDownload = `/api/content-library/${asset.id}/branded?mode=download`;
-
-  const scheduleParams = new URLSearchParams({
-    topic: asset.title,
-    caption: asset.description ?? "",
-    creativeUrl: asset.type === "image" ? brandedDownload : (asset.fileUrl ?? ""),
-    creativeName: asset.fileName ?? `${asset.title.toLowerCase().replace(/[^a-z0-9_]/g, "_")}.${asset.type === "image" ? "jpg" : "pdf"}`
-  });
-  const scheduleUrl = `/dashboard/content-calendar/new?${scheduleParams.toString()}`;
 
   return (
     <div className="space-y-6 max-w-5xl">
@@ -126,12 +116,6 @@ export default async function AinaLibraryDetailPage({
                 composited server-side. The raw image is not accessible.
               </p>
             </div>
-            <Link
-              href={scheduleUrl}
-              className="rounded-md bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 text-xs font-semibold flex items-center gap-1.5 border shrink-0"
-            >
-              <Calendar className="size-3.5" /> Schedule as Social Post
-            </Link>
           </div>
           <BrandingLayoutPicker
             assetId={asset.id}
@@ -152,12 +136,6 @@ export default async function AinaLibraryDetailPage({
                 page. The raw file is never exposed.
               </p>
             </div>
-            <Link
-              href={scheduleUrl}
-              className="rounded-md bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 text-xs font-semibold flex items-center gap-1.5 border shrink-0"
-            >
-              <Calendar className="size-3.5" /> Schedule as Social Post
-            </Link>
           </div>
 
           <PdfBrandingPicker
@@ -220,12 +198,6 @@ export default async function AinaLibraryDetailPage({
               assetType={asset.type}
               assetFileUrl={asset.fileUrl}
             />
-            <Link
-              href={scheduleUrl}
-              className="btn-secondary flex items-center gap-1.5"
-            >
-              <Calendar className="size-4" /> Schedule as Social Post
-            </Link>
           </div>
         </div>
       )}

@@ -205,6 +205,28 @@ category-specific "details" keys:
   general → { "coverageNotes": string }
   life    → {} (the top-level fields cover it)
 
+ALWAYS also fill these in "details" (any policy type) when present in the document — use null/omit if absent, NEVER guess:
+  "holderName": string,            // policyholder / insured name
+  "customerId": string,            // customer / client id
+  "uin": string,                   // IRDAI UIN (e.g. BAJHLIP23143V012223)
+  "email": string, "mobile": string,
+  "addressLine1": string, "city": string, "state": string, "postalCode": string, "country": string,  // policyholder address; country "India" if Indian
+  "proposerCustomerId": string, "proposerPhone": string, "proposerEmail": string,
+  "proposerAddressLine1": string, "proposerCity": string, "proposerState": string, "proposerPostalCode": string,
+  "proposerSameAddress": boolean,  // true if proposer address equals policyholder address
+  "agencyCode": string, "agencyName": string, "agencyContact": string, "agencyEmail": string,
+  "receiptNo": string, "receiptDate": "YYYY-MM-DD", "businessChannel": string, "paymentDetails": string,
+  "taxInvoiceNo": string, "taxInvoiceDate": "YYYY-MM-DD", "gstin": string,
+  "financialYear": string,         // e.g. "2025-2026"
+  "eightyDAmount": number, "grossPremium": number,   // rupees, digits only
+
+ALSO extract these TABLES into "details" as arrays of objects (empty array if not present) — one object per row, copy values EXACTLY as printed:
+  "insuredMembers": [ { "name": string, "customerId": string, "planOpted": string, "gender": string, "dob": "YYYY-MM-DD", "age": string, "relation": string, "nominee": string } ],
+  "sumInsuredCovers": [ { "memberName": string, "cover": string, "sumInsured": string, "limit": string } ],
+  "optionalCovers": [ { "cover": string, "memberName": string, "sumInsured": string, "notes": string } ],
+  "premiumBreakdown": [ { "description": string, "amount": string } ],
+  "exclusions": [ { "memberName": string, "exclusion": string } ]
+
 Rules:
 - Use ONLY the listed enum values for policyType / premiumFrequency / businessType / coverType. If unsure, pick the closest and lower its confidence.
 - Derive "category" from the policy type.
@@ -227,7 +249,7 @@ Rules:
   try {
     const res = await client().messages.create({
       model: REASONING_MODEL,
-      max_tokens: 2000,
+      max_tokens: 4000,
       system,
       messages: [
         {
@@ -402,10 +424,24 @@ export async function draftMessage(params: {
   intent: string;
   audienceContext?: string;
   variables?: string[];
+  /** Optional tone/theme for the message voice (Smart-search drafter dropdown). */
+  theme?: string;
 }): Promise<{ text: string } | { error: string }> {
   const variableHint = params.variables?.length
     ? `Use these variables as {{key}}: ${params.variables.join(", ")}`
     : "Use {{name}} for the recipient name.";
+
+  // Map the chosen theme to a concrete tone instruction for the model.
+  const THEME_TONE: Record<string, string> = {
+    professional: "Tone: professional and clear.",
+    friendly: "Tone: friendly and conversational, like a trusted advisor.",
+    concise: "Tone: crisp and concise — keep it short and to the point.",
+    warm: "Tone: warm and reassuring; acknowledge the client's situation.",
+    festive: "Tone: festive and celebratory (suitable for a greeting / festival wish).",
+    urgent: "Tone: clear and action-oriented, conveying that prompt action is needed (without alarmist or pressuring language).",
+    educational: "Tone: educational and explanatory; teach the concept simply.",
+  };
+  const toneLine = params.theme && THEME_TONE[params.theme] ? `\n${THEME_TONE[params.theme]}` : "";
 
   const systemPrompt = `You draft compliance-safe ${params.channel} messages for Indian Mutual Fund Distributors.
 
@@ -414,7 +450,7 @@ Rules:
 - NEVER recommend a specific scheme (AMFI Code of Conduct 4(k))
 - DO end with the mandatory line: "Mutual fund investments are subject to market risks. Read all scheme related documents carefully."
 - DO mention "ARN-{{arn_no}}" and the firm name
-- Keep it warm but professional. Indian context.
+- Keep it warm but professional. Indian context.${toneLine}
 
 ${variableHint}
 

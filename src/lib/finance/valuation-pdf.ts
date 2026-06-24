@@ -12,6 +12,7 @@
  */
 
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage, type PDFImage, type RGB } from "pdf-lib";
+import { drawReportHeader } from "@/lib/pdf/report-header";
 import type { InvestorValuation } from "./valuation";
 
 export type StatementInvestor = {
@@ -82,41 +83,21 @@ export async function renderValuationStatementPdf(args: RenderStatementArgs): Pr
   //    when a logo is present), + ARN, + a gradient strip in the firm's own
   //    theme colours (primary → secondary). ───────────────────────────────
   const logo = await embedLogo(doc, brand.logoUrl);
-  const topY = H - margin;
-  let arnY = topY - 30;
-  if (logo) {
-    const maxH = 40, maxW = 200;
-    let dw = (logo.width / logo.height) * maxH;
-    let dh = maxH;
-    if (dw > maxW) { dw = maxW; dh = (logo.height / logo.width) * maxW; }
-    page.drawImage(logo, { x: margin, y: topY - dh, width: dw, height: dh });
-    arnY = topY - dh - 11;
-  } else {
-    // No logo on file — fall back to the firm name so there is still an identity.
-    page.drawText(ascii(brand.legalName ?? brand.displayName ?? "Your Advisor"), {
-      x: margin, y: topY - 15, size: 14, font: bold, color: INK,
-    });
-    arnY = topY - 30;
-  }
-  page.drawText(
-    ascii(
-      `ARN ${(brand.arn ?? "—").toString().replace(/^ARN-?/i, "")}` +
-      `${brand.euin ? ` - EUIN ${brand.euin}` : ""}` +
-      `${brand.gstNumber ? ` - GSTIN ${brand.gstNumber}` : ""}`
-    ),
-    { x: margin, y: arnY, size: 9, font: helv, color: SLATE }
-  );
-  const titleLabel = "PORTFOLIO STATEMENT";
-  const tlW = bold.widthOfTextAtSize(titleLabel, 11);
-  page.drawText(titleLabel, { x: W - margin - tlW, y: topY - 13, size: 11, font: bold, color: primary });
-  const asOfLabel = ascii(`As of ${fmtDate(v.asOf ?? args.generatedAt)}`);
-  const aoW = helv.widthOfTextAtSize(asOfLabel, 9);
-  page.drawText(asOfLabel, { x: W - margin - aoW, y: topY - 28, size: 9, font: helv, color: SLATE });
-
-  const stripY = Math.min(arnY - 12, topY - 56);
-  drawGradientStrip(page, margin, stripY, W - 2 * margin, 5, primary, secondary);
-
-  y = stripY - 24;
+  y = drawReportHeader({
+    page,
+    helv,
+    bold,
+    pageWidth: W,
+    pageHeight: H,
+    margin,
+    logo,
+    firmName: brand.legalName ?? brand.displayName,
+    title: "PORTFOLIO STATEMENT",
+    subtitles: [`As of ${fmtDate(v.asOf ?? args.generatedAt)}`],
+    arn: brand.arn,
+    primary,
+    secondary,
+  });
 
   // ── Client line ───────────────────────────────────────────────────────
   page.drawText(ascii(investor.name ?? "Client"), { x: margin, y, size: 15, font: bold, color: INK });

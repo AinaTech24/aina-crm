@@ -20,12 +20,17 @@ import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   try {
     const session = await requireSession();
     requireCap(session.roles, "workflow.edit");
     await assertActiveLicense(session.tenantId, session.roles);
+    // Validate the id shape so a malformed value returns a clean 400 rather than
+    // a 500 on the uuid cast (parity with the outbox-retry route's bigint guard).
+    if (!UUID_RE.test(id)) return NextResponse.json({ error: "invalid id" }, { status: 400 });
     const meta = clientMetaFromHeaders(req.headers);
 
     const out = await withTenant(session.tenantId, async (tx) => {

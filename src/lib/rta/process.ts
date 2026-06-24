@@ -86,13 +86,13 @@ async function buildInvestorIndex(
 
   if (pans.length) {
     const res = await tx.execute(sql`
-      SELECT id, pan FROM investors WHERE tenant_id = ${tenantId}::uuid AND pan = ANY(${pans}::text[])
+      SELECT id, pan FROM investors WHERE tenant_id = ${tenantId}::uuid AND pan IN (${sql.join(pans.map((p) => sql`${p}`), sql`, `)})
     `);
     for (const row of res.rows as any[]) if (row.pan) panMap.set(String(row.pan).toUpperCase(), row.id);
   }
   if (folios.length) {
     const res = await tx.execute(sql`
-      SELECT investor_id, folio_number FROM folios WHERE tenant_id = ${tenantId}::uuid AND folio_number = ANY(${folios}::text[])
+      SELECT investor_id, folio_number FROM folios WHERE tenant_id = ${tenantId}::uuid AND folio_number IN (${sql.join(folios.map((f) => sql`${f}`), sql`, `)})
     `);
     for (const row of res.rows as any[]) if (!folioMap.has(row.folio_number)) folioMap.set(row.folio_number, row.investor_id);
   }
@@ -546,8 +546,13 @@ async function processFolioMasterDump(
   }
 
   try {
-    const { revalueAllFolios } = await import("@/lib/finance/aum-persist");
+    const { revalueAllFolios, recomputeCombinedAum } = await import("@/lib/finance/aum-persist");
     await revalueAllFolios(tx);
+    // Roll the (just-imported) folio holdings up to investors.aum so the client
+    // profile headline reflects them — combined with transaction-derived value
+    // for any scheme the folios don't cover. Without this, a holdings-only book
+    // (RTA folio-master / AUM import, no transaction feed) shows ₹0 AUM.
+    await recomputeCombinedAum(tx);
   } catch (err: any) {
     // Surface (don't swallow) — investor-level AUM is now stale; record it so
     // the import shows partial rather than a misleading clean "completed".
@@ -829,8 +834,13 @@ async function processAumStatement(
   }
 
   try {
-    const { revalueAllFolios } = await import("@/lib/finance/aum-persist");
+    const { revalueAllFolios, recomputeCombinedAum } = await import("@/lib/finance/aum-persist");
     await revalueAllFolios(tx);
+    // Roll the (just-imported) folio holdings up to investors.aum so the client
+    // profile headline reflects them — combined with transaction-derived value
+    // for any scheme the folios don't cover. Without this, a holdings-only book
+    // (RTA folio-master / AUM import, no transaction feed) shows ₹0 AUM.
+    await recomputeCombinedAum(tx);
   } catch (err: any) {
     console.error("[processAumStatement] revalueAllFolios failed:", err);
     errors.push({ row: 0, reason: `AUM values imported but investor AUM revaluation failed: ${err?.message ?? err}` });

@@ -43,8 +43,14 @@ FROM node:20-bookworm-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000
 # curl for the container healthcheck; run as non-root.
-RUN apt-get update && apt-get install -y --no-install-recommends curl \
+# fontconfig + DejaVu/Liberation fonts so server-side SVG→PNG branding
+# (sharp/librsvg, used by the content-library co-brand strip) actually renders
+# text — without a font installed every glyph falls back to tofu (□) boxes.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      curl fontconfig fonts-dejavu-core fonts-liberation \
+      fonts-noto-core fonts-noto-ui-core \
     && rm -rf /var/lib/apt/lists/* \
+    && fc-cache -f \
     && groupadd -r app && useradd -r -g app -m app
 COPY --from=build --chown=app:app /app ./
 USER app

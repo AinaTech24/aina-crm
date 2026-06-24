@@ -74,10 +74,6 @@ export default async function AutomationControlTower({
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
             <Activity className="size-6 text-brand-cyan" /> Automation Control Tower
           </h1>
-          <p className="text-muted-foreground text-sm mt-0.5">
-            What the engine did over the last {windowDays === 1 ? "24 hours" : `${windowDays} days`} —
-            runs, failures, the event queue, and message delivery.
-          </p>
         </div>
         <div className="flex items-center gap-2">
           <div className="inline-flex rounded-lg border border-border bg-secondary/40 p-0.5 gap-0.5">
@@ -85,9 +81,8 @@ export default async function AutomationControlTower({
               <Link
                 key={w.v}
                 href={`/dashboard/workflows/runs?window=${w.v}`}
-                className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
-                  windowDays === w.v ? "bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
-                }`}
+                className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${windowDays === w.v ? "bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
+                  }`}
               >
                 {w.label}
               </Link>
@@ -236,9 +231,14 @@ export default async function AutomationControlTower({
           <h2 className="font-semibold text-sm flex items-center gap-2">
             <Timer className="size-4" /> Scheduled rule jobs
           </h2>
-          {health.scheduledJobs.overdue > 0 && (
-            <span className="text-xs text-rose-600 font-medium">{health.scheduledJobs.overdue} overdue &gt;1h</span>
-          )}
+          <div className="flex items-center gap-3">
+            {health.scheduledJobs.overdue > 0 && (
+              <span className="text-xs text-rose-600 font-medium">{health.scheduledJobs.overdue} overdue &gt;1h</span>
+            )}
+            {health.scheduledJobs.failed > 0 && (
+              <RetryButton endpoint="/api/workflow-rules/scheduled-jobs/retry-all" label={`Retry all (${health.scheduledJobs.failed})`} doneLabel="Re-queued all" title="Re-queue every failed scheduled job" />
+            )}
+          </div>
         </div>
         <div className="p-4 space-y-3">
           <div className="flex flex-wrap gap-5">
@@ -270,9 +270,14 @@ export default async function AutomationControlTower({
       <div className="grid gap-6 md:grid-cols-2">
         {/* Event spine */}
         <div className="card-surface p-4">
-          <h2 className="font-semibold text-sm flex items-center gap-2 mb-3">
-            <Inbox className="size-4" /> Event spine (outbox)
-          </h2>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="font-semibold text-sm flex items-center gap-2">
+              <Inbox className="size-4" /> Event spine (outbox)
+            </h2>
+            {health.outbox.recentErrors.length > 0 && (
+              <RetryButton endpoint="/api/automation/outbox/retry-all" label="Retry all" doneLabel="Re-queued all" title="Clear errors on every stuck event so the poller retries them" />
+            )}
+          </div>
           <div className="flex gap-4 mb-3">
             <MiniStat label="Pending" value={health.outbox.pending} tone={health.outbox.pending > 0 ? "amber" : "emerald"} />
             <MiniStat label="Stuck >1h" value={health.outbox.stuck} tone={health.outbox.stuck > 0 ? "rose" : "emerald"} />

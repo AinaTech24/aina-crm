@@ -33,9 +33,9 @@ export default async function GoalsPage({
     : "target_date_asc";
   const orderBy =
     sortKey === "target_date_desc" ? desc(goals.targetDate)
-    : sortKey === "target_amount_desc" ? desc(goals.targetAmount)
-    : sortKey === "target_amount_asc" ? asc(goals.targetAmount)
-    : asc(goals.targetDate);
+      : sortKey === "target_amount_desc" ? desc(goals.targetAmount)
+        : sortKey === "target_amount_asc" ? asc(goals.targetAmount)
+          : asc(goals.targetDate);
 
   const { rows, stats } = await withTenant(session.tenantId, async (tx) => {
     // Owner slice for non-managers — only goals whose client is assigned to them.
@@ -52,7 +52,8 @@ export default async function GoalsPage({
           COUNT(*) FILTER (WHERE status = 'on_track')::int AS on_track,
           COUNT(*) FILTER (WHERE status = 'behind_track')::int AS behind,
           COUNT(*) FILTER (WHERE status = 'achieved')::int AS achieved,
-          COUNT(*) FILTER (WHERE status = 'not_started')::int AS not_started
+          COUNT(*) FILTER (WHERE status = 'not_started')::int AS not_started,
+          COUNT(*) FILTER (WHERE next_review_at IS NOT NULL AND next_review_at < now() AND status NOT IN ('achieved','abandoned'))::int AS reviews_overdue
         FROM goals${statsScope}
       `)
     ).rows[0] as any;
@@ -75,6 +76,7 @@ export default async function GoalsPage({
         behind: Number(s.behind),
         achieved: Number(s.achieved),
         notStarted: Number(s.not_started),
+        reviewsOverdue: Number(s.reviews_overdue),
       },
     };
   });
@@ -86,22 +88,20 @@ export default async function GoalsPage({
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
             <Target className="size-6 text-brand-cyan" /> Goal planning
           </h1>
-          <p className="text-muted-foreground text-sm">
-            Track every client's financial goals — required SIP, gap analysis, on-track status.
-          </p>
         </div>
         <Link href="/dashboard/goals/new" className="btn-primary">
           <Plus className="size-4" /> Add Goal
         </Link>
       </div>
 
-      {/* KPI row — 5 spec statuses */}
-      <div className="grid grid-cols-5 gap-3">
+      {/* KPI row — spec statuses + reviews overdue */}
+      <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
         <Stat label="Total goals" value={stats.total} />
         <Stat label="On Track" value={stats.onTrack} tone="emerald" />
         <Stat label="Behind Track" value={stats.behind} tone={stats.behind > 0 ? "amber" : "muted"} />
         <Stat label="Achieved" value={stats.achieved} tone="emerald" />
         <Stat label="Not Started" value={stats.notStarted} tone={stats.notStarted > 0 ? "amber" : "muted"} />
+        <Stat label="Reviews overdue" value={stats.reviewsOverdue} tone={stats.reviewsOverdue > 0 ? "rose" : "muted"} />
       </div>
 
       <FilterBar
@@ -162,10 +162,10 @@ function Stat({
     tone === "emerald"
       ? "text-emerald-600"
       : tone === "rose"
-      ? "text-rose-600"
-      : tone === "amber"
-      ? "text-amber-600"
-      : "text-foreground";
+        ? "text-rose-600"
+        : tone === "amber"
+          ? "text-amber-600"
+          : "text-foreground";
   return (
     <div className="card-surface p-4">
       <div className="text-xs text-muted-foreground">{label}</div>

@@ -18,6 +18,7 @@ import { handleApiError } from "@/lib/api/error-handler";
 import { parseRtaCsv, parseRtaRows } from "@/lib/rta";
 import { importRtaFolios } from "@/lib/rta/import";
 import { extractRtaFileFromZip } from "@/lib/rta/unzip";
+import { loadTenantLicense } from "@/lib/auth/license";
 import { isSpreadsheet, readSpreadsheetToRows } from "@/lib/rta/xls";
 
 export const dynamic = "force-dynamic";
@@ -97,6 +98,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const license = await loadTenantLicense(session.tenantId, session.roles);
     const summary = await withTenant(
       session.tenantId,
       (tx) =>
@@ -105,6 +107,7 @@ export async function POST(req: NextRequest) {
           assignRmId: assignToMe ? session.userId : null,
           reportType: parsed.reportType,
           kind: parsed.kind === "holdings" ? "holdings" : parsed.kind === "full" ? "full" : "master",
+          quotaCap: license.maxInvestors,
         }),
       { userId: session.userId, branchId: session.branchId, roles: session.roles }
     );

@@ -72,9 +72,13 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     const title = m.subject
       ? `${m.subject} — ${name}`
       : `${TYPE_LABEL[m.meetingType] ?? "Meeting"} — ${name}`;
+    const isUrl = !!m.locationOrLink && /^https?:\/\//i.test(m.locationOrLink);
     const descParts = [
       m.discussionPoints ? `Agenda: ${m.discussionPoints}` : "",
       `Mode: ${String(m.meetingMode).replace(/_/g, " ")}`,
+      // Surface the video link in the body too — most calendar apps render a
+      // clickable "Join" from the description even when LOCATION isn't tappable.
+      isUrl ? `Join: ${m.locationOrLink}` : "",
     ].filter(Boolean);
 
     const lines = [

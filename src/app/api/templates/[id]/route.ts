@@ -17,6 +17,7 @@ import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { templates, templateVersions, tenants } from "@/db/schema";
 import { runComplianceChecks } from "@/lib/comms/compliance";
+import { templateBodyToText } from "@/lib/comms/tokens";
 
 export const dynamic = "force-dynamic";
 
@@ -119,7 +120,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         const finalVariables = variables !== undefined ? variables : ver.variables;
         const finalCategory = category !== undefined ? category : tpl.category;
 
-        const text = extractText(tpl.channel, finalBody);
+        const text = templateBodyToText(tpl.channel, finalBody);
         const subject = tpl.channel === "email" ? finalBody?.subject : undefined;
         const dltTemplateId = tpl.channel === "sms" ? finalBody?.dltTemplateId : undefined;
 
@@ -195,21 +196,4 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   } catch (err: any) {
     return handleApiError(err);
   }
-}
-
-function extractText(channel: string, body: any): string {
-  if (!body) return "";
-  if (channel === "whatsapp")
-    return [body?.header?.text, body?.body?.text, body?.footer?.text].filter(Boolean).join("\n");
-  if (channel === "email")
-    return [
-      body?.subject,
-      body?.preheader,
-      (body?.blocks ?? []).map((b: any) => b?.text ?? b?.content ?? b?.title ?? b?.subtitle ?? b?.html ?? b?.label ?? "").filter(Boolean).join("\n"),
-      body?.textFallback,
-    ]
-      .filter(Boolean)
-      .join("\n");
-  if (channel === "sms") return body?.text ?? "";
-  return JSON.stringify(body);
 }

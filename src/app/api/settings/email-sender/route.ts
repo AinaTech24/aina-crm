@@ -38,6 +38,10 @@ function requireOwner(roles: string[] | undefined) {
 export async function GET() {
   try {
     const session = await requireSession();
+    // Email-sender config is an owner-only setting — match the POST gate so the
+    // (masked) key hint + sender identity aren't readable by every session.
+    const forbidden = requireOwner(session.roles);
+    if (forbidden) return forbidden;
     const resolved = await withTenant(session.tenantId, async (tx) =>
       getTenantIntegration(tx, session.tenantId, "resend")
     );

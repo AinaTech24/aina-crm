@@ -96,10 +96,62 @@ export function storageStatus(): {
   };
 }
 
-/** Returns a tenant-scoped key like "tenants/<tenantId>/compliance/<uuid>-filename.pdf". */
-export function vaultKey(tenantId: string, kind: "compliance" | "kyc" | "marketing" | "general", filename: string): string {
+/** Lowercase, hyphenated, ASCII-safe path segment (≤40 chars), or `fallback`. */
+function pathSlug(s: string | null | undefined, fallback: string): string {
+  const out = (s ?? "")
+    .normalize("NFKD")
+    .replace(/[^\x20-\x7E]/g, "") // drop non-ASCII (Gujarati/Hindi names etc.)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40);
+  return out || fallback;
+}
+
+/**
+ * Optional human-readable context for an upload. When supplied, files are laid
+ * out in a browsable tree the MFD can navigate in the S3 console:
+ *
+ *   firm/<firm>/<uploader>/<client>/<docType>/<ts>-<file>   (client documents)
+ *   firm/<firm>/logos/<ts>-<file>                            (brand logos)
+ *
+ * `<firm>` is the firm display-name slug suffixed with the tenant-id prefix so
+ * two firms with the same name never collide in the shared bucket.
+ */
+export type AssetContext = {
+  firm?: string | null;
+  uploader?: string | null;
+  client?: string | null;
+  docType?: string | null;
+};
+
+/**
+ * Returns the storage key for an upload. With no `ctx`, keeps the legacy
+ * tenant-scoped layout ("tenants/<tenantId>/<kind>/<ts>-<file>"). With `ctx`,
+ * builds the readable firm/uploader/client/docType tree (logos get firm/logos).
+ */
+export function vaultKey(
+  tenantId: string,
+  kind: "compliance" | "kyc" | "marketing" | "general",
+  filename: string,
+  ctx?: AssetContext
+): string {
   const safe = filename.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 80);
   const ts = Date.now();
+
+  if (ctx && (ctx.firm || ctx.uploader || ctx.client || ctx.docType)) {
+    const firm = `${pathSlug(ctx.firm, "firm")}-${tenantId.slice(0, 8)}`;
+    const docType = pathSlug(ctx.docType, kind);
+    // Brand logos are firm-wide, not tied to an uploader/client.
+    if (docType === "logo" || docType === "logos") {
+      return `firm/${firm}/logos/${ts}-${safe}`;
+    }
+    const uploader = pathSlug(ctx.uploader, "unknown");
+    const client = pathSlug(ctx.client, "general");
+    return `firm/${firm}/${uploader}/${client}/${docType}/${ts}-${safe}`;
+  }
+
   return `tenants/${tenantId}/${kind}/${ts}-${safe}`;
 }
 
@@ -152,6 +204,24 @@ export async function presignedGetUrl(
     ResponseContentDisposition: disposition,
   });
   return getSignedUrl(client(), cmd, { expiresIn: ttlSeconds });
+}
+
+/**
+ * Read a local-disk upload's bytes, ALWAYS from the uploads volume — never S3.
+ * Assets uploaded via the `/api/upload-local/<key>` path (the no-S3-keys era)
+ * live on disk and keep their `/api/upload-local/...` URL even after S3 is later
+ * configured, so they must be read from disk regardless of `isS3Configured()`.
+ */
+export async function getLocalUploadBytes(key: string): Promise<Buffer> {
+  const filePath = path.join(process.cwd(), "node-local", "uploads", key);
+  return fs.promises.readFile(filePath);
+}
+
+/** Delete a file from the LOCAL upload volume only (never touches S3). Used to
+ *  purge RTA zips after parsing — they are deliberately kept off S3. */
+export async function deleteLocalUpload(key: string): Promise<void> {
+  const filePath = path.join(process.cwd(), "node-local", "uploads", key);
+  await fs.promises.unlink(filePath).catch(() => {});
 }
 
 /** Read an object's raw bytes (S3 GetObject, or local disk in the fallback). */

@@ -195,6 +195,12 @@ export const leads = pgTable(
 
     notes: text("notes"),
     tags: jsonb("tags").$type<string[]>().default([]),
+
+    /** Raw KYC submission captured from the public onboarding link (/d/<token>)
+     *  while this is still a lead. Copied onto the new investor's client master
+     *  on conversion (see /api/leads/[id]/convert). Migration 0130. */
+    kycData: jsonb("kyc_data").$type<Record<string, string>>(),
+
     ...timestamps,
   },
   (t) => ({

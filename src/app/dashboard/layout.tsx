@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import {
   LayoutDashboard,
   Users,
   Workflow,
+  Zap,
   FileText,
   MessageSquare,
   ListChecks,
@@ -36,7 +38,7 @@ import {
   HelpCircle,
   Briefcase,
   Boxes,
-  Cake,
+  Trash2,
   PhoneCall,
   Copy,
   PieChart,
@@ -69,7 +71,7 @@ import {
   Network,
   IndianRupee,
 } from "lucide-react";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { tenants, users } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
@@ -83,10 +85,10 @@ import { NotificationBell } from "@/components/layout/NotificationBell";
 import { BirthdayBell } from "@/components/layout/BirthdayBell";
 import { DesktopSidebar } from "@/components/layout/DesktopSidebar";
 import { CustomizableNav, type NavItemData } from "@/components/layout/CustomizableNav";
+import { loadModuleControls } from "@/lib/platform/module-controls";
 import { QuickCreateFab } from "@/components/layout/QuickCreateFab";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { ProfileMenu } from "@/components/layout/ProfileMenu";
-import { ThemeToggle } from "@/components/layout/ThemeToggle";
 import { ToastProvider } from "@/components/ui/Toast";
 import { buildTenantThemeCss } from "@/lib/branding/theme";
 
@@ -119,6 +121,7 @@ const NAV: NavSection[] = [
         roles: ["owner", "rm", "branch_head", "back_office", "ops"] },
       { href: "/dashboard/calendar", label: "Calendar", icon: Calendar },
       { href: "/dashboard/attendance", label: "Attendance", icon: CalendarCheck },
+      { href: "/dashboard/trash", label: "Trash", icon: Trash2, roles: ["owner", "compliance"] },
       // Team Dashboard now lives inside the top "Dashboards" dropdown
       // (see dashboardSubItems below + DashboardNavDropdown).
     ],
@@ -141,6 +144,8 @@ const NAV: NavSection[] = [
       // Leads (1-10) and Clients (11-30). Page redirects to /dashboard/leads.
       { href: "/dashboard/risk-profiles", label: "Risk Profile", icon: Gauge, module: "risk_profile",
         roles: ["owner", "compliance", "back_office", "ops", "rm"] },
+      { href: "/dashboard/discovery", label: "Discovery & Suitability", icon: ClipboardList,
+        roles: ["owner", "rm", "branch_head", "back_office", "ops", "compliance"] },
       { href: "/dashboard/calculators", label: "Calculators", icon: Calculator },
       { href: "/dashboard/goals", label: "Goal Planning", icon: Target, module: "goal_planning",
         roles: ["owner", "rm", "branch_head", "back_office", "ops"] },
@@ -158,9 +163,6 @@ const NAV: NavSection[] = [
         roles: ["owner", "rm", "branch_head", "back_office", "ops"] },
       { href: "/dashboard/insurance/commission", label: "Insurance Commission", icon: IndianRupee, module: "insurance",
         roles: ["owner", "branch_head", "back_office"] },
-      { href: "/dashboard/celebrations", label: "Celebrations", icon: Cake,
-        roles: ["owner", "rm", "branch_head", "back_office", "ops"] },
-
     ],
   },
   {
@@ -169,7 +171,7 @@ const NAV: NavSection[] = [
       // Transactions hidden from marketing
       { href: "/dashboard/transactions", label: "MF Transactions", icon: Repeat, module: "transactions",
         roles: ["owner", "back_office", "ops", "rm", "branch_head", "compliance"] },
-      { href: "/dashboard/business-entries", label: "Business Entries", icon: Briefcase,
+      { href: "/dashboard/business-entries", label: "Business Entries", icon: Briefcase, module: "business_entries",
         roles: ["owner", "branch_head", "rm", "back_office", "ops"] },
       { href: "/dashboard/rta-imports", label: "RTA File Imports", icon: FolderArchive, module: "transactions",
         roles: ["owner", "back_office", "ops", "compliance"] },
@@ -193,12 +195,11 @@ const NAV: NavSection[] = [
     title: "Automation",
     items: [
       { href: "/dashboard/workflows/rules", label: "Workflow Rules", icon: Workflow, module: "automation_workflows" },
-      { href: "/dashboard/workflows/actions", label: "Workflow Actions", icon: ListChecks, module: "automation_workflows" },
+      { href: "/dashboard/workflows/actions", label: "Workflow Actions", icon: Zap, module: "automation_workflows" },
       { href: "/dashboard/workflows/runs", label: "Automation Monitor", icon: Activity, module: "automation_workflows",
         roles: ["owner", "compliance", "back_office", "ops"] },
       { href: "/dashboard/templates", label: "Templates", icon: LayoutTemplate, module: "broadcasts" },
       { href: "/dashboard/campaigns", label: "Marketing Campaigns", icon: Megaphone, module: "marketing_campaigns", roles: ["owner", "marketing"] },
-      { href: "/dashboard/content-calendar", label: "Social Media Calendar", icon: ImageIcon, module: "content_calendar", roles: ["owner", "marketing"] },
       { href: "/dashboard/aina-library", label: "AINA Content Library", icon: Library, roles: ["owner", "marketing", "rm", "branch_head", "back_office", "ops"] },
       { href: "/dashboard/communications", label: "Communications", icon: MessageSquare, module: "broadcasts" },
     ],
@@ -292,6 +293,11 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await requireSession();
   const license = await loadTenantLicense(session.tenantId, session.roles);
+  // Brand-new tenant that hasn't chosen/paid for a plan yet — send them to
+  // plan selection, never the dashboard.
+  if (license.needsOnboarding) {
+    redirect("/onboarding/choose-plan");
+  }
   // Admin → MFD sidebar access: the exact set of nav hrefs the firm can open
   // (the platform admin's explicit grant, else the package-module default).
   const tenantAllowedSet = new Set(
@@ -308,18 +314,36 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const pathname = reqHeaders.get("x-pathname") ?? "";
   const pathAllowed = isPathAllowedWhenRestricted(pathname);
 
-  const { tenant, userModules, avatarUrl } = await withTenant(session.tenantId, async (tx) => {
+  const { tenant, userModules, avatarUrl, twoFaEnabled, announcementCount } = await withTenant(session.tenantId, async (tx) => {
     const [t] = await tx.select().from(tenants).where(eq(tenants.id, session.tenantId)).limit(1);
     // Per-user sidebar module grant (Module-19). null = inherit all tenant modules.
     const [u] = await tx
-      .select({ enabledModules: users.enabledModules, avatarUrl: users.avatarUrl })
+      .select({ enabledModules: users.enabledModules, avatarUrl: users.avatarUrl, twoFaEnabled: users.twoFaEnabled })
       .from(users)
       .where(eq(users.id, session.userId))
       .limit(1);
+    // Active announcements visible to THIS user — drives the sidebar count badge
+    // (same active filter as GET /api/announcements: published, not expired,
+    // branch + audience-role match).
+    const rolesJson = JSON.stringify(session.roles);
+    const annRes = await tx.execute(sql`
+      SELECT count(*)::int AS n FROM announcements a
+      WHERE a.tenant_id = ${session.tenantId}::uuid
+        AND a.published_at IS NOT NULL AND a.published_at <= now()
+        AND (a.expires_at IS NULL OR a.expires_at > now())
+        AND (a.branch_id IS NULL OR a.branch_id = ${session.branchId ?? null})
+        AND (
+          a.audience_roles IS NULL
+          OR jsonb_array_length(a.audience_roles) = 0
+          OR a.audience_roles ?| array(SELECT jsonb_array_elements_text(${rolesJson}::jsonb))
+        )
+    `);
     return {
       tenant: t,
       userModules: (u?.enabledModules as string[] | null) ?? null,
       avatarUrl: (u?.avatarUrl as string | null) ?? null,
+      twoFaEnabled: !!u?.twoFaEnabled,
+      announcementCount: Number((annRes.rows[0] as any)?.n ?? 0),
     };
   });
 
@@ -346,12 +370,32 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // when the tenant uses the stock AINA palette, so we inject nothing.
   const themeCss = buildTenantThemeCss(
     tenant?.primaryColor,
-    (tenant as any)?.secondaryColor
+    (tenant as any)?.secondaryColor,
+    (tenant as any)?.textColor,
+    (tenant as any)?.hoverColor
   );
+
+  // Global module controls (platform admin): 'disabled' hides a module for every
+  // tenant; 'beta' shows a Beta tag. Loaded from platform_settings('modules').
+  const moduleControls = await loadModuleControls();
+
+  // "dashboards" module — gates the top Dashboards dropdown. On unless the tenant
+  // lacks the module OR the platform admin globally disabled it (Module Controls).
+  const dashModuleOk = tenantAllowedSet.size === 0 || license.enabledModules.length === 0 || license.enabledModules.includes("dashboards");
+  // Per-MFD / per-user master: if the admin disabled the whole Dashboards group
+  // (every dashboard item removed from the tenant's nav grant or the user's
+  // module grant), hide the entire dropdown — not just its individual items.
+  const DASH_GROUP_KEYS = ["/dashboard/boards", "/dashboard/team", "/dashboard/team/scorecard"];
+  const dashGroupVisible =
+    (tenantAllowedSet.size === 0 || DASH_GROUP_KEYS.some((k) => tenantAllowedSet.has(k))) &&
+    (isOwnerUser || userModules === null || DASH_GROUP_KEYS.some((k) => userModules.includes(k)));
+  const showDashboards = dashModuleOk && moduleControls["/dashboard"] !== "disabled" && dashGroupVisible;
 
   const visible = NAV.map((section) => ({
     ...section,
     items: section.items.filter((i) => {
+      // Platform kill-switch — a globally-disabled sidebar item is hidden for everyone.
+      if (moduleControls[i.href] === "disabled") return false;
       if (i.roles && !session.roles.some((r) => i.roles!.includes(r) || r === "owner")) return false;
       if (isGatableNav(i.href)) {
         // Admin → MFD: the firm must have access to this sidebar item.
@@ -373,12 +417,26 @@ export default async function DashboardLayout({ children }: { children: React.Re
       label: item.label,
       iconName: (item.icon?.displayName || item.icon?.name || "") as string,
       defaultGroup: section.title,
+      badge: item.href === "/dashboard/announcements" && announcementCount > 0 ? announcementCount : undefined,
+      beta: moduleControls[item.href] === "beta",
     }))
   );
 
-  // Sub-items for the top "Dashboards" dropdown. Dashboard + My Dashboards are
-  // always available; Team Dashboard is role-gated (owner / branch_head).
+  // Sub-items for the top "Dashboards" dropdown. The main /dashboard is the core
+  // landing (always present). The rest (My Dashboards, Team Dashboard, Team
+  // Scorecard) are now gated exactly like main-nav items — a platform Module
+  // Control kill-switch, the per-tenant sidebar grant, and the per-user module
+  // set all apply (so an admin can enable/disable each from Module Controls,
+  // the package/tenant sidebar grant, or a team member's access).
   const canSeeTeam = session.roles.some((r) => r === "owner" || r === "branch_head");
+  const dashSubGated = (href: string): boolean => {
+    if (moduleControls[href] === "disabled") return false;
+    if (isGatableNav(href)) {
+      if (!tenantAllowedSet.has(href)) return false;
+      if (!isOwnerUser && userModules && !userModules.includes(href)) return false;
+    }
+    return true;
+  };
   const dashboardSubItems = [
     { href: "/dashboard", label: "Dashboard" },
     { href: "/dashboard/boards", label: "My Dashboards" },
@@ -388,7 +446,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           { href: "/dashboard/team/scorecard", label: "Team Scorecard" },
         ]
       : []),
-  ];
+  ].filter((it) => it.href === "/dashboard" || dashSubGated(it.href));
 
   const roleLabel = primaryRoleLabel(session.roles);
 
@@ -454,6 +512,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           items={flatNavItems}
           storageKey={`aina:nav:${session.userId}`}
           dashboardSubItems={dashboardSubItems}
+          showDashboards={showDashboards}
         />
 
     </>
@@ -496,7 +555,6 @@ export default async function DashboardLayout({ children }: { children: React.Re
             >
               <HelpCircle className="size-4" />
             </Link>
-            <ThemeToggle />
             <BirthdayBell />
             <NotificationBell />
             <span className="h-6 w-px bg-border mx-0.5" />
@@ -524,6 +582,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
           ) : (
             <>
               {license.isRestricted && pathAllowed && <RestrictedBanner license={license} />}
+              {!twoFaEnabled && session.roles.some((r) => ["owner", "branch_head", "compliance", "platform_admin"].includes(r)) && (
+                <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm text-amber-900">
+                  <ShieldAlert className="size-4 shrink-0" />
+                  <span>Your role can access client PAN / KYC data. Protect it with two-factor authentication.</span>
+                  <Link href="/dashboard/settings/security" className="ml-auto font-semibold underline hover:no-underline">Enable 2FA →</Link>
+                </div>
+              )}
               {children}
             </>
           )}

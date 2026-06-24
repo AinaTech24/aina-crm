@@ -93,8 +93,32 @@ export function GuidedStageActions({
   const [teamUsers, setTeamUsers] = useState<Array<{ id: string; name: string }>>([]);
   // Required when transitioning to "ucc_activated" — stored on the client master.
   const [uccNumber, setUccNumber] = useState("");
+  // Required when transitioning to "mandate_activated" — stored on the client.
+  const [mandateBanks, setMandateBanks] = useState<Array<{ bankName?: string; accountMasked?: string; ifsc?: string; accountType?: string }>>([]);
+  const [mandateBankIdx, setMandateBankIdx] = useState("");
+  const [mandateBankName, setMandateBankName] = useState(""); // free-text when no saved accounts
+  const [mandateAmount, setMandateAmount] = useState("");
+  const [mandateRef, setMandateRef] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Load the client's saved bank accounts when a mandate-activation modal opens,
+  // so the "select bank" picker is populated.
+  useEffect(() => {
+    if (transitioningAction?.targetStage !== "mandate_activated") return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const j = await fetch(`/api/leads/${leadId}/capture-kyc`).then((r) => r.json()).catch(() => ({}));
+        if (!cancelled) setMandateBanks(Array.isArray(j.bankAccounts) ? j.bankAccounts : []);
+      } catch {
+        /* picker falls back to free-text bank-name entry */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [transitioningAction?.targetStage, leadId]);
 
   // Load the team list once, when a task-creating transition modal opens, so the
   // "Assign to" picker can be populated.
@@ -368,6 +392,22 @@ export function GuidedStageActions({
       return;
     }
 
+    // "Mandate Activated" — capture bank + amount (+ approval ref) for the client.
+    const isMandateActivated = transitioningAction.targetStage === "mandate_activated";
+    const selectedBank = mandateBanks.length && mandateBankIdx !== "" ? mandateBanks[Number(mandateBankIdx)] : null;
+    if (isMandateActivated) {
+      const bankChosen = mandateBanks.length ? !!selectedBank : mandateBankName.trim() !== "";
+      if (!bankChosen) {
+        setError("Please select the bank the mandate is registered on.");
+        return;
+      }
+      const amt = Number(mandateAmount);
+      if (!mandateAmount.trim() || isNaN(amt) || amt <= 0) {
+        setError("Please enter a valid mandate amount.");
+        return;
+      }
+    }
+
     setSubmitting(true);
     setError(null);
     try {
@@ -380,6 +420,11 @@ export function GuidedStageActions({
           fields: fieldValues,
           callBackAt: isCallBack ? callBackAt : undefined,
           uccNumber: isUccActivated ? uccNumber.trim() : undefined,
+          mandateBank: isMandateActivated ? (selectedBank?.bankName ?? mandateBankName.trim()) : undefined,
+          mandateIfsc: isMandateActivated ? selectedBank?.ifsc : undefined,
+          mandateAccountMasked: isMandateActivated ? selectedBank?.accountMasked : undefined,
+          mandateAmount: isMandateActivated ? Number(mandateAmount) : undefined,
+          mandateRef: isMandateActivated && mandateRef.trim() ? mandateRef.trim() : undefined,
         }),
       });
 
@@ -414,6 +459,11 @@ export function GuidedStageActions({
       setCallBackAt("");
       setTaskAssigneeId("");
       setUccNumber("");
+      setMandateBanks([]);
+      setMandateBankIdx("");
+      setMandateBankName("");
+      setMandateAmount("");
+      setMandateRef("");
       router.refresh();
       window.dispatchEvent(new CustomEvent("blueprint:refresh"));
       onAfterAdvance?.();
@@ -674,6 +724,73 @@ export function GuidedStageActions({
               </div>
             )}
 
+            {/* Mandate details — required for "Mandate Activated". */}
+            {transitioningAction.targetStage === "mandate_activated" && (
+              <div className="space-y-3 border-t border-b border-border py-3">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-brand-cyan">
+                  Mandate details
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-foreground font-medium">
+                    Bank account <span className="text-rose-500">*</span>
+                  </label>
+                  {mandateBanks.length > 0 ? (
+                    <select
+                      value={mandateBankIdx}
+                      onChange={(e) => setMandateBankIdx(e.target.value)}
+                      className="input-base text-xs w-full"
+                    >
+                      <option value="">— select bank —</option>
+                      {mandateBanks.map((b, i) => (
+                        <option key={i} value={String(i)}>
+                          {[b.bankName, b.accountMasked, b.ifsc].filter(Boolean).join(" · ") || `Account ${i + 1}`}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      type="text"
+                      value={mandateBankName}
+                      onChange={(e) => setMandateBankName(e.target.value)}
+                      placeholder="Bank name"
+                      className="input-base text-xs w-full"
+                    />
+                  )}
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-foreground font-medium">
+                    Mandate amount (₹) <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={mandateAmount}
+                    onChange={(e) => setMandateAmount(e.target.value)}
+                    placeholder="e.g. 25000"
+                    className="input-base text-xs w-full"
+                  />
+                  <p className="text-[10px] text-muted-foreground">
+                    Max amount the NACH / e-mandate authorises per debit.
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-foreground font-medium">
+                    Mandate reference / UMRN (approval no.)
+                  </label>
+                  <input
+                    type="text"
+                    value={mandateRef}
+                    onChange={(e) => setMandateRef(e.target.value)}
+                    placeholder="e.g. HDFC6100000012345"
+                    className="input-base text-xs w-full"
+                  />
+                  <p className="text-[10px] text-muted-foreground">
+                    Marks the mandate Active on the client's profile.
+                  </p>
+                </div>
+              </div>
+            )}
+
             {/* Remarks / Notes */}
             <div className="space-y-1">
               <label className="text-xs text-foreground font-medium">
@@ -700,6 +817,11 @@ export function GuidedStageActions({
                 onClick={() => {
                   setTransitioningAction(null);
                   setCallBackAt("");
+                  setMandateBanks([]);
+                  setMandateBankIdx("");
+                  setMandateBankName("");
+                  setMandateAmount("");
+                  setMandateRef("");
                   setError(null);
                 }}
                 className="btn-secondary text-xs"

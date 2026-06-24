@@ -167,9 +167,6 @@ export default async function SipRejectionsPage({
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
             <XOctagon className="size-6 text-brand-cyan" /> SIP Rejections
           </h1>
-          <p className="text-muted-foreground text-sm">
-            Recovery pipeline · 2-day SLA · auto-task on every new rejection.
-          </p>
         </div>
         <div className="flex items-center gap-2">
           <NewSipRejectionButton />
@@ -336,9 +333,8 @@ function ReasonRow({
   return (
     <Link
       href={`/dashboard/sip-rejections?reason_cat=${cat}`}
-      className={`flex items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-sm transition-colors ${
-        isActive ? "border-brand-cyan bg-brand-cyan-light/40" : "border-transparent hover:bg-secondary/60"
-      }`}
+      className={`flex items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-sm transition-colors ${isActive ? "border-brand-cyan bg-brand-cyan-light/40" : "border-transparent hover:bg-secondary/60"
+        }`}
     >
       <span className="flex items-center gap-2 min-w-0">
         <span className={`size-2 rounded-full shrink-0 ${dot}`} />
@@ -376,10 +372,10 @@ function Stat({
     tone === "rose"
       ? "text-rose-600"
       : tone === "amber"
-      ? "text-amber-600"
-      : tone === "emerald"
-      ? "text-emerald-600"
-      : "text-foreground";
+        ? "text-amber-600"
+        : tone === "emerald"
+          ? "text-emerald-600"
+          : "text-foreground";
   return (
     <div className="card-surface p-4">
       <div className="flex items-center justify-between">

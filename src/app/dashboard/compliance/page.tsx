@@ -93,7 +93,7 @@ export default async function CompliancePage() {
   const expiriesData = await withTenant(session.tenantId, async (tx) => {
     // A. Tenant ARN
     const tenantRow = (await tx.select({ arnExpiryAt: tenants.arnExpiryAt, displayName: tenants.displayName }).from(tenants).where(eq(tenants.id, session.tenantId)).limit(1))[0];
-    
+
     // B. User NISM and EUIN
     const activeUsers = await tx
       .select({
@@ -221,9 +221,6 @@ export default async function CompliancePage() {
     <div className="space-y-6 max-w-7xl">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Compliance & DDQ readiness</h1>
-        <p className="text-muted-foreground text-sm">
-          The moat. Every send checked, every document tracked, one-click inspection mode.
-        </p>
       </div>
 
       {/* AMFI DDQ audit checklist */}

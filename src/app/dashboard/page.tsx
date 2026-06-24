@@ -15,6 +15,7 @@ import { LayoutDashboard, Star } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
+import { AutoRefresh } from "@/components/common/AutoRefresh";
 import { OwnerCockpit } from "@/components/dashboards/OwnerCockpit";
 import { RmDashboard } from "@/components/dashboards/RmDashboard";
 import { BackOfficeDashboard } from "@/components/dashboards/BackOfficeDashboard";
@@ -111,9 +112,9 @@ export default async function DashboardPage({
       <OwnerCockpit session={session} period={period} customStart={pstart} />
     );
   } else if (can(roles, "dashboard.view.compliance", perms)) {
-    dash = <ComplianceCockpit session={session} />;
+    dash = <ComplianceCockpit session={session} period={period} customStart={pstart} />;
   } else if (can(roles, "dashboard.view.marketing", perms)) {
-    dash = <MarketingDashboard session={session} />;
+    dash = <MarketingDashboard session={session} period={period} customStart={pstart} />;
   } else if (can(roles, "dashboard.view.ops", perms)) {
     dash = <BackOfficeDashboard session={session} />;
   } else if (can(roles, "dashboard.view.rm", perms)) {
@@ -125,6 +126,9 @@ export default async function DashboardPage({
 
   return (
     <>
+      {/* Live-refresh the dashboard data periodically (no manual reload).
+          Conservative interval — pauses when the tab is hidden. */}
+      <AutoRefresh intervalMs={30000} />
       <AnnouncementsStrip session={session} />
       {memberBar && <div className="mb-5 mt-1">{memberBar}</div>}
       {/* The role cockpits are async server components doing their own data

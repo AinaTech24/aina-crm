@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, RefreshCw } from "lucide-react";
+import { SelectField } from "@/components/ui/SelectField";
 
 /** "Run reconciliation now" button — triggers the engine for this tenant. */
 export function RunReconButton() {
@@ -64,17 +65,18 @@ export function ReconRowActions({ id, status }: { id: string; status: string }) 
   }
 
   return (
-    <select
+    <SelectField
       value={cur}
       disabled={busy}
       onChange={(e) => update(e.target.value)}
-      className="input-base text-xs py-1 px-2 w-auto"
-      title="Update break status"
+      size="sm"
+      className="w-36"
+      aria-label="Update break status"
     >
       <option value="open">Open</option>
       <option value="investigating">Investigating</option>
       <option value="resolved">Resolved</option>
       <option value="ignored">Ignored</option>
-    </select>
+    </SelectField>
   );
 }

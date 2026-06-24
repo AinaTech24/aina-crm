@@ -11,6 +11,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { id, tenantId, timestamps } from "./_shared";
 import { tenants } from "./tenants";
 import { branches } from "./branches";
@@ -26,6 +27,11 @@ export const investors = pgTable(
     familyId: uuid("family_id").references(() => families.id),
     familyRole: text("family_role"),
 
+    // DB column is NULLABLE (migration 0129) — PAN is often captured after KYC
+    // docs, so a lead can convert before the PAN is known. We keep the Drizzle
+    // type non-null to avoid a `string | null` ripple across the app (PAN is
+    // present for ~all investors); the only null-producer is PAN-less lead
+    // conversion, which inserts via an `as any` cast.
     pan: text("pan").notNull(),
     name: text("name").notNull(),
     dob: date("dob"),
@@ -71,6 +77,9 @@ export const investors = pgTable(
       enum: ["none", "pending", "active", "expired", "rejected", "cancelled"],
     }).default("none"),
     mandateRefNo: text("mandate_ref_no"),
+    /** Max per-debit amount the registered NACH / e-mandate authorises.
+     *  Captured when the team marks the mandate Activated. Migration 0131. */
+    mandateAmount: numeric("mandate_amount", { precision: 18, scale: 2 }),
 
     /**
      * Service tier — drives review cadence + RM workload allocation.
@@ -138,9 +147,38 @@ export const investors = pgTable(
     nomineeName: text("nominee_name"),
     nomineeRelation: text("nominee_relation"),
     nomineeDob: date("nominee_dob"),
-    /** Multiple nominees. The legacy nominee_* columns mirror the first entry. */
+    /** Multiple nominees. The legacy nominee_* columns mirror the first entry.
+     *  Each nominee may carry a PAN document (panDocKey) which the create/update
+     *  API registers as a client document. */
     nominees: jsonb("nominees")
-      .$type<{ name: string; relation?: string; dob?: string; sharePct?: number }[]>()
+      .$type<
+        {
+          name: string;
+          relation?: string;
+          dob?: string;
+          mobile?: string;
+          pan?: string;
+          sharePct?: number;
+          panDocKey?: string;
+          panDocName?: string;
+          panDocMime?: string;
+          panDocSize?: number;
+        }[]
+      >()
+      .default([]),
+
+    /** Referrals — people this client referred (prospective leads / referral
+     *  sources). Each carries name + optional relation/mobile/email/note. */
+    referrals: jsonb("referrals")
+      .$type<
+        {
+          name: string;
+          relation?: string;
+          mobile?: string;
+          email?: string;
+          note?: string;
+        }[]
+      >()
       .default([]),
 
     /** Bank (mandate) — legacy single fields mirror bankAccounts[0]. */
@@ -221,6 +259,15 @@ export const investors = pgTable(
     mergedAt: timestamp("merged_at", { withTimezone: true }),
 
     /**
+     * Soft-delete (Trash bin). When a client is deleted it's stamped here
+     * instead of being hard-deleted; the row is hidden from every list + the
+     * detail page and shown only in the Trash bin, recoverable until the
+     * retention window elapses (default 30 days) when daily-ops auto-purges it.
+     */
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    deletedBy: uuid("deleted_by"),
+
+    /**
      * Contact-verification stamps (Sanchay "Verified At" parity). Set when an
      * RM confirms the email / phone is correct — drives a verification-due
      * worklist + deliverability hygiene.
@@ -240,10 +287,51 @@ export const investors = pgTable(
      * opportunities. See src/lib/investors/cross-sell.ts.
      */
     crossSell: jsonb("cross_sell").$type<Record<string, string>>(),
+
+    /** Extended client-master fields (migration 0127). All optional. */
+    maritalStatus: text("marital_status"),
+    modeOfHolding: text("mode_of_holding"), // single | joint | anyone_or_survivor
+    anniversaryDate: date("anniversary_date"),
+    taxStatus: text("tax_status"),
+    birthPlace: text("birth_place"),
+    motherName: text("mother_name"),
+    mobileRelation: text("mobile_relation"), // whose mobile (self / spouse / …)
+    emailRelation: text("email_relation"),
+    referralClientName: text("referral_client_name"),
+    familyOwnerName: text("family_owner_name"),
+    householdType: text("household_type"), // "Family or Individual"
+    /** Second / joint holder details. */
+    secondHolderFirstName: text("second_holder_first_name"),
+    secondHolderLastName: text("second_holder_last_name"),
+    secondHolderOccupation: text("second_holder_occupation"),
+    secondHolderCompanyName: text("second_holder_company_name"),
+    secondHolderBirthPlace: text("second_holder_birth_place"),
+    secondHolderMotherName: text("second_holder_mother_name"),
+    secondHolderMaritalStatus: text("second_holder_marital_status"),
+
+    /** Raw KYC submission captured from the public onboarding link (/d/<token>).
+     *  The mapped fields land in dedicated columns above; this preserves the
+     *  full submission verbatim (incl. unmapped fields like guardian / overseas
+     *  address / TIN / PEP / source-of-wealth). Migration 0130. */
+    kycData: jsonb("kyc_data").$type<Record<string, string>>(),
+
+    /** When true, this client participates in PAN uniqueness (the partial unique
+     *  index below). RTA-feed, manual create, and lead-convert leave it true so a
+     *  PAN can't be duplicated there. The bulk Excel importer sets it FALSE so a
+     *  migrated book may legitimately carry the same PAN on multiple rows (e.g.
+     *  one person split across accounts). Migration 0137. */
+    dedupPan: boolean("dedup_pan").notNull().default(true),
+
     ...timestamps,
   },
   (t) => ({
-    panUnique: uniqueIndex("investors_tenant_pan_unique").on(t.tenantId, t.pan),
+    // PARTIAL unique: only rows opting into dedup (dedup_pan = true) with a real
+    // PAN are constrained. Excel-imported rows (dedup_pan = false) may repeat a
+    // PAN freely. Index NAME is unchanged so the `investors_tenant_pan_unique`
+    // error-catch in manual create / lead-convert keeps working.
+    panUnique: uniqueIndex("investors_tenant_pan_unique")
+      .on(t.tenantId, t.pan)
+      .where(sql`dedup_pan AND pan IS NOT NULL`),
     rmIdx: index("investors_rm_idx").on(t.tenantId, t.rmId),
     segmentIdx: index("investors_segment_idx").on(t.tenantId, t.segmentTag),
     lastReviewIdx: index("investors_last_review_idx").on(t.tenantId, t.lastReviewAt),

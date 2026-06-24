@@ -28,7 +28,7 @@ export default async function PlatformStaffPage() {
 
   return (
     <div className="space-y-6 max-w-5xl">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Platform staff</h1>
           <p className="text-muted-foreground text-sm">
@@ -50,6 +50,7 @@ export default async function PlatformStaffPage() {
             <div className="mt-2">No platform staff yet.</div>
           </div>
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="text-xs text-muted-foreground border-b">
               <tr>
@@ -89,6 +90,7 @@ export default async function PlatformStaffPage() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 

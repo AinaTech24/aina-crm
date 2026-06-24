@@ -1,7 +1,7 @@
 import { handleApiError } from "@/lib/api/error-handler";
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuid } from "uuid";
-import { and, desc, eq, or } from "drizzle-orm";
+import { and, desc, eq, isNull, or } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
@@ -79,7 +79,7 @@ export async function GET() {
     const rows = await withTenant(session.tenantId, async (tx) => {
       // Tenant predicate is mandatory (RLS-bypass); view.assigned users see
       // only their own (assignee/creator) tasks.
-      const conds: any[] = [eq(tasks.tenantId, session.tenantId)];
+      const conds: any[] = [eq(tasks.tenantId, session.tenantId), isNull(tasks.deletedAt)];
       if (!canViewAll) {
         conds.push(or(eq(tasks.assigneeId, session.userId), eq(tasks.createdById, session.userId))!);
       }

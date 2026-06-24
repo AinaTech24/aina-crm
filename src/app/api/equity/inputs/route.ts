@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { requireAny } from "@/lib/auth/rbac";
 import { handleApiError } from "@/lib/api/error-handler";
 import { setBrokerage, setEquityTarget, loadEquityTeam } from "@/lib/equity/service";
 
@@ -32,6 +33,9 @@ const METRIC = { brokerage: "equity_brokerage", newDmat: "equity_new_dmat", acti
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
+    // Firm-level brokerage + targets — gate to managers (matches the read side
+    // in /api/reports/equity-team), not any logged-in user.
+    requireAny(session.roles, ["reports.business", "reports.manage"], session.permissions);
     const parsed = Body.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) return NextResponse.json({ error: "invalid body", issues: parsed.error.issues }, { status: 400 });
     const { fiscalYear, period, targets, brokerage } = parsed.data;

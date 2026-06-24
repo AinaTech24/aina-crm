@@ -73,7 +73,7 @@ export default function NewPackagePage() {
       <h1 className="text-2xl font-bold tracking-tight">New package</h1>
 
       <form onSubmit={submit} className="border rounded-lg bg-card p-5 space-y-3">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <label className="block">
             <div className="text-xs font-medium mb-1">Key (lowercase, _)<span className="text-rose-600">*</span></div>
             <input required value={form.key} onChange={(e) => setForm({ ...form, key: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_") })} className="w-full border rounded-md px-3 py-2 text-sm bg-background font-mono" />
@@ -88,7 +88,7 @@ export default function NewPackagePage() {
           <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={2} className="w-full border rounded-md px-3 py-2 text-sm bg-background" />
         </label>
 
-        <div className="grid grid-cols-3 gap-3 border-t pt-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 border-t pt-3">
           <NumberField label="Monthly ₹" value={form.monthlyPriceRupees} onChange={(v) => setForm({ ...form, monthlyPriceRupees: v })} />
           <NumberField label="Yearly ₹" value={form.yearlyPriceRupees} onChange={(v) => setForm({ ...form, yearlyPriceRupees: v })} />
           <NumberField label="Setup ₹ (one-time / org)" value={form.setupCostRupees} onChange={(v) => setForm({ ...form, setupCostRupees: v })} />

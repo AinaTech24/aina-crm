@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { requireAny } from "@/lib/auth/rbac";
 import { handleApiError } from "@/lib/api/error-handler";
 import { listDmat, createDmat } from "@/lib/equity/service";
 
@@ -33,6 +34,7 @@ const CreateBody = z.object({
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
+    requireAny(session.roles, ["reports.business", "reports.manage"], session.permissions);
     const parsed = CreateBody.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) return NextResponse.json({ error: "invalid input", issues: parsed.error.issues }, { status: 400 });
     const row = await withTenant(session.tenantId, async (tx) => createDmat(tx, session.tenantId, parsed.data));

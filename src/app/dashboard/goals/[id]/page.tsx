@@ -20,6 +20,7 @@ import { categoryLabel } from "@/lib/goal-planning/calc";
 import { GoalDetailCalculator } from "@/components/goal-planning/GoalDetailCalculator";
 import { LinkedInvestmentsPicker } from "@/components/goal-planning/LinkedInvestmentsPicker";
 import { GoalShareActions } from "@/components/goal-planning/GoalShareActions";
+import { RecomputeGoalButton } from "@/components/goal-planning/RecomputeGoalButton";
 import { RecordProvenance } from "@/components/common/RecordProvenance";
 
 export const dynamic = "force-dynamic";
@@ -87,6 +88,7 @@ export default async function GoalDetailPage({ params }: { params: Promise<{ id:
           />
         </div>
         <div className="flex items-center gap-2">
+          <RecomputeGoalButton goalId={data.goal.id} />
           <Link
             href={`/dashboard/goals/${data.goal.id}/print?view=summary`}
             target="_blank"

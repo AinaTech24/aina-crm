@@ -30,7 +30,7 @@ export function DashboardView({
   }
 
   const grid = (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 auto-rows-[140px]">
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 [grid-auto-rows:minmax(140px,auto)]">
       {layout.map((w) => (
         <div
           key={w.id}

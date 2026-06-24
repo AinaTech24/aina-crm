@@ -69,6 +69,7 @@ export async function POST(req: NextRequest) {
           branches: input.branches as any,
           enabled: input.enabled,
           executionOrder: input.executionOrder,
+          rateLimitPerHour: input.rateLimitPerHour ?? null,
           createdBy: session.userId,
         })
         .returning();

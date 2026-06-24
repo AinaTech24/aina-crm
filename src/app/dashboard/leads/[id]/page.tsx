@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import {
   ChevronLeft,
   Phone,
@@ -77,7 +77,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
       tx
         .select()
         .from(tasks)
-        .where(and(eq(tasks.subjectType, "lead"), eq(tasks.subjectId, id)))
+        .where(and(eq(tasks.subjectType, "lead"), eq(tasks.subjectId, id), isNull(tasks.deletedAt)))
         .orderBy(desc(tasks.createdAt))
         .limit(50),
       tx

@@ -6,6 +6,7 @@ import { withTenant } from "@/db/client";
 import { families, investors, users, goals } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { formatINR, formatDate, formatRelative } from "@/lib/utils";
+import { Avatar } from "@/components/ui/Avatar";
 import { AddMemberDialog } from "@/components/families/AddMemberDialog";
 import { RemoveMemberButton } from "@/components/families/RemoveMemberButton";
 import { FamilyEditPanel } from "@/components/families/FamilyEditPanel";
@@ -252,14 +253,19 @@ export default async function FamilyDetailPage({ params }: { params: Promise<{ i
                 return (
                   <tr key={m.id} className="border-b last:border-0 hover:bg-accent/40">
                     <td className="px-4 py-3">
-                      <Link href={`/dashboard/investors/${m.id}`} className="font-medium hover:underline">
-                        {m.name}
-                      </Link>
-                      {isPrimary && (
-                        <span className="ml-2 text-[10px] uppercase font-semibold text-primary">
-                          primary
-                        </span>
-                      )}
+                      <div className="flex items-center gap-2">
+                        <Avatar src={(m as any).avatarUrl ? `/api/investors/${m.id}/avatar` : null} name={m.name} size={26} />
+                        <div>
+                          <Link href={`/dashboard/investors/${m.id}`} className="font-medium hover:underline">
+                            {m.name}
+                          </Link>
+                          {isPrimary && (
+                            <span className="ml-2 text-[10px] uppercase font-semibold text-primary">
+                              primary
+                            </span>
+                          )}
+                        </div>
+                      </div>
                     </td>
                     <td className="py-3 text-xs">
                       {m.familyRole ? ROLE_LABELS[m.familyRole] ?? m.familyRole : "—"}

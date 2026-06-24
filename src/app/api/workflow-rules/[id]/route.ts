@@ -73,6 +73,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       if (updates.branches !== undefined) next.branches = updates.branches;
       if (updates.enabled !== undefined) next.enabled = updates.enabled;
       if (updates.executionOrder !== undefined) next.executionOrder = updates.executionOrder;
+      if (updates.rateLimitPerHour !== undefined) next.rateLimitPerHour = updates.rateLimitPerHour;
       next.updatedAt = new Date();
 
       const [r] = await tx.update(workflowRules).set(next).where(and(eq(workflowRules.id, id), eq(workflowRules.tenantId, session.tenantId))).returning();

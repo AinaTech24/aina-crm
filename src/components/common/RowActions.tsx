@@ -22,7 +22,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { MoreHorizontal, Pencil, Trash2, Loader2 } from "lucide-react";
+import { MoreHorizontal, Pencil, Trash2, Loader2, type LucideIcon } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/Toast";
 
@@ -35,6 +35,8 @@ export function RowActions({
   permanent = false,
   onDeleted,
   redirectTo,
+  inline = false,
+  deleteIcon: DeleteIcon = Trash2,
 }: {
   editHref?: string;
   deleteUrl?: string;
@@ -46,6 +48,10 @@ export function RowActions({
   /** When set, navigate here after a successful delete (e.g. back to the list
    *  from a detail page) instead of refreshing the current — now gone — record. */
   redirectTo?: string;
+  /** Render Edit + Delete as two side-by-side icon buttons instead of a "⋯" menu. */
+  inline?: boolean;
+  /** Icon for the destructive action in inline mode (e.g. Archive, Ban). Defaults to Trash2. */
+  deleteIcon?: LucideIcon;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -80,6 +86,47 @@ export function RowActions({
     } finally {
       setBusy(false);
     }
+  }
+
+  // Inline variant — two explicit icon buttons (no dropdown). The ConfirmDialog
+  // still gates the delete; success/failure still go through the toast system.
+  if (inline) {
+    return (
+      <div className="inline-flex items-center justify-end gap-1" data-no-row-nav>
+        {editHref && (
+          <Link
+            href={editHref}
+            className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+            aria-label={`Edit ${itemLabel}`}
+            title="Edit"
+          >
+            <Pencil className="size-4" />
+          </Link>
+        )}
+        {deleteUrl && (
+          <button
+            type="button"
+            onClick={() => setConfirmOpen(true)}
+            disabled={busy}
+            className="rounded-md p-1.5 text-rose-600 hover:bg-rose-50 disabled:opacity-50"
+            aria-label={`${verb} ${itemLabel}`}
+            title={verb}
+          >
+            {busy ? <Loader2 className="size-4 animate-spin" /> : <DeleteIcon className="size-4" />}
+          </button>
+        )}
+        <ConfirmDialog
+          open={confirmOpen}
+          title={`${verb} ${itemLabel}?`}
+          message={confirmMessage}
+          confirmLabel={verb}
+          tone="danger"
+          busy={busy}
+          onConfirm={doDelete}
+          onCancel={() => setConfirmOpen(false)}
+        />
+      </div>
+    );
   }
 
   return (

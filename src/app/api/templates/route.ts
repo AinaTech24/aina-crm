@@ -18,7 +18,7 @@ import { requireSession } from "@/lib/auth/session";
 import { require as requireCap, requireAny } from "@/lib/auth/rbac";
 import { tenants, templates, templateVersions } from "@/db/schema";
 import { runComplianceChecks } from "@/lib/comms/compliance";
-import { findUndeclaredPlaceholders } from "@/lib/comms/tokens";
+import { findUndeclaredPlaceholders, templateBodyToText } from "@/lib/comms/tokens";
 
 export const dynamic = "force-dynamic";
 
@@ -78,8 +78,8 @@ export async function POST(req: NextRequest) {
       const tenant = await tx.select().from(tenants).where(eq(tenants.id, session.tenantId)).limit(1);
       const t = tenant[0];
 
-      // Render plain text for compliance scan
-      const previewText = extractText(body.channel, body.body);
+      // Render plain text for compliance scan (shared extractor — see tokens.ts)
+      const previewText = templateBodyToText(body.channel, body.body);
       const subject = body.channel === "email" ? (body.body?.subject ?? "") : undefined;
       const dltTemplateId = body.channel === "sms" ? body.body?.dltTemplateId : undefined;
 
@@ -152,6 +152,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(result, { status: 201 });
   } catch (err: any) {
+    // (compliance text extraction lives in tokens.ts — templateBodyToText)
     // Postgres unique_violation = 23505. Drizzle wraps the driver error, so the
     // constraint name lives on err.cause/err.detail, NOT err.message ("Failed
     // query: …"). Check the code + all message surfaces so a duplicate key is a
@@ -170,23 +171,4 @@ export async function POST(req: NextRequest) {
     }
     return handleApiError(err);
   }
-}
-
-function extractText(channel: string, body: any): string {
-  if (!body) return "";
-  if (channel === "whatsapp") {
-    return [body?.header?.text, body?.body?.text, body?.footer?.text].filter(Boolean).join("\n");
-  }
-  if (channel === "email") {
-    const blocks = body?.blocks ?? [];
-    const txt = blocks
-      .map((b: any) => b?.text ?? b?.content ?? "")
-      .filter(Boolean)
-      .join("\n");
-    return [body?.subject, body?.preheader, txt, body?.textFallback].filter(Boolean).join("\n");
-  }
-  if (channel === "sms") {
-    return body?.text ?? "";
-  }
-  return JSON.stringify(body);
 }

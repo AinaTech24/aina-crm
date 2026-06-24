@@ -1,4 +1,4 @@
-import { date, index, numeric, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { date, index, jsonb, numeric, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { id, tenantId, timestamps } from "./_shared";
 import { tenants } from "./tenants";
 import { branches } from "./branches";
@@ -74,6 +74,13 @@ export const insuranceClaims = pgTable(
     /** Owning RM. */
     rmId: uuid("rm_id").references(() => users.id),
     comments: text("comments"),
+
+    /** Claim document checklist — uploaded supporting files (bills, discharge
+     *  summary, death certificate, KYC, bank proof…). `docType` keys the file to
+     *  a checklist item; `key` is the storage key, `url` an external link. */
+    documents: jsonb("documents")
+      .$type<{ name: string; docType?: string; key?: string; url?: string; mime?: string; size?: number; uploadedAt?: string }[]>()
+      .default([]),
 
     ...timestamps,
   },

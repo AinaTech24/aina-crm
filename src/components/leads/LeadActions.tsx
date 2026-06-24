@@ -820,15 +820,18 @@ function ConvertDialog({
         </p>
         <label className="block">
           <div className="text-xs font-medium mb-1">
-            PAN<span className="text-rose-600">*</span>
+            PAN
+            <span className="ml-1 text-[10px] text-muted-foreground font-normal">· optional — add it later after KYC docs</span>
           </div>
           <input
             value={pan}
             onChange={(e) => setPan(e.target.value.toUpperCase())}
-            placeholder="ABCDE1234F"
-            required
+            placeholder="ABCDE1234F (optional)"
             className="w-full border rounded-md px-3 py-2 text-sm bg-background font-mono"
           />
+          <div className="text-[10px] text-muted-foreground mt-1">
+            Leave blank to convert now and capture the PAN from the client's KYC documents later.
+          </div>
         </label>
         <div className="grid grid-cols-2 gap-3">
           <label className="block">
@@ -878,7 +881,9 @@ function ConvertDialog({
         submit={
           <button
             onClick={submit}
-            disabled={busy || !/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(pan.toUpperCase())}
+            // PAN is optional — allow convert with no PAN. Only block if a PAN
+            // was typed but is malformed.
+            disabled={busy || (pan.trim() !== "" && !/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(pan.toUpperCase()))}
             className="rounded-md bg-emerald-600 text-white px-4 py-2 text-sm font-medium disabled:opacity-50 flex items-center gap-1.5"
           >
             {busy && <Loader2 className="size-3.5 animate-spin" />}

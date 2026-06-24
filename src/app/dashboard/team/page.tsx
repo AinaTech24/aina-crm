@@ -20,6 +20,7 @@ import { getTeamDashboard, type Metric } from "@/lib/team/dashboard";
 import { LEAVE_TYPE_LABELS } from "@/lib/leave/policy";
 import { TeamMemberFilter } from "@/components/dashboards/TeamMemberFilter";
 import { TeamRangePicker } from "@/components/dashboards/TeamRangePicker";
+import { AutoRefresh } from "@/components/common/AutoRefresh";
 
 export const dynamic = "force-dynamic";
 
@@ -132,6 +133,8 @@ export default async function TeamDashboardPage({
 
   return (
     <div className="space-y-6 max-w-7xl">
+      {/* Keep team workload/accountability fresh as actions complete elsewhere. */}
+      <AutoRefresh intervalMs={60000} />
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
@@ -156,7 +159,7 @@ export default async function TeamDashboardPage({
             from={data.range.from}
             to={data.range.to}
           />
-          <div className="inline-flex rounded-lg border border-border bg-secondary/40 p-0.5 gap-0.5">
+          <div className="inline-flex flex-wrap rounded-lg border border-border bg-secondary/40 p-0.5 gap-0.5">
             {presets.map((pr) => {
               const active = data.range.from === pr.from && data.range.to === pr.to;
               return (
@@ -178,12 +181,12 @@ export default async function TeamDashboardPage({
 
       {/* On-leave coverage */}
       <div className="card-surface p-4">
-        <div className="flex items-center justify-between mb-2">
-          <h2 className="font-semibold text-sm flex items-center gap-2">
+        <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+          <h2 className="font-semibold text-sm flex items-center gap-2 flex-wrap">
             <CalendarOff className="size-4 text-brand-cyan" /> Team availability
             <span className="text-xs font-normal text-muted-foreground">· Present today {coverage.att?.present_today ?? 0}/{coverage.att?.active_employees ?? 0}</span>
           </h2>
-          <div className="flex items-center gap-3 text-xs">
+          <div className="flex items-center gap-3 text-xs flex-wrap">
             <Link href="/dashboard/attendance" className="text-brand-cyan hover:underline">Attendance →</Link>
             <Link href="/dashboard/leave-applications" className="text-brand-cyan hover:underline">Leave board →</Link>
           </div>
@@ -209,7 +212,7 @@ export default async function TeamDashboardPage({
         )}
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-3">
+      <div className="grid gap-5 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
         <Column title="Open" sub="Pending right now" icon={Inbox} metrics={data.open} />
         <Column title="Periodic" sub={`Today · ${data.range.to}`} icon={CalendarDays} metrics={data.periodic} />
         <Column title="Result" sub={`${data.range.from} → ${data.range.to}`} icon={Trophy} metrics={data.result} />
@@ -225,9 +228,9 @@ export default async function TeamDashboardPage({
         {data.perRm.length === 0 ? (
           <div className="p-8 text-center text-sm text-muted-foreground">No RM workload to show.</div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="table-scroll">
             <table className="w-full text-sm">
-              <thead className="text-xs text-muted-foreground border-b">
+              <thead className="text-xs text-muted-foreground border-b sticky top-0 z-10 bg-card">
                 <tr>
                   <th className="text-left px-4 py-2 font-medium">RM</th>
                   <th className="text-right py-2 font-medium">Overdue tasks</th>
@@ -241,7 +244,14 @@ export default async function TeamDashboardPage({
               <tbody>
                 {data.perRm.map((r) => (
                   <tr key={r.id} className="border-b last:border-0 hover:bg-accent/40">
-                    <td className="px-4 py-2.5 font-medium">{r.name}</td>
+                    <td className="px-4 py-2.5 font-medium">
+                      <Link
+                        href={`/dashboard?rm=${r.id}&date_from=${data.range.from}&date_to=${data.range.to}`}
+                        className="hover:text-brand-cyan-deep hover:underline"
+                      >
+                        {r.name}
+                      </Link>
+                    </td>
                     <td className={`py-2.5 text-right tabular-nums ${r.overdueTasks > 0 ? "text-rose-600 font-semibold" : "text-muted-foreground"}`}>{r.overdueTasks}</td>
                     <td className="py-2.5 text-right tabular-nums text-muted-foreground">{r.dueTodayTasks}</td>
                     <td className="py-2.5 text-right tabular-nums">{r.openLeads}</td>

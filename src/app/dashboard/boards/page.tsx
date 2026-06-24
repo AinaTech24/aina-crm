@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { listBoards, canEdit, type Actor } from "@/lib/dashboards/service";
+import { BOARD_TEMPLATES } from "@/lib/dashboards/templates";
 import { BoardsManager, type BoardLite } from "@/components/dashboards/custom/BoardsManager";
 
 export const dynamic = "force-dynamic";
@@ -34,11 +35,19 @@ export default async function BoardsPage() {
     canEdit: canEdit(b, actor),
   });
 
+  const templates = BOARD_TEMPLATES.map((t) => ({
+    key: t.key,
+    name: t.name,
+    description: t.description,
+    widgetCount: t.widgets.length,
+  }));
+
   return (
     <BoardsManager
       mine={mine.map((b) => toLite(b))}
       shared={shared.map((b) => toLite(b, true))}
       deleted={deleted.map((b) => toLite(b))}
+      templates={templates}
     />
   );
 }

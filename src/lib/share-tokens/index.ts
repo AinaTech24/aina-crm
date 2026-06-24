@@ -23,7 +23,8 @@ export type ShareTokenKind =
   | "proposal_approval"
   | "onboarding_progress"
   | "portfolio_view"
-  | "feedback";
+  | "feedback"
+  | "financial_discovery";
 export type ShareTokenSubjectType = "lead" | "investor" | "proposal";
 
 /** Token kinds that are re-usable (not consumed on first view). */
@@ -54,6 +55,7 @@ const KIND_TO_PATH: Record<ShareTokenKind, string> = {
   onboarding_progress: "/onboarding",
   portfolio_view: "/portfolio",
   feedback: "/f",
+  financial_discovery: "/fd",
 };
 
 export async function createShareToken(input: CreateShareTokenInput): Promise<CreateShareTokenResult> {

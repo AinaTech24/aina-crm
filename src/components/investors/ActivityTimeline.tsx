@@ -174,12 +174,12 @@ export function ActivityTimeline({
           No recorded activity or communications found for this client.
         </div>
       ) : (
-        <div className="relative pl-6 pr-2 space-y-5 max-h-96 overflow-y-auto overflow-x-hidden scrollbar-thin before:absolute before:left-3 before:top-2 before:bottom-2 before:w-0.5 before:bg-border/60">
+        <div className="relative pl-10 pr-1 space-y-5 max-h-96 overflow-y-auto scrollbar-none before:absolute before:left-[18px] before:top-2 before:bottom-2 before:w-0.5 before:bg-border/60">
           {mergedItems.map((item) => (
             <div key={item.id} className="relative group">
-              {/* Timeline dot */}
+              {/* Timeline dot — sits fully inside the left rail so the icon never clips */}
               <div
-                className={`absolute -left-[30px] top-1.5 size-7 rounded-full border grid place-items-center z-10 transition-shadow ${getIconBg(
+                className={`absolute -left-9 top-1.5 size-7 rounded-full border grid place-items-center z-10 transition-shadow ${getIconBg(
                   item
                 )} group-hover:shadow-sm`}
               >

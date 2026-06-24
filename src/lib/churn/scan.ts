@@ -77,13 +77,18 @@ export type ChurnRow = {
 
 export async function scanChurn(
   tx: Tx,
-  opts: { limit?: number; minBand?: "medium" | "high" } = {}
+  opts: { limit?: number; minBand?: "medium" | "high"; rmId?: string } = {}
 ): Promise<ChurnRow[]> {
+  // RM scope: when an rmId is passed (a non-manager viewing their own book),
+  // only that RM's clients are scanned — managers pass no rmId and see the firm.
+  const rmScope = opts.rmId ? sql` AND i.rm_id = ${opts.rmId}::uuid` : sql``;
   const res = await tx.execute(sql`
     SELECT
       i.id, i.name, i.phone, i.status, i.service_tier, i.onboarded_at,
       i.last_contact_at, i.redemption_risk_flagged_at, i.rm_id,
       COALESCE(i.aum, 0)::numeric AS aum,
+      COALESCE(i.lifetime_inflow, 0)::numeric AS lifetime_inflow,
+      COALESCE(i.lifetime_outflow, 0)::numeric AS lifetime_outflow,
       COUNT(t.id) FILTER (WHERE t.direction = 'outflow' AND t.order_date > CURRENT_DATE - 180) AS red_count_180d,
       COALESCE(SUM(t.amount::numeric) FILTER (WHERE t.direction = 'outflow' AND t.order_date > CURRENT_DATE - 180), 0) AS red_amt_180d,
       COALESCE(SUM(CASE WHEN t.direction = 'inflow' THEN t.amount::numeric ELSE -t.amount::numeric END)
@@ -94,11 +99,17 @@ export async function scanChurn(
       (SELECT COUNT(*) FROM sip_rejections r WHERE r.investor_id = i.id AND r.rejection_date > CURRENT_DATE - 90) AS sip_rej_90d
     FROM investors i
     LEFT JOIN transactions t ON t.investor_id = i.id AND t.status IN ('processed', 'successful')
-    WHERE i.status IN ('active', 'dormant')
+    WHERE i.status IN ('active', 'dormant')${rmScope}
     GROUP BY i.id
   `);
 
   const rows = (res.rows as any[]).map((r): ChurnRow => {
+    // Cheap absolute-return proxy: how the current value compares to net invested
+    // (money still in the market). No NAV join needed — uses the maintained
+    // lifetime inflow/outflow totals. Only meaningful when there's net money in.
+    const aum = Number(r.aum);
+    const netInvested = Number(r.lifetime_inflow) - Number(r.lifetime_outflow);
+    const absoluteReturnPct = netInvested > 0 ? (aum - netInvested) / netInvested : null;
     const result = churnScore({
       status: r.status,
       serviceTier: r.service_tier,
@@ -112,8 +123,9 @@ export async function scanChurn(
       activeSips: Number(r.active_sips),
       sipStops90d: Number(r.sip_stops_90d),
       sipRejections90d: Number(r.sip_rej_90d),
-      currentValue: Number(r.aum),
+      currentValue: aum,
       xirr: null,
+      absoluteReturnPct,
     });
     return {
       investorId: r.id,

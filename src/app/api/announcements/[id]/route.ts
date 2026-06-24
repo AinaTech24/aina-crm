@@ -12,6 +12,7 @@ import { requireSession } from "@/lib/auth/session";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { ANNOUNCEMENT_CATEGORIES, announcements } from "@/db/schema";
 import { audienceRolesSchema, checkBranchTarget } from "@/lib/announcements/validate";
+import { notifyAnnouncementPublished } from "@/lib/announcements/notify";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +25,7 @@ const Patch = z.object({
   audienceRoles: audienceRolesSchema.optional(),
   branchId: z.string().uuid().nullable().optional(),
   isPinned: z.boolean().optional(),
+  requiresAck: z.boolean().optional(),
   publishNow: z.boolean().optional(),
   unpublish: z.boolean().optional(),
   expiresAt: z.string().datetime().nullable().optional(),
@@ -59,6 +61,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       if (d.audienceRoles !== undefined) patch.audienceRoles = d.audienceRoles;
       if (d.branchId !== undefined) patch.branchId = d.branchId;
       if (d.isPinned !== undefined) patch.isPinned = d.isPinned;
+      if (d.requiresAck !== undefined) patch.requiresAck = d.requiresAck;
       if (d.expiresAt !== undefined) patch.expiresAt = d.expiresAt ? new Date(d.expiresAt) : null;
       if (d.publishNow) patch.publishedAt = new Date();
       if (d.unpublish) patch.publishedAt = null;
@@ -67,6 +70,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         .set(patch)
         .where(and(eq(announcements.id, id), eq(announcements.tenantId, session.tenantId)))
         .returning();
+      // Notify targeted staff only on the draft → published transition (not on
+      // every edit of an already-live notice).
+      if (d.publishNow && !before.publishedAt) {
+        const n = next[0] as any;
+        await notifyAnnouncementPublished(tx as any, session.tenantId, {
+          id, title: n.title, category: n.category, audienceRoles: n.audienceRoles, branchId: n.branchId, createdByUserId: n.createdByUserId,
+        });
+      }
       await recordAudit(tx, {
         tenantId: session.tenantId,
         actorUserId: session.userId,

@@ -204,11 +204,6 @@ export default async function ProductOfferingsListPage({
       <div className="flex items-end justify-between">
         <div>
           <h1 className="text-2xl font-semibold">Products &amp; services offered</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            What your firm actually sells. Each offering carries its
-            regulator, the licenses that authorise it, and the team trained
-            on it — single source of truth for SEBI / DDQ / lead-intake.
-          </p>
         </div>
         {canEdit && (
           <Link
@@ -232,14 +227,12 @@ export default async function ProductOfferingsListPage({
         ].map((s) => (
           <Link
             key={s.value}
-            href={`/dashboard/product-offerings?status=${s.value}${
-              categoryFilter !== "all" ? `&category=${categoryFilter}` : ""
-            }`}
-            className={`chip text-xs ${
-              statusFilter === s.value
+            href={`/dashboard/product-offerings?status=${s.value}${categoryFilter !== "all" ? `&category=${categoryFilter}` : ""
+              }`}
+            className={`chip text-xs ${statusFilter === s.value
                 ? "bg-slate-900 text-white"
                 : "bg-slate-100"
-            }`}
+              }`}
           >
             {s.label}
           </Link>
@@ -279,9 +272,8 @@ export default async function ProductOfferingsListPage({
                 <div className="flex items-center gap-1.5 shrink-0">
                   <HealthBadge health={healthById.get(r.id)} active={r.status === "active"} />
                   <span
-                    className={`chip text-[10px] ${
-                      STATUS_TONE[r.status] ?? "bg-slate-100"
-                    }`}
+                    className={`chip text-[10px] ${STATUS_TONE[r.status] ?? "bg-slate-100"
+                      }`}
                   >
                     {r.status}
                   </span>

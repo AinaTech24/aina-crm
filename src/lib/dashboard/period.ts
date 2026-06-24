@@ -13,6 +13,52 @@
 
 export type Period = "mtd" | "qtd" | "fytd" | "lm" | "custom";
 
+/**
+ * Unified period RANGE resolver — returns both a start AND an end so every
+ * dashboard (cockpits, charts, board widgets) can share one time window.
+ *
+ * - mtd/qtd/fytd: start-of-period → now ("to date")
+ * - lm: full last calendar month
+ * - custom: explicit `from`/`to` when given, else `customStart` → now
+ *
+ * `fromISO`/`toISO` are for SQL `BETWEEN`/`>=`/`<` clauses; `fromDate`/`toDate`
+ * are the same as Date objects; `days` is the inclusive span (handy for charts).
+ */
+export function resolvePeriodRange(
+  period: Period,
+  now = new Date(),
+  opts?: { customStart?: string; from?: string; to?: string }
+): { fromISO: string; toISO: string; fromDate: Date; toDate: Date; label: string; period: Period; days: number } {
+  const iso = /^\d{4}-\d{2}-\d{2}$/;
+  // Explicit custom range wins (used by RmDashboard / Team / Command Center).
+  if (period === "custom" && opts?.from && iso.test(opts.from)) {
+    const fromDate = new Date(opts.from + "T00:00:00");
+    const toDate = opts.to && iso.test(opts.to) ? new Date(opts.to + "T23:59:59") : now;
+    return pack(fromDate, toDate, rangeLabel(fromDate, toDate), "custom");
+  }
+  if (period === "lm") {
+    const y = now.getFullYear();
+    const m = now.getMonth();
+    const fromDate = new Date(y, m - 1, 1);
+    const toDate = new Date(y, m, 0, 23, 59, 59); // last day of previous month
+    return pack(fromDate, toDate, fromDate.toLocaleDateString("en-IN", { month: "long", year: "numeric" }), "lm");
+  }
+  // mtd / qtd / fytd / custom-since → start..now via the existing resolver.
+  const { startISO, label } = resolvePeriodDates(period, now, opts?.customStart);
+  return pack(new Date(startISO), now, label, period);
+}
+
+function pack(fromDate: Date, toDate: Date, label: string, period: Period) {
+  const days = Math.max(1, Math.round((toDate.getTime() - fromDate.getTime()) / 86_400_000));
+  return { fromISO: fromDate.toISOString(), toISO: toDate.toISOString(), fromDate, toDate, label, period, days };
+}
+
+function rangeLabel(from: Date, to: Date): string {
+  const f = from.toLocaleDateString("en-IN", { day: "2-digit", month: "short" });
+  const t = to.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "2-digit" });
+  return `${f} – ${t}`;
+}
+
 export const PERIOD_LABELS: Record<"mtd" | "qtd" | "fytd" | "lm", string> = {
   mtd: "Month to date",
   qtd: "Quarter to date",

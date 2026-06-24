@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { requireAny } from "@/lib/auth/rbac";
 import { handleApiError } from "@/lib/api/error-handler";
 import { listBranches, loadRmMatrix } from "@/lib/business/rm-matrix";
 import { isRmMatrixKey } from "@/lib/business/rm-matrix-config";
@@ -26,6 +27,7 @@ function currentPeriod(): string {
 export async function GET(req: NextRequest) {
   try {
     const session = await requireSession();
+    requireAny(session.roles, ["reports.business", "reports.manage"], session.permissions);
     const kind = req.nextUrl.searchParams.get("kind") ?? "";
     if (!isRmMatrixKey(kind)) {
       return NextResponse.json({ error: "unknown kind" }, { status: 400 });

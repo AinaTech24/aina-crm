@@ -28,6 +28,20 @@ export type ActionItem = {
   /** The item's relevant date (yyyy-mm-dd) for date-range filtering. Null/absent
    *  = an always-current item (e.g. an SLA breach) that a date range never hides. */
   date?: string | null;
+  /** ₹ at stake (SIP amount, AUM, proposal/mandate value) — drives prioritisation. */
+  amount?: number | null;
+  /** Days the item has been waiting/overdue (computed in the post-process pass). */
+  ageDays?: number;
+  /** The client this item is about — powers the "by client" consolidated view. */
+  client?: { id: string; name: string } | null;
+  /** Phone for one-tap WhatsApp actions (birthdays/anniversaries). */
+  phone?: string | null;
+  /** Drives the inline quick-action set: task | birthday | anniversary | generic. */
+  actionType?: "task" | "birthday" | "anniversary" | "generic";
+  /** Stable per-user snooze key ("<group>:<id>") — set in the post-process pass. */
+  itemKey?: string;
+  /** When true, this single item is severe enough to escalate its group to "now". */
+  escalate?: boolean;
 };
 
 /** Coerce a timestamp/date value to a yyyy-mm-dd string (or null). */
@@ -76,6 +90,20 @@ export async function buildCommandQueue(
   const { userId, firmWide, clientId } = opts;
   const groups: ActionGroup[] = [];
 
+  // Per-user snooze/dismiss set — items the user deferred or dismissed are
+  // excluded from their view (dismissed forever; snoozed until the window ends).
+  const snoozed = new Set<string>();
+  try {
+    const sn = await tx.execute(sql`
+      SELECT item_key FROM command_center_snoozes
+      WHERE user_id = ${userId}::uuid
+        AND (dismissed = true OR (snoozed_until IS NOT NULL AND snoozed_until > now()))
+    `);
+    for (const row of sn.rows) snoozed.add(String((row as any).item_key));
+  } catch {
+    /* table missing (pre-migration) — treat as no snoozes */
+  }
+
   // When the board is scoped to a single client, every investor-centric group
   // gets an extra `<investor column> = :clientId` predicate. The column name is
   // a hardcoded constant from the call sites (never user input) so sql.raw is
@@ -108,7 +136,7 @@ export async function buildCommandQueue(
           id: x.id,
           title: x.subject ?? `Ticket #${x.ticket_no}`,
           detail: `#${x.ticket_no} · SLA passed`,
-          href: `/dashboard/service-requests`,
+          href: `/dashboard/service-requests/${x.id}`,
           date: ymd(x.sla_resolution_at),
         })),
       });
@@ -119,7 +147,7 @@ export async function buildCommandQueue(
   {
     const r = await tx.execute(sql`
       SELECT s.id, s.scheme_name, s.amount, COALESCE(s.consecutive_failures,'0') AS fails,
-             i.name AS investor_name, count(*) OVER() AS total
+             i.id AS investor_id, i.name AS investor_name, count(*) OVER() AS total
       FROM sips s
       JOIN investors i ON i.id = s.investor_id
       WHERE (s.status = 'rejected' OR COALESCE(NULLIF(s.consecutive_failures,''),'0')::int > 0)
@@ -140,8 +168,10 @@ export async function buildCommandQueue(
         items: r.rows.map((x: any) => ({
           id: x.id,
           title: x.investor_name,
-          detail: `${x.scheme_name ?? "SIP"} · ${x.fails} bounce${Number(x.fails) === 1 ? "" : "es"}`,
+          detail: [`${x.scheme_name ?? "SIP"}`, inr(x.amount), `${x.fails} bounce${Number(x.fails) === 1 ? "" : "es"}`].filter(Boolean).join(" · "),
           href: `/dashboard/sip-rejections`,
+          amount: Number(x.amount ?? 0) || null,
+          client: { id: x.investor_id, name: x.investor_name },
         })),
       });
     }
@@ -150,11 +180,11 @@ export async function buildCommandQueue(
   // ── 3. Redemption-risk clients (retention) ───────────────────────────
   {
     const r = await tx.execute(sql`
-      SELECT id, name, redemption_risk_reason, count(*) OVER() AS total
+      SELECT id, name, redemption_risk_reason, aum, count(*) OVER() AS total
       FROM investors
       WHERE (status = 'redemption_risk' OR redemption_risk_flagged_at IS NOT NULL)
         ${scope("rm_id", userId, firmWide)}${cscope("id")}
-      ORDER BY redemption_risk_flagged_at DESC NULLS LAST
+      ORDER BY aum DESC NULLS LAST, redemption_risk_flagged_at DESC NULLS LAST
       LIMIT 5
     `);
     if (r.rows.length) {
@@ -169,8 +199,10 @@ export async function buildCommandQueue(
         items: r.rows.map((x: any) => ({
           id: x.id,
           title: x.name,
-          detail: x.redemption_risk_reason ?? "Flagged at-risk",
+          detail: [inr(x.aum) ? `${inr(x.aum)} AUM` : null, x.redemption_risk_reason ?? "Flagged at-risk"].filter(Boolean).join(" · "),
           href: `/dashboard/investors/${x.id}`,
+          amount: Number(x.aum ?? 0) || null,
+          client: { id: x.id, name: x.name },
         })),
       });
     }
@@ -179,13 +211,13 @@ export async function buildCommandQueue(
   // ── 4. Reviews overdue (service promise) ─────────────────────────────
   {
     const r = await tx.execute(sql`
-      SELECT id, name, service_tier, next_review_at, count(*) OVER() AS total
+      SELECT id, name, service_tier, next_review_at, aum, count(*) OVER() AS total
       FROM investors
       WHERE status = 'active'
         AND next_review_at IS NOT NULL
         AND next_review_at < now()
         ${scope("rm_id", userId, firmWide)}${cscope("id")}
-      ORDER BY next_review_at ASC
+      ORDER BY aum DESC NULLS LAST, next_review_at ASC
       LIMIT 5
     `);
     if (r.rows.length) {
@@ -200,9 +232,11 @@ export async function buildCommandQueue(
         items: r.rows.map((x: any) => ({
           id: x.id,
           title: x.name,
-          detail: `Tier ${x.service_tier ?? "—"} · due ${fmt(x.next_review_at)}`,
+          detail: [`Tier ${x.service_tier ?? "—"}`, inr(x.aum) ? `${inr(x.aum)} AUM` : null, `due ${fmt(x.next_review_at)}`].filter(Boolean).join(" · "),
           href: `/dashboard/investors/${x.id}`,
           date: ymd(x.next_review_at),
+          amount: Number(x.aum ?? 0) || null,
+          client: { id: x.id, name: x.name },
         })),
       });
     }
@@ -329,6 +363,9 @@ export async function buildCommandQueue(
           detail: x.ckyc_expiry_at ? `CKYC expires ${fmt(x.ckyc_expiry_at)}` : `KYC ${x.kyc_status}`,
           href: `/dashboard/investors/${x.id}`,
           date: ymd(x.ckyc_expiry_at),
+          client: { id: x.id, name: x.name },
+          // Already-broken KYC (not just expiring soon) escalates to "act now".
+          escalate: ["expired", "re_kyc_required", "rejected"].includes(x.kyc_status),
         })),
       });
     }
@@ -340,6 +377,7 @@ export async function buildCommandQueue(
       SELECT id, title, priority, due_at, count(*) OVER() AS total
       FROM tasks
       WHERE status IN ('open','in_progress')
+        AND deleted_at IS NULL
         AND due_at IS NOT NULL
         AND due_at < now()
         ${scope("assignee_id", userId, firmWide)}${cscope("related_investor_id")}
@@ -361,6 +399,7 @@ export async function buildCommandQueue(
           detail: `${x.priority} · due ${fmt(x.due_at)}`,
           href: `/dashboard/tasks`,
           date: ymd(x.due_at),
+          actionType: "task" as const,
         })),
       });
     }
@@ -432,7 +471,7 @@ export async function buildCommandQueue(
   // ── 9. Birthdays TODAY (wish them — a do-it-today touchpoint) ────────
   {
     const r = await tx.execute(sql`
-      SELECT id, name, dob, count(*) OVER() AS total
+      SELECT id, name, dob, phone, count(*) OVER() AS total
       FROM investors
       WHERE status = 'active'
         AND dob IS NOT NULL
@@ -455,6 +494,9 @@ export async function buildCommandQueue(
           title: x.name,
           detail: turnsToday(x.dob),
           href: `/dashboard/investors/${x.id}`,
+          phone: x.phone ?? null,
+          actionType: "birthday" as const,
+          client: { id: x.id, name: x.name },
         })),
       });
     }
@@ -492,10 +534,234 @@ export async function buildCommandQueue(
     }
   }
 
-  // Severity ordering, then biggest pile first within a band.
+  // ── 11. Mandates rejected by the bank (first SIP blocked → re-register) ──
+  {
+    const r = await tx.execute(sql`
+      SELECT id, name, count(*) OVER() AS total
+      FROM investors
+      WHERE mandate_status = 'rejected'
+        ${scope("rm_id", userId, firmWide)}${cscope("id")}
+      ORDER BY updated_at DESC NULLS LAST
+      LIMIT 5
+    `);
+    if (r.rows.length) {
+      groups.push({
+        key: "mandate_rejected",
+        label: "Mandates rejected — re-register",
+        icon: "XOctagon",
+        severity: "now",
+        tone: "rose",
+        count: Number(r.rows[0].total ?? r.rows.length),
+        href: href("/dashboard/investors", firmWide, "mandate_rejected=1"),
+        items: r.rows.map((x: any) => ({
+          id: x.id,
+          title: x.name,
+          detail: "Bank rejected the NACH / e-mandate",
+          href: `/dashboard/investors/${x.id}`,
+          client: { id: x.id, name: x.name },
+        })),
+      });
+    }
+  }
+
+  // ── 12. Onboarding stalled — docs requested but not received in 3+ days ──
+  if (!clientId) {
+    const r = await tx.execute(sql`
+      SELECT id, name, stage, stage_changed_at, count(*) OVER() AS total
+      FROM leads
+      WHERE converted_investor_id IS NULL
+        AND stage IN ('request_documents','documents_pending','docs_requested')
+        AND stage_changed_at IS NOT NULL
+        AND stage_changed_at < now() - interval '3 days'
+        ${scope("owner_id", userId, firmWide)}
+      ORDER BY stage_changed_at ASC
+      LIMIT 5
+    `);
+    if (r.rows.length) {
+      groups.push({
+        key: "onboarding_stuck",
+        label: "Onboarding stalled — docs pending",
+        icon: "CalendarClock",
+        severity: "today",
+        tone: "amber",
+        count: Number(r.rows[0].total ?? r.rows.length),
+        href: href("/dashboard/leads", firmWide),
+        items: r.rows.map((x: any) => ({
+          id: x.id,
+          title: x.name,
+          detail: `Waiting since ${fmt(x.stage_changed_at)}`,
+          href: `/dashboard/leads/${x.id}`,
+          date: ymd(x.stage_changed_at),
+        })),
+      });
+    }
+  }
+
+  // ── 13. Proposals sent & aging (awaiting client approval 7+ days) ───────
+  {
+    const propScope = firmWide
+      ? sql``
+      : sql` AND (investor_id IN (SELECT id FROM investors WHERE rm_id = ${userId})
+                  OR lead_id IN (SELECT id FROM leads WHERE owner_id = ${userId}))`;
+    const r = await tx.execute(sql`
+      SELECT id, recipient_name, title, sent_at, count(*) OVER() AS total
+      FROM proposals
+      WHERE sent_at IS NOT NULL AND accepted_at IS NULL AND rejected_at IS NULL
+        AND sent_at < now() - interval '7 days'
+        ${propScope}${cscope("investor_id")}
+      ORDER BY sent_at ASC
+      LIMIT 5
+    `);
+    if (r.rows.length) {
+      groups.push({
+        key: "proposals_aging",
+        label: "Proposals awaiting approval",
+        icon: "FileText",
+        severity: "today",
+        tone: "amber",
+        count: Number(r.rows[0].total ?? r.rows.length),
+        href: "/dashboard/proposals",
+        items: r.rows.map((x: any) => ({
+          id: x.id,
+          title: x.recipient_name ?? x.title,
+          detail: `${x.title ?? "Proposal"} · sent ${fmt(x.sent_at)}`,
+          href: `/dashboard/proposals`,
+          date: ymd(x.sent_at),
+        })),
+      });
+    }
+  }
+
+  // ── 14. Unanswered inbound messages (client replied, no response) ───────
+  {
+    const inScope = firmWide
+      ? sql``
+      : sql` AND (i.rm_id = ${userId} OR l.owner_id = ${userId})`;
+    const r = await tx.execute(sql`
+      SELECT c.id, c.channel, c.created_at,
+             COALESCE(i.id, l.id) AS party_id,
+             COALESCE(i.name, l.name) AS party_name,
+             (c.investor_id IS NOT NULL) AS is_investor,
+             count(*) OVER() AS total
+      FROM communications c
+      LEFT JOIN investors i ON i.id = c.investor_id
+      LEFT JOIN leads l ON l.id = c.lead_id
+      WHERE c.direction = 'inbound'
+        AND c.created_at > now() - interval '14 days'
+        AND (c.investor_id IS NOT NULL OR c.lead_id IS NOT NULL)
+        AND NOT EXISTS (
+          SELECT 1 FROM communications o
+          WHERE o.tenant_id = c.tenant_id AND o.direction = 'outbound'
+            AND o.created_at > c.created_at
+            AND (o.investor_id IS NOT DISTINCT FROM c.investor_id
+                 AND o.lead_id IS NOT DISTINCT FROM c.lead_id)
+        )
+        ${inScope}${cscope("c.investor_id")}
+      ORDER BY c.created_at ASC
+      LIMIT 5
+    `);
+    if (r.rows.length) {
+      groups.push({
+        key: "unanswered_inbound",
+        label: "Unanswered messages",
+        icon: "MessageCircle",
+        severity: "today",
+        tone: "sky",
+        count: Number(r.rows[0].total ?? r.rows.length),
+        href: "/dashboard/communications",
+        items: r.rows.map((x: any) => ({
+          id: x.id,
+          title: x.party_name ?? "Client",
+          detail: `Replied on ${x.channel} · ${fmt(x.created_at)} — no response yet`,
+          href: x.is_investor ? `/dashboard/investors/${x.party_id}` : `/dashboard/leads/${x.party_id}`,
+          date: ymd(x.created_at),
+          client: x.is_investor && x.party_id ? { id: x.party_id, name: x.party_name } : null,
+        })),
+      });
+    }
+  }
+
+  // ── 15. Anniversaries today (relationship touchpoint) ───────────────────
+  {
+    const r = await tx.execute(sql`
+      SELECT id, name, phone, count(*) OVER() AS total
+      FROM investors
+      WHERE status = 'active'
+        AND anniversary_date IS NOT NULL
+        AND to_char(anniversary_date, 'MM-DD') = to_char(current_date, 'MM-DD')
+        ${scope("rm_id", userId, firmWide)}${cscope("id")}
+      ORDER BY name ASC
+      LIMIT 5
+    `);
+    if (r.rows.length) {
+      groups.push({
+        key: "anniversaries_today",
+        label: "Anniversaries today 💐",
+        icon: "Cake",
+        severity: "today",
+        tone: "violet",
+        count: Number(r.rows[0].total ?? r.rows.length),
+        href: href("/dashboard/investors", firmWide),
+        items: r.rows.map((x: any) => ({
+          id: x.id,
+          title: x.name,
+          detail: "Wedding anniversary today",
+          href: `/dashboard/investors/${x.id}`,
+          phone: x.phone ?? null,
+          actionType: "anniversary" as const,
+          client: { id: x.id, name: x.name },
+        })),
+      });
+    }
+  }
+
+  // ── Post-process: snooze filtering, aging, ₹-weighting, dynamic severity ──
+  const today0 = new Date();
+  today0.setHours(0, 0, 0, 0);
+  const ageOf = (d?: string | null) => {
+    if (!d) return undefined;
+    const dt = new Date(d + "T00:00:00");
+    if (isNaN(dt.getTime())) return undefined;
+    return Math.max(0, Math.round((today0.getTime() - dt.getTime()) / 86_400_000));
+  };
+  // Per-group: how many days overdue escalates the WHOLE group to "act now".
+  const escalateAfterDays: Record<string, number> = {
+    reviews_due: 45,
+    tasks_overdue: 7,
+    lead_followups: 14,
+    onboarding_stuck: 10,
+  };
+  const processed: ActionGroup[] = [];
+  for (const g of groups) {
+    let removed = 0;
+    const items = g.items
+      .map((it) => ({ ...it, itemKey: `${g.key}:${it.id}`, ageDays: it.ageDays ?? ageOf(it.date) }))
+      .filter((it) => {
+        if (snoozed.has(it.itemKey!)) {
+          removed++;
+          return false;
+        }
+        return true;
+      });
+    if (items.length === 0 && removed >= g.count) continue; // wholly snoozed away
+    const count = Math.max(g.count - removed, items.length);
+    let severity = g.severity;
+    const thr = escalateAfterDays[g.key];
+    if (thr != null && items.some((it) => (it.ageDays ?? 0) > thr)) severity = "now";
+    if (items.some((it) => it.escalate)) severity = "now";
+    processed.push({ ...g, items, count, severity });
+  }
+
+  // Severity band → ₹ at stake → biggest pile.
   const order: Record<Severity, number> = { now: 0, today: 1, soon: 2 };
-  groups.sort((a, b) => order[a.severity] - order[b.severity] || b.count - a.count);
-  return groups;
+  const groupAmount = (g: ActionGroup) => g.items.reduce((s, it) => s + (Number(it.amount) || 0), 0);
+  processed.sort(
+    (a, b) =>
+      order[a.severity] - order[b.severity] ||
+      groupAmount(b) - groupAmount(a) ||
+      b.count - a.count
+  );
+  return processed;
 }
 
 /** "Turns 42 today" from a date of birth (falls back gracefully). */
@@ -504,6 +770,16 @@ function turnsToday(dob: any): string {
   if (isNaN(d.getTime())) return "Birthday today";
   const age = new Date().getFullYear() - d.getFullYear();
   return age > 0 && age < 130 ? `Turns ${age} today` : "Birthday today";
+}
+
+/** Compact INR — ₹50K / ₹1.2L / ₹3.4Cr. */
+function inr(n: any): string | null {
+  const v = Number(n);
+  if (!v || isNaN(v)) return null;
+  if (v >= 1e7) return `₹${(v / 1e7).toFixed(v >= 1e8 ? 0 : 1)}Cr`;
+  if (v >= 1e5) return `₹${(v / 1e5).toFixed(v >= 1e6 ? 0 : 1)}L`;
+  if (v >= 1e3) return `₹${Math.round(v / 1e3)}K`;
+  return `₹${Math.round(v)}`;
 }
 
 function fmt(v: any, dayMonth = false): string {

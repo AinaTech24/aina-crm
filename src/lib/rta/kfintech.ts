@@ -104,6 +104,7 @@ export function parseKfintechFolioMaster(rows: string[][]): {
 
   const C = {
     productCode: col("Product Code"),
+    isin: col("ISIN"),
     fund: col("Fund"),
     folio: col("Folio"),
     fundDesc: col("Fund Description"),
@@ -231,7 +232,7 @@ export function parseKfintechFolioMaster(rows: string[][]): {
 
     const productCode = get(C.productCode);
     if (productCode && !rec.schemes.some((s) => s.schemeCode === productCode)) {
-      rec.schemes.push({ schemeCode: productCode, schemeName: get(C.fundDesc) });
+      rec.schemes.push({ schemeCode: productCode, schemeName: get(C.fundDesc), isin: get(C.isin).toUpperCase() || undefined });
     }
   }
 

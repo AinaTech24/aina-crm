@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ChevronLeft, FileSpreadsheet, Upload, Loader2, Check, AlertCircle } from "lucide-react";
+import { SelectField } from "@/components/ui/SelectField";
 
 /**
  * Reusable import wizard for any entity. Used by Investors, Leads, Transactions.
@@ -81,6 +82,11 @@ export function ImportWizard({
   const mappedFields = new Set(Object.values(mapping).filter(Boolean));
   const canCommit = requiredOurFields.every((f) => mappedFields.has(f));
 
+  // ourFields may be string[] (leads/transactions) or {key,label}[] (insurance).
+  const ourFields: Array<{ key: string; label: string }> = ((parsed?.ourFields ?? []) as any[]).map((f) =>
+    typeof f === "string" ? { key: f, label: f } : { key: f.key, label: f.label ?? f.key }
+  );
+
   return (
     <div className="space-y-4 max-w-4xl">
       <Link href={backHref} className="text-sm text-muted-foreground hover:underline flex items-center gap-1">
@@ -143,19 +149,20 @@ export function ImportWizard({
                     {String(parsed.rows[0]?.[h] ?? "")}
                   </td>
                   <td className="py-2">
-                    <select
+                    <SelectField
                       value={mapping[h] ?? ""}
                       onChange={(e) => setMapping({ ...mapping, [h]: e.target.value })}
-                      className="text-sm border rounded px-2 py-1 bg-background"
+                      className="min-w-[220px]"
+                      aria-label={`Map column ${h}`}
                     >
                       <option value="">(skip)</option>
-                      {parsed.ourFields.map((f: string) => (
-                        <option key={f} value={f}>
-                          {f}
-                          {requiredOurFields.includes(f) ? " *" : ""}
+                      {ourFields.map((f) => (
+                        <option key={f.key} value={f.key}>
+                          {f.label}
+                          {requiredOurFields.includes(f.key) ? " *" : ""}
                         </option>
                       ))}
-                    </select>
+                    </SelectField>
                   </td>
                 </tr>
               ))}

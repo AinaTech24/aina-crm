@@ -13,11 +13,11 @@ import { handleApiError } from "@/lib/api/error-handler";
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuid } from "uuid";
 import crypto from "node:crypto";
-import { desc, eq, isNull, and, sql } from "drizzle-orm";
+import { desc, eq, isNull, and, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { userInvites, tenants, users } from "@/db/schema";
+import { userInvites, tenants, users, branches } from "@/db/schema";
 import { require as requireCap, areAssignableRoles } from "@/lib/auth/rbac";
 import { assertActiveLicense, loadTenantLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
@@ -99,6 +99,38 @@ export async function POST(req: NextRequest) {
     if (!areAssignableRoles(body.roles)) {
       return NextResponse.json({ error: "one or more roles are not assignable" }, { status: 400 });
     }
+
+    const targetEmail = body.email.toLowerCase();
+    // Validate the branch + dedup the invite up-front (one tenant-scoped read).
+    const conflict = await withTenant(session.tenantId, async (tx) => {
+      // The branch must belong to THIS tenant — otherwise a foreign/dangling
+      // branch_id would ride onto the new user when they accept.
+      if (body.branchId) {
+        const [b] = await tx
+          .select({ id: branches.id })
+          .from(branches)
+          .where(and(eq(branches.id, body.branchId), eq(branches.tenantId, session.tenantId)))
+          .limit(1);
+        if (!b) return { error: "That branch doesn't belong to your firm.", status: 400 as const };
+      }
+      // Don't invite an address that's already an active member…
+      const [u] = await tx
+        .select({ id: users.id })
+        .from(users)
+        .where(and(eq(users.tenantId, session.tenantId), sql`lower(${users.email}) = ${targetEmail}`, ne(users.status, "offboarded")))
+        .limit(1);
+      if (u) return { error: "A team member with this email already exists.", status: 409 as const };
+      // …or one that already has a live (un-accepted, un-revoked) invite.
+      const [pending] = await tx
+        .select({ id: userInvites.id })
+        .from(userInvites)
+        .where(and(eq(userInvites.tenantId, session.tenantId), sql`lower(${userInvites.email}) = ${targetEmail}`, isNull(userInvites.acceptedAt), isNull(userInvites.revokedAt)))
+        .limit(1);
+      if (pending) return { error: "An invite for this email is already pending.", status: 409 as const };
+      return null;
+    });
+    if (conflict) return NextResponse.json({ error: conflict.error }, { status: conflict.status });
+
     const token = crypto.randomBytes(32).toString("base64url");
     const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days

@@ -10,7 +10,7 @@ import { eq } from "drizzle-orm";
 import { ShieldAlert, TrendingDown, Phone, Users } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { requireAny } from "@/lib/auth/rbac";
+import { requireAny, can } from "@/lib/auth/rbac";
 import { users } from "@/db/schema";
 import { formatINR } from "@/lib/utils";
 import { scanChurn } from "@/lib/churn/scan";
@@ -22,8 +22,14 @@ export default async function ChurnRiskPage() {
   const session = await requireSession();
   requireAny(session.roles, ["reports.business", "reports.team", "investor.view.all", "investor.view.assigned"], session.permissions);
 
+  // Managers see the firm; a plain RM (assigned-scope only) sees just their book.
+  const seesAll =
+    can(session.roles, "investor.view.all", session.permissions) ||
+    can(session.roles, "reports.business", session.permissions) ||
+    can(session.roles, "reports.team", session.permissions);
+
   const data = await withTenant(session.tenantId, async (tx) => {
-    const rows = await scanChurn(tx, { limit: 200 });
+    const rows = await scanChurn(tx, { limit: 200, rmId: seesAll ? undefined : session.userId });
     const rmRows = await tx.select({ id: users.id, name: users.name }).from(users);
     const rmMap = new Map(rmRows.map((r) => [r.id, r.name]));
     return { rows, rmMap };
@@ -40,10 +46,6 @@ export default async function ChurnRiskPage() {
         <h1 className="page-title">
           <ShieldAlert className="size-6 text-rose-500" /> Churn-risk radar
         </h1>
-        <p className="page-subtitle">
-          Clients most likely to redeem and leave, scored on behaviour — recent redemptions, SIP health,
-          returns, dormancy and engagement. Work the list top-down. Every score is explainable.
-        </p>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -139,9 +141,8 @@ function Stat({ icon: Icon, label, value, tone }: { icon: any; label: string; va
         <Icon className="size-3.5 text-muted-foreground" />
       </div>
       <div
-        className={`text-2xl font-bold mt-1 tabular-nums ${
-          tone === "rose" ? "text-rose-600" : tone === "amber" ? "text-amber-600" : "text-foreground"
-        }`}
+        className={`text-2xl font-bold mt-1 tabular-nums ${tone === "rose" ? "text-rose-600" : tone === "amber" ? "text-amber-600" : "text-foreground"
+          }`}
       >
         {value}
       </div>

@@ -152,9 +152,6 @@ export default async function RiskProfilesPage({
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
             <ShieldCheck className="size-6 text-brand-cyan" /> Risk profiles
           </h1>
-          <p className="text-muted-foreground text-sm">
-            SEBI requires annual review. Tracks Conservative · Moderate · Aggressive bands per investor.
-          </p>
         </div>
         <Link href="/dashboard/risk-profiles/new" className="btn-primary">
           <Plus className="size-4" /> New Risk Profile
@@ -178,11 +175,10 @@ export default async function RiskProfilesPage({
             <Link
               key={f.key}
               href={tabHref(f.key)}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm border transition-colors ${
-                active
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm border transition-colors ${active
                   ? "bg-primary text-primary-foreground border-primary"
                   : "bg-card hover:bg-accent text-muted-foreground"
-              }`}
+                }`}
             >
               {f.label}
               <span className={`tabular-nums text-xs font-semibold ${active ? "opacity-90" : "opacity-70"}`}>
@@ -208,94 +204,94 @@ export default async function RiskProfilesPage({
         ) : (
           <>
             <div className="table-scroll">
-            <table className="w-full text-sm">
-              <thead className="text-xs text-muted-foreground border-b sticky top-0 z-10 bg-card">
-                <tr>
-                  <th className="text-left px-4 py-2 font-medium">Investor</th>
-                  <th className="text-left py-2 font-medium">Category</th>
-                  <th className="text-left py-2 font-medium">Score</th>
-                  <th className="text-left py-2 font-medium">Last signed</th>
-                  <th className="text-left py-2 font-medium">Next review</th>
-                  <th className="text-left py-2 font-medium">Status</th>
-                  <th className="px-4 py-2 text-right font-medium">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.rows.map((r: any) => {
-                  const signed = r.risk_profile_signed_at ? new Date(r.risk_profile_signed_at) : null;
-                  const ageMs = signed ? Date.now() - signed.getTime() : null;
-                  const status = !signed
-                    ? "not_profiled"
-                    : ageMs! > 365 * 24 * 60 * 60 * 1000
-                    ? "expired"
-                    : ageMs! > 334 * 24 * 60 * 60 * 1000 // ~11 months
-                    ? "due_soon"
-                    : "current";
-                  const score = r.total_score ?? r.risk_profile_score ?? null;
-                  return (
-                    <PdfRow
-                      key={r.id}
-                      title={`Risk Profile · ${r.name}`}
-                      pdfUrl={r.profile_id ? `/api/risk-profiles/${r.profile_id}/pdf` : ""}
-                      downloadUrl={r.profile_id ? `/api/risk-profiles/${r.profile_id}/pdf?download=1` : undefined}
-                      disabled={!r.profile_id}
-                      className="border-b last:border-0 hover:bg-secondary/40"
-                    >
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <Avatar src={r.avatar_url ? `/api/investors/${r.id}/avatar` : null} name={r.name} size={26} />
-                          <RiskProfileName
-                            name={r.name}
-                            pan={r.pan}
-                            profileId={r.profile_id ?? null}
-                          />
-                        </div>
-                      </td>
-                      <td className="py-3">
-                        {r.risk_profile ? (
-                          <span className={`chip ${CATEGORY_TONE[r.risk_profile] ?? ""} capitalize`}>
-                            {r.risk_profile.replace(/_/g, " ")}
-                          </span>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
-                        )}
-                      </td>
-                      <td className="py-3 tabular-nums">{score ?? "—"}</td>
-                      <td className="py-3 text-xs text-muted-foreground">
-                        {signed ? formatDate(signed) : "Never"}
-                      </td>
-                      <td className="py-3 text-xs text-muted-foreground">
-                        {r.next_review_at ? formatDate(r.next_review_at) : "—"}
-                      </td>
-                      <td className="py-3">
-                        {status === "not_profiled" ? (
-                          <span className="chip bg-amber-50 text-amber-700">
-                            <AlertTriangle className="size-3" /> Not profiled
-                          </span>
-                        ) : status === "expired" ? (
-                          <span className="chip bg-rose-50 text-rose-700">Expired</span>
-                        ) : status === "due_soon" ? (
-                          <span className="chip bg-amber-50 text-amber-700">Due soon</span>
-                        ) : (
-                          <span className="chip bg-emerald-50 text-emerald-700">Current</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <div className="inline-flex items-center gap-2">
-                          <RiskProfilePdfButtons profileId={r.profile_id ?? null} name={r.name} />
-                          <Link
-                            href={`/dashboard/risk-profiles/new?investorId=${r.id}`}
-                            className="btn-accent text-xs px-3 py-1"
-                          >
-                            {status === "current" ? "Re-profile" : "Start"} <ArrowRight className="size-3" />
-                          </Link>
-                        </div>
-                      </td>
-                    </PdfRow>
-                  );
-                })}
-              </tbody>
-            </table>
+              <table className="w-full text-sm">
+                <thead className="text-xs text-muted-foreground border-b sticky top-0 z-10 bg-card">
+                  <tr>
+                    <th className="text-left px-4 py-2 font-medium">Investor</th>
+                    <th className="text-left py-2 font-medium">Category</th>
+                    <th className="text-left py-2 font-medium">Score</th>
+                    <th className="text-left py-2 font-medium">Last signed</th>
+                    <th className="text-left py-2 font-medium">Next review</th>
+                    <th className="text-left py-2 font-medium">Status</th>
+                    <th className="px-4 py-2 text-right font-medium">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.rows.map((r: any) => {
+                    const signed = r.risk_profile_signed_at ? new Date(r.risk_profile_signed_at) : null;
+                    const ageMs = signed ? Date.now() - signed.getTime() : null;
+                    const status = !signed
+                      ? "not_profiled"
+                      : ageMs! > 365 * 24 * 60 * 60 * 1000
+                        ? "expired"
+                        : ageMs! > 334 * 24 * 60 * 60 * 1000 // ~11 months
+                          ? "due_soon"
+                          : "current";
+                    const score = r.total_score ?? r.risk_profile_score ?? null;
+                    return (
+                      <PdfRow
+                        key={r.id}
+                        title={`Risk Profile · ${r.name}`}
+                        pdfUrl={r.profile_id ? `/api/risk-profiles/${r.profile_id}/pdf` : ""}
+                        downloadUrl={r.profile_id ? `/api/risk-profiles/${r.profile_id}/pdf?download=1` : undefined}
+                        disabled={!r.profile_id}
+                        className="border-b last:border-0 hover:bg-secondary/40"
+                      >
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <Avatar src={r.avatar_url ? `/api/investors/${r.id}/avatar` : null} name={r.name} size={26} />
+                            <RiskProfileName
+                              name={r.name}
+                              pan={r.pan}
+                              profileId={r.profile_id ?? null}
+                            />
+                          </div>
+                        </td>
+                        <td className="py-3">
+                          {r.risk_profile ? (
+                            <span className={`chip ${CATEGORY_TONE[r.risk_profile] ?? ""} capitalize`}>
+                              {r.risk_profile.replace(/_/g, " ")}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
+                        </td>
+                        <td className="py-3 tabular-nums">{score ?? "—"}</td>
+                        <td className="py-3 text-xs text-muted-foreground">
+                          {signed ? formatDate(signed) : "Never"}
+                        </td>
+                        <td className="py-3 text-xs text-muted-foreground">
+                          {r.next_review_at ? formatDate(r.next_review_at) : "—"}
+                        </td>
+                        <td className="py-3">
+                          {status === "not_profiled" ? (
+                            <span className="chip bg-amber-50 text-amber-700">
+                              <AlertTriangle className="size-3" /> Not profiled
+                            </span>
+                          ) : status === "expired" ? (
+                            <span className="chip bg-rose-50 text-rose-700">Expired</span>
+                          ) : status === "due_soon" ? (
+                            <span className="chip bg-amber-50 text-amber-700">Due soon</span>
+                          ) : (
+                            <span className="chip bg-emerald-50 text-emerald-700">Current</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <div className="inline-flex items-center gap-2">
+                            <RiskProfilePdfButtons profileId={r.profile_id ?? null} name={r.name} />
+                            <Link
+                              href={`/dashboard/risk-profiles/new?investorId=${r.id}`}
+                              className="btn-accent text-xs px-3 py-1"
+                            >
+                              {status === "current" ? "Re-profile" : "Start"} <ArrowRight className="size-3" />
+                            </Link>
+                          </div>
+                        </td>
+                      </PdfRow>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
             <div className="px-4 pb-3">
               <Pager
@@ -325,10 +321,10 @@ function Stat({
     tone === "emerald"
       ? "text-emerald-600"
       : tone === "rose"
-      ? "text-rose-600"
-      : tone === "amber"
-      ? "text-amber-600"
-      : "text-foreground";
+        ? "text-rose-600"
+        : tone === "amber"
+          ? "text-amber-600"
+          : "text-foreground";
   return (
     <div className="card-surface p-4">
       <div className="text-xs text-muted-foreground">{label}</div>

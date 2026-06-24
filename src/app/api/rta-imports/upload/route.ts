@@ -92,21 +92,46 @@ export async function POST(req: NextRequest) {
   // 2. Enqueue the heavy parse for the worker. The password rides in the Redis
   //    job payload only (never persisted to the DB) and is dropped on complete.
   //    attempts:1 — a giant file that OOMs shouldn't be auto-retried into
-  //    repeated OOMs; the user re-uploads. processRtaFile is upsert-idempotent.
+  //    repeated OOMs; the user re-uploads. Processors are upsert-idempotent.
+  //
+  // Master / holdings files (the client + folio register) go through the RICH
+  // engine — it creates clients and resolves real AMC/scheme names via ISIN →
+  // AMFI. Everything else (daily feed, brokerage, AUM, SIP book, mandates) uses
+  // the feed engine. This is what makes ONE importer cover both: the user just
+  // picks the file kind; we route to the right engine under the hood.
+  const RICH_KINDS = new Set(["folio_master_dump", "cas_holdings"]);
+  const useRich = RICH_KINDS.has(kind) && (source === "cams" || source === "kfintech");
+
   await Q.rtaImport().add(
-    "import",
-    {
-      importId,
-      tenantId: session.tenantId,
-      source,
-      kind,
-      key,
-      filename: fileName,
-      password: password || undefined,
-      userId: session.userId,
-      branchId: session.branchId,
-      roles: session.roles,
-    },
+    useRich ? "rich-import" : "import",
+    useRich
+      ? {
+          mode: "rich",
+          importId,
+          tenantId: session.tenantId,
+          key,
+          filename: fileName,
+          password: password || undefined,
+          rta: source,
+          reportType: "",
+          dryRun: false,
+          assignToMe: false,
+          userId: session.userId,
+          branchId: session.branchId,
+          roles: session.roles,
+        }
+      : {
+          importId,
+          tenantId: session.tenantId,
+          source,
+          kind,
+          key,
+          filename: fileName,
+          password: password || undefined,
+          userId: session.userId,
+          branchId: session.branchId,
+          roles: session.roles,
+        },
     {
       attempts: 1,
       removeOnComplete: true,

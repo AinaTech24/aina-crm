@@ -147,8 +147,10 @@ export function AuthScreen({ initialMode }: { initialMode: Mode }) {
         setBusy(false);
         return;
       }
-      toast.success("Workspace created — setting things up…", "You're all set");
-      setTimeout(() => router.push("/dashboard"), 650);
+      toast.success("Workspace created — choose your plan", "Almost there");
+      // New tenants are `pending` until they pick a package (+ pay if Razorpay
+      // is configured) — go to plan selection, not the dashboard.
+      setTimeout(() => router.push("/onboarding/choose-plan"), 650);
     } catch {
       toast.error("Something went wrong. Please try again.", "Couldn't create workspace");
       setBusy(false);

@@ -3,8 +3,8 @@ import { handleApiError } from "@/lib/api/error-handler";
  * GET  /api/business-expenses?fy=YYYY-YY  — list firm expenses for a fiscal year
  * POST /api/business-expenses             — create an expense (8.2 ledger)
  *
- * Firm-money data — gated by `reports.commission` (owner / back-office /
- * compliance). Tenant-scoped via withTenant + RLS.
+ * Firm-money data (P&L incl. team salaries) — gated by `finances.view`
+ * (owner + back-office only). Tenant-scoped via withTenant + RLS.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -31,7 +31,7 @@ const PostBody = z.object({
 export async function GET(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "reports.commission");
+    requireCap(session.roles, "finances.view");
     const fy = req.nextUrl.searchParams.get("fy") ?? undefined;
     const bounds = fy ? fyBounds(fy) : null;
 
@@ -58,7 +58,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "reports.commission");
+    requireCap(session.roles, "finances.view");
     const parsed = PostBody.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
       return NextResponse.json(

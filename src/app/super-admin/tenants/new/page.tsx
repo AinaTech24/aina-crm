@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, Building2, UserCog, CreditCard, Loader2, Plus } from "lucide-react";
+import { SelectField } from "@/components/ui/SelectField";
 
 export default function NewTenantPage() {
   const router = useRouter();
@@ -53,105 +54,106 @@ export default function NewTenantPage() {
   }
 
   return (
-    <div className="space-y-4 max-w-2xl">
-      <Link
-        href="/super-admin/tenants"
-        className="text-sm text-muted-foreground hover:underline flex items-center gap-1"
-      >
+    <div className="mx-auto w-full max-w-2xl space-y-5">
+      <Link href="/super-admin/tenants" className="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
         <ChevronLeft className="size-4" /> Back to tenants
       </Link>
 
-      <h1 className="text-2xl font-bold tracking-tight">Create MFD tenant</h1>
-      <p className="text-sm text-muted-foreground">
-        Sets up the firm + owner user + subscription on the chosen package.
-      </p>
-
-      <form onSubmit={submit} className="border rounded-lg bg-card p-6 space-y-3">
-        <Field label="Firm legal name" value={form.firmName} setValue={(v) => set("firmName", v)} required />
-        <Field label="ARN" value={form.arn} setValue={(v) => set("arn", v)} required placeholder="ARN-XXXXX" />
-        <div className="border-t pt-3">
-          <div className="text-xs font-medium uppercase text-muted-foreground mb-2">Owner account</div>
-          <Field label="Owner name" value={form.ownerName} setValue={(v) => set("ownerName", v)} required />
-          <Field label="Owner email" value={form.ownerEmail} setValue={(v) => set("ownerEmail", v)} required type="email" />
-          <Field label="Temporary password (8+)" value={form.ownerPassword} setValue={(v) => set("ownerPassword", v)} required type="password" />
-        </div>
-
-        <div className="border-t pt-3">
-          <div className="text-xs font-medium uppercase text-muted-foreground mb-2">Subscription</div>
-          <div>
-            <div className="text-xs font-medium mb-1">Package</div>
-            <select
-              value={form.packageKey}
-              onChange={(e) => set("packageKey", e.target.value)}
-              required
-              className="w-full border rounded-md px-3 py-2 text-sm bg-background"
-            >
-              <option value="">Select a package…</option>
-              {packages.map((p: any) => (
-                <option key={p.key} value={p.key}>
-                  {p.name} (₹{(p.yearly_price_paise ?? 0) / 100}/yr · {p.max_users} users · {p.max_investors} clients)
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="grid grid-cols-2 gap-3 mt-3">
+      <div className="rounded-2xl border border-border bg-card shadow-sm overflow-hidden">
+        {/* Branded header */}
+        <div className="px-6 py-5 text-white" style={{ background: "linear-gradient(135deg, hsl(358 75% 41%) 0%, hsl(358 78% 30%) 100%)" }}>
+          <div className="flex items-center gap-3">
+            <div className="size-11 rounded-xl bg-white/15 grid place-items-center"><Building2 className="size-5" /></div>
             <div>
-              <div className="text-xs font-medium mb-1">Billing cycle</div>
-              <select
-                value={form.billingCycle}
-                onChange={(e) => set("billingCycle", e.target.value)}
-                className="w-full border rounded-md px-3 py-2 text-sm bg-background"
-              >
-                <option value="yearly">Yearly</option>
-                <option value="monthly">Monthly</option>
-                <option value="custom">Custom</option>
-              </select>
+              <h1 className="text-lg font-bold tracking-tight">Create MFD tenant</h1>
+              <p className="text-xs text-white/75">Sets up the firm, owner user and subscription in one step.</p>
             </div>
-            <Field
-              label="Trial days"
-              type="number"
-              value={String(form.trialDays)}
-              setValue={(v) => set("trialDays", Number(v))}
-            />
           </div>
         </div>
 
-        {err && <div className="text-sm text-rose-600">{err}</div>}
+        <form onSubmit={submit} className="p-6 space-y-6">
+          {/* Firm */}
+          <Section icon={Building2} title="Firm">
+            <div className="grid sm:grid-cols-2 gap-3">
+              <Field label="Firm legal name" value={form.firmName} setValue={(v) => set("firmName", v)} required />
+              <Field label="ARN" value={form.arn} setValue={(v) => set("arn", v)} required placeholder="ARN-XXXXX" />
+            </div>
+          </Section>
 
-        <div className="flex justify-end gap-2 pt-2 border-t">
-          <Link href="/super-admin/tenants" className="rounded-md border px-4 py-2 text-sm">
-            Cancel
-          </Link>
-          <button
-            disabled={busy}
-            className="rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm font-medium disabled:opacity-50"
-          >
-            {busy ? "Creating…" : "Create tenant + owner"}
-          </button>
-        </div>
-      </form>
+          {/* Owner */}
+          <Section icon={UserCog} title="Owner account">
+            <div className="grid sm:grid-cols-2 gap-3">
+              <Field label="Owner name" value={form.ownerName} setValue={(v) => set("ownerName", v)} required />
+              <Field label="Owner email" value={form.ownerEmail} setValue={(v) => set("ownerEmail", v)} required type="email" />
+            </div>
+            <Field label="Temporary password (8+)" value={form.ownerPassword} setValue={(v) => set("ownerPassword", v)} required type="password" />
+          </Section>
+
+          {/* Subscription */}
+          <Section icon={CreditCard} title="Subscription">
+            <div>
+              <Label>Package</Label>
+              <SelectField value={form.packageKey} onChange={(e) => set("packageKey", e.target.value)} required className="w-full" placeholder="Select a package…">
+                <option value="">Select a package…</option>
+                {packages.map((p: any) => (
+                  <option key={p.key} value={p.key}>
+                    {p.name} (₹{(p.yearly_price_paise ?? 0) / 100}/yr · {p.max_users} users · {p.max_investors} clients)
+                  </option>
+                ))}
+              </SelectField>
+            </div>
+            <div className="grid grid-cols-2 gap-3 mt-3">
+              <div>
+                <Label>Billing cycle</Label>
+                <SelectField value={form.billingCycle} onChange={(e) => set("billingCycle", e.target.value)} className="w-full">
+                  <option value="yearly">Yearly</option>
+                  <option value="monthly">Monthly</option>
+                  <option value="custom">Custom</option>
+                </SelectField>
+              </div>
+              <Field label="Trial days" type="number" value={String(form.trialDays)} setValue={(v) => set("trialDays", Number(v))} />
+            </div>
+          </Section>
+
+          {err && <div className="rounded-lg border border-rose-300 bg-rose-50 dark:bg-rose-500/10 text-rose-700 dark:text-rose-300 px-3 py-2 text-sm">{err}</div>}
+
+          <div className="flex justify-end gap-2 pt-2 border-t">
+            <Link href="/super-admin/tenants" className="rounded-lg border px-4 py-2 text-sm hover:bg-accent transition">Cancel</Link>
+            <button disabled={busy} className="rounded-lg bg-primary text-primary-foreground px-4 py-2 text-sm font-medium disabled:opacity-50 inline-flex items-center gap-1.5 shadow-sm">
+              {busy ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
+              {busy ? "Creating…" : "Create tenant + owner"}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
 
+function Section({ icon: Icon, title, children }: { icon: any; title: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-3">
+        <span className="size-7 rounded-lg bg-primary/10 text-primary grid place-items-center"><Icon className="size-4" /></span>
+        <div className="text-sm font-semibold">{title}</div>
+      </div>
+      <div className="space-y-3">{children}</div>
+    </div>
+  );
+}
+
+function Label({ children }: { children: React.ReactNode }) {
+  return <div className="text-xs font-medium text-muted-foreground mb-1">{children}</div>;
+}
+
 function Field({
-  label,
-  value,
-  setValue,
-  type = "text",
-  placeholder,
-  required,
+  label, value, setValue, type = "text", placeholder, required,
 }: {
-  label: string;
-  value: string;
-  setValue: (v: string) => void;
-  type?: string;
-  placeholder?: string;
-  required?: boolean;
+  label: string; value: string; setValue: (v: string) => void; type?: string; placeholder?: string; required?: boolean;
 }) {
   return (
-    <label className="block mt-2">
-      <div className="text-xs font-medium mb-1">
+    <label className="block">
+      <div className="text-xs font-medium text-muted-foreground mb-1">
         {label}
         {required && <span className="text-rose-600 ml-0.5">*</span>}
       </div>
@@ -161,7 +163,7 @@ function Field({
         onChange={(e) => setValue(e.target.value)}
         placeholder={placeholder}
         required={required}
-        className="w-full border rounded-md px-3 py-2 text-sm bg-background"
+        className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition"
       />
     </label>
   );

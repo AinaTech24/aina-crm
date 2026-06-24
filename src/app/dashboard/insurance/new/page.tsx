@@ -28,8 +28,12 @@ import {
   Sparkles,
   AlertTriangle,
   Lock,
+  Plus,
+  Trash2,
 } from "lucide-react";
 import { InvestorLookup } from "@/components/common/InvestorLookup";
+import { SelectField } from "@/components/ui/SelectField";
+import { DatePicker } from "@/components/ui/DatePicker";
 import { formatINR } from "@/lib/utils";
 import type { InsuranceExtraction, InsuranceCategory } from "@/lib/ai/assistant";
 
@@ -219,6 +223,30 @@ function NewInsuranceForm() {
     setDetails((s) => ({ ...s, [k]: v }));
   }
   const d = (k: string) => (details[k] != null ? String(details[k]) : "");
+  /** Rows of a table stored under details[key] (always an array). */
+  const rowsOf = (k: string): Record<string, any>[] =>
+    Array.isArray(details[k]) ? (details[k] as Record<string, any>[]) : [];
+
+  // Country defaults to India unless the document / user says otherwise.
+  useEffect(() => {
+    setDetails((s) => (s.country ? s : { ...s, country: "India" }));
+  }, []);
+
+  // "Proposer address same as policyholder" — mirror the policyholder address
+  // into the proposer address fields whenever the toggle is on or the source
+  // address changes, so the proposer block stays in sync without re-typing.
+  useEffect(() => {
+    if (!details.proposerSameAddress) return;
+    setDetails((s) => ({
+      ...s,
+      proposerAddressLine1: s.addressLine1 ?? "",
+      proposerCity: s.city ?? "",
+      proposerState: s.state ?? "",
+      proposerPostalCode: s.postalCode ?? "",
+      proposerCountry: s.country ?? "India",
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [details.proposerSameAddress, details.addressLine1, details.city, details.state, details.postalCode, details.country]);
 
   /** Map an AI extraction onto the form — only overwrites fields the model
    *  actually found, so a partial scan never blanks what the RM already typed. */
@@ -391,19 +419,14 @@ function NewInsuranceForm() {
         <h1 className="page-title">
           <Shield className="size-6 text-brand-cyan" /> {editId ? "Edit insurance policy" : "Add insurance policy"}
         </h1>
-        <p className="page-subtitle">
-          {editId
-            ? "Update policy terms, nominee share, premium dates, and status."
-            : "Upload the policy PDF to auto-fill, or enter manually — Term · ULIP · Health · Motor · General."}
-        </p>
       </div>
 
-      {/* 0. Document auto-fill (PDF text / OCR — no AI) — new policies only */}
-      {!editId && (
-        <div
-          className={`card-surface p-5 border-2 border-dashed transition-colors ${
-            dragOver ? "border-brand-cyan bg-brand-cyan-light/20" : "border-border"
-          }`}
+      {/* 0. Document auto-fill — upload a policy PDF/image → native read + OCR
+          fills the fields for review. Available for both new AND edit (it only
+          overwrites the fields the document actually contains). */}
+      <div
+          className={`card-surface p-5 border-2 border-dashed transition-colors ${dragOver ? "border-brand-cyan bg-brand-cyan-light/20" : "border-border"
+            }`}
           onDragOver={(e) => {
             e.preventDefault();
             setDragOver(true);
@@ -467,8 +490,7 @@ function NewInsuranceForm() {
               ))}
             </div>
           )}
-        </div>
-      )}
+      </div>
 
       {/* 1. Policyholder */}
       <Section title="1. Policyholder">
@@ -562,9 +584,8 @@ function NewInsuranceForm() {
       {/* 3. Schedule */}
       <Section title="3. Schedule">
         <div className="grid grid-cols-4 gap-3">
-          <Field
+          <DateField
             label="Policy start"
-            type="date"
             value={form.policyStartDate}
             setValue={(v) => set("policyStartDate", v)}
           />
@@ -586,7 +607,7 @@ function NewInsuranceForm() {
           )}
           {showMaturity && (
             <div className="flex flex-col">
-              <Field label="Maturity" type="date" value={form.maturityDate} setValue={(v) => set("maturityDate", v)} />
+              <DateField label="Maturity" value={form.maturityDate} setValue={(v) => set("maturityDate", v)} />
               <button
                 type="button"
                 onClick={autoMaturity}
@@ -596,9 +617,8 @@ function NewInsuranceForm() {
               </button>
             </div>
           )}
-          <Field
+          <DateField
             label="Next premium / renewal due"
-            type="date"
             value={form.nextPremiumDueDate}
             setValue={(v) => set("nextPremiumDueDate", v)}
           />
@@ -692,6 +712,127 @@ function NewInsuranceForm() {
         </Section>
       )}
 
+      {/* Policyholder details & address */}
+      <Section title="Policyholder details & address">
+        <div className="grid grid-cols-3 gap-3">
+          <Field label="Policyholder name" placeholder="As on policy" value={d("holderName")} setValue={(v) => setD("holderName", v)} />
+          <Field label="Customer ID" placeholder="" value={d("customerId")} setValue={(v) => setD("customerId", v)} />
+          <Field label="UIN" placeholder="" value={d("uin")} setValue={(v) => setD("uin", v)} />
+          <Field label="Email ID" type="email" placeholder="" value={d("email")} setValue={(v) => setD("email", v)} />
+          <Field label="Mobile no" placeholder="" value={d("mobile")} setValue={(v) => setD("mobile", v)} />
+        </div>
+        <Field label="Address — street / line 1" placeholder="" value={d("addressLine1")} setValue={(v) => setD("addressLine1", v)} />
+        <div className="grid grid-cols-4 gap-3">
+          <Field label="City" placeholder="" value={d("city")} setValue={(v) => setD("city", v)} />
+          <Field label="State" placeholder="" value={d("state")} setValue={(v) => setD("state", v)} />
+          <Field label="Postal code" placeholder="" value={d("postalCode")} setValue={(v) => setD("postalCode", v)} />
+          <Field label="Country" placeholder="India" value={d("country") || "India"} setValue={(v) => setD("country", v)} />
+        </div>
+      </Section>
+
+      {/* Insured member details (table) */}
+      <Section title="Insured member details">
+        <TableEditor
+          columns={[
+            { key: "name", label: "Member name" },
+            { key: "customerId", label: "Customer ID", width: "w-28" },
+            { key: "planOpted", label: "Plan opted", width: "w-28" },
+            { key: "gender", label: "Gender", width: "w-20" },
+            { key: "dob", label: "DOB", width: "w-28" },
+            { key: "age", label: "Age", width: "w-16" },
+            { key: "relation", label: "Relation", width: "w-24" },
+            { key: "nominee", label: "Nominee & relation" },
+          ]}
+          rows={rowsOf("insuredMembers")}
+          onChange={(r) => setD("insuredMembers", r)}
+        />
+      </Section>
+
+      {/* Sum insured & cover details (table) */}
+      <Section title="Sum insured & cover details">
+        <TableEditor
+          columns={[
+            { key: "memberName", label: "Member name" },
+            { key: "cover", label: "Cover" },
+            { key: "sumInsured", label: "Sum insured", width: "w-32" },
+            { key: "limit", label: "Limit / notes" },
+          ]}
+          rows={rowsOf("sumInsuredCovers")}
+          onChange={(r) => setD("sumInsuredCovers", r)}
+        />
+      </Section>
+
+      {/* Optional covers (table) */}
+      <Section title="Optional covers">
+        <TableEditor
+          columns={[
+            { key: "cover", label: "Optional cover" },
+            { key: "memberName", label: "Member" },
+            { key: "sumInsured", label: "Sum insured", width: "w-32" },
+            { key: "notes", label: "Notes" },
+          ]}
+          rows={rowsOf("optionalCovers")}
+          onChange={(r) => setD("optionalCovers", r)}
+        />
+      </Section>
+
+      {/* Premium details (table) */}
+      <Section title="Premium details">
+        <TableEditor
+          columns={[
+            { key: "description", label: "Description" },
+            { key: "amount", label: "Amount (₹)", width: "w-32" },
+          ]}
+          rows={rowsOf("premiumBreakdown")}
+          onChange={(r) => setD("premiumBreakdown", r)}
+        />
+        <div className="grid grid-cols-3 gap-3">
+          <Field label="Gross premium (₹)" type="number" placeholder="" value={d("grossPremium")} setValue={(v) => setD("grossPremium", v)} />
+          <Field label="Financial year" placeholder="YYYY-YYYY" value={d("financialYear")} setValue={(v) => setD("financialYear", v)} />
+          <Field label="80-D amount (₹)" type="number" placeholder="" value={d("eightyDAmount")} setValue={(v) => setD("eightyDAmount", v)} />
+        </div>
+      </Section>
+
+      {/* Exclusions (table) */}
+      <Section title="Exclusions">
+        <TableEditor
+          columns={[
+            { key: "memberName", label: "Member name" },
+            { key: "exclusion", label: "Exclusion" },
+          ]}
+          rows={rowsOf("exclusions")}
+          onChange={(r) => setD("exclusions", r)}
+        />
+      </Section>
+
+      {/* Agency & sourcing */}
+      <Section title="Agency & sourcing">
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Agency code" placeholder="" value={d("agencyCode")} setValue={(v) => setD("agencyCode", v)} />
+          <Field label="Agency name" placeholder="Agent name" value={d("agencyName")} setValue={(v) => setD("agencyName", v)} />
+          <Field label="Contact no" placeholder="" value={d("agencyContact")} setValue={(v) => setD("agencyContact", v)} />
+          <Field label="Email ID" type="email" placeholder="" value={d("agencyEmail")} setValue={(v) => setD("agencyEmail", v)} />
+        </div>
+      </Section>
+
+      {/* Receipt, payment & tax */}
+      <Section title="Receipt, payment & tax">
+        <div className="grid grid-cols-3 gap-3">
+          <Field label="Receipt no" placeholder="" value={d("receiptNo")} setValue={(v) => setD("receiptNo", v)} />
+          <DateField label="Receipt date" value={d("receiptDate")} setValue={(v) => setD("receiptDate", v)} />
+          <Field label="Business channel" placeholder="Agent / Broker / Direct" value={d("businessChannel")} setValue={(v) => setD("businessChannel", v)} />
+          <Field label="Tax invoice no" placeholder="" value={d("taxInvoiceNo")} setValue={(v) => setD("taxInvoiceNo", v)} />
+          <DateField label="Tax invoice date" value={d("taxInvoiceDate")} setValue={(v) => setD("taxInvoiceDate", v)} />
+          <Field label="GSTIN / PAN" placeholder="" value={d("gstin")} setValue={(v) => setD("gstin", v)} />
+        </div>
+        <Field
+          label="Payment details"
+          placeholder=""
+          value={d("paymentDetails")}
+          setValue={(v) => setD("paymentDetails", v)}
+        />
+      </Section>
+
       {/* 6. Proposer (if different) + Status + remarks */}
       <Section title="6. Proposer, status & remarks">
         <div className="grid grid-cols-3 gap-3">
@@ -711,7 +852,32 @@ function NewInsuranceForm() {
             <option value="surrendered">Surrendered</option>
             <option value="cancelled">Cancelled</option>
           </Select>
+          <Field label="Proposer customer ID" placeholder="If different" value={d("proposerCustomerId")} setValue={(v) => setD("proposerCustomerId", v)} />
+          <Field label="Proposer phone" placeholder="" value={d("proposerPhone")} setValue={(v) => setD("proposerPhone", v)} />
+          <Field label="Proposer email" type="email" placeholder="" value={d("proposerEmail")} setValue={(v) => setD("proposerEmail", v)} />
         </div>
+
+        {/* Same-address toggle */}
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={!!details.proposerSameAddress}
+            onChange={(e) => setD("proposerSameAddress", e.target.checked)}
+          />
+          Proposer address same as policyholder
+        </label>
+        {!details.proposerSameAddress && (
+          <>
+            <Field label="Proposer address — line 1" value={d("proposerAddressLine1")} setValue={(v) => setD("proposerAddressLine1", v)} />
+            <div className="grid grid-cols-4 gap-3">
+              <Field label="City" value={d("proposerCity")} setValue={(v) => setD("proposerCity", v)} />
+              <Field label="State" value={d("proposerState")} setValue={(v) => setD("proposerState", v)} />
+              <Field label="Postal code" value={d("proposerPostalCode")} setValue={(v) => setD("proposerPostalCode", v)} />
+              <Field label="Country" value={d("proposerCountry") || "India"} setValue={(v) => setD("proposerCountry", v)} />
+            </div>
+          </>
+        )}
+
         <Field
           label="Remarks"
           placeholder="Notes — surrender value, rider details, claim history…"
@@ -797,9 +963,84 @@ function Select({
   return (
     <label className="block">
       <div className="text-xs font-medium mb-1">{label}</div>
-      <select value={value} onChange={(e) => setValue(e.target.value)} className="input-base">
+      <SelectField value={value} onChange={(e) => setValue(e.target.value)} className="w-full" aria-label={label}>
         {children}
-      </select>
+      </SelectField>
     </label>
+  );
+}
+
+function DateField({ label, value, setValue }: { label: string; value: string; setValue: (v: string) => void }) {
+  return (
+    <div className="block">
+      <div className="text-xs font-medium mb-1">{label}</div>
+      <DatePicker value={value} onChange={setValue} className="w-full" ariaLabel={label} />
+    </div>
+  );
+}
+
+/** Generic editable table bound to a details[] array — add / edit / remove rows.
+ *  Auto-fill populates the same array, so a scanned PDF lands straight here. */
+function TableEditor({
+  columns,
+  rows,
+  onChange,
+}: {
+  columns: { key: string; label: string; width?: string }[];
+  rows: Record<string, any>[];
+  onChange: (rows: Record<string, any>[]) => void;
+}) {
+  const update = (i: number, key: string, val: string) =>
+    onChange(rows.map((r, idx) => (idx === i ? { ...r, [key]: val } : r)));
+  return (
+    <div className="space-y-2">
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-[11px] uppercase tracking-wide text-muted-foreground border-b">
+              {columns.map((c) => (
+                <th key={c.key} className="px-2 py-1.5 font-medium">{c.label}</th>
+              ))}
+              <th className="w-8" />
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 && (
+              <tr>
+                <td colSpan={columns.length + 1} className="px-2 py-3 text-xs text-muted-foreground">
+                  No rows yet — add one, or upload a policy PDF to auto-fill.
+                </td>
+              </tr>
+            )}
+            {rows.map((r, i) => (
+              <tr key={i} className="border-b last:border-0 align-top">
+                {columns.map((c) => (
+                  <td key={c.key} className={`px-1 py-1 ${c.width ?? ""}`}>
+                    <input
+                      value={r[c.key] ?? ""}
+                      onChange={(e) => update(i, c.key, e.target.value)}
+                      className="input-base text-xs py-1"
+                    />
+                  </td>
+                ))}
+                <td className="px-1 py-1">
+                  <button
+                    type="button"
+                    onClick={() => onChange(rows.filter((_, idx) => idx !== i))}
+                    className="text-muted-foreground hover:text-rose-600 p-1"
+                    aria-label="Remove row"
+                  >
+                    <Trash2 className="size-3.5" />
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <button type="button" onClick={() => onChange([...rows, {}])} className="btn-ghost text-xs inline-flex items-center gap-1">
+        <Plus className="size-3.5" /> Add row
+      </button>
+    </div>
   );
 }

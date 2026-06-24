@@ -35,6 +35,7 @@ export const TARGETABLE_METRICS: { key: string; label: string; team: "sales" | "
   { key: "converted", label: "Leads converted", team: "sales", unit: "count" },
   { key: "meetings", label: "Meetings", team: "sales", unit: "count" },
   { key: "activities", label: "Activities", team: "sales", unit: "count" },
+  { key: "tasks_completed", label: "Tasks completed", team: "sales", unit: "count" },
   { key: "resolved", label: "Tickets resolved", team: "ops", unit: "count" },
 ];
 
@@ -144,6 +145,7 @@ export async function loadScorecard(tx: Tx, tenantId: string, from: string, to: 
   const converted = await single(tx, sql`SELECT owner_id AS uid, count(*) AS v FROM leads WHERE tenant_id=${t}::uuid AND owner_id IS NOT NULL AND converted_at >= ${tsLo} AND converted_at < ${tsHi} GROUP BY owner_id`);
   const meetings = await single(tx, sql`SELECT rm_id AS uid, count(*) AS v FROM review_meetings WHERE tenant_id=${t}::uuid AND rm_id IS NOT NULL AND status IN ('completed','confirmed') AND meeting_date >= ${tsLo} AND meeting_date < ${tsHi} GROUP BY rm_id`);
   const activities = await single(tx, sql`SELECT owner_user_id AS uid, count(*) AS v FROM activities WHERE tenant_id=${t}::uuid AND owner_user_id IS NOT NULL AND occurred_at >= ${tsLo} AND occurred_at < ${tsHi} GROUP BY owner_user_id`);
+  const tasksCompleted = await single(tx, sql`SELECT assignee_id AS uid, count(*) AS v FROM tasks WHERE tenant_id=${t}::uuid AND assignee_id IS NOT NULL AND status='completed' AND completed_at >= ${tsLo} AND completed_at < ${tsHi} GROUP BY assignee_id`);
 
   const sales = assemble(salesUsers, [
     // Business split (was a single "net_sales" 0.30) — same total weight, now
@@ -155,6 +157,7 @@ export async function loadScorecard(tx: Tx, tenantId: string, from: string, to: 
     { key: "converted", label: "Leads converted", unit: "count", weight: 0.15, mode: "rel", values: converted, targetable: true },
     { key: "meetings", label: "Meetings", unit: "count", weight: 0.15, mode: "rel", values: meetings, targetable: true },
     { key: "activities", label: "Activities", unit: "count", weight: 0.1, mode: "rel", values: activities, targetable: true },
+    { key: "tasks_completed", label: "Tasks completed", unit: "count", weight: 0.1, mode: "rel", values: tasksCompleted, targetable: true },
     { key: "aum", label: "Book AUM", unit: "inr", weight: 0.1, mode: "rel", values: aum },
   ], targets, fraction);
 

@@ -52,9 +52,9 @@ export default async function LiquidReportPage() {
           </p>
         </div>
       ) : (
-        <div className="card-surface overflow-x-auto">
+        <div className="card-surface table-scroll">
           <table className="w-full text-sm">
-            <thead className="text-xs text-muted-foreground border-b">
+            <thead className="text-xs text-muted-foreground border-b sticky top-0 z-10 bg-card">
               <tr>
                 <th className="text-left px-4 py-2 font-medium">Client</th>
                 <th className="text-right py-2 font-medium">Liquid in</th>

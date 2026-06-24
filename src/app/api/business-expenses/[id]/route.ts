@@ -17,7 +17,7 @@ export const dynamic = "force-dynamic";
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "reports.commission");
+    requireCap(session.roles, "finances.view");
     const { id } = await params;
     const meta = clientMetaFromHeaders(req.headers);
 
@@ -28,7 +28,9 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
         .where(and(eq(businessExpenses.id, id), eq(businessExpenses.tenantId, session.tenantId)))
         .limit(1);
       if (!existing) return false;
-      await tx.delete(businessExpenses).where(eq(businessExpenses.id, id));
+      await tx
+        .delete(businessExpenses)
+        .where(and(eq(businessExpenses.id, id), eq(businessExpenses.tenantId, session.tenantId)));
       await recordAudit(tx, {
         tenantId: session.tenantId,
         actorUserId: session.userId,

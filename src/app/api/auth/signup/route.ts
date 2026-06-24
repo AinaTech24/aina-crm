@@ -98,12 +98,17 @@ export async function POST(req: NextRequest) {
         // whole signup back rather than create a locked-out orphan tenant.
         throw new Error("no_package_configured");
       }
+      // Create the subscription in `pending` state — the owner must CHOOSE a
+      // package (and pay, if Razorpay is configured) before they get dashboard
+      // access. The license gate routes `pending` tenants to /onboarding/choose-plan.
+      // `pkg` (starter) is a placeholder packageId so the FK is satisfied; the
+      // real package + active status are set when they complete onboarding.
       await tx.insert(subscriptions).values({
         id: subId,
         tenantId,
         packageId: pkg.id,
         packageKey: pkg.key,
-        status: "trial",
+        status: "pending",
         billingCycle: "monthly",
         licenseStartAt: new Date(),
         trialEndsAt,
@@ -113,9 +118,9 @@ export async function POST(req: NextRequest) {
         tenantId,
         eventType: "created",
         actor: "system:self_serve_signup",
-        toStatus: "trial",
+        toStatus: "pending",
         toPackage: pkg.key,
-        notes: `Self-serve signup — ${TRIAL_DAYS}-day trial on '${pkg.key}'.`,
+        notes: `Self-serve signup — awaiting package selection${""}.`,
       } as any);
 
       // Seed the 15 master_values defaults for this tenant.

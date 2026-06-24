@@ -59,6 +59,12 @@ export interface DispatchInput {
   leadId?: string;
   workflowRunId?: string;
   workflowRunStepId?: string;
+  /** Stable dedupe key for provider-level idempotency. Unlike workflowRunStepId
+   *  (regenerated on every step retry), this stays constant across retries of the
+   *  same logical send (e.g. `wf:<runId>:<nodeId>`), so a retried workflow step
+   *  re-sends the SAME key and the channel provider (Resend / AiSensy / MSG91)
+   *  dedupes it instead of delivering twice. */
+  idempotencyKey?: string;
   campaignId?: string;
   /** A/B variant this send belongs to ('a' | 'b') — campaign sends only. */
   variant?: "a" | "b";
@@ -498,7 +504,7 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
         webhookUrl: integration?.config?.webhookUrl,
         defaultLanguage: integration?.config?.defaultLanguage,
         // Stable across step retries → adapter can dedupe a re-fired send.
-        idempotencyKey: input.workflowRunStepId ?? communicationId,
+        idempotencyKey: input.idempotencyKey ?? input.workflowRunStepId ?? communicationId,
       });
     } else if (input.channel === "email") {
       // One resolver decides the sender: the acting RM's own mailbox → the firm
@@ -522,7 +528,7 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
         // Client replies route to the MFD's own inbox.
         replyTo: sender.replyTo,
         // Stable across step retries → Resend dedupes a re-fired send.
-        idempotencyKey: input.workflowRunStepId ?? communicationId,
+        idempotencyKey: input.idempotencyKey ?? input.workflowRunStepId ?? communicationId,
         // Campaign emails get link-level click tracking keyed by this comm row.
         trackingId: input.campaignId ? communicationId : undefined,
       });
@@ -536,7 +542,7 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
         recipient: input.recipient,
         apiKey: integration?.config?.apiKey,
         senderId: integration?.senderConfig?.senderId,
-        idempotencyKey: input.workflowRunStepId ?? communicationId,
+        idempotencyKey: input.idempotencyKey ?? input.workflowRunStepId ?? communicationId,
       });
     }
     await tx

@@ -2,11 +2,14 @@ import { handleApiError } from "@/lib/api/error-handler";
 /**
  * POST /api/rta-imports/upload-url
  *
- * Returns a presigned S3 PUT URL so the browser uploads large RTA files DIRECTLY
- * to S3 — bypassing the app server's request-body size limit (~10MB) that
- * truncated big zips. Body: { filename, contentType? } → { url, key }.
- * The client then PUTs the file to `url` and calls /api/rta-imports/upload with
- * the returned `key`.
+ * Returns a presigned S3 PUT URL so the browser uploads the (often large) RTA
+ * zip DIRECTLY to S3 — bypassing the Next.js app server's request-body cap that
+ * TRUNCATED the file when we tried routing it through /api/upload-local
+ * ("End of central directory not found"). Body: { filename, contentType? } →
+ * { url, key }. The client PUTs to `url`, then calls /api/rta-imports/upload.
+ *
+ * The zip is TRANSIENT: the worker reads it, parses it, and DELETES it from S3
+ * immediately after (success or failure) — it is never retained.
  */
 
 import { NextRequest, NextResponse } from "next/server";

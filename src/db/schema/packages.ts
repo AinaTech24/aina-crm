@@ -107,7 +107,9 @@ export const subscriptions = pgTable(
     packageKey: text("package_key").notNull(), // denormalized for fast reads + sidebar gating
 
     status: text("status", {
-      enum: ["trial", "active", "past_due", "suspended", "expired", "cancelled"],
+      // "pending" = brand-new self-serve tenant that hasn't chosen/paid for a
+      // plan yet (onboarding). Text column, so no DB migration needed.
+      enum: ["pending", "trial", "active", "past_due", "suspended", "expired", "cancelled"],
     })
       .notNull()
       .default("trial"),

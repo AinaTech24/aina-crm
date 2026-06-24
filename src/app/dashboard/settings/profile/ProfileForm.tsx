@@ -19,19 +19,45 @@ import { PasswordInput } from "@/components/ui/PasswordInput";
 
 export default function ProfileForm({
   initialName,
-  initialPhone,
+  email,
+  emailVerified,
   initialAvatarUrl,
 }: {
   initialName: string;
-  initialPhone: string;
+  email: string;
+  emailVerified: boolean;
   initialAvatarUrl?: string | null;
 }) {
   const router = useRouter();
   const toast = useToast();
   const [name, setName] = useState(initialName);
-  const [phone, setPhone] = useState(initialPhone);
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileMsg, setProfileMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+
+  // Email verification (the gate that blocks inviting team members until confirmed).
+  const [resending, setResending] = useState(false);
+  const [verifyMsg, setVerifyMsg] = useState<string | null>(null);
+  async function resendVerification() {
+    setResending(true);
+    setVerifyMsg(null);
+    try {
+      const res = await fetch("/api/auth/verify-email", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(data?.error ?? "Could not send the verification email.", "Failed");
+        return;
+      }
+      setVerifyMsg(
+        data.emailSent
+          ? "Verification email sent — open it and click “Confirm email”, then refresh this page."
+          : "Email isn't configured for your firm yet. Ask your owner to set up email (Settings → Integrations), or contact AINA."
+      );
+    } catch {
+      toast.error("Network error — please try again.", "Failed");
+    } finally {
+      setResending(false);
+    }
+  }
 
   // Avatar
   const [avatarUrl, setAvatarUrl] = useState<string>(initialAvatarUrl ?? "");
@@ -135,7 +161,7 @@ export default function ProfileForm({
       const res = await fetch("/api/me/profile", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), phone: phone.trim() }),
+        body: JSON.stringify({ name: name.trim() }),
       });
       const data = await res.json();
       if (!res.ok) setProfileMsg({ kind: "err", text: data?.error ?? "Could not save" });
@@ -257,8 +283,31 @@ export default function ProfileForm({
             <input className={field} value={name} onChange={(e) => setName(e.target.value)} />
           </div>
           <div>
-            <label className={label}>Phone</label>
-            <input className={field} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Optional" />
+            <label className={label}>Email</label>
+            {/* Read-only: your email is your login identity — managed by your firm
+                owner. You can confirm it here, which is required before you can
+                invite team members. */}
+            <input className={`${field} bg-secondary/40 text-muted-foreground`} value={email} readOnly />
+            <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs">
+              {emailVerified ? (
+                <span className="inline-flex items-center gap-1 text-emerald-600 font-medium">
+                  <Check className="size-3.5" /> Verified
+                </span>
+              ) : (
+                <>
+                  <span className="inline-flex items-center gap-1 text-amber-600 font-medium">Not verified</span>
+                  <button
+                    type="button"
+                    onClick={resendVerification}
+                    disabled={resending}
+                    className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 font-medium hover:bg-accent disabled:opacity-50"
+                  >
+                    {resending && <Loader2 className="size-3.5 animate-spin" />} Send verification email
+                  </button>
+                </>
+              )}
+            </div>
+            {verifyMsg && <p className="mt-1 text-xs text-emerald-600">{verifyMsg}</p>}
           </div>
           <button
             onClick={saveProfile}
