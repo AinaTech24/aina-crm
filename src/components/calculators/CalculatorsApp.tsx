@@ -6,7 +6,7 @@
  * math helpers.
  */
 
-import { useRef, useState } from "react";
+import { useRef, useState, createContext, useContext } from "react";
 import { useToast } from "@/components/ui/Toast";
 import {
   ChevronLeft, Search, X, Mail, MessageCircle, Printer, FilePlus2, FileText, Trash2,
@@ -21,12 +21,15 @@ import {
   Warehouse, BarChart3, Recycle, PieChart,
   CalendarDays, SlidersHorizontal, Anchor, ClipboardList, ClipboardCheck,
   Siren, Rocket, Trophy, Coffee, PiggyBank, Home, Gauge, Layers, Wallet,
-  Lightbulb, Sparkles, LifeBuoy, Wand2, Split, Umbrella, Building, Sailboat, Gem, Car, ShieldAlert, Boxes, CirclePause, Brain, History, CopyPlus,
+  Lightbulb, Sparkles, LifeBuoy, Wand2, Split, Umbrella, Building, Sailboat, Gem, Car, ShieldAlert, Boxes, CirclePause, Brain, History, CopyPlus, SquareStack, Compass, HeartHandshake, KeyRound, WalletCards,
+  FolderPlus, FileSpreadsheet,
   type LucideIcon,
 } from "lucide-react";
 import { captureCalcResults } from "./capture";
 import { ClientNameField } from "./ClientNameField";
 import { ScenarioControls } from "./ScenarioControls";
+import { CreateGoalFromCalc } from "./CreateGoalFromCalc";
+import { SaveCalcToClient } from "./SaveCalcToClient";
 import { Sip360Planner } from "./Sip360Planner";
 import { StepUpReckoner } from "./StepUpReckoner";
 import { IncomeBridgePlanner } from "./IncomeBridgePlanner";
@@ -78,12 +81,18 @@ import { AumOpportunityCalculator } from "./AumOpportunityCalculator";
 import { PrepayVsInvestCalculator } from "./PrepayVsInvestCalculator";
 import { BtidCalculator } from "./BtidCalculator";
 import { NpsVsMfCalculator } from "./NpsVsMfCalculator";
+import { HousingEmiSipCalculator } from "./HousingEmiSipCalculator";
 import { PassiveIncomeBuilder } from "./PassiveIncomeBuilder";
 import { WeddingPlanner } from "./WeddingPlanner";
 import { DreamCarPlanner } from "./DreamCarPlanner";
+import { YouthBucketStrategy } from "./YouthBucketStrategy";
+import { JourneyToFreedom } from "./JourneyToFreedom";
+import { FamilyWealthPlan } from "./FamilyWealthPlan";
 import { EmergencyFundPlanner } from "./EmergencyFundPlanner";
 import { RetirementBucketStrategy } from "./RetirementBucketStrategy";
 import { SipPauseCostCalculator } from "./SipPauseCostCalculator";
+import { MonthlyBudgetPlanner } from "./MonthlyBudgetPlanner";
+import { RealStatement } from "./RealStatement";
 import { MoneyPersonalityQuiz } from "./MoneyPersonalityQuiz";
 import { InflationTimeMachine } from "./InflationTimeMachine";
 import { WealthDoublingCalculator } from "./WealthDoublingCalculator";
@@ -100,8 +109,6 @@ import {
   swpDeplete,
   stpCalculate,
   cagrCalculate,
-  DEFAULT_EXPECTED_RETURN_PCT,
-  DEFAULT_INFLATION_PCT,
 } from "@/lib/goal-planning/calc";
 
 type TabKey =
@@ -156,12 +163,18 @@ type TabKey =
   | "prepayinvest"
   | "btid"
   | "npsvsmf"
+  | "housingstrategy"
   | "passiveincome"
   | "wedding"
   | "dreamcar"
+  | "youthbucket"
+  | "journey"
+  | "familywealth"
   | "emergency"
   | "buckets"
   | "sippause"
+  | "budget"
+  | "realstatement"
   | "quiz"
   | "timemachine"
   | "doubling"
@@ -264,6 +277,7 @@ const CATALOG: CalcGroup[] = [
       { key: "expensedrag", name: "Expense-Ratio Drag", icon: Anchor, desc: "What a costlier fund quietly costs you" },
       { key: "review", name: "Review of Investments", icon: ClipboardList, desc: "Compare your funds' performance side by side" },
       { key: "allocreview", name: "Asset Allocation Review", icon: ClipboardCheck, desc: "Existing vs suggested portfolio — 5y & 10y projection + asset mix" },
+      { key: "realstatement", name: "REAL Statement (Net Worth & Cashflow)", icon: FileSpreadsheet, desc: "Full discovery snapshot — income, expenses, surplus, assets, liabilities & net worth" },
     ],
   },
   {
@@ -277,6 +291,7 @@ const CATALOG: CalcGroup[] = [
       { key: "prepayinvest", name: "Prepay vs Invest", icon: Split, desc: "Prepay the loan or invest the surplus?" },
       { key: "btid", name: "Term + MF vs ULIP", icon: Umbrella, desc: "Buy term & invest vs a bundled policy" },
       { key: "npsvsmf", name: "NPS vs Mutual Fund", icon: Building, desc: "Retirement: tax break vs flexibility" },
+      { key: "housingstrategy", name: "Home-Buying Strategy", icon: KeyRound, desc: "Pay off / keep loan / rent — which builds more wealth" },
     ],
   },
   {
@@ -284,6 +299,9 @@ const CATALOG: CalcGroup[] = [
       { key: "passiveincome", name: "Financial-Freedom Builder", icon: Sailboat, desc: "The SIP for a target passive income" },
       { key: "wedding", name: "Dream Wedding Planner", icon: Gem, desc: "Fund the big day, stress-free" },
       { key: "dreamcar", name: "Dream Car — Invest First", icon: Car, desc: "Invest & buy cash vs an auto-loan" },
+      { key: "youthbucket", name: "4-Bucket Freedom", icon: SquareStack, desc: "Fund freedom across 4 buckets — far lower SIP" },
+      { key: "journey", name: "Journey to Freedom", icon: Compass, desc: "The year your corpus funds life forever" },
+      { key: "familywealth", name: "Family Wealth Plan", icon: HeartHandshake, desc: "Lumpsum + SIP across a 4-class portfolio" },
     ],
   },
   {
@@ -291,6 +309,7 @@ const CATALOG: CalcGroup[] = [
       { key: "emergency", name: "Emergency Fund Planner", icon: ShieldAlert, desc: "Build the financial seatbelt first" },
       { key: "buckets", name: "Retirement Bucket Strategy", icon: Boxes, desc: "Draw income for life across 3 buckets" },
       { key: "sippause", name: "Cost of Pausing a SIP", icon: CirclePause, desc: "What skipping SIPs costs at the goal" },
+      { key: "budget", name: "Monthly Budget Planner", icon: WalletCards, desc: "50/30/20 health check + grow the surplus" },
     ],
   },
   {
@@ -305,7 +324,15 @@ const CATALOG: CalcGroup[] = [
 const ALL_CALCS: CalcMeta[] = CATALOG.flatMap((g) => g.items);
 const CALC_META: Record<string, CalcMeta> = Object.fromEntries(ALL_CALCS.map((c) => [c.key, c]));
 
-export function CalculatorsApp({ firmName }: { firmName?: string } = {}) {
+type CalcAssumptions = { returnPct: number; inflationPct: number; educationInflationPct: number; debtReturnPct: number };
+
+// Firm "house view" defaults, provided around the calc render so the inline
+// calculators seed their expected-return / inflation inputs from tenant settings
+// instead of the hardcoded 12% / 6%.
+const CalcAssumptionsCtx = createContext<CalcAssumptions>({ returnPct: 12, inflationPct: 6, educationInflationPct: 10, debtReturnPct: 7 });
+
+export function CalculatorsApp({ firmName, assumptions }: { firmName?: string; assumptions?: CalcAssumptions } = {}) {
+  const asmp: CalcAssumptions = assumptions ?? { returnPct: 12, inflationPct: 6, educationInflationPct: 10, debtReturnPct: 7 };
   const toast = useToast();
   const [tab, setTab] = useState<TabKey | null>(null);
   const [query, setQuery] = useState("");
@@ -314,6 +341,23 @@ export function CalculatorsApp({ firmName }: { firmName?: string } = {}) {
   const [recipient, setRecipient] = useState("");
   const [busy, setBusy] = useState(false);
   const calcRef = useRef<HTMLDivElement>(null);
+  // Create-goal + save-to-client modals.
+  const [showGoal, setShowGoal] = useState(false);
+  const [showSave, setShowSave] = useState(false);
+  const [saveCapture, setSaveCapture] = useState<{ inputs: { label: string; value: string; group?: string }[]; blocks: any[] } | null>(null);
+
+  // Snapshot the current calculator's results, then open the save-to-client modal.
+  async function openSaveToClient() {
+    const root = calcRef.current;
+    if (!root) return;
+    try {
+      const { inputs, blocks } = await captureCalcResults(root);
+      setSaveCapture({ inputs, blocks });
+      setShowSave(true);
+    } catch {
+      toast.error("Couldn't read the results — please try again.");
+    }
+  }
   // ── Combined report tray — snapshots of calculators to bundle into one PDF ──
   type ReportItem = { calcName: string; inputs: { label: string; value: string; group?: string }[]; blocks: any[] };
   const [report, setReport] = useState<ReportItem[]>([]);
@@ -332,8 +376,23 @@ export function CalculatorsApp({ firmName }: { firmName?: string } = {}) {
       const j = await res.json().catch(() => ({}));
       if (!res.ok) { toast.error(j.error || "Couldn't share."); return; }
       if (channel === "whatsapp" && j.waLink) {
+        // Calc PDFs aren't hosted (no S3/DB) — download it locally so the
+        // advisor can attach it in the WhatsApp chat that opens.
+        if (j.pdfBase64) {
+          try {
+            const bytes = Uint8Array.from(atob(j.pdfBase64), (c) => c.charCodeAt(0));
+            const url = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = j.filename || `${calcName}.pdf`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 10_000);
+          } catch { /* download is best-effort */ }
+        }
         window.open(j.waLink, "_blank");
-        toast.success(j.hosted ? "WhatsApp opened with the PDF link" : "WhatsApp opened (sent as text — PDF hosting off).");
+        toast.success("WhatsApp opened", "Your illustration PDF was downloaded — attach it in the chat.");
         setShareMode(null);
       } else if (channel === "email") {
         toast.success("Emailed to the client", `${calcName} illustration sent with the branded PDF attached.`);
@@ -460,9 +519,29 @@ export function CalculatorsApp({ firmName }: { firmName?: string } = {}) {
           <button onClick={() => addToReport(calcName)} disabled={busy} className="btn-ghost text-xs disabled:opacity-60" title="Add this calculator to the combined client report">
             <FilePlus2 className="size-3.5" /> Add to report{report.length > 0 ? ` (${report.length})` : ""}
           </button>
+          <button onClick={() => setShowGoal(true)} className="btn-ghost text-xs" title="Create a client goal from this calculation">
+            <Goal className="size-3.5" /> Create goal
+          </button>
+          <button onClick={openSaveToClient} className="btn-ghost text-xs" title="Save this illustration PDF to a client's documents">
+            <FolderPlus className="size-3.5" /> Save to client
+          </button>
           <ScenarioControls calculatorKey={tab} calculatorName={calcName} clientName={clientName} containerRef={calcRef} />
         </div>
       </div>
+
+      <CreateGoalFromCalc
+        open={showGoal}
+        onClose={() => setShowGoal(false)}
+        defaults={{ returnPct: asmp.returnPct, inflationPct: asmp.inflationPct }}
+        clientName={clientName}
+      />
+      <SaveCalcToClient
+        open={showSave}
+        onClose={() => { setShowSave(false); setSaveCapture(null); }}
+        calcName={calcName}
+        inputs={saveCapture?.inputs ?? []}
+        blocks={saveCapture?.blocks ?? []}
+      />
 
       {/* Share recipient row */}
       {shareMode && (
@@ -486,6 +565,7 @@ export function CalculatorsApp({ firmName }: { firmName?: string } = {}) {
         </div>
       )}
 
+      <CalcAssumptionsCtx.Provider value={asmp}>
       <div ref={calcRef} className="space-y-4">
 
         {tab === "sip360" && <Sip360Planner />}
@@ -540,12 +620,18 @@ export function CalculatorsApp({ firmName }: { firmName?: string } = {}) {
         {tab === "prepayinvest" && <PrepayVsInvestCalculator />}
         {tab === "btid" && <BtidCalculator />}
         {tab === "npsvsmf" && <NpsVsMfCalculator />}
+        {tab === "housingstrategy" && <HousingEmiSipCalculator />}
         {tab === "passiveincome" && <PassiveIncomeBuilder />}
         {tab === "wedding" && <WeddingPlanner />}
         {tab === "dreamcar" && <DreamCarPlanner />}
+        {tab === "youthbucket" && <YouthBucketStrategy />}
+        {tab === "journey" && <JourneyToFreedom />}
+        {tab === "familywealth" && <FamilyWealthPlan />}
         {tab === "emergency" && <EmergencyFundPlanner />}
         {tab === "buckets" && <RetirementBucketStrategy />}
         {tab === "sippause" && <SipPauseCostCalculator />}
+        {tab === "budget" && <MonthlyBudgetPlanner />}
+        {tab === "realstatement" && <RealStatement />}
         {tab === "quiz" && <MoneyPersonalityQuiz />}
         {tab === "timemachine" && <InflationTimeMachine />}
         {tab === "doubling" && <WealthDoublingCalculator />}
@@ -559,6 +645,7 @@ export function CalculatorsApp({ firmName }: { firmName?: string } = {}) {
         {tab === "prosperity" && <ProsperityMultiplier />}
         {tab === "cagr" && <CagrCalc />}
       </div>
+      </CalcAssumptionsCtx.Provider>
 
       <ReportTray report={report} show={showTray} setShow={setShowTray} setReport={setReport} onDownload={downloadCombined} busy={busy} clientName={clientName} />
     </div>
@@ -694,7 +781,7 @@ function SipCalc() {
   const [presentValue, setPresentValue] = useState(0);
   const [sipAmount, setSipAmount] = useState(10000);
   const [years, setYears] = useState(10);
-  const [returnPct, setReturnPct] = useState(DEFAULT_EXPECTED_RETURN_PCT);
+  const [returnPct, setReturnPct] = useState(useContext(CalcAssumptionsCtx).returnPct);
 
   const months = years * 12;
   const fvOfPv = fvLumpsum(presentValue, returnPct, months);
@@ -750,7 +837,7 @@ function GoalCalc() {
   const [goalName, setGoalName] = useState("");
   const [goalAmount, setGoalAmount] = useState(10000000);
   const [years, setYears] = useState(15);
-  const [returnPct, setReturnPct] = useState(DEFAULT_EXPECTED_RETURN_PCT);
+  const [returnPct, setReturnPct] = useState(useContext(CalcAssumptionsCtx).returnPct);
 
   const monthly = requiredSip(goalAmount, 0, returnPct, years * 12);
 
@@ -782,7 +869,7 @@ function InflationCalc() {
   const [expenseType, setExpenseType] = useState("");
   const [amount, setAmount] = useState(100000);
   const [years, setYears] = useState(15);
-  const [ratePct, setRatePct] = useState(DEFAULT_INFLATION_PCT);
+  const [ratePct, setRatePct] = useState(useContext(CalcAssumptionsCtx).inflationPct);
 
   const fv = inflatedTarget(amount, ratePct, years);
 
@@ -814,7 +901,7 @@ function DelayCalc() {
   const [endAge, setEndAge] = useState(60);
   const [lumpsum, setLumpsum] = useState(0);
   const [sip, setSip] = useState(10000);
-  const [returnPct, setReturnPct] = useState(DEFAULT_EXPECTED_RETURN_PCT);
+  const [returnPct, setReturnPct] = useState(useContext(CalcAssumptionsCtx).returnPct);
 
   const res = costOfDelay({
     sipAmount: sip,
@@ -878,7 +965,7 @@ function RetirementCalc() {
   const [retirementAge, setRetirementAge] = useState(60);
   const [lifeExpectancy, setLifeExpectancy] = useState(85);
   const [monthlyIncome, setMonthlyIncome] = useState(100000);
-  const [inflationPct, setInflationPct] = useState(DEFAULT_INFLATION_PCT);
+  const [inflationPct, setInflationPct] = useState(useContext(CalcAssumptionsCtx).inflationPct);
   const [preReturnPct, setPreReturnPct] = useState(12);
   const [postReturnPct, setPostReturnPct] = useState(7);
   const [existingFund, setExistingFund] = useState(0);
