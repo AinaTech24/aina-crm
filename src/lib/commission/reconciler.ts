@@ -19,6 +19,17 @@ import { sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 import { trailRate } from "@/lib/finance/trail-rates";
 
+/** Normalize a scheme name for fuzzy matching across RTA/payout code formats:
+ *  lower-case, drop plan/option noise, alphanumerics only. */
+function normSchemeName(s: string | null | undefined): string {
+  return (s ?? "")
+    .toLowerCase()
+    .replace(/\b(regular|direct|growth|idcw|dividend|payout|reinvest(ment)?|plan|option|fund|scheme)\b/g, " ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export type ReconcilerResult = {
   period: string;
   rowsComputed: number;
@@ -102,13 +113,25 @@ export async function reconcilePeriod(
       received: 0,
     });
   }
+  // Secondary index of expected entries by normalized scheme NAME, so a received
+  // line whose scheme_code differs from the folio's (different RTA code format,
+  // ISIN-vs-AMFI-code, etc.) still merges into its expected row instead of
+  // creating a phantom received-only "anomaly".
+  const expectedByName = new Map<string, string>(); // `${amc}|${normName}` → map key
+  for (const [k, v] of map) {
+    if (v.schemeName) expectedByName.set(`${v.amcCode}|${normSchemeName(v.schemeName)}`, k);
+  }
   for (const row of received.rows as any[]) {
-    const key = `${row.amc_code}|${row.scheme_code}`;
-    const existing = map.get(key);
-    if (existing) {
-      existing.received = Number(row.received ?? 0);
+    const exactKey = `${row.amc_code}|${row.scheme_code}`;
+    let target = map.get(exactKey);
+    if (!target && row.scheme_name) {
+      const mappedKey = expectedByName.get(`${row.amc_code}|${normSchemeName(row.scheme_name)}`);
+      if (mappedKey) target = map.get(mappedKey);
+    }
+    if (target) {
+      target.received += Number(row.received ?? 0);
     } else {
-      map.set(key, {
+      map.set(exactKey, {
         amcCode: row.amc_code,
         schemeCode: row.scheme_code === "__NO_SCHEME__" ? "" : row.scheme_code,
         schemeName: row.scheme_name,

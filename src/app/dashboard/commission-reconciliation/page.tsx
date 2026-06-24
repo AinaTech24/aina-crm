@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Fragment } from "react";
 import { sql } from "drizzle-orm";
 import { Coins, AlertTriangle, TrendingDown, TrendingUp, HeartHandshake } from "lucide-react";
 import { withTenant } from "@/db/client";
@@ -42,16 +43,32 @@ export default async function CommissionReconciliationPage({
         COALESCE(SUM(expected_amount::numeric), 0) AS total_expected,
         COALESCE(SUM(received_amount::numeric), 0) AS total_received,
         COALESCE(SUM(variance::numeric), 0) AS total_variance,
+        -- Recoverable shortfall: money we should have received but didn't.
+        COALESCE(SUM(GREATEST(expected_amount::numeric - received_amount::numeric, 0)), 0) AS shortfall,
+        -- Unexplained surplus: received > expected (almost always a data gap).
+        COALESCE(SUM(GREATEST(received_amount::numeric - expected_amount::numeric, 0)), 0) AS surplus,
         COUNT(*) FILTER (WHERE status = 'anomaly')::int AS anomalies,
         COUNT(*)::int AS total_lines
       FROM commission_records WHERE period = ${period}
+    `);
+
+    // Rate-accuracy: how many AMCs in this period use a negotiated trail rate
+    // (empanelment override) vs the conservative category fallback.
+    const rateAccuracy = await tx.execute(sql`
+      WITH amcs AS (SELECT DISTINCT amc_code FROM commission_records WHERE period = ${period} AND amc_code IS NOT NULL)
+      SELECT
+        (SELECT COUNT(*)::int FROM amcs) AS total_amcs,
+        (SELECT COUNT(*)::int FROM amcs a
+          JOIN amc_empanelments e ON e.amc_code = a.amc_code AND e.tenant_id = ${session.tenantId}
+          WHERE e.status = 'empanelled' AND e.trail_rate_override_pct IS NOT NULL) AS rated_amcs
     `);
 
     const ytd = await tx.execute(sql`
       SELECT
         COALESCE(SUM(expected_amount::numeric), 0) AS expected_ytd,
         COALESCE(SUM(received_amount::numeric), 0) AS received_ytd,
-        COALESCE(SUM(variance::numeric), 0) AS variance_ytd
+        COALESCE(SUM(variance::numeric), 0) AS variance_ytd,
+        COALESCE(SUM(GREATEST(expected_amount::numeric - received_amount::numeric, 0)), 0) AS shortfall_ytd
       FROM commission_records
       WHERE period >= ${`${now.getFullYear()}-04`}
     `);
@@ -71,6 +88,7 @@ export default async function CommissionReconciliationPage({
       rows: rows.rows as any[],
       stats: stats.rows[0] as any,
       ytd: ytd.rows[0] as any,
+      rateAccuracy: rateAccuracy.rows[0] as any,
       availablePeriods: (availablePeriods.rows as any[]).map((r) => r.period),
       subDistPayouts,
     };
@@ -78,7 +96,30 @@ export default async function CommissionReconciliationPage({
 
   const totalExpected = Number(data.stats.total_expected ?? 0);
   const totalReceived = Number(data.stats.total_received ?? 0);
-  const totalVariance = Number(data.stats.total_variance ?? 0);
+  const shortfall = Number(data.stats.shortfall ?? 0);
+  const surplus = Number(data.stats.surplus ?? 0);
+  const totalAmcs = Number(data.rateAccuracy?.total_amcs ?? 0);
+  const ratedAmcs = Number(data.rateAccuracy?.rated_amcs ?? 0);
+  // Received ≫ expected almost always means the expected base (folio AUM / trail
+  // rates) is incomplete, not a windfall — surface it instead of painting green.
+  const dataGap = totalExpected > 0 && totalReceived > totalExpected * 3;
+
+  // Per-AMC rollup — group the scheme lines under their AMC with subtotals, so
+  // you read concentration of leakage at the AMC level before drilling in.
+  const amcGroups = (() => {
+    const m = new Map<string, { amc: string; rows: any[]; expected: number; received: number; shortfall: number; anomalies: number }>();
+    for (const r of data.rows) {
+      const amc = r.amc_code ?? "—";
+      let g = m.get(amc);
+      if (!g) { g = { amc, rows: [], expected: 0, received: 0, shortfall: 0, anomalies: 0 }; m.set(amc, g); }
+      g.rows.push(r);
+      g.expected += Number(r.expected_amount ?? 0);
+      g.received += Number(r.received_amount ?? 0);
+      g.shortfall += Math.max(Number(r.expected_amount ?? 0) - Number(r.received_amount ?? 0), 0);
+      if (r.status === "anomaly") g.anomalies++;
+    }
+    return [...m.values()].sort((a, b) => b.shortfall - a.shortfall || Math.abs(b.received - b.expected) - Math.abs(a.received - a.expected));
+  })();
 
   return (
     <div className="space-y-6 max-w-7xl">
@@ -111,25 +152,54 @@ export default async function CommissionReconciliationPage({
 
       <PayoutImport period={period} />
 
-      <div className="grid grid-cols-4 gap-3">
+      {/* Data-confidence banner — when received ≫ expected, the expected base is
+          almost certainly incomplete (empty/partial folio book or fallback rates). */}
+      {dataGap && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 text-amber-900 px-4 py-3 text-sm flex items-start gap-2">
+          <AlertTriangle className="size-4 mt-0.5 shrink-0 text-amber-600" />
+          <div>
+            <strong>Expected looks under-computed.</strong> Expected ({formatINR(totalExpected)}) is calculated from your folio
+            AUM, but you received {formatINR(totalReceived)} — implying a much larger book. Import your full holdings
+            (RTA/CAS) and set per-AMC trail rates before trusting the variance below; the big &ldquo;surplus&rdquo; is most
+            likely a data gap, not a windfall.
+          </div>
+        </div>
+      )}
+
+      {/* Rate-accuracy nudge — expected is only as good as the trail rates. */}
+      {totalAmcs > 0 && ratedAmcs < totalAmcs && (
+        <div className="rounded-lg border border-blue-200 bg-blue-50 text-blue-900 px-4 py-2.5 text-xs flex items-center gap-2">
+          <TrendingUp className="size-3.5 shrink-0" />
+          Using <strong>conservative fallback</strong> trail rates for {totalAmcs - ratedAmcs} of {totalAmcs} AMCs.{" "}
+          <Link href="/dashboard/amc-empanelments" className="underline font-medium">Set negotiated rates</Link> for accurate &ldquo;expected&rdquo;.
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Kpi label="Expected" value={formatINR(totalExpected)} icon={TrendingUp} />
         <Kpi label="Received" value={formatINR(totalReceived)} />
         <Kpi
-          label="Variance"
-          value={formatINR(totalVariance)}
-          tone={totalVariance < -0.02 * totalExpected ? "rose" : totalVariance > 0 ? "emerald" : "muted"}
-          icon={totalVariance < 0 ? TrendingDown : TrendingUp}
+          label="Recoverable shortfall"
+          value={formatINR(shortfall)}
+          tone={shortfall > 0 ? "rose" : "muted"}
+          icon={TrendingDown}
         />
         <Kpi label="Anomalies" value={String(data.stats.anomalies)} tone={data.stats.anomalies > 0 ? "rose" : "muted"} icon={AlertTriangle} />
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <Kpi
+          label="Unexplained surplus"
+          value={formatINR(surplus)}
+          tone={dataGap ? "amber" : "muted"}
+          sub={dataGap ? "likely incomplete data" : surplus > 0 ? "received > expected" : undefined}
+        />
         <Kpi label="YTD expected" value={formatINR(Number(data.ytd.expected_ytd))} />
         <Kpi label="YTD received" value={formatINR(Number(data.ytd.received_ytd))} />
         <Kpi
-          label="YTD leakage"
-          value={formatINR(Number(data.ytd.variance_ytd))}
-          tone={Number(data.ytd.variance_ytd) < 0 ? "rose" : "emerald"}
+          label="YTD recoverable"
+          value={formatINR(Number(data.ytd.shortfall_ytd))}
+          tone={Number(data.ytd.shortfall_ytd) > 0 ? "rose" : "muted"}
         />
       </div>
 
@@ -143,8 +213,9 @@ export default async function CommissionReconciliationPage({
             generate it from existing folio + payout data.
           </div>
         ) : (
+          <div className="table-scroll">
           <table className="w-full text-sm">
-            <thead className="text-xs text-muted-foreground border-b">
+            <thead className="text-xs text-muted-foreground border-b sticky top-0 z-10 bg-card">
               <tr>
                 <th className="text-left px-4 py-2 font-medium">AMC</th>
                 <th className="text-left py-2 font-medium">Scheme</th>
@@ -156,34 +227,57 @@ export default async function CommissionReconciliationPage({
               </tr>
             </thead>
             <tbody>
-              {data.rows.map((r) => {
-                const v = Number(r.variance);
-                const vPct = Number(r.variance_pct) * 100;
+              {amcGroups.map((g) => {
+                const gv = g.received - g.expected;
                 return (
-                  <tr key={r.id} className="border-b last:border-0 hover:bg-accent/40">
-                    <td className="px-4 py-3 font-mono text-xs">{r.amc_code}</td>
-                    <td className="py-3">
-                      <div className="text-sm">{r.scheme_name ?? "—"}</div>
-                      <div className="text-xs text-muted-foreground font-mono">{r.scheme_code || "(no scheme code)"}</div>
-                    </td>
-                    <td className="py-3 text-right tabular-nums">{formatINR(Number(r.expected_amount))}</td>
-                    <td className="py-3 text-right tabular-nums">{formatINR(Number(r.received_amount))}</td>
-                    <td className={`py-3 text-right tabular-nums ${v < 0 ? "text-rose-600" : v > 0 ? "text-emerald-600" : ""}`}>
-                      {v >= 0 ? "+" : ""}{formatINR(v)}
-                    </td>
-                    <td className="py-3 text-right tabular-nums text-xs">
-                      {Math.abs(vPct) > 0.01 ? `${vPct >= 0 ? "+" : ""}${vPct.toFixed(1)}%` : "—"}
-                    </td>
-                    <td className="py-3 pl-3">
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_COLORS[r.status] ?? ""}`}>
-                        {r.status.replace(/_/g, " ")}
-                      </span>
-                    </td>
-                  </tr>
+                  <Fragment key={g.amc}>
+                    {/* AMC subtotal header */}
+                    <tr className="bg-secondary/40 border-b">
+                      <td className="px-4 py-2 font-mono text-xs font-semibold" colSpan={2}>
+                        {g.amc}
+                        <span className="ml-2 text-[10px] text-muted-foreground font-sans">{g.rows.length} scheme{g.rows.length !== 1 ? "s" : ""}{g.anomalies > 0 ? ` · ${g.anomalies} anomaly` : ""}</span>
+                      </td>
+                      <td className="py-2 text-right tabular-nums text-xs font-semibold">{formatINR(g.expected)}</td>
+                      <td className="py-2 text-right tabular-nums text-xs font-semibold">{formatINR(g.received)}</td>
+                      <td className={`py-2 text-right tabular-nums text-xs font-semibold ${gv < 0 ? "text-rose-600" : gv > 0 ? "text-amber-600" : ""}`}>
+                        {gv >= 0 ? "+" : ""}{formatINR(gv)}
+                      </td>
+                      <td colSpan={2} className="py-2 pl-3 text-[10px] text-muted-foreground">
+                        {g.shortfall > 0 ? `${formatINR(g.shortfall)} recoverable` : ""}
+                      </td>
+                    </tr>
+                    {g.rows.map((r) => {
+                      const v = Number(r.variance);
+                      const vPct = Number(r.variance_pct) * 100;
+                      return (
+                        <tr key={r.id} className="border-b last:border-0 hover:bg-accent/40">
+                          <td className="px-4 py-3"></td>
+                          <td className="py-3">
+                            <div className="text-sm">{r.scheme_name ?? "—"}</div>
+                            <div className="text-xs text-muted-foreground font-mono">{r.scheme_code || "(no scheme code)"}</div>
+                          </td>
+                          <td className="py-3 text-right tabular-nums">{formatINR(Number(r.expected_amount))}</td>
+                          <td className="py-3 text-right tabular-nums">{formatINR(Number(r.received_amount))}</td>
+                          <td className={`py-3 text-right tabular-nums ${v < 0 ? "text-rose-600" : v > 0 ? "text-amber-600" : ""}`} title={v < 0 ? "Shortfall — recoverable" : v > 0 ? "Surplus — check data/mapping" : ""}>
+                            {v >= 0 ? "+" : ""}{formatINR(v)}
+                          </td>
+                          <td className="py-3 text-right tabular-nums text-xs">
+                            {Math.abs(vPct) > 0.01 ? `${vPct >= 0 ? "+" : ""}${vPct.toFixed(1)}%` : "—"}
+                          </td>
+                          <td className="py-3 pl-3">
+                            <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_COLORS[r.status] ?? ""}`}>
+                              {r.status.replace(/_/g, " ")}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </Fragment>
                 );
               })}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 
@@ -286,13 +380,15 @@ function Kpi({
   value,
   icon: Icon,
   tone,
+  sub,
 }: {
   label: string;
   value: string;
   icon?: any;
-  tone?: "rose" | "emerald" | "muted";
+  tone?: "rose" | "emerald" | "amber" | "muted";
+  sub?: string;
 }) {
-  const color = tone === "rose" ? "text-rose-600" : tone === "emerald" ? "text-emerald-600" : "text-foreground";
+  const color = tone === "rose" ? "text-rose-600" : tone === "emerald" ? "text-emerald-600" : tone === "amber" ? "text-amber-600" : "text-foreground";
   return (
     <div className="border rounded-lg p-5 bg-card">
       <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -300,6 +396,7 @@ function Kpi({
         {Icon && <Icon className="size-3.5" />}
       </div>
       <div className={`text-2xl font-bold mt-1 ${color}`}>{value}</div>
+      {sub && <div className="text-[10px] text-muted-foreground mt-0.5">{sub}</div>}
     </div>
   );
 }
