@@ -24,8 +24,8 @@ import { buildInvestorWhere } from "@/lib/investors/list-filters";
 import { Pager } from "@/components/common/Pager";
 import { countPossibleDuplicates } from "@/lib/investors/duplicates";
 import { clientCompleteness } from "@/lib/investors/completeness";
-import { UpcomingDatesWidget } from "@/components/investors/UpcomingDatesWidget";
 import { CopyPlus } from "lucide-react";
+import { DownloadButton } from "@/components/common/SecureLinkButtons";
 
 const INVESTORS_COLUMNS = [
   { key: "name", label: "Name", required: true },
@@ -120,7 +120,7 @@ export default async function InvestorsPage({
   const PAGE_SIZE = 50;
   const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
 
-  const { rows, total, kanbanRows, rms, allIds, dupCount, upcoming } = await withTenant(session.tenantId, async (tx) => {
+  const { rows, total, kanbanRows, rms, allIds, dupCount } = await withTenant(session.tenantId, async (tx) => {
     // Filters live in one shared helper so the page and the Excel export apply
     // identical WHERE logic. Tenant isolation is handled by RLS.
     const where = buildInvestorWhere(sp, userId);
@@ -254,28 +254,7 @@ export default async function InvestorsPage({
     // Possible-duplicate count (same PAN / mobile) — surfaced as a banner.
     const dupCount = await countPossibleDuplicates(tx as any, session.tenantId);
 
-    // Upcoming birthdays + anniversaries in the next 14 days (live clients).
-    // Build this year's occurrence by adding the source date's day-of-year
-    // offset to Jan 1 — leap-safe (Feb 29 lands on Mar 1 in non-leap years
-    // instead of throwing, which make_date(year,2,29) would).
-    const upcomingRes = await tx.execute(sql`
-      SELECT id, name, kind, occ_date, (occ_date - current_date) AS days FROM (
-        SELECT i.id, i.name, 'birthday' AS kind,
-               (make_date(extract(year from current_date)::int, 1, 1) + (i.dob - make_date(extract(year from i.dob)::int, 1, 1))) AS occ_date
-        FROM investors i
-        WHERE i.tenant_id = ${session.tenantId}::uuid AND i.merged_into_id IS NULL AND i.status <> 'closed' AND i.deleted_at IS NULL AND i.dob IS NOT NULL
-        UNION ALL
-        SELECT i.id, i.name, 'anniversary' AS kind,
-               (make_date(extract(year from current_date)::int, 1, 1) + (i.anniversary_date - make_date(extract(year from i.anniversary_date)::int, 1, 1))) AS occ_date
-        FROM investors i
-        WHERE i.tenant_id = ${session.tenantId}::uuid AND i.merged_into_id IS NULL AND i.status <> 'closed' AND i.deleted_at IS NULL AND i.anniversary_date IS NOT NULL
-      ) u
-      WHERE (occ_date - current_date) BETWEEN 0 AND 14
-      ORDER BY days ASC
-      LIMIT 10
-    `);
-
-    return { rows: r, total: Number(c[0]?.c ?? 0), kanbanRows, rms, allIds, dupCount, upcoming: upcomingRes.rows as any[] };
+    return { rows: r, total: Number(c[0]?.c ?? 0), kanbanRows, rms, allIds, dupCount };
   }, { userId: session.userId, branchId: session.branchId, roles: session.roles });
 
   const rmOptions = (rms ?? []).map((r: any) => ({ value: String(r.id), label: r.name ?? "—" }));
@@ -335,13 +314,13 @@ export default async function InvestorsPage({
             <ColumnManager moduleKey="investors" columns={allowedColumns} />
           )}
           <RecomputeTiersButton />
-          <a
-            href={`/api/investors/export${exportQs ? `?${exportQs}` : ""}`}
+          <DownloadButton
+            url={`/api/investors/export${exportQs ? `?${exportQs}` : ""}`}
             className="rounded-md border px-3 py-1.5 text-sm flex items-center gap-1.5 hover:bg-accent"
             title="Download the current (filtered) book as an Excel file"
           >
             <FileUp className="size-4" /> Export
-          </a>
+          </DownloadButton>
           <Link
             href="/dashboard/investors/import"
             className="rounded-md border px-3 py-1.5 text-sm flex items-center gap-1.5"
@@ -373,18 +352,6 @@ export default async function InvestorsPage({
           </span>
           <span className="ml-auto text-xs font-medium text-amber-700 dark:text-amber-300">Review &amp; merge →</span>
         </Link>
-      )}
-
-      {upcoming && upcoming.length > 0 && (
-        <UpcomingDatesWidget
-          items={(upcoming as any[]).map((u) => ({
-            id: u.id,
-            name: u.name,
-            type: u.kind,
-            date: String(u.occ_date),
-            days: Number(u.days),
-          }))}
-        />
       )}
 
       {/* Quick-filter chips — hidden for now (re-enable later). */}

@@ -41,7 +41,7 @@ export default async function NominationTrackerPage() {
                COALESCE(SUM(f.aum::numeric), 0) AS aum
         FROM investors i
         LEFT JOIN folios f ON f.investor_id = i.id AND f.closed_at IS NULL
-        WHERE i.tenant_id = ${session.tenantId}
+        WHERE i.tenant_id = ${session.tenantId} AND i.deleted_at IS NULL
         GROUP BY i.id, i.name, i.segment_tag, i.rm_id, i.kyc_status, i.nominee_name
       `);
       const rmRes = await tx.execute(sql`SELECT id, name FROM users WHERE tenant_id = ${session.tenantId}`);

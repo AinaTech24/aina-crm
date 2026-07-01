@@ -54,6 +54,8 @@ export function buildInvestorConditions(
     dormant: sp.dormant === "1",
     birthday_week: sp.birthday_week === "1",
     birthday_today: sp.birthday_today === "1",
+    birthday_tomorrow: sp.birthday_tomorrow === "1",
+    birthday_past: sp.birthday_past === "1",
     cross_sell_opp: sp.cross_sell_opp === "1",
   };
 
@@ -119,6 +121,18 @@ export function buildInvestorConditions(
   if (qf.birthday_today) {
     conditions.push(
       sql`(${investors.dob} IS NOT NULL AND to_char(${investors.dob}, 'MM-DD') = to_char(current_date, 'MM-DD'))`
+    );
+  }
+  if (qf.birthday_tomorrow) {
+    conditions.push(
+      sql`(${investors.dob} IS NOT NULL AND to_char(${investors.dob}, 'MM-DD') = to_char(current_date + interval '1 day', 'MM-DD'))`
+    );
+  }
+  if (qf.birthday_past) {
+    // Birthdays in the last 30 days — day-of-year modular window so it stays
+    // correct across the year-end boundary (mirrors the birthday bell's "Past").
+    conditions.push(
+      sql`(${investors.dob} IS NOT NULL AND ((EXTRACT(DOY FROM current_date)::int - EXTRACT(DOY FROM ${investors.dob})::int + 366) % 366) BETWEEN 1 AND 30)`
     );
   }
   if (qf.cross_sell_opp) {

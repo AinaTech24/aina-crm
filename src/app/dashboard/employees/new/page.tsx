@@ -71,7 +71,7 @@ export default function InviteEmployeePage() {
           </label>
           <div>
             <div className="text-xs font-medium mb-2">Roles (one or more)</div>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {ROLES.map((r) => (
                 <label key={r.key} className="flex items-center gap-2 border rounded-md p-2 cursor-pointer hover:bg-accent">
                   <input
@@ -86,7 +86,7 @@ export default function InviteEmployeePage() {
             </div>
           </div>
           {err && <div className="text-sm text-rose-600">{err}</div>}
-          <div className="flex justify-end gap-2 pt-2 border-t">
+          <div className="flex flex-wrap justify-end gap-2 pt-2 border-t">
             <Link href="/dashboard/employees" className="rounded-md border px-4 py-2 text-sm">Cancel</Link>
             <button disabled={busy || !form.email || form.roles.length === 0} className="rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm font-medium disabled:opacity-50">
               {busy ? "Generating…" : "Generate invite link"}
@@ -105,7 +105,7 @@ export default function InviteEmployeePage() {
           <p className="text-xs text-muted-foreground">
             Valid for 7 days. The invitee will set their own password when they click the link.
           </p>
-          <div className="flex justify-end gap-2 pt-2 border-t">
+          <div className="flex flex-wrap justify-end gap-2 pt-2 border-t">
             <Link href="/dashboard/employees" className="rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm font-medium">Done</Link>
           </div>
         </div>

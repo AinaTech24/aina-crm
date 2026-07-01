@@ -135,9 +135,6 @@ export default function NewTaskPage() {
         <h1 className="page-title">
           <ListChecks className="size-6 text-brand-cyan" /> New task
         </h1>
-        <p className="page-subtitle">
-          Link the task to any combination of a client, lead, service request, and meeting.
-        </p>
       </div>
 
       {/* Title + description */}
@@ -153,7 +150,7 @@ export default function NewTaskPage() {
           <input
             value={form.title}
             onChange={(e) => set("title", e.target.value)}
-            placeholder="Call client to share quarterly review"
+            // placeholder="Call client to share quarterly review"
             className="input-base"
           />
         </label>
@@ -163,7 +160,7 @@ export default function NewTaskPage() {
             value={form.description}
             onChange={(e) => set("description", e.target.value)}
             rows={3}
-            placeholder="What needs to happen — context, supporting links, etc."
+            // placeholder="What needs to happen — context, supporting links, etc."
             className="input-base"
           />
         </label>
@@ -302,7 +299,7 @@ export default function NewTaskPage() {
               onChange={(e) => set("department", e.target.value)}
               className="w-full"
             >
-              <option value="">—</option>
+              <option value="">Select</option>
               {DEPARTMENTS.map(([k, l]) => (
                 <option key={k} value={k}>
                   {l}
@@ -341,7 +338,7 @@ export default function NewTaskPage() {
             <RmSelector
               value={form.assigneeId || null}
               onChange={(id) => set("assigneeId", id ?? "")}
-              placeholder="— Assign to myself —"
+              placeholder="Assign to myself"
             />
           </label>
         </div>
@@ -578,7 +575,7 @@ function MeetingPicker({
         }}
         className="w-full"
       >
-        <option value="">— Pick a recent meeting (optional) —</option>
+        <option value="">Pick a recent meeting (optional)</option>
         {meetings.slice(0, 50).map((m) => {
           const date = new Date(m.meeting_date).toLocaleString("en-IN", {
             day: "numeric",

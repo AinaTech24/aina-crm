@@ -20,6 +20,7 @@ import { ProposalStatusActions } from "@/components/proposals/ProposalStatusActi
 import { ProposalSendActions } from "@/components/proposals/ProposalSendActions";
 import { ProposalSuitabilityPanel } from "@/components/proposals/ProposalSuitabilityPanel";
 import { RecordProvenance } from "@/components/common/RecordProvenance";
+import { DownloadButton } from "@/components/common/SecureLinkButtons";
 
 const TYPE_LABEL: Record<string, string> = {
   comprehensive: "Comprehensive",
@@ -182,13 +183,13 @@ export default async function ProposalDetailPage({
               Recommendation →
             </Link>
             {/* Real PDF (Content-Disposition: attachment) — saves directly, no new tab. */}
-            <a
-              href={`/api/proposals/${p.id}/pdf?download=1`}
-              download={`Proposal_${String(p.proposalNumber ?? p.id).replace(/[^a-z0-9]+/gi, "_")}.pdf`}
+            <DownloadButton
+              url={`/api/proposals/${p.id}/pdf?download=1`}
+              filename={`Proposal_${String(p.proposalNumber ?? p.id).replace(/[^a-z0-9]+/gi, "_")}.pdf`}
               className="btn-secondary text-xs"
             >
               <Download className="size-3.5" /> Download PDF
-            </a>
+            </DownloadButton>
             <ProposalStatusActions id={p.id} status={p.status} />
           </div>
         </div>

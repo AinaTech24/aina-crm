@@ -371,10 +371,6 @@ export default function NewProposalPage() {
           </button>
         </div>
       </div>
-      <p className="page-subtitle">
-        Pick a recipient, add the products you want to recommend, then save &amp; download the
-        branded PDF.
-      </p>
 
       {/* Save errors surface here (top) so they're visible from the sticky Save button. */}
       {err && (
@@ -397,11 +393,10 @@ export default function NewProposalPage() {
               setRecipientMode("investor");
               setRecipient(null);
             }}
-            className={`rounded-lg border p-3 text-sm font-medium transition ${
-              recipientMode === "investor"
+            className={`rounded-lg border p-3 text-sm font-medium transition ${recipientMode === "investor"
                 ? "border-brand-cyan bg-brand-cyan-light/40 text-brand-cyan-deep"
                 : "border-border hover:bg-secondary"
-            }`}
+              }`}
           >
             Existing client
           </button>
@@ -412,11 +407,10 @@ export default function NewProposalPage() {
               setRecipient(null);
               setSelectedFamilyMemberId(null);
             }}
-            className={`rounded-lg border p-3 text-sm font-medium transition ${
-              recipientMode === "family"
+            className={`rounded-lg border p-3 text-sm font-medium transition ${recipientMode === "family"
                 ? "border-brand-cyan bg-brand-cyan-light/40 text-brand-cyan-deep"
                 : "border-border hover:bg-secondary"
-            }`}
+              }`}
           >
             Family / Family head
           </button>
@@ -426,11 +420,10 @@ export default function NewProposalPage() {
               setRecipientMode("lead");
               setRecipient(null);
             }}
-            className={`rounded-lg border p-3 text-sm font-medium transition ${
-              recipientMode === "lead"
+            className={`rounded-lg border p-3 text-sm font-medium transition ${recipientMode === "lead"
                 ? "border-brand-cyan bg-brand-cyan-light/40 text-brand-cyan-deep"
                 : "border-border hover:bg-secondary"
-            }`}
+              }`}
           >
             Lead (prospect)
           </button>
@@ -490,11 +483,10 @@ export default function NewProposalPage() {
                       <button
                         type="button"
                         onClick={() => setSelectedFamilyMemberId(null)}
-                        className={`text-left rounded-md border px-2.5 py-1.5 text-xs transition ${
-                          !selectedFamilyMemberId
+                        className={`text-left rounded-md border px-2.5 py-1.5 text-xs transition ${!selectedFamilyMemberId
                             ? "border-brand-cyan bg-brand-cyan-light/30"
                             : "border-border hover:bg-secondary"
-                        }`}
+                          }`}
                       >
                         <div className="font-semibold">Whole family</div>
                         <div className="text-[10px] text-muted-foreground">
@@ -506,11 +498,10 @@ export default function NewProposalPage() {
                           key={m.id}
                           type="button"
                           onClick={() => setSelectedFamilyMemberId(m.id)}
-                          className={`text-left rounded-md border px-2.5 py-1.5 text-xs transition ${
-                            selectedFamilyMemberId === m.id
+                          className={`text-left rounded-md border px-2.5 py-1.5 text-xs transition ${selectedFamilyMemberId === m.id
                               ? "border-brand-cyan bg-brand-cyan-light/30"
                               : "border-border hover:bg-secondary"
-                          }`}
+                            }`}
                         >
                           <div className="font-semibold truncate">{m.name}</div>
                           <div className="text-[10px] text-muted-foreground">
@@ -745,27 +736,26 @@ export default function NewProposalPage() {
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
                     <span
-                      className={`chip text-[10px] ${
-                        it.kind === "mf"
+                      className={`chip text-[10px] ${it.kind === "mf"
                           ? "bg-emerald-50 text-emerald-700"
                           : it.kind === "insurance"
-                          ? "bg-blue-50 text-blue-700"
-                          : it.kind === "pms"
-                          ? "bg-amber-50 text-amber-700"
-                          : it.kind === "other"
-                          ? "bg-slate-100 text-slate-700"
-                          : "bg-rose-50 text-rose-700"
-                      }`}
+                            ? "bg-blue-50 text-blue-700"
+                            : it.kind === "pms"
+                              ? "bg-amber-50 text-amber-700"
+                              : it.kind === "other"
+                                ? "bg-slate-100 text-slate-700"
+                                : "bg-rose-50 text-rose-700"
+                        }`}
                     >
                       {it.kind === "mf"
                         ? "Mutual Fund"
                         : it.kind === "insurance"
-                        ? "Insurance"
-                        : it.kind === "pms"
-                        ? "PMS"
-                        : it.kind === "other"
-                        ? "Other Product"
-                        : "AIF"}
+                          ? "Insurance"
+                          : it.kind === "pms"
+                            ? "PMS"
+                            : it.kind === "other"
+                              ? "Other Product"
+                              : "AIF"}
                     </span>
                   </div>
                   <button

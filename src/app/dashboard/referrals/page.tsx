@@ -21,7 +21,7 @@ export default async function ReferralsPage({
 
   const data = await withTenant(session.tenantId, async (tx) => {
     // Aggregate referrals per existing investor.
-    const conds: any[] = [];
+    const conds: any[] = [sql`i.deleted_at IS NULL`];
     if (q) conds.push(sql`i.name ILIKE ${`%${q}%`}`);
     const whereSql = conds.length ? sql` WHERE ${sql.join(conds, sql` AND `)}` : sql``;
     const minSql = minOnly ? sql` HAVING COUNT(l.id) >= 2 ` : sql``;
@@ -66,6 +66,7 @@ export default async function ReferralsPage({
       FROM investors i
       JOIN leads l ON l.referred_by_investor_id = i.id
       LEFT JOIN investors inv ON inv.id = l.converted_investor_id
+      WHERE i.deleted_at IS NULL
     `);
     // Advocates to ask — your best clients who have NEVER referred anyone.
     // High AUM + active + not flagged redemption-risk = happy, sticky, untapped.
@@ -76,6 +77,7 @@ export default async function ReferralsPage({
       FROM investors i
       LEFT JOIN leads l ON l.referred_by_investor_id = i.id
       WHERE i.status = 'active'
+        AND i.deleted_at IS NULL
         AND i.redemption_risk_flagged_at IS NULL
       GROUP BY i.id, i.name, i.phone, i.aum, i.service_tier, i.last_contact_at
       HAVING COUNT(l.id) = 0

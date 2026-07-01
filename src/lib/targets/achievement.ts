@@ -46,6 +46,7 @@ export async function getMonthAchievements(
       AND t.order_date >= ${startISO}::date
       AND t.order_date < ${endISO}::date
       AND i.rm_id IS NOT NULL
+      AND i.deleted_at IS NULL
     GROUP BY i.rm_id
   `)).rows as Array<{ rm: string; net: string }>;
 

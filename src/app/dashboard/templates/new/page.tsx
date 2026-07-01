@@ -314,13 +314,12 @@ export default function NewTemplatePage() {
   const complianceBadge = (
     <div className="inline-flex items-center gap-2 text-xs">
       <span
-        className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 font-medium ${
-          compliance.blocked
+        className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 font-medium ${compliance.blocked
             ? "bg-rose-50 text-rose-700"
             : compliance.score >= 90
               ? "bg-emerald-50 text-emerald-700"
               : "bg-amber-50 text-amber-700"
-        }`}
+          }`}
       >
         <ShieldCheck className="size-3.5" />
         {compliance.blocked ? "Not ready to send" : compliance.score >= 90 ? "Looks good" : "Could be better"} · {compliance.score}/100
@@ -397,9 +396,6 @@ export default function NewTemplatePage() {
       {/* Title + stepper */}
       <div className="mb-6">
         <h1 className="text-2xl font-bold tracking-tight">Create a message template</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">
-          Three quick steps — set it up, design it, then send it for approval.
-        </p>
 
         <ol className="mt-4 flex items-center gap-2">
           {STEPS.map((s, i) => {
@@ -409,22 +405,20 @@ export default function NewTemplatePage() {
                 <button
                   type="button"
                   onClick={() => setStep(s.n)}
-                  className={`flex items-center gap-2 rounded-full pl-1.5 pr-3 py-1 text-sm font-medium transition-colors ${
-                    state === "current"
+                  className={`flex items-center gap-2 rounded-full pl-1.5 pr-3 py-1 text-sm font-medium transition-colors ${state === "current"
                       ? "bg-brand-cyan/10 text-brand-cyan-deep"
                       : state === "done"
                         ? "text-emerald-700 hover:bg-emerald-50"
                         : "text-muted-foreground hover:bg-muted"
-                  }`}
+                    }`}
                 >
                   <span
-                    className={`grid place-items-center size-6 rounded-full text-xs font-bold ${
-                      state === "current"
+                    className={`grid place-items-center size-6 rounded-full text-xs font-bold ${state === "current"
                         ? "bg-brand-cyan text-white"
                         : state === "done"
                           ? "bg-emerald-600 text-white"
                           : "bg-muted text-muted-foreground"
-                    }`}
+                      }`}
                   >
                     {state === "done" ? <Check className="size-3.5" /> : s.n}
                   </span>
@@ -454,9 +448,8 @@ export default function NewTemplatePage() {
                     key={value}
                     type="button"
                     onClick={() => setChannel(value)}
-                    className={`text-left rounded-xl border p-4 transition-all ${
-                      active ? "border-brand-cyan ring-2 ring-brand-cyan/20 bg-brand-cyan/5" : "border-border bg-card hover:border-brand-cyan/50"
-                    }`}
+                    className={`text-left rounded-xl border p-4 transition-all ${active ? "border-brand-cyan ring-2 ring-brand-cyan/20 bg-brand-cyan/5" : "border-border bg-card hover:border-brand-cyan/50"
+                      }`}
                   >
                     <Icon className={`size-5 mb-2 ${active ? "text-brand-cyan-deep" : "text-muted-foreground"}`} />
                     <div className="font-semibold text-sm">{label}</div>
@@ -624,9 +617,8 @@ export default function NewTemplatePage() {
                 {compliance.findings.map((f, i) => (
                   <li key={i} className="flex items-start gap-1.5">
                     <AlertCircle
-                      className={`size-3.5 mt-0.5 shrink-0 ${
-                        f.severity === "block" ? "text-rose-600" : f.severity === "warn" ? "text-amber-600" : "text-blue-600"
-                      }`}
+                      className={`size-3.5 mt-0.5 shrink-0 ${f.severity === "block" ? "text-rose-600" : f.severity === "warn" ? "text-amber-600" : "text-blue-600"
+                        }`}
                     />
                     <span>{f.message}</span>
                   </li>
@@ -838,7 +830,7 @@ function spliceAtCursor(el: HTMLTextAreaElement | null, value: string, token: st
       el.focus();
       const pos = start + token.length;
       el.setSelectionRange(pos, pos);
-    } catch {}
+    } catch { }
   });
   return next;
 }

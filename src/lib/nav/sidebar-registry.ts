@@ -11,11 +11,14 @@
 export type SidebarEntry = { group: string; href: string; label: string };
 
 export const SIDEBAR_REGISTRY: SidebarEntry[] = [
+  // Dashboards — the whole module. Disabling "/dashboard" here hides the entire
+  // Dashboards dropdown for every tenant (layout kills the dropdown when the
+  // "/dashboard" module control is 'disabled'); the others gate each sub-item.
+  { group: "Dashboards", href: "/dashboard", label: "Dashboards (all)" },
+  { group: "Dashboards", href: "/dashboard/boards", label: "My Dashboards" },
+  { group: "Dashboards", href: "/dashboard/team", label: "Team Dashboard" },
+  { group: "Dashboards", href: "/dashboard/team/scorecard", label: "Team Scorecard" },
   // General
-  { group: "General", href: "/dashboard", label: "Dashboards" },
-  { group: "General", href: "/dashboard/boards", label: "My Dashboards" },
-  { group: "General", href: "/dashboard/team", label: "Team Dashboard" },
-  { group: "General", href: "/dashboard/team/scorecard", label: "Team Scorecard" },
   { group: "General", href: "/dashboard/command-center", label: "Command Center" },
   { group: "General", href: "/dashboard/next-best-action", label: "Next Best Action" },
   { group: "General", href: "/dashboard/tasks", label: "Tasks & Requests" },

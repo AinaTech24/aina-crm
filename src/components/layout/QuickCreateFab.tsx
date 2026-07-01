@@ -11,6 +11,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import {
   Plus,
   Sparkles,
@@ -79,6 +80,13 @@ const TONE_BG: Record<string, string> = {
 export function QuickCreateFab() {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const pathname = usePathname();
+  // Only surface the quick-create button on the Dashboards pages — elsewhere
+  // each module has its own "+ New", so the floating button is just clutter.
+  const onDashboards =
+    pathname === "/dashboard" ||
+    pathname.startsWith("/dashboard/boards") ||
+    pathname.startsWith("/dashboard/team");
 
   // Click-outside + Esc to close
   useEffect(() => {
@@ -96,6 +104,8 @@ export function QuickCreateFab() {
       document.removeEventListener("keydown", onKey);
     };
   }, [open]);
+
+  if (!onDashboards) return null;
 
   return (
     <div ref={ref} className="fixed bottom-6 right-6 z-40 print:hidden flex flex-col items-end">

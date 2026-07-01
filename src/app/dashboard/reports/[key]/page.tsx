@@ -129,7 +129,7 @@ const REPORTS: Record<
       SELECT u.name AS rm_name, COUNT(i.id)::int AS clients,
         COALESCE(SUM(i.aum::numeric),0) AS aum,
         COALESCE(SUM(i.active_sip_amount::numeric),0) AS sip_book
-      FROM users u LEFT JOIN investors i ON i.rm_id = u.id AND i.status = 'active'
+      FROM users u LEFT JOIN investors i ON i.rm_id = u.id AND i.status = 'active' AND i.deleted_at IS NULL
       WHERE 'rm' = ANY(u.roles) GROUP BY u.id, u.name ORDER BY aum DESC
     `,
   },
@@ -145,7 +145,7 @@ const REPORTS: Record<
     ],
     runSql: (sql) => sql`
       SELECT name, segment_tag, aum, active_sip_amount, last_review_at
-      FROM investors WHERE status = 'active' ORDER BY aum::numeric DESC LIMIT 100
+      FROM investors WHERE status = 'active' AND deleted_at IS NULL ORDER BY aum::numeric DESC LIMIT 100
     `,
   },
   dormant: {
@@ -158,7 +158,7 @@ const REPORTS: Record<
     ],
     runSql: (sql) => sql`
       SELECT name, aum, last_transaction_at FROM investors
-      WHERE status = 'active'
+      WHERE status = 'active' AND deleted_at IS NULL
         AND (last_transaction_at IS NULL OR last_transaction_at < now() - interval '180 days')
       ORDER BY last_transaction_at NULLS FIRST LIMIT 100
     `,
@@ -174,7 +174,7 @@ const REPORTS: Record<
     ],
     runSql: (sql) => sql`
       SELECT name, segment_tag, last_review_at, next_review_at FROM investors
-      WHERE status = 'active' AND next_review_at IS NOT NULL
+      WHERE status = 'active' AND deleted_at IS NULL AND next_review_at IS NOT NULL
       ORDER BY next_review_at ASC LIMIT 100
     `,
   },
@@ -227,7 +227,7 @@ const REPORTS: Record<
         COALESCE(SUM(i.active_sip_amount::numeric), 0)::numeric AS sip,
         (SELECT name FROM investors WHERE id = f.primary_investor_id) AS primary
       FROM families f
-      LEFT JOIN investors i ON i.family_id = f.id AND i.status = 'active'
+      LEFT JOIN investors i ON i.family_id = f.id AND i.status = 'active' AND i.deleted_at IS NULL
       GROUP BY f.id ORDER BY aum DESC NULLS LAST LIMIT 200
     `,
   },
@@ -246,7 +246,7 @@ const REPORTS: Record<
         COALESCE(SUM(i.active_sip_amount::numeric), 0)::numeric AS monthly_sip,
         COALESCE(SUM(i.active_sip_amount::numeric) * 12, 0)::numeric AS yearly_run_rate
       FROM families f
-      LEFT JOIN investors i ON i.family_id = f.id AND i.status = 'active'
+      LEFT JOIN investors i ON i.family_id = f.id AND i.status = 'active' AND i.deleted_at IS NULL
       GROUP BY f.id
       HAVING SUM(i.active_sip_amount::numeric) > 0
       ORDER BY monthly_sip DESC LIMIT 200
@@ -268,7 +268,7 @@ const REPORTS: Record<
         u.name AS rm_name, i.onboarded_at
       FROM investors i
       LEFT JOIN users u ON u.id = i.rm_id
-      WHERE i.status = 'active' AND i.family_id IS NULL
+      WHERE i.status = 'active' AND i.deleted_at IS NULL AND i.family_id IS NULL
       ORDER BY i.aum::numeric DESC NULLS LAST LIMIT 500
     `,
   },
@@ -288,7 +288,7 @@ const REPORTS: Record<
         COALESCE(SUM(i.aum::numeric), 0)::numeric AS combined_aum,
         f.last_review_at, f.next_review_at
       FROM families f
-      LEFT JOIN investors i ON i.family_id = f.id AND i.status = 'active'
+      LEFT JOIN investors i ON i.family_id = f.id AND i.status = 'active' AND i.deleted_at IS NULL
       WHERE f.next_review_at IS NOT NULL
         AND f.next_review_at <= now() + interval '30 days'
       GROUP BY f.id ORDER BY f.next_review_at ASC LIMIT 200
@@ -318,6 +318,7 @@ const REPORTS: Record<
       JOIN families f ON f.id = i.family_id
       LEFT JOIN users u ON u.id = COALESCE(f.rm_id, i.rm_id)
       WHERE i.family_id IS NOT NULL
+        AND i.deleted_at IS NULL
         AND i.dob IS NOT NULL
         AND (i.aum::numeric IS NULL OR i.aum::numeric = 0)
         AND (
@@ -570,7 +571,7 @@ const REPORTS: Record<
       FROM investors i
       LEFT JOIN sips s ON s.investor_id = i.id AND s.status = 'active'
       LEFT JOIN users u ON u.id = i.rm_id
-      WHERE i.status = 'active'
+      WHERE i.status = 'active' AND i.deleted_at IS NULL
         AND i.segment_tag IN ('HNI', 'Affluent')
         AND i.active_sip_amount::numeric > 0
       GROUP BY i.id, u.name
@@ -981,7 +982,7 @@ const REPORTS: Record<
         COUNT(i.id) FILTER (WHERE i.service_tier = 'C')::int AS tier_c,
         COALESCE(SUM(i.aum::numeric), 0) AS aum
       FROM users u
-      LEFT JOIN investors i ON i.rm_id = u.id AND i.status = 'active'
+      LEFT JOIN investors i ON i.rm_id = u.id AND i.status = 'active' AND i.deleted_at IS NULL
       WHERE 'rm' = ANY(u.roles) AND u.status = 'active'
       GROUP BY u.id, u.name
       ORDER BY total_clients DESC
@@ -1017,7 +1018,7 @@ const REPORTS: Record<
         )::int AS no_show,
         (
           SELECT COUNT(*)::int FROM investors i
-          WHERE i.rm_id = u.id AND i.status = 'active'
+          WHERE i.rm_id = u.id AND i.status = 'active' AND i.deleted_at IS NULL
             AND (i.next_review_at IS NULL OR i.next_review_at < current_date)
         ) AS clients_no_recent_review
       FROM users u
@@ -1295,7 +1296,7 @@ const REPORTS: Record<
         COALESCE(SUM(i.active_sip_amount::numeric), 0) AS sip_book
       FROM investors i
       LEFT JOIN branches b ON b.id = i.branch_id
-      WHERE i.status = 'active'
+      WHERE i.status = 'active' AND i.deleted_at IS NULL
       GROUP BY b.id, b.name
       ORDER BY aum DESC
     `,
@@ -1344,7 +1345,7 @@ const REPORTS: Record<
         COALESCE(AVG(aum::numeric), 0) AS avg_aum,
         COALESCE(SUM(active_sip_amount::numeric), 0) AS sip_book
       FROM investors
-      WHERE status = 'active'
+      WHERE status = 'active' AND deleted_at IS NULL
       GROUP BY segment_tag
       ORDER BY aum DESC
     `,

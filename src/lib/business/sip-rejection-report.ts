@@ -80,6 +80,7 @@ export async function loadSipRejectionReport(
     JOIN investors i ON i.id = t.investor_id
     WHERE t.type = 'sip' AND t.status IN ('rejected','pending')
       AND t.order_date >= ${start} AND t.order_date < ${end}
+      AND i.deleted_at IS NULL
     GROUP BY i.rm_id
   `);
   const rejByRm = new Map<string, { rejVal: number; rejNo: number; pendVal: number; pendNo: number }>();

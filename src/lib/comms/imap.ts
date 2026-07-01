@@ -54,6 +54,12 @@ export async function verifyImap(cfg: ImapConfig): Promise<void> {
     socketTimeout: 15_000,
     greetingTimeout: 10_000,
   });
+  // ImapFlow emits 'error' on socket timeouts / dropped connections; with no
+  // listener, Node escalates that to an uncaughtException that destabilises the
+  // entire worker process (including in-flight RTA imports). The operational
+  // failure is already surfaced by the try/catch below — this listener just
+  // swallows the late async socket error so it can't crash the process.
+  client.on("error", () => {});
   try {
     await client.connect();
     try {
@@ -82,6 +88,8 @@ export async function imapFetchSince(cfg: ImapConfig, sinceUid: number, limit = 
     socketTimeout: 30_000,
     greetingTimeout: 10_000,
   });
+  // See verifyImap — swallow late socket errors so a timeout can't crash the worker.
+  client.on("error", () => {});
   const out: InboundEmail[] = [];
   await client.connect();
   try {

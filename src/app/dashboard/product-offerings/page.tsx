@@ -230,8 +230,8 @@ export default async function ProductOfferingsListPage({
             href={`/dashboard/product-offerings?status=${s.value}${categoryFilter !== "all" ? `&category=${categoryFilter}` : ""
               }`}
             className={`chip text-xs ${statusFilter === s.value
-                ? "bg-slate-900 text-white"
-                : "bg-slate-100"
+                ? "bg-brand-cyan-deep text-white"
+                : "bg-secondary text-foreground hover:bg-secondary/70"
               }`}
           >
             {s.label}

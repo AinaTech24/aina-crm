@@ -142,6 +142,20 @@ const CreateNotificationConfig = z.object({
     .default({ roles: [], users: [], subjectRm: false }),
 });
 
+const SendPushConfig = z.object({
+  title: z.string(),
+  body: z.string().optional(),
+  /** Path opened in the dashboard WebView when the user taps the push. */
+  linkUrl: z.string().optional(),
+  audience: z
+    .object({
+      roles: z.array(z.string()).default([]),
+      users: z.array(z.string()).default([]),
+      subjectRm: z.boolean().default(false),
+    })
+    .default({ roles: [], users: [], subjectRm: false }),
+});
+
 const DelayConfig = z.object({
   duration: z.object({
     amount: z.number().int().nonnegative(),
@@ -203,6 +217,7 @@ export const NODE_TYPES = [
   "add_to_segment",
   "raise_alert",
   "create_notification",
+  "send_push",
   "delay",
   "wait_until_date",
   "wait_for_event",
@@ -226,6 +241,7 @@ const NodeConfigByType: Record<NodeType, z.ZodTypeAny> = {
   add_to_segment: AddToSegmentConfig,
   raise_alert: RaiseAlertConfig,
   create_notification: CreateNotificationConfig,
+  send_push: SendPushConfig,
   delay: DelayConfig,
   wait_until_date: WaitUntilDateConfig,
   wait_for_event: WaitForEventConfig,
@@ -247,6 +263,7 @@ export const WorkflowNodeSchema = z.discriminatedUnion("type", [
   z.object({ id: z.string(), type: z.literal("add_to_segment"), label: z.string().optional(), config: AddToSegmentConfig, position: PositionSchema().optional() }),
   z.object({ id: z.string(), type: z.literal("raise_alert"), label: z.string().optional(), config: RaiseAlertConfig, position: PositionSchema().optional() }),
   z.object({ id: z.string(), type: z.literal("create_notification"), label: z.string().optional(), config: CreateNotificationConfig, position: PositionSchema().optional() }),
+  z.object({ id: z.string(), type: z.literal("send_push"), label: z.string().optional(), config: SendPushConfig, position: PositionSchema().optional() }),
   z.object({ id: z.string(), type: z.literal("delay"), label: z.string().optional(), config: DelayConfig, position: PositionSchema().optional() }),
   z.object({ id: z.string(), type: z.literal("wait_until_date"), label: z.string().optional(), config: WaitUntilDateConfig, position: PositionSchema().optional() }),
   z.object({ id: z.string(), type: z.literal("wait_for_event"), label: z.string().optional(), config: WaitForEventConfig, position: PositionSchema().optional() }),

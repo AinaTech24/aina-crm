@@ -112,7 +112,6 @@ export default function CustomReportsPage() {
           <h1 className="page-title">
             <BarChart3 className="size-6 text-brand-cyan" /> Custom Reports
           </h1>
-          <p className="page-subtitle">Build, save, organise into folders and share your own reports across every module.</p>
         </div>
         <Link href="/dashboard/reports/custom/new" className="btn-primary">
           <Plus className="size-4" /> New report

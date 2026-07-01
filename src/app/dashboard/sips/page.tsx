@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { and, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
 import { TrendingUp, AlertTriangle, CheckCircle2, Calendar, ShieldAlert, Plus } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { sips, investors, mandates, users } from "@/db/schema";
@@ -99,11 +99,15 @@ export default async function SipsPage({
         COUNT(*) FILTER (WHERE status = 'active' AND end_date IS NOT NULL
           AND end_date <= current_date + interval '90 days')::int AS expiring_soon
       FROM sips
-      WHERE tenant_id = ${session.tenantId}::uuid${statsScope}
+      WHERE tenant_id = ${session.tenantId}::uuid
+        AND investor_id IN (SELECT id FROM investors WHERE deleted_at IS NULL)${statsScope}
     `);
     const s = stats.rows[0] as any;
 
     const conds: any[] = [];
+    // Exclude SIPs whose client is soft-deleted (in Trash) — they were showing
+    // here with investor links that 404'd on the deleted client.
+    conds.push(isNull(investors.deletedAt));
     if (!seesAll) conds.push(or(eq(sips.rmId, session.userId), eq(investors.rmId, session.userId))!);
     if (q) {
       conds.push(

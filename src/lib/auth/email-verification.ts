@@ -28,6 +28,9 @@ export async function issueEmailVerification(args: {
   email: string;
   name?: string;
   firmName?: string;
+  /** Origin the link should point at — pass the request host so white-labeled
+   *  firms get links on their own domain. Defaults to APP_URL. */
+  baseUrl?: string;
 }): Promise<{ verifyUrl: string; emailSent: boolean }> {
   const token = crypto.randomBytes(32).toString("base64url");
   const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
@@ -40,7 +43,7 @@ export async function issueEmailVerification(args: {
     `);
   });
 
-  const base = process.env.APP_URL ?? process.env.NEXTAUTH_URL ?? "http://localhost:3000";
+  const base = args.baseUrl ?? process.env.APP_URL ?? process.env.NEXTAUTH_URL ?? "http://localhost:3000";
   const verifyUrl = `${base}/api/auth/verify-email?token=${token}`;
 
   const res = await sendSystemEmail({

@@ -73,7 +73,7 @@ export default async function FamiliesPage({
         f.head_name ILIKE ${`%${q}%`}
         OR f.family_name ILIKE ${`%${q}%`}
         OR EXISTS (
-          SELECT 1 FROM investors mi WHERE mi.family_id = f.id
+          SELECT 1 FROM investors mi WHERE mi.family_id = f.id AND mi.deleted_at IS NULL
             AND (mi.name ILIKE ${`%${q}%`} OR mi.pan ILIKE ${`%${q.toUpperCase()}%`})
         )
       )`);
@@ -136,7 +136,7 @@ export default async function FamiliesPage({
         COALESCE(SUM(i.active_sip_amount::numeric) FILTER (WHERE i.status = 'active'), 0)::numeric AS family_sip,
         BOOL_OR(i.segment_tag = 'HNI') AS has_hni
       FROM families f
-      LEFT JOIN investors i ON i.family_id = f.id
+      LEFT JOIN investors i ON i.family_id = f.id AND i.deleted_at IS NULL
       ${whereSql}
       GROUP BY f.id
       ${havingSql}
@@ -149,7 +149,7 @@ export default async function FamiliesPage({
       SELECT COUNT(*)::int AS c FROM (
         SELECT f.id
         FROM families f
-        LEFT JOIN investors i ON i.family_id = f.id
+        LEFT JOIN investors i ON i.family_id = f.id AND i.deleted_at IS NULL
         ${whereSql}
         GROUP BY f.id
         ${havingSql}
@@ -161,7 +161,7 @@ export default async function FamiliesPage({
       SELECT band, COUNT(*)::int AS c FROM (
         SELECT ${sql.raw(bandCaseSql("agg.aum"))} AS band FROM (
           SELECT f.id, COALESCE(SUM(i.aum::numeric) FILTER (WHERE i.status = 'active'), 0) AS aum
-          FROM families f LEFT JOIN investors i ON i.family_id = f.id
+          FROM families f LEFT JOIN investors i ON i.family_id = f.id AND i.deleted_at IS NULL
           WHERE f.tenant_id = ${session.tenantId}::uuid
             ${canViewAll ? sql`` : sql`AND f.rm_id = ${userId}::uuid`}
           GROUP BY f.id

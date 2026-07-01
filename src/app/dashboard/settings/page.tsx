@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Building2, Database, Users, CreditCard, MessageCircle, Mail, Webhook, ShieldCheck, Workflow, KeyRound, Palette, UserCircle, GitBranch, Target, Network, BellRing } from "lucide-react";
+import { Building2, Database, Users, CreditCard, MessageCircle, Mail, Webhook, ShieldCheck, Workflow, KeyRound, Palette, UserCircle, GitBranch, Target, Network, BellRing, ClipboardCheck } from "lucide-react";
 
 const SECTIONS = [
   {
@@ -43,6 +43,12 @@ const SECTIONS = [
     title: "Notification templates",
     desc: "Edit the 18 lead-journey templates — welcome, referral, meeting, proposal, docs, portal.",
     href: "/dashboard/settings/notification-templates",
+  },
+  {
+    icon: ClipboardCheck,
+    title: "Onboarding form fields",
+    desc: "Choose which client account-opening / KYC fields your team MUST fill — make any field mandatory or optional.",
+    href: "/dashboard/settings/onboarding-fields",
   },
   {
     icon: Users,

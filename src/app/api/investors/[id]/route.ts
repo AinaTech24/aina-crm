@@ -20,6 +20,7 @@ import { requireSession } from "@/lib/auth/session";
 import { require as requireCap, can } from "@/lib/auth/rbac";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { healthFields } from "@/lib/investors/health";
+import { computeNextReview } from "@/lib/investors/review-cadence";
 import { NomineesArray } from "@/lib/investors/nominee";
 import { ReferralsArray } from "@/lib/investors/referral";
 import { registerNomineePanDocs } from "@/lib/investors/nominee-docs";
@@ -134,6 +135,8 @@ const Patch = z.object({
   mandateRefNo: z.string().max(60).nullable().optional(),
   status: z.enum(["active", "dormant", "inactive", "redemption_risk", "closed", "exited"]).optional(),
   reviewFrequency: z.enum(["monthly", "quarterly", "half_yearly", "annual"]).nullable().optional(),
+  // Custom review cadence in days (overrides the preset above). 1–3650 days.
+  reviewFrequencyDays: z.number().int().min(1).max(3650).nullable().optional(),
   // Relationship dates — onboardedAt is a timestamp (coerced to Date in the
   // handler); anniversaryDate is a plain date column (accepts YYYY-MM-DD).
   onboardedAt: z.string().nullable().optional(),
@@ -273,18 +276,20 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       const merged = { ...before, ...parse.data, ...mirror };
       const health = healthFields(merged as any);
 
-      // When an explicit review cadence is set, derive the next review date from
-      // the last review (or today) so the "Next review" reminder reflects it.
+      // When the review cadence changes (preset OR custom days), re-derive the
+      // next review date from the last review (or onboarding, or today) so the
+      // "Next review" reminder reflects it. Clearing both cadence fields clears
+      // nextReviewAt → the client stops appearing in review-due reminders.
       const reviewPatch: Record<string, unknown> = {};
-      if (parse.data.reviewFrequency) {
-        const base = before.lastReviewAt ? new Date(before.lastReviewAt as any) : new Date();
-        const months =
-          parse.data.reviewFrequency === "monthly" ? 1 :
-          parse.data.reviewFrequency === "quarterly" ? 3 :
-          parse.data.reviewFrequency === "half_yearly" ? 6 : 12;
-        const next = new Date(base);
-        next.setMonth(next.getMonth() + months);
-        reviewPatch.nextReviewAt = next;
+      if (parse.data.reviewFrequency !== undefined || parse.data.reviewFrequencyDays !== undefined) {
+        const rf = parse.data.reviewFrequency !== undefined ? parse.data.reviewFrequency : ((before as any).reviewFrequency ?? null);
+        const rfd = parse.data.reviewFrequencyDays !== undefined ? parse.data.reviewFrequencyDays : ((before as any).reviewFrequencyDays ?? null);
+        const base = before.lastReviewAt
+          ? new Date(before.lastReviewAt as any)
+          : (before as any).onboardedAt
+            ? new Date((before as any).onboardedAt)
+            : new Date();
+        reviewPatch.nextReviewAt = computeNextReview(base, rf, rfd);
       }
 
       // onboardedAt is a timestamp column — coerce the YYYY-MM-DD string to a

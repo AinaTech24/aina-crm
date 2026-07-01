@@ -45,7 +45,7 @@ export async function BackOfficeInsightsSection({ session }: { session: SessionU
           WITH new_investors AS (
             SELECT id FROM investors
             WHERE onboarded_at >= now() - interval '90 days'
-              AND status = 'active'
+              AND status = 'active' AND deleted_at IS NULL
           ),
           investor_task_stats AS (
             SELECT
@@ -79,7 +79,7 @@ export async function BackOfficeInsightsSection({ session }: { session: SessionU
             COUNT(*) FILTER (
               WHERE risk_profile_signed_at < now() - interval '365 days'
             )::int AS overdue
-          FROM investors WHERE status = 'active'
+          FROM investors WHERE status = 'active' AND deleted_at IS NULL
         `),
 
         // 4. Auto vs manual SR resolution (last 90 days)
@@ -102,11 +102,11 @@ export async function BackOfficeInsightsSection({ session }: { session: SessionU
         await tx.execute(sql`
           SELECT
             (SELECT COALESCE(SUM(i.aum::numeric), 0)::numeric
-              FROM investors i WHERE i.kyc_status IN ('pending', 'expired')) AS kyc_aum_at_stake,
+              FROM investors i WHERE i.kyc_status IN ('pending', 'expired') AND i.deleted_at IS NULL) AS kyc_aum_at_stake,
             (SELECT COALESCE(SUM(s.amount::numeric), 0)::numeric
               FROM sips s WHERE s.status = 'pending') AS sip_pending_value,
             (SELECT COALESCE(SUM(i.aum::numeric), 0)::numeric
-              FROM investors i WHERE (i.nominee_name IS NULL OR i.nominee_name = '')) AS nominee_aum_at_stake
+              FROM investors i WHERE (i.nominee_name IS NULL OR i.nominee_name = '') AND i.deleted_at IS NULL) AS nominee_aum_at_stake
         `),
       ]);
 

@@ -183,6 +183,7 @@ export async function buildCommandQueue(
       SELECT id, name, redemption_risk_reason, aum, count(*) OVER() AS total
       FROM investors
       WHERE (status = 'redemption_risk' OR redemption_risk_flagged_at IS NOT NULL)
+        AND deleted_at IS NULL
         ${scope("rm_id", userId, firmWide)}${cscope("id")}
       ORDER BY aum DESC NULLS LAST, redemption_risk_flagged_at DESC NULLS LAST
       LIMIT 5
@@ -214,6 +215,7 @@ export async function buildCommandQueue(
       SELECT id, name, service_tier, next_review_at, aum, count(*) OVER() AS total
       FROM investors
       WHERE status = 'active'
+        AND deleted_at IS NULL
         AND next_review_at IS NOT NULL
         AND next_review_at < now()
         ${scope("rm_id", userId, firmWide)}${cscope("id")}
@@ -339,6 +341,7 @@ export async function buildCommandQueue(
       SELECT id, name, kyc_status, ckyc_expiry_at, count(*) OVER() AS total
       FROM investors
       WHERE status = 'active'
+        AND deleted_at IS NULL
         AND (
           kyc_status IN ('expired','re_kyc_required','rejected')
           OR (ckyc_expiry_at IS NOT NULL
@@ -374,7 +377,9 @@ export async function buildCommandQueue(
   // ── 6. Overdue tasks ─────────────────────────────────────────────────
   {
     const r = await tx.execute(sql`
-      SELECT id, title, priority, due_at, count(*) OVER() AS total
+      SELECT id, title, priority, due_at, subject_type, subject_id,
+             related_investor_id, related_lead_id, related_meeting_id, related_service_request_id,
+             count(*) OVER() AS total
       FROM tasks
       WHERE status IN ('open','in_progress')
         AND deleted_at IS NULL
@@ -385,6 +390,23 @@ export async function buildCommandQueue(
       LIMIT 5
     `);
     if (r.rows.length) {
+      // Link each task to the RECORD it's about (client / lead / meeting / service
+      // request) so clicking opens that record — not the generic tasks list.
+      // Prefer the explicit related-entity columns, then the legacy subject, and
+      // only fall back to the tasks list for a task with no linked entity.
+      const taskHref = (x: any): string => {
+        if (x.related_investor_id) return `/dashboard/investors/${x.related_investor_id}`;
+        if (x.related_lead_id) return `/dashboard/leads/${x.related_lead_id}`;
+        if (x.related_meeting_id) return `/dashboard/review-meetings/${x.related_meeting_id}`;
+        if (x.related_service_request_id) return `/dashboard/service-requests/${x.related_service_request_id}`;
+        if (x.subject_id) {
+          if (x.subject_type === "investor") return `/dashboard/investors/${x.subject_id}`;
+          if (x.subject_type === "lead") return `/dashboard/leads/${x.subject_id}`;
+          if (x.subject_type === "family") return `/dashboard/families/${x.subject_id}`;
+          if (x.subject_type === "service_request") return `/dashboard/service-requests/${x.subject_id}`;
+        }
+        return "/dashboard/tasks";
+      };
       groups.push({
         key: "tasks_overdue",
         label: "Overdue tasks",
@@ -397,7 +419,7 @@ export async function buildCommandQueue(
           id: x.id,
           title: x.title,
           detail: `${x.priority} · due ${fmt(x.due_at)}`,
-          href: `/dashboard/tasks`,
+          href: taskHref(x),
           date: ymd(x.due_at),
           actionType: "task" as const,
         })),
@@ -444,6 +466,7 @@ export async function buildCommandQueue(
       SELECT id, name, risk_profile_signed_at, count(*) OVER() AS total
       FROM investors
       WHERE status = 'active'
+        AND deleted_at IS NULL
         AND (risk_profile_signed_at IS NULL OR risk_profile_signed_at < now() - interval '365 days')
         ${scope("rm_id", userId, firmWide)}${cscope("id")}
       ORDER BY risk_profile_signed_at ASC NULLS FIRST
@@ -474,6 +497,7 @@ export async function buildCommandQueue(
       SELECT id, name, dob, phone, count(*) OVER() AS total
       FROM investors
       WHERE status = 'active'
+        AND deleted_at IS NULL
         AND dob IS NOT NULL
         AND to_char(dob, 'MM-DD') = to_char(current_date, 'MM-DD')
         ${scope("rm_id", userId, firmWide)}${cscope("id")}
@@ -508,6 +532,7 @@ export async function buildCommandQueue(
       SELECT id, name, dob, count(*) OVER() AS total
       FROM investors
       WHERE status = 'active'
+        AND deleted_at IS NULL
         AND dob IS NOT NULL
         AND to_char(dob, 'MM-DD') BETWEEN to_char(current_date + interval '1 day', 'MM-DD')
                                       AND to_char(current_date + interval '7 days', 'MM-DD')
@@ -540,6 +565,7 @@ export async function buildCommandQueue(
       SELECT id, name, count(*) OVER() AS total
       FROM investors
       WHERE mandate_status = 'rejected'
+        AND deleted_at IS NULL
         ${scope("rm_id", userId, firmWide)}${cscope("id")}
       ORDER BY updated_at DESC NULLS LAST
       LIMIT 5
@@ -687,6 +713,7 @@ export async function buildCommandQueue(
       SELECT id, name, phone, count(*) OVER() AS total
       FROM investors
       WHERE status = 'active'
+        AND deleted_at IS NULL
         AND anniversary_date IS NOT NULL
         AND to_char(anniversary_date, 'MM-DD') = to_char(current_date, 'MM-DD')
         ${scope("rm_id", userId, firmWide)}${cscope("id")}

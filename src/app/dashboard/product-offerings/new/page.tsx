@@ -43,7 +43,7 @@ export default async function NewProductOfferingPage() {
   });
 
   return (
-    <div className="space-y-5 max-w-3xl">
+    <div className="space-y-5 max-w-3xl w-full px-4 sm:px-0">
       <div>
         <Link
           href="/dashboard/product-offerings"
@@ -52,10 +52,6 @@ export default async function NewProductOfferingPage() {
           <ChevronLeft className="size-3" /> Products &amp; services
         </Link>
         <h1 className="text-2xl font-semibold mt-1">Add an offering</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Tag it with the regulator and the licenses that authorise it. Link
-          the team trained on it so RMs can see who to ask.
-        </p>
       </div>
       <ProductOfferingForm
         mode="create"

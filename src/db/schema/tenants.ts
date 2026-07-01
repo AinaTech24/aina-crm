@@ -23,6 +23,11 @@ export const tenants = pgTable(
     phone: text("phone"),
     email: text("email"),
     website: text("website"),
+    // White-label hosting (migration 0162). subdomain → "<sub>.<APP_BASE_DOMAIN>";
+    // customDomain → the firm's own domain. Both globally unique when set.
+    subdomain: text("subdomain"),
+    customDomain: text("custom_domain"),
+    customDomainVerifiedAt: timestamp("custom_domain_verified_at", { withTimezone: true }),
     primaryColor: text("primary_color").default("#1f2937"),
     secondaryColor: text("secondary_color").default("#0ea5e9"),
     /** Extra theme controls (migration 0128) — body text + hover/secondary

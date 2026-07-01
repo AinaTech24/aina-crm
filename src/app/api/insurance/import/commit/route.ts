@@ -130,22 +130,39 @@ export async function POST(req: NextRequest) {
           "addressLine1", "city", "state", "postalCode", "country",
           // Agency
           "agencyCode", "agencyName", "agencyContact", "agencyEmail",
+          "agentName", "agentEmail", "agentPhone",
           // Receipt / payment / tax
           "receiptNo", "receiptDate", "businessChannel", "paymentDetails",
-          "taxInvoiceNo", "taxInvoiceDate", "gstin", "financialYear", "eightyDAmount", "grossPremium",
+          "taxInvoiceNo", "taxInvoiceDate", "gstin", "receiptPan", "financialYear", "eightyDAmount", "grossPremium",
           // Proposer extras
-          "proposerCustomerId", "proposerPhone", "proposerEmail",
+          "proposerStatus", "proposerCustomerId", "proposerPhone", "proposerEmail",
           "proposerAddressLine1", "proposerCity", "proposerState", "proposerPostalCode",
+          "proposerCountry", "proposerRemarks",
+          // Schedule + nominee extras
+          "policyIssueDate", "nomineeDob", "nomineeEmail",
         ];
         // Date-ish detail fields are normalised to YYYY-MM-DD so the form's date
         // pickers render them.
-        const DATE_DETAILS = new Set(["receiptDate", "taxInvoiceDate"]);
+        const DATE_DETAILS = new Set(["receiptDate", "taxInvoiceDate", "policyIssueDate", "nomineeDob"]);
         const details: Record<string, any> = {};
         for (const k of detailKeys) {
           const v = pick(row, reverse[k]);
           if (v) details[k] = DATE_DETAILS.has(k) ? (dateOrNull(v) ?? v) : v;
         }
         if (!details.country && (details.addressLine1 || details.city)) details.country = "India";
+
+        // Build the nominees array (one nominee per flat row) so imported
+        // policies render in the add-form's multi-nominee table.
+        const nomName = pick(row, reverse.nomineeName);
+        if (nomName) {
+          details.nominees = [{
+            name: nomName,
+            relation: pick(row, reverse.nomineeRelation) || "",
+            share: pick(row, reverse.nomineeShare) || "100",
+            dob: dateOrNull(pick(row, reverse.nomineeDob)) ?? pick(row, reverse.nomineeDob) ?? "",
+            email: pick(row, reverse.nomineeEmail) || "",
+          }];
+        }
 
         try {
           await tx.execute(sql`

@@ -556,8 +556,12 @@ export const LEAD_TO_CLIENT_TRANSITIONS: Array<{
   // ─── Meeting flow ──────────────────────────────────────────────
   { from: "meeting_scheduled", to: "meeting_done", name: "Meeting Completed" },
   { from: "meeting_scheduled", to: "meeting_pending", name: "Awaiting Confirmation" },
+  // Client no-show — drop back into long-term nurture (with a re-engage reminder)
+  // instead of forcing a premature won/lost or leaving the meeting "scheduled".
+  { from: "meeting_scheduled", to: "contact_in_future", name: "Client No-show" },
   { from: "meeting_pending", to: "meeting_done", name: "Meeting Completed" },
   { from: "meeting_pending", to: "meeting_scheduled", name: "Confirmed / Rescheduled" },
+  { from: "meeting_pending", to: "contact_in_future", name: "Client No-show" },
   { from: "meeting_done", to: "won_lead", name: "Qualified — Win" },
   { from: "meeting_done", to: "not_qualified", name: "Not a Fit" },
   // MFD sales usually take 2-3 meetings — allow booking a follow-up without

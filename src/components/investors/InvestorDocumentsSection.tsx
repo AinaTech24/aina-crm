@@ -8,8 +8,9 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { FileText, Upload, Download, Trash2, Loader2, FolderOpen, UserCheck, Send, Link as LinkIcon, Copy, ExternalLink, CheckCircle2, Circle, Eye, ChevronRight, ClipboardCheck } from "lucide-react";
+import { FileText, Upload, Download, Trash2, Loader2, FolderOpen, UserCheck, Send, Link as LinkIcon, Copy, ExternalLink, CheckCircle2, Circle, Eye, ChevronRight, ClipboardCheck, Camera } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
+import { isNativeApp, nativePickImage } from "@/lib/native-bridge";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { DocumentViewerModal, type ViewerDoc } from "@/components/documents/DocumentViewerModal";
 
@@ -47,6 +48,10 @@ export function InvestorDocumentsSection({ investorId, investorName, investorPho
   const [busyId, setBusyId] = useState<string | null>(null);
   const [viewer, setViewer] = useState<ViewerDoc | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  // True only inside the mobile app's WebView — gates the native "Scan" button.
+  // Resolved in an effect because `window` isn't available during SSR.
+  const [native, setNative] = useState(false);
+  useEffect(() => setNative(isNativeApp()), []);
 
   // ── KYC completeness (received vs required for the client type) ──
   type CompItem = { key: string; label: string; required: boolean; received: boolean };
@@ -95,12 +100,24 @@ export function InvestorDocumentsSection({ investorId, investorName, investorPho
     }
   }, []);
 
-  async function onFiles(files: FileList | null) {
-    if (!files || files.length === 0) return;
+  // Thin adapter for the hidden <input type=file> onChange.
+  function onFiles(files: FileList | null) {
+    if (files && files.length) void uploadFiles(Array.from(files));
+  }
+
+  // Capture a document with the native camera (mobile app only) and push it
+  // through the exact same upload path as a picked file.
+  async function onScan() {
+    const file = await nativePickImage({ source: "camera" });
+    if (file) await uploadFiles([file]);
+  }
+
+  async function uploadFiles(files: File[]) {
+    if (!files.length) return;
     setUploading(true);
     let ok = 0;
     try {
-      for (const file of Array.from(files)) {
+      for (const file of files) {
         if (file.size > 15 * 1024 * 1024) {
           toast.error(`${file.name} is over 15 MB`, "Too large");
           continue;
@@ -272,6 +289,16 @@ export function InvestorDocumentsSection({ investorId, investorName, investorPho
           >
             <Send className="size-4" /> Request from client
           </button>
+          {native && (
+            <button
+              type="button"
+              disabled={uploading}
+              onClick={onScan}
+              className="btn-secondary text-sm inline-flex items-center gap-1.5 disabled:opacity-50"
+            >
+              <Camera className="size-4" /> Scan
+            </button>
+          )}
           <button
             type="button"
             disabled={uploading}

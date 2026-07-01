@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
         tx.execute(sql`
           SELECT id, name, pan, phone, email, segment_tag
           FROM investors
-          WHERE tenant_id = ${session.tenantId}::uuid AND (name ILIKE ${like} OR pan ILIKE ${likeUpper}
+          WHERE tenant_id = ${session.tenantId}::uuid AND deleted_at IS NULL AND (name ILIKE ${like} OR pan ILIKE ${likeUpper}
              OR phone ILIKE ${like} OR email ILIKE ${like})
           LIMIT 5
         `),

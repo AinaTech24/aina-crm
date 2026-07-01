@@ -68,6 +68,19 @@ export function NotificationBell() {
     setUnread(0);
   }
 
+  // Opening a notification dismisses it from the panel + marks it read on the
+  // server (best-effort — a live birthday reminder may not be a stored row).
+  function openOne(n: Notification) {
+    setItems((arr) => arr.filter((x) => x.id !== n.id));
+    if (!n.readAt && n.kind !== "birthday_today") setUnread((u) => Math.max(0, u - 1));
+    fetch("/api/notifications/mark-read", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ids: [n.id] }),
+    }).catch(() => {});
+    setOpen(false);
+  }
+
   return (
     <div className="relative" ref={ref}>
       <button
@@ -84,8 +97,8 @@ export function NotificationBell() {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-2 border bg-card rounded-md shadow-lg w-80 max-h-[70vh] overflow-y-auto z-40">
-          <div className="border-b px-3 py-2 flex items-center justify-between">
+        <div className="absolute right-0 top-full mt-2 border bg-card rounded-md shadow-lg w-80 max-h-[70vh] z-[60] flex flex-col overflow-hidden">
+          <div className="border-b px-3 py-2 flex items-center justify-between flex-shrink-0 bg-card">
             <div className="font-medium text-sm">Notifications</div>
             {unread > 0 && (
               <button onClick={markAllRead} className="text-xs text-primary hover:underline">
@@ -93,6 +106,7 @@ export function NotificationBell() {
               </button>
             )}
           </div>
+          <div className="flex-1 overflow-y-auto scrollbar-none">
           {items.length === 0 ? (
             <div className="p-6 text-center text-sm text-muted-foreground">No notifications yet.</div>
           ) : (
@@ -121,7 +135,7 @@ export function NotificationBell() {
                 return (
                   <li key={n.id}>
                     {n.linkUrl ? (
-                      <Link href={n.linkUrl} onClick={() => setOpen(false)}>{Inner}</Link>
+                      <Link href={n.linkUrl} onClick={() => openOne(n)}>{Inner}</Link>
                     ) : (
                       Inner
                     )}
@@ -130,7 +144,8 @@ export function NotificationBell() {
               })}
             </ul>
           )}
-          <div className="border-t border-border px-3 py-2 text-center">
+          </div>
+          <div className="border-t border-border px-3 py-2 text-center flex-shrink-0 bg-card">
             <Link
               href="/dashboard/notifications"
               onClick={() => setOpen(false)}

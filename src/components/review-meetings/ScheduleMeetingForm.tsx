@@ -76,12 +76,20 @@ export function ScheduleMeetingForm({
   preselectedInvestorId,
   preselectedLeadId,
   preselectedCategory,
+  onSuccess,
+  defaultSubject,
 }: {
   investors: InvestorOpt[];
   leads: LeadOpt[];
   families: FamilyOpt[];
   preselectedInvestorId?: string;
   preselectedLeadId?: string;
+  /** When provided (e.g. in a modal), called on save instead of navigating to
+   *  the review-meetings list — lets the host close the modal & refresh. The
+   *  saved meeting's key details are passed back for a confirmation / invite. */
+  onSuccess?: (meeting?: { id?: string; day?: string; time?: string; subject?: string }) => void;
+  /** Pre-fills the subject line (e.g. "Intro meeting — {lead name}"). */
+  defaultSubject?: string;
   /** "new" | "review" | "follow_up" — defaults the Meeting type dropdown. */
   preselectedCategory?: string;
 }) {
@@ -92,7 +100,7 @@ export function ScheduleMeetingForm({
     investorId: preselectedInvestorId ?? "",
     leadId: preselectedLeadId ?? "",
     familyId: "",
-    subject: "",
+    subject: defaultSubject ?? "",
     category: (["new", "review", "follow_up"].includes(preselectedCategory ?? "") ? preselectedCategory! : "review"),
     meetingDay: def.day,
     meetingTime: def.time,
@@ -170,7 +178,8 @@ export function ScheduleMeetingForm({
         setErr(j.error ?? `Save failed (${res.status})`);
         return;
       }
-      router.push("/dashboard/review-meetings");
+      if (onSuccess) onSuccess({ id: j?.id, day: form.meetingDay, time: form.meetingTime, subject: form.subject });
+      else router.push("/dashboard/review-meetings");
     } finally {
       setBusy(false);
     }
@@ -196,7 +205,7 @@ export function ScheduleMeetingForm({
         <input
           value={form.subject}
           onChange={(e) => set("subject", e.target.value)}
-          placeholder="e.g. Q1 portfolio review + tax-saving + nominee update"
+          // placeholder="e.g. Q1 portfolio review + tax-saving + nominee update"
           className="input-base"
         />
       </Field>
@@ -213,9 +222,8 @@ export function ScheduleMeetingForm({
                 type="button"
                 disabled={disabled}
                 onClick={() => pickKind(k)}
-                className={`px-3 py-1.5 rounded-md text-xs font-medium inline-flex items-center gap-1.5 transition-colors ${
-                  subjectKind === k ? "bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
-                } ${disabled ? "opacity-40 cursor-not-allowed" : ""}`}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium inline-flex items-center gap-1.5 transition-colors ${subjectKind === k ? "bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
+                  } ${disabled ? "opacity-40 cursor-not-allowed" : ""}`}
               >
                 <Icon className="size-3.5" /> {label}
               </button>
@@ -300,7 +308,7 @@ export function ScheduleMeetingForm({
           <RmSelector
             value={form.rmId || null}
             onChange={(id) => set("rmId", id ?? "")}
-            placeholder={subjectKind === "lead" ? "— Use the lead's owner —" : "— Use the client's RM —"}
+            placeholder={subjectKind === "lead" ? "Use the lead's owner" : "Use the client's RM"}
           />
         </Field>
       </div>
@@ -341,7 +349,7 @@ export function ScheduleMeetingForm({
           value={form.discussionPoints}
           onChange={(e) => set("discussionPoints", e.target.value)}
           rows={3}
-          placeholder={subjectKind === "lead" ? "Introductory call agenda, risk appetite, family + goal context…" : "Portfolio rebalancing, new SIPs, tax planning, nominee update…"}
+          // placeholder={subjectKind === "lead" ? "Introductory call agenda, risk appetite, family + goal context…" : "Portfolio rebalancing, new SIPs, tax planning, nominee update…"}
           className="input-base"
         />
       </Field>
@@ -496,6 +504,9 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 function defaultDateTimeParts(): { day: string; time: string } {
   const d = new Date();
   d.setDate(d.getDate() + 1);
+  // Skip to the next weekday — don't default a meeting onto Sat/Sun.
+  if (d.getDay() === 6) d.setDate(d.getDate() + 2); // Sat → Mon
+  else if (d.getDay() === 0) d.setDate(d.getDate() + 1); // Sun → Mon
   const pad = (n: number) => String(n).padStart(2, "0");
   return {
     day: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,

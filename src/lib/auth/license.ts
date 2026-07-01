@@ -178,7 +178,7 @@ export async function assertInvestorQuota(
 
   const current = await withTenant(tenantId, async (tx) => {
     const r = (await tx.execute(
-      sql`SELECT count(*)::int c FROM investors WHERE tenant_id = ${tenantId}::uuid AND status <> 'closed'`
+      sql`SELECT count(*)::int c FROM investors WHERE tenant_id = ${tenantId}::uuid AND status <> 'closed' AND deleted_at IS NULL`
     )).rows[0] as { c?: number } | undefined;
     return Number(r?.c ?? 0);
   });

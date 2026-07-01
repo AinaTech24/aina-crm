@@ -53,7 +53,19 @@ export const RTA_FILE_KINDS = [
 ] as const;
 export type RtaFileKind = (typeof RTA_FILE_KINDS)[number];
 
-export const RTA_SOURCES = ["cams", "kfintech", "mfu", "bse_star_mf", "nse_nmf2"] as const;
+export const RTA_SOURCES = [
+  "cams",
+  "kfintech",
+  "mfu",
+  "bse_star_mf",
+  "nse_nmf2",
+  // FintechPrimitives (Cybrilla) reverse-feed route: instead of parsing the
+  // RTA mailback locally, the file is uploaded to FP, processed into structured
+  // transactions (with FIFO capital-gains), and pulled back. `source` is a plain
+  // text column (Drizzle enum is TS-only — no DB CHECK), so adding a value here
+  // needs no migration.
+  "fintech_primitives",
+] as const;
 export type RtaSource = (typeof RTA_SOURCES)[number];
 
 export const RTA_IMPORT_STATUSES = [

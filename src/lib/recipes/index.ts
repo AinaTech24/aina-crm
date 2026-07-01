@@ -50,6 +50,14 @@ import { meetingConfirmationRecipe } from "./meeting_confirmation";
 import { aumMilestoneRecipe } from "./aum_milestone";
 import { protectionGapNudgeRecipe } from "./protection_gap_nudge";
 import { taxSavingsNudgeRecipe } from "./tax_savings_nudge";
+import { inboundWhatsappAutoresponderRecipe } from "./inbound_whatsapp_autoresponder";
+import { riskProfileCompletedRecipe } from "./risk_profile_completed";
+import { leadConvertedOnboardingRecipe } from "./lead_converted_onboarding";
+import { firstInvestmentCelebrationRecipe } from "./first_investment_celebration";
+import { lowCsatRecoveryRecipe } from "./low_csat_recovery";
+import { insuranceRenewedCrossSellRecipe } from "./insurance_renewed_crosssell";
+import { familyLinkedReviewRecipe } from "./family_linked_review";
+import { newBusinessThankYouRecipe } from "./new_business_thankyou";
 
 export interface RecipeDef {
   key: string;
@@ -112,4 +120,13 @@ export const ALL_RECIPES: RecipeDef[] = [
   insuranceLapseRecoveryRecipe,
   sipExpiryReminderRecipe,
   meetingConfirmationRecipe,
+  // ── New: event-backed rules that wire previously-unused domain events ──
+  inboundWhatsappAutoresponderRecipe,
+  riskProfileCompletedRecipe,
+  leadConvertedOnboardingRecipe,
+  firstInvestmentCelebrationRecipe,
+  lowCsatRecoveryRecipe,
+  insuranceRenewedCrossSellRecipe,
+  familyLinkedReviewRecipe,
+  newBusinessThankYouRecipe,
 ];

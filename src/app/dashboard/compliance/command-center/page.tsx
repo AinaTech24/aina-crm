@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import { ShieldCheck, MessageCircle, Mail, MessageSquare, FileCheck2, ScrollText, Download, ShieldX, BadgeCheck } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { DownloadButton } from "@/components/common/SecureLinkButtons";
 
 export const dynamic = "force-dynamic";
 
@@ -59,7 +60,7 @@ export default async function ComplianceCommandCenterPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2"><ShieldCheck className="size-6 text-brand-cyan" /> Compliance Command Center</h1>
         </div>
-        <a href="/api/compliance/inspection-pack" className="btn-primary text-sm inline-flex items-center gap-1"><Download className="size-4" /> SEBI inspection pack</a>
+        <DownloadButton url="/api/compliance/inspection-pack" className="btn-primary text-sm inline-flex items-center gap-1"><Download className="size-4" /> SEBI inspection pack</DownloadButton>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

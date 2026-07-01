@@ -90,7 +90,7 @@ export async function OwnerInsightsSection({ session }: { session: SessionUser }
               END
               FROM service_requests
               WHERE created_at >= ${last90}) AS sr_sla_hit_pct
-          FROM investors WHERE status = 'active'
+          FROM investors WHERE status = 'active' AND deleted_at IS NULL
         `),
 
         // 3. Client Health Bands — read the PERSISTED health_band (the canonical
@@ -110,7 +110,7 @@ export async function OwnerInsightsSection({ session }: { session: SessionUser }
             COUNT(*) FILTER (WHERE health_band = 'red')::int AS red,
             COUNT(*)::int AS total
           FROM investors
-          WHERE status = 'active'
+          WHERE status = 'active' AND deleted_at IS NULL
         `),
 
         // 4. Compliance Waterfall — KYC, FATCA, risk profile, nominee, PAN-Aadhaar
@@ -130,7 +130,7 @@ export async function OwnerInsightsSection({ session }: { session: SessionUser }
               OR risk_profile_signed_at < now() - interval '335 days')::int AS risk_profile_expiring,
             COUNT(*) FILTER (WHERE nominee_name IS NULL OR nominee_name = '')::int AS nominee_missing,
             COUNT(*) FILTER (WHERE pan_aadhaar_link_status IN ('not_linked', 'pending'))::int AS pan_aadhaar_missing
-          FROM investors WHERE status = 'active'
+          FROM investors WHERE status = 'active' AND deleted_at IS NULL
         `),
 
         // 5. Recovery list — at-risk top 10 (redemption-risk flag, recent complaint, large recent outflow)
@@ -153,7 +153,7 @@ export async function OwnerInsightsSection({ session }: { session: SessionUser }
             (i.id IN (SELECT investor_id FROM recent_complaint)) AS has_complaint,
             COALESCE((SELECT out_amt FROM recent_outflow WHERE investor_id = i.id), 0) AS recent_outflow
           FROM investors i
-          WHERE i.status = 'active'
+          WHERE i.status = 'active' AND i.deleted_at IS NULL
             AND (
               i.redemption_risk_flagged_at IS NOT NULL
               OR i.id IN (SELECT investor_id FROM recent_complaint)
@@ -170,6 +170,7 @@ export async function OwnerInsightsSection({ session }: { session: SessionUser }
             COALESCE(SUM(GREATEST(lifetime_inflow::numeric - lifetime_outflow::numeric, 0)), 0)::numeric AS net_lost
           FROM investors
           WHERE status IN ('closed', 'exited')
+            AND deleted_at IS NULL
             AND exited_at >= ${last30}
         `),
 
@@ -203,7 +204,7 @@ export async function OwnerInsightsSection({ session }: { session: SessionUser }
               WHERE i.last_contact_at IS NULL OR i.last_contact_at < ${last60}
             ), 0)::numeric AS silent_aum
           FROM users u
-          INNER JOIN investors i ON i.rm_id = u.id AND i.status = 'active'
+          INNER JOIN investors i ON i.rm_id = u.id AND i.status = 'active' AND i.deleted_at IS NULL
           WHERE 'rm' = ANY(u.roles) AND u.status = 'active'
           GROUP BY u.id, u.name
           HAVING COUNT(i.id) > 0
@@ -222,7 +223,7 @@ export async function OwnerInsightsSection({ session }: { session: SessionUser }
                  OR (service_tier = 'C' AND last_review_at >= ${last365})
             )::int AS on_cadence
           FROM investors
-          WHERE status = 'active'
+          WHERE status = 'active' AND deleted_at IS NULL
           GROUP BY service_tier
           ORDER BY tier
         `),

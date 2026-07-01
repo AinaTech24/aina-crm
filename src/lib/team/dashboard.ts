@@ -78,7 +78,7 @@ export async function getTeamDashboard(
   const srWho = member ? sql` AND assigned_to_user_id = ${member}::uuid` : sql``;
   const invWho = member ? sql` AND rm_id = ${member}::uuid` : sql``;
   const investorOf = member
-    ? sql` AND investor_id IN (SELECT id FROM investors WHERE rm_id = ${member}::uuid)`
+    ? sql` AND investor_id IN (SELECT id FROM investors WHERE rm_id = ${member}::uuid AND deleted_at IS NULL)`
     : sql``;
   const actWho = member ? sql` AND owner_user_id = ${member}::uuid` : sql``;
   // Deep-link suffix so a tile lands on the member-filtered module list.
@@ -126,7 +126,7 @@ export async function getTeamDashboard(
         (SELECT count(*)::int FROM leads WHERE created_at::date = current_date${leadWho}) AS leads_added,
         (SELECT ${AMT("intended_amount")} FROM leads WHERE created_at::date = current_date${leadWho}) AS leads_added_amt,
         (SELECT count(*)::int FROM review_meetings WHERE meeting_date::date = current_date${meetWho}) AS meetings_today,
-        (SELECT count(*)::int FROM investors WHERE created_at::date = current_date${invWho}) AS clients_added,
+        (SELECT count(*)::int FROM investors WHERE deleted_at IS NULL AND created_at::date = current_date${invWho}) AS clients_added,
         (SELECT count(*)::int FROM activities WHERE kind = 'call' AND occurred_at::date = current_date${actWho}) AS calls_today,
         (SELECT count(*)::int FROM activities WHERE kind = 'visit' AND occurred_at::date = current_date${actWho}) AS visits_today
     `)
@@ -149,9 +149,9 @@ export async function getTeamDashboard(
         (SELECT count(*)::int FROM review_meetings
            WHERE status='completed' AND meeting_date >= ${fromISO} AND meeting_date < ${toEndISO}${meetWho}) AS completed_meetings,
         (SELECT count(*)::int FROM investors
-           WHERE onboarded_at IS NOT NULL AND onboarded_at >= ${fromISO} AND onboarded_at < ${toEndISO}${invWho}) AS new_clients,
+           WHERE deleted_at IS NULL AND onboarded_at IS NOT NULL AND onboarded_at >= ${fromISO} AND onboarded_at < ${toEndISO}${invWho}) AS new_clients,
         (SELECT COALESCE(SUM(aum),0) FROM investors
-           WHERE onboarded_at IS NOT NULL AND onboarded_at >= ${fromISO} AND onboarded_at < ${toEndISO}${invWho}) AS new_aum
+           WHERE deleted_at IS NULL AND onboarded_at IS NOT NULL AND onboarded_at >= ${fromISO} AND onboarded_at < ${toEndISO}${invWho}) AS new_aum
     `)
   ).rows[0] as any;
 

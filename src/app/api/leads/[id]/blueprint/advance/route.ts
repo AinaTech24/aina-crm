@@ -101,13 +101,20 @@ async function storeClientMandate(
   `);
 }
 
-/** Create the "call this lead back" reminder task for the owner at the chosen time. */
-async function scheduleCallBackReminder(
+/** Stages whose transition schedules a next-touch reminder for the lead owner so
+ *  parked leads never go silent. (call_back_later already did; the other two
+ *  loop stages promised "resurface" but scheduled nothing.) */
+const NEXT_TOUCH_STAGES = ["call_back_later", "call_not_connected", "contact_in_future"];
+
+/** Create a next-touch reminder task for the lead owner at the chosen time. The
+ *  wording adapts to the loop stage (call back vs long-term re-engagement). */
+async function scheduleNextTouchReminder(
   tx: any,
   tenantId: string,
   leadId: string,
   fallbackAssigneeId: string,
-  callBackAt: string
+  callBackAt: string,
+  stageKey: string
 ): Promise<void> {
   const due = new Date(callBackAt);
   if (isNaN(due.getTime())) return; // ignore an unparseable date rather than fail the move
@@ -115,6 +122,10 @@ async function scheduleCallBackReminder(
     sql`SELECT name, owner_id FROM leads WHERE id = ${leadId}::uuid AND tenant_id = ${tenantId}::uuid LIMIT 1`
   );
   const lead = lr.rows[0] as { name?: string; owner_id?: string } | undefined;
+  const title =
+    stageKey === "contact_in_future"
+      ? `Re-engage lead: ${lead?.name ?? "lead"}`
+      : `Call back: ${lead?.name ?? "lead"}`;
   await tx.insert(tasks).values({
     id: uuid(),
     tenantId,
@@ -123,7 +134,7 @@ async function scheduleCallBackReminder(
     subjectId: leadId,
     relatedLeadId: leadId,
     type: "follow_up",
-    title: `Call back: ${lead?.name ?? "lead"}`,
+    title,
     priority: "normal",
     status: "open",
     dueAt: due,
@@ -212,8 +223,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         ...clientMeta,
       });
       if (first.ok) {
-        if (toStageKey === "call_back_later" && callBackAt) {
-          await scheduleCallBackReminder(tx, session.tenantId, id, session.userId, callBackAt);
+        if (NEXT_TOUCH_STAGES.includes(toStageKey) && callBackAt) {
+          await scheduleNextTouchReminder(tx, session.tenantId, id, session.userId, callBackAt, toStageKey);
         }
         if (toStageKey === "ucc_activated" && uccNumber) {
           await storeClientUcc(tx, session.tenantId, id, uccNumber);

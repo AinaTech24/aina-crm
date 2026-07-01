@@ -3,12 +3,12 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ChevronLeft, Sparkles, Loader2, AlertTriangle, ExternalLink, Camera, Trash2 } from "lucide-react";
+import { ChevronLeft, UserPlus, Loader2, AlertTriangle, ExternalLink, Camera, Trash2 } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
 import { InvestorLookup } from "@/components/common/InvestorLookup";
 import { RmSelector } from "@/components/common/RmSelector";
 import { SubDistributorLookup } from "@/components/common/SubDistributorLookup";
-import { ThemeSelect } from "@/components/ui/ThemeSelect";
+import { SelectField } from "@/components/ui/SelectField";
 import { ThemeDate } from "@/components/ui/ThemeDate";
 
 type DupMatch = {
@@ -219,11 +219,8 @@ export default function NewLeadPage() {
 
       <div>
         <h1 className="page-title">
-          <Sparkles className="size-6 text-brand-cyan" /> New lead
+          <UserPlus className="size-6 text-brand-cyan" /> New lead
         </h1>
-        <p className="page-subtitle mt-1">
-          Once created, the lead-nurture workflow auto-kicks in (if installed + active).
-        </p>
       </div>
 
       <form onSubmit={submit} className="card-surface p-5 sm:p-6 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-4">
@@ -249,13 +246,13 @@ export default function NewLeadPage() {
           value={form.email}
           setValue={(v) => set("email", v)}
           type="email"
-          placeholder="name@example.com"
+        // placeholder="name@example.com"
         />
         <Row
           label="Phone"
           value={form.phone}
           setValue={(v) => set("phone", v)}
-          placeholder="+919XXXXXXXXX"
+        // placeholder="+919XXXXXXXXX"
         />
 
         {/* Live duplicate warning — shown when /check-duplicate returns matches.
@@ -306,9 +303,10 @@ export default function NewLeadPage() {
 
         <div>
           <div className="text-xs font-medium mb-1">Source</div>
-          <ThemeSelect
+          <SelectField
             value={form.source}
-            onChange={(v) => {
+            onChange={(e) => {
+              const v = e.target.value;
               set("source", v);
               // Clear referrer fields if user switches away from a referral source
               if (!REFERRAL_SOURCES.has(v)) {
@@ -326,8 +324,8 @@ export default function NewLeadPage() {
             <option value="google">Google</option>
             <option value="cold_call">Cold Call</option>
             <option value="other">Other</option>
-            <option value="manual">— Manual entry —</option>
-          </ThemeSelect>
+            <option value="manual">Manual entry</option>
+          </SelectField>
         </div>
 
         {/* Conditional referrer lookup — appears only for referral / existing-client sources */}
@@ -401,7 +399,7 @@ export default function NewLeadPage() {
             value={form.ownerId || null}
             onChange={(id) => setForm((s) => ({ ...s, ownerId: id ?? "" }))}
             role="rm"
-            placeholder="— Auto-assign via round-robin —"
+            placeholder="Auto-assign via round-robin"
           />
         </div>
 
@@ -409,11 +407,19 @@ export default function NewLeadPage() {
         <div className="sm:col-span-2 grid grid-cols-2 gap-3">
           <label className="block">
             <div className="text-xs font-medium mb-1">Lead type</div>
-            <ThemeSelect value={form.leadType} onChange={(v) => set("leadType", v)} options={LEAD_TYPES} />
+            <SelectField value={form.leadType} onChange={(e) => set("leadType", e.target.value)}>
+              {LEAD_TYPES.map(([k, l]) => (
+                <option key={k} value={k}>{l}</option>
+              ))}
+            </SelectField>
           </label>
           <label className="block">
             <div className="text-xs font-medium mb-1">AUM potential</div>
-            <ThemeSelect value={form.aumPotential} onChange={(v) => set("aumPotential", v)} options={AUM_BANDS} />
+            <SelectField value={form.aumPotential} onChange={(e) => set("aumPotential", e.target.value)}>
+              {AUM_BANDS.map(([k, l]) => (
+                <option key={k} value={k}>{l}</option>
+              ))}
+            </SelectField>
           </label>
         </div>
 
@@ -432,7 +438,7 @@ export default function NewLeadPage() {
             value={form.expectedBusinessAmount}
             setValue={(v) => set("expectedBusinessAmount", v)}
             type="number"
-            placeholder="e.g. 500000"
+          // placeholder="e.g. 500000"
           />
           <label className="block">
             <div className="text-xs font-medium mb-1">Follow-up date</div>
@@ -447,7 +453,7 @@ export default function NewLeadPage() {
           </label>
         </div>
 
-        <Row label="Occupation" value={form.occupation} setValue={(v) => set("occupation", v)} placeholder="e.g. Salaried · Business owner" />
+        <Row label="Occupation" value={form.occupation} setValue={(v) => set("occupation", v)} />
         <div className="sm:col-span-2 grid grid-cols-2 gap-3">
           <Row label="Alternate phone" value={form.altPhone} setValue={(v) => set("altPhone", v)} placeholder="Secondary number" />
           <Row label="Alternate email" value={form.altEmail} setValue={(v) => set("altEmail", v)} type="email" placeholder="Secondary email" />
@@ -555,11 +561,10 @@ function Chips({
             key={o}
             type="button"
             onClick={() => onToggle(o)}
-            className={`text-xs rounded-full px-2.5 py-1 border transition-colors ${
-              on
-                ? "bg-brand-cyan text-white border-brand-cyan"
-                : "bg-secondary/40 text-muted-foreground border-border hover:bg-secondary"
-            }`}
+            className={`text-xs rounded-full px-2.5 py-1 border transition-colors ${on
+              ? "bg-brand-cyan text-white border-brand-cyan"
+              : "bg-secondary/40 text-muted-foreground border-border hover:bg-secondary"
+              }`}
           >
             {o}
           </button>

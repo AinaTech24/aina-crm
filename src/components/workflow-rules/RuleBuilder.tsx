@@ -302,9 +302,6 @@ export function RuleBuilder({
           <h1 className="page-title">
             <Workflow className="size-6 text-brand-cyan" /> {mode === "edit" ? "Edit Workflow Rule" : "Create Workflow Rule"}
           </h1>
-          <p className="page-subtitle">
-            Trigger → Criteria → Actions · same flow as Zoho CRM.
-          </p>
         </div>
       </div>
 
@@ -317,13 +314,12 @@ export function RuleBuilder({
           return (
             <div key={n} className="flex items-center gap-2 flex-1">
               <div
-                className={`size-7 rounded-full grid place-items-center text-xs font-semibold ${
-                  done
+                className={`size-7 rounded-full grid place-items-center text-xs font-semibold ${done
                     ? "bg-emerald-500 text-white"
                     : active
                       ? "bg-brand-cyan text-white"
                       : "bg-secondary text-muted-foreground"
-                }`}
+                  }`}
               >
                 {done ? "✓" : n}
               </div>
@@ -726,15 +722,13 @@ function RadioCard({
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className={`text-left rounded-lg border p-3 transition-colors disabled:opacity-40 ${
-        checked ? "border-brand-cyan bg-brand-cyan-light/40" : "border-border hover:bg-secondary/40"
-      }`}
+      className={`text-left rounded-lg border p-3 transition-colors disabled:opacity-40 ${checked ? "border-brand-cyan bg-brand-cyan-light/40" : "border-border hover:bg-secondary/40"
+        }`}
     >
       <div className="font-semibold text-sm flex items-center gap-2">
         <span
-          className={`size-3 rounded-full border ${
-            checked ? "bg-brand-cyan border-brand-cyan" : "border-muted-foreground"
-          }`}
+          className={`size-3 rounded-full border ${checked ? "bg-brand-cyan border-brand-cyan" : "border-muted-foreground"
+            }`}
         />
         {title}
       </div>
@@ -800,9 +794,8 @@ function SearchableFieldSelect({
                       setOpen(false);
                       setQ("");
                     }}
-                    className={`w-full text-left px-3 py-1.5 text-xs hover:bg-brand-cyan-light/40 ${
-                      f.key === value ? "font-semibold text-brand-cyan-deep" : ""
-                    }`}
+                    className={`w-full text-left px-3 py-1.5 text-xs hover:bg-brand-cyan-light/40 ${f.key === value ? "font-semibold text-brand-cyan-deep" : ""
+                      }`}
                   >
                     {f.label}
                   </button>
@@ -927,62 +920,61 @@ function CriteriaStep({
               ["today", "yesterday", "tomorrow"].includes(row.operator);
             return (
               <Fragment key={i}>
-              <div className="flex items-center gap-2">
-                <span className="grid place-items-center size-6 rounded-full bg-secondary text-[11px] font-semibold text-muted-foreground shrink-0">
-                  {i + 1}
-                </span>
-                <SearchableFieldSelect
-                  fields={mod?.fields ?? []}
-                  value={row.field}
-                  onChange={(key) => update(i, { field: key, operator: "is", value: "" })}
-                  className="w-52"
-                />
-                <SelectField
-                  value={row.operator}
-                  onChange={(e) => update(i, { operator: e.target.value })}
-                  className="input-base text-xs w-40"
-                >
-                  {ops.map((o) => (
-                    <option key={o.key} value={o.key}>{o.label}</option>
-                  ))}
-                </SelectField>
-                {!noValue ? (
-                  <CriteriaValueInput field={field} op={row.operator} value={row.value} onChange={(v) => update(i, { value: v })} />
-                ) : (
-                  <div className="flex-1" />
-                )}
-                <button onClick={addRow} className="btn-icon h-7 text-brand-cyan" title="Add condition">
-                  <Plus className="size-4" />
-                </button>
-                {rows.length > 1 && (
-                  <button onClick={() => removeRow(i)} className="btn-icon h-7 text-rose-600" title="Remove">
-                    <Trash2 className="size-3.5" />
+                <div className="flex items-center gap-2">
+                  <span className="grid place-items-center size-6 rounded-full bg-secondary text-[11px] font-semibold text-muted-foreground shrink-0">
+                    {i + 1}
+                  </span>
+                  <SearchableFieldSelect
+                    fields={mod?.fields ?? []}
+                    value={row.field}
+                    onChange={(key) => update(i, { field: key, operator: "is", value: "" })}
+                    className="w-52"
+                  />
+                  <SelectField
+                    value={row.operator}
+                    onChange={(e) => update(i, { operator: e.target.value })}
+                    className="input-base text-xs w-40"
+                  >
+                    {ops.map((o) => (
+                      <option key={o.key} value={o.key}>{o.label}</option>
+                    ))}
+                  </SelectField>
+                  {!noValue ? (
+                    <CriteriaValueInput field={field} op={row.operator} value={row.value} onChange={(v) => update(i, { value: v })} />
+                  ) : (
+                    <div className="flex-1" />
+                  )}
+                  <button onClick={addRow} className="btn-icon h-7 text-brand-cyan" title="Add condition">
+                    <Plus className="size-4" />
                   </button>
-                )}
-              </div>
-              {/* Joiner to the next row — AND / OR / NOT; active shows a ✔. */}
-              {i < rows.length - 1 && (
-                <div className="flex items-center gap-1.5 pl-8 py-0.5">
-                  {(["AND", "OR", "NOT"] as const).map((op) => {
-                    const isActive = joiners[i] === op;
-                    return (
-                      <button
-                        key={op}
-                        type="button"
-                        onClick={() => setJoiner(i, op)}
-                        className={`text-[11px] font-semibold rounded-md px-2.5 py-1 border transition-colors ${
-                          isActive
-                            ? "bg-brand-cyan text-white border-brand-cyan"
-                            : "bg-secondary/40 text-muted-foreground border-border hover:bg-secondary"
-                        }`}
-                      >
-                        {isActive ? "✔ " : ""}
-                        {op}
-                      </button>
-                    );
-                  })}
+                  {rows.length > 1 && (
+                    <button onClick={() => removeRow(i)} className="btn-icon h-7 text-rose-600" title="Remove">
+                      <Trash2 className="size-3.5" />
+                    </button>
+                  )}
                 </div>
-              )}
+                {/* Joiner to the next row — AND / OR / NOT; active shows a ✔. */}
+                {i < rows.length - 1 && (
+                  <div className="flex items-center gap-1.5 pl-8 py-0.5">
+                    {(["AND", "OR", "NOT"] as const).map((op) => {
+                      const isActive = joiners[i] === op;
+                      return (
+                        <button
+                          key={op}
+                          type="button"
+                          onClick={() => setJoiner(i, op)}
+                          className={`text-[11px] font-semibold rounded-md px-2.5 py-1 border transition-colors ${isActive
+                              ? "bg-brand-cyan text-white border-brand-cyan"
+                              : "bg-secondary/40 text-muted-foreground border-border hover:bg-secondary"
+                            }`}
+                        >
+                          {isActive ? "✔ " : ""}
+                          {op}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </Fragment>
             );
           })}
@@ -1349,7 +1341,7 @@ function ActionConfigEditor({
     fetch("/api/templates")
       .then((r) => r.json())
       .then((j) => { _ruleTplCache = j.templates ?? []; setAllTemplates(_ruleTplCache!); })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   switch (action.type) {

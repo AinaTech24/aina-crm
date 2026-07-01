@@ -183,7 +183,7 @@ export async function buildNextBestActions(
     const r = await tx.execute(sql`
       SELECT i.id, i.name, i.avatar_url, i.phone, i.email, COALESCE(i.aum,0)::numeric AS aum, i.redemption_risk_reason, i.redemption_risk_flagged_at, u.name AS rm_name
       FROM investors i LEFT JOIN users u ON u.id = i.rm_id
-      WHERE i.merged_into_id IS NULL AND (i.status = 'redemption_risk' OR i.redemption_risk_flagged_at IS NOT NULL) ${invScope}
+      WHERE i.merged_into_id IS NULL AND i.deleted_at IS NULL AND (i.status = 'redemption_risk' OR i.redemption_risk_flagged_at IS NOT NULL) ${invScope}
       ORDER BY i.aum DESC NULLS LAST ${cap}
     `);
     for (const x of r.rows) push("redemption_risk", x, num(x.aum), `Retention call — ${inr(num(x.aum))} at risk`, x.redemption_risk_reason ?? "Flagged redemption-risk", "call");
@@ -194,7 +194,7 @@ export async function buildNextBestActions(
       SELECT i.id, i.name, i.avatar_url, i.phone, i.email, u.name AS rm_name,
              s.amount::numeric AS amount, s.scheme_name, COALESCE(NULLIF(s.consecutive_failures,''),'0')::int AS fails, s.updated_at
       FROM sips s JOIN investors i ON i.id = s.investor_id LEFT JOIN users u ON u.id = i.rm_id
-      WHERE i.merged_into_id IS NULL AND (s.status = 'rejected' OR COALESCE(NULLIF(s.consecutive_failures,''),'0')::int > 0) AND s.status <> 'stopped' ${sipScope}
+      WHERE i.merged_into_id IS NULL AND i.deleted_at IS NULL AND (s.status = 'rejected' OR COALESCE(NULLIF(s.consecutive_failures,''),'0')::int > 0) AND s.status <> 'stopped' ${sipScope}
       ORDER BY fails DESC, s.amount DESC NULLS LAST ${cap}
     `);
     for (const x of r.rows) push("sip_bounce", x, num(x.amount) * 12, `Rescue SIP — ${inr(num(x.amount))}/mo`, `${x.scheme_name ?? "SIP"} · ${x.fails} bounce${num(x.fails) === 1 ? "" : "es"}`, "call");
@@ -204,7 +204,7 @@ export async function buildNextBestActions(
     const r = await tx.execute(sql`
       SELECT i.id, i.name, i.avatar_url, i.phone, i.email, COALESCE(i.aum,0)::numeric AS aum, i.kyc_status, i.ckyc_expiry_at, u.name AS rm_name
       FROM investors i LEFT JOIN users u ON u.id = i.rm_id
-      WHERE i.merged_into_id IS NULL AND i.status = 'active' AND (
+      WHERE i.merged_into_id IS NULL AND i.deleted_at IS NULL AND i.status = 'active' AND (
         i.kyc_status IN ('expired','re_kyc_required','rejected')
         OR (i.ckyc_expiry_at IS NOT NULL AND i.ckyc_expiry_at BETWEEN current_date AND current_date + interval '30 days')
       ) ${invScope}
@@ -230,7 +230,7 @@ export async function buildNextBestActions(
     const r = await tx.execute(sql`
       SELECT i.id, i.name, i.avatar_url, i.phone, i.email, COALESCE(i.aum,0)::numeric AS aum, i.service_tier, i.next_review_at, u.name AS rm_name
       FROM investors i LEFT JOIN users u ON u.id = i.rm_id
-      WHERE i.merged_into_id IS NULL AND i.status = 'active' AND i.next_review_at IS NOT NULL AND i.next_review_at < now() ${invScope}
+      WHERE i.merged_into_id IS NULL AND i.deleted_at IS NULL AND i.status = 'active' AND i.next_review_at IS NOT NULL AND i.next_review_at < now() ${invScope}
       ORDER BY i.aum DESC NULLS LAST ${cap}
     `);
     for (const x of r.rows) push("review_overdue", x, num(x.aum), `Run review — Tier ${x.service_tier ?? "—"}`, `Review due ${fmt(x.next_review_at)}`, "call");
@@ -240,7 +240,7 @@ export async function buildNextBestActions(
     const r = await tx.execute(sql`
       SELECT i.id, i.name, i.avatar_url, i.phone, i.email, COALESCE(i.aum,0)::numeric AS aum, i.last_transaction_at, u.name AS rm_name
       FROM investors i LEFT JOIN users u ON u.id = i.rm_id
-      WHERE i.merged_into_id IS NULL AND i.status = 'active'
+      WHERE i.merged_into_id IS NULL AND i.deleted_at IS NULL AND i.status = 'active'
         AND (i.last_transaction_at IS NULL OR i.last_transaction_at < now() - interval '180 days')
         AND COALESCE(i.aum,0) > 0 ${invScope}
       ORDER BY i.aum DESC NULLS LAST ${cap}
@@ -255,7 +255,7 @@ export async function buildNextBestActions(
       SELECT i.id, i.name, i.avatar_url, i.phone, i.email, COALESCE(i.aum,0)::numeric AS aum, u.name AS rm_name,
         (SELECT string_agg(cs.k, ', ') FROM jsonb_each_text(i.cross_sell) AS cs(k,v) WHERE cs.v IN ('held_elsewhere','interested','not_held')) AS gaps
       FROM investors i LEFT JOIN users u ON u.id = i.rm_id
-      WHERE i.merged_into_id IS NULL AND i.status = 'active' AND i.cross_sell IS NOT NULL
+      WHERE i.merged_into_id IS NULL AND i.deleted_at IS NULL AND i.status = 'active' AND i.cross_sell IS NOT NULL
         AND EXISTS (SELECT 1 FROM jsonb_each_text(i.cross_sell) AS cs(k,v) WHERE cs.v IN ('held_elsewhere','interested','not_held')) ${invScope}
       ORDER BY i.aum DESC NULLS LAST ${cap}
     `);
@@ -266,7 +266,7 @@ export async function buildNextBestActions(
     const r = await tx.execute(sql`
       SELECT i.id, i.name, i.avatar_url, i.phone, i.email, COALESCE(i.aum,0)::numeric AS aum, i.risk_profile_signed_at, u.name AS rm_name
       FROM investors i LEFT JOIN users u ON u.id = i.rm_id
-      WHERE i.merged_into_id IS NULL AND i.status = 'active'
+      WHERE i.merged_into_id IS NULL AND i.deleted_at IS NULL AND i.status = 'active'
         AND (i.risk_profile_signed_at IS NULL OR i.risk_profile_signed_at < now() - interval '365 days') ${invScope}
       ORDER BY i.aum DESC NULLS LAST ${cap}
     `);
@@ -290,7 +290,7 @@ export async function buildNextBestActions(
     const r = await tx.execute(sql`
       SELECT i.id, i.name, i.avatar_url, i.phone, i.email, i.dob, u.name AS rm_name
       FROM investors i LEFT JOIN users u ON u.id = i.rm_id
-      WHERE i.merged_into_id IS NULL AND i.status = 'active' AND i.dob IS NOT NULL
+      WHERE i.merged_into_id IS NULL AND i.deleted_at IS NULL AND i.status = 'active' AND i.dob IS NOT NULL
         AND to_char(i.dob, 'MM-DD') = to_char(current_date, 'MM-DD') ${invScope}
       ORDER BY i.name ASC ${cap}
     `);
@@ -302,7 +302,7 @@ export async function buildNextBestActions(
     const r = await tx.execute(sql`
       SELECT i.id, i.name, i.avatar_url, i.phone, i.email, u.name AS rm_name
       FROM investors i LEFT JOIN users u ON u.id = i.rm_id
-      WHERE i.merged_into_id IS NULL AND i.status = 'active' AND i.anniversary_date IS NOT NULL
+      WHERE i.merged_into_id IS NULL AND i.deleted_at IS NULL AND i.status = 'active' AND i.anniversary_date IS NOT NULL
         AND to_char(i.anniversary_date, 'MM-DD') = to_char(current_date, 'MM-DD') ${invScope}
       ORDER BY i.name ASC ${cap}
     `);
@@ -314,7 +314,7 @@ export async function buildNextBestActions(
     const r = await tx.execute(sql`
       SELECT i.id, i.name, i.avatar_url, i.phone, i.email, COALESCE(i.aum,0)::numeric AS aum, u.name AS rm_name
       FROM investors i LEFT JOIN users u ON u.id = i.rm_id
-      WHERE i.merged_into_id IS NULL AND i.mandate_status = 'rejected' ${invScope}
+      WHERE i.merged_into_id IS NULL AND i.deleted_at IS NULL AND i.mandate_status = 'rejected' ${invScope}
       ORDER BY i.aum DESC NULLS LAST ${cap}
     `);
     for (const x of r.rows) push("mandate_rejected", x, num(x.aum), `Re-register mandate — SIPs blocked`, "Bank rejected the NACH / e-mandate", "call");
@@ -362,7 +362,7 @@ export async function buildNextBestActions(
       ? sql` AND p.investor_id = ${forInvestorId}::uuid`
       : firmWide
         ? sql``
-        : sql` AND (p.investor_id IN (SELECT id FROM investors WHERE rm_id = ${userId}::uuid)
+        : sql` AND (p.investor_id IN (SELECT id FROM investors WHERE rm_id = ${userId}::uuid AND deleted_at IS NULL)
                     OR p.lead_id IN (SELECT id FROM leads WHERE owner_id = ${userId}::uuid))`;
     const r = await tx.execute(sql`
       SELECT p.recipient_name AS name, p.title, p.sent_at,

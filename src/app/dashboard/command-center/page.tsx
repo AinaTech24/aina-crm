@@ -47,11 +47,6 @@ const TONE: Record<string, { badge: string; bar: string; ring: string }> = {
   emerald: { badge: "bg-emerald-100 text-emerald-700", bar: "bg-emerald-500", ring: "border-emerald-200" },
 };
 
-const BANDS: { key: Severity; label: string; sub: string }[] = [
-  { key: "now", label: "Act now", sub: "Money or relationships at risk today" },
-  { key: "today", label: "Today", sub: "Service promises & pipeline" },
-  { key: "soon", label: "This week", sub: "Stay ahead of it" },
-];
 
 export default async function CommandCenterPage({
   searchParams,
@@ -135,10 +130,13 @@ export default async function CommandCenterPage({
   }
 
   const totalItems = groups.reduce((n, g) => n + g.count, 0);
-  const nowCount = groups.filter((g) => g.severity === "now").reduce((n, g) => n + g.count, 0);
+  const bandCount = (s: Severity) => groups.filter((g) => g.severity === s).reduce((n, g) => n + g.count, 0);
+  const nowCount = bandCount("now");
+  const todayCount = bandCount("today");
+  const soonCount = bandCount("soon");
 
   return (
-    <div className="space-y-6 max-w-6xl">
+    <div className="space-y-5 max-w-7xl">
       {/* Triage queue is "act now" — keep it fresh as work completes elsewhere. */}
       <AutoRefresh intervalMs={30000} />
       {/* Header */}
@@ -151,8 +149,12 @@ export default async function CommandCenterPage({
         <div className="flex items-center gap-3 flex-wrap">
           <ViewToggle current={clientView ? "client" : "urgency"} sp={sp} />
           <CommandDigestButton />
-          <Stat label="Act now" value={nowCount} tone={nowCount ? "rose" : "emerald"} />
-          <Stat label="Total open" value={totalItems} tone="sky" />
+          <div className="flex items-center gap-4 rounded-lg border border-border bg-card px-3 py-1.5">
+            <Stat label="Act now" value={nowCount} tone={nowCount ? "rose" : "emerald"} />
+            <Stat label="Today" value={todayCount} tone={todayCount ? "amber" : "muted"} />
+            <Stat label="This week" value={soonCount} tone="sky" />
+            <Stat label="Total" value={totalItems} tone="muted" />
+          </div>
         </div>
       </div>
 
@@ -197,23 +199,22 @@ export default async function CommandCenterPage({
       ) : clientView ? (
         <ByClientView groups={groups} />
       ) : (
-        BANDS.map((band) => {
-          const bandGroups = groups.filter((g) => g.severity === band.key);
-          if (!bandGroups.length) return null;
-          return (
-            <section key={band.key} className="space-y-3">
-              <div className="flex items-baseline gap-2 px-0.5">
-                <h2 className="text-sm font-bold uppercase tracking-wide">{band.label}</h2>
-                <span className="text-xs text-muted-foreground">{band.sub}</span>
-              </div>
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                {bandGroups.map((g) => (
-                  <GroupCard key={g.key} group={g} />
-                ))}
-              </div>
-            </section>
+        (() => {
+          // One full-width masonry of ALL cards, severity-sorted (Act now →
+          // Today → This week, then biggest count first). Packs variable-height
+          // cards tightly so a sparse band never leaves half the screen empty.
+          const sevOrder: Record<Severity, number> = { now: 0, today: 1, soon: 2 };
+          const sorted = [...groups].sort(
+            (a, b) => sevOrder[a.severity] - sevOrder[b.severity] || b.count - a.count
           );
-        })
+          return (
+            <div className="columns-1 sm:columns-2 xl:columns-3 2xl:columns-4 gap-4 [&>*]:mb-4 [&>*]:break-inside-avoid">
+              {sorted.map((g) => (
+                <GroupCard key={g.key} group={g} />
+              ))}
+            </div>
+          );
+        })()
       )}
     </div>
   );
@@ -329,19 +330,31 @@ function ByClientView({ groups }: { groups: ActionGroup[] }) {
   );
 }
 
+const SEV_TAG: Record<Severity, { label: string; cls: string }> = {
+  now: { label: "Act now", cls: "bg-rose-100 text-rose-700" },
+  today: { label: "Today", cls: "bg-amber-100 text-amber-700" },
+  soon: { label: "This week", cls: "bg-sky-100 text-sky-700" },
+};
+
 function GroupCard({ group }: { group: ActionGroup }) {
   const Icon = ICONS[group.icon] ?? Inbox;
   const tone = TONE[group.tone] ?? TONE.sky;
+  const sevTag = SEV_TAG[group.severity];
   return (
     <div className={`card-surface overflow-hidden border ${tone.ring}`}>
+      {/* Severity accent strip — replaces the removed band section headers */}
+      <div className={`h-1 ${tone.bar}`} />
       <div className="flex items-center justify-between px-4 py-3 border-b bg-secondary/30">
         <div className="flex items-center gap-2 min-w-0">
           <Icon className="size-4 shrink-0" />
           <span className="font-semibold text-sm truncate">{group.label}</span>
         </div>
-        <span className={`text-xs font-bold px-2 py-0.5 rounded-full tabular-nums ${tone.badge}`}>
-          {group.count}
-        </span>
+        <div className="flex items-center gap-1.5 shrink-0">
+          {sevTag && <span className={`text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded ${sevTag.cls}`}>{sevTag.label}</span>}
+          <span className={`text-xs font-bold px-2 py-0.5 rounded-full tabular-nums ${tone.badge}`}>
+            {group.count}
+          </span>
+        </div>
       </div>
       <ul className="divide-y">
         {group.items.map((it) => (
@@ -385,13 +398,17 @@ function GroupCard({ group }: { group: ActionGroup }) {
   );
 }
 
-function Stat({ label, value, tone }: { label: string; value: number; tone: "rose" | "sky" | "emerald" }) {
+function Stat({ label, value, tone }: { label: string; value: number; tone: "rose" | "sky" | "emerald" | "amber" | "muted" }) {
   const cls =
-    tone === "rose" ? "text-rose-600" : tone === "emerald" ? "text-emerald-600" : "text-foreground";
+    tone === "rose" ? "text-rose-600"
+    : tone === "emerald" ? "text-emerald-600"
+    : tone === "amber" ? "text-amber-600"
+    : tone === "sky" ? "text-sky-600"
+    : "text-foreground";
   return (
-    <div className="text-right">
-      <div className={`text-2xl font-bold tabular-nums ${cls}`}>{value}</div>
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</div>
+    <div className="text-center">
+      <div className={`text-xl font-bold tabular-nums leading-none ${cls}`}>{value}</div>
+      <div className="text-[10px] uppercase tracking-wider text-muted-foreground mt-0.5">{label}</div>
     </div>
   );
 }

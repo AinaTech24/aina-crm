@@ -35,19 +35,41 @@ const STATUS_TONE: Record<string, string> = {
 
 type Row = Record<string, any> & { id: string };
 
+// Relationship badge — the whole point of the "Client" column is to tell, at a
+// glance, whether a past/upcoming meeting was with an existing CLIENT or a
+// prospect (LEAD). A meeting tied to neither is flagged "Unlinked".
+const RELATION: Record<"lead" | "investor", { label: string; cls: string }> = {
+  lead: { label: "Lead", cls: "bg-violet-50 text-violet-700 border-violet-200" },
+  investor: { label: "Client", cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+};
+
 const clientCell = (m: Row) => {
   const isLead = m.party_kind === "lead";
   const eid = isLead ? m.lead_id : m.investor_id;
+  const pk = m.party_kind as "lead" | "investor" | null | undefined;
+  const rel = pk === "lead" || pk === "investor" ? RELATION[pk] : null;
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2 min-w-0">
       <Avatar src={m.party_avatar_url && eid ? `/api/${isLead ? "leads" : "investors"}/${eid}/avatar` : null} name={m.party_name} size={26} />
-      {m.party_name ? (
-        <Link href={isLead ? `/dashboard/leads/${m.lead_id}` : `/dashboard/investors/${m.investor_id}`} className="hover:underline">
-          {m.party_name}
-        </Link>
-      ) : (
-        <span className="text-muted-foreground">—</span>
-      )}
+      <div className="min-w-0">
+        <div className="flex items-center gap-1.5">
+          {m.party_name ? (
+            <Link href={isLead ? `/dashboard/leads/${m.lead_id}` : `/dashboard/investors/${m.investor_id}`} className="hover:underline font-medium truncate">
+              {m.party_name}
+            </Link>
+          ) : (
+            <span className="text-muted-foreground">—</span>
+          )}
+          {rel ? (
+            <span className={`shrink-0 text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded border ${rel.cls}`}>{rel.label}</span>
+          ) : (
+            <span className="shrink-0 text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded border bg-slate-50 text-slate-500 border-slate-200">Unlinked</span>
+          )}
+        </div>
+        {m.party_kind === "investor" && m.segment_tag ? (
+          <div className="text-[11px] text-muted-foreground truncate">{m.segment_tag}</div>
+        ) : null}
+      </div>
     </div>
   );
 };
@@ -85,15 +107,7 @@ export function MeetingsBulkTable({
         </>
       ),
     },
-    {
-      key: "client", header: "Client", tdClass: "py-3",
-      render: (m) => (
-        <>
-          {clientCell(m)}
-          <div className="text-xs text-muted-foreground">{m.party_kind === "lead" ? "Lead" : m.segment_tag ?? "—"}</div>
-        </>
-      ),
-    },
+    { key: "client", header: "Client", tdClass: "py-3", render: clientCell },
     {
       key: "category", header: "Category", tdClass: "py-3",
       render: (m) => (
@@ -131,14 +145,33 @@ export function MeetingsBulkTable({
       ),
     },
     { key: "client", header: "Client", tdClass: "py-3", render: clientCell },
-    { key: "type", header: "Type", tdClass: "py-3 text-xs", render: (m) => (m.subject ? <span className="font-medium">{m.subject}</span> : TYPE_LABEL[m.meeting_type] ?? m.meeting_type) },
+    {
+      key: "type", header: "Type", tdClass: "py-3 text-xs",
+      render: (m) =>
+        m.subject ? (
+          <>
+            <div className="font-medium max-w-[220px] truncate">{m.subject}</div>
+            <div className="text-[11px] text-muted-foreground">{TYPE_LABEL[m.meeting_type] ?? m.meeting_type}</div>
+          </>
+        ) : (
+          TYPE_LABEL[m.meeting_type] ?? m.meeting_type
+        ),
+    },
     { key: "status", header: "Status", tdClass: "py-3", render: (m) => <span className={`chip capitalize ${STATUS_TONE[m.status] ?? ""}`}>{String(m.status).replace(/_/g, " ")}</span> },
     {
       key: "actions", header: "Action items", thClass: "text-right py-2 font-medium", tdClass: "py-3 text-right tabular-nums",
       render: (m) => (m.action_count > 0 ? <span className={m.follow_up_task_created === "true" ? "text-emerald-600" : "text-amber-600"}>{m.action_count}</span> : "—"),
     },
     { key: "attach", header: "Attachments", thClass: "text-right py-2 font-medium", tdClass: "py-3 text-right tabular-nums text-muted-foreground", render: (m) => (m.attach_count > 0 ? m.attach_count : "—") },
-    { key: "notes", header: "Notes", thClass: "text-left py-2 font-medium pr-4", tdClass: "py-3 pr-4 text-xs text-muted-foreground max-w-[260px] truncate", render: (m) => m.meeting_notes ?? <span className="italic">No notes yet</span> },
+    {
+      key: "notes", header: "Notes", thClass: "text-left py-2 font-medium pr-4", tdClass: "py-3 pr-4 text-xs text-muted-foreground max-w-[260px] truncate",
+      render: (m) =>
+        m.meeting_notes
+          ? m.meeting_notes
+          : m.status === "completed"
+            ? <Link href={`/dashboard/review-meetings/${m.id}`} className="italic text-amber-600 hover:underline">Add outcome →</Link>
+            : <span className="italic">No notes yet</span>,
+    },
   ];
 
   return (

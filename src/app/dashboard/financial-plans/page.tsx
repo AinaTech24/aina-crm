@@ -21,7 +21,7 @@ import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
 import { Pager } from "@/components/common/Pager";
 import { Avatar } from "@/components/ui/Avatar";
 import { PdfRow } from "@/components/common/ClickableRow";
-import { financialPlans, investors } from "@/db/schema";
+import { financialPlans, investors, leads } from "@/db/schema";
 
 export const dynamic = "force-dynamic";
 
@@ -53,7 +53,7 @@ export default async function FinancialPlansPage({
     // Server-side filter (was filtered in JS over the whole table before).
     const conds: any[] = [];
     if (!seesAll) conds.push(eq(financialPlans.preparedByUserId, session.userId));
-    if (q) conds.push(or(ilike(financialPlans.planNumber, `%${q}%`), ilike(investors.name, `%${q}%`)));
+    if (q) conds.push(or(ilike(financialPlans.planNumber, `%${q}%`), ilike(investors.name, `%${q}%`), ilike(leads.name, `%${q}%`)));
     if (statusFilter.length) conds.push(inArray(financialPlans.status, statusFilter as any));
     const dr = dateRangeCond(sp, "created", "financial_plans.created_at");
     if (dr) conds.push(dr);
@@ -67,25 +67,29 @@ export default async function FinancialPlansPage({
         id: financialPlans.id,
         planNumber: financialPlans.planNumber,
         investorId: financialPlans.investorId,
+        leadId: financialPlans.leadId,
         status: financialPlans.status,
         monthlyIncome: financialPlans.monthlyIncome,
         monthlyExpenses: financialPlans.monthlyExpenses,
         preparedAt: financialPlans.preparedAt,
         investorName: investors.name,
+        leadName: leads.name,
         investorAvatarUrl: investors.avatarUrl,
       })
       .from(financialPlans)
       .leftJoin(investors, eq(financialPlans.investorId, investors.id))
+      .leftJoin(leads, eq(financialPlans.leadId, leads.id))
       .where(where)
       .orderBy(desc(financialPlans.createdAt))
       .limit(PAGE_SIZE)
       .offset((page - 1) * PAGE_SIZE);
 
-    // Filtered total (pager) — investor join needed for name search.
+    // Filtered total (pager) — subject joins needed for name search.
     const cnt = await tx
       .select({ c: sql<number>`count(*)::int` })
       .from(financialPlans)
       .leftJoin(investors, eq(financialPlans.investorId, investors.id))
+      .leftJoin(leads, eq(financialPlans.leadId, leads.id))
       .where(where);
 
     // Book-wide KPIs aggregated in SQL (was summed in JS over every plan).
@@ -212,7 +216,7 @@ export default async function FinancialPlansPage({
                     return (
                       <PdfRow
                         key={p.id}
-                        title={`Financial Plan · ${p.investorName ?? p.planNumber ?? ""}`}
+                        title={`Financial Plan · ${p.investorName ?? p.leadName ?? p.planNumber ?? ""}`}
                         pdfUrl={`/dashboard/financial-plans/${p.id}/print`}
                         className="hover:bg-secondary/20 transition-colors"
                       >
@@ -223,8 +227,11 @@ export default async function FinancialPlansPage({
                         </td>
                         <td className="py-3 px-4 font-medium text-foreground">
                           <div className="flex items-center gap-2">
-                            <Avatar src={p.investorAvatarUrl ? `/api/investors/${p.investorId}/avatar` : null} name={p.investorName} size={26} />
-                            <span>{p.investorName ?? "—"}</span>
+                            <Avatar src={p.investorAvatarUrl && p.investorId ? `/api/investors/${p.investorId}/avatar` : null} name={p.investorName ?? p.leadName} size={26} />
+                            <span className="flex items-center gap-1.5">
+                              {p.investorName ?? p.leadName ?? "—"}
+                              {!p.investorId && p.leadId && <span className="chip text-[9px] bg-amber-100 text-amber-700">Lead</span>}
+                            </span>
                           </div>
                         </td>
                         <td className="py-3 px-4 text-right tabular-nums">{p.monthlyIncome ? formatINR(inc) : "—"}</td>

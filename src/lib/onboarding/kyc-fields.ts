@@ -384,6 +384,38 @@ export function getBackOfficeFields(clientType: ClientType): KycField[] {
   return getAllFields(clientType).filter((f) => f.backOffice);
 }
 
+/**
+ * Every distinct field across ALL client types, deduped by key (first wins).
+ * Powers the admin "which fields are mandatory" settings screen — the required
+ * override is keyed on the field key, so it applies wherever that field appears.
+ */
+export function getAllUniqueFields(): KycField[] {
+  const seen = new Set<string>();
+  const out: KycField[] = [];
+  for (const list of Object.values(FIELD_CHECKLISTS)) {
+    for (const f of list) {
+      if (seen.has(f.key)) continue;
+      seen.add(f.key);
+      out.push(f);
+    }
+  }
+  return out;
+}
+
+/**
+ * Apply a per-tenant required-override map onto a field list. The map is
+ * { fieldKey: boolean } — a key set to true makes the field mandatory, false
+ * makes it optional; an absent key keeps the catalog default. Used so a firm can
+ * decide which onboarding fields its team MUST fill.
+ */
+export function applyRequiredOverrides(
+  fields: KycField[],
+  overrides: Record<string, boolean> | null | undefined
+): KycField[] {
+  if (!overrides || Object.keys(overrides).length === 0) return fields;
+  return fields.map((f) => (f.key in overrides ? { ...f, required: !!overrides[f.key] } : f));
+}
+
 // ─── Client-master mapper ───────────────────────────────────────────────────
 
 type InvestorMergeBase = {

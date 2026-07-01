@@ -7,7 +7,7 @@ import { requireSession } from "@/lib/auth/session";
 import { require as requireCap, can } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
-import { financialPlans, investors } from "@/db/schema";
+import { financialPlans, investors, leads } from "@/db/schema";
 import { handleApiError } from "@/lib/api/error-handler";
 import { recomputePlanGoals, numOrNull } from "@/lib/financial-plans/compute";
 
@@ -55,7 +55,10 @@ const RecommendationSchema = z.object({
 });
 
 const CreateBody = z.object({
-  investorId: z.string().uuid(),
+  // A plan's subject is EITHER an existing client (investorId) OR a lead/prospect
+  // (leadId) — exactly one (enforced by .refine below + a DB CHECK constraint).
+  investorId: z.string().uuid().optional().nullable(),
+  leadId: z.string().uuid().optional().nullable(),
   status: z.enum(["draft", "finalized"]).default("draft"),
   clientAge: z.number().int().min(0).max(120).optional().nullable(),
   spouseAge: z.number().int().min(0).max(120).optional().nullable(),
@@ -89,6 +92,9 @@ const CreateBody = z.object({
   savingsRate: z.number().min(0).max(100).optional().nullable(),
   emiToIncomePct: z.number().min(0).max(100).optional().nullable(),
   mfdValueAddText: z.string().optional().nullable(),
+}).refine((d) => !!d.investorId !== !!d.leadId, {
+  message: "Provide exactly one of investorId or leadId",
+  path: ["investorId"],
 });
 
 async function nextPlanNumber(tx: any, tenantId: string) {
@@ -122,6 +128,7 @@ export async function GET() {
           id: financialPlans.id,
           planNumber: financialPlans.planNumber,
           investorId: financialPlans.investorId,
+          leadId: financialPlans.leadId,
           status: financialPlans.status,
           clientAge: financialPlans.clientAge,
           monthlyIncome: financialPlans.monthlyIncome,
@@ -129,9 +136,11 @@ export async function GET() {
           preparedAt: financialPlans.preparedAt,
           createdAt: financialPlans.createdAt,
           investorName: investors.name,
+          leadName: leads.name,
         })
         .from(financialPlans)
         .leftJoin(investors, eq(financialPlans.investorId, investors.id))
+        .leftJoin(leads, eq(financialPlans.leadId, leads.id))
         .where(seesAll ? undefined : eq(financialPlans.preparedByUserId, session.userId))
         .orderBy(desc(financialPlans.createdAt))
         .limit(500)
@@ -162,13 +171,20 @@ export async function POST(req: NextRequest) {
     const clientMeta = clientMetaFromHeaders(req.headers);
 
     await withTenant(session.tenantId, async (tx) => {
-      const clientExists = await tx
-        .select({ id: investors.id })
-        .from(investors)
-        .where(eq(investors.id, data.investorId))
-        .limit(1);
-      if (clientExists.length === 0) {
-        throw Object.assign(new Error("Client investor not found in this tenant context"), { status: 404 });
+      if (data.leadId) {
+        const leadExists = await tx.select({ id: leads.id }).from(leads).where(eq(leads.id, data.leadId)).limit(1);
+        if (leadExists.length === 0) {
+          throw Object.assign(new Error("Lead not found in this tenant context"), { status: 404 });
+        }
+      } else {
+        const clientExists = await tx
+          .select({ id: investors.id })
+          .from(investors)
+          .where(eq(investors.id, data.investorId!))
+          .limit(1);
+        if (clientExists.length === 0) {
+          throw Object.assign(new Error("Client investor not found in this tenant context"), { status: 404 });
+        }
       }
 
       const planNumber = await nextPlanNumber(tx, session.tenantId);
@@ -177,7 +193,8 @@ export async function POST(req: NextRequest) {
         id,
         tenantId: session.tenantId,
         planNumber,
-        investorId: data.investorId,
+        investorId: data.investorId ?? null,
+        leadId: data.leadId ?? null,
         status: data.status,
         clientAge: data.clientAge,
         spouseAge: data.spouseAge,

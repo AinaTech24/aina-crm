@@ -9,6 +9,8 @@ import {
   getEntitlement,
   computeDays,
 } from "@/lib/leave/policy";
+import { ThemeSelect } from "@/components/ui/ThemeSelect";
+import { ThemeDate } from "@/components/ui/ThemeDate";
 
 type Emp = {
   id: string;
@@ -128,36 +130,35 @@ export function LeaveForm({
     <div className="card-surface p-5 space-y-4 max-w-3xl">
       <div className="grid sm:grid-cols-2 gap-4">
         <Field label="Employee">
-          <select
+          <ThemeSelect
             value={employeeId}
-            onChange={(e) => setEmployeeId(e.target.value)}
+            onChange={(val) => setEmployeeId(val)}
             disabled={!isManager}
-            className="input-base"
           >
             {employees.map((e) => (
               <option key={e.id} value={e.id}>{e.name}{e.id === currentUserId ? " (me)" : ""}</option>
             ))}
-          </select>
+          </ThemeSelect>
           {!isManager && <p className="text-[11px] text-muted-foreground mt-1">You can only file leave for yourself.</p>}
         </Field>
         <Field label="Leave type">
-          <select value={leaveType} onChange={(e) => setLeaveType(e.target.value)} className="input-base">
+          <ThemeSelect value={leaveType} onChange={(val) => setLeaveType(val)}>
             {Object.entries(LEAVE_TYPE_LABELS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-          </select>
+          </ThemeSelect>
         </Field>
 
         <Field label="Duration">
-          <select value={duration} onChange={(e) => setDuration(e.target.value as any)} className="input-base">
+          <ThemeSelect value={duration} onChange={(val) => setDuration(val as any)}>
             {Object.entries(LEAVE_DURATION_LABELS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-          </select>
+          </ThemeSelect>
         </Field>
         <Field label={duration === "half_day" ? "Date" : "From date"}>
-          <input type="date" value={fromDate} onChange={(e) => { setFromDate(e.target.value); if (toDate < e.target.value) setToDate(e.target.value); }} className="input-base" />
+          <ThemeDate value={fromDate} onChange={(val) => { setFromDate(val); if (toDate < val) setToDate(val); }} />
         </Field>
 
         {duration === "full_day" && (
           <Field label="To date">
-            <input type="date" value={toDate} min={fromDate} onChange={(e) => setToDate(e.target.value)} className="input-base" />
+            <ThemeDate value={toDate} min={fromDate} onChange={(val) => setToDate(val)} />
           </Field>
         )}
         <Field label="No. of days">
@@ -220,8 +221,8 @@ export function LeaveForm({
 
       {err && <div className="border border-destructive/30 bg-destructive/5 text-destructive rounded-lg px-3 py-2 text-sm">{err}</div>}
 
-      <div className="flex justify-end pt-2 border-t border-border">
-        <button onClick={save} disabled={!canSave || busy} className="btn-primary">
+      <div className="flex flex-wrap justify-end gap-2 pt-2 border-t border-border">
+        <button onClick={save} disabled={!canSave || busy} className="btn-primary w-full sm:w-auto justify-center">
           {busy ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />} File leave request
         </button>
       </div>

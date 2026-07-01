@@ -67,7 +67,7 @@ export async function ComplianceCockpit({
             COUNT(*) FILTER (WHERE nominee_name IS NULL OR nominee_name = '')::int AS nominee_missing,
             COUNT(*) FILTER (WHERE pan_aadhaar_link_status IN ('not_linked', 'pending'))::int AS pan_aadhaar_unlinked,
             (SELECT COUNT(*)::int FROM compliance_documents WHERE expires_on IS NOT NULL AND expires_on <= current_date)::int AS expired_docs
-          FROM investors WHERE status = 'active'
+          FROM investors WHERE status = 'active' AND deleted_at IS NULL
         `),
 
         // 3. Marketing & Template approval pipeline.

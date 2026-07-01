@@ -12,6 +12,7 @@ import { useMemo, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight, CheckCircle2, Loader2, ShieldCheck, Download } from "lucide-react";
+import { DownloadButton, OpenDocButton } from "@/components/common/SecureLinkButtons";
 
 type Option = { value: string; label: string; score: number };
 type Question = { key: string; label: string; helperText?: string; type: "single"; options: Option[] };
@@ -138,12 +139,12 @@ export function RiskProfileWizard({
             </p>
           </div>
           <div className="flex flex-wrap items-center justify-center gap-2">
-            <a href={`/api/risk-profiles/${doneId}/pdf?download=1`} className="btn-primary">
+            <DownloadButton url={`/api/risk-profiles/${doneId}/pdf?download=1`} className="btn-primary">
               <Download className="size-4" /> Download PDF
-            </a>
-            <a href={`/api/risk-profiles/${doneId}/pdf`} target="_blank" rel="noreferrer" className="btn-secondary">
+            </DownloadButton>
+            <OpenDocButton url={`/api/risk-profiles/${doneId}/pdf`} className="btn-secondary">
               View PDF
-            </a>
+            </OpenDocButton>
             <button
               type="button"
               onClick={() => router.push(`/dashboard/investors/${investor.id}`)}

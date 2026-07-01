@@ -23,7 +23,7 @@ export default async function NewAmcEmpanelmentPage() {
   });
 
   return (
-    <div className="space-y-5 max-w-3xl">
+    <div className="space-y-5 w-full max-w-3xl">
       <div>
         <Link
           href="/dashboard/amc-empanelments"
@@ -32,11 +32,6 @@ export default async function NewAmcEmpanelmentPage() {
           <ChevronLeft className="size-3" /> AMC empanelments
         </Link>
         <h1 className="text-2xl font-semibold mt-1">Add an empanelment</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Pick the AMC, paste the distributor code and contacts. You can
-          also override the empanelment trail rate so the brokerage
-          reconciler uses the real number from your agreement.
-        </p>
       </div>
       <AmcEmpanelmentForm mode="create" amcCatalog={amcs} />
     </div>

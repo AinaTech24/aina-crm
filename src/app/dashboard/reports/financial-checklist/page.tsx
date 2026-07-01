@@ -37,10 +37,6 @@ export default async function FinancialChecklistPage() {
           <h1 className="text-2xl font-semibold flex items-center gap-2">
             <CheckSquare className="size-6 text-brand-cyan" /> Finance management checklist
           </h1>
-          <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
-            The cadence of bookkeeping, accounting and tax tasks to run on your own business
-            finances — daily through annual. Keeps the practice audit-ready and your CA happy.
-          </p>
         </div>
         <PrintReportButton />
       </div>

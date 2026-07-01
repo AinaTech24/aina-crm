@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { ChevronLeft, HeartHandshake, Target, Users, ShieldCheck, Sparkles } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { families, investors, users, goals } from "@/db/schema";
@@ -16,6 +16,7 @@ import { FamilyTouchpoints } from "@/components/families/FamilyTouchpoints";
 import { EngageNextGenButton } from "@/components/families/EngageNextGenButton";
 import { FamilyTreeVisualizer } from "@/components/families/FamilyTreeVisualizer";
 import { RecordProvenance } from "@/components/common/RecordProvenance";
+import { DownloadButton } from "@/components/common/SecureLinkButtons";
 import { CalendarPlus } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -42,7 +43,7 @@ export default async function FamilyDetailPage({ params }: { params: Promise<{ i
     if (!fam) return null;
 
     // Members
-    const members = await tx.select().from(investors).where(eq(investors.familyId, id));
+    const members = await tx.select().from(investors).where(and(eq(investors.familyId, id), isNull(investors.deletedAt)));
 
     // RM options for the edit panel — active users with 'rm' role in this tenant
     const rmOpts = await tx.execute(sql`
@@ -135,14 +136,12 @@ export default async function FamilyDetailPage({ params }: { params: Promise<{ i
             <div className="text-xs text-muted-foreground mt-1 font-mono">
               Family ID {data.family.id.slice(0, 8)}…
             </div>
-            <a
-              href={`/api/families/${data.family.id}/statement/pdf?download=1`}
-              target="_blank"
-              rel="noopener"
+            <DownloadButton
+              url={`/api/families/${data.family.id}/statement/pdf?download=1`}
               className="btn-secondary text-xs mt-2 inline-flex"
             >
               Download household statement (PDF)
-            </a>
+            </DownloadButton>
             {data.family.notes && <p className="text-sm text-muted-foreground mt-2">{data.family.notes}</p>}
             <RecordProvenance
               entityType="family"

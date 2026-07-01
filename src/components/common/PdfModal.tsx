@@ -17,6 +17,7 @@
 import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { X, Download, ZoomIn, ZoomOut, ExternalLink, Printer, Loader2 } from "lucide-react";
+import { downloadFile, openInNewTab } from "@/lib/secure-download";
 
 export function PdfModal({
   title,
@@ -57,11 +58,11 @@ export function PdfModal({
               <button onClick={inc} className="p-1.5 hover:bg-accent rounded-r-md" aria-label="Zoom in" title="Zoom in"><ZoomIn className="size-3.5" /></button>
             </div>
             {downloadUrl ? (
-              <a href={downloadUrl} className="btn-secondary text-xs px-2.5 py-1 inline-flex items-center gap-1" title="Download"><Download className="size-3" /> Download</a>
+              <button onClick={() => downloadFile(downloadUrl)} className="btn-secondary text-xs px-2.5 py-1 inline-flex items-center gap-1" title="Download"><Download className="size-3" /> Download</button>
             ) : (
               <button onClick={printIframe} className="btn-secondary text-xs px-2.5 py-1 inline-flex items-center gap-1" title="Print / Save as PDF"><Printer className="size-3" /> Print</button>
             )}
-            <a href={pdfUrl} target="_blank" rel="noopener noreferrer" className="p-1.5 rounded hover:bg-accent" aria-label="Open in new tab" title="Open in new tab"><ExternalLink className="size-4" /></a>
+            <button onClick={() => openInNewTab(pdfUrl)} className="p-1.5 rounded hover:bg-accent" aria-label="Open in new tab" title="Open in new tab"><ExternalLink className="size-4" /></button>
             <button onClick={onClose} className="p-1.5 rounded hover:bg-accent" aria-label="Close"><X className="size-4" /></button>
           </div>
         </div>
@@ -74,15 +75,25 @@ export function PdfModal({
               <span className="text-xs">Preparing document…</span>
             </div>
           )}
-          <iframe
-            ref={iframeRef}
-            src={src}
-            title={title}
-            loading="lazy"
-            onLoad={() => setLoaded(true)}
-            className={`border-0 bg-white block mx-auto scrollbar-none transition-opacity duration-200 ${loaded ? "opacity-100" : "opacity-0"}`}
-            style={{ width: "100%", height: "100%", transform: `scale(${zoom})`, transformOrigin: "top center", transition: "transform 0.2s ease, opacity 0.2s ease" }}
-          />
+          {/* Clip wrapper — the iframe is sized ~18px wider/taller than this box
+              so the browser PDF viewer's own scrollbars (which #scrollbar=0 no
+              longer hides in modern Chrome/PDFium) fall outside the clip and are
+              hidden. With view=FitH the page fits the non-scrollbar width, so no
+              document content is lost — only the scrollbar is cut off. */}
+          <div
+            className="mx-auto overflow-hidden"
+            style={{ width: "100%", height: "100%", transform: `scale(${zoom})`, transformOrigin: "top center", transition: "transform 0.2s ease" }}
+          >
+            <iframe
+              ref={iframeRef}
+              src={src}
+              title={title}
+              loading="lazy"
+              onLoad={() => setLoaded(true)}
+              className={`border-0 bg-white block scrollbar-none transition-opacity duration-200 ${loaded ? "opacity-100" : "opacity-0"}`}
+              style={{ width: "calc(100% + 18px)", height: "calc(100% + 18px)" }}
+            />
+          </div>
         </div>
       </div>
     </div>,

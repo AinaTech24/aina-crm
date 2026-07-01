@@ -13,6 +13,7 @@
  */
 import { useState } from "react";
 import { X, Download, Eye, ZoomIn, ZoomOut } from "lucide-react";
+import { DownloadButton } from "@/components/common/SecureLinkButtons";
 
 function PdfModal({ profileId, name, onClose }: { profileId: string; name: string; onClose: () => void }) {
   const [zoom, setZoom] = useState(1);
@@ -47,13 +48,13 @@ function PdfModal({ profileId, name, onClose }: { profileId: string; name: strin
                 <ZoomIn className="size-3.5" />
               </button>
             </div>
-            <a
-              href={`/api/risk-profiles/${profileId}/pdf?download=1`}
+            <DownloadButton
+              url={`/api/risk-profiles/${profileId}/pdf?download=1`}
               className="btn-secondary text-xs px-2.5 py-1 inline-flex items-center gap-1"
               title="Download"
             >
               <Download className="size-3" /> Download
-            </a>
+            </DownloadButton>
             <button onClick={onClose} className="p-1.5 rounded hover:bg-accent" aria-label="Close">
               <X className="size-4" />
             </button>
@@ -123,14 +124,14 @@ export function RiskProfilePdfButtons({ profileId, name }: { profileId: string |
       >
         <Eye className="size-3.5" />
       </button>
-      <a
-        href={`/api/risk-profiles/${profileId}/pdf?download=1`}
+      <DownloadButton
+        url={`/api/risk-profiles/${profileId}/pdf?download=1`}
         className="btn-secondary text-xs p-1.5 inline-flex items-center"
         title="Download Risk Profile PDF"
-        aria-label="Download Risk Profile PDF"
+        ariaLabel="Download Risk Profile PDF"
       >
         <Download className="size-3.5" />
-      </a>
+      </DownloadButton>
       {open && <PdfModal profileId={profileId} name={name} onClose={() => setOpen(false)} />}
     </>
   );

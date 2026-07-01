@@ -44,6 +44,7 @@ export async function GET(req: NextRequest) {
       const bday = await tx.execute(sql`
         SELECT name FROM investors
         WHERE status = 'active'
+          AND deleted_at IS NULL
           AND dob IS NOT NULL
           AND to_char(dob, 'MM-DD') = to_char(current_date, 'MM-DD')
           ${firmWide ? sql`` : sql` AND rm_id = ${session.userId}`}

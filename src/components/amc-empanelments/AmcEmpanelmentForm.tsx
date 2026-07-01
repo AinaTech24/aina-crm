@@ -243,7 +243,7 @@ export function AmcEmpanelmentForm({
                 required
                 value={v.amcCode}
                 onChange={(e) => onAmcPick(e.target.value)}
-                className="input-base text-sm w-full"
+                className="text-sm w-full"
                 placeholder="Select an AMC…"
               >
                 <option value="">Select an AMC…</option>
@@ -267,7 +267,7 @@ export function AmcEmpanelmentForm({
             <SelectField
               value={v.status}
               onChange={(e) => field("status", e.target.value)}
-              className="input-base text-sm w-full"
+              className="text-sm w-full"
             >
               {STATUSES.map((s) => (
                 <option key={s.value} value={s.value}>
@@ -288,7 +288,7 @@ export function AmcEmpanelmentForm({
             <DateField
               value={v.empanelmentDate ?? ""}
               onChange={(e) => field("empanelmentDate", e.target.value || null)}
-              className="input-base text-sm w-full"
+              className="text-sm w-full"
             />
           </Field>
           <Field label="Distributor portal URL">
@@ -408,14 +408,14 @@ export function AmcEmpanelmentForm({
             primaries.
           </p>
         )}
-        <div className="grid grid-cols-5 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
           <input
             value={newContact.role}
             onChange={(e) =>
               setNewContact((c) => ({ ...c, role: e.target.value }))
             }
             placeholder="Role"
-            className="input-base text-sm"
+            className="input-base text-sm w-full"
           />
           <input
             value={newContact.name}
@@ -423,7 +423,7 @@ export function AmcEmpanelmentForm({
               setNewContact((c) => ({ ...c, name: e.target.value }))
             }
             placeholder="Name"
-            className="input-base text-sm"
+            className="input-base text-sm w-full"
           />
           <input
             value={newContact.email ?? ""}
@@ -431,7 +431,7 @@ export function AmcEmpanelmentForm({
               setNewContact((c) => ({ ...c, email: e.target.value || undefined }))
             }
             placeholder="Email"
-            className="input-base text-sm"
+            className="input-base text-sm w-full"
           />
           <input
             value={newContact.phone ?? ""}
@@ -439,13 +439,13 @@ export function AmcEmpanelmentForm({
               setNewContact((c) => ({ ...c, phone: e.target.value || undefined }))
             }
             placeholder="Phone"
-            className="input-base text-sm"
+            className="input-base text-sm w-full"
           />
           <button
             type="button"
             onClick={addContact}
             disabled={!newContact.role.trim() || !newContact.name.trim()}
-            className="btn-ghost text-xs"
+            className="btn-ghost text-xs w-full justify-center"
           >
             <Plus className="size-3.5" /> Add
           </button>
@@ -487,24 +487,24 @@ export function AmcEmpanelmentForm({
             Paste document URLs (Google Drive, S3, DigiLocker, etc.).
           </p>
         )}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
           <input
             value={newDoc.label}
             onChange={(e) => setNewDoc((d) => ({ ...d, label: e.target.value }))}
             placeholder="Document label"
-            className="input-base text-sm flex-1"
+            className="input-base text-sm w-full sm:flex-1"
           />
           <input
             value={newDoc.url}
             onChange={(e) => setNewDoc((d) => ({ ...d, url: e.target.value }))}
             placeholder="https://…"
-            className="input-base text-sm flex-1"
+            className="input-base text-sm w-full sm:flex-1"
           />
           <button
             type="button"
             onClick={addDoc}
             disabled={!newDoc.label.trim() || !newDoc.url.trim()}
-            className="btn-ghost text-xs"
+            className="btn-ghost text-xs w-full sm:w-auto justify-center"
           >
             <Plus className="size-3.5" /> Add
           </button>
@@ -603,25 +603,25 @@ function ContactRow({
       <div className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium">
         {label}
       </div>
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
         <input
           value={name ?? ""}
           onChange={(e) => onChange("name", e.target.value || null)}
           placeholder="Name"
-          className="input-base text-sm"
+          className="input-base text-sm w-full"
         />
         <input
           type="email"
           value={email ?? ""}
           onChange={(e) => onChange("email", e.target.value || null)}
           placeholder="Email"
-          className="input-base text-sm"
+          className="input-base text-sm w-full"
         />
         <input
           value={phone ?? ""}
           onChange={(e) => onChange("phone", e.target.value || null)}
           placeholder="Phone"
-          className="input-base text-sm"
+          className="input-base text-sm w-full"
         />
       </div>
     </div>
@@ -646,7 +646,7 @@ function Section({
 }
 
 function Grid({ children }: { children: React.ReactNode }) {
-  return <div className="grid grid-cols-2 gap-3">{children}</div>;
+  return <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">{children}</div>;
 }
 
 function Field({

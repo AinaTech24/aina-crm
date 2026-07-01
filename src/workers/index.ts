@@ -21,6 +21,8 @@ import { startCampaignDispatcherWorker } from "./campaign-dispatcher";
 import { startImapPollerWorker } from "./imap-poller";
 import { startZohoSyncWorker } from "./zoho-sync";
 import { startRtaImportWorker } from "./rta-import-worker";
+import { startFpImportWorker } from "./fp-import-worker";
+import { runFpSync } from "@/lib/fp/sync";
 import { runDailyOpsScan } from "./daily-ops-scanner";
 import { runMonthlyComplianceSweep } from "./monthly-compliance-seeder";
 import { runReconciliationScan } from "./reconciliation-scanner";
@@ -33,7 +35,7 @@ import { syncMfSchemeCatalog, enrichMfSchemes } from "@/lib/finance/mfapi";
 import { getLastRun, recordRun } from "./scheduler-state";
 import { captureError } from "@/lib/observability/capture";
 
-const groups = (process.env.WORKER_GROUPS ?? "outbox,wf,seg,sched,wa_sync,mail,ops,monthly,nav,recon,market,feed,statements,zoho,rta")
+const groups = (process.env.WORKER_GROUPS ?? "outbox,wf,seg,sched,wa_sync,mail,ops,monthly,nav,recon,market,feed,statements,zoho,rta,fpsync")
   .split(",")
   .map((s) => s.trim());
 // 'sched' covers the scheduled-comms drain too (kept with the other schedulers).
@@ -115,7 +117,11 @@ if (groups.includes("sched")) {
 if (groups.includes("wa_sync")) stops.push(startWapiTemplateSyncWorker());
 if (groups.includes("mail")) stops.push(startImapPollerWorker());
 if (groups.includes("zoho")) stops.push(startZohoSyncWorker());
-if (groups.includes("rta")) stops.push(startRtaImportWorker());
+if (groups.includes("rta")) {
+  stops.push(startRtaImportWorker());
+  // FP mailback import shares the "rta" worker group (same import surface).
+  stops.push(startFpImportWorker());
+}
 
 /**
  * Daily ops scanner — fires once a day at 06:30 local time. Scans every
@@ -283,6 +289,25 @@ scheduleDaily(
     if (r.sent > 0) console.log(`[statement-scheduler] sent ${r.sent} auto-statement(s)`);
   },
   "STATEMENTS_ON_BOOT"
+);
+
+/**
+ * FintechPrimitives daily API-pull sync — fires once a day at 07:45 local
+ * (after the 07:30 reconciliation scan). This is the PRIMARY FP import path:
+ * it pulls folios + transactions (with capital-gains) straight from the FP API
+ * and upserts them — no manual file upload. No-ops cleanly when FP isn't
+ * configured (env-MVP: needs FP_* creds + FP_SYNC_TENANT_ID).
+ */
+scheduleDaily(
+  "fpsync",
+  "fp-sync",
+  7,
+  45,
+  async () => {
+    const r = await runFpSync();
+    console.log("[fp-sync]", r);
+  },
+  "FP_SYNC_ON_BOOT"
 );
 
 // Last-resort safety net: a floating rejection or uncaught exception in any

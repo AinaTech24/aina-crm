@@ -74,6 +74,9 @@ const PUBLIC_API_PREFIXES = [
   "/api/health",
   "/api/auth/",
   "/api/employees/accept-invite",
+  // Caddy on-demand-TLS "ask" endpoint — called by the proxy (no session) to
+  // check whether a hostname is a real tenant host before minting a cert.
+  "/api/tls/allowed",
   // File reads — the route fail-closes itself (only public asset classes like
   // tenant logos / marketing serve without auth; private docs still require a
   // same-tenant session). Whitelisting lets email clients load the firm logo
@@ -88,10 +91,27 @@ export async function middleware(req: NextRequest) {
   // middleware header-merge) readable by route handlers through headers(), so
   // an error's referenceId can be matched to the exact request that caused it.
   const requestId = crypto.randomUUID();
+  // DEV-ONLY CORS for the local browser preview of the mobile app (Expo web
+  // build served on a different port calls this API cross-origin). Null — and
+  // therefore a complete no-op — in production.
+  const devOrigin = process.env.NODE_ENV !== "production" ? req.headers.get("origin") : null;
   const tag = (res: NextResponse) => {
     res.headers.set("x-request-id", requestId);
+    if (devOrigin) {
+      res.headers.set("Access-Control-Allow-Origin", devOrigin);
+      res.headers.set("Access-Control-Allow-Credentials", "true");
+      res.headers.set("Vary", "Origin");
+    }
     return res;
   };
+  if (devOrigin && req.method === "OPTIONS") {
+    const pre = new NextResponse(null, { status: 204 });
+    pre.headers.set("Access-Control-Allow-Origin", devOrigin);
+    pre.headers.set("Access-Control-Allow-Methods", "GET,POST,PATCH,PUT,DELETE,OPTIONS");
+    pre.headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    pre.headers.set("Access-Control-Allow-Credentials", "true");
+    return pre;
+  }
 
   // Public marketing pages
   if (PUBLIC_PATHS.has(pathname)) return tag(NextResponse.next());
@@ -128,7 +148,16 @@ export async function middleware(req: NextRequest) {
   // MFD login can coexist in the same browser without overwriting each other.
   const onAdminSurface = isAdminSurface(pathname);
   const cookieName = sessionCookieForPath(pathname);
-  const token = req.cookies.get(cookieName)?.value;
+  // Web carries the session in an httpOnly cookie; the mobile app has no cookie
+  // jar and sends it as `Authorization: Bearer <token>`. Accept the header as a
+  // fallback when the cookie is absent — same signed JWT, so verifySession (and
+  // every downstream route reading x-mfd-session) is unchanged. Only the MFD
+  // surface uses Bearer; the admin console stays cookie-only.
+  let token = req.cookies.get(cookieName)?.value;
+  if (!token && !onAdminSurface) {
+    const authz = req.headers.get("authorization");
+    if (authz?.startsWith("Bearer ")) token = authz.slice(7).trim();
+  }
   let session = token ? await verifySession(token) : null;
 
   // Dual-auth API routes: the shared AINA content library is READ by MFD users

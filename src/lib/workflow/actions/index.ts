@@ -21,6 +21,7 @@ import { aiComposeHandler } from "./ai_compose";
 import { addToSegmentHandler } from "./add_to_segment";
 import { raiseAlertHandler } from "./raise_alert";
 import { createNotificationHandler } from "./create_notification";
+import { sendPushHandler } from "./send_push";
 import { delayHandler } from "./delay";
 import { waitUntilDateHandler } from "./wait_until_date";
 import { waitForEventHandler } from "./wait_for_event";
@@ -64,6 +65,7 @@ export const handlers = {
   add_to_segment: addToSegmentHandler,
   raise_alert: raiseAlertHandler,
   create_notification: createNotificationHandler,
+  send_push: sendPushHandler,
   delay: delayHandler,
   wait_until_date: waitUntilDateHandler,
   wait_for_event: waitForEventHandler,

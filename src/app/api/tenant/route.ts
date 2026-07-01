@@ -35,7 +35,14 @@ const Body = z.object({
       if (typeof v !== "string") return v;
       const t = v.trim();
       if (t === "") return "";
-      return /^https?:\/\//i.test(t) ? t : `https://${t}`;
+      const withScheme = /^https?:\/\//i.test(t) ? t : `https://${t}`;
+      // A scheme-only value like "https://" (no host) — or anything unparseable —
+      // is treated as blank rather than 400-ing the whole firm-profile save.
+      try {
+        return new URL(withScheme).hostname ? withScheme : "";
+      } catch {
+        return "";
+      }
     }, z.string().url().optional().or(z.literal(""))),
   primaryColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
   secondaryColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
@@ -61,19 +68,23 @@ const Body = z.object({
     })
     .optional(),
   // Network FP "Firm Details" expansion (migration 0023)
-  legalStructure: z
-    .enum([
-      "sole_proprietorship",
-      "partnership",
-      "llp",
-      "private_limited",
-      "public_limited",
-      "huf",
-      "one_person_company",
-      "other",
-    ])
-    .nullable()
-    .optional(),
+  // "" (the unselected "—" option) → null, so leaving it blank doesn't 400 the save.
+  legalStructure: z.preprocess(
+    (v) => (v === "" ? null : v),
+    z
+      .enum([
+        "sole_proprietorship",
+        "partnership",
+        "llp",
+        "private_limited",
+        "public_limited",
+        "huf",
+        "one_person_company",
+        "other",
+      ])
+      .nullable()
+      .optional(),
+  ),
   incorporationDate: z.string().nullable().optional(),
   panNumber: z
     .string()

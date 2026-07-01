@@ -87,7 +87,7 @@ export default async function RiskProfilesPage({
         COUNT(*) FILTER (WHERE risk_profile_signed_at IS NOT NULL
           AND risk_profile_signed_at >= now() - interval '1 year'
           AND risk_profile_signed_at < now() - interval '11 months')::int AS due_soon
-      FROM investors WHERE status = 'active' AND ${rmScope}
+      FROM investors WHERE status = 'active' AND deleted_at IS NULL AND ${rmScope}
     `);
     const s = stats.rows[0] as any;
 
@@ -97,7 +97,7 @@ export default async function RiskProfilesPage({
     // join needed since the filter is on the investor mirror columns.
     const c = await tx.execute(sql`
       SELECT COUNT(*)::int AS c FROM investors
-      WHERE status = 'active' AND ${predicate} AND ${rmScope}
+      WHERE status = 'active' AND deleted_at IS NULL AND ${predicate} AND ${rmScope}
     `);
     const total = Number((c.rows[0] as any)?.c ?? 0);
 
@@ -116,7 +116,7 @@ export default async function RiskProfilesPage({
         ORDER BY r.signed_at DESC NULLS LAST
         LIMIT 1
       ) rp ON TRUE
-      WHERE i.status = 'active' AND ${predicate}
+      WHERE i.status = 'active' AND i.deleted_at IS NULL AND ${predicate}
         AND ${canViewAll ? sql`TRUE` : sql`i.rm_id = ${session.userId}::uuid`}
       ORDER BY ${orderClause(filter)}
       LIMIT ${PAGE_SIZE} OFFSET ${(page - 1) * PAGE_SIZE}

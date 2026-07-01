@@ -6,18 +6,18 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, FileText, Loader2, Save } from "lucide-react";
 import { InvestorLookup } from "@/components/common/InvestorLookup";
 import { RmSelector } from "@/components/common/RmSelector";
-import { ThemeSelect } from "@/components/ui/ThemeSelect";
-import { ThemeDate } from "@/components/ui/ThemeDate";
+import { SelectField } from "@/components/ui/SelectField";
+import { DateField } from "@/components/ui/DateField";
 
 const CLAIM_STATUSES: [string, string][] = [
   ["empty", "Empty"], ["claim_intimated", "Claim Intimated"], ["file_awaited", "File Awaited"], ["file_received", "File Received"],
   ["add_info_awaited", "Add Info Awaited"], ["query", "Query"], ["query_replied", "Query Replied"], ["under_process", "Under Process"],
   ["settled_fully", "Settled Fully"], ["settled_partially", "Settled Partially"], ["rejected", "Rejected"], ["withdrawn", "Withdrawn"],
 ];
-const CLAIM_TYPES: [string, string][] = [["", "—"], ["main_claim", "Main Claim"], ["supplementary", "Supplementary"], ["pre_authorization", "Pre-authorization"], ["rider", "Rider"], ["other", "Other"]];
-const CLAIM_MODES: [string, string][] = [["", "—"], ["cashless", "Cashless"], ["reimbursement", "Reimbursement"]];
-const INTIMATION_MODES: [string, string][] = [["", "—"], ["phone", "Phone"], ["email", "Email"], ["portal", "Portal"], ["branch", "Branch"], ["agent", "Agent"], ["letter", "Letter"], ["other", "Other"]];
-const SUBMITTED_MODES: [string, string][] = [["", "—"], ["online", "Online"], ["physical", "Physical"], ["courier", "Courier"], ["email", "Email"], ["agent", "Agent"], ["other", "Other"]];
+const CLAIM_TYPES: [string, string][] = [["", "Select"], ["main_claim", "Main Claim"], ["supplementary", "Supplementary"], ["pre_authorization", "Pre-authorization"], ["rider", "Rider"], ["other", "Other"]];
+const CLAIM_MODES: [string, string][] = [["", "Select"], ["cashless", "Cashless"], ["reimbursement", "Reimbursement"]];
+const INTIMATION_MODES: [string, string][] = [["", "Select"], ["phone", "Phone"], ["email", "Email"], ["portal", "Portal"], ["branch", "Branch"], ["agent", "Agent"], ["letter", "Letter"], ["other", "Other"]];
+const SUBMITTED_MODES: [string, string][] = [["", "Select"], ["online", "Online"], ["physical", "Physical"], ["courier", "Courier"], ["email", "Email"], ["agent", "Agent"], ["other", "Other"]];
 
 export default function NewClaimPage() {
   return (
@@ -45,7 +45,7 @@ function ClaimForm() {
   const set = (k: keyof typeof form, v: string) => setForm((s) => ({ ...s, [k]: v }));
 
   useEffect(() => {
-    fetch("/api/insurance").then((r) => r.json()).then((j) => setPolicies(j.policies ?? [])).catch(() => {});
+    fetch("/api/insurance").then((r) => r.json()).then((j) => setPolicies(j.policies ?? [])).catch(() => { });
   }, []);
 
   useEffect(() => {
@@ -121,7 +121,6 @@ function ClaimForm() {
       <Link href="/dashboard/insurance-claims" className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1"><ChevronLeft className="size-4" /> Back to claims</Link>
       <div>
         <h1 className="page-title"><FileText className="size-6 text-brand-cyan" /> {editId ? "Edit claim" : "New claim"}</h1>
-        <p className="page-subtitle">Track a claim against a policy through intimation → settlement.</p>
       </div>
 
       <Section title="Overview">
@@ -133,15 +132,17 @@ function ClaimForm() {
           </Field>
           <Field label="Proposer name *"><input value={form.proposerName} onChange={(e) => set("proposerName", e.target.value)} placeholder="Name on the policy" className="input-base" /></Field>
           <Field label="Insurance policy">
-            <ThemeSelect value={form.policyId} onChange={pickPolicy}>
-              <option value="">— pick a policy —</option>
+            <SelectField value={form.policyId} onChange={(e) => pickPolicy(e.target.value)}>
+              <option value="">pick a policy</option>
               {policies.map((p) => <option key={p.id} value={p.id}>{[p.planName, p.policyNumber, p.insurer].filter(Boolean).join(" · ")}</option>)}
-            </ThemeSelect>
+            </SelectField>
           </Field>
           <Field label="Policy number"><input value={form.policyNumber} onChange={(e) => set("policyNumber", e.target.value)} className="input-base" /></Field>
           <Field label="Insurance company"><input value={form.insurer} onChange={(e) => set("insurer", e.target.value)} placeholder="HDFC Ergo, Star Health…" className="input-base" /></Field>
           <Field label="Claim status">
-            <ThemeSelect value={form.claimStatus} onChange={(v) => set("claimStatus", v)} options={CLAIM_STATUSES} />
+            <SelectField value={form.claimStatus} onChange={(e) => set("claimStatus", e.target.value)}>
+              {CLAIM_STATUSES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+            </SelectField>
           </Field>
           <Field label="Contact person"><input value={form.contactPerson} onChange={(e) => set("contactPerson", e.target.value)} className="input-base" /></Field>
           <Field label="Email"><input type="email" value={form.email} onChange={(e) => set("email", e.target.value)} className="input-base" /></Field>
@@ -156,14 +157,14 @@ function ClaimForm() {
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
           <Sel label="Claim type" value={form.claimType} onChange={(v) => set("claimType", v)} opts={CLAIM_TYPES} />
           <Sel label="Claim mode" value={form.claimMode} onChange={(v) => set("claimMode", v)} opts={CLAIM_MODES} />
-          <Field label="Admission date"><ThemeDate value={form.admissionDate} onChange={(v) => set("admissionDate", v)} /></Field>
+          <Field label="Admission date"><DateField value={form.admissionDate} onChange={(e) => set("admissionDate", e.target.value)} /></Field>
           <Sel label="Intimation mode" value={form.intimationMode} onChange={(v) => set("intimationMode", v)} opts={INTIMATION_MODES} />
-          <Field label="Intimation date"><ThemeDate value={form.intimationDate} onChange={(v) => set("intimationDate", v)} /></Field>
+          <Field label="Intimation date"><DateField value={form.intimationDate} onChange={(e) => set("intimationDate", e.target.value)} /></Field>
           <Sel label="Submitted mode" value={form.submittedMode} onChange={(v) => set("submittedMode", v)} opts={SUBMITTED_MODES} />
-          <Field label="Submission date"><ThemeDate value={form.submissionDate} onChange={(v) => set("submissionDate", v)} /></Field>
+          <Field label="Submission date"><DateField value={form.submissionDate} onChange={(e) => set("submissionDate", e.target.value)} /></Field>
           <Field label="Claimed amount (₹)"><input type="number" value={form.claimedAmount} onChange={(e) => set("claimedAmount", e.target.value)} className="input-base" /></Field>
           <Field label="Settled amount (₹)"><input type="number" value={form.settledAmount} onChange={(e) => set("settledAmount", e.target.value)} className="input-base" /></Field>
-          <Field label="Settlement date"><ThemeDate value={form.settlementDate} onChange={(v) => set("settlementDate", v)} /></Field>
+          <Field label="Settlement date"><DateField value={form.settlementDate} onChange={(e) => set("settlementDate", e.target.value)} /></Field>
           <Field label="Relationship manager"><RmSelector value={rmId} onChange={(id) => setRmId(id ?? null)} role="rm" placeholder="Assign RM…" /></Field>
         </div>
         <Field label="Comments">
@@ -196,7 +197,9 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 function Sel({ label, value, onChange, opts }: { label: string; value: string; onChange: (v: string) => void; opts: [string, string][] }) {
   return (
     <Field label={label}>
-      <ThemeSelect value={value} onChange={onChange} options={opts} />
+      <SelectField value={value} onChange={(e) => onChange(e.target.value)}>
+        {opts.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+      </SelectField>
     </Field>
   );
 }

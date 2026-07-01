@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { FileDown, Mail, MessageCircle, Loader2, Check, Link2, CalendarClock, Receipt } from "lucide-react";
 import { SelectField } from "@/components/ui/SelectField";
+import { DownloadButton } from "@/components/common/SecureLinkButtons";
 
 /**
  * Client-360 actions for the live valuation statement + transparency:
@@ -107,9 +108,9 @@ export function StatementActions({
 
       {/* Action buttons */}
       <div className="flex flex-wrap items-center gap-2">
-        <a href={`/api/investors/${investorId}/statement/pdf?download=1`} target="_blank" rel="noopener" className="btn-secondary text-xs">
+        <DownloadButton url={`/api/investors/${investorId}/statement/pdf?download=1`} className="btn-secondary text-xs">
           <FileDown className="size-3.5" /> Download statement
-        </a>
+        </DownloadButton>
         <a href={`/dashboard/investors/${investorId}/capital-gains`} className="btn-secondary text-xs">
           <Receipt className="size-3.5" /> Capital gains
         </a>

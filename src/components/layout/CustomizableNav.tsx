@@ -199,8 +199,16 @@ export function CustomizableNav({
     setCollapsed((prev) => ({ ...prev, [id]: !prev[id] }));
   }
 
-  const isActive = (href: string) =>
-    href === "/dashboard" ? pathname === "/dashboard" : pathname === href || pathname.startsWith(href + "/");
+  // Whether a pathname falls under an href (exact, or a "/"-bounded sub-route).
+  const matchesPath = (h: string) =>
+    h === "/dashboard" ? pathname === "/dashboard" : pathname === h || pathname.startsWith(h + "/");
+  // Most-specific match wins: a link is active only if NO other nav item has a
+  // longer href that also matches. Fixes "/dashboard/sips" (SIP Tracker) lighting
+  // up on "/dashboard/sips/at-risk" (SIP At-Risk).
+  const isActive = (href: string) => {
+    if (!matchesPath(href)) return false;
+    return !items.some((i) => i.href !== href && i.href.length > href.length && matchesPath(i.href));
+  };
 
   /* ---------------- layout mutations ---------------- */
 

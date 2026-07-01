@@ -9,6 +9,8 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Plus, Trash2 } from "lucide-react";
 import { formatINR, formatDate } from "@/lib/utils";
+import { SelectField } from "@/components/ui/SelectField";
+import { DateField } from "@/components/ui/DateField";
 
 const CATEGORIES: Array<{ value: string; label: string }> = [
   { value: "office_rent", label: "Office Rent" },
@@ -138,11 +140,10 @@ export function ExpenseLedger({
         <div className="grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
           <label className="block">
             <div className="text-[11px] font-medium text-muted-foreground mb-1">Date</div>
-            <input
-              type="date"
+            <DateField
               value={form.expenseDate}
               onChange={(e) => setForm((s) => ({ ...s, expenseDate: e.target.value }))}
-              className="input-base text-sm w-full"
+              className="w-full"
             />
           </label>
           <label className="block md:col-span-2">
@@ -156,27 +157,27 @@ export function ExpenseLedger({
           </label>
           <label className="block">
             <div className="text-[11px] font-medium text-muted-foreground mb-1">Category</div>
-            <select
+            <SelectField
               value={form.category}
               onChange={(e) => setForm((s) => ({ ...s, category: e.target.value }))}
-              className="input-base text-sm w-full"
+              className="w-full"
             >
               {CATEGORIES.map((c) => (
                 <option key={c.value} value={c.value}>{c.label}</option>
               ))}
-            </select>
+            </SelectField>
           </label>
           <label className="block">
             <div className="text-[11px] font-medium text-muted-foreground mb-1">Paid from</div>
-            <select
+            <SelectField
               value={form.paidFrom}
               onChange={(e) => setForm((s) => ({ ...s, paidFrom: e.target.value }))}
-              className="input-base text-sm w-full"
+              className="w-full"
             >
               {PAID_FROM.map((p) => (
                 <option key={p.value} value={p.value}>{p.label}</option>
               ))}
-            </select>
+            </SelectField>
           </label>
           <label className="block">
             <div className="text-[11px] font-medium text-muted-foreground mb-1">Amount (₹)</div>

@@ -13,10 +13,12 @@
  *   PUT   /api/schemes/[id]/evaluation      (IC scorecard)
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Loader2, Star, X, Plus, Pencil, ClipboardList, Save } from "lucide-react";
 import { Select } from "@/components/ui/Select";
+import { SchemeAutocomplete, type SchemePick } from "@/components/mf/SchemeAutocomplete";
 
 const COARSE = [
   ["equity", "Equity"], ["hybrid", "Hybrid"], ["debt", "Debt"], ["liquid", "Liquid"],
@@ -206,13 +208,35 @@ function SchemeDetailDrawer({
   onEdit?: () => void;
 }) {
   const v = s.evaluation?.verdict as string | undefined;
+  // Fetch live enriched detail (NAV, ISIN, type, category) from the shared MF
+  // catalog when the panel opens. Errors are ignored — we keep showing the
+  // sparse local row in that case.
+  const [api, setApi] = useState<any | null>(null);
+  const [loadingApi, setLoadingApi] = useState(true);
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingApi(true);
+    (async () => {
+      try {
+        const res = await fetch(`/api/mf/schemes/${encodeURIComponent(String(s.scheme_code))}`);
+        const j = await res.json().catch(() => ({}));
+        if (!cancelled) setApi(j?.scheme ?? null);
+      } catch {
+        /* keep local row data */
+      } finally {
+        if (!cancelled) setLoadingApi(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [s.scheme_code]);
+
   const Row = ({ label, value }: { label: string; value: any }) => (
     <div className="flex justify-between gap-4 py-1.5 border-b border-border/50 last:border-0">
       <span className="text-xs text-muted-foreground">{label}</span>
       <span className="text-xs font-medium text-right">{value === undefined || value === null || value === "" ? "" : value}</span>
     </div>
   );
-  return (
+  const overlay = (
     <div className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm grid place-items-end sm:place-items-center p-0 sm:p-4 animate-fade-in" onClick={onClose}>
       <div className="bg-card w-full sm:max-w-lg sm:rounded-xl shadow-xl border border-border/60 max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
         <div className="border-b px-5 py-3 flex items-start justify-between gap-3">
@@ -233,9 +257,24 @@ function SchemeDetailDrawer({
               {s.is_closed ? "Closed" : s.is_active ? "Active / open" : "Inactive"}
             </span>
           </div>
+          {loadingApi && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Loader2 className="size-3.5 animate-spin" /> Loading latest…
+            </div>
+          )}
           <div className="rounded-lg border border-border px-3">
             <Row label="AMC" value={s.amc_name ?? s.amc_code} />
-            <Row label="Category" value={s.category} />
+            <Row label="Type" value={api?.type} />
+            <Row label="Category" value={s.category ?? api?.category} />
+            <Row label="ISIN" value={api?.isin ? <span className="font-mono">{api.isin}</span> : undefined} />
+            <Row
+              label="NAV"
+              value={
+                api?.nav != null
+                  ? <span>₹{api.nav}{api?.navDate ? <span className="text-muted-foreground font-normal"> · {api.navDate}</span> : null}</span>
+                  : undefined
+              }
+            />
             <Row label="Sub-category" value={s.sub_category} />
             {/* Plan / Option: fall back to deriving from the scheme name — the
                 AMFI feed encodes them there but rarely fills the columns. */}
@@ -272,6 +311,7 @@ function SchemeDetailDrawer({
       </div>
     </div>
   );
+  return typeof document === "undefined" ? null : createPortal(overlay, document.body);
 }
 
 function SchemeFormDrawer({ mode, scheme, amcs, onClose, onSaved }: { mode: "new" | "edit"; scheme: Scheme | null; amcs: Array<{ code: string; name: string }>; onClose: () => void; onSaved: () => void }) {
@@ -319,6 +359,19 @@ function SchemeFormDrawer({ mode, scheme, amcs, onClose, onSaved }: { mode: "new
   return (
     <Drawer title={mode === "new" ? "New scheme" : "Edit scheme"} onClose={onClose}>
       <div className="grid sm:grid-cols-2 gap-3">
+        {mode === "new" && (
+          <div className="sm:col-span-2">
+            <Field label="Search AMFI scheme">
+              <SchemeAutocomplete
+                onSelect={(p: SchemePick) => {
+                  set("schemeCode", p.schemeCode);
+                  set("schemeName", p.schemeName);
+                  if (p.category && !f.category) set("category", p.category);
+                }}
+              />
+            </Field>
+          </div>
+        )}
         <Field label="AMC"><Select value={f.amcCode} onChange={(v) => set("amcCode", v)} disabled={mode === "edit"} options={amcs.map((a) => ({ value: a.code, label: `${a.name} (${a.code})` }))} placeholder="Select AMC…" ariaLabel="AMC" /></Field>
         <Field label="Scheme code"><input value={f.schemeCode} onChange={(e) => set("schemeCode", e.target.value)} disabled={mode === "edit"} placeholder="e.g. 119551" className="input-base font-mono" /></Field>
         <div className="sm:col-span-2"><Field label="Scheme name"><input value={f.schemeName} onChange={(e) => set("schemeName", e.target.value)} className="input-base" /></Field></div>
@@ -418,14 +471,15 @@ function EvaluationDrawer({ scheme, onClose, onSaved }: { scheme: Scheme; onClos
 }
 
 function Drawer({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
-  return (
-    <div className="fixed inset-0 z-50 bg-black/40 flex justify-end" onClick={onClose}>
+  const overlay = (
+    <div className="fixed inset-0 z-[60] bg-black/40 backdrop-blur-sm flex justify-end" onClick={onClose}>
       <div onClick={(e) => e.stopPropagation()} className="w-full max-w-lg h-full bg-card border-l border-border shadow-2xl flex flex-col">
         <div className="px-5 py-3 border-b flex items-center justify-between"><div className="font-semibold truncate">{title}</div><button onClick={onClose} className="rounded p-1 hover:bg-accent"><X className="size-4" /></button></div>
         <div className="flex-1 overflow-y-auto p-4 space-y-3">{children}</div>
       </div>
     </div>
   );
+  return typeof document === "undefined" ? null : createPortal(overlay, document.body);
 }
 function DrawerFooter({ onClose, onSave, busy, saveLabel = "Save" }: { onClose: () => void; onSave: () => void; busy: boolean; saveLabel?: string }) {
   return (

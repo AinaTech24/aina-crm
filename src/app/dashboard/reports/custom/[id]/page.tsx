@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { ChevronLeft, Download, Pencil, Loader2, BarChart3, AlertCircle, Copy, Mail, Printer, FileSpreadsheet, FileText, ChevronDown, Send } from "lucide-react";
+import { DownloadButton } from "@/components/common/SecureLinkButtons";
 
 // Recharts is heavy + not tree-shakeable; load it only when a report actually
 // has a chart, not on every report view.
@@ -141,8 +142,8 @@ function ExportMenu({ id }: { id: string }) {
       <button onClick={() => setOpen((o) => !o)} className="btn-primary text-xs"><Download className="size-4" /> Export <ChevronDown className="size-3.5" /></button>
       {open && (
         <div className="absolute right-0 mt-1 w-44 rounded-lg border border-border bg-card shadow-lg z-20 py-1 text-sm">
-          <a href={`/api/reports/saved/${id}/export?format=xlsx`} className="flex items-center gap-2 px-3 py-2 hover:bg-secondary/50"><FileSpreadsheet className="size-4 text-emerald-600" /> Excel (.xlsx)</a>
-          <a href={`/api/reports/saved/${id}/export?format=csv`} className="flex items-center gap-2 px-3 py-2 hover:bg-secondary/50"><FileText className="size-4 text-sky-600" /> CSV (.csv)</a>
+          <DownloadButton url={`/api/reports/saved/${id}/export?format=xlsx`} className="w-full text-left flex items-center gap-2 px-3 py-2 hover:bg-secondary/50"><FileSpreadsheet className="size-4 text-emerald-600" /> Excel (.xlsx)</DownloadButton>
+          <DownloadButton url={`/api/reports/saved/${id}/export?format=csv`} className="w-full text-left flex items-center gap-2 px-3 py-2 hover:bg-secondary/50"><FileText className="size-4 text-sky-600" /> CSV (.csv)</DownloadButton>
           <button onClick={() => { setOpen(false); window.print(); }} className="w-full text-left flex items-center gap-2 px-3 py-2 hover:bg-secondary/50"><Printer className="size-4 text-muted-foreground" /> Print / PDF</button>
         </div>
       )}

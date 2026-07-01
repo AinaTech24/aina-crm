@@ -10,7 +10,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { consumeEmailVerification, issueEmailVerification } from "@/lib/auth/email-verification";
 import { getSession } from "@/lib/auth/session";
-import { enforce } from "@/lib/rate-limit";
+import { enforceKeyed } from "@/lib/rate-limit";
+import { requestBaseUrl } from "@/lib/url/request-base";
 
 export const dynamic = "force-dynamic";
 
@@ -29,17 +30,21 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const limited = enforce(req, "auth.verify_resend", { limit: 5, windowSec: 60 * 60 });
-  if (limited) return limited;
-
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "not signed in" }, { status: 401 });
+
+  // Rate-limit PER USER (not by IP) — behind the reverse proxy every user
+  // presents the same forwarded IP, so an IP-keyed limit was shared across the
+  // whole platform. 5 resends per hour, per signed-in user.
+  const limited = enforceKeyed("auth.verify_resend", `user:${session.userId}`, { limit: 5, windowSec: 60 * 60 });
+  if (limited) return limited;
 
   const v = await issueEmailVerification({
     userId: session.userId,
     tenantId: session.tenantId,
     email: session.email,
     name: session.name,
+    baseUrl: await requestBaseUrl(),
   });
   return NextResponse.json({ ok: true, emailSent: v.emailSent });
 }

@@ -40,7 +40,7 @@ export const WIDGET_SQL: Record<string, WidgetSqlDef> = {
   // ── KPIs ──────────────────────────────────────────────────────────────
   kpi_aum: {
     view: { kind: "kpi", valueKey: "value", format: "inr" },
-    run: (s, c) => s`SELECT COALESCE(SUM(aum::numeric),0)::numeric AS value FROM investors WHERE status='active' ${rmInvestorBare(c.rmId)}`,
+    run: (s, c) => s`SELECT COALESCE(SUM(aum::numeric),0)::numeric AS value FROM investors WHERE status='active' AND deleted_at IS NULL ${rmInvestorBare(c.rmId)}`,
   },
   kpi_net_sales_mtd: {
     view: { kind: "kpi", valueKey: "value", format: "inr" },
@@ -61,11 +61,11 @@ export const WIDGET_SQL: Record<string, WidgetSqlDef> = {
   },
   kpi_active_sip: {
     view: { kind: "kpi", valueKey: "value", format: "inr" },
-    run: (s, c) => s`SELECT COALESCE(SUM(active_sip_amount::numeric),0)::numeric AS value FROM investors WHERE status='active' ${rmInvestorBare(c.rmId)}`,
+    run: (s, c) => s`SELECT COALESCE(SUM(active_sip_amount::numeric),0)::numeric AS value FROM investors WHERE status='active' AND deleted_at IS NULL ${rmInvestorBare(c.rmId)}`,
   },
   kpi_clients: {
     view: { kind: "kpi", valueKey: "value", format: "number" },
-    run: (s, c) => s`SELECT COUNT(*)::int AS value FROM investors WHERE status='active' ${rmInvestorBare(c.rmId)}`,
+    run: (s, c) => s`SELECT COUNT(*)::int AS value FROM investors WHERE status='active' AND deleted_at IS NULL ${rmInvestorBare(c.rmId)}`,
   },
   kpi_new_leads_mtd: {
     view: { kind: "kpi", valueKey: "value", format: "number" },
@@ -82,7 +82,7 @@ export const WIDGET_SQL: Record<string, WidgetSqlDef> = {
   },
   kpi_overdue_reviews: {
     view: { kind: "kpi", valueKey: "value", format: "number" },
-    run: (s, c) => s`SELECT COUNT(*)::int AS value FROM investors WHERE status='active' AND next_review_at IS NOT NULL AND next_review_at < now() ${rmInvestorBare(c.rmId)}`,
+    run: (s, c) => s`SELECT COUNT(*)::int AS value FROM investors WHERE status='active' AND deleted_at IS NULL AND next_review_at IS NOT NULL AND next_review_at < now() ${rmInvestorBare(c.rmId)}`,
   },
 
   // ── Charts ────────────────────────────────────────────────────────────
@@ -143,7 +143,7 @@ export const WIDGET_SQL: Record<string, WidgetSqlDef> = {
     run: (s) => s`SELECT
       COUNT(*) FILTER (WHERE onboarded_at >= date_trunc('month', now()))::int AS cur,
       COUNT(*) FILTER (WHERE onboarded_at >= date_trunc('month', now()) - interval '1 month' AND onboarded_at < date_trunc('month', now()))::int AS prev
-      FROM investors WHERE onboarded_at >= date_trunc('month', now()) - interval '1 month'`,
+      FROM investors WHERE deleted_at IS NULL AND onboarded_at >= date_trunc('month', now()) - interval '1 month'`,
   },
   meter_new_clients_target: {
     view: { kind: "meter", valueKey: "value", targetKey: "target", format: "number" },
@@ -155,7 +155,7 @@ export const WIDGET_SQL: Record<string, WidgetSqlDef> = {
                      ELSE EXTRACT(YEAR FROM now())::int - 1 END) AS y
       )
       SELECT
-        (SELECT COUNT(*)::int FROM investors WHERE onboarded_at >= (SELECT fy_start FROM fy)) AS value,
+        (SELECT COUNT(*)::int FROM investors WHERE deleted_at IS NULL AND onboarded_at >= (SELECT fy_start FROM fy)) AS value,
         COALESCE((SELECT annual_target::numeric FROM business_targets
                   WHERE metric='new_clients'
                     AND fiscal_year = ((SELECT y FROM fy)::text || '-' || lpad((((SELECT y FROM fy) + 1) % 100)::text, 2, '0'))
@@ -176,17 +176,17 @@ export const WIDGET_SQL: Record<string, WidgetSqlDef> = {
   // ── Tables ────────────────────────────────────────────────────────────
   table_high_aum: {
     view: { kind: "table", columns: [{ key: "name", label: "Client" }, { key: "segment_tag", label: "Segment" }, { key: "aum", label: "AUM", format: "inr" }] },
-    run: (s, c) => s`SELECT name, segment_tag, aum FROM investors i WHERE status='active' ${rmInvestor(c.rmId)} ORDER BY aum::numeric DESC NULLS LAST LIMIT 12`,
+    run: (s, c) => s`SELECT name, segment_tag, aum FROM investors i WHERE status='active' AND i.deleted_at IS NULL ${rmInvestor(c.rmId)} ORDER BY aum::numeric DESC NULLS LAST LIMIT 12`,
   },
   table_dormant: {
     view: { kind: "table", columns: [{ key: "name", label: "Client" }, { key: "aum", label: "AUM", format: "inr" }, { key: "last_transaction_at", label: "Last txn", format: "date" }] },
-    run: (s, c) => s`SELECT name, aum, last_transaction_at FROM investors i WHERE status='active'
+    run: (s, c) => s`SELECT name, aum, last_transaction_at FROM investors i WHERE status='active' AND i.deleted_at IS NULL
       AND (last_transaction_at IS NULL OR last_transaction_at < now() - interval '180 days') ${rmInvestor(c.rmId)}
       ORDER BY last_transaction_at ASC NULLS FIRST LIMIT 12`,
   },
   table_review_pending: {
     view: { kind: "table", columns: [{ key: "name", label: "Client" }, { key: "next_review_at", label: "Review due", format: "date" }] },
-    run: (s, c) => s`SELECT name, next_review_at FROM investors i WHERE status='active' AND next_review_at IS NOT NULL ${rmInvestor(c.rmId)}
+    run: (s, c) => s`SELECT name, next_review_at FROM investors i WHERE status='active' AND i.deleted_at IS NULL AND next_review_at IS NOT NULL ${rmInvestor(c.rmId)}
       ORDER BY next_review_at ASC LIMIT 12`,
   },
   table_sla_leads: {
@@ -217,7 +217,7 @@ export const WIDGET_SQL: Record<string, WidgetSqlDef> = {
     view: { kind: "table", columns: [{ key: "rm_name", label: "RM" }, { key: "clients", label: "Clients", format: "number" }, { key: "aum", label: "AUM", format: "inr" }, { key: "sip_book", label: "SIP book", format: "inr" }] },
     run: (s) => s`SELECT u.name AS rm_name, COUNT(i.id)::int AS clients,
       COALESCE(SUM(i.aum::numeric),0)::numeric AS aum, COALESCE(SUM(i.active_sip_amount::numeric),0)::numeric AS sip_book
-      FROM users u LEFT JOIN investors i ON i.rm_id = u.id AND i.status='active'
+      FROM users u LEFT JOIN investors i ON i.rm_id = u.id AND i.status='active' AND i.deleted_at IS NULL
       WHERE 'rm' = ANY(u.roles) GROUP BY u.id, u.name ORDER BY aum DESC LIMIT 12`,
   },
 };

@@ -22,6 +22,7 @@ import { can, requireAny } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { autoAdvance, resolveLeadIdForInvestor } from "@/lib/blueprints/auto-advance";
+import { computeNextReview } from "@/lib/investors/review-cadence";
 import {
   reviewMeetings,
   investors,
@@ -164,11 +165,23 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         // meeting must NOT create investor-typed tasks with a null subjectId.
         const taskSubjectType: "investor" | "lead" = before.leadId ? "lead" : "investor";
         const taskSubjectId = before.leadId ?? before.investorId;
-        const nextReviewDate =
-          body.nextReviewDate ??
-          // Default cadence: 90 days for HNI, 180 days for retail (we just default 180 here;
-          // the existing tier-recomputer worker can refine this nightly).
-          new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+        // Next review date: an explicit one from the form wins; otherwise derive
+        // it from THIS client's configured review cadence (preset or custom days)
+        // so the reminder reflects what the RM actually set. Falls back to 180
+        // days only when the client has no cadence configured.
+        let nextReviewDate = body.nextReviewDate as string | undefined;
+        if (!nextReviewDate) {
+          let next: Date | null = null;
+          if (before.investorId) {
+            const [iv] = await tx
+              .select({ rf: investors.reviewFrequency, rfd: investors.reviewFrequencyDays })
+              .from(investors)
+              .where(and(eq(investors.id, before.investorId), eq(investors.tenantId, session.tenantId)))
+              .limit(1);
+            next = computeNextReview(new Date(reviewedAt), iv?.rf as any, iv?.rfd as any);
+          }
+          nextReviewDate = (next ?? new Date(Date.now() + 180 * 24 * 60 * 60 * 1000)).toISOString().slice(0, 10);
+        }
 
         // Only update the investor's review cadence if this meeting was
         // actually with an investor. Lead-side meetings don't have a

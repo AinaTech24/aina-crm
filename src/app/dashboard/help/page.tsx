@@ -225,7 +225,7 @@ export default function HelpPage() {
                 <Mail className="size-3.5" /> support@ainatech.in
               </a>
               <a
-                href="https://wa.me/919999999999"
+                href="https://wa.me/918200770942"
                 target="_blank"
                 rel="noreferrer"
                 className="btn-secondary text-xs"

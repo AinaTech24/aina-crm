@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight, Grid3x3, Download } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { ATTENDANCE_STATUS_SHORT, ATTENDANCE_STATUS_TONE, ATTENDANCE_STATUS_LABELS } from "@/lib/attendance/policy";
+import { DownloadButton } from "@/components/common/SecureLinkButtons";
 
 export const dynamic = "force-dynamic";
 
@@ -78,7 +79,7 @@ export default async function AttendanceGridPage({
           <span className="font-bold tabular-nums">{label}</span>
           <Link href={`/dashboard/attendance/grid?month=${shiftMonth(month, 1)}`} className="btn-ghost text-sm inline-flex items-center gap-1">{shiftMonth(month, 1)} <ChevronRight className="size-4" /></Link>
           {isManager && (
-            <a href={`/api/attendance/export?month=${month}`} download className="btn-ghost text-sm inline-flex items-center gap-1"><Download className="size-4" /> Export CSV</a>
+            <DownloadButton url={`/api/attendance/export?month=${month}`} className="btn-ghost text-sm inline-flex items-center gap-1"><Download className="size-4" /> Export CSV</DownloadButton>
           )}
         </div>
       </div>

@@ -10,6 +10,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChevronLeft, Mail, Loader2, Send, Clock, AlertTriangle, ShieldCheck } from "lucide-react";
 import { InvestorLookup } from "@/components/common/InvestorLookup";
+import { SelectField } from "@/components/ui/SelectField";
 
 type Finding = { severity: string; message: string; rule?: string };
 
@@ -91,9 +92,6 @@ export default function ComposePage() {
         <h1 className="page-title">
           <Mail className="size-6 text-brand-cyan" /> Compose email
         </h1>
-        <p className="page-subtitle">
-          A one-off email to a client — still consent-checked, compliance-gated, and logged.
-        </p>
       </div>
 
       <div className="card-surface p-5 space-y-4">
@@ -170,10 +168,10 @@ export default function ComposePage() {
         <div className="grid grid-cols-2 gap-3">
           <label className="block">
             <div className="text-xs font-medium mb-1">Category</div>
-            <select value={category} onChange={(e) => setCategory(e.target.value as any)} className="input-base">
+            <SelectField value={category} onChange={(e) => setCategory(e.target.value as any)}>
               <option value="transactional">Transactional (service)</option>
               <option value="marketing">Marketing</option>
-            </select>
+            </SelectField>
           </label>
           <div>
             <label className="flex items-center gap-2 text-xs font-medium mb-1">

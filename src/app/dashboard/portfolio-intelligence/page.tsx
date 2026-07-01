@@ -5,6 +5,7 @@ import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { getPortfolioIntel, type Slice } from "@/lib/portfolio/intelligence";
 import { PortfolioDrillBar } from "@/components/portfolio/PortfolioDrillBar";
+import { DownloadButton } from "@/components/common/SecureLinkButtons";
 
 export const dynamic = "force-dynamic";
 
@@ -36,9 +37,9 @@ export default async function PortfolioIntelligencePage({ searchParams }: { sear
         </div>
         <div className="flex items-center gap-2">
           {intel.totalAum > 0 && (
-            <a href={`/api/portfolio-intelligence/export${mine ? "?mine=1" : ""}`} className="btn-secondary text-xs inline-flex items-center gap-1.5">
+            <DownloadButton url={`/api/portfolio-intelligence/export${mine ? "?mine=1" : ""}`} className="btn-secondary text-xs inline-flex items-center gap-1.5">
               <Download className="size-3.5" /> Export CSV
-            </a>
+            </DownloadButton>
           )}
           {canFirm && (
             <div className="inline-flex rounded-lg border bg-secondary/40 p-0.5 gap-0.5 text-xs">

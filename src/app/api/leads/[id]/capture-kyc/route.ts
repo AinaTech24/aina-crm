@@ -17,7 +17,7 @@ import { handleApiError } from "@/lib/api/error-handler";
 
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { eq } from "drizzle-orm";
+import { and, eq, ne, sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { requireAny } from "@/lib/auth/rbac";
@@ -26,7 +26,7 @@ import { clientMetaFromHeaders } from "@/lib/audit";
 import { transitionTo } from "@/lib/blueprints/engine";
 import { loadEditableLead } from "@/lib/leads/access";
 import { leads, investors } from "@/db/schema";
-import { getAllFields, mapKycFieldsToInvestorUpdate } from "@/lib/onboarding/kyc-fields";
+import { getAllFields, applyRequiredOverrides, mapKycFieldsToInvestorUpdate } from "@/lib/onboarding/kyc-fields";
 import type { ClientType } from "@/lib/onboarding/doc-checklists";
 
 export const dynamic = "force-dynamic";
@@ -84,9 +84,16 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         inv = (await tx.select().from(investors).where(eq(investors.id, lead.convertedInvestorId)))[0] ?? null;
       }
       const clientType = toClientType((lead as any).leadType, inv?.investorCategory);
+      // Apply the firm's mandatory-field overrides (admin-set in Settings →
+      // Onboarding fields). Absent keys keep the catalog default.
+      const ovRow = (
+        await tx.execute(
+          sql`SELECT required_overrides FROM onboarding_field_settings WHERE tenant_id = ${session.tenantId}::uuid LIMIT 1`
+        )
+      ).rows[0] as { required_overrides?: Record<string, boolean> } | undefined;
       return {
         clientType,
-        fields: getAllFields(clientType),
+        fields: applyRequiredOverrides(getAllFields(clientType), ovRow?.required_overrides),
         values: prefill(lead, inv),
         // The client's saved bank accounts — used to pick the mandate bank.
         bankAccounts: (inv?.bankAccounts as any[]) ?? [],
@@ -127,6 +134,40 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const res = await withTenant(session.tenantId, async (tx) => {
       const lead = await loadEditableLead(tx, session, id);
       const investorId = lead.convertedInvestorId as string | null;
+
+      // PAN dedup guard. A partial unique index (investors_tenant_pan_unique on
+      // tenant_id, pan WHERE dedup_pan) means setting a PAN that another client
+      // already holds would 500 the whole save. Detect that up-front, drop just
+      // the PAN, and warn — so the rest of the details still save + advance.
+      let warning: string | null = null;
+      const wantPan = (values["pan"] ?? "").toUpperCase();
+      if (investorId && wantPan && /^[A-Z]{5}[0-9]{4}[A-Z]$/.test(wantPan)) {
+        const [me] = await tx
+          .select({ dedupPan: investors.dedupPan, pan: investors.pan })
+          .from(investors)
+          .where(eq(investors.id, investorId))
+          .limit(1);
+        // Only an issue when this row participates in the dedup index and has no
+        // PAN yet (which is exactly when the mapper would set it).
+        if (me?.dedupPan && !me.pan) {
+          const clash = await tx
+            .select({ id: investors.id })
+            .from(investors)
+            .where(
+              and(
+                eq(investors.tenantId, session.tenantId),
+                eq(investors.pan, wantPan),
+                eq(investors.dedupPan, true),
+                ne(investors.id, investorId),
+              ),
+            )
+            .limit(1);
+          if (clash.length > 0) {
+            delete values["pan"];
+            warning = `PAN ${wantPan} already belongs to another client, so it wasn't applied to this record. If this is the same person, merge the duplicate; otherwise correct the PAN.`;
+          }
+        }
+      }
 
       // 1. Write the details into the client master.
       if (Object.keys(values).length > 0) {
@@ -184,9 +225,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           .update(leads)
           .set({ stage: "documents_received" as any, stageChangedAt: new Date(), updatedAt: new Date() } as any)
           .where(eq(leads.id, id));
-        return { ok: true, advanced: t.ok !== false, savedFields: Object.keys(values).length };
+        return { ok: true, advanced: t.ok !== false, savedFields: Object.keys(values).length, warning };
       }
-      return { ok: true, advanced: false, savedFields: Object.keys(values).length };
+      return { ok: true, advanced: false, savedFields: Object.keys(values).length, warning };
     });
 
     return NextResponse.json(res);

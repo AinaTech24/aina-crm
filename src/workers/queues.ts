@@ -68,4 +68,9 @@ export const Q = {
   // server. The job payload carries the zip password (Redis-only, removed on
   // complete); the file itself stays in S3 and is fetched by the worker.
   rtaImport: () => queue("rta.import"),
+  // FintechPrimitives "mailback" import — uploads the RTA reverse feed to FP,
+  // polls the file_operation, then pulls structured transactions + capital-gains
+  // back. Runs in the worker because the FP poll can take minutes (must never
+  // hold an HTTP request or DB tx open).
+  fpImport: () => queue("fp.import"),
 };

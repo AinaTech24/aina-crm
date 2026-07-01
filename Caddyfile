@@ -6,8 +6,21 @@
 # During a deploy both run briefly — Caddy round-robins, and `lb_try_duration`
 # transparently RETRIES a request against the other colour if the one it picked
 # is mid-shutdown. Net effect: users never see the cold-start gap.
+#
+# WHITE-LABEL: besides the base domain, we serve every tenant vanity subdomain
+# (<firm>.<APP_DOMAIN>) and custom domain (crm.theirfirm.in) via ON-DEMAND TLS.
+# Caddy mints a cert for a new hostname only after the app's /api/tls/allowed
+# endpoint confirms it's a real tenant host — so nobody can point a random
+# domain at us and make us issue unlimited certs.
 
-{$APP_DOMAIN} {
+{
+	on_demand_tls {
+		ask https://{$APP_DOMAIN}/api/tls/allowed
+	}
+}
+
+# Shared proxy + security headers for every host (base domain and tenant hosts).
+(app) {
 	encode gzip zstd
 	log {
 		output stdout
@@ -31,4 +44,18 @@
 		Referrer-Policy "strict-origin-when-cross-origin"
 		-Server
 	}
+}
+
+# Base domain — managed Let's Encrypt cert (unchanged behaviour).
+{$APP_DOMAIN} {
+	import app
+}
+
+# Every other host — tenant vanity subdomains + custom domains — served with
+# on-demand TLS, gated by the ask endpoint above.
+https:// {
+	tls {
+		on_demand
+	}
+	import app
 }

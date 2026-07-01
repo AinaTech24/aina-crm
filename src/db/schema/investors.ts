@@ -229,6 +229,9 @@ export const investors = pgTable(
     /** Explicit review cadence for this client. When null, cadence is derived
      *  from serviceTier (A=quarterly, B=half-yearly, C=annual). Drives nextReviewAt. */
     reviewFrequency: text("review_frequency", { enum: ["monthly", "quarterly", "half_yearly", "annual"] }),
+    /** Custom review cadence in DAYS (e.g. 50, 100). When set, overrides the
+     *  reviewFrequency preset above. Drives nextReviewAt. */
+    reviewFrequencyDays: integer("review_frequency_days"),
 
     /** Lifecycle */
     isMinor: boolean("is_minor").default(false),

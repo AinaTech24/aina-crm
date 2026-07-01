@@ -28,6 +28,7 @@ import {
   legalRegistrations,
 } from "@/db/schema";
 import { FirmProfileEditor } from "@/components/settings/FirmProfileEditor";
+import { DomainSettings } from "@/components/settings/DomainSettings";
 import { PrintButton } from "@/components/settings/PrintButton";
 import { computeFirmReadiness, expiryStatus } from "@/lib/firm/readiness";
 
@@ -226,6 +227,11 @@ export default async function FirmProfilePage() {
           fields. Directors + branches + registrations have their own
           dedicated pages, surfaced here as read-only summaries. */}
       <FirmProfileEditor tenant={data.tenant as any} />
+
+      {/* White-label URL — vanity subdomain + custom domain */}
+      <div className="print:hidden">
+        <DomainSettings />
+      </div>
 
       {/* Directors */}
       <SectionCard

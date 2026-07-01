@@ -43,10 +43,6 @@ export default async function NewSipWatchPage() {
         <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
           <ShieldAlert className="size-6 text-brand-cyan" /> New-SIP Installment Watch
         </h1>
-        <p className="text-muted-foreground text-sm">
-          First 6 installments of every recently-started SIP — auto-filled from the CAMS / KFintech feed. A few consecutive
-          misses and the SIP gets auto-paused, so anything flagged here needs a nudge.
-        </p>
       </div>
 
       <div className="grid grid-cols-3 gap-3">

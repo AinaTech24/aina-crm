@@ -56,9 +56,6 @@ export default function NewSopPage() {
         <ChevronLeft className="size-4" /> Back to SOPs
       </Link>
       <h1 className="text-2xl font-bold tracking-tight">New SOP</h1>
-      <p className="text-sm text-muted-foreground">
-        Required staff sign off on every SOP. Sign-offs are audit-logged for DDQ readiness.
-      </p>
 
       <form onSubmit={submit} className="border rounded-lg bg-card p-5 space-y-3">
         <div className="grid grid-cols-2 gap-3">

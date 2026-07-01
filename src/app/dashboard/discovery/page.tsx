@@ -40,10 +40,6 @@ export default async function DiscoveryListPage() {
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
             <ClipboardList className="size-6 text-brand-cyan" /> Discovery &amp; Suitability
           </h1>
-          <p className="text-muted-foreground text-sm mt-1">
-            Capture a client&apos;s full financial picture, risk profile &amp; product suitability — share the link before a
-            meeting, or fill it together and watch the numbers recalculate live.
-          </p>
         </div>
         <NewDiscoveryDialog />
       </div>

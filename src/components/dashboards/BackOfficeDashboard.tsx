@@ -17,7 +17,7 @@ export async function BackOfficeDashboard({ session }: { session: SessionUser })
   const data = await withTenant(session.tenantId, async (tx) => {
     const r = await tx.execute(sql`
       SELECT
-        (SELECT COUNT(*)::int FROM investors WHERE kyc_status IN ('pending', 'expired')) AS kyc_pending,
+        (SELECT COUNT(*)::int FROM investors WHERE kyc_status IN ('pending', 'expired') AND deleted_at IS NULL) AS kyc_pending,
         (SELECT COUNT(*)::int FROM mandates WHERE status = 'pending') AS mandate_pending,
         (SELECT COUNT(*)::int FROM sips WHERE status = 'pending') AS sip_reg_pending,
         (SELECT COUNT(*)::int FROM sips WHERE status IN ('rejected', 'paused')) AS sip_issues,
@@ -27,12 +27,13 @@ export async function BackOfficeDashboard({ session }: { session: SessionUser })
         (SELECT COUNT(*)::int FROM service_requests
             WHERE status IN ('open', 'in_progress')
               AND sla_resolution_at < now()) AS sr_breached,
-        (SELECT COUNT(*)::int FROM investors WHERE nominee_name IS NULL OR nominee_name = '') AS nominee_pending,
+        (SELECT COUNT(*)::int FROM investors WHERE (nominee_name IS NULL OR nominee_name = '') AND deleted_at IS NULL) AS nominee_pending,
         (SELECT COUNT(*)::int FROM investors WHERE is_minor = true
+            AND deleted_at IS NULL
             AND dob IS NOT NULL
             AND dob >= current_date - interval '18 years 90 days'
             AND dob < current_date - interval '18 years') AS minor_to_major,
-        (SELECT COUNT(*)::int FROM investors WHERE bank_account_masked IS NULL OR bank_account_masked = '') AS bank_pending,
+        (SELECT COUNT(*)::int FROM investors WHERE (bank_account_masked IS NULL OR bank_account_masked = '') AND deleted_at IS NULL) AS bank_pending,
         (SELECT COUNT(*)::int FROM mandates WHERE status = 'rejected') AS mandate_rejected
     `);
     const s = r.rows[0] as any;

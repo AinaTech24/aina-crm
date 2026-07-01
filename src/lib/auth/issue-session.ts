@@ -17,12 +17,17 @@ export type SessionUserInput = {
   permissions?: string[] | null;
 };
 
-/** Sign a session JWT for `user` and attach it as the httpOnly cookie on `res`. */
-export async function attachSessionCookie(
-  res: NextResponse,
-  user: SessionUserInput
-): Promise<NextResponse> {
-  const token = await signSession({
+/**
+ * Sign a session JWT for `user` and return the raw token string.
+ *
+ * This is the credential the MOBILE app carries (in its keychain), sent as
+ * `Authorization: Bearer <token>` on every API call. The web app uses the
+ * httpOnly cookie instead (see attachSessionCookie) — same signed payload,
+ * different transport. Keeping both paths on this one signer means the session
+ * shape never drifts between web and mobile.
+ */
+export async function issueSessionToken(user: SessionUserInput): Promise<string> {
+  return signSession({
     userId: user.userId,
     tenantId: user.tenantId,
     branchId: user.branchId ?? undefined,
@@ -31,6 +36,14 @@ export async function attachSessionCookie(
     name: user.name,
     permissions: user.permissions ?? [],
   });
+}
+
+/** Sign a session JWT for `user` and attach it as the httpOnly cookie on `res`. */
+export async function attachSessionCookie(
+  res: NextResponse,
+  user: SessionUserInput
+): Promise<NextResponse> {
+  const token = await issueSessionToken(user);
   // Platform-admin sessions go to a separate cookie so they don't clobber an
   // MFD session in the same browser (and vice versa).
   res.cookies.set(sessionCookieForRoles(user.roles), token, {

@@ -118,21 +118,21 @@ function Builder() {
         summary:
           form.reportType === "summary"
             ? {
-                groupBy: summary.groupBy.filter(Boolean),
-                columns: summary.columns,
-                aggregates: summary.aggregates.map((a) => ({ fn: a.fn, field: a.fn === "count" ? undefined : a.field })),
-                showDetailRows: summary.showDetailRows,
-              }
+              groupBy: summary.groupBy.filter(Boolean),
+              columns: summary.columns,
+              aggregates: summary.aggregates.map((a) => ({ fn: a.fn, field: a.fn === "count" ? undefined : a.field })),
+              showDetailRows: summary.showDetailRows,
+            }
             : undefined,
         schedule:
           schedule.enabled && schedule.emails.trim()
             ? {
-                freq: schedule.freq,
-                hour: Number(schedule.hour),
-                day: schedule.freq === "daily" ? undefined : Number(schedule.day),
-                emails: schedule.emails.split(",").map((s) => s.trim()).filter(Boolean),
-                enabled: true,
-              }
+              freq: schedule.freq,
+              hour: Number(schedule.hour),
+              day: schedule.freq === "daily" ? undefined : Number(schedule.day),
+              emails: schedule.emails.split(",").map((s) => s.trim()).filter(Boolean),
+              enabled: true,
+            }
             : null,
       };
       const res = await fetch(editId ? `/api/reports/saved/${editId}` : "/api/reports/saved", {
@@ -168,7 +168,6 @@ function Builder() {
         <h1 className="page-title">
           <BarChart3 className="size-6 text-brand-cyan" /> {editId ? "Edit report" : "New report"}
         </h1>
-        <p className="page-subtitle">Choose a module, filter the rows, then pick a Detailed, Summary or Matrix layout.</p>
       </div>
 
       {/* 1. Details */}

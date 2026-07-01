@@ -115,6 +115,36 @@
     background-attachment: fixed;
   }
 
+  /* Global themed scrollbar — replaces the OS/system scrollbar app-wide with an
+     on-brand thin bar that follows the active theme (light/dark + tenant hues).
+     Per-element opt-out utilities (.scrollbar-none / .scrollbar-thin /
+     .table-scroll) have higher specificity and a later layer, so they still
+     override this everywhere they're applied. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border)) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  *::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--border));
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(var(--muted-foreground) / 0.5);
+    background-clip: padding-box;
+  }
+  *::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
   /* When printing, drop the mesh + force white so PDFs aren't tinted. */
   @media print {
     body {
@@ -586,7 +616,24 @@
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
-  .table-scroll::-webkit-scrollbar { display: none; width: 0; height: 0; }
+  /* Show a slim HORIZONTAL scrollbar so wide tables are obviously draggable
+     sideways (e.g. Leads, where columns run past the viewport). The vertical
+     scrollbar stays hidden — vertical scroll chains to the page as before. The
+     bar only appears when the table actually overflows horizontally, so narrow
+     tables look unchanged. */
+  .table-scroll::-webkit-scrollbar { height: 10px; width: 0; }
+  .table-scroll::-webkit-scrollbar:vertical { width: 0; display: none; }
+  .table-scroll::-webkit-scrollbar-track { background: transparent; }
+  .table-scroll::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  .table-scroll::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.55);
+    background-clip: content-box;
+  }
 
   /* Uniform column gutters + row rhythm for every standardized list table, so
    * columns line up with even spacing across all modules. Scoped to

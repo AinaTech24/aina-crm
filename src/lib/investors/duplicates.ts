@@ -18,7 +18,7 @@ export async function countPossibleDuplicates(tx: Tx, tenantId: string): Promise
              NULLIF(upper(trim(pan)), '') AS pan,
              NULLIF(regexp_replace(coalesce(phone, ''), '[^0-9]', '', 'g'), '') AS phone
       FROM investors
-      WHERE tenant_id = ${tenantId}::uuid AND merged_into_id IS NULL AND status <> 'closed'
+      WHERE tenant_id = ${tenantId}::uuid AND merged_into_id IS NULL AND status <> 'closed' AND deleted_at IS NULL
     ),
     dup_pan AS (SELECT pan FROM live WHERE pan IS NOT NULL GROUP BY pan HAVING count(*) > 1),
     dup_phone AS (SELECT phone FROM live WHERE phone IS NOT NULL AND length(phone) >= 10 GROUP BY phone HAVING count(*) > 1)

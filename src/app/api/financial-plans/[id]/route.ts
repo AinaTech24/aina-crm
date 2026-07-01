@@ -6,7 +6,7 @@ import { requireSession } from "@/lib/auth/session";
 import { require as requireCap, can } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
-import { financialPlans, investors } from "@/db/schema";
+import { financialPlans, investors, leads } from "@/db/schema";
 import { handleApiError } from "@/lib/api/error-handler";
 import { recomputePlanGoals, numOrNull } from "@/lib/financial-plans/compute";
 
@@ -108,19 +108,23 @@ export async function GET(
       // Non-managers only see plans they prepared.
       if (!seesAll && p[0].preparedByUserId !== session.userId) return null;
 
-      const investor = await tx
-        .select({
-          id: investors.id,
-          name: investors.name,
-          email: investors.email,
-          phone: investors.phone,
-          pan: investors.pan,
-        })
-        .from(investors)
-        .where(eq(investors.id, p[0].investorId))
-        .limit(1);
+      // Subject is either an investor (client) or a lead (prospect).
+      let investor = null as any, lead = null as any;
+      if (p[0].investorId) {
+        investor = (await tx
+          .select({ id: investors.id, name: investors.name, email: investors.email, phone: investors.phone, pan: investors.pan })
+          .from(investors)
+          .where(eq(investors.id, p[0].investorId))
+          .limit(1))[0] ?? null;
+      } else if (p[0].leadId) {
+        lead = (await tx
+          .select({ id: leads.id, name: leads.name, email: leads.email, phone: leads.phone })
+          .from(leads)
+          .where(eq(leads.id, p[0].leadId))
+          .limit(1))[0] ?? null;
+      }
 
-      return { plan: p[0], investor: investor[0] ?? null };
+      return { plan: p[0], investor, lead };
     });
 
     if (!row) {

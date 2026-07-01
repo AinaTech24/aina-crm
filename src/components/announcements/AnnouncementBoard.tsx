@@ -386,7 +386,7 @@ function Composer({
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/40 flex justify-end" onClick={onClose}>
+    <div className="fixed inset-0 z-[60] bg-black/40 backdrop-blur-sm flex justify-end" onClick={onClose}>
       <div
         onClick={(e) => e.stopPropagation()}
         className="w-full max-w-lg h-full bg-card border-l shadow-2xl flex flex-col"

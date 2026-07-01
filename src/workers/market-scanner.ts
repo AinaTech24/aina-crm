@@ -113,6 +113,7 @@ export async function runMarketScan(
                  jsonb_build_object('scanDate', ${scanDate}::text, 'source', 'market-scanner')
           FROM investors i
           WHERE i.status = 'active'
+            AND i.deleted_at IS NULL
             AND i.phone IS NOT NULL AND i.phone <> ''
             AND EXISTS (
               SELECT 1 FROM consents c

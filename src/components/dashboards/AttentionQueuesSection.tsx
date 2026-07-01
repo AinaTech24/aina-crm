@@ -14,17 +14,17 @@ export async function AttentionQueuesSection({ session }: { session: SessionUser
       const res = await tx.execute(sql`
         SELECT
           (SELECT COUNT(*)::int FROM investors
-              WHERE status = 'active' AND next_review_at IS NOT NULL
+              WHERE status = 'active' AND deleted_at IS NULL AND next_review_at IS NOT NULL
                 AND next_review_at <= now()) AS reviews_due,
           (SELECT COUNT(*)::int FROM service_requests
               WHERE status IN ('open', 'in_progress')) AS sr_pending,
           (SELECT COUNT(*)::int FROM service_requests
               WHERE status IN ('open', 'in_progress') AND type = 'complaint') AS complaints_open,
           (SELECT COUNT(*)::int FROM investors
-              WHERE status = 'active' AND service_tier = 'A'
+              WHERE status = 'active' AND deleted_at IS NULL AND service_tier = 'A'
                 AND (last_review_at IS NULL OR last_review_at < now() - interval '120 days')) AS hni_not_reviewed,
           (SELECT COUNT(*)::int FROM investors
-              WHERE status = 'active'
+              WHERE status = 'active' AND deleted_at IS NULL
                 AND (last_transaction_at IS NULL OR last_transaction_at < ${dormantCutoff})) AS dormant_clients
       `);
       return res.rows[0] as any;

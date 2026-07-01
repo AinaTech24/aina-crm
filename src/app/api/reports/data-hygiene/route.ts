@@ -50,7 +50,7 @@ export async function GET() {
           COUNT(*) FILTER (WHERE pan_aadhaar_link_status = 'not_linked' OR pan_aadhaar_link_status IS NULL) AS pan_aadhaar_unlinked,
           COUNT(*)                                                    AS total
         FROM investors
-        WHERE status IN ('active', 'dormant')
+        WHERE status IN ('active', 'dormant') AND deleted_at IS NULL
       `);
       return r.rows[0] as any;
     });

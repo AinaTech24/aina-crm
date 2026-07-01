@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Save, Loader2, Check, X, Plug, ServerCog, Inbox, Mail } from "lucide-react";
+import { NavButton } from "@/components/common/SecureLinkButtons";
 
 type Server = { host: string; port: number; secure: boolean; user: string; pass: string };
 
@@ -189,20 +190,20 @@ export function MailboxForm({
             <div className="text-xs font-medium text-muted-foreground">Quick connect — no password, no app-password</div>
             <div className="flex flex-wrap gap-2">
               {oauthAvailable.google && (
-                <a
-                  href={`/api/settings/integrations/mailbox/oauth/google/start${qs}`}
+                <NavButton
+                  url={`/api/settings/integrations/mailbox/oauth/google/start${qs}`}
                   className="rounded-md border px-3 py-1.5 text-sm inline-flex items-center gap-1.5 hover:bg-accent"
                 >
                   <Mail className="size-4 text-rose-500" /> Connect Gmail
-                </a>
+                </NavButton>
               )}
               {oauthAvailable.microsoft && (
-                <a
-                  href={`/api/settings/integrations/mailbox/oauth/microsoft/start${qs}`}
+                <NavButton
+                  url={`/api/settings/integrations/mailbox/oauth/microsoft/start${qs}`}
                   className="rounded-md border px-3 py-1.5 text-sm inline-flex items-center gap-1.5 hover:bg-accent"
                 >
                   <Mail className="size-4 text-sky-600" /> Connect Outlook / Microsoft 365
-                </a>
+                </NavButton>
               )}
             </div>
             <p className="text-[11px] text-muted-foreground">Or set up SMTP / IMAP manually below.</p>

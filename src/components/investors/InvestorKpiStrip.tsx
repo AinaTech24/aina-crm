@@ -57,6 +57,10 @@ export async function InvestorKpiStrip({
               AND (last_transaction_at IS NULL OR last_transaction_at < now() - interval '180 days')
           )::int AS dormant
         FROM investors
+        -- Trashed (soft-deleted) clients must NOT inflate the counts/AUM — the
+        -- list excludes them (deleted_at IS NULL), so the KPI strip must match,
+        -- otherwise an emptied book still shows the old totals.
+        WHERE deleted_at IS NULL
       `);
       return r.rows[0] as any;
     },

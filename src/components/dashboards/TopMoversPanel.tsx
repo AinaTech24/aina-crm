@@ -38,6 +38,7 @@ export async function TopMoversPanel({
           JOIN investors i ON i.id = t.investor_id
           WHERE t.status IN ('successful','processed')
             AND t.order_date >= ${startISO}::date
+            AND i.deleted_at IS NULL
           GROUP BY i.id, i.name, i.segment_tag, i.avatar_url
           HAVING COALESCE(SUM(CASE WHEN t.direction = 'inflow' THEN t.amount::numeric ELSE -t.amount::numeric END), 0) > 0
           ORDER BY net_flow DESC
@@ -52,6 +53,7 @@ export async function TopMoversPanel({
           JOIN investors i ON i.id = t.investor_id
           WHERE t.status IN ('successful','processed')
             AND t.order_date >= ${startISO}::date
+            AND i.deleted_at IS NULL
           GROUP BY i.id, i.name, i.segment_tag, i.avatar_url
           HAVING COALESCE(SUM(CASE WHEN t.direction = 'outflow' THEN t.amount::numeric ELSE -t.amount::numeric END), 0) > 0
           ORDER BY net_out DESC
@@ -65,6 +67,7 @@ export async function TopMoversPanel({
           FROM sips s
           JOIN investors i ON i.id = s.investor_id
           WHERE s.created_at >= ${startISO}
+            AND i.deleted_at IS NULL
           ORDER BY s.amount::numeric DESC
           LIMIT 5
         `),

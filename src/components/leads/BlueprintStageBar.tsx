@@ -110,7 +110,7 @@ export function BlueprintStageBar({
   onConvertClick?: () => void;
 }) {
   const router = useRouter();
-  const [data, setData] = useState<{ current: Current; allStages: Stage[]; history: HistoryRow[]; pipeline?: string } | null>(null);
+  const [data, setData] = useState<{ current: Current; allStages: Stage[]; history: HistoryRow[]; pipeline?: string; leadScore?: number | null; scoreBand?: string | null } | null>(null);
   const [loading, setLoading] = useState(true);
   const [advancing, setAdvancing] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
@@ -232,6 +232,17 @@ export function BlueprintStageBar({
           </span>
         </div>
         <div className="flex items-center gap-2">
+          {/* Lead score badge — shows how hot the lead is, right where the RM
+              works the journey. Lead phase only (score is a lead-stage signal). */}
+          {phase !== "client" && data?.leadScore != null && (
+            <span
+              className={`chip inline-flex items-center gap-1 text-[10px] ${scoreBandClasses(data.scoreBand)}`}
+              title={`Lead score ${data.leadScore}/100${data.scoreBand ? ` · ${data.scoreBand}` : ""}`}
+            >
+              {data.scoreBand === "hot" ? "🔥" : "★"} {data.leadScore}
+              {data.scoreBand ? ` · ${data.scoreBand}` : ""}
+            </span>
+          )}
           {slaTone === "overdue" && (
             <span className="chip bg-rose-50 text-rose-700 inline-flex items-center gap-1 text-[10px]">
               <AlertTriangle className="size-3" />
@@ -270,7 +281,7 @@ export function BlueprintStageBar({
       </div>
 
       {/* Stepper */}
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto scrollbar-thin">
         <ol className="flex items-center min-w-max gap-0.5">
           {allStages.map((s, i) => (
             <li key={s.key} className="flex items-center">
@@ -531,4 +542,11 @@ function humaniseDuration(sec: number): string {
   if (sec < 3600) return `${Math.round(sec / 60)}m`;
   if (sec < 86400) return `${(sec / 3600).toFixed(1)}h`;
   return `${(sec / 86400).toFixed(1)}d`;
+}
+
+/** Colour the lead-score chip by band (hot ≥70 / warm ≥40 / cold). */
+function scoreBandClasses(band?: string | null): string {
+  if (band === "hot") return "bg-rose-50 text-rose-700";
+  if (band === "warm") return "bg-amber-50 text-amber-700";
+  return "bg-slate-100 text-slate-600";
 }

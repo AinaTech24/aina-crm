@@ -21,13 +21,16 @@
 import { useEffect, useRef, useState } from "react";
 import { Search, Check, X, Loader2, UserCircle2 } from "lucide-react";
 
+type Kind = "investor" | "lead";
 type Investor = {
   id: string;
   name: string;
-  pan: string | null;
+  pan?: string | null;
   phone: string | null;
   email: string | null;
-  segment_tag: string | null;
+  segment_tag?: string | null;
+  stage?: string | null;
+  kind?: Kind;
 };
 
 export function InvestorLookup({
@@ -37,13 +40,20 @@ export function InvestorLookup({
   onClear,
   placeholder,
   required,
+  includeLeads,
+  displayKind,
 }: {
   value?: string | null;
   displayName?: string | null;
-  onSelect: (id: string, name: string) => void;
+  /** kind is "investor" unless includeLeads surfaced a lead match. */
+  onSelect: (id: string, name: string, kind?: Kind) => void;
   onClear?: () => void;
   placeholder?: string;
   required?: boolean;
+  /** Also search open Leads (not just Clients) and tag results by kind. */
+  includeLeads?: boolean;
+  /** Subtitle on the picked-state pill — reflects whether a lead or client was chosen. */
+  displayKind?: Kind;
 }) {
   const [q, setQ] = useState("");
   const [results, setResults] = useState<Investor[]>([]);
@@ -73,7 +83,9 @@ export function InvestorLookup({
       try {
         const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
         const j = await res.json();
-        setResults((j.investors ?? []) as Investor[]);
+        const invs = ((j.investors ?? []) as Investor[]).map((r) => ({ ...r, kind: "investor" as const }));
+        const lds = includeLeads ? ((j.leads ?? []) as Investor[]).map((r) => ({ ...r, kind: "lead" as const })) : [];
+        setResults([...invs, ...lds]);
         setOpen(true);
       } finally {
         setBusy(false);
@@ -98,7 +110,7 @@ export function InvestorLookup({
           </div>
           <div className="min-w-0 flex-1">
             <div className="font-semibold text-sm truncate">{displayName}</div>
-            <div className="text-[11px] text-muted-foreground">Linked from Clients</div>
+            <div className="text-[11px] text-muted-foreground">{displayKind === "lead" ? "Linked from Leads" : "Linked from Clients"}</div>
           </div>
           <Check className="size-4 text-emerald-600 flex-shrink-0" />
         </div>
@@ -141,7 +153,7 @@ export function InvestorLookup({
           {results.length === 0 && !busy ? (
             <div className="p-4 text-center text-xs text-muted-foreground">
               <UserCircle2 className="size-6 mx-auto opacity-40 mb-1" />
-              No clients match "{q}".
+              No {includeLeads ? "clients or leads" : "clients"} match "{q}".
               <div className="mt-1 text-[10px]">
                 Try searching by PAN, mobile, or email.
               </div>
@@ -153,7 +165,7 @@ export function InvestorLookup({
                   <button
                     type="button"
                     onClick={() => {
-                      onSelect(r.id, r.name);
+                      onSelect(r.id, r.name, r.kind);
                       setQ("");
                       setResults([]);
                       setOpen(false);
@@ -172,14 +184,18 @@ export function InvestorLookup({
                     <div className="min-w-0 flex-1">
                       <div className="font-semibold text-sm truncate flex items-center gap-1.5">
                         {r.name}
-                        {r.segment_tag && (
+                        {r.kind === "lead" ? (
+                          <span className="chip text-[9px] bg-amber-100 text-amber-700">Lead</span>
+                        ) : r.segment_tag ? (
                           <span className="chip text-[9px] bg-brand-cyan-light text-brand-cyan-deep">
                             {r.segment_tag}
                           </span>
-                        )}
+                        ) : null}
                       </div>
                       <div className="text-[11px] text-muted-foreground truncate font-mono">
-                        {r.pan ?? "—"} · {r.phone ?? "—"}
+                        {r.kind === "lead"
+                          ? `${r.stage ? r.stage.replace(/_/g, " ") : "lead"} · ${r.phone ?? "—"}`
+                          : `${r.pan ?? "—"} · ${r.phone ?? "—"}`}
                       </div>
                     </div>
                   </button>

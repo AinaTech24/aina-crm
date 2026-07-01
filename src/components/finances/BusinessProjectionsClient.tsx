@@ -49,11 +49,6 @@ export function BusinessProjectionsClient({
           <h1 className="text-2xl font-semibold flex items-center gap-2">
             <TrendingUp className="size-6 text-brand-cyan" /> Business projections
           </h1>
-          <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
-            Project your AUM and commission income over the next {inp.years} years from your growth
-            assumptions. An estimate for planning — AUM compounds at the market rate, new SIP &amp;
-            lumpsum inflows grow each year, and income is the commission rate on year-end AUM.
-          </p>
         </div>
         <button onClick={() => window.print()} className="btn-ghost text-xs">
           <Printer className="size-3.5" /> Print
@@ -185,8 +180,8 @@ function SummaryCard({
     tone === "emerald"
       ? "text-emerald-700"
       : tone === "violet"
-      ? "text-violet-700"
-      : "text-brand-cyan-deep";
+        ? "text-violet-700"
+        : "text-brand-cyan-deep";
   return (
     <div className="card-surface glass-card p-4">
       <div className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">

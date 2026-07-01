@@ -37,6 +37,7 @@ const SOURCE_LABELS: Record<RtaSource, string> = {
   mfu: "MF Utility",
   bse_star_mf: "BSE Star MF",
   nse_nmf2: "NSE NMF II",
+  fintech_primitives: "Mailback Import",
 };
 
 /** Compact pattern(s) for the dropdown <option>, e.g. " — MFSD211_… / …R9". */
@@ -210,10 +211,6 @@ export function UploadDialog({
         <div className="px-6 py-4 border-b border-border flex items-start justify-between sticky top-0 bg-card z-10">
           <div>
             <h2 className="text-lg font-bold tracking-tight">Upload RTA file</h2>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Pick which registrar sent the file and what kind it is — we&apos;ll
-              parse it, write the data, and tell you what landed.
-            </p>
           </div>
           <button
             onClick={handleClose}
@@ -269,11 +266,10 @@ export function UploadDialog({
                       key={s}
                       type="button"
                       onClick={() => setSource(s)}
-                      className={`px-3 py-1.5 rounded-lg text-sm border transition-colors ${
-                        source === s
+                      className={`px-3 py-1.5 rounded-lg text-sm border transition-colors ${source === s
                           ? "bg-primary text-primary-foreground border-primary"
                           : "bg-background hover:bg-secondary/70 border-border"
-                      }`}
+                        }`}
                     >
                       {SOURCE_LABELS[s]}
                     </button>
@@ -484,10 +480,10 @@ function Stat({ label, value, tone }: { label: string; value: number; tone: "eme
     tone === "emerald"
       ? "bg-emerald-50 text-emerald-700"
       : tone === "amber"
-      ? "bg-amber-50 text-amber-700"
-      : tone === "rose"
-      ? "bg-rose-50 text-rose-700"
-      : "bg-secondary text-muted-foreground";
+        ? "bg-amber-50 text-amber-700"
+        : tone === "rose"
+          ? "bg-rose-50 text-rose-700"
+          : "bg-secondary text-muted-foreground";
   return (
     <div className={`rounded-lg px-3 py-2 text-center ${toneCls}`}>
       <div className="text-lg font-bold">{value}</div>

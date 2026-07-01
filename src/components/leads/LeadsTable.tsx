@@ -14,7 +14,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { Loader2, X, UserCog, CalendarClock, ArrowRightLeft, Ban, ArrowUpDown } from "lucide-react";
+import { Loader2, X, UserCog, CalendarClock, ArrowRightLeft, Ban, ArrowUpDown, Trash2, AlertTriangle } from "lucide-react";
 import { RowActions } from "@/components/common/RowActions";
 import { RmSelector } from "@/components/common/RmSelector";
 import { formatINR, formatDate } from "@/lib/utils";
@@ -80,7 +80,7 @@ export function LeadsTable({ rows, sort, dir = "desc" }: { rows: Row[]; sort: st
   const searchParams = useSearchParams();
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [bulk, setBulk] = useState<null | "assign" | "follow_up" | "stage" | "lost">(null);
+  const [bulk, setBulk] = useState<null | "assign" | "follow_up" | "stage" | "lost" | "delete">(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -161,6 +161,7 @@ export function LeadsTable({ rows, sort, dir = "desc" }: { rows: Row[]; sort: st
           <button onClick={() => setBulk("follow_up")} className="btn-ghost text-xs inline-flex items-center gap-1"><CalendarClock className="size-3.5" /> Set follow-up</button>
           <button onClick={() => setBulk("stage")} className="btn-ghost text-xs inline-flex items-center gap-1"><ArrowRightLeft className="size-3.5" /> Change stage</button>
           <button onClick={() => setBulk("lost")} className="btn-ghost text-xs inline-flex items-center gap-1 text-rose-700"><Ban className="size-3.5" /> Mark lost</button>
+          <button onClick={() => setBulk("delete")} className="btn-ghost text-xs inline-flex items-center gap-1 text-rose-700"><Trash2 className="size-3.5" /> Delete</button>
           <button onClick={() => setSelected(new Set())} className="text-xs text-muted-foreground hover:underline ml-auto">Clear</button>
         </div>
       )}
@@ -184,8 +185,23 @@ export function LeadsTable({ rows, sort, dir = "desc" }: { rows: Row[]; sort: st
           {bulk === "lost" && (
             <input value={lostReason} onChange={(e) => setLostReason(e.target.value)} placeholder="Lost reason (optional)" className="input-base text-sm w-72" />
           )}
-          <button onClick={runBulk} disabled={busy} className="btn-primary text-xs">
-            {busy && <Loader2 className="size-3.5 animate-spin" />} Apply to {selected.size}
+          {bulk === "delete" && (
+            <span className="inline-flex items-center gap-1.5 text-rose-700">
+              <AlertTriangle className="size-4" />
+              Delete {selected.size} lead{selected.size > 1 ? "s" : ""}? They&apos;ll be removed from your pipeline.
+            </span>
+          )}
+          <button
+            onClick={runBulk}
+            disabled={busy}
+            className={
+              bulk === "delete"
+                ? "text-xs inline-flex items-center gap-1 px-3 py-1.5 rounded-md bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-50"
+                : "btn-primary text-xs"
+            }
+          >
+            {busy && <Loader2 className="size-3.5 animate-spin" />}
+            {bulk === "delete" ? <>Delete {selected.size}</> : <>Apply to {selected.size}</>}
           </button>
           <button onClick={() => { setBulk(null); setErr(null); }} className="text-xs text-muted-foreground hover:underline inline-flex items-center gap-0.5"><X className="size-3" /> Cancel</button>
           {err && <span className="text-xs text-rose-600">{err}</span>}
@@ -216,7 +232,7 @@ export function LeadsTable({ rows, sort, dir = "desc" }: { rows: Row[]; sort: st
                   Created <ArrowUpDown className="size-3" /> {sortArrow("recent")}
                 </button>
               </th>
-              <th data-col="actions" className="px-4 py-2.5"></th>
+              <th data-col="actions" className="px-4 py-2.5 text-right font-medium">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -269,7 +285,7 @@ export function LeadsTable({ rows, sort, dir = "desc" }: { rows: Row[]; sort: st
                     {l.createdAt ? formatDate(l.createdAt) : "—"}
                   </td>
                   <td data-col="actions" className="px-4 py-3 text-right">
-                    <RowActions editHref={`/dashboard/leads/${l.id}`} deleteUrl={`/api/leads/${l.id}`} itemLabel="lead" itemName={l.name} verb="Delete" />
+                    <RowActions inline editHref={`/dashboard/leads/${l.id}`} deleteUrl={`/api/leads/${l.id}`} itemLabel="lead" itemName={l.name} verb="Delete" />
                   </td>
                 </tr>
               );

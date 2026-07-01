@@ -99,7 +99,7 @@ export async function scanChurn(
       (SELECT COUNT(*) FROM sip_rejections r WHERE r.investor_id = i.id AND r.rejection_date > CURRENT_DATE - 90) AS sip_rej_90d
     FROM investors i
     LEFT JOIN transactions t ON t.investor_id = i.id AND t.status IN ('processed', 'successful')
-    WHERE i.status IN ('active', 'dormant')${rmScope}
+    WHERE i.status IN ('active', 'dormant') AND i.deleted_at IS NULL${rmScope}
     GROUP BY i.id
   `);
 

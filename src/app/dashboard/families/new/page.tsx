@@ -5,8 +5,8 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { RmSelector } from "@/components/common/RmSelector";
-import { ThemeSelect } from "@/components/ui/ThemeSelect";
-import { ThemeDate } from "@/components/ui/ThemeDate";
+import { SelectField } from "@/components/ui/SelectField";
+import { DateField } from "@/components/ui/DateField";
 import { FAMILY_REVIEW_FREQUENCIES } from "@/lib/families/cadence";
 
 const CATEGORIES = ["HNI", "Affluent", "Retail", "NRI", "Corporate"] as const;
@@ -67,9 +67,6 @@ export default function NewFamilyPage() {
         <ChevronLeft className="size-4" /> Back to families
       </Link>
       <h1 className="text-2xl font-bold tracking-tight">New family</h1>
-      <p className="text-sm text-muted-foreground">
-        Capture the household profile + review cadence. After creating, link existing investors from each investor's page.
-      </p>
       <form onSubmit={submit} className="border rounded-lg bg-card p-5 space-y-4">
         {/* Identity */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -81,7 +78,7 @@ export default function NewFamilyPage() {
               value={form.headName}
               onChange={(e) => set("headName", e.target.value)}
               required
-              placeholder="e.g. Patel Family"
+              // placeholder="e.g. Patel Family"
               className="w-full border rounded-md px-3 py-2 text-sm bg-background"
             />
           </label>
@@ -90,21 +87,21 @@ export default function NewFamilyPage() {
             <input
               value={form.familyCode}
               onChange={(e) => set("familyCode", e.target.value)}
-              placeholder="e.g. PATEL-001"
+              // placeholder="e.g. PATEL-001"
               className="w-full border rounded-md px-3 py-2 text-sm bg-background"
             />
           </label>
           <label className="block">
             <div className="text-xs font-medium mb-1">Category</div>
-            <ThemeSelect
+            <SelectField
               value={form.familyCategory}
-              onChange={(val) => set("familyCategory", val)}
+              onChange={(e) => set("familyCategory", e.target.value)}
             >
-              <option value="">—</option>
+              <option value="">Select</option>
               {CATEGORIES.map((c) => (
                 <option key={c} value={c}>{c}</option>
               ))}
-            </ThemeSelect>
+            </SelectField>
           </label>
           <label className="block">
             <div className="text-xs font-medium mb-1">
@@ -114,7 +111,7 @@ export default function NewFamilyPage() {
             <RmSelector
               value={form.rmId || null}
               onChange={(id) => set("rmId", id ?? "")}
-              placeholder="— Assign to myself —"
+              placeholder="Assign to myself"
             />
           </label>
         </div>
@@ -127,22 +124,21 @@ export default function NewFamilyPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <label className="block">
               <div className="text-xs font-medium mb-1">Meeting frequency</div>
-              <ThemeSelect
+              <SelectField
                 value={form.reviewFrequency}
-                onChange={(val) => set("reviewFrequency", val)}
+                onChange={(e) => set("reviewFrequency", e.target.value)}
               >
-                <option value="">— None —</option>
+                <option value="">None</option>
                 {FAMILY_REVIEW_FREQUENCIES.map(([v, l]) => (
                   <option key={v} value={v}>{l}</option>
                 ))}
-              </ThemeSelect>
+              </SelectField>
             </label>
             <label className="block">
               <div className="text-xs font-medium mb-1">First meeting date</div>
-              <ThemeDate
-                type="date"
+              <DateField
                 value={form.firstMeetingDate}
-                onChange={(val) => set("firstMeetingDate", val)}
+                onChange={(e) => set("firstMeetingDate", e.target.value)}
               />
             </label>
           </div>

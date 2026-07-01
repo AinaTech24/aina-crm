@@ -245,7 +245,7 @@ export function ProductOfferingForm({
           <SelectField
             value={v.category}
             onChange={(e) => field("category", e.target.value)}
-            className="input-base text-sm w-full"
+            className="text-sm w-full"
           >
             {CATEGORIES.map((c) => (
               <option key={c.value} value={c.value}>
@@ -258,7 +258,7 @@ export function ProductOfferingForm({
           <SelectField
             value={v.regulator}
             onChange={(e) => field("regulator", e.target.value)}
-            className="input-base text-sm w-full"
+            className="text-sm w-full"
           >
             {REGULATORS.map((r) => (
               <option key={r.value} value={r.value}>
@@ -271,7 +271,7 @@ export function ProductOfferingForm({
           <SelectField
             value={v.status}
             onChange={(e) => field("status", e.target.value)}
-            className="input-base text-sm w-full"
+            className="text-sm w-full"
           >
             {STATUSES.map((s) => (
               <option key={s.value} value={s.value}>
@@ -284,7 +284,7 @@ export function ProductOfferingForm({
           <DateField
             value={v.launchedAt ?? ""}
             onChange={(e) => field("launchedAt", e.target.value || null)}
-            className="input-base text-sm w-full"
+            className="text-sm w-full"
           />
         </Field>
         {v.status === "discontinued" && (
@@ -292,7 +292,7 @@ export function ProductOfferingForm({
             <DateField
               value={v.discontinuedAt ?? ""}
               onChange={(e) => field("discontinuedAt", e.target.value || null)}
-              className="input-base text-sm w-full"
+              className="text-sm w-full"
             />
           </Field>
         )}
@@ -437,20 +437,20 @@ export function ProductOfferingForm({
             Paste document URLs (Google Drive, S3, etc.).
           </p>
         )}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <input
             value={newDoc.label}
             onChange={(e) =>
               setNewDoc((d) => ({ ...d, label: e.target.value }))
             }
             placeholder="Document label"
-            className="input-base text-sm flex-1"
+            className="input-base text-sm flex-1 min-w-[12rem]"
           />
           <input
             value={newDoc.url}
             onChange={(e) => setNewDoc((d) => ({ ...d, url: e.target.value }))}
             placeholder="https://…"
-            className="input-base text-sm flex-1"
+            className="input-base text-sm flex-1 min-w-[12rem]"
           />
           <button
             type="button"
@@ -474,7 +474,7 @@ export function ProductOfferingForm({
         />
       </Section>
 
-      <div className="flex items-center justify-between pt-4 border-t">
+      <div className="flex flex-wrap items-center justify-between gap-2 pt-4 border-t">
         {mode === "edit" && v.status !== "discontinued" ? (
           <button
             type="button"
@@ -589,7 +589,7 @@ function Section({
 }
 
 function Grid({ children }: { children: React.ReactNode }) {
-  return <div className="grid grid-cols-2 gap-3">{children}</div>;
+  return <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">{children}</div>;
 }
 
 function Field({

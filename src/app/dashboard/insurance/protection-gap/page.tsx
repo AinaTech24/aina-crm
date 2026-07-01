@@ -38,7 +38,7 @@ export default async function ProtectionGapPage({ searchParams }: { searchParams
           NOT ${covers(sql`('health','critical_illness')`)} AS health_gap,
           CASE i.segment_tag WHEN 'HNI' THEN 4 WHEN 'Corporate' THEN 4 WHEN 'NRI' THEN 3 WHEN 'Affluent' THEN 3 ELSE 1 END AS seg_rank
         FROM investors i
-        WHERE i.tenant_id = ${session.tenantId}::uuid AND i.status='active' AND i.merged_into_id IS NULL${own}`;
+        WHERE i.tenant_id = ${session.tenantId}::uuid AND i.status='active' AND i.deleted_at IS NULL AND i.merged_into_id IS NULL${own}`;
       // Indicative recommended cover (₹) — a transparent segment-based floor, not
       // a precise HLV. Life: HNI/Corp ₹2Cr, NRI/Affluent ₹1Cr, else ₹50L.
       // Health floater: HNI/NRI/Corp ₹10L, else ₹5L.

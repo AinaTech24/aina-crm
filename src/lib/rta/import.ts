@@ -23,6 +23,19 @@ import { investors, folios as foliosTable } from "@/db/schema";
 import type { RtaFolioRecord } from "./types";
 import { resolveSchemeIdentity } from "./resolve-scheme";
 
+/**
+ * Build a Postgres array literal that binds a JS array as ONE array value.
+ *
+ * Interpolating a JS array directly (`unnest(${arr}::uuid[])`) makes Drizzle
+ * expand it to a *parenthesised parameter list* `($1, $2, …)`, so the SQL
+ * becomes `unnest(($1,…)::uuid[])` — casting a ROW to an array, which Postgres
+ * rejects ("UPDATE … FROM (SELECT unnest(($1,$2,…)…" → failed query). Wrapping
+ * the params in `ARRAY[$1, $2, …]::type[]` is the correct array constructor.
+ */
+function pgArray(values: (string | null)[], pgType: "uuid" | "date" | "text") {
+  return sql`ARRAY[${sql.join(values.map((v) => sql`${v}`), sql`, `)}]::${sql.raw(pgType)}[]`;
+}
+
 export type RtaImportSummary = {
   dryRun: boolean;
   rta: string;
@@ -476,7 +489,7 @@ export async function importRtaFolios(
       const txnsArr = part.map((x) => x.txn);
       await tx.execute(sql`
         UPDATE investors i SET last_transaction_at = GREATEST(i.last_transaction_at, v.txn::timestamptz), updated_at = now()
-        FROM (SELECT unnest(${idsArr}::uuid[]) AS id, unnest(${txnsArr}::date[]) AS txn) v
+        FROM (SELECT unnest(${pgArray(idsArr, "uuid")}) AS id, unnest(${pgArray(txnsArr, "date")}) AS txn) v
         WHERE i.id = v.id AND i.tenant_id = ${tenantId}::uuid
       `);
     }
@@ -495,7 +508,7 @@ export async function importRtaFolios(
       const gids = part.map((x) => x.guardianId);
       await tx.execute(sql`
         UPDATE investors m SET guardian_investor_id = v.gid::uuid, is_minor = true, updated_at = now()
-        FROM (SELECT unnest(${mids}::uuid[]) AS mid, unnest(${gids}::uuid[]) AS gid) v
+        FROM (SELECT unnest(${pgArray(mids, "uuid")}) AS mid, unnest(${pgArray(gids, "uuid")}) AS gid) v
         WHERE m.id = v.mid AND m.tenant_id = ${tenantId}::uuid
       `);
     }
@@ -538,7 +551,7 @@ export async function importRtaFolios(
       const ins = await tx.execute(sql`
         INSERT INTO families (tenant_id, head_name, family_name, primary_investor_id)
         SELECT ${tenantId}::uuid, v.nm, v.nm || ' Family', v.gid::uuid
-        FROM (SELECT unnest(${partIds}::uuid[]) AS gid, unnest(${names}::text[]) AS nm) v
+        FROM (SELECT unnest(${pgArray(partIds, "uuid")}) AS gid, unnest(${pgArray(names, "text")}) AS nm) v
         RETURNING id, primary_investor_id
       `);
       for (const row of ins.rows as any[]) famByGuardian.set(String(row.primary_investor_id), String(row.id));
@@ -551,7 +564,7 @@ export async function importRtaFolios(
       const fids = part.map(([, fid]) => fid);
       await tx.execute(sql`
         UPDATE investors g SET family_id = v.fid::uuid, family_role = coalesce(g.family_role, 'head'), updated_at = now()
-        FROM (SELECT unnest(${gids}::uuid[]) AS gid, unnest(${fids}::uuid[]) AS fid) v
+        FROM (SELECT unnest(${pgArray(gids, "uuid")}) AS gid, unnest(${pgArray(fids, "uuid")}) AS fid) v
         WHERE g.id = v.gid AND g.tenant_id = ${tenantId}::uuid AND g.family_id IS NULL
       `);
     }
@@ -568,7 +581,7 @@ export async function importRtaFolios(
       const fids = part.map((x) => x.fid);
       await tx.execute(sql`
         UPDATE investors m SET family_id = v.fid::uuid, family_role = coalesce(m.family_role, 'minor'), updated_at = now()
-        FROM (SELECT unnest(${mids}::uuid[]) AS mid, unnest(${fids}::uuid[]) AS fid) v
+        FROM (SELECT unnest(${pgArray(mids, "uuid")}) AS mid, unnest(${pgArray(fids, "uuid")}) AS fid) v
         WHERE m.id = v.mid AND m.tenant_id = ${tenantId}::uuid
       `);
     }

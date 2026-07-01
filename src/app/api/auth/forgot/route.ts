@@ -18,6 +18,7 @@ import { z } from "zod";
 import { withSystem } from "@/db/client";
 import { enforce } from "@/lib/rate-limit";
 import { sendSystemEmail, actionEmailHtml } from "@/lib/comms/system-email";
+import { requestBaseUrl } from "@/lib/url/request-base";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +33,9 @@ export async function POST(req: NextRequest) {
   const parse = Body.safeParse(await req.json().catch(() => ({})));
   if (!parse.success) return NextResponse.json({ ok: true }); // shape-stable
   const email = parse.data.email.toLowerCase();
+  // Point the reset link at the host the request came in on (a firm's own
+  // white-label domain), falling back to APP_URL. Resolved in request context.
+  const baseUrl = await requestBaseUrl();
 
   try {
     const { resetUrl, tenantId, name } = await withSystem(async (tx) => {
@@ -56,8 +60,7 @@ export async function POST(req: NextRequest) {
                 now(), now())
       `);
 
-      const base = process.env.APP_URL ?? "http://localhost:3000";
-      const url = `${base}/reset-password?token=${token}`;
+      const url = `${baseUrl}/reset-password?token=${token}`;
 
       return { resetUrl: url, tenantId: user.tenant_id as string, name: (user.name as string) ?? null };
     });

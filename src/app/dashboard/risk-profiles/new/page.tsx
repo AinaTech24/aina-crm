@@ -31,7 +31,7 @@ export default async function NewRiskProfilePage({
       const r = await tx.execute(sql`
         SELECT i.id, i.name, i.pan, i.segment_tag, i.risk_profile, i.risk_profile_signed_at
         FROM investors i
-        WHERE i.status = 'active'
+        WHERE i.status = 'active' AND i.deleted_at IS NULL
         ORDER BY (i.risk_profile_signed_at IS NULL) DESC, i.risk_profile_signed_at ASC NULLS FIRST, i.name
         LIMIT 200
       `);
@@ -48,9 +48,6 @@ export default async function NewRiskProfilePage({
         </Link>
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Start a new risk profile</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Pick the investor — un-profiled and expired clients shown first.
-          </p>
         </div>
         <div className="card-surface overflow-hidden">
           {list.length === 0 ? (

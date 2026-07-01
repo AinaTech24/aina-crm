@@ -21,7 +21,10 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     const data = await withTenant(session.tenantId, async (tx) => {
       const lead = await loadViewableLead(tx, session, id);
       if (!lead) throw Object.assign(new Error("Lead not found"), { status: 404 });
-      return getStage(tx, session.tenantId, id);
+      const stage = await getStage(tx, session.tenantId, id);
+      // Surface the lead's deterministic score + band so the blueprint bar can
+      // show "how hot is this lead" right where the RM works the journey.
+      return { ...stage, leadScore: (lead as any).leadScore ?? null, scoreBand: (lead as any).scoreBand ?? null };
     });
     return NextResponse.json(data);
   } catch (err: any) {

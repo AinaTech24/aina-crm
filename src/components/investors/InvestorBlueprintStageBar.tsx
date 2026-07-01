@@ -87,7 +87,7 @@ export function InvestorBlueprintStageBar({ investorId }: { investorId: string }
         </span>
       </div>
 
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto scrollbar-thin">
         <ol className="flex items-center min-w-max gap-0.5">
           {data.allStages.map((s, i) => (
             <li key={s.key} className="flex items-center">

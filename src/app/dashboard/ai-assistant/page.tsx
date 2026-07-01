@@ -122,9 +122,6 @@ export default function AiAssistantPage() {
         <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
           <Sparkles className="size-6 ai-icon-animated" /> AI Assistant
         </h1>
-        <p className="text-muted-foreground text-sm mt-1">
-          Ask anything about your live data, or draft a client message. Drafts re-pass the compliance gate before they can be sent.
-        </p>
       </div>
 
       <div className="border rounded-lg bg-card p-5">

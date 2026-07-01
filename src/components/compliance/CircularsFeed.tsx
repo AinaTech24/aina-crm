@@ -12,6 +12,7 @@ import {
   Filter 
 } from "lucide-react";
 import { DeleteCircularButton } from "@/components/compliance/DeleteCircularButton";
+import { SelectField } from "@/components/ui/SelectField";
 
 type CircularItem = {
   id: string;
@@ -98,21 +99,23 @@ export function CircularsFeed({
             <Filter className="size-3.5" /> Filter:
           </div>
 
-          <select
+          <SelectField
             value={severityFilter}
             onChange={(e) => setSeverityFilter(e.target.value)}
-            className="bg-background border rounded-md px-2.5 py-1.5 text-xs font-semibold focus:outline-none"
+            size="sm"
+            className="w-40"
           >
             <option value="all">All Severities</option>
             <option value="critical">Critical</option>
             <option value="action_required">Action Required</option>
             <option value="info">Info</option>
-          </select>
+          </SelectField>
 
-          <select
+          <SelectField
             value={issuerFilter}
             onChange={(e) => setIssuerFilter(e.target.value)}
-            className="bg-background border rounded-md px-2.5 py-1.5 text-xs font-semibold focus:outline-none"
+            size="sm"
+            className="w-40"
           >
             <option value="all">All Issuers</option>
             <option value="AMFI">AMFI</option>
@@ -120,7 +123,7 @@ export function CircularsFeed({
             <option value="RBI">RBI</option>
             <option value="CBDT">CBDT</option>
             <option value="OTHER">Other</option>
-          </select>
+          </SelectField>
         </div>
       </div>
 

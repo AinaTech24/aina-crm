@@ -83,7 +83,7 @@ export async function liveByBranch(tx: Tx, metricKey: MetricKey): Promise<Map<st
   const res = await tx.execute(sql`
     SELECT branch_id, COALESCE(SUM(${sql.raw(col)}), 0)::numeric AS total
       FROM investors
-     WHERE branch_id IS NOT NULL
+     WHERE branch_id IS NOT NULL AND deleted_at IS NULL
      GROUP BY branch_id
   `);
   const map = new Map<string, number>();

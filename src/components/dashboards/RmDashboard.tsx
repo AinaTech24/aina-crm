@@ -67,7 +67,7 @@ export async function RmDashboard({
         COUNT(*)::int AS my_clients,
         COALESCE(SUM(aum::numeric), 0)::numeric AS my_aum,
         COALESCE(SUM(active_sip_amount::numeric), 0)::numeric AS my_sip_book
-      FROM investors WHERE rm_id = ${userId} AND status = 'active'
+      FROM investors WHERE rm_id = ${userId} AND status = 'active' AND deleted_at IS NULL
     `);
     const c = clientStats.rows[0] as any;
 

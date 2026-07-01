@@ -11,6 +11,7 @@
  */
 
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Share2, Pencil, X, Loader2, Save, UserPlus } from "lucide-react";
 import { ReferralsField } from "./ReferralsField";
@@ -122,7 +123,7 @@ export function ReferralSection({
         </div>
       )}
 
-      {open && (
+      {open && typeof document !== "undefined" && createPortal(
         <>
           <div className="fixed inset-0 z-50 bg-black/40" onClick={() => !busy && setOpen(false)} />
           <div className="fixed right-0 top-0 z-50 h-full w-full max-w-md bg-card shadow-2xl border-l border-border flex flex-col animate-in slide-in-from-right">
@@ -150,7 +151,8 @@ export function ReferralSection({
               </button>
             </div>
           </div>
-        </>
+        </>,
+        document.body,
       )}
     </div>
   );

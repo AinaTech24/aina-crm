@@ -13,6 +13,7 @@
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, X, Plus, MapPin, Phone, Save } from "lucide-react";
+import { SelectField } from "@/components/ui/SelectField";
 
 type Subject = { type: "investor" | "lead" | "family"; id: string; name: string; phone?: string | null };
 
@@ -98,14 +99,14 @@ function LogActivityDrawer({ subject: fixed, onClose }: { subject?: Subject; onC
           {kind === "call" && (
             <div className="grid grid-cols-3 gap-2">
               <Field label="Direction">
-                <select value={direction} onChange={(e) => setDirection(e.target.value)} className="input-base text-sm">
+                <SelectField value={direction} onChange={(e) => setDirection(e.target.value)}>
                   <option value="outbound">Outbound</option><option value="inbound">Inbound</option>
-                </select>
+                </SelectField>
               </Field>
               <Field label="Outcome">
-                <select value={status} onChange={(e) => setStatus(e.target.value)} className="input-base text-sm">
+                <SelectField value={status} onChange={(e) => setStatus(e.target.value)}>
                   {STATUSES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                </select>
+                </SelectField>
               </Field>
               <Field label="Duration (min)"><input type="number" min="0" value={durationMin} onChange={(e) => setDurationMin(e.target.value)} className="input-base text-sm" /></Field>
             </div>

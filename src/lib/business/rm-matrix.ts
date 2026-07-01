@@ -132,6 +132,7 @@ export async function loadRmMatrix(
       WHERE be.status IN ('confirmed','emailed')
         AND be.business_date >= ${start} AND be.business_date < ${end}
         AND i.branch_id = ${branchId}
+        AND i.deleted_at IS NULL
         AND (be.rm_id IS NULL OR be.rm_id NOT IN (SELECT id FROM users WHERE ${ROSTER(branchId)}))
     `);
     const o = (outRes.rows as any[])[0] ?? {};

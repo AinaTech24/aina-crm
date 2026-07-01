@@ -67,12 +67,12 @@ export async function computeTrailForecast(tx: Tx, tenantId: string): Promise<Tr
       FROM folios f
       JOIN investors i ON i.id = f.investor_id
       CROSS JOIN LATERAL jsonb_array_elements(COALESCE(f.schemes, '[]'::jsonb)) elem
-      WHERE f.tenant_id = ${tenantId} AND f.closed_at IS NULL
+      WHERE f.tenant_id = ${tenantId} AND f.closed_at IS NULL AND i.deleted_at IS NULL
       UNION ALL
       SELECT f.amc_code, f.amc_name, i.rm_id, i.id AS investor_id, i.name AS investor_name, NULL AS category, COALESCE(f.aum, 0) AS value
       FROM folios f
       JOIN investors i ON i.id = f.investor_id
-      WHERE f.tenant_id = ${tenantId} AND f.closed_at IS NULL
+      WHERE f.tenant_id = ${tenantId} AND f.closed_at IS NULL AND i.deleted_at IS NULL
         AND COALESCE(jsonb_array_length(COALESCE(f.schemes, '[]'::jsonb)), 0) = 0
     )
     SELECT amc_code, MIN(amc_name) AS amc_name, rm_id, investor_id, MIN(investor_name) AS investor_name, category, SUM(value) AS aum

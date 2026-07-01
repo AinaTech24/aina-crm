@@ -22,7 +22,7 @@ export default async function NewReviewMeetingPage({
       tx.execute(sql`
         SELECT id, name, pan, segment_tag, last_review_at, next_review_at
         FROM investors
-        WHERE tenant_id = ${session.tenantId}::uuid AND status = 'active'
+        WHERE tenant_id = ${session.tenantId}::uuid AND status = 'active' AND deleted_at IS NULL
         ORDER BY (next_review_at IS NULL) DESC, next_review_at ASC NULLS FIRST, name
         LIMIT 300
       `),

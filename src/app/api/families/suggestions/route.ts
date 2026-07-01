@@ -41,7 +41,8 @@ export async function GET(req: NextRequest) {
           aum: investors.aum,
           activeSipAmount: investors.activeSipAmount,
         })
-        .from(investors);
+        .from(investors)
+        .where(isNull(investors.deletedAt));
 
       const allFamilies = await tx.select().from(families);
 

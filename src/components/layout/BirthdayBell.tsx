@@ -142,14 +142,24 @@ export function BirthdayBell() {
             </ul>
           )}
 
-          {/* View all */}
-          <Link
-            href="/dashboard/investors?birthday_today=1"
-            onClick={() => setOpen(false)}
-            className="block text-center px-4 py-2.5 text-xs font-medium text-brand-cyan-deep hover:underline border-t bg-card"
-          >
-            View all today's birthdays →
-          </Link>
+          {/* View all — respects the selected tab (today / tomorrow / past). */}
+          {(() => {
+            const va =
+              tab === "tomorrow"
+                ? { href: "/dashboard/investors?birthday_tomorrow=1", label: "View all tomorrow's birthdays" }
+                : tab === "past"
+                ? { href: "/dashboard/investors?birthday_past=1", label: "View all recent birthdays" }
+                : { href: "/dashboard/investors?birthday_today=1", label: "View all today's birthdays" };
+            return (
+              <Link
+                href={va.href}
+                onClick={() => setOpen(false)}
+                className="block text-center px-4 py-2.5 text-xs font-medium text-brand-cyan-deep hover:underline border-t bg-card"
+              >
+                {va.label} →
+              </Link>
+            );
+          })()}
         </div>
       )}
     </div>

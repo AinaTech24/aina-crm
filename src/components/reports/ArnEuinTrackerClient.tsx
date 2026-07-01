@@ -18,6 +18,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Download, FileText } from "lucide-react";
+import { DownloadButton } from "@/components/common/SecureLinkButtons";
 
 type Row = {
   id: string;
@@ -281,15 +282,13 @@ export function ArnEuinTrackerClient({
                       {(() => {
                         const doc = r.docs?.find((d) => d.category === "nism");
                         return doc ? (
-                          <a
-                            href={`/api/compliance/documents/download?id=${doc.id}`}
-                            target="_blank"
-                            rel="noreferrer"
+                          <DownloadButton
+                            url={`/api/compliance/documents/download?id=${doc.id}`}
                             title="Download NISM certificate"
                             className="text-primary hover:text-primary-focus inline-flex items-center shrink-0"
                           >
                             <FileText className="size-3" />
-                          </a>
+                          </DownloadButton>
                         ) : null;
                       })()}
                     </div>
@@ -312,15 +311,13 @@ export function ArnEuinTrackerClient({
                       {(() => {
                         const doc = r.docs?.find((d) => d.category === "arn");
                         return doc ? (
-                          <a
-                            href={`/api/compliance/documents/download?id=${doc.id}`}
-                            target="_blank"
-                            rel="noreferrer"
+                          <DownloadButton
+                            url={`/api/compliance/documents/download?id=${doc.id}`}
                             title="Download Personal ARN"
                             className="text-primary hover:text-primary-focus inline-flex items-center shrink-0"
                           >
                             <FileText className="size-3" />
-                          </a>
+                          </DownloadButton>
                         ) : null;
                       })()}
                     </div>
@@ -338,15 +335,13 @@ export function ArnEuinTrackerClient({
                       {(() => {
                         const doc = r.docs?.find((d) => d.category === "euin");
                         return doc ? (
-                          <a
-                            href={`/api/compliance/documents/download?id=${doc.id}`}
-                            target="_blank"
-                            rel="noreferrer"
+                          <DownloadButton
+                            url={`/api/compliance/documents/download?id=${doc.id}`}
                             title="Download EUIN Card"
                             className="text-primary hover:text-primary-focus inline-flex items-center shrink-0"
                           >
                             <FileText className="size-3" />
-                          </a>
+                          </DownloadButton>
                         ) : null;
                       })()}
                     </div>
@@ -371,15 +366,13 @@ export function ArnEuinTrackerClient({
                           (d) => d.category === "other" && d.name.toLowerCase().includes("dsc")
                         );
                         return doc ? (
-                          <a
-                            href={`/api/compliance/documents/download?id=${doc.id}`}
-                            target="_blank"
-                            rel="noreferrer"
+                          <DownloadButton
+                            url={`/api/compliance/documents/download?id=${doc.id}`}
                             title="Download DSC Certificate"
                             className="text-primary hover:text-primary-focus inline-flex items-center shrink-0"
                           >
                             <FileText className="size-3" />
-                          </a>
+                          </DownloadButton>
                         ) : null;
                       })()}
                     </div>

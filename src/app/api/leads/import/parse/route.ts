@@ -11,14 +11,48 @@ import { require as requireCap } from "@/lib/auth/rbac";
 
 export const dynamic = "force-dynamic";
 
+// { key, label } — every field the new-lead form captures, so a column can map
+// to any of them. The label shows in the mapping dropdown.
 const OUR_FIELDS = [
-  "name", "email", "phone", "city", "source", "campaignName", "interestedIn",
-  "intendedAmount", "stage", "score", "nextFollowUpAt", "notes",
+  { key: "name", label: "Name" },
+  { key: "email", label: "Email" },
+  { key: "phone", label: "Phone / mobile" },
+  { key: "altPhone", label: "Alternate phone" },
+  { key: "altEmail", label: "Alternate email" },
+  { key: "pan", label: "PAN" },
+  { key: "city", label: "City" },
+  { key: "pincode", label: "Pincode" },
+  { key: "source", label: "Source" },
+  { key: "campaignName", label: "Campaign" },
+  { key: "leadType", label: "Lead type (individual / hni / nri / corporate / minor)" },
+  { key: "interestedIn", label: "Interested in / products" },
+  { key: "occupation", label: "Occupation" },
+  { key: "currentInvestments", label: "Current investments" },
+  { key: "intendedAmount", label: "Intended amount" },
+  { key: "expectedBusinessAmount", label: "Expected business amount (₹)" },
+  { key: "aumPotential", label: "AUM potential (under_10l / 10l_50l / 50l_2cr / hni_2cr_plus)" },
+  { key: "referredByName", label: "Referred by (name)" },
+  { key: "stage", label: "Stage" },
+  { key: "score", label: "Score" },
+  { key: "nextFollowUpAt", label: "Next follow-up date" },
+  { key: "tags", label: "Tags (comma-separated)" },
+  { key: "notes", label: "Notes" },
 ];
 
 function suggestMapping(headers: string[]): Record<string, string> {
   const m: Record<string, string> = {};
   const patterns: Array<[RegExp, string]> = [
+    // Specific (alt/lead-type/etc.) BEFORE the generic phone/email/amount.
+    [/alt.*phone|secondary.*phone|phone.?2/i, "altPhone"],
+    [/alt.*e.?mail|secondary.*e.?mail|email.?2/i, "altEmail"],
+    [/lead.?type|category.*lead|client.?type/i, "leadType"],
+    [/aum.?potential|potential.?aum|aum.?range|wealth.?band/i, "aumPotential"],
+    [/expected.*business|business.?(amount|value)|expected.?aum/i, "expectedBusinessAmount"],
+    [/current.?invest|existing.?invest|holdings?/i, "currentInvestments"],
+    [/referr?ed.?by|reference.?name|referrer/i, "referredByName"],
+    [/occupation|profession|designation|job/i, "occupation"],
+    [/\bpan\b|pan.?(no|number|card)/i, "pan"],
+    [/pin.?code|postal|zip/i, "pincode"],
     [/^(lead.?)?name|full.?name/i, "name"],
     [/^email|e.?mail/i, "email"],
     [/^phone$|mobile|contact/i, "phone"],
@@ -30,6 +64,7 @@ function suggestMapping(headers: string[]): Record<string, string> {
     [/stage|status/i, "stage"],
     [/score/i, "score"],
     [/next.?follow|follow.?up.?date/i, "nextFollowUpAt"],
+    [/\btags?\b|labels?/i, "tags"],
     [/note|remark/i, "notes"],
   ];
   for (const h of headers) {

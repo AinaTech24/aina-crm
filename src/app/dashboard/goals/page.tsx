@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import { Target, Plus } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { goals, investors } from "@/db/schema";
@@ -39,9 +39,10 @@ export default async function GoalsPage({
 
   const { rows, stats } = await withTenant(session.tenantId, async (tx) => {
     // Owner slice for non-managers — only goals whose client is assigned to them.
+    // Exclude goals whose client is soft-deleted (consistent with the list below).
     const statsScope = canViewAll
-      ? sql``
-      : sql` WHERE investor_id IN (SELECT id FROM investors WHERE rm_id = ${session.userId}::uuid)`;
+      ? sql` WHERE (investor_id IS NULL OR investor_id IN (SELECT id FROM investors WHERE deleted_at IS NULL))`
+      : sql` WHERE investor_id IN (SELECT id FROM investors WHERE rm_id = ${session.userId}::uuid AND deleted_at IS NULL)`;
     // KPIs from a single aggregate over ALL goals — not the paginated slice
     // (the old code derived counts from a LIMIT 200 page, so they capped/lied
     // once a firm had more than 200 goals).
@@ -62,7 +63,9 @@ export default async function GoalsPage({
       .select({ goal: goals, investorName: investors.name, investorAvatarUrl: investors.avatarUrl })
       .from(goals)
       .leftJoin(investors, eq(investors.id, goals.investorId))
-      .where(canViewAll ? undefined : eq(investors.rmId, session.userId))
+      // Exclude goals whose client has been soft-deleted (they live in Trash) —
+      // they were showing here with links that 404'd on the deleted client.
+      .where(and(isNull(investors.deletedAt), canViewAll ? undefined : eq(investors.rmId, session.userId)))
       .orderBy(orderBy)
       .limit(PAGE_SIZE)
       .offset((page - 1) * PAGE_SIZE);

@@ -22,6 +22,7 @@ import { require as requireCap, areAssignableRoles } from "@/lib/auth/rbac";
 import { assertActiveLicense, loadTenantLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { sendSystemEmail, actionEmailHtml } from "@/lib/comms/system-email";
+import { requestBaseUrl } from "@/lib/url/request-base";
 
 export const dynamic = "force-dynamic";
 
@@ -56,22 +57,10 @@ export async function POST(req: NextRequest) {
     requireCap(session.roles, "settings.users");
     await assertActiveLicense(session.tenantId, session.roles);
 
-    // Require the inviter to have a confirmed email before they can fan invites
-    // out to other addresses — closes the "unverified owner spams invites from
-    // a typo/throwaway account" vector. Existing users are grandfathered as
-    // verified by migration 0123.
-    const verified = await withTenant(session.tenantId, async (tx) => {
-      const r = (await tx.execute(
-        sql`SELECT email_verified_at FROM users WHERE id = ${session.userId}::uuid LIMIT 1`
-      )).rows[0] as { email_verified_at?: string | null } | undefined;
-      return !!r?.email_verified_at;
-    });
-    if (!verified) {
-      return NextResponse.json(
-        { error: "Please confirm your own email address before inviting team members.", code: "email_unverified" },
-        { status: 403 }
-      );
-    }
+    // Note: inviting does NOT require the inviter's own email to be verified.
+    // The invite generates a shareable link (returned below) the admin can copy
+    // and send directly, so onboarding a team isn't blocked on email delivery /
+    // self-verification. Spam is still bounded by the admin cap + seat limit.
 
     // Enforce the plan's seat limit: active users + still-pending invites must
     // stay within maxUsers. (Platform admins / unlimited plans pass freely.)
@@ -164,7 +153,7 @@ export async function POST(req: NextRequest) {
       return t?.displayName ?? "your firm";
     });
 
-    const inviteUrl = `${process.env.APP_URL ?? "http://localhost:3000"}/accept-invite?token=${token}`;
+    const inviteUrl = `${await requestBaseUrl()}/accept-invite?token=${token}`;
 
     // Email the invite (best-effort — the link is still returned so the owner
     // can share it manually if email isn't configured).

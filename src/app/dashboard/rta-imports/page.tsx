@@ -22,7 +22,7 @@ import {
   daysLate,
   cadenceLabel,
 } from "@/lib/rta/file-types";
-import { RtaUploadButton } from "./client";
+import { RtaUploadButton, FpSyncButton } from "./client";
 import { RtaImportsTable } from "@/components/rta/RtaImportsTable";
 
 export const dynamic = "force-dynamic";
@@ -102,7 +102,10 @@ export default async function RtaImportsPage() {
             <FileText className="size-6 text-brand-cyan" /> RTA file imports
           </h1>
         </div>
-        <RtaUploadButton />
+        <div className="flex items-center gap-2">
+          <FpSyncButton />
+          <RtaUploadButton />
+        </div>
       </div>
 
       {/* Summary strip */}

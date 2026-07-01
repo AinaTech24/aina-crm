@@ -7,6 +7,7 @@ import { handleApiError } from "@/lib/api/error-handler";
  *          = "follow_up"  value = ISO date string         → set next follow-up
  *          = "stage"      value = stage key               → move stage (override)
  *          = "lost"       value = lost reason (optional)  → mark not_qualified
+ *          = "delete"     (no value)                      → soft-delete (hidden)
  *
  * Tenant-scoped via withTenant + RLS; only leads in the caller's tenant are
  * touched. Audited as a single bulk action.
@@ -30,7 +31,7 @@ export const dynamic = "force-dynamic";
 
 const Body = z.object({
   ids: z.array(z.string().uuid()).min(1).max(500),
-  action: z.enum(["assign", "follow_up", "stage", "lost"]),
+  action: z.enum(["assign", "follow_up", "stage", "lost", "delete"]),
   value: z.string().nullable().optional(),
 });
 
@@ -92,6 +93,15 @@ export async function POST(req: NextRequest) {
         patch.lostAt = new Date();
         patch.lostReason = value || "Bulk-marked not qualified";
         break;
+      case "delete":
+        // Mirror the single-lead DELETE: soft-delete with the __deleted__
+        // sentinel so these leads are HIDDEN from every list / kanban / KPI
+        // (filtered out), not dumped into the genuine "Not qualified" bucket.
+        patch.stage = "not_qualified";
+        patch.stageChangedAt = new Date();
+        patch.lostAt = new Date();
+        patch.lostReason = "__deleted__";
+        break;
     }
 
     const count = await withTenant(session.tenantId, async (tx) => {
@@ -140,7 +150,7 @@ export async function POST(req: NextRequest) {
         await tx.insert(eventsOutbox).values(
           finalRows.map((l) => ({
             tenantId: session.tenantId,
-            kind: "lead.updated",
+            kind: action === "delete" ? "lead.deleted" : "lead.updated",
             entityType: "lead",
             entityId: l.id,
             after: l as any,

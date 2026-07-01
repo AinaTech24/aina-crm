@@ -6,8 +6,10 @@
  *     → generates the PDF and emails it to the client (Resend, with the firm's
  *       sender + letterhead).
  *   { channel: "whatsapp", to?: <phone>, calcName, clientName?, blocks }
- *     → generates the PDF, hosts it (presigned S3 URL) and returns a wa.me link
- *       the advisor opens to send it from their own WhatsApp.
+ *     → generates the PDF in-memory and returns it inline as base64 (pdfBase64)
+ *       plus a wa.me link the advisor opens to send it from their own WhatsApp.
+ *       Calculator PDFs are illustrations only — they are NEVER hosted or
+ *       persisted (no S3, no DB).
  */
 
 import { NextRequest, NextResponse } from "next/server";

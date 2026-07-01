@@ -52,6 +52,7 @@ export async function loadSipHealth(tx: Tx, period: string): Promise<SipHealth> 
     SELECT COALESCE(SUM(active_sip_amount),0)::numeric AS amt,
            COUNT(*) FILTER (WHERE active_sip_amount > 0)::int AS cnt
       FROM investors
+     WHERE deleted_at IS NULL
   `);
 
   const fresh = await one(tx, sql`

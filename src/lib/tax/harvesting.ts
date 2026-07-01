@@ -91,7 +91,7 @@ export async function scanTaxHarvest(tx: Tx, opts: { limit?: number; rmId?: stri
            t.scheme_code, t.scheme_name, t.scheme_category, t.type, t.direction,
            t.units, t.nav, t.amount, t.order_date
     FROM transactions t
-    JOIN investors i ON i.id = t.investor_id AND i.status = 'active'${rmScope}
+    JOIN investors i ON i.id = t.investor_id AND i.status = 'active' AND i.deleted_at IS NULL${rmScope}
     WHERE t.status IN ('processed', 'successful') AND t.order_date IS NOT NULL
     ORDER BY t.investor_id, t.order_date ASC, t.id ASC
   `);

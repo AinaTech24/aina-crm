@@ -27,10 +27,6 @@ export default async function CalculatorSettingsPage() {
         <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2 mt-2">
           <Settings2 className="size-6 text-brand-cyan" /> Calculator assumptions
         </h1>
-        <p className="text-muted-foreground text-sm">
-          Your firm&apos;s house view for default returns and inflation. These seed the starting
-          values across every calculator.
-        </p>
       </div>
 
       <CalcAssumptionsForm initial={settings} canManage={canManage} />

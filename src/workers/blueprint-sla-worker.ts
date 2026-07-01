@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import { withSystem } from "@/db/client";
+import { createNotification } from "@/lib/notifications/create";
 
 /**
  * Sweeps active Lead and Polymorphic Blueprint instances,
@@ -35,7 +36,10 @@ export async function checkBlueprintSLADelays(): Promise<{
                  due.stage_name, due.sla_days
     `);
 
-    // Emit outbox events for each newly-delayed lead
+    // Emit outbox events + notify the owner (and escalate untouched leads) for
+    // each newly-delayed lead, so an SLA breach is actually seen — not just a
+    // silent `is_delayed` flag. Fires once per breach (the WHERE is_delayed=false
+    // guard above means a lead is swept here only on the transition into delayed).
     for (const r of newlyDelayedLeads.rows as any[]) {
       await tx.execute(sql`
         INSERT INTO events_outbox (tenant_id, kind, entity_type, entity_id, after, meta)
@@ -48,6 +52,46 @@ export async function checkBlueprintSLADelays(): Promise<{
           ${JSON.stringify({ source: "sla_worker" })}::jsonb
         )
       `);
+
+      try {
+        const lr = await tx.execute(
+          sql`SELECT owner_id, name, lead_score, score_band FROM leads WHERE id = ${r.lead_id}::uuid AND tenant_id = ${r.tenant_id}::uuid LIMIT 1`
+        );
+        const lead = lr.rows[0] as { owner_id?: string; name?: string; lead_score?: number; score_band?: string } | undefined;
+        const untouched = r.current_stage_key === "new"; // never first-contacted
+        // Hot lead = a high deterministic score / "hot" band. An untouched HOT
+        // lead is the costliest miss, so it escalates harder (critical + 🔥).
+        const hot = (lead?.score_band === "hot") || Number(lead?.lead_score ?? 0) >= 70;
+        const recipients = new Set<string>();
+        if (lead?.owner_id) recipients.add(lead.owner_id);
+        // Untouched leads past their first-response SLA are the highest-risk —
+        // escalate to the firm's managers so it's not just on the owner.
+        if (untouched) {
+          const mgrs = await tx.execute(
+            sql`SELECT id FROM users WHERE tenant_id = ${r.tenant_id}::uuid AND roles && ARRAY['owner','branch_head']::text[]`
+          );
+          for (const m of mgrs.rows as any[]) recipients.add(m.id as string);
+        }
+        const name = lead?.name ?? "lead";
+        const title = untouched
+          ? `${hot ? "🔥 Hot lead untouched" : "Untouched lead"}: ${name}`
+          : `Lead overdue: ${name}`;
+        const severity = untouched ? (hot ? "critical" : "warning") : "info";
+        for (const userId of recipients) {
+          await createNotification(tx, {
+            tenantId: r.tenant_id,
+            userId,
+            kind: "blueprint.stage.delayed",
+            title,
+            body: `Stuck in "${r.stage_name}" past the ${r.sla_days}-day SLA — follow up to keep it moving.`,
+            linkUrl: `/dashboard/leads/${r.lead_id}`,
+            severity,
+            meta: { lead_id: r.lead_id, stage: r.current_stage_key, sla_days: r.sla_days, hot, source: "sla_worker" },
+          });
+        }
+      } catch {
+        // Notification is best-effort — never fail the SLA sweep over a notify.
+      }
     }
 
     // 2. Sweep blueprint_instances (Polymorphic subjects)

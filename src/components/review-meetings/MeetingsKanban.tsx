@@ -150,6 +150,17 @@ export function MeetingsKanban({ meetings }: { meetings: Row[] }) {
                         size={22}
                       />
                       <div className="text-sm font-medium truncate">{m.party_name ?? "—"}</div>
+                      <span
+                        className={`shrink-0 ml-auto text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded border ${
+                          m.party_kind === "lead"
+                            ? "bg-violet-50 text-violet-700 border-violet-200"
+                            : m.party_kind === "investor"
+                              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                              : "bg-slate-50 text-slate-500 border-slate-200"
+                        }`}
+                      >
+                        {m.party_kind === "lead" ? "Lead" : m.party_kind === "investor" ? "Client" : "Unlinked"}
+                      </span>
                     </div>
                     <div className="mt-1.5 text-xs text-muted-foreground truncate">
                       {m.subject || TYPE_LABEL[m.meeting_type] || m.meeting_type}

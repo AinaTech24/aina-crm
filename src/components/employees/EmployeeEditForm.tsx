@@ -25,6 +25,7 @@ import { NAV_ACCESS_GROUPS } from "@/config/nav-access";
 import { formatINR, formatDate } from "@/lib/utils";
 import { SelectField } from "@/components/ui/SelectField";
 import { DateField } from "@/components/ui/DateField";
+import { DownloadButton } from "@/components/common/SecureLinkButtons";
 
 const DEPARTMENTS = [
   { value: "sales", label: "Sales" },
@@ -328,14 +329,12 @@ export function EmployeeEditForm({
             <span className="truncate font-medium text-emerald-800">{doc.name}</span>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <a
-              href={`/api/compliance/documents/download?id=${doc.id}`}
-              target="_blank"
-              rel="noreferrer"
+            <DownloadButton
+              url={`/api/compliance/documents/download?id=${doc.id}`}
               className="text-emerald-700 hover:text-emerald-900 font-semibold"
             >
               View File
-            </a>
+            </DownloadButton>
             <button
               type="button"
               onClick={() => handleFileDelete(doc.id)}

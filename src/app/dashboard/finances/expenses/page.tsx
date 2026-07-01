@@ -94,18 +94,14 @@ export default async function ExpensesPage({
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div>
             <h1 className="text-2xl font-semibold">Expense ledger</h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              Record and categorise every business expense. Feeds the firm P&amp;L.
-            </p>
           </div>
           <div className="inline-flex rounded-lg border border-border bg-secondary/40 p-0.5 gap-0.5">
             {fyOptions.map((y) => (
               <Link
                 key={y}
                 href={`/dashboard/finances/expenses?fy=${y}`}
-                className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
-                  y === fy ? "bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
-                }`}
+                className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${y === fy ? "bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
+                  }`}
               >
                 FY {y}
               </Link>

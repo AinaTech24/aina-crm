@@ -656,7 +656,7 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
           SELECT id, name, rm_id, aum,
             CASE WHEN aum >= 50000000 THEN 6 WHEN aum >= 25000000 THEN 5 WHEN aum >= 10000000 THEN 4
                  WHEN aum >= 5000000 THEN 3 WHEN aum >= 2500000 THEN 2 WHEN aum >= 1000000 THEN 1 ELSE 0 END AS band
-          FROM investors WHERE status = 'active'
+          FROM investors WHERE status = 'active' AND deleted_at IS NULL
         )
         SELECT b.id, b.name, b.rm_id, b.aum, b.band
         FROM banded b JOIN investors i ON i.id = b.id
@@ -724,7 +724,7 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
           ROUND(g.expected_progress_pct - g.progress_pct, 1) AS drift_pct,
           i.rm_id
         FROM goals g
-        JOIN investors i ON i.id = g.investor_id AND i.status NOT IN ('closed', 'exited')
+        JOIN investors i ON i.id = g.investor_id AND i.status NOT IN ('closed', 'exited') AND i.deleted_at IS NULL
         WHERE g.status IN ('not_started', 'on_track', 'behind_track', 'active')
           AND g.expected_progress_pct IS NOT NULL
           AND g.progress_pct < g.expected_progress_pct - 10
@@ -768,7 +768,7 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
           (p.next_premium_due_date - current_date)::int AS days_until,
           i.rm_id
         FROM insurance_policies p
-        JOIN investors i ON i.id = p.investor_id AND i.status NOT IN ('closed', 'exited')
+        JOIN investors i ON i.id = p.investor_id AND i.status NOT IN ('closed', 'exited') AND i.deleted_at IS NULL
         WHERE p.status = 'active'
           AND p.next_premium_due_date IS NOT NULL
           AND (p.next_premium_due_date - current_date) IN (15, 7, 1)
@@ -806,7 +806,7 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
         SELECT p.id AS policy_id, p.investor_id, p.plan_name, p.insurer,
                p.policy_number, p.next_premium_due_date, i.rm_id
         FROM insurance_policies p
-        JOIN investors i ON i.id = p.investor_id AND i.status NOT IN ('closed', 'exited')
+        JOIN investors i ON i.id = p.investor_id AND i.status NOT IN ('closed', 'exited') AND i.deleted_at IS NULL
         WHERE p.status = 'active'
           AND p.lapse_alerted_at IS NULL
           AND p.next_premium_due_date IS NOT NULL
@@ -862,7 +862,7 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
           s.investor_id, s.id AS sip_id, s.scheme_name, s.amount::numeric AS amount,
           s.end_date, (s.end_date - current_date)::int AS days_until, i.rm_id
         FROM sips s
-        JOIN investors i ON i.id = s.investor_id AND i.status NOT IN ('closed', 'exited')
+        JOIN investors i ON i.id = s.investor_id AND i.status NOT IN ('closed', 'exited') AND i.deleted_at IS NULL
         WHERE s.status = 'active'
           AND s.end_date IS NOT NULL
           AND (s.end_date - current_date) IN (30, 15, 7)
@@ -899,7 +899,7 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
           m.investor_id, m.id AS mandate_id, m.mandate_ref_no, m.expires_at,
           (m.expires_at - current_date)::int AS days_until, i.rm_id
         FROM mandates m
-        JOIN investors i ON i.id = m.investor_id AND i.status NOT IN ('closed', 'exited')
+        JOIN investors i ON i.id = m.investor_id AND i.status NOT IN ('closed', 'exited') AND i.deleted_at IS NULL
         WHERE m.status = 'active'
           AND m.expires_at IS NOT NULL
           AND (m.expires_at - current_date) IN (90, 60, 30)
@@ -933,6 +933,7 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
       const driftInvestors = await tx.execute(sql`
         SELECT id, name, risk_profile, rm_id, aum FROM investors
         WHERE status = 'active'
+          AND deleted_at IS NULL
           AND risk_profile IS NOT NULL
           AND aum > 0
       `);

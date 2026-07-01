@@ -99,6 +99,7 @@ export default function NotificationsPage() {
         </label>
       </div>
 
+      <div className="overflow-y-auto scrollbar-none max-h-[calc(100vh-14rem)] -mx-1 px-1">
       {loading ? (
         <div className="card-surface p-8 grid place-items-center text-sm text-muted-foreground">
           <Loader2 className="size-5 animate-spin mb-2" /> Loading…
@@ -140,6 +141,7 @@ export default function NotificationsPage() {
           })}
         </ul>
       )}
+      </div>
     </div>
   );
 }

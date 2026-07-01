@@ -80,6 +80,7 @@ export async function InvestorQuickFilters({
             )
           )::int AS cross_sell_opp
         FROM investors
+        WHERE deleted_at IS NULL
       `);
       return r.rows[0] as any;
     },

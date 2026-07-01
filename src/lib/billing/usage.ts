@@ -38,7 +38,7 @@ export async function getBillingUsage(
 ): Promise<BillingUsage> {
   const [usersRes, investorsRes, storageRes, messagesRes] = await Promise.all([
     tx.execute(sql`SELECT count(*)::int AS c FROM users WHERE tenant_id = ${tenantId}::uuid AND status = 'active'`),
-    tx.execute(sql`SELECT count(*)::int AS c FROM investors WHERE tenant_id = ${tenantId}::uuid AND status <> 'closed'`),
+    tx.execute(sql`SELECT count(*)::int AS c FROM investors WHERE tenant_id = ${tenantId}::uuid AND status <> 'closed' AND deleted_at IS NULL`),
     tx.execute(sql`
       SELECT
         COALESCE((SELECT SUM(NULLIF(size_bytes,'')::bigint) FROM compliance_documents WHERE tenant_id = ${tenantId}::uuid), 0)

@@ -92,3 +92,4 @@ export * from "./effort_entries";
 export * from "./calc_scenarios";
 export * from "./zoho_sync";
 export * from "./financial_discovery";
+export * from "./devices";

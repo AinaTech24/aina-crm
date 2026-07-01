@@ -88,7 +88,7 @@ export async function findAtRiskSips(
     FROM sips s
     JOIN investors i ON i.id = s.investor_id
     LEFT JOIN mandates m ON m.id = s.mandate_id
-    WHERE s.tenant_id = ${tenantId} AND s.status = 'active'${scope}
+    WHERE s.tenant_id = ${tenantId} AND s.status = 'active' AND i.deleted_at IS NULL${scope}
   `);
 
   const rmRes = await tx.execute(sql`SELECT id, name FROM users WHERE tenant_id = ${tenantId}`);

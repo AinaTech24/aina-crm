@@ -73,6 +73,38 @@ async function markFailed(
   );
 }
 
+/**
+ * Idempotency guard. A worker restart (deploy / OOM) can leave a job 'stalled',
+ * which BullMQ re-runs once. If the import already reached a terminal state the
+ * re-run MUST be a no-op: the first run already deleted the transient S3 object,
+ * so re-reading it throws "The specified key does not exist" — which, worse,
+ * would CLOBBER a completed import back to failed. Skip when the row is terminal.
+ */
+async function importAlreadyFinished(job: {
+  tenantId?: string;
+  importId?: string;
+  userId?: string;
+  branchId?: string | null;
+  roles?: string[];
+}): Promise<boolean> {
+  if (!job.tenantId || !job.importId || !job.userId) return false;
+  try {
+    return await withTenant(
+      job.tenantId,
+      async (tx) => {
+        const r = await tx.execute(
+          sql`SELECT status FROM rta_file_imports WHERE id = ${job.importId}::uuid LIMIT 1`
+        );
+        const st = (r.rows?.[0] as any)?.status as string | undefined;
+        return st === "completed" || st === "partial" || st === "rejected" || st === "failed";
+      },
+      { userId: job.userId, branchId: job.branchId ?? undefined, roles: job.roles ?? [] }
+    );
+  } catch {
+    return false; // can't check → let the job run rather than silently drop it
+  }
+}
+
 /** The actual import. Exported so it can be unit-tested / invoked one-off. */
 export async function runRtaImportJob(job: RtaImportJob): Promise<void> {
   const ctx = { userId: job.userId, branchId: job.branchId ?? undefined, roles: job.roles };
@@ -379,7 +411,19 @@ export async function runRichImportJob(
   job: RichImportJob,
   report?: (p: RichImportProgress) => void
 ): Promise<RichImportResult> {
-  const result = await computeRichImport(job, report);
+  // Capture ANY throw (parse error, DB error, quota throw, transient failure)
+  // so the rta_file_imports row is marked failed with the REAL reason here —
+  // instead of being left in `parsing` for the 20-min reaper to fail with the
+  // generic "worker was busy or restarting" message (which masks the cause and
+  // makes a master import look perpetually stuck). This mirrors the feed path's
+  // try/catch in runRtaImportJob.
+  let result: RichImportResult;
+  try {
+    result = await computeRichImport(job, report);
+  } catch (e: any) {
+    captureError("[rta-import] rich import threw", e, { tenantId: job.tenantId, importId: job.importId });
+    result = { ok: false, error: e?.message ? `Import failed: ${e.message}` : "Import failed unexpectedly." };
+  }
   if (job.importId) {
     const ctx = { userId: job.userId, branchId: job.branchId ?? undefined, roles: job.roles };
     await withTenant(
@@ -425,6 +469,14 @@ export function startRtaImportWorker() {
     "rta.import",
     async (job) => {
       const localKey = (job.data as any)?.key as string | undefined;
+      // Idempotency: if a worker restart left this job 'stalled' and BullMQ is
+      // re-running it after the import already finished, do NOT reprocess — that
+      // re-reads the already-deleted S3 object ("specified key does not exist")
+      // and could clobber a completed import. Just clean up and return.
+      if (await importAlreadyFinished(job.data as any)) {
+        if (localKey) await deleteObject(localKey).catch(() => {});
+        return;
+      }
       try {
         // Rich master/holdings import returns its summary (UI polls for it);
         // the feed import updates the rta_file_imports row and returns nothing.

@@ -35,10 +35,6 @@ export default async function NewLegalRegistrationPage() {
           <ChevronLeft className="size-3" /> Legal registrations
         </Link>
         <h1 className="text-2xl font-semibold mt-1">Add a registration</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Any statutory or regulatory license, certificate, or permit the firm
-          holds. Expiry feeds the daily renewal-reminder scanner.
-        </p>
       </div>
       <LegalRegistrationForm
         mode="create"

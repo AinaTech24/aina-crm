@@ -30,7 +30,7 @@ export default async function NewGoalPage({
       const r = await tx.execute(sql`
         SELECT id, name, pan, segment_tag,
           (SELECT COUNT(*)::int FROM goals WHERE investor_id = investors.id) AS goal_count
-        FROM investors WHERE status = 'active'
+        FROM investors WHERE status = 'active' AND deleted_at IS NULL
         ORDER BY name LIMIT 200
       `);
       return r.rows as any[];
@@ -46,7 +46,6 @@ export default async function NewGoalPage({
         </Link>
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Add a goal</h1>
-          <p className="text-sm text-muted-foreground mt-1">Pick the investor first.</p>
         </div>
         <div className="card-surface overflow-hidden">
           <ul className="divide-y">

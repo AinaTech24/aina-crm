@@ -34,6 +34,8 @@ import {
 import { InvestorLookup } from "@/components/common/InvestorLookup";
 import { SelectField } from "@/components/ui/SelectField";
 import { DatePicker } from "@/components/ui/DatePicker";
+import { ExtractionTimeline } from "@/components/insurance/ExtractionTimeline";
+import { OptionalCoversMatrix } from "@/components/insurance/OptionalCoversMatrix";
 import { formatINR } from "@/lib/utils";
 import type { InsuranceExtraction, InsuranceCategory } from "@/lib/ai/assistant";
 
@@ -97,7 +99,7 @@ const FIELD_LABELS: Record<string, string> = {
   annualPremium: "Premium",
   premiumFrequency: "Frequency",
   policyStartDate: "Start date",
-  maturityDate: "Maturity",
+  maturityDate: "Expiry date",
   nextPremiumDueDate: "Next due",
   nomineeName: "Nominee",
 };
@@ -151,6 +153,7 @@ function NewInsuranceForm() {
   // ── AI auto-fill state ──────────────────────────────────────────────────
   const fileRef = useRef<HTMLInputElement>(null);
   const [extracting, setExtracting] = useState(false);
+  const [progress, setProgress] = useState(0);
   const [dragOver, setDragOver] = useState(false);
   const [extractMsg, setExtractMsg] = useState<{
     filled: number;
@@ -276,6 +279,11 @@ function NewInsuranceForm() {
       ...(x.businessType ? { businessType: x.businessType } : {}),
       ...(x.proposerName ? { proposerName: x.proposerName } : {}),
       ...(x.proposerPan ? { proposerPan: x.proposerPan } : {}),
+      // Seed the nominees table from the extracted primary nominee (if the doc
+      // didn't already yield a nominees array).
+      ...(x.nomineeName && !(x.details as any)?.nominees && !(prev as any).nominees
+        ? { nominees: [{ name: x.nomineeName, relation: x.nomineeRelation ?? "", share: "100", dob: "", email: "" }] }
+        : {}),
     }));
   }
 
@@ -292,6 +300,12 @@ function NewInsuranceForm() {
       return;
     }
     setExtracting(true);
+    setProgress(5);
+    // Staged progress — the extract is one opaque request, so ease toward 90%
+    // while it runs and snap to 100% on response. Stage label derives from %.
+    const timer = setInterval(() => {
+      setProgress((p) => (p >= 90 ? 90 : p + Math.max(1, Math.round((93 - p) * 0.06))));
+    }, 350);
     try {
       const fd = new FormData();
       fd.append("file", file);
@@ -327,7 +341,9 @@ function NewInsuranceForm() {
     } catch (e: any) {
       setErr(e.message || "Extraction failed.");
     } finally {
-      setExtracting(false);
+      clearInterval(timer);
+      setProgress(100);
+      setTimeout(() => { setExtracting(false); setProgress(0); }, 400);
     }
   }
 
@@ -380,9 +396,10 @@ function NewInsuranceForm() {
         policyStartDate: form.policyStartDate || undefined,
         maturityDate: form.maturityDate || undefined,
         nextPremiumDueDate: form.nextPremiumDueDate || undefined,
-        nomineeName: showNominee ? form.nomineeName || undefined : undefined,
-        nomineeRelation: showNominee ? form.nomineeRelation || undefined : undefined,
-        nomineeShare: Number(form.nomineeShare) || 100,
+        // Primary nominee (first table row) → policy columns; full list stays in details.nominees.
+        nomineeName: showNominee ? (((details.nominees as any[])?.[0]?.name) || form.nomineeName || undefined) : undefined,
+        nomineeRelation: showNominee ? (((details.nominees as any[])?.[0]?.relation) || form.nomineeRelation || undefined) : undefined,
+        nomineeShare: Number((details.nominees as any[])?.[0]?.share) || Number(form.nomineeShare) || 100,
         status: form.status,
         remarks: form.remarks || undefined,
         details: Object.keys(cleanDetails).length ? cleanDetails : undefined,
@@ -452,11 +469,7 @@ function NewInsuranceForm() {
           />
           <div className="flex flex-col items-center text-center gap-2 py-2">
             {extracting ? (
-              <>
-                <Loader2 className="size-8 animate-spin text-brand-cyan" />
-                <div className="text-sm font-medium">Reading your policy…</div>
-                <div className="text-xs text-muted-foreground">Pulling fields from the document — instant for PDFs, a little longer for photos.</div>
-              </>
+              <ExtractionTimeline progress={progress} />
             ) : (
               <>
                 <UploadCloud className="size-8 text-brand-cyan" />
@@ -605,18 +618,17 @@ function NewInsuranceForm() {
               setValue={(v) => set("premiumPayingTermYears", v)}
             />
           )}
-          {showMaturity && (
-            <div className="flex flex-col">
-              <DateField label="Maturity" value={form.maturityDate} setValue={(v) => set("maturityDate", v)} />
-              <button
-                type="button"
-                onClick={autoMaturity}
-                className="text-[10px] text-brand-cyan-deep hover:underline mt-1 text-left"
-              >
-                ⤷ Auto from start + term
-              </button>
-            </div>
-          )}
+          <DateField label="Policy issue date" value={d("policyIssueDate")} setValue={(v) => setD("policyIssueDate", v)} />
+          <div className="flex flex-col">
+            <DateField label="Expiry date" value={form.maturityDate} setValue={(v) => set("maturityDate", v)} />
+            <button
+              type="button"
+              onClick={autoMaturity}
+              className="text-[10px] text-brand-cyan-deep hover:underline mt-1 text-left"
+            >
+              ⤷ Auto from start + term
+            </button>
+          </div>
           <DateField
             label="Next premium / renewal due"
             value={form.nextPremiumDueDate}
@@ -691,24 +703,25 @@ function NewInsuranceForm() {
         </Section>
       )}
 
-      {/* 5. Nominee — hidden for motor */}
+      {/* 5. Nominees — multiple, hidden for motor. First row is the primary
+          nominee (written to the policy's nominee columns); all rows are kept
+          in details.nominees. Share % across nominees should total 100. */}
       {showNominee && (
-        <Section title="5. Nominee">
-          <div className="grid grid-cols-3 gap-3">
-            <Field
-              label="Nominee name"
-              placeholder="Spouse / Child / Parent"
-              value={form.nomineeName}
-              setValue={(v) => set("nomineeName", v)}
-            />
-            <Field label="Relation" placeholder="Spouse" value={form.nomineeRelation} setValue={(v) => set("nomineeRelation", v)} />
-            <Field
-              label="Share %"
-              type="number"
-              value={String(form.nomineeShare)}
-              setValue={(v) => set("nomineeShare", Number(v) || 100)}
-            />
-          </div>
+        <Section title="5. Nominees">
+          <TableEditor
+            columns={[
+              { key: "name", label: "Nominee name" },
+              { key: "relation", label: "Relation", width: "w-28" },
+              { key: "share", label: "Share %", width: "w-20" },
+              { key: "dob", label: "DOB", width: "w-32" },
+              { key: "email", label: "Email" },
+            ]}
+            rows={rowsOf("nominees")}
+            onChange={(r) => setD("nominees", r)}
+          />
+          <p className="text-[11px] text-muted-foreground mt-1">
+            Add one row per nominee. The first row is the primary nominee; shares should total 100%.
+          </p>
         </Section>
       )}
 
@@ -737,10 +750,13 @@ function NewInsuranceForm() {
             { key: "name", label: "Member name" },
             { key: "customerId", label: "Customer ID", width: "w-28" },
             { key: "planOpted", label: "Plan opted", width: "w-28" },
+            { key: "subPlanOpted", label: "Sub plan opted", width: "w-28" },
             { key: "gender", label: "Gender", width: "w-20" },
             { key: "dob", label: "DOB", width: "w-28" },
             { key: "age", label: "Age", width: "w-16" },
             { key: "relation", label: "Relation", width: "w-24" },
+            { key: "firstInceptionDate", label: "First policy inception", width: "w-32" },
+            { key: "insuredAddress", label: "Insured address", width: "w-44", type: "textarea" },
             { key: "nominee", label: "Nominee & relation" },
           ]}
           rows={rowsOf("insuredMembers")}
@@ -755,25 +771,35 @@ function NewInsuranceForm() {
             { key: "memberName", label: "Member name" },
             { key: "cover", label: "Cover" },
             { key: "sumInsured", label: "Sum insured", width: "w-32" },
+            { key: "cb", label: "CB", width: "w-20" },
+            { key: "cbAmount", label: "CB amount", width: "w-28" },
             { key: "limit", label: "Limit / notes" },
           ]}
           rows={rowsOf("sumInsuredCovers")}
           onChange={(r) => setD("sumInsuredCovers", r)}
+          headerRight={
+            <button
+              type="button"
+              onClick={() => {
+                const members = (rowsOf("insuredMembers") as any[]).map((m) => (m?.name ?? "").trim()).filter(Boolean);
+                if (members.length === 0) return;
+                const existing = rowsOf("sumInsuredCovers") as any[];
+                const have = new Set(existing.map((r) => (r?.memberName ?? "").trim()));
+                const add = members.filter((n) => !have.has(n)).map((n) => ({ memberName: n }));
+                if (add.length) setD("sumInsuredCovers", [...existing, ...add]);
+              }}
+              className="text-xs text-brand-cyan-deep hover:underline inline-flex items-center gap-1"
+            >
+              <Plus className="size-3.5" /> Add a row per insured member
+            </button>
+          }
         />
       </Section>
 
-      {/* Optional covers (table) */}
+      {/* Optional covers — member rows × dynamic cover columns (matches the
+          insurer's printed matrix). */}
       <Section title="Optional covers">
-        <TableEditor
-          columns={[
-            { key: "cover", label: "Optional cover" },
-            { key: "memberName", label: "Member" },
-            { key: "sumInsured", label: "Sum insured", width: "w-32" },
-            { key: "notes", label: "Notes" },
-          ]}
-          rows={rowsOf("optionalCovers")}
-          onChange={(r) => setD("optionalCovers", r)}
-        />
+        <OptionalCoversMatrix rows={rowsOf("optionalCovers")} onChange={(r) => setD("optionalCovers", r)} />
       </Section>
 
       {/* Premium details (table) */}
@@ -842,7 +868,6 @@ function NewInsuranceForm() {
             value={d("proposerName")}
             setValue={(v) => setD("proposerName", v)}
           />
-          <Field label="Proposer PAN" placeholder="ABCDE1234F" value={d("proposerPan")} setValue={(v) => setD("proposerPan", v.toUpperCase())} />
           <Select label="Status" value={form.status} setValue={(v) => set("status", v)}>
             <option value="proposed">Proposed</option>
             <option value="in_underwriting">In underwriting</option>
@@ -985,13 +1010,17 @@ function TableEditor({
   columns,
   rows,
   onChange,
+  headerRight,
 }: {
-  columns: { key: string; label: string; width?: string }[];
+  columns: { key: string; label: string; width?: string; type?: "text" | "textarea" }[];
   rows: Record<string, any>[];
   onChange: (rows: Record<string, any>[]) => void;
+  headerRight?: React.ReactNode;
 }) {
   const update = (i: number, key: string, val: string) =>
     onChange(rows.map((r, idx) => (idx === i ? { ...r, [key]: val } : r)));
+  // Cells can hold a plain string or (defensively) an extracted {value} object.
+  const cell = (v: any): string => (v == null ? "" : typeof v === "object" ? String(v.value ?? "") : String(v));
   return (
     <div className="space-y-2">
       <div className="overflow-x-auto">
@@ -1016,11 +1045,20 @@ function TableEditor({
               <tr key={i} className="border-b last:border-0 align-top">
                 {columns.map((c) => (
                   <td key={c.key} className={`px-1 py-1 ${c.width ?? ""}`}>
-                    <input
-                      value={r[c.key] ?? ""}
-                      onChange={(e) => update(i, c.key, e.target.value)}
-                      className="input-base text-xs py-1"
-                    />
+                    {c.type === "textarea" ? (
+                      <textarea
+                        value={cell(r[c.key])}
+                        onChange={(e) => update(i, c.key, e.target.value)}
+                        rows={1}
+                        className="input-base text-xs py-1 resize-none overflow-y-auto scrollbar-none leading-snug min-h-[2rem] max-h-16"
+                      />
+                    ) : (
+                      <input
+                        value={cell(r[c.key])}
+                        onChange={(e) => update(i, c.key, e.target.value)}
+                        className="input-base text-xs py-1"
+                      />
+                    )}
                   </td>
                 ))}
                 <td className="px-1 py-1">
@@ -1038,9 +1076,12 @@ function TableEditor({
           </tbody>
         </table>
       </div>
-      <button type="button" onClick={() => onChange([...rows, {}])} className="btn-ghost text-xs inline-flex items-center gap-1">
-        <Plus className="size-3.5" /> Add row
-      </button>
+      <div className="flex items-center gap-3">
+        <button type="button" onClick={() => onChange([...rows, {}])} className="btn-ghost text-xs inline-flex items-center gap-1">
+          <Plus className="size-3.5" /> Add row
+        </button>
+        {headerRight}
+      </div>
     </div>
   );
 }

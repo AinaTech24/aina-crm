@@ -36,7 +36,9 @@ export async function GET(req: NextRequest) {
     if (!key) return NextResponse.json({ error: "key required" }, { status: 400 });
     const canFirm = can(session.roles, "dashboard.view.owner", (session as any).permissions);
     const mine = sp.get("mine") === "1" || !canFirm;
-    const scope = mine ? sql` AND i.rm_id = ${session.userId}::uuid` : sql``;
+    const scope = mine
+      ? sql` AND i.deleted_at IS NULL AND i.rm_id = ${session.userId}::uuid`
+      : sql` AND i.deleted_at IS NULL`;
 
     const holders = await withTenant(
       session.tenantId,

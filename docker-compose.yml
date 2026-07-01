@@ -23,7 +23,9 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: mfd
     ports:
-      - "5432:5432"
+      # Host 5544 (not 5432) to avoid a clash with a native Windows Postgres that
+      # otherwise shadows this container on 5432. Connect via localhost:5544.
+      - "5544:5432"
     volumes:
       - mfd_pgdata:/var/lib/postgresql/data
     healthcheck:

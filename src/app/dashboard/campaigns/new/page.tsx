@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { CampaignAudienceBuilder, type AudienceSelection } from "@/components/campaigns/CampaignAudienceBuilder";
-import { ThemeSelect } from "@/components/ui/ThemeSelect";
+import { SelectField } from "@/components/ui/SelectField";
+import { DateField } from "@/components/ui/DateField";
 import { ThemeDate } from "@/components/ui/ThemeDate";
 import {
   ChevronLeft,
@@ -235,11 +236,11 @@ export default function NewCampaignPage() {
         <div className="grid grid-cols-2 gap-3">
           <label className="block">
             <div className="text-xs font-medium mb-1">Start date</div>
-            <ThemeDate value={startDate} onChange={setStartDate} />
+            <DateField value={startDate} onChange={(e) => setStartDate(e.target.value)} />
           </label>
           <label className="block">
             <div className="text-xs font-medium mb-1">End date</div>
-            <ThemeDate value={endDate} onChange={setEndDate} />
+            <DateField value={endDate} onChange={(e) => setEndDate(e.target.value)} />
           </label>
         </div>
 
@@ -265,14 +266,14 @@ export default function NewCampaignPage() {
             </div>
             <label className="block">
               <div className="text-xs font-medium mb-1">Template (approved {kind})</div>
-              <ThemeSelect value={templateId} onChange={setTemplateId}>
+              <SelectField value={templateId} onChange={(e) => setTemplateId(e.target.value)}>
                 <option value="">Select template…</option>
                 {filteredTemplates.map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.name} ({t.key})
                   </option>
                 ))}
-              </ThemeSelect>
+              </SelectField>
               {filteredTemplates.length === 0 && (
                 <p className="text-[11px] text-amber-700 mt-1">No approved {kind} template yet — create &amp; approve one under Templates first.</p>
               )}
@@ -288,12 +289,12 @@ export default function NewCampaignPage() {
                   <div className="grid grid-cols-2 gap-3 pt-1">
                     <label className="block">
                       <div className="text-[11px] text-muted-foreground mb-1">Variant B template</div>
-                      <ThemeSelect value={variantTemplateId} onChange={setVariantTemplateId}>
+                      <SelectField value={variantTemplateId} onChange={(e) => setVariantTemplateId(e.target.value)}>
                         <option value="">Select template…</option>
                         {filteredTemplates.filter((t) => t.id !== templateId).map((t) => (
                           <option key={t.id} value={t.id}>{t.name} ({t.key})</option>
                         ))}
-                      </ThemeSelect>
+                      </SelectField>
                     </label>
                     <label className="block">
                       <div className="text-[11px] text-muted-foreground mb-1">% of audience to variant B: <strong>{abSplitPct}%</strong></div>
@@ -344,17 +345,17 @@ export default function NewCampaignPage() {
             <div className="grid grid-cols-2 gap-3">
               <label className="block">
                 <div className="text-xs font-medium mb-1">Repeat</div>
-                <ThemeSelect value={recurrence} onChange={setRecurrence}>
+                <SelectField value={recurrence} onChange={(e) => setRecurrence(e.target.value)}>
                   <option value="none">One-time</option>
                   <option value="daily">Daily</option>
                   <option value="weekly">Weekly</option>
                   <option value="monthly">Monthly</option>
-                </ThemeSelect>
+                </SelectField>
               </label>
               {recurrence !== "none" && (
                 <label className="block">
                   <div className="text-xs font-medium mb-1">Repeat until</div>
-                  <ThemeDate value={recurrenceUntil} onChange={setRecurrenceUntil} />
+                  <DateField value={recurrenceUntil} onChange={(e) => setRecurrenceUntil(e.target.value)} />
                 </label>
               )}
             </div>
@@ -383,28 +384,28 @@ export default function NewCampaignPage() {
         <div className="grid grid-cols-3 gap-3">
           <label className="block">
             <div className="text-xs font-medium mb-1">Content status</div>
-            <ThemeSelect value={contentStatus} onChange={setContentStatus}>
+            <SelectField value={contentStatus} onChange={(e) => setContentStatus(e.target.value)}>
               <option value="not_started">Not started</option>
               <option value="drafting">Drafting</option>
               <option value="ready">Ready</option>
               <option value="published">Published</option>
-            </ThemeSelect>
+            </SelectField>
           </label>
           <label className="block">
             <div className="text-xs font-medium mb-1">Compliance check</div>
-            <ThemeSelect value={complianceCheckStatus} onChange={setComplianceCheckStatus}>
+            <SelectField value={complianceCheckStatus} onChange={(e) => setComplianceCheckStatus(e.target.value)}>
               <option value="pending">Pending</option>
               <option value="cleared">Cleared</option>
               <option value="blocked">Blocked</option>
               <option value="not_required">Not required</option>
-            </ThemeSelect>
+            </SelectField>
           </label>
           <label className="block">
             <div className="text-xs font-medium mb-1">Approval status</div>
-            <ThemeSelect value={approvalStatus} onChange={setApprovalStatus}>
+            <SelectField value={approvalStatus} onChange={(e) => setApprovalStatus(e.target.value)}>
               <option value="pending">Pending</option>
               <option value="not_required">Not required</option>
-            </ThemeSelect>
+            </SelectField>
             <p className="text-[10px] text-muted-foreground mt-1">Approve from the campaign page, or use Save &amp; send.</p>
           </label>
         </div>

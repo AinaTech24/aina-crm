@@ -12,6 +12,9 @@
  */
 
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage, type PDFImage } from "pdf-lib";
+import fontkit from "@pdf-lib/fontkit";
+import fs from "node:fs";
+import path from "node:path";
 
 export type PdfBlock =
   | { type: "stat"; label: string; value: string }
@@ -59,17 +62,19 @@ const MARGIN = 40;
 const HEADER_H = 86;
 const FOOTER_H = 50;
 
-const ascii = (s: string) =>
-  (s ?? "")
-    .replace(/₹/g, "Rs ")
-    .replace(/[•]/g, "-")
+/** Normalise text for PDF drawing. keepRupee=true preserves ₹ (only safe when a
+ *  Unicode font is embedded); otherwise ₹ → "Rs " and all non-ASCII is stripped
+ *  so the built-in Helvetica fallback never fails to encode a glyph. */
+const sanitize = (s: string, keepRupee = false) => {
+  let t = (s ?? "")
+    .replace(/[•·]/g, "-")
     .replace(/[–—]/g, "-")
     .replace(/[‘’]/g, "'")
-    .replace(/[“”]/g, '"')
-    .replace(/·/g, "-")
-    .replace(/[^\x20-\x7E]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
+    .replace(/[“”]/g, '"');
+  t = keepRupee ? t.replace(/[^\x20-\x7E₹]/g, "") : t.replace(/₹/g, "Rs ").replace(/[^\x20-\x7E]/g, "");
+  return t.replace(/\s+/g, " ").trim();
+};
+const ascii = (s: string) => sanitize(s, false);
 
 function hexToRgb(hex?: string | null) {
   const h = (hex ?? "#0e2557").replace("#", "");
@@ -78,15 +83,15 @@ function hexToRgb(hex?: string | null) {
   return rgb(((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255);
 }
 
-function clip(text: string, font: PDFFont, size: number, maxWidth: number): string {
-  let s = ascii(text);
+function clip(text: string, font: PDFFont, size: number, maxWidth: number, keepRupee = false): string {
+  let s = sanitize(text, keepRupee);
   if (font.widthOfTextAtSize(s, size) <= maxWidth) return s;
   while (s.length > 1 && font.widthOfTextAtSize(s + "...", size) > maxWidth) s = s.slice(0, -1);
   return s + "...";
 }
 
-function wrap(text: string, font: PDFFont, size: number, maxWidth: number): string[] {
-  const words = ascii(text).split(" ");
+function wrap(text: string, font: PDFFont, size: number, maxWidth: number, keepRupee = false): string[] {
+  const words = sanitize(text, keepRupee).split(" ");
   const lines: string[] = [];
   let line = "";
   for (const w of words) {
@@ -110,8 +115,20 @@ async function renderReport(
   opts: { title: string; ctxLabel: string; combined: boolean }
 ): Promise<Buffer> {
   const doc = await PDFDocument.create();
-  const font = await doc.embedFont(StandardFonts.Helvetica);
-  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  // Embed a Unicode font (DejaVu Sans) so ₹ and other non-Latin-1 glyphs render
+  // properly. If the font can't be loaded for any reason we fall back to the
+  // built-in Helvetica (₹ → "Rs ") — a font problem must never break a download.
+  let font: PDFFont, bold: PDFFont, rupeeOk = false;
+  try {
+    doc.registerFontkit(fontkit);
+    const dir = path.join(process.cwd(), "src/lib/calculators/fonts");
+    font = await doc.embedFont(fs.readFileSync(path.join(dir, "DejaVuSans.ttf")), { subset: true });
+    bold = await doc.embedFont(fs.readFileSync(path.join(dir, "DejaVuSans-Bold.ttf")), { subset: true });
+    rupeeOk = true;
+  } catch {
+    font = await doc.embedFont(StandardFonts.Helvetica);
+    bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  }
   const primary = hexToRgb(c.primaryHex);
   const slate = rgb(0.42, 0.47, 0.55);
   const ink = rgb(0.1, 0.13, 0.18);
@@ -163,11 +180,12 @@ async function renderReport(
 
   // ── content drawers ──
   const sectionHead = (text: string) => {
-    need(26);
-    y -= 4;
-    page.drawRectangle({ x: MARGIN, y: y - 14, width: 3, height: 13, color: primary });
-    page.drawText(ascii(text), { x: MARGIN + 9, y: y - 11, size: 11, font: bold, color: ink });
-    y -= 22;
+    need(28);
+    y -= 6;
+    page.drawRectangle({ x: MARGIN, y: y - 14, width: 4, height: 14, color: primary });
+    page.drawText(ascii(text), { x: MARGIN + 11, y: y - 11, size: 11.5, font: bold, color: ink });
+    page.drawLine({ start: { x: MARGIN, y: y - 19 }, end: { x: W - MARGIN, y: y - 19 }, thickness: 0.6, color: line });
+    y -= 26;
   };
   // Combined-report per-calculator banner (filled bar) — always starts a page.
   const itemHeading = (n: number, name: string) => {
@@ -176,17 +194,19 @@ async function renderReport(
     y -= 38;
   };
   const drawStats = (group: { label: string; value: string }[]) => {
-    const cols = 3, cw = contentW / cols, ch = 40;
+    const cols = 3, cw = contentW / cols, ch = 46;
     for (let g = 0; g < group.length; g += cols) {
-      need(ch + 8);
+      need(ch + 9);
       const row = group.slice(g, g + cols);
       row.forEach((s, col) => {
-        const x = MARGIN + col * cw;
-        page.drawRectangle({ x, y: y - ch, width: cw - 8, height: ch, borderColor: line, borderWidth: 1, color: rgb(0.985, 0.99, 1) });
-        page.drawText(clip(s.label, font, 7.5, cw - 24), { x: x + 8, y: y - 14, size: 7.5, font, color: slate });
-        page.drawText(clip(s.value, bold, 12, cw - 24), { x: x + 8, y: y - 30, size: 12, font: bold, color: ink });
+        const x = MARGIN + col * cw, w = cw - 8;
+        // Card with a primary top-accent strip + value in the brand colour.
+        page.drawRectangle({ x, y: y - ch, width: w, height: ch, borderColor: line, borderWidth: 0.8, color: rgb(0.985, 0.99, 1) });
+        page.drawRectangle({ x, y: y - 3, width: w, height: 3, color: primary });
+        page.drawText(clip(s.label.toUpperCase(), bold, 6.5, w - 18), { x: x + 9, y: y - 17, size: 6.5, font: bold, color: slate });
+        page.drawText(clip(s.value, bold, 13.5, w - 18, rupeeOk), { x: x + 9, y: y - 35, size: 13.5, font: bold, color: primary });
       });
-      y -= ch + 8;
+      y -= ch + 9;
     }
   };
   const drawTable = (head: string[], rows: string[][]) => {
@@ -200,7 +220,7 @@ async function renderReport(
     const cellPad = 4;
     const rowH = 15;
     const hSize = 7;
-    const headLines = head.map((h, col) => wrap(h, bold, hSize, colW2[col] - cellPad * 2).slice(0, 2));
+    const headLines = head.map((h, col) => wrap(h, bold, hSize, colW2[col] - cellPad * 2, rupeeOk).slice(0, 2));
     const headH = head.length ? Math.max(rowH, Math.max(1, ...headLines.map((l) => l.length)) * 9 + 6) : 0;
     keepTogether(headH + rows.length * rowH + 8);
     const drawHeader = () => {
@@ -222,7 +242,7 @@ async function renderReport(
       for (let col = 0; col < ncol; col++) {
         const cell = row[col] ?? "";
         const align = col === 0 ? "left" : "right";
-        const s = clip(cell, font, 8, colW2[col] - cellPad * 2);
+        const s = clip(cell, font, 8, colW2[col] - cellPad * 2, rupeeOk);
         const tx = align === "left" ? colX[col] + cellPad : colX[col] + colW2[col] - cellPad - font.widthOfTextAtSize(s, 8);
         page.drawText(s, { x: tx, y: y - 11, size: 8, font, color: ink });
       }
@@ -232,11 +252,12 @@ async function renderReport(
     y -= 8;
   };
   const drawInsight = (text: string) => {
-    const lines = wrap(text, font, 8.5, contentW - 16);
-    const ih = lines.length * 11 + 10;
+    const lines = wrap(text, font, 8.5, contentW - 26, rupeeOk);
+    const ih = lines.length * 11 + 14;
     need(ih + 6);
-    page.drawRectangle({ x: MARGIN, y: y - ih, width: contentW, height: ih, color: rgb(0.95, 0.985, 0.97), borderColor: rgb(0.8, 0.92, 0.85), borderWidth: 1 });
-    lines.forEach((ln, k) => page.drawText(ln, { x: MARGIN + 8, y: y - 13 - k * 11, size: 8.5, font, color: rgb(0.1, 0.3, 0.18) }));
+    page.drawRectangle({ x: MARGIN, y: y - ih, width: contentW, height: ih, color: rgb(0.95, 0.985, 0.97), borderColor: rgb(0.8, 0.92, 0.85), borderWidth: 0.8 });
+    page.drawRectangle({ x: MARGIN, y: y - ih, width: 3, height: ih, color: rgb(0.13, 0.6, 0.35) });
+    lines.forEach((ln, k) => page.drawText(ln, { x: MARGIN + 15, y: y - 15 - k * 11, size: 8.5, font, color: rgb(0.08, 0.28, 0.16) }));
     y -= ih + 8;
   };
   const drawInputs = (inputs: { label: string; value: string; group?: string }[]) => {
@@ -305,9 +326,14 @@ async function renderReport(
   };
 
   // ════════════════ COVER / PAGE 1 ════════════════
-  need(30);
-  drawCenter(page, opts.title, y - 16, 18, bold, ink);
-  y -= 30;
+  // Full-bleed primary title band — the report's hero.
+  const titleBandH = 40;
+  need(titleBandH + 6);
+  page.drawRectangle({ x: 0, y: y - titleBandH, width: W, height: titleBandH, color: primary });
+  page.drawRectangle({ x: 0, y: y - titleBandH, width: 5, height: titleBandH, color: rgb(1, 1, 1) });
+  page.drawText(clip(opts.title, bold, 17, contentW - 20), { x: MARGIN + 4, y: y - 26, size: 17, font: bold, color: rgb(1, 1, 1) });
+  drawRight(page, c.generatedAt || new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }), W - MARGIN, y - 25, 8.5, font, rgb(0.9, 0.93, 0.98));
+  y -= titleBandH + 16;
 
   const advisorPairs: [string, string][] = [
     ["Firm:", c.firmName],
@@ -359,19 +385,27 @@ async function renderReport(
   const pages = doc.getPages();
   pages.forEach((p, idx) => {
     if (idx === 0) {
+      const contact = [c.firmPhone, c.firmEmail, c.firmWebsite].map((s) => ascii(s ?? "")).filter(Boolean).join("   -   ");
       if (logo) {
-        const boxW = 160, boxH2 = 32;
+        const boxW = 170, boxH2 = 36;
         const scale = Math.min(boxW / logo.width, boxH2 / logo.height);
-        p.drawImage(logo, { x: MARGIN, y: H - 16 - logo.height * scale, width: logo.width * scale, height: logo.height * scale });
+        p.drawImage(logo, { x: MARGIN, y: H - 18 - logo.height * scale, width: logo.width * scale, height: logo.height * scale });
       } else {
-        p.drawText(ascii(c.firmName), { x: MARGIN, y: H - 30, size: 13, font: bold, color: ink });
+        p.drawText(ascii(c.firmName), { x: MARGIN, y: H - 30, size: 14, font: bold, color: ink });
       }
-      drawRight(p, ascii(c.arn ?? "-"), W - MARGIN, H - 22, 9, bold, ink);
-      drawRight(p, `Generated: ${dt}`, W - MARGIN, H - 35, 8, font, slate);
-      p.drawLine({ start: { x: MARGIN, y: ruleY }, end: { x: W - MARGIN, y: ruleY }, thickness: 1, color: primary });
-      p.drawText(clip(ctx, font, 8, contentW), { x: MARGIN, y: ruleY - 12, size: 8, font, color: slate });
+      if (contact) p.drawText(clip(contact, font, 7.5, contentW - 120), { x: MARGIN, y: H - (logo ? 56 : 44), size: 7.5, font, color: slate });
+      // ARN pill, right-aligned.
+      const arnTxt = ascii(c.arn ?? "");
+      if (arnTxt) {
+        const aw = bold.widthOfTextAtSize(arnTxt, 8.5) + 16;
+        p.drawRectangle({ x: W - MARGIN - aw, y: H - 30, width: aw, height: 16, color: rgb(0.93, 0.95, 0.97) });
+        p.drawText(arnTxt, { x: W - MARGIN - aw + 8, y: H - 26, size: 8.5, font: bold, color: primary });
+      }
+      drawRight(p, `Generated ${dt}`, W - MARGIN, H - 42, 7.5, font, slate);
+      p.drawLine({ start: { x: MARGIN, y: ruleY }, end: { x: W - MARGIN, y: ruleY }, thickness: 1.4, color: primary });
     }
     p.drawLine({ start: { x: MARGIN, y: FOOTER_H - 2 }, end: { x: W - MARGIN, y: FOOTER_H - 2 }, thickness: 0.6, color: line });
+    p.drawText(clip(c.firmName, bold, 7.5, contentW / 2), { x: MARGIN, y: FOOTER_H - 14, size: 7.5, font: bold, color: primary });
     drawRight(p, `Page ${idx + 1} of ${pages.length}`, W - MARGIN, FOOTER_H - 14, 7.5, bold, slate);
     wrap(DISCLAIMER, font, 6.5, contentW).slice(0, 2).forEach((ln, k) =>
       p.drawText(ln, { x: MARGIN, y: FOOTER_H - 24 - k * 8, size: 6.5, font, color: slate })

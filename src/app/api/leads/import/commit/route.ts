@@ -29,6 +29,34 @@ const VALID_SOURCES = new Set([
   "website", "referral", "meta_ads", "google_ads", "linkedin", "youtube",
   "webinar", "event", "walk_in", "manual", "other",
 ]);
+const VALID_AUM = new Set(["under_10l", "10l_50l", "50l_2cr", "hni_2cr_plus"]);
+const VALID_LEAD_TYPE = new Set(["individual", "hni", "nri", "corporate", "minor"]);
+
+const numOrNull = (v: string) => { const n = Number(String(v).replace(/[,₹\s]/g, "")); return Number.isFinite(n) && n >= 0 ? n : null; };
+/** Split a "a, b; c" cell into a clean string array (for jsonb columns). */
+const listOrNull = (v: string): string[] | null => {
+  const parts = String(v).split(/[,;|]/).map((s) => s.trim()).filter(Boolean).slice(0, 20);
+  return parts.length ? parts : null;
+};
+/** Lenient date → ISO yyyy-mm-dd (DD-MM-YYYY, DD/MM/YYYY, Excel serial, ISO). */
+function dateOrNull(v: string): string | null {
+  const s = String(v ?? "").trim();
+  if (!s) return null;
+  if (/^\d{4,6}$/.test(s)) {
+    const serial = parseInt(s, 10);
+    if (serial > 0 && serial < 100000) { const d = new Date(Date.UTC(1899, 11, 30) + serial * 86_400_000); if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10); }
+  }
+  const m = s.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})$/);
+  if (m) {
+    let day = +m[1], mon = +m[2], year = +m[3];
+    if (year < 100) year += year < 50 ? 2000 : 1900;
+    if (mon > 12 && day <= 12) { const t = day; day = mon; mon = t; }
+    if (mon >= 1 && mon <= 12 && day >= 1 && day <= 31) { const d = new Date(Date.UTC(year, mon - 1, day)); if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10); }
+    return null;
+  }
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -70,6 +98,16 @@ export async function POST(req: NextRequest) {
         const emailVal = pick(row, reverse.email) || null;
         const phoneVal = pick(row, reverse.phone) || null;
         const intendedVal = pick(row, reverse.intendedAmount) || null;
+        // New-lead-form fields.
+        const aumRaw = pick(row, reverse.aumPotential).toLowerCase().replace(/\s+/g, "_");
+        const aum = VALID_AUM.has(aumRaw) ? aumRaw : null;
+        const ltRaw = pick(row, reverse.leadType).toLowerCase().replace(/\s+/g, "_");
+        const leadType = VALID_LEAD_TYPE.has(ltRaw) ? ltRaw : null;
+        const interest = listOrNull(pick(row, reverse.interestedIn));
+        const occupation = pick(row, reverse.occupation) || null;
+        const currentInv = listOrNull(pick(row, reverse.currentInvestments));
+        const profile = occupation || currentInv ? { occupation: occupation ?? undefined, currentInvestments: currentInv ?? undefined } : null;
+        const tags = listOrNull(pick(row, reverse.tags));
         // Deterministic initial score from the imported signals.
         const sc = scoreFields({
           source,
@@ -82,8 +120,10 @@ export async function POST(req: NextRequest) {
         try {
           await tx.execute(sql`
             INSERT INTO leads (
-              id, tenant_id, branch_id, name, email, phone, city,
+              id, tenant_id, branch_id, name, email, phone, alt_phone, alt_email, pan, city, pincode,
               source, source_campaign, stage, stage_changed_at, score, intended_amount,
+              expected_business_amount, aum_potential, lead_type, interest_products, profile,
+              referred_by_name, next_follow_up_at, tags,
               lead_score, score_band, scored_at,
               owner_id, notes, created_at, updated_at
             )
@@ -92,11 +132,22 @@ export async function POST(req: NextRequest) {
               ${name},
               ${emailVal},
               ${phoneVal},
+              ${pick(row, reverse.altPhone) || null},
+              ${pick(row, reverse.altEmail) || null},
+              ${pick(row, reverse.pan).toUpperCase() || null},
               ${pick(row, reverse.city) || null},
+              ${pick(row, reverse.pincode) || null},
               ${source}, ${pick(row, reverse.campaignName) || null},
               ${stage}, now(),
               ${pick(row, reverse.score) || "0"},
               ${intendedVal},
+              ${numOrNull(pick(row, reverse.expectedBusinessAmount))},
+              ${aum}, ${leadType},
+              ${interest ? JSON.stringify(interest) : "[]"}::jsonb,
+              ${profile ? JSON.stringify(profile) : "{}"}::jsonb,
+              ${pick(row, reverse.referredByName) || null},
+              ${dateOrNull(pick(row, reverse.nextFollowUpAt))},
+              ${tags ? JSON.stringify(tags) : "[]"}::jsonb,
               ${sc.leadScore}, ${sc.scoreBand}, now(),
               ${session.userId},
               ${pick(row, reverse.notes) || null},

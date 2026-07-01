@@ -14,6 +14,7 @@
  */
 
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Pencil, X, Loader2, Save, Plus, Trash2 } from "lucide-react";
 import { RmSelector } from "@/components/common/RmSelector";
@@ -196,7 +197,7 @@ export function MasterRecordEditor({ investor, flags }: { investor: Investor; fl
         <Pencil className="size-3.5" /> Edit
       </button>
 
-      {open && (
+      {open && typeof document !== "undefined" && createPortal(
         <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex justify-end" onClick={() => setOpen(false)}>
           <div
             onClick={(e) => e.stopPropagation()}
@@ -351,7 +352,8 @@ export function MasterRecordEditor({ investor, flags }: { investor: Investor; fl
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   );

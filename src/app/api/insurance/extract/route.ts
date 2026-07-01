@@ -15,8 +15,9 @@ import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { extractDocumentText } from "@/lib/insurance/extract-text";
 import { parseInsurancePolicy } from "@/lib/insurance/parse-policy";
-import { extractInsurancePolicy } from "@/lib/ai/assistant";
 import { isAiConfigured } from "@/lib/ai/provider";
+import { runExtractionPipeline } from "@/lib/insurance/extract/pipeline";
+import { structuredToDraft } from "@/lib/insurance/extract/to-draft";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -61,15 +62,18 @@ export async function POST(req: NextRequest) {
 
     const buffer = Buffer.from(await file.arrayBuffer());
 
-    // Prefer accurate AI extraction — the model reads the PDF / image NATIVELY
-    // (no OCR loss) and fills the policyholder / agency / receipt / tax fields +
-    // the member / cover / premium / exclusion TABLES, returning null (never a
-    // guess) for anything not in the document. Falls back to the rule-based
-    // text parser when AI isn't configured or errors out.
+    // Redesigned document-understanding pipeline: detect → per-page text / OCR →
+    // normalize → regex CANDIDATES → the model CLASSIFIES candidates into strictly
+    // separated entities (policyholder / proposer / agent / receipt / insurer) and
+    // extracts each table independently → every field re-validated + gated at 0.70.
+    // This is what stops support emails / care numbers / branch addresses from
+    // landing in the customer fields. Falls back to the rule-based text parser
+    // when AI isn't configured or the pipeline errors out.
     if (await isAiConfigured()) {
       try {
-        const ai = await extractInsurancePolicy({ base64: buffer.toString("base64"), mediaType });
-        if (!("error" in ai)) return NextResponse.json({ draft: ai, engine: "ai" }, { status: 200 });
+        const { structured, meta } = await runExtractionPipeline(buffer, mediaType);
+        const draft = structuredToDraft(structured);
+        return NextResponse.json({ draft, engine: "ai", meta }, { status: 200 });
       } catch {
         /* fall through to the rule-based parser */
       }

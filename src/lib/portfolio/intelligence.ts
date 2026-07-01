@@ -58,7 +58,9 @@ export async function getPortfolioIntel(
   tx: Tx,
   opts: { tenantId: string; userId: string; firmWide: boolean }
 ): Promise<PortfolioIntel> {
-  const scope = opts.firmWide ? sql`` : sql` AND i.rm_id = ${opts.userId}::uuid`;
+  const scope = opts.firmWide
+    ? sql` AND i.deleted_at IS NULL`
+    : sql` AND i.deleted_at IS NULL AND i.rm_id = ${opts.userId}::uuid`;
 
   const totals = (await tx.execute(sql`
     SELECT COALESCE(SUM(f.aum::numeric),0)::numeric AS total,

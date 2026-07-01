@@ -51,14 +51,8 @@ export async function POST(req: NextRequest) {
     const rows = parse.data.rows;
     const clientMeta = clientMetaFromHeaders(req.headers);
 
-    // Inviter must have a confirmed email (same gate as single-invite).
-    const verified = await withTenant(session.tenantId, async (tx) => {
-      const r = (await tx.execute(sql`SELECT email_verified_at FROM users WHERE id = ${session.userId}::uuid LIMIT 1`)).rows[0] as any;
-      return !!r?.email_verified_at;
-    });
-    if (!verified) {
-      return NextResponse.json({ error: "Please confirm your own email address before inviting team members.", code: "email_unverified" }, { status: 403 });
-    }
+    // Inviting does NOT require the inviter's own email to be verified — invites
+    // generate shareable links the admin can send directly (same as single-invite).
 
     // Seat limit: ensure (current usage + this batch) fits the plan.
     const license = await loadTenantLicense(session.tenantId, session.roles);

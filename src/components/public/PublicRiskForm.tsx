@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { CheckCircle2, ChevronLeft, ChevronRight, Loader2, Download } from "lucide-react";
+import { DownloadButton } from "@/components/common/SecureLinkButtons";
 
 type Option = { value: string; label: string; score: number };
 type Question = { key: string; label: string; helperText?: string; type: "single"; options: Option[] };
@@ -181,12 +182,12 @@ export function PublicRiskForm({
           <div className="text-sm tabular-nums mt-1 text-muted-foreground">Score: {done.total}</div>
           {done.description && <div className="text-xs text-muted-foreground mt-2">{done.description}</div>}
         </div>
-        <a
-          href={`/api/public/risk-profile/pdf?token=${encodeURIComponent(tokenId)}&download=1`}
+        <DownloadButton
+          url={`/api/public/risk-profile/pdf?token=${encodeURIComponent(tokenId)}&download=1`}
           className="mt-6 inline-flex items-center justify-center gap-2 rounded-lg bg-brand-cyan px-4 py-2.5 text-sm font-semibold text-white hover:opacity-90 transition-opacity"
         >
           <Download className="size-4" /> Download your Risk Profile (PDF)
-        </a>
+        </DownloadButton>
         <p className="text-[11px] text-muted-foreground mt-2">
           Your answers and risk category, as a PDF you can keep.
         </p>

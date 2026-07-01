@@ -110,17 +110,8 @@ export function clientIdentifier(req: NextRequest | Request): string {
  *   const limited = enforce(req, "auth.login", { limit: 10, windowSec: 900 });
  *   if (limited) return limited;
  */
-export function enforce(
-  req: NextRequest | Request,
-  scope: string,
-  policy: { limit: number; windowSec: number },
-  /** Optional extra suffix on the bucket key (e.g. an email address). */
-  extraKey?: string
-): Response | null {
-  const id = clientIdentifier(req);
-  const ident = extraKey ? `${id}:${extraKey}` : id;
-  const r = checkRateLimit(scope, ident, policy);
-  if (r.ok) return null;
+/** Build the standard 429 response from a limit result. */
+function tooManyResponse(r: LimitResult): Response {
   return new Response(
     JSON.stringify({
       error: "Too many requests — please wait a bit and try again.",
@@ -137,6 +128,39 @@ export function enforce(
       },
     }
   );
+}
+
+export function enforce(
+  req: NextRequest | Request,
+  scope: string,
+  policy: { limit: number; windowSec: number },
+  /** Optional extra suffix on the bucket key (e.g. an email address). */
+  extraKey?: string
+): Response | null {
+  const id = clientIdentifier(req);
+  const ident = extraKey ? `${id}:${extraKey}` : id;
+  const r = checkRateLimit(scope, ident, policy);
+  return r.ok ? null : tooManyResponse(r);
+}
+
+/**
+ * Enforce a rate limit keyed by an EXPLICIT identifier (e.g. a signed-in
+ * user id or tenant id) instead of the client IP. Use this for
+ * authenticated, per-user/per-tenant limits — keying by IP shares one bucket
+ * across every user behind a reverse proxy (they all present the proxy's IP),
+ * which makes a per-user action like "resend my verification email" globally
+ * throttled. Returns a 429 Response when exceeded, else null.
+ *
+ *   const limited = enforceKeyed("auth.verify_resend", `user:${userId}`, { limit: 5, windowSec: 3600 });
+ *   if (limited) return limited;
+ */
+export function enforceKeyed(
+  scope: string,
+  identifier: string,
+  policy: { limit: number; windowSec: number }
+): Response | null {
+  const r = checkRateLimit(scope, identifier, policy);
+  return r.ok ? null : tooManyResponse(r);
 }
 
 /* --------------------------------------------------------------------------

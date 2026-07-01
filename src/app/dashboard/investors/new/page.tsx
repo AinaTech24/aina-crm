@@ -204,7 +204,6 @@ function NewInvestorPageInner() {
       </Link>
 
       <h1 className="text-2xl font-bold tracking-tight">Add investor</h1>
-      <p className="text-sm text-muted-foreground">PAN is the unique key — used for dedup against AMC + RTA feeds.</p>
 
       {familyId && (
         <div className="rounded-md border border-blue-300 bg-blue-50 text-blue-900 px-4 py-3 text-sm flex items-center gap-2">

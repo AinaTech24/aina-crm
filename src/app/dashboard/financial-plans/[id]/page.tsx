@@ -19,7 +19,7 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap, can } from "@/lib/auth/rbac";
 import { formatDate, formatINR } from "@/lib/utils";
-import { financialPlans, investors, users } from "@/db/schema";
+import { financialPlans, investors, leads, users } from "@/db/schema";
 import { RecordProvenance } from "@/components/common/RecordProvenance";
 import {
   recommendedLifeCover,
@@ -55,17 +55,18 @@ export default async function FinancialPlanDetailPage({
     if (!seesAll && p[0].preparedByUserId !== session.userId) return null;
 
     const plan = p[0];
-    const investor = await tx
-      .select()
-      .from(investors)
-      .where(eq(investors.id, plan.investorId))
-      .limit(1);
-    
+    // Subject is either a client (investor) or a prospect (lead).
+    const subject = plan.investorId
+      ? (await tx.select().from(investors).where(eq(investors.id, plan.investorId)).limit(1))[0] ?? null
+      : plan.leadId
+      ? (await tx.select().from(leads).where(eq(leads.id, plan.leadId)).limit(1))[0] ?? null
+      : null;
+
     const preparedBy = plan.preparedByUserId
       ? await tx.select().from(users).where(eq(users.id, plan.preparedByUserId)).limit(1)
       : null;
 
-    return { plan, client: investor[0] ?? null, preparedBy: preparedBy ? preparedBy[0] : null };
+    return { plan, client: subject, isLead: !plan.investorId && !!plan.leadId, preparedBy: preparedBy ? preparedBy[0] : null };
   });
 
   if (!data) notFound();
@@ -216,6 +217,9 @@ export default async function FinancialPlanDetailPage({
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-bold text-foreground">{client?.name ?? "—"}</h1>
+                {data.isLead && (
+                  <span className="chip text-[10px] uppercase font-bold bg-amber-100 text-amber-700 border border-amber-200">Lead</span>
+                )}
                 <span
                   className={`chip text-[10px] uppercase font-bold ${
                     plan.status === "finalized"

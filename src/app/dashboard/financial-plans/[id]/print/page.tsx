@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { withTenant } from "@/db/client";
-import { financialPlans, tenants, users, investors } from "@/db/schema";
+import { financialPlans, tenants, users, investors, leads } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap, can } from "@/lib/auth/rbac";
 import { formatDate, formatINR } from "@/lib/utils";
@@ -38,15 +38,18 @@ export default async function FinancialPlanPrintPage({
       await tx.select().from(tenants).where(eq(tenants.id, session.tenantId)).limit(1)
     )[0];
 
-    const investor = (
-      await tx.select().from(investors).where(eq(investors.id, p.investorId)).limit(1)
-    )[0];
+    // Subject is either a client (investor) or a prospect (lead).
+    const subject = p.investorId
+      ? (await tx.select().from(investors).where(eq(investors.id, p.investorId)).limit(1))[0]
+      : p.leadId
+      ? (await tx.select().from(leads).where(eq(leads.id, p.leadId)).limit(1))[0]
+      : null;
 
     const preparedBy = p.preparedByUserId
       ? (await tx.select().from(users).where(eq(users.id, p.preparedByUserId)).limit(1))[0]
       : null;
 
-    return { p, tenant, client: investor ?? null, preparedBy };
+    return { p, tenant, client: subject ?? null, preparedBy };
   });
 
   if (!data) notFound();

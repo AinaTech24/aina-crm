@@ -7,6 +7,7 @@ import { requireSession } from "@/lib/auth/session";
 import { formatINR } from "@/lib/utils";
 import { ReconcileButton } from "@/components/commission/ReconcileButton";
 import { PayoutImport } from "@/components/commission/PayoutImport";
+import { PeriodPicker } from "@/components/commission/PeriodPicker";
 import { computeSubDistributorPayouts } from "@/lib/commission/sub_distributor_payouts";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -136,19 +137,7 @@ export default async function CommissionReconciliationPage({
         <ReconcileButton period={period} />
       </div>
 
-      <form className="flex items-center gap-2 text-sm">
-        <label className="text-muted-foreground">Period:</label>
-        <select
-          name="period"
-          defaultValue={period}
-          className="border rounded-md px-2 py-1 bg-background"
-        >
-          {[period, ...data.availablePeriods.filter((p) => p !== period)].map((p) => (
-            <option key={p} value={p}>{p}</option>
-          ))}
-        </select>
-        <button className="rounded-md border px-3 py-1">Load</button>
-      </form>
+      <PeriodPicker period={period} options={data.availablePeriods} />
 
       <PayoutImport period={period} />
 

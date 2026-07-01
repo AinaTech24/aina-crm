@@ -67,7 +67,7 @@ export const RTA_FILE_TYPES: RtaFileTypeDef[] = [
     label: "Daily transaction feed",
     short: "Every purchase, redemption, switch, SIP, STP & SWP that processed yesterday.",
     long: "The T+1 reverse feed. Pipe-delimited (CAMS) or CSV (KFintech). Drives folio NAV refresh, AUM, and the SIP rejection module. Without this the dashboard numbers won't move.",
-    sources: ["cams", "kfintech"],
+    sources: ["cams", "kfintech", "fintech_primitives"],
     acronyms: ["WB feed", "Distributor feed", "T+1 file"],
     cadence: { every: "daily", businessDaysOnly: true },
     populates: ["transactions", "folios", "sips"],
@@ -77,7 +77,14 @@ export const RTA_FILE_TYPES: RtaFileTypeDef[] = [
       cams: "/sample-rta/cams_daily_transaction_feed.txt",
       kfintech: "/sample-rta/kfintech_daily_transaction_feed.csv",
     },
-    fileNames: { kfintech: "MFSD307_…", cams: "…R2 / …R10" },
+    // FP accepts a specific subset of RTA reverse-feed report codes (Karvy
+    // MFSD201, CAMS WBR2, Franklin MTFP, Sundaram ER02) — it processes them into
+    // structured transactions with FIFO capital-gains the local parser can't.
+    fileNames: {
+      kfintech: "MFSD307_…",
+      cams: "…R2 / …R10",
+      fintech_primitives: "Karvy MFSD201 / CAMS WBR2 / Franklin MTFP / Sundaram ER02",
+    },
     fileNamesApprox: true,
   },
   {

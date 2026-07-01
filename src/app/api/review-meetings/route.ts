@@ -61,15 +61,20 @@ const Body = z
     path: ["investorId"],
   });
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     const session = await requireSession();
     // Was wide-open to any session. Require the meeting capability, and scope
     // RMs (manage.assigned, not .all) to their OWN meetings.
     requireAny(session.roles, ["review_meeting.manage.all", "review_meeting.manage.assigned"], session.permissions);
     const canAll = can(session.roles, "review_meeting.manage.all", session.permissions);
+    // Optional filter — used by the lead blueprint's inline "complete meeting"
+    // popup to load only this lead's meetings.
+    const leadIdRaw = req.nextUrl.searchParams.get("leadId");
+    const leadId = /^[0-9a-f-]{36}$/i.test(leadIdRaw ?? "") ? leadIdRaw : null;
     const rows = await withTenant(session.tenantId, async (tx) => {
       const scope = canAll ? sql`` : sql` AND m.rm_id = ${session.userId}::uuid`;
+      const leadFilter = leadId ? sql` AND m.lead_id = ${leadId}::uuid` : sql``;
       const r = await tx.execute(sql`
         SELECT m.*, COALESCE(i.name, l.name) AS investor_name,
                i.segment_tag, i.pan AS investor_pan,
@@ -78,7 +83,7 @@ export async function GET() {
         LEFT JOIN investors i ON i.id = m.investor_id
         LEFT JOIN leads l ON l.id = m.lead_id
         LEFT JOIN users u ON u.id = m.rm_id
-        WHERE m.tenant_id = ${session.tenantId}::uuid${scope}
+        WHERE m.tenant_id = ${session.tenantId}::uuid${scope}${leadFilter}
         ORDER BY m.meeting_date DESC
         LIMIT 500
       `);

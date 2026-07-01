@@ -172,13 +172,13 @@ async function OwnerCockpitBody({
       // ---------- 1. Headline counts (+ period trajectory deltas) ----------
       const headline = await tx.execute(sql`
         SELECT
-          (SELECT COUNT(*)::int FROM investors WHERE tenant_id = ${session.tenantId}::uuid AND status = 'active') AS total_clients,
+          (SELECT COUNT(*)::int FROM investors WHERE tenant_id = ${session.tenantId}::uuid AND status = 'active' AND deleted_at IS NULL) AS total_clients,
           (SELECT COUNT(*)::int FROM leads WHERE tenant_id = ${session.tenantId}::uuid AND converted_investor_id IS NULL AND stage NOT IN ('lost', 'cold', 'not_interested')) AS total_leads,
-          (SELECT COALESCE(SUM(active_sip_amount::numeric), 0)::numeric FROM investors WHERE tenant_id = ${session.tenantId}::uuid AND status = 'active') AS sip_book,
-          (SELECT COALESCE(SUM(aum::numeric), 0)::numeric FROM investors WHERE tenant_id = ${session.tenantId}::uuid AND status = 'active') AS total_aum,
+          (SELECT COALESCE(SUM(active_sip_amount::numeric), 0)::numeric FROM investors WHERE tenant_id = ${session.tenantId}::uuid AND status = 'active' AND deleted_at IS NULL) AS sip_book,
+          (SELECT COALESCE(SUM(aum::numeric), 0)::numeric FROM investors WHERE tenant_id = ${session.tenantId}::uuid AND status = 'active' AND deleted_at IS NULL) AS total_aum,
           -- trajectory: clients onboarded this period
           (SELECT COUNT(*)::int FROM investors
-            WHERE tenant_id = ${session.tenantId}::uuid AND status = 'active' AND onboarded_at >= ${startOfMonthISO}) AS new_clients_period,
+            WHERE tenant_id = ${session.tenantId}::uuid AND status = 'active' AND deleted_at IS NULL AND onboarded_at >= ${startOfMonthISO}) AS new_clients_period,
           -- trajectory: net new SIPs this period (registered minus stopped)
           (SELECT COUNT(*)::int FROM sips
             WHERE tenant_id = ${session.tenantId}::uuid AND created_at >= ${startOfMonthISO}) AS new_sips_period,
@@ -219,17 +219,17 @@ async function OwnerCockpitBody({
       const queues = await tx.execute(sql`
         SELECT
           (SELECT COUNT(*)::int FROM investors
-              WHERE tenant_id = ${session.tenantId}::uuid AND status = 'active' AND next_review_at IS NOT NULL
+              WHERE tenant_id = ${session.tenantId}::uuid AND status = 'active' AND deleted_at IS NULL AND next_review_at IS NOT NULL
                 AND next_review_at <= now()) AS reviews_due,
           (SELECT COUNT(*)::int FROM service_requests
               WHERE tenant_id = ${session.tenantId}::uuid AND status IN ('open', 'in_progress')) AS sr_pending,
           (SELECT COUNT(*)::int FROM service_requests
               WHERE tenant_id = ${session.tenantId}::uuid AND status IN ('open', 'in_progress') AND type = 'complaint') AS complaints_open,
           (SELECT COUNT(*)::int FROM investors
-              WHERE tenant_id = ${session.tenantId}::uuid AND status = 'active' AND service_tier = 'A'
+              WHERE tenant_id = ${session.tenantId}::uuid AND status = 'active' AND deleted_at IS NULL AND service_tier = 'A'
                 AND (last_review_at IS NULL OR last_review_at < now() - make_interval(days => ${thresholds.hniReviewDays}))) AS hni_not_reviewed,
           (SELECT COUNT(*)::int FROM investors
-              WHERE tenant_id = ${session.tenantId}::uuid AND status = 'active'
+              WHERE tenant_id = ${session.tenantId}::uuid AND status = 'active' AND deleted_at IS NULL
                 AND (last_transaction_at IS NULL OR last_transaction_at < ${dormantCutoff})) AS dormant_clients
       `);
 
@@ -247,7 +247,7 @@ async function OwnerCockpitBody({
                 AND nominee_name IS NOT NULL AND nominee_name <> ''
                 AND bank_account_masked IS NOT NULL AND bank_account_masked <> '')
               / NULLIF(COUNT(*), 0)
-            )::numeric FROM investors WHERE tenant_id = ${session.tenantId}::uuid AND status = 'active') AS data_quality_score
+            )::numeric FROM investors WHERE tenant_id = ${session.tenantId}::uuid AND status = 'active' AND deleted_at IS NULL) AS data_quality_score
       `);
 
       // ---------- 5. Lead conversion (fast stats for KPI delta) ----------

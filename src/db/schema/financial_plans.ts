@@ -11,6 +11,7 @@ import {
 import { id, tenantId, timestamps } from "./_shared";
 import { tenants } from "./tenants";
 import { investors } from "./investors";
+import { leads } from "./leads";
 import { users } from "./users";
 
 /**
@@ -25,9 +26,10 @@ export const financialPlans = pgTable(
     id,
     tenantId: tenantId.references(() => tenants.id),
     planNumber: text("plan_number").notNull(),
-    investorId: uuid("investor_id")
-      .notNull()
-      .references(() => investors.id),
+    // A plan belongs to EITHER an investor (client) OR a lead (prospect). The
+    // DB CHECK constraint (migration 0160) enforces exactly one is set.
+    investorId: uuid("investor_id").references(() => investors.id),
+    leadId: uuid("lead_id").references(() => leads.id),
     status: text("status", { enum: ["draft", "finalized"] })
       .notNull()
       .default("draft"),
@@ -110,6 +112,7 @@ export const financialPlans = pgTable(
   },
   (t) => ({
     investorIdx: index("financial_plans_investor_idx").on(t.tenantId, t.investorId),
+    leadIdx: index("financial_plans_lead_idx").on(t.tenantId, t.leadId),
     numberIdx: index("financial_plans_number_idx").on(t.tenantId, t.planNumber),
     statusIdx: index("financial_plans_status_idx").on(t.tenantId, t.status),
   })

@@ -39,7 +39,7 @@ export async function FamilySnapshot({
           nominee_name,
           ckyc_expiry_at
         FROM investors
-        WHERE family_id = ${familyId}
+        WHERE family_id = ${familyId} AND deleted_at IS NULL
         ORDER BY
           CASE family_role WHEN 'primary' THEN 0 WHEN 'spouse' THEN 1 ELSE 2 END,
           aum::numeric DESC NULLS LAST

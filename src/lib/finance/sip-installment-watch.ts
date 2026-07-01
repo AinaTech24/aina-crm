@@ -101,6 +101,7 @@ export async function computeSipInstallmentWatch(
         JOIN investors i ON i.id = s.investor_id
         LEFT JOIN users u ON u.id = s.rm_id
        WHERE s.tenant_id = ${tenantId}::uuid
+         AND i.deleted_at IS NULL
          AND s.start_date IS NOT NULL
          AND s.start_date >= current_date - interval '7 months'
          AND s.status NOT IN ('completed','expired')${scope}

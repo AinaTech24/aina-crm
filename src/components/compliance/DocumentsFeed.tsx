@@ -23,6 +23,7 @@ import { DocumentViewerModal, type ViewerDoc } from "@/components/documents/Docu
 import { Avatar } from "@/components/ui/Avatar";
 import { SelectField } from "@/components/ui/SelectField";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { DownloadButton } from "@/components/common/SecureLinkButtons";
 
 type DocRow = {
   id: string;
@@ -417,15 +418,13 @@ export function DocumentsFeed({
                               >
                                 <Eye className="size-4" />
                               </button>
-                              <a
-                                href={`/api/compliance/documents/download?id=${encodeURIComponent(d.id)}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
+                              <DownloadButton
+                                url={`/api/compliance/documents/download?id=${encodeURIComponent(d.id)}`}
                                 title="Download"
                                 className="size-8 rounded-lg hover:bg-secondary/40 border border-border/40 grid place-items-center text-muted-foreground hover:text-brand-cyan transition-colors"
                               >
                                 <Download className="size-4" />
-                              </a>
+                              </DownloadButton>
                               <button
                                 type="button"
                                 onClick={() => startReplace(d)}

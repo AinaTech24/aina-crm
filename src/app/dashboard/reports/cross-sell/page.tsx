@@ -45,7 +45,7 @@ export default async function CrossSellReportPage() {
     can(session.roles, "investor.view.all", session.permissions) ||
     can(session.roles, "reports.business", session.permissions) ||
     can(session.roles, "reports.team", session.permissions);
-  const scope = seesAll ? sql`` : sql` AND rm_id = ${session.userId}::uuid`;
+  const scope = seesAll ? sql` AND deleted_at IS NULL` : sql` AND deleted_at IS NULL AND rm_id = ${session.userId}::uuid`;
 
   const data = await withTenant(
     session.tenantId,

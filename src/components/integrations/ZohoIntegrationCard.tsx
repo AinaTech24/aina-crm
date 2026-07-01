@@ -6,6 +6,7 @@ import { Loader2, CheckCircle2, AlertCircle, Plug, RefreshCw, Copy, KeyRound } f
 import { useToast } from "@/components/ui/Toast";
 import { PasswordInput } from "@/components/ui/PasswordInput";
 import { SelectField } from "@/components/ui/SelectField";
+import { NavButton } from "@/components/common/SecureLinkButtons";
 
 const DATA_CENTERS = [
   { value: "in", label: "India (zoho.in)" },
@@ -202,9 +203,9 @@ export function ZohoIntegrationCard() {
             <button onClick={disconnect} disabled={busy} className="btn-secondary text-xs disabled:opacity-60">
               {busy ? <Loader2 className="size-3.5 animate-spin" /> : null} Disconnect
             </button>
-            <a href="/api/integrations/zoho/connect" className="btn-ghost text-xs" title="Re-run the Zoho consent flow">
+            <NavButton url="/api/integrations/zoho/connect" className="btn-ghost text-xs" title="Re-run the Zoho consent flow">
               <RefreshCw className="size-3.5" /> Re-authenticate
-            </a>
+            </NavButton>
             <button onClick={() => setMode("edit")} className="btn-ghost text-xs">
               <KeyRound className="size-3.5" /> Edit credentials
             </button>
@@ -221,9 +222,9 @@ export function ZohoIntegrationCard() {
             with Zoho.
           </div>
           <div className="flex items-center gap-2">
-            <a href="/api/integrations/zoho/connect" className="btn-primary text-xs">
+            <NavButton url="/api/integrations/zoho/connect" className="btn-primary text-xs">
               <Plug className="size-3.5" /> Authenticate with Zoho
-            </a>
+            </NavButton>
             <button onClick={() => setMode("edit")} className="btn-ghost text-xs">
               <KeyRound className="size-3.5" /> Edit credentials
             </button>

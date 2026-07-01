@@ -28,7 +28,7 @@ export async function RmLeaderboard({
           COALESCE(SUM(i.aum::numeric), 0)::numeric AS aum,
           COALESCE(SUM(i.active_sip_amount::numeric), 0)::numeric AS sip_book
         FROM users u
-        LEFT JOIN investors i ON i.rm_id = u.id AND i.status = 'active'
+        LEFT JOIN investors i ON i.rm_id = u.id AND i.status = 'active' AND i.deleted_at IS NULL
         WHERE 'rm' = ANY(u.roles) AND u.status = 'active'
         GROUP BY u.id, u.name
         ORDER BY aum DESC NULLS LAST

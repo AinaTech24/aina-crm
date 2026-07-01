@@ -91,6 +91,7 @@ export async function getCalendarItems(
       SELECT id, name, avatar_url, next_review_at::date AS d, segment_tag
       FROM investors
       WHERE next_review_at IS NOT NULL
+        AND deleted_at IS NULL
         AND next_review_at::date >= ${fromIso} AND next_review_at::date <= ${toIso}${invScope}
       LIMIT 500
     `),
@@ -99,6 +100,7 @@ export async function getCalendarItems(
              i.id AS investor_id, i.name AS investor_name, i.avatar_url AS investor_avatar_url
       FROM sips s LEFT JOIN investors i ON i.id = s.investor_id
       WHERE s.status = 'active' AND s.next_installment_at IS NOT NULL
+        AND i.deleted_at IS NULL
         AND s.next_installment_at::date >= ${fromIso} AND s.next_installment_at::date <= ${toIso}${sipScope}
       LIMIT 500
     `),
@@ -120,6 +122,7 @@ export async function getCalendarItems(
       UNION ALL
       SELECT 'kyc', id::text, name, ckyc_expiry_at
       FROM investors WHERE ckyc_expiry_at IS NOT NULL
+        AND deleted_at IS NULL
         AND ckyc_expiry_at >= ${fromIso}::date AND ckyc_expiry_at <= ${toIso}::date${kycScope}
       LIMIT 200
     `),

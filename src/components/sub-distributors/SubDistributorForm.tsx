@@ -8,6 +8,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Save, Loader2, Trash2 } from "lucide-react";
+import { ThemeSelect } from "@/components/ui/ThemeSelect";
+import { ThemeDate } from "@/components/ui/ThemeDate";
 
 const ASSOCIATIONS: Array<{ value: string; label: string }> = [
   { value: "individual", label: "Individual" },
@@ -198,28 +200,28 @@ export function SubDistributorForm({
             />
           </Field>
           <Field label="Type of association">
-            <select
+            <ThemeSelect
               value={v.typeOfAssociation}
-              onChange={(e) => field("typeOfAssociation", e.target.value)}
-              className="input-base text-sm w-full"
+              onChange={(val) => field("typeOfAssociation", val)}
+              className="text-sm w-full"
             >
               {ASSOCIATIONS.map((a) => (
                 <option key={a.value} value={a.value}>
                   {a.label}
                 </option>
               ))}
-            </select>
+            </ThemeSelect>
           </Field>
           <Field label="Status">
-            <select
+            <ThemeSelect
               value={v.status}
-              onChange={(e) => field("status", e.target.value)}
-              className="input-base text-sm w-full"
+              onChange={(val) => field("status", val)}
+              className="text-sm w-full"
             >
               <option value="active">Active</option>
               <option value="inactive">Inactive</option>
               <option value="terminated">Terminated</option>
-            </select>
+            </ThemeSelect>
           </Field>
           <Field label="City">
             <input
@@ -229,11 +231,10 @@ export function SubDistributorForm({
             />
           </Field>
           <Field label="Onboarded date">
-            <input
-              type="date"
+            <ThemeDate
               value={v.onboardedAt ?? ""}
-              onChange={(e) => field("onboardedAt", e.target.value || null)}
-              className="input-base text-sm w-full"
+              onChange={(val) => field("onboardedAt", val || null)}
+              className="text-sm w-full"
             />
           </Field>
         </Grid>
@@ -283,21 +284,17 @@ export function SubDistributorForm({
             />
           </Field>
           <Field label="ARN registration date">
-            <input
-              type="date"
+            <ThemeDate
               value={v.arnRegistrationDate ?? ""}
-              onChange={(e) =>
-                field("arnRegistrationDate", e.target.value || null)
-              }
-              className="input-base text-sm w-full"
+              onChange={(val) => field("arnRegistrationDate", val || null)}
+              className="text-sm w-full"
             />
           </Field>
           <Field label="ARN expiry date">
-            <input
-              type="date"
+            <ThemeDate
               value={v.arnExpiryAt ?? ""}
-              onChange={(e) => field("arnExpiryAt", e.target.value || null)}
-              className="input-base text-sm w-full"
+              onChange={(val) => field("arnExpiryAt", val || null)}
+              className="text-sm w-full"
             />
           </Field>
           <Field label="EUIN">
@@ -309,11 +306,10 @@ export function SubDistributorForm({
             />
           </Field>
           <Field label="EUIN expiry">
-            <input
-              type="date"
+            <ThemeDate
               value={v.euinExpiryAt ?? ""}
-              onChange={(e) => field("euinExpiryAt", e.target.value || null)}
-              className="input-base text-sm w-full"
+              onChange={(val) => field("euinExpiryAt", val || null)}
+              className="text-sm w-full"
             />
           </Field>
           <Field label="NISM certificate no.">
@@ -334,19 +330,17 @@ export function SubDistributorForm({
             />
           </Field>
           <Field label="NISM exam date">
-            <input
-              type="date"
+            <ThemeDate
               value={v.nismExamDate ?? ""}
-              onChange={(e) => field("nismExamDate", e.target.value || null)}
-              className="input-base text-sm w-full"
+              onChange={(val) => field("nismExamDate", val || null)}
+              className="text-sm w-full"
             />
           </Field>
           <Field label="NISM expiry">
-            <input
-              type="date"
+            <ThemeDate
               value={v.nismExpiryAt ?? ""}
-              onChange={(e) => field("nismExpiryAt", e.target.value || null)}
-              className="input-base text-sm w-full"
+              onChange={(val) => field("nismExpiryAt", val || null)}
+              className="text-sm w-full"
             />
           </Field>
           <Field label="DSC on file">
@@ -440,7 +434,7 @@ export function SubDistributorForm({
         />
       </Section>
 
-      <div className="flex items-center justify-between pt-4 border-t">
+      <div className="flex flex-wrap items-center justify-between gap-2 pt-4 border-t">
         {mode === "edit" && v.status !== "terminated" ? (
           <button
             type="button"
@@ -484,7 +478,7 @@ function Section({
 }
 
 function Grid({ children }: { children: React.ReactNode }) {
-  return <div className="grid grid-cols-2 gap-3">{children}</div>;
+  return <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">{children}</div>;
 }
 
 function Field({

@@ -28,7 +28,7 @@ export async function GettingStartedChecklist({ tenantId }: { tenantId: string }
       SELECT
         (SELECT COUNT(*)::int FROM users WHERE status = 'active') AS user_count,
         (SELECT COUNT(*)::int FROM leads) AS lead_count,
-        (SELECT COUNT(*)::int FROM investors) AS client_count,
+        (SELECT COUNT(*)::int FROM investors WHERE deleted_at IS NULL) AS client_count,
         (SELECT COUNT(*)::int FROM communications WHERE status IN ('sent','delivered','read')) AS sent_count,
         (SELECT COUNT(*)::int FROM workflow_rules WHERE enabled = true) AS active_rules,
         (SELECT COUNT(*)::int FROM rta_file_imports WHERE status IN ('completed','partial')) AS rta_imports

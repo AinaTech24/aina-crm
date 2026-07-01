@@ -1,0 +1,45 @@
+{
+  "expo": {
+    "name": "Growth OS",
+    "slug": "growth-os-mobile",
+    "scheme": "growthos",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "in.ainatech.growthos"
+    },
+    "android": {
+      "package": "in.ainatech.growthos",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ],
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-secure-store",
+      "expo-notifications",
+      "expo-local-authentication",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Growth OS uses your photos to attach client KYC documents.",
+          "cameraPermission": "Growth OS uses your camera to capture client KYC documents."
+        }
+      ],
+      "expo-router"
+    ]
+  }
+}

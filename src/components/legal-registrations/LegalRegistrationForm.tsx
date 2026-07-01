@@ -12,8 +12,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Save, Loader2, Trash2, Plus, ExternalLink, X } from "lucide-react";
-import { SelectField } from "@/components/ui/SelectField";
-import { DateField } from "@/components/ui/DateField";
+import { ThemeSelect } from "@/components/ui/ThemeSelect";
+import { ThemeDate } from "@/components/ui/ThemeDate";
 
 const AUTHORITIES = [
   { value: "AMFI", label: "AMFI" },
@@ -224,34 +224,34 @@ export function LegalRegistrationForm({
           />
         </Field>
         <Field label="Status">
-          <SelectField
+          <ThemeSelect
             value={v.status}
-            onChange={(e) => field("status", e.target.value)}
-            className="input-base text-sm w-full"
+            onChange={(val) => field("status", val)}
+            className="text-sm w-full"
           >
             {STATUSES.map((s) => (
               <option key={s.value} value={s.value}>
                 {s.label}
               </option>
             ))}
-          </SelectField>
+          </ThemeSelect>
         </Field>
       </Grid>
 
       {/* Authority + purpose */}
       <Grid>
         <Field label="Regulatory / government authority *">
-          <SelectField
+          <ThemeSelect
             value={v.authority}
-            onChange={(e) => field("authority", e.target.value)}
-            className="input-base text-sm w-full"
+            onChange={(val) => field("authority", val)}
+            className="text-sm w-full"
           >
             {AUTHORITIES.map((a) => (
               <option key={a.value} value={a.value}>
                 {a.label}
               </option>
             ))}
-          </SelectField>
+          </ThemeSelect>
         </Field>
         {v.authority === "Other" && (
           <Field label="Authority name (free text)">
@@ -286,33 +286,31 @@ export function LegalRegistrationForm({
           />
         </Field>
         <Field label="Registration date">
-          <DateField
+          <ThemeDate
             value={v.registrationDate ?? ""}
-            onChange={(e) =>
-              field("registrationDate", e.target.value || null)
-            }
-            className="input-base text-sm w-full"
+            onChange={(val) => field("registrationDate", val || null)}
+            className="text-sm w-full"
           />
         </Field>
         <Field label="Expiry date (leave blank if perpetual)">
-          <DateField
+          <ThemeDate
             value={v.expiryAt ?? ""}
-            onChange={(e) => field("expiryAt", e.target.value || null)}
-            className="input-base text-sm w-full"
+            onChange={(val) => field("expiryAt", val || null)}
+            className="text-sm w-full"
           />
         </Field>
         <Field label="Renewal frequency">
-          <SelectField
+          <ThemeSelect
             value={v.renewalFrequency}
-            onChange={(e) => field("renewalFrequency", e.target.value)}
-            className="input-base text-sm w-full"
+            onChange={(val) => field("renewalFrequency", val)}
+            className="text-sm w-full"
           >
             {FREQUENCIES.map((f) => (
               <option key={f.value} value={f.value}>
                 {f.label}
               </option>
             ))}
-          </SelectField>
+          </ThemeSelect>
         </Field>
       </Grid>
 
@@ -365,18 +363,18 @@ export function LegalRegistrationForm({
             DigiLocker, public link) to attach the certificate.
           </p>
         )}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <input
             value={newDocLabel}
             onChange={(e) => setNewDocLabel(e.target.value)}
             placeholder="Document label (e.g. ARN certificate)"
-            className="input-base text-sm flex-1"
+            className="input-base text-sm flex-1 min-w-[12rem]"
           />
           <input
             value={newDocUrl}
             onChange={(e) => setNewDocUrl(e.target.value)}
             placeholder="https://…"
-            className="input-base text-sm flex-1"
+            className="input-base text-sm flex-1 min-w-[12rem]"
           />
           <button
             type="button"
@@ -400,7 +398,7 @@ export function LegalRegistrationForm({
         />
       </Field>
 
-      <div className="flex items-center justify-between pt-4 border-t">
+      <div className="flex flex-wrap items-center justify-between gap-2 pt-4 border-t">
         {mode === "edit" && v.status !== "surrendered" ? (
           <button
             type="button"
@@ -427,7 +425,7 @@ export function LegalRegistrationForm({
 }
 
 function Grid({ children }: { children: React.ReactNode }) {
-  return <div className="grid grid-cols-2 gap-3">{children}</div>;
+  return <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">{children}</div>;
 }
 
 function Field({

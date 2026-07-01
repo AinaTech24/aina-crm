@@ -38,6 +38,7 @@ import { RiskProfilePdfButtons } from "@/components/risk-profile/RiskProfileName
 import { loadTenantLicense } from "@/lib/auth/license";
 import { isFieldAllowed } from "@/lib/auth/field-gate";
 import { InvestorBlueprintStageBar } from "@/components/investors/InvestorBlueprintStageBar";
+import { ClientGifts } from "@/components/investors/ClientGifts";
 import { ClientHealthCard } from "@/components/investors/ClientHealthCard";
 import { PortfolioAllocation } from "@/components/investors/PortfolioAllocation";
 import { FamilySnapshot } from "@/components/investors/FamilySnapshot";
@@ -54,8 +55,11 @@ import { InvestorDocumentsSection } from "@/components/investors/InvestorDocumen
 import { InvestorAvatarEditor } from "@/components/investors/InvestorAvatarEditor";
 import { EmailRelatedList } from "@/components/comms/EmailRelatedList";
 import { WhatsAppRelatedList } from "@/components/comms/WhatsAppRelatedList";
-import { SectionNav } from "@/components/common/SectionNav";
+import { InvestorDetailTabs } from "@/components/investors/InvestorDetailTabs";
 import { MasterRecordEditor } from "@/components/investors/MasterRecordEditor";
+import { ReviewCadenceEditor } from "@/components/investors/ReviewCadenceEditor";
+import { ClientReadinessStrip } from "@/components/investors/ClientReadinessStrip";
+import { PanReveal } from "@/components/investors/PanReveal";
 import { crossSellOpportunities } from "@/lib/investors/cross-sell";
 import { HoldingsTable } from "@/components/investors/HoldingsTable";
 import { CompletenessCard } from "@/components/investors/CompletenessCard";
@@ -74,10 +78,13 @@ import {
 const INVESTOR_DETAIL_SECTIONS: RelatedListDef[] = [
   { key: "header", label: "Client header & contact", required: true },
   { key: "health", label: "Client health score" },
+  { key: "recommended", label: "Recommended actions" },
   { key: "summary", label: "Risk / nominee / KYC / review summary" },
   { key: "nominees", label: "Nominees" },
   { key: "referrals", label: "Referrals" },
   { key: "family", label: "Family snapshot" },
+  { key: "valuation", label: "Portfolio valuation" },
+  { key: "churn", label: "Churn-risk scorecard" },
   { key: "allocation", label: "Portfolio allocation" },
   { key: "sip_health", label: "SIP health" },
   { key: "transactions", label: "Transaction history" },
@@ -85,10 +92,21 @@ const INVESTOR_DETAIL_SECTIONS: RelatedListDef[] = [
   { key: "documents", label: "Documents & attachments" },
   { key: "emails", label: "Emails" },
   { key: "whatsapp", label: "WhatsApp" },
+  { key: "gifts", label: "Birthday gifts & budget" },
   { key: "blueprint", label: "Onboarding blueprint" },
+  { key: "completeness", label: "Profile completeness" },
+  { key: "kyc_data", label: "Captured KYC data" },
   { key: "master", label: "Client details" },
   { key: "risk_history", label: "Risk profile history" },
   { key: "related", label: "Folios · SIPs · Goals · Tasks · SRs · Consent" },
+];
+
+/** Tab groups for the client-detail page — the header stays pinned above. */
+const INVESTOR_DETAIL_TABS = [
+  { key: "overview", label: "Overview", sections: ["health", "recommended", "summary"] },
+  { key: "portfolio", label: "Portfolio", sections: ["valuation", "churn", "allocation", "sip_health", "transactions", "cross_sell"] },
+  { key: "profile", label: "KYC & Profile", sections: ["nominees", "referrals", "master", "completeness", "kyc_data", "risk_history"] },
+  { key: "engagement", label: "Engagement", sections: ["family", "documents", "emails", "whatsapp", "gifts", "blueprint", "related"] },
 ];
 
 export const dynamic = "force-dynamic";
@@ -329,33 +347,17 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
         </div>
       </div>
 
-      {showRisk && (isRiskProfileMissing || isRiskProfileExpired) && (
-        <div className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50/60 p-4 text-sm text-amber-900 shadow-sm">
-          <div className="flex items-center gap-3">
-            <div className="size-8 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
-              <AlertTriangle className="size-4 text-amber-600" />
-            </div>
-            <div>
-              <div className="font-semibold text-xs text-amber-800">
-                {isRiskProfileMissing ? "Risk Profile Missing" : "Risk Profile Expired"}
-              </div>
-              <p className="text-[11px] text-amber-600 mt-0.5">
-                {isRiskProfileMissing
-                  ? "SEBI guidelines require completing a risk profile assessment for every active client before executing transactions."
-                  : `This client's annual risk profile assessment was completed on ${formatDate(inv.riskProfileSignedAt!)} and has expired.`}
-              </p>
-            </div>
-          </div>
-          <Link
-            href={`/dashboard/risk-profiles/new?investorId=${inv.id}`}
-            className="flex-shrink-0 inline-flex items-center gap-1.5 text-xs font-medium bg-amber-600 hover:bg-amber-700 text-white rounded px-3 py-1.5 transition-colors shadow-sm"
-          >
-            <ShieldCheck className="size-3.5" /> Start Assessment
-          </Link>
-        </div>
-      )}
-
-      <SectionNav moduleKey="investors-detail" sections={INVESTOR_DETAIL_SECTIONS} />
+      {/* Consolidated onboarding & compliance readiness — replaces the lone risk
+          banner + scattered KYC/nominee/bank signals with one gap list. */}
+      <ClientReadinessStrip
+        investorId={inv.id}
+        kyc={showKyc ? inv.kycStatus === "verified" : null}
+        risk={showRisk ? (isRiskProfileMissing ? "missing" : isRiskProfileExpired ? "expired" : "ok") : null}
+        nominee={showNominee ? !!inv.nomineeName : null}
+        bank={showBank ? !!(inv.bankAccountNumberMasked || inv.bankName) : null}
+        emailVerified={inv.email ? !!inv.emailVerifiedAt : null}
+        phoneVerified={inv.phone ? !!inv.phoneVerifiedAt : null}
+      />
 
       <RelatedListsContainer>
       {/* Header */}
@@ -366,7 +368,7 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
           <div className="flex-1 min-w-0">
             <h1 className="text-2xl font-bold tracking-tight">{inv.name}</h1>
             <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
-              {showPan && <span className="font-mono">{inv.pan}</span>}
+              {showPan && inv.pan && <PanReveal pan={inv.pan} />}
               {showSegment && inv.segmentTag && (
                 <span className="text-xs px-2 py-0.5 rounded-full bg-violet-50 text-violet-700">
                   {inv.segmentTag}
@@ -469,9 +471,18 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
               label="AUM"
               value={showAum ? formatINR(Math.max(Number(inv.aum ?? 0), data.valuation?.currentValue ?? 0)) : "—"}
               primary
+              sub={showAum && !hasPortfolio ? "No investments yet" : undefined}
             />
-            <HeaderKpi label="Active SIP" value={showSip ? formatINR(Number(inv.activeSipAmount ?? 0)) + (showSip && Number(inv.activeSipAmount ?? 0) > 0 ? "/mo" : "") : "—"} />
-            <HeaderKpi label="Lifetime inflow" value={showInflow ? formatINR(Number(inv.lifetimeInflow ?? 0)) : "—"} />
+            <HeaderKpi
+              label="Active SIP"
+              value={showSip ? formatINR(Number(inv.activeSipAmount ?? 0)) + (showSip && Number(inv.activeSipAmount ?? 0) > 0 ? "/mo" : "") : "—"}
+              sub={showSip && Number(inv.activeSipAmount ?? 0) === 0 ? "No active SIP" : undefined}
+            />
+            <HeaderKpi
+              label="Lifetime inflow"
+              value={showInflow ? formatINR(Number(inv.lifetimeInflow ?? 0)) : "—"}
+              sub={showInflow && Number(inv.lifetimeInflow ?? 0) === 0 ? "Awaiting first inflow" : undefined}
+            />
             {data.valuation?.xirr != null && (
               <HeaderKpi
                 label="XIRR (annualised)"
@@ -483,6 +494,10 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
         </div>
       </div>
       </RelatedListSection>
+
+      {/* Category tabs — group the sections so the page shows one clean group at
+          a time. Renders right under the header (which stays pinned). */}
+      <InvestorDetailTabs moduleKey="investors-detail" tabs={INVESTOR_DETAIL_TABS} />
 
       {/* Composite health score — derived from existing fields, no extra query */}
       <RelatedListSection moduleKey="investors-detail" sectionKey="health">
@@ -498,6 +513,7 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
       </RelatedListSection>
 
       {/* Next-Best-Action recommendations for this client */}
+      <RelatedListSection moduleKey="investors-detail" sectionKey="recommended">
       <RecommendedActions
         session={{ tenantId: session.tenantId, userId: session.userId, branchId: session.branchId, roles: session.roles }}
         investorId={inv.id}
@@ -505,6 +521,7 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
         phone={inv.phone}
         email={inv.email}
       />
+      </RelatedListSection>
 
       {/* Risk + meta — at-a-glance status */}
       <RelatedListSection moduleKey="investors-detail" sectionKey="summary">
@@ -513,6 +530,16 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
           {showNominee && <InfoCard label="Nominee" value={inv.nomineeName ?? "Not set"} sub={inv.nomineeRelation ?? undefined} tone={!inv.nomineeName ? "warn" : undefined} />}
           {showCkycExpiry && <InfoCard label="CKYC expiry" value={inv.ckycExpiryAt ? formatDate(inv.ckycExpiryAt) : "—"} sub={inv.ckycNumber ?? undefined} />}
           <InfoCard label="Last review" value={inv.lastReviewAt ? formatRelative(inv.lastReviewAt) : "Never"} sub={inv.nextReviewAt ? `Next: ${formatDate(inv.nextReviewAt)}` : undefined} tone={!inv.lastReviewAt ? "warn" : undefined} />
+        </div>
+        {/* Set review cadence (preset or custom days) → drives the review-due reminder */}
+        <div className="mt-4">
+          <ReviewCadenceEditor
+            investorId={inv.id}
+            reviewFrequency={(inv.reviewFrequency as any) ?? null}
+            reviewFrequencyDays={(inv as any).reviewFrequencyDays ?? null}
+            lastReviewAt={inv.lastReviewAt ? new Date(inv.lastReviewAt).toISOString() : null}
+            nextReviewAt={inv.nextReviewAt ? new Date(inv.nextReviewAt).toISOString() : null}
+          />
         </div>
       </RelatedListSection>
 
@@ -553,20 +580,24 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
         <>
           {/* Live portfolio valuation — units × latest AMFI NAV + XIRR */}
           {showAum && data.valuation && (
+            <RelatedListSection moduleKey="investors-detail" sectionKey="valuation">
             <div className="space-y-2">
               <PortfolioValuationCard valuation={data.valuation} />
               <StatementActions investorId={inv.id} statementCadence={(inv as any).statementCadence ?? "off"} />
             </div>
+            </RelatedListSection>
           )}
 
           {/* Churn-risk scorecard + AI retention play */}
           {showAum && data.churn && (
+            <RelatedListSection moduleKey="investors-detail" sectionKey="churn">
             <ChurnRiskCard
               result={data.churn}
               name={inv.name}
               serviceTier={inv.serviceTier}
               currentValueInr={data.valuation?.currentValue ?? Number(inv.aum ?? 0)}
             />
+            </RelatedListSection>
           )}
 
           {/* Portfolio allocation — derives from already-loaded folios */}
@@ -611,6 +642,10 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
         <WhatsAppRelatedList entityType="investor" entityId={inv.id} entityName={inv.name} entityPhone={inv.whatsappPhone ?? inv.phone} />
       </RelatedListSection>
 
+      <RelatedListSection moduleKey="investors-detail" sectionKey="gifts">
+        <ClientGifts investorId={inv.id} clientName={inv.name} />
+      </RelatedListSection>
+
       {/* Client-phase onboarding bar — stages 13-15: Operations → Portal
           Welcome → Active Client. Auto-hides for investors that weren't
           created from a lead (no source blueprint). */}
@@ -619,8 +654,12 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
       </RelatedListSection>
 
       {/* Profile completeness + any extra KYC captured from the onboarding link */}
+      <RelatedListSection moduleKey="investors-detail" sectionKey="completeness">
       <CompletenessCard completeness={completeness} />
+      </RelatedListSection>
+      <RelatedListSection moduleKey="investors-detail" sectionKey="kyc_data">
       <KycDataViewer kycData={(inv as any).kycData ?? null} />
+      </RelatedListSection>
 
       {/* ----------------------------- Master record -----------------------------
         Every field the spec calls out under § 6 Module 4 Client Master, grouped
@@ -1100,12 +1139,13 @@ function Section({ id, title, count, children }: { id?: string; title: string; c
 }
 
 /** Stacked KPI card for the client-header rail. */
-function HeaderKpi({ label, value, primary, tone }: { label: string; value: string; primary?: boolean; tone?: "good" | "bad" }) {
+function HeaderKpi({ label, value, primary, tone, sub }: { label: string; value: string; primary?: boolean; tone?: "good" | "bad"; sub?: string }) {
   const valueColor = tone === "good" ? "text-emerald-600" : tone === "bad" ? "text-rose-600" : "text-foreground";
   return (
     <div className={`flex-1 rounded-lg border px-4 py-3 ${primary ? "border-brand-cyan/30 bg-brand-cyan-light/20" : "border-border bg-secondary/30"}`}>
       <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</div>
       <div className={`text-xl font-bold tabular-nums mt-0.5 ${valueColor}`}>{value}</div>
+      {sub && <div className="text-[11px] text-muted-foreground mt-0.5">{sub}</div>}
     </div>
   );
 }

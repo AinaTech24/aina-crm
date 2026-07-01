@@ -25,6 +25,7 @@
  * components — we just trigger them via callbacks.
  */
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
@@ -38,6 +39,14 @@ import {
 } from "lucide-react";
 import { STAGE_ACTIONS, type StageAction, type DialogKind } from "@/lib/blueprints/stage-actions";
 import { isFieldVisible, validateNomineeAllocations, type KycField } from "@/lib/onboarding/kyc-fields";
+import { ScheduleMeetingModal } from "@/components/review-meetings/ScheduleMeetingModal";
+import { CompleteMeetingModal } from "@/components/review-meetings/CompleteMeetingModal";
+
+/** Does this href open the schedule-meeting page? If so we pop a modal instead. */
+const isMeetingHref = (href: string) => /\/review-meetings\/new\b/.test(href);
+/** Does this href open the meetings list to mark one completed? Pop the inline
+ *  complete-meeting modal instead of navigating away. */
+const isCompleteMeetingHref = (href: string) => /\/review-meetings\?leadId=/.test(href);
 
 type Prereq = {
   label: string;
@@ -47,13 +56,43 @@ type Prereq = {
 };
 
 /**
- * Transitions that, on confirm, ask for an assignee and auto-create a task for
- * that team member. Maps the target stage → the task title.
+ * Transitions that, on confirm, ask for an assignee + a due date and auto-create
+ * a pre-filled task for that team member (the task API notifies them). Each spec
+ * carries a sensible task type, owning department, priority and a default SLA so
+ * onboarding hand-offs are tracked, categorised and never sit undated.
  */
-const TASK_ON_TRANSITION: Record<string, string> = {
-  ucc_create: "Create UCC for this client",
-  mandate_create: "Register the SIP mandate for this client",
+type TransitionTask = {
+  title: string;
+  type: string; // task taxonomy: follow_up | review_meeting | collect_document | kyc_renewal | custom
+  department: "operations" | "compliance" | "back_office";
+  priority: "high" | "normal" | "urgent";
+  /** Default due date = today + this many days (editable in the dialog). */
+  dueInDays: number;
 };
+const TASK_ON_TRANSITION: Record<string, TransitionTask> = {
+  kyc_registered: { title: "Register fresh KYC with the KRA", type: "kyc_renewal", department: "compliance", priority: "high", dueInDays: 2 },
+  modify_kyc: { title: "Correct & resubmit KYC (address / bank / nominee)", type: "kyc_renewal", department: "compliance", priority: "high", dueInDays: 2 },
+  physical_kyc: { title: "Complete physical KYC / IPV (in-person verification)", type: "kyc_renewal", department: "operations", priority: "high", dueInDays: 3 },
+  ucc_create: { title: "Create UCC (BSE / NSE Unique Client Code)", type: "follow_up", department: "operations", priority: "high", dueInDays: 2 },
+  mandate_create: { title: "Register the SIP mandate (NACH / e-mandate)", type: "follow_up", department: "operations", priority: "high", dueInDays: 3 },
+};
+
+/** Loop stages that schedule a next-touch reminder for the lead owner. */
+const NEXT_TOUCH_STAGES = new Set(["call_back_later", "call_not_connected", "contact_in_future"]);
+
+/** Structured lost reasons captured when a lead is marked Not Qualified — feeds
+ *  win/loss analytics (persisted to leads.lost_reason by the advance route). */
+const LOST_REASONS = [
+  "Not interested",
+  "No budget / can't invest now",
+  "Chose a competitor",
+  "Unhappy with charges / commission",
+  "Unreachable / no response",
+  "Not eligible (NRI / KYC / docs)",
+  "Bad timing — revisit later",
+  "Duplicate / invalid lead",
+  "Other",
+];
 
 type Outcome =
   | { kind: "advanced" }
@@ -85,11 +124,20 @@ export function GuidedStageActions({
   const [missingFields, setMissingFields] = useState<Array<{ key: string; label: string; type: string; options?: string[] }>>([]);
   const [fieldValues, setFieldValues] = useState<Record<string, any>>({});
   const [remarks, setRemarks] = useState("");
-  // Required when transitioning to "call_back_later" — drives a reminder task.
+  // Next-touch date — drives a reminder task on the loop stages (call back,
+  // not connected, contact in future) so parked leads never go silent.
   const [callBackAt, setCallBackAt] = useState("");
+  // Required when closing a lead as "Not Qualified" — structured lost reason
+  // (the leads table + advance route already persist it; the UI now asks).
+  const [lostReason, setLostReason] = useState("");
+  // How many times this lead has already hit "Call Not Connected" — drives a
+  // "stop chasing a dead number" nudge after repeated misses.
+  const [notConnectedCount, setNotConnectedCount] = useState<number | null>(null);
   // Required when transitioning to "ucc_create" — who the auto-created UCC task
   // is assigned to.
   const [taskAssigneeId, setTaskAssigneeId] = useState("");
+  // Default due date for the auto-created task (today + spec.dueInDays); editable.
+  const [taskDueAt, setTaskDueAt] = useState("");
   const [teamUsers, setTeamUsers] = useState<Array<{ id: string; name: string }>>([]);
   // Required when transitioning to "ucc_activated" — stored on the client master.
   const [uccNumber, setUccNumber] = useState("");
@@ -101,6 +149,11 @@ export function GuidedStageActions({
   const [mandateRef, setMandateRef] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Schedule-meeting popup — opened instead of navigating to the meeting page.
+  const [meetingModalOpen, setMeetingModalOpen] = useState(false);
+  // Complete-meeting popup — opened from the "mark meeting completed" prereq so
+  // the RM completes the meeting inline instead of opening the meetings page.
+  const [completeMeetingOpen, setCompleteMeetingOpen] = useState(false);
 
   // Load the client's saved bank accounts when a mandate-activation modal opens,
   // so the "select bank" picker is populated.
@@ -138,6 +191,46 @@ export function GuidedStageActions({
       cancelled = true;
     };
   }, [transitioningAction?.targetStage, teamUsers.length]);
+
+  // Prefill the auto-task's due date when a task-creating transition modal opens.
+  useEffect(() => {
+    const spec = TASK_ON_TRANSITION[transitioningAction?.targetStage ?? ""];
+    if (!spec) return;
+    // datetime-local prefill (date + time) so the user can set an exact deadline.
+    setTaskDueAt(toLocalInput(Date.now() + spec.dueInDays * 86400000));
+  }, [transitioningAction?.targetStage]);
+
+  // Prefill the next-touch date for the loop stages so the reminder defaults to a
+  // sensible time: "not connected" → tomorrow, "contact in future" → +30 days.
+  // (Call-back-later stays blank — the lead asked for a specific time.)
+  useEffect(() => {
+    const stage = transitioningAction?.targetStage;
+    if (stage === "call_not_connected") {
+      setCallBackAt(toLocalInput(Date.now() + 1 * 86400000));
+    } else if (stage === "contact_in_future") {
+      setCallBackAt(toLocalInput(Date.now() + 30 * 86400000));
+    }
+  }, [transitioningAction?.targetStage]);
+
+  // Count prior "Call Not Connected" entries so we can nudge the RM to stop
+  // chasing a dead number after a few misses.
+  useEffect(() => {
+    if (transitioningAction?.targetStage !== "call_not_connected") return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const j = await fetch(`/api/leads/${leadId}/blueprint`).then((r) => r.json()).catch(() => ({}));
+        const hist = Array.isArray(j?.history) ? j.history : [];
+        const n = hist.filter((h: any) => h?.stageKey === "call_not_connected").length;
+        if (!cancelled) setNotConnectedCount(n);
+      } catch {
+        if (!cancelled) setNotConnectedCount(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [transitioningAction?.targetStage, leadId]);
 
   // "Documents Received" details popup — the MFD fills the client's KYC /
   // account-opening details on their behalf, which save into the client master
@@ -198,6 +291,9 @@ export function GuidedStageActions({
       const d = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(d?.error ?? `HTTP ${r.status}`);
       setCollectOpen(false);
+      // A non-fatal warning (e.g. a duplicate PAN was skipped) — surface it in
+      // the outcome banner; the rest of the details still saved + advanced.
+      if (d?.warning) setOutcome({ kind: "sent", ok: true, message: d.warning });
       router.refresh();
       window.dispatchEvent(new CustomEvent("blueprint:refresh"));
       onAfterAdvance?.();
@@ -310,6 +406,9 @@ export function GuidedStageActions({
 
         case "navigate": {
           const href = action.behaviour.hrefPattern.replace("{id}", leadId);
+          // Schedule-meeting → open the meeting form in a popup instead of
+          // navigating away from the lead.
+          if (isMeetingHref(href)) { setMeetingModalOpen(true); break; }
           router.push(href);
           break;
         }
@@ -370,17 +469,25 @@ export function GuidedStageActions({
       }
     }
 
-    // "Call back later" requires a call-back date — it schedules the reminder.
-    const isCallBack = transitioningAction.targetStage === "call_back_later";
-    if (isCallBack && !callBackAt) {
-      setError("Please pick when to call back — we'll remind you then.");
+    // Loop stages (call back / not connected / contact in future) require a
+    // next-touch date — it schedules the reminder so the lead never goes silent.
+    const needsNextTouch = NEXT_TOUCH_STAGES.has(transitioningAction.targetStage);
+    if (needsNextTouch && !callBackAt) {
+      setError("Please pick when to follow up — we'll remind you then.");
       return;
     }
 
-    // Task-creating transitions (Create UCC, Register Mandate) require an
-    // assignee — we auto-create the task for them after the stage moves.
-    const taskTitle = TASK_ON_TRANSITION[transitioningAction.targetStage];
-    if (taskTitle && !taskAssigneeId) {
+    // "Not Qualified" requires a structured lost reason (feeds win/loss analytics).
+    const isNotQualified = transitioningAction.targetStage === "not_qualified";
+    if (isNotQualified && !lostReason) {
+      setError("Please pick why this lead is being closed.");
+      return;
+    }
+
+    // Task-creating transitions (KYC, UCC, Mandate, …) require an assignee — we
+    // auto-create the pre-filled task for them after the stage moves.
+    const taskSpec = TASK_ON_TRANSITION[transitioningAction.targetStage];
+    if (taskSpec && !taskAssigneeId) {
       setError("Please choose who to assign the task to.");
       return;
     }
@@ -417,8 +524,11 @@ export function GuidedStageActions({
         body: JSON.stringify({
           toStageKey: transitioningAction.targetStage,
           remarks: remarks || `Transitioned to ${transitioningAction.targetStage}`,
-          fields: fieldValues,
-          callBackAt: isCallBack ? callBackAt : undefined,
+          fields: {
+            ...fieldValues,
+            ...(isNotQualified ? { lostReason, lostAt: new Date().toISOString() } : {}),
+          },
+          callBackAt: needsNextTouch ? callBackAt : undefined,
           uccNumber: isUccActivated ? uccNumber.trim() : undefined,
           mandateBank: isMandateActivated ? (selectedBank?.bankName ?? mandateBankName.trim()) : undefined,
           mandateIfsc: isMandateActivated ? selectedBank?.ifsc : undefined,
@@ -431,21 +541,22 @@ export function GuidedStageActions({
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d?.error ?? "Failed to complete transition");
 
-      // Auto-create the task assigned to the chosen team member. The stage
-      // already moved, so a task failure is surfaced (don't silently drop it)
-      // but the transition stands — re-clicking Save retries the task (the
-      // transition is idempotent).
-      if (taskTitle) {
+      // Auto-create the task assigned to the chosen team member (the task API
+      // notifies them). The stage already moved, so a task failure is surfaced
+      // (don't silently drop it) but the transition stands — re-clicking Save
+      // retries the task (the transition is idempotent).
+      if (taskSpec) {
         const tRes = await fetch(`/api/tasks`, {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
-            title: taskTitle,
+            title: taskSpec.title,
             description: remarks ? `From onboarding transition. ${remarks}` : `Auto-created on the "${transitioningAction.targetStage.replace(/_/g, " ")}" transition.`,
-            type: "follow_up",
-            priority: "high",
-            department: "back_office",
+            type: taskSpec.type,
+            priority: taskSpec.priority,
+            department: taskSpec.department,
             assigneeId: taskAssigneeId,
+            dueAt: taskDueAt || undefined,
             relatedLeadId: leadId,
           }),
         });
@@ -457,7 +568,10 @@ export function GuidedStageActions({
 
       setTransitioningAction(null);
       setCallBackAt("");
+      setLostReason("");
+      setNotConnectedCount(null);
       setTaskAssigneeId("");
+      setTaskDueAt("");
       setUccNumber("");
       setMandateBanks([]);
       setMandateBankIdx("");
@@ -551,13 +665,33 @@ export function GuidedStageActions({
                   )}
                 </div>
                 {!p.satisfied && p.cta && (
-                  <a
-                    href={p.cta.href}
-                    className="btn-secondary text-xs whitespace-nowrap inline-flex items-center gap-1"
-                  >
-                    {p.cta.label}
-                    <ChevronRight className="size-3" />
-                  </a>
+                  isMeetingHref(p.cta.href) ? (
+                    <button
+                      type="button"
+                      onClick={() => setMeetingModalOpen(true)}
+                      className="btn-secondary text-xs whitespace-nowrap inline-flex items-center gap-1"
+                    >
+                      {p.cta.label}
+                      <ChevronRight className="size-3" />
+                    </button>
+                  ) : isCompleteMeetingHref(p.cta.href) ? (
+                    <button
+                      type="button"
+                      onClick={() => setCompleteMeetingOpen(true)}
+                      className="btn-secondary text-xs whitespace-nowrap inline-flex items-center gap-1"
+                    >
+                      Mark completed here
+                      <ChevronRight className="size-3" />
+                    </button>
+                  ) : (
+                    <a
+                      href={p.cta.href}
+                      className="btn-secondary text-xs whitespace-nowrap inline-flex items-center gap-1"
+                    >
+                      {p.cta.label}
+                      <ChevronRight className="size-3" />
+                    </a>
+                  )
                 )}
               </li>
             ))}
@@ -601,15 +735,16 @@ export function GuidedStageActions({
       )}
 
       {/* Zoho CRM Blueprint Transition Dialog */}
-      {transitioningAction && (
-        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-card border border-border rounded-xl max-w-md w-full p-6 space-y-4 shadow-2xl text-foreground">
-            <div className="flex items-center gap-2 border-b border-border pb-3">
+      {transitioningAction && typeof document !== "undefined" && createPortal(
+        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm flex items-start sm:items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-card border border-border rounded-xl max-w-md w-full shadow-2xl text-foreground flex flex-col max-h-[90vh] my-auto">
+            <div className="flex items-center gap-2 border-b border-border p-6 pb-3 shrink-0">
               <Sparkles className="size-5 text-brand-cyan animate-pulse" />
               <h3 className="font-bold text-base text-foreground">
                 Transition: {transitioningAction.label}
               </h3>
             </div>
+            <div className="overflow-y-auto p-6 pt-4 space-y-4 flex-1">{/* scrollable body — fixes cut-off submit on short viewports */}
 
             <p className="text-xs text-muted-foreground">
               Please complete the required details to transition the lead to{" "}
@@ -662,12 +797,28 @@ export function GuidedStageActions({
               </div>
             )}
 
-            {/* Call-back date — required for "call back later"; schedules a reminder. */}
-            {transitioningAction.targetStage === "call_back_later" && (
-              <div className="space-y-1 border-t border-b border-border py-3">
+            {/* Next-touch date — required for the loop stages; schedules a
+                reminder task for the lead owner so parked leads never go silent. */}
+            {NEXT_TOUCH_STAGES.has(transitioningAction.targetStage) && (
+              <div className="space-y-1.5 border-t border-b border-border py-3">
                 <label className="text-xs text-foreground font-medium">
-                  Call back on <span className="text-rose-500">*</span>
+                  {transitioningAction.targetStage === "contact_in_future" ? "Resurface on" : "Call back on"}{" "}
+                  <span className="text-rose-500">*</span>
                 </label>
+                {transitioningAction.targetStage === "contact_in_future" && (
+                  <div className="flex gap-1.5">
+                    {[30, 60, 90].map((days) => (
+                      <button
+                        key={days}
+                        type="button"
+                        onClick={() => setCallBackAt(toLocalInput(Date.now() + days * 86400000))}
+                        className="rounded-md border border-border px-2 py-0.5 text-[11px] hover:bg-accent"
+                      >
+                        +{days}d
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <input
                   type="datetime-local"
                   required
@@ -676,30 +827,75 @@ export function GuidedStageActions({
                   className="input-base text-xs w-full"
                 />
                 <p className="text-[10px] text-muted-foreground">
-                  We'll create a reminder task for you at this time to call the lead back.
+                  We&apos;ll create a reminder task for the lead owner at this time so it doesn&apos;t slip.
+                </p>
+                {transitioningAction.targetStage === "call_not_connected" && notConnectedCount != null && notConnectedCount >= 2 && (
+                  <div className="rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[10px] text-amber-800 flex items-start gap-1.5">
+                    <AlertTriangle className="size-3 mt-0.5 shrink-0" />
+                    <span>
+                      This will be attempt #{notConnectedCount + 1} with no connection. Consider <strong>Long-term Nurture</strong> or
+                      closing as <strong>Unreachable</strong> instead of chasing a dead number.
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Lost reason — required when closing a lead as Not Qualified. */}
+            {transitioningAction.targetStage === "not_qualified" && (
+              <div className="space-y-1 border-t border-b border-border py-3">
+                <label className="text-xs text-foreground font-medium">
+                  Why is this lead being closed? <span className="text-rose-500">*</span>
+                </label>
+                <select
+                  required
+                  value={lostReason}
+                  onChange={(e) => setLostReason(e.target.value)}
+                  className="input-base text-xs w-full"
+                >
+                  <option value="">— choose a reason —</option>
+                  {LOST_REASONS.map((r) => (
+                    <option key={r} value={r}>{r}</option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-muted-foreground">
+                  Captured for win/loss analytics. Add any detail in the notes below.
                 </p>
               </div>
             )}
 
-            {/* Task assignee — required for task-creating transitions; auto-creates the task. */}
+            {/* Task assignee + due date — required for task-creating transitions;
+                auto-creates a pre-filled task and notifies the assignee. */}
             {TASK_ON_TRANSITION[transitioningAction.targetStage] && (
-              <div className="space-y-1 border-t border-b border-border py-3">
-                <label className="text-xs text-foreground font-medium">
-                  Assign task to <span className="text-rose-500">*</span>
-                </label>
-                <select
-                  required
-                  value={taskAssigneeId}
-                  onChange={(e) => setTaskAssigneeId(e.target.value)}
-                  className="input-base text-xs w-full"
-                >
-                  <option value="">{teamUsers.length ? "Select a team member…" : "Loading team…"}</option>
-                  {teamUsers.map((u) => (
-                    <option key={u.id} value={u.id}>{u.name}</option>
-                  ))}
-                </select>
+              <div className="space-y-2.5 border-t border-b border-border py-3">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-brand-cyan">Create &amp; assign task</div>
+                <div className="space-y-1">
+                  <label className="text-xs text-foreground font-medium">
+                    Assign task to <span className="text-rose-500">*</span>
+                  </label>
+                  <select
+                    required
+                    value={taskAssigneeId}
+                    onChange={(e) => setTaskAssigneeId(e.target.value)}
+                    className="input-base text-xs w-full"
+                  >
+                    <option value="">{teamUsers.length ? "Select a team member…" : "Loading team…"}</option>
+                    {teamUsers.map((u) => (
+                      <option key={u.id} value={u.id}>{u.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-foreground font-medium">Due by (date &amp; time)</label>
+                  <input
+                    type="datetime-local"
+                    value={taskDueAt}
+                    onChange={(e) => setTaskDueAt(e.target.value)}
+                    className="input-base text-xs w-full"
+                  />
+                </div>
                 <p className="text-[10px] text-muted-foreground">
-                  We&apos;ll create a high-priority task — &ldquo;{TASK_ON_TRANSITION[transitioningAction.targetStage]}&rdquo; — assigned to them.
+                  We&apos;ll create a high-priority task — &ldquo;{TASK_ON_TRANSITION[transitioningAction.targetStage].title}&rdquo; — assigned to them, and notify them.
                 </p>
               </div>
             )}
@@ -817,6 +1013,9 @@ export function GuidedStageActions({
                 onClick={() => {
                   setTransitioningAction(null);
                   setCallBackAt("");
+                  setLostReason("");
+                  setTaskAssigneeId("");
+                  setTaskDueAt("");
                   setMandateBanks([]);
                   setMandateBankIdx("");
                   setMandateBankName("");
@@ -842,8 +1041,10 @@ export function GuidedStageActions({
                 Save & Transition
               </button>
             </div>
+            </div>{/* /scrollable body */}
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
 
       {/* Documents Received — collect the client's details on their behalf */}
@@ -859,6 +1060,37 @@ export function GuidedStageActions({
           onSubmit={submitCollectDetails}
         />
       )}
+
+      {/* Schedule-meeting popup — pre-filled with this lead, closes on success.
+          The smart auto-advance (meeting created → appointment_scheduled) moves
+          the blueprint, so we just refresh. */}
+      <ScheduleMeetingModal
+        open={meetingModalOpen}
+        onClose={() => setMeetingModalOpen(false)}
+        preselectedLeadId={leadId}
+        preselectedCategory="follow_up"
+        onSuccess={() => {
+          setMeetingModalOpen(false);
+          router.refresh();
+          window.dispatchEvent(new CustomEvent("blueprint:refresh"));
+          onAfterAdvance?.();
+        }}
+      />
+
+      {/* Complete-meeting popup — mark the lead's scheduled meeting completed
+          inline; completing it auto-advances the blueprint to Meeting Done. */}
+      <CompleteMeetingModal
+        open={completeMeetingOpen}
+        leadId={leadId}
+        onClose={() => setCompleteMeetingOpen(false)}
+        onSuccess={() => {
+          setCompleteMeetingOpen(false);
+          setOutcome(null);
+          router.refresh();
+          window.dispatchEvent(new CustomEvent("blueprint:refresh"));
+          onAfterAdvance?.();
+        }}
+      />
     </div>
   );
 }
@@ -894,7 +1126,7 @@ function CollectDetailsModal({
     g[1].push(f);
   }
 
-  return (
+  return typeof document === "undefined" ? null : createPortal(
     <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-card border border-border rounded-xl max-w-2xl w-full shadow-2xl text-foreground flex flex-col max-h-[88vh]">
         <div className="flex items-center gap-2 border-b border-border p-5">
@@ -908,7 +1140,7 @@ function CollectDetailsModal({
           </div>
         </div>
 
-        <div className="overflow-y-auto p-5 space-y-5">
+        <div className="flex-1 min-h-0 overflow-y-auto p-5 space-y-5">
           {loading ? (
             <div className="flex items-center gap-2 text-sm text-muted-foreground py-8 justify-center">
               <Loader2 className="size-4 animate-spin" /> Loading the form…
@@ -948,7 +1180,8 @@ function CollectDetailsModal({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -1054,6 +1287,14 @@ function SentPanel({
       )}
     </div>
   );
+}
+
+/** Format an epoch-ms into a `datetime-local` value (YYYY-MM-DDTHH:mm) at 10:00
+ *  local — the default next-touch reminder time. */
+function toLocalInput(ms: number): string {
+  const d = new Date(ms);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T10:00`;
 }
 
 function toneClass(tone: StageAction["tone"]): string {

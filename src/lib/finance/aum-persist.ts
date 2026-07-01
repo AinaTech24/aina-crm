@@ -70,7 +70,7 @@ export async function recomputeAllAum(
   const updated = (res.rows as any[]).length;
 
   const totalRes = await tx.execute(
-    sql`SELECT COALESCE(SUM(aum), 0)::numeric AS total FROM investors`
+    sql`SELECT COALESCE(SUM(aum), 0)::numeric AS total FROM investors WHERE deleted_at IS NULL`
   );
   const totalAum = Number((totalRes.rows[0] as any)?.total ?? 0);
   return { updated, totalAum };
@@ -156,7 +156,7 @@ export async function recomputeCombinedAum(
   const updated = (res.rows as any[]).length;
 
   const totalRes = await tx.execute(
-    sql`SELECT COALESCE(SUM(aum), 0)::numeric AS total FROM investors`
+    sql`SELECT COALESCE(SUM(aum), 0)::numeric AS total FROM investors WHERE deleted_at IS NULL`
   );
   const totalAum = Number((totalRes.rows[0] as any)?.total ?? 0);
   return { updated, totalAum };

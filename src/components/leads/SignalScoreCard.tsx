@@ -17,6 +17,17 @@ export async function SignalScoreCard({ session, leadId }: { session: { tenantId
     { userId: session.userId, branchId: session.branchId ?? undefined, roles: session.roles }
   );
 
+  // Empty state — keep it to a single slim line so it doesn't eat a whole card
+  // when there's nothing to show yet.
+  if (score.lines.length === 0) {
+    return (
+      <div className="border rounded-lg bg-card px-4 py-2.5 flex items-center gap-2 text-xs text-muted-foreground">
+        <Activity className="size-4 text-brand-cyan shrink-0" />
+        <span><span className="font-medium text-foreground">Engagement signals:</span> none yet — log a call, message, or meeting to build this lead&apos;s behavioural score.</span>
+      </div>
+    );
+  }
+
   return (
     <div className="border rounded-lg bg-card p-4">
       <div className="flex items-center justify-between mb-2">

@@ -44,7 +44,7 @@ export async function MarketingInsightsSection({ session }: { session: SessionUs
         // 2. Consent health — opt-in % per channel, recent unsubs, bounce rate
         await tx.execute(sql`
           SELECT
-            (SELECT COUNT(*)::int FROM investors WHERE status = 'active') AS total_active,
+            (SELECT COUNT(*)::int FROM investors WHERE status = 'active' AND deleted_at IS NULL) AS total_active,
             (SELECT COUNT(DISTINCT investor_id)::int FROM consents
               WHERE channel = 'whatsapp' AND status = 'granted'
                 AND scope IN ('marketing', 'all')) AS wa_opted_in,

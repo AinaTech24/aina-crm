@@ -214,6 +214,14 @@ export const STAGE_ACTIONS: Record<string, StageAction[]> = {
       hint: "Client hasn't confirmed; nudge them.",
       behaviour: { kind: "advance_only" },
     },
+    {
+      key: "no_show",
+      label: "Client No-show",
+      tone: "danger",
+      targetStage: "contact_in_future",
+      hint: "Client didn't turn up — move to nurture and set a re-engage reminder.",
+      behaviour: { kind: "advance_only" },
+    },
   ],
 
   // 7. Meeting Pending
@@ -233,6 +241,14 @@ export const STAGE_ACTIONS: Record<string, StageAction[]> = {
       targetStage: "meeting_scheduled",
       hint: "Back to a confirmed slot.",
       behaviour: { kind: "open_dialog", dialog: "schedule_meeting" },
+    },
+    {
+      key: "no_show",
+      label: "Client No-show",
+      tone: "danger",
+      targetStage: "contact_in_future",
+      hint: "Client didn't turn up — move to nurture and set a re-engage reminder.",
+      behaviour: { kind: "advance_only" },
     },
   ],
 

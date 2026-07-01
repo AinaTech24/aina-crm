@@ -24,7 +24,7 @@ import { formatINR } from "@/lib/utils";
 import { computeGoal } from "@/lib/goal-planning/calc";
 import { recommendedLifeCover, financialAssetsTotal } from "@/lib/financial-plans/analysis";
 
-type Recipient = { id: string; name: string };
+type Recipient = { id: string; name: string; kind?: "investor" | "lead" };
 
 type Child = { name: string; age: number };
 
@@ -133,11 +133,13 @@ function PlanFormContent() {
         if (!res.ok) throw new Error("Failed to load financial plan");
         const data = await res.json();
         const p = data.plan;
-        
+
         if (data.investor) {
-          setRecipient({ id: data.investor.id, name: data.investor.name });
+          setRecipient({ id: data.investor.id, name: data.investor.name, kind: "investor" });
+        } else if (data.lead) {
+          setRecipient({ id: data.lead.id, name: data.lead.name, kind: "lead" });
         }
-        
+
         setStatus(p.status);
         setClientAge(p.clientAge ?? undefined);
         setSpouseAge(p.spouseAge ?? undefined);
@@ -389,7 +391,7 @@ function PlanFormContent() {
   // Auto recommendations generator basis inputs
   function generateBridges() {
     const list: Recommendation[] = [];
-    
+
     if (emergencyGap > 0) {
       list.push({
         category: "emergency",
@@ -434,10 +436,10 @@ function PlanFormContent() {
   // Save/Update API Submit
   async function onSubmit() {
     if (!recipient) {
-      setErr("Please select a client recipient.");
+      setErr("Please select a client or lead.");
       return;
     }
-    
+
     // Validate Asset Allocation Sum is 100 or 0
     const allocSum = recommendedEquity + recommendedDebt + recommendedGold + recommendedCash;
     if (allocSum !== 100 && allocSum !== 0) {
@@ -449,7 +451,7 @@ function PlanFormContent() {
     setErr(null);
 
     const payload = {
-      investorId: recipient.id,
+      ...(recipient.kind === "lead" ? { leadId: recipient.id } : { investorId: recipient.id }),
       status,
       clientAge: clientAge ?? null,
       spouseAge: spouseAge ?? null,
@@ -523,17 +525,13 @@ function PlanFormContent() {
           <h1 className="page-title">
             <ScrollText className="size-6 text-brand-cyan" /> {editId ? "Edit" : "New"} Financial Plan
           </h1>
-          <p className="page-subtitle">
-            Step-by-step calculator to create a high-fidelity, comprehensive wealth blueprint.
-          </p>
         </div>
         <div className="flex items-center gap-3">
           {/* Real-time Health Score Badge */}
           <div className="flex items-center gap-2 px-3 py-1 bg-gradient-to-r from-brand-navy-light/10 to-secondary/30 border border-brand-cyan/20 rounded-lg text-xs">
             <span className="text-[10px] text-muted-foreground uppercase font-bold">Health Score:</span>
-            <span className={`font-extrabold text-sm tabular-nums ${
-              healthScore >= 85 ? "text-emerald-600" : healthScore >= 60 ? "text-amber-500" : "text-rose-600"
-            }`}>
+            <span className={`font-extrabold text-sm tabular-nums ${healthScore >= 85 ? "text-emerald-600" : healthScore >= 60 ? "text-amber-500" : "text-rose-600"
+              }`}>
               {healthScore}
             </span>
             <span className="text-[9px] text-muted-foreground">/100</span>
@@ -563,11 +561,10 @@ function PlanFormContent() {
             key={s.step}
             type="button"
             onClick={() => setStep(s.step)}
-            className={`px-4 py-2 text-xs font-bold rounded-lg whitespace-nowrap transition-all ${
-              step === s.step
+            className={`px-4 py-2 text-xs font-bold rounded-lg whitespace-nowrap transition-all ${step === s.step
                 ? "bg-brand-cyan-light text-brand-cyan-deep border border-brand-cyan/20 shadow-sm"
                 : "text-muted-foreground hover:bg-secondary/40"
-            }`}
+              }`}
           >
             {s.label}
           </button>
@@ -588,16 +585,18 @@ function PlanFormContent() {
             <ScrollText className="size-5 text-brand-cyan" />
             <h2 className="section-title text-base">Client Demographics</h2>
           </div>
-          
+
           <div className="space-y-4">
             <label className="block">
-              <div className="text-xs font-bold mb-1.5">Select Client (Investor) *</div>
+              <div className="text-xs font-bold mb-1.5">Select Client or Lead *</div>
               <InvestorLookup
                 value={recipient?.id ?? null}
                 displayName={recipient?.name ?? null}
-                onSelect={(id, name) => setRecipient({ id, name })}
+                includeLeads
+                displayKind={recipient?.kind}
+                onSelect={(id, name, kind) => setRecipient({ id, name, kind: kind ?? "investor" })}
                 onClear={() => setRecipient(null)}
-                placeholder="Search client by name, PAN or email..."
+                placeholder="Search client or lead by name, PAN, mobile…"
               />
             </label>
 
@@ -733,27 +732,25 @@ function PlanFormContent() {
                 <span className="text-[10px] uppercase font-bold text-emerald-700/80">Monthly Surplus</span>
                 <span className="text-base font-extrabold tabular-nums mt-1">{formatINR(surplus)}</span>
               </div>
-              <div className={`border rounded-xl p-3.5 flex flex-col justify-between ${
-                savingsRate >= 30 
-                  ? "bg-emerald-50 border-emerald-200/50 text-emerald-800" 
-                  : savingsRate >= 15 
-                  ? "bg-amber-50 border-amber-200/50 text-amber-800" 
-                  : "bg-rose-50 border-rose-200/50 text-rose-800"
-              }`}>
+              <div className={`border rounded-xl p-3.5 flex flex-col justify-between ${savingsRate >= 30
+                  ? "bg-emerald-50 border-emerald-200/50 text-emerald-800"
+                  : savingsRate >= 15
+                    ? "bg-amber-50 border-amber-200/50 text-amber-800"
+                    : "bg-rose-50 border-rose-200/50 text-rose-800"
+                }`}>
                 <span className="text-[10px] uppercase font-bold opacity-80">Savings Rate</span>
-                <span className="text-base font-extrabold tabular-nums mt-1">{savingsRate}% 
+                <span className="text-base font-extrabold tabular-nums mt-1">{savingsRate}%
                   <span className="text-[10px] font-normal ml-1">
                     ({savingsRate >= 30 ? "Excellent" : savingsRate >= 15 ? "Average" : "Low"})
                   </span>
                 </span>
               </div>
-              <div className={`border rounded-xl p-3.5 flex flex-col justify-between ${
-                emiToIncomePct > 45 
-                  ? "bg-rose-50 border-rose-200/50 text-rose-800" 
-                  : emiToIncomePct >= 30 
-                  ? "bg-amber-50 border-amber-200/50 text-amber-800" 
-                  : "bg-emerald-50 border-emerald-200/50 text-emerald-800"
-              }`}>
+              <div className={`border rounded-xl p-3.5 flex flex-col justify-between ${emiToIncomePct > 45
+                  ? "bg-rose-50 border-rose-200/50 text-rose-800"
+                  : emiToIncomePct >= 30
+                    ? "bg-amber-50 border-amber-200/50 text-amber-800"
+                    : "bg-emerald-50 border-emerald-200/50 text-emerald-800"
+                }`}>
                 <span className="text-[10px] uppercase font-bold opacity-80">Debt-to-Income (EMI Ratio)</span>
                 <span className="text-base font-extrabold tabular-nums mt-1">{emiToIncomePct}%
                   <span className="text-[10px] font-normal ml-1">
@@ -985,7 +982,7 @@ function PlanFormContent() {
               <Shield className="size-5 text-brand-cyan" />
               <h2 className="section-title text-base">Emergency Fund Planning</h2>
             </div>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <label className="block">
                 <div className="text-xs font-bold mb-1">Target Months of Expenses Buffer</div>
@@ -1037,9 +1034,8 @@ function PlanFormContent() {
                   <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
                     <div
                       style={{ width: `${Math.min(100, (emergencyFundCurrentValue / requiredEmergency) * 100)}%` }}
-                      className={`h-full rounded-full transition-all ${
-                        emergencyFundCurrentValue >= requiredEmergency ? "bg-emerald-500" : "bg-amber-500"
-                      }`}
+                      className={`h-full rounded-full transition-all ${emergencyFundCurrentValue >= requiredEmergency ? "bg-emerald-500" : "bg-amber-500"
+                        }`}
                     />
                   </div>
                 </div>
@@ -1093,9 +1089,8 @@ function PlanFormContent() {
                     <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
                       <div
                         style={{ width: `${Math.min(100, (lifeInsuranceSumAssured / requiredLifeInsurance) * 100)}%` }}
-                        className={`h-full rounded-full transition-all ${
-                          lifeInsuranceSumAssured >= requiredLifeInsurance ? "bg-emerald-500" : "bg-amber-500"
-                        }`}
+                        className={`h-full rounded-full transition-all ${lifeInsuranceSumAssured >= requiredLifeInsurance ? "bg-emerald-500" : "bg-amber-500"
+                          }`}
                       />
                     </div>
                   </div>
@@ -1140,9 +1135,8 @@ function PlanFormContent() {
                     <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
                       <div
                         style={{ width: `${Math.min(100, (healthInsuranceSumAssured / 500000) * 100)}%` }}
-                        className={`h-full rounded-full transition-all ${
-                          healthInsuranceSumAssured >= 500000 ? "bg-emerald-500" : "bg-amber-500"
-                        }`}
+                        className={`h-full rounded-full transition-all ${healthInsuranceSumAssured >= 500000 ? "bg-emerald-500" : "bg-amber-500"
+                          }`}
                       />
                     </div>
                   </div>
@@ -1357,11 +1351,10 @@ function PlanFormContent() {
 
               {/* Funding feasibility — can the surplus actually fund these SIPs? */}
               <div
-                className={`p-4 rounded-xl border text-sm flex items-start justify-between gap-3 ${
-                  sipShortfall > 0
+                className={`p-4 rounded-xl border text-sm flex items-start justify-between gap-3 ${sipShortfall > 0
                     ? "bg-rose-50 border-rose-200 text-rose-800"
                     : "bg-emerald-50 border-emerald-200/50 text-emerald-800"
-                }`}
+                  }`}
               >
                 <div>
                   <div className="font-bold">
@@ -1392,7 +1385,7 @@ function PlanFormContent() {
               <TrendingUp className="size-5 text-brand-cyan" />
               <h2 className="section-title text-base">Recommended Asset Allocation (%)</h2>
             </div>
-            
+
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <label className="block">
                 <span className="text-xs font-semibold">Equity (%)</span>
@@ -1468,11 +1461,10 @@ function PlanFormContent() {
             <div className="flex justify-between items-center text-xs border-t pt-3">
               <span className="text-muted-foreground font-semibold">Total Allocation sum:</span>
               <span
-                className={`font-bold text-sm ${
-                  recommendedEquity + recommendedDebt + recommendedGold + recommendedCash === 100
+                className={`font-bold text-sm ${recommendedEquity + recommendedDebt + recommendedGold + recommendedCash === 100
                     ? "text-emerald-700"
                     : "text-rose-600"
-                }`}
+                  }`}
               >
                 {recommendedEquity + recommendedDebt + recommendedGold + recommendedCash}% (Should be 100%)
               </span>

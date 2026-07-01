@@ -20,7 +20,7 @@ import { formatDate, formatRelative } from "@/lib/utils";
 import { LeadActions } from "@/components/leads/LeadActions";
 import { EmailRelatedList } from "@/components/comms/EmailRelatedList";
 import { WhatsAppRelatedList } from "@/components/comms/WhatsAppRelatedList";
-import { SectionNav } from "@/components/common/SectionNav";
+import { InvestorDetailTabs } from "@/components/investors/InvestorDetailTabs";
 import { CheckInButton, LogActivityButton } from "@/components/activities/ActivityLogger";
 import { ChangeLogButton } from "@/components/common/ChangeLog";
 import { RecordProvenance } from "@/components/common/RecordProvenance";
@@ -33,6 +33,8 @@ import { stageBadgeClass, stageLabel } from "@/lib/leads/stages";
 import { bandBadgeClass, bandLabel } from "@/lib/leads/score";
 import { OnboardingActions } from "@/components/leads/OnboardingActions";
 import { BlueprintStageBar } from "@/components/leads/BlueprintStageBar";
+import { STAGE_ACTIONS } from "@/lib/blueprints/stage-actions";
+import { OverflowMenu, NextStepBanner } from "@/components/leads/LeadHeaderTools";
 import {
   RelatedListsContainer,
   RelatedListsManager,
@@ -46,6 +48,7 @@ import {
  */
 const LEAD_DETAIL_SECTIONS: RelatedListDef[] = [
   { key: "header", label: "Lead header & actions", required: true },
+  { key: "signals", label: "Engagement signals" },
   { key: "blueprint", label: "Blueprint stage tracker" },
   { key: "onboarding", label: "Onboarding actions (risk profile / docs / approval)" },
   { key: "converted_banner", label: "Converted-to-client banner" },
@@ -55,7 +58,30 @@ const LEAD_DETAIL_SECTIONS: RelatedListDef[] = [
   { key: "activity", label: "Activity timeline" },
 ];
 
+/** Tab groups for the lead-detail page — the header stays pinned above. */
+const LEAD_DETAIL_TABS = [
+  { key: "overview", label: "Overview", sections: ["signals", "blueprint", "onboarding", "converted_banner"] },
+  { key: "details", label: "Details", sections: ["edit_panel"] },
+  { key: "activity", label: "Activity", sections: ["whatsapp", "emails", "activity"] },
+];
+
 export const dynamic = "force-dynamic";
+
+/** Format an Indian mobile as "+91 XXXXX XXXXX" (falls back to raw if not 10 digits). */
+function formatPhoneIN(raw?: string | null): string {
+  if (!raw) return "";
+  const d = raw.replace(/\D/g, "");
+  const ten = d.length > 10 ? d.slice(-10) : d;
+  return ten.length === 10 ? `+91 ${ten.slice(0, 5)} ${ten.slice(5)}` : raw;
+}
+
+/** The blueprint's recommended next action for a stage — the "what to do now". */
+function nextBestStep(stage: string): { label: string; hint?: string | null } | null {
+  const actions = STAGE_ACTIONS[stage];
+  if (!actions || !actions.length) return null;
+  const primary = actions.find((a) => a.tone === "primary") ?? actions[0];
+  return { label: primary.label, hint: primary.hint ?? null };
+}
 
 export default async function LeadDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -112,6 +138,24 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
 
   const l = data.lead;
 
+  // ── Header intelligence (deterministic — no AI call on page load) ──
+  const scoreBand = (l.scoreBand as any) ?? "cold";
+  const daysAsLead = l.createdAt ? Math.max(0, Math.floor((Date.now() - new Date(l.createdAt as any).getTime()) / 86_400_000)) : 0;
+  const messageCount = data.relatedComms.length;
+  const openTasks = data.relatedTasks.filter((t: any) => !["done", "completed", "cancelled"].includes(String(t.status))).length;
+  const next = nextBestStep(l.stage);
+  const statCells = [
+    { label: "Lead score", value: String(l.leadScore ?? 0), sub: bandLabel(scoreBand) },
+    { label: "Days as lead", value: String(daysAsLead) },
+    { label: "Messages", value: messageCount >= 50 ? "50+" : String(messageCount) },
+    { label: "Open tasks", value: String(openTasks) },
+  ];
+  const snapshot =
+    `${l.source ? `${l.source} lead` : "Lead"} · ${bandLabel(scoreBand)} (${l.leadScore ?? 0}) · ${stageLabel(l.stage)} — ` +
+    `${messageCount > 0 ? `${messageCount} message${messageCount > 1 ? "s" : ""} logged` : "no engagement logged yet"}` +
+    `${l.lastContactAt ? `, last contact ${formatRelative(l.lastContactAt)}` : ""}` +
+    `${next ? `. Next: ${next.label}.` : "."}`;
+
   return (
     <div className="max-w-5xl space-y-4">
       <div className="flex items-center justify-between">
@@ -124,64 +168,28 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
         <RelatedListsManager moduleKey="leads-detail" sections={LEAD_DETAIL_SECTIONS} />
       </div>
 
-      <SectionNav moduleKey="leads-detail" sections={LEAD_DETAIL_SECTIONS} />
-
       <RelatedListsContainer>
       <RelatedListSection moduleKey="leads-detail" sectionKey="header">
-      <div className="border rounded-lg bg-card p-6">
+      <div className="border rounded-lg bg-card p-6 space-y-4">
+        {/* Identity row */}
         <div className="flex items-start justify-between gap-4">
-          <div>
+          <div className="min-w-0">
             <h1 className="text-2xl font-bold tracking-tight">{l.name}</h1>
-            <div className="flex items-center gap-3 mt-1 text-sm">
+            <div className="flex flex-wrap items-center gap-2 mt-1.5 text-sm">
               <span className={`text-xs px-2 py-0.5 rounded-full border ${stageBadgeClass(l.stage)}`}>
                 {stageLabel(l.stage)}
               </span>
               <span
-                className={`text-xs px-2 py-0.5 rounded-full border inline-flex items-center gap-1 ${bandBadgeClass((l.scoreBand as any) ?? "cold")}`}
+                className={`text-xs px-2 py-0.5 rounded-full border inline-flex items-center gap-1 ${bandBadgeClass(scoreBand)}`}
                 title="Deterministic lead score (0–100)"
               >
-                <Flame className="size-3" /> {bandLabel((l.scoreBand as any) ?? "cold")} · {l.leadScore ?? 0}
+                <Flame className="size-3" /> {bandLabel(scoreBand)} · {l.leadScore ?? 0}
               </span>
               <span className="text-muted-foreground">via {l.source}</span>
               {data.owner && <span className="text-muted-foreground">· owned by {data.owner.name}</span>}
             </div>
-            <div className="flex gap-3 mt-3 text-sm">
-              {l.phone && (
-                <a href={`tel:${l.phone}`} className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground">
-                  <Phone className="size-4" /> {l.phone}
-                </a>
-              )}
-              {l.email && (
-                <a href={`mailto:${l.email}`} className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground">
-                  <Mail className="size-4" /> {l.email}
-                </a>
-              )}
-              {l.phone && (
-                <a
-                  href={`https://wa.me/${l.phone.replace(/[^\d]/g, "")}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground"
-                >
-                  <MessageCircle className="size-4" /> WhatsApp
-                </a>
-              )}
-            </div>
-            <div className="flex flex-wrap gap-2 mt-3">
-              <CheckInButton subject={{ type: "lead", id: l.id, name: l.name, phone: l.phone }} />
-              <LogActivityButton subject={{ type: "lead", id: l.id, name: l.name, phone: l.phone }} label="Log call / visit" variant="secondary" />
-              <ChangeLogButton entityType="lead" entityId={l.id} />
-              <RecordAutomations subject={{ type: "lead", id: l.id }} />
-              <RecordProvenance
-                entityType="lead"
-                entityId={l.id}
-                createdAt={l.createdAt}
-                updatedAt={l.updatedAt}
-                className="basis-full mt-1"
-              />
-            </div>
           </div>
-          <div className="flex flex-col items-end gap-2">
+          <div className="flex flex-col items-end gap-2 shrink-0">
             <RowActions
               deleteUrl={`/api/leads/${l.id}`}
               itemLabel="lead"
@@ -189,15 +197,69 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
               redirectTo="/dashboard/leads"
             />
             <div className="text-right text-xs text-muted-foreground">
-              Created {formatRelative(l.createdAt)}
-              <br />
               Last contact {l.lastContactAt ? formatRelative(l.lastContactAt) : "—"}
             </div>
           </div>
         </div>
 
-        {/* Actions */}
-        <div className="mt-5 pt-4 border-t space-y-3" data-lead-actions>
+        {/* Smart snapshot — instant, deterministic (no AI call on load) */}
+        <p className="text-sm text-muted-foreground">{snapshot}</p>
+
+        {/* Contact chips */}
+        <div className="flex flex-wrap gap-2 text-sm">
+          {l.phone && (
+            <a href={`tel:${l.phone}`} className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-muted-foreground hover:text-foreground hover:border-foreground/30">
+              <Phone className="size-4" /> {formatPhoneIN(l.phone)}
+            </a>
+          )}
+          {l.email && (
+            <a href={`mailto:${l.email}`} className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-muted-foreground hover:text-foreground hover:border-foreground/30">
+              <Mail className="size-4" /> {l.email}
+            </a>
+          )}
+          {l.phone && (
+            <a
+              href={`https://wa.me/${l.phone.replace(/[^\d]/g, "")}`}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-muted-foreground hover:text-foreground hover:border-foreground/30"
+            >
+              <MessageCircle className="size-4" /> WhatsApp
+            </a>
+          )}
+        </div>
+
+        {/* Lead intelligence strip — score + key triage stats + AI score */}
+        <div className="flex flex-wrap items-center gap-1 rounded-lg border bg-muted/30 p-2">
+          {statCells.map((s) => (
+            <div key={s.label} className="px-3 py-1 min-w-[6rem]">
+              <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{s.label}</div>
+              <div className="text-base font-semibold tabular-nums">
+                {s.value}
+                {s.sub && <span className="text-xs font-normal text-muted-foreground ml-1 capitalize">{s.sub}</span>}
+              </div>
+            </div>
+          ))}
+          <div className="ml-auto">
+            <LeadScoreButton
+              name={l.name}
+              source={l.source}
+              stage={l.stage}
+              ageInStageDays={daysAsLead}
+              lastTouchDaysAgo={
+                l.lastContactAt
+                  ? Math.max(0, Math.floor((Date.now() - new Date(l.lastContactAt as any).getTime()) / 86_400_000))
+                  : null
+              }
+            />
+          </div>
+        </div>
+
+        {/* Next best step — pulled from the blueprint so it's visible up top */}
+        {next && <NextStepBanner label={next.label} hint={next.hint} />}
+
+        {/* Actions — primary bar + a tidy secondary row with a "More" menu */}
+        <div className="pt-3 border-t space-y-3" data-lead-actions>
           <LeadActions
             leadId={l.id}
             leadName={l.name}
@@ -206,38 +268,45 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
             currentStage={l.stage}
             alreadyConvertedInvestorId={l.convertedInvestorId ?? null}
           />
-          <LeadScoreButton
-            name={l.name}
-            source={l.source}
-            stage={l.stage}
-            ageInStageDays={
-              l.createdAt
-                ? Math.max(0, Math.floor((Date.now() - new Date(l.createdAt as any).getTime()) / 86_400_000))
-                : null
-            }
-            lastTouchDaysAgo={
-              l.lastContactAt
-                ? Math.max(0, Math.floor((Date.now() - new Date(l.lastContactAt as any).getTime()) / 86_400_000))
-                : null
-            }
+          <div className="flex flex-wrap items-center gap-2">
+            <CheckInButton subject={{ type: "lead", id: l.id, name: l.name, phone: l.phone }} />
+            <LogActivityButton subject={{ type: "lead", id: l.id, name: l.name, phone: l.phone }} label="Log call / visit" variant="secondary" />
+            <OverflowMenu>
+              <ChangeLogButton entityType="lead" entityId={l.id} />
+              <RecordAutomations subject={{ type: "lead", id: l.id }} />
+            </OverflowMenu>
+          </div>
+          <RecordProvenance
+            entityType="lead"
+            entityId={l.id}
+            createdAt={l.createdAt}
+            updatedAt={l.updatedAt}
+            className="text-xs"
           />
         </div>
       </div>
       </RelatedListSection>
 
+      {/* Category tabs — group the sections; the header stays pinned above. */}
+      <InvestorDetailTabs moduleKey="leads-detail" tabs={LEAD_DETAIL_TABS} />
+
       {/* Behavioural engagement signals (Zoho scoring parity) */}
+      <RelatedListSection moduleKey="leads-detail" sectionKey="signals">
       <SignalScoreCard session={{ tenantId: session.tenantId, userId: session.userId, branchId: session.branchId, roles: session.roles }} leadId={l.id} />
+      </RelatedListSection>
 
       {/* Blueprint stage bar — lead-phase only (stages 1–12, up to Documents
           Received). When the lead reaches docs_received the bar swaps in a
           big "Convert to Client" CTA. The remaining stages (Operations →
           Portal Welcome → Active Client) render on the investor page. */}
       <RelatedListSection moduleKey="leads-detail" sectionKey="blueprint">
+        <div data-blueprint-section>
         <BlueprintStageBar
           leadId={l.id}
           phase="lead"
           convertedInvestorId={l.convertedInvestorId ?? null}
         />
+        </div>
       </RelatedListSection>
 
       {/* Onboarding actions — pinned scroll target for the blueprint's

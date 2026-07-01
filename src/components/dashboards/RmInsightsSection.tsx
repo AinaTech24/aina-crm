@@ -58,7 +58,7 @@ export async function RmInsightsSection({
             i.last_contact_at,
             EXTRACT(DAY FROM (now() - COALESCE(i.last_contact_at, i.onboarded_at, now() - interval '999 days')))::int AS days_silent
           FROM investors i
-          WHERE i.rm_id = ${userId} AND i.status = 'active'
+          WHERE i.rm_id = ${userId} AND i.status = 'active' AND i.deleted_at IS NULL
             AND (i.last_contact_at IS NULL OR i.last_contact_at < ${last90})
           ORDER BY
             CASE i.service_tier WHEN 'A' THEN 3 WHEN 'B' THEN 2 WHEN 'C' THEN 1 ELSE 0 END DESC,
@@ -75,6 +75,7 @@ export async function RmInsightsSection({
           INNER JOIN investors i ON i.id = g.investor_id
           WHERE i.rm_id = ${userId}
             AND i.status = 'active'
+            AND i.deleted_at IS NULL
             AND g.status NOT IN ('achieved', 'abandoned')
             AND g.target_date BETWEEN current_date AND ${next18m}
           ORDER BY g.target_date ASC
@@ -95,6 +96,7 @@ export async function RmInsightsSection({
           INNER JOIN investors i ON i.id = f.investor_id
           WHERE i.rm_id = ${userId}
             AND i.status = 'active'
+            AND i.deleted_at IS NULL
             AND f.closed_at IS NULL
             AND (
               (f.opened_at < current_date - interval '11 months'
@@ -111,6 +113,7 @@ export async function RmInsightsSection({
           FROM investors i
           WHERE i.rm_id = ${userId}
             AND i.status = 'active'
+            AND i.deleted_at IS NULL
             AND i.segment_tag IN ('HNI', 'Affluent')
             AND i.aum::numeric > 100000
             AND (i.active_sip_amount IS NULL OR i.active_sip_amount::numeric = 0)
@@ -128,6 +131,7 @@ export async function RmInsightsSection({
             AND c.created_at >= now() - interval '30 days'
             AND i.rm_id = ${userId}
             AND i.status = 'active'
+            AND i.deleted_at IS NULL
             AND (
               LOWER(c.inbound_content::text) LIKE '%marriage%'
               OR LOWER(c.inbound_content::text) LIKE '%wedding%'
@@ -174,6 +178,7 @@ export async function RmInsightsSection({
             FROM service_requests sr
             INNER JOIN investors i ON i.id = sr.investor_id
             WHERE i.rm_id = ${userId}
+              AND i.deleted_at IS NULL
               AND sr.status IN ('open', 'in_progress')
           )
           UNION ALL
@@ -200,7 +205,7 @@ export async function RmInsightsSection({
             SELECT 'birthday' AS kind, id, name, dob AS event_date, segment_tag,
               to_char(dob, 'MM-DD') AS md
             FROM investors
-            WHERE rm_id = ${userId} AND status = 'active' AND dob IS NOT NULL
+            WHERE rm_id = ${userId} AND status = 'active' AND deleted_at IS NULL AND dob IS NOT NULL
               AND to_char(dob, 'MM-DD') BETWEEN to_char(current_date, 'MM-DD')
                                             AND to_char(current_date + interval '30 days', 'MM-DD')
           )
@@ -209,7 +214,7 @@ export async function RmInsightsSection({
             SELECT 'anniversary' AS kind, id, name, onboarded_at::date AS event_date, segment_tag,
               to_char(onboarded_at, 'MM-DD') AS md
             FROM investors
-            WHERE rm_id = ${userId} AND status = 'active' AND onboarded_at IS NOT NULL
+            WHERE rm_id = ${userId} AND status = 'active' AND deleted_at IS NULL AND onboarded_at IS NOT NULL
               AND to_char(onboarded_at, 'MM-DD') BETWEEN to_char(current_date, 'MM-DD')
                                                     AND to_char(current_date + interval '30 days', 'MM-DD')
           )

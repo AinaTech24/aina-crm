@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, Download, FileText } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { computeDisclosure, normalizeMonth } from "@/lib/complaints/disclosure";
+import { DownloadButton } from "@/components/common/SecureLinkButtons";
 
 export const dynamic = "force-dynamic";
 
@@ -37,9 +38,9 @@ export default async function ComplaintDisclosurePage({
             SEBI-format statement — pending, received &amp; resolved for the month, by category &amp; source.
           </p>
         </div>
-        <a href={`/api/complaints/disclosure/export?month=${d.month}`} className="btn-secondary text-xs">
+        <DownloadButton url={`/api/complaints/disclosure/export?month=${d.month}`} className="btn-secondary text-xs">
           <Download className="size-3.5" /> Export CSV
-        </a>
+        </DownloadButton>
       </div>
 
       {/* Month picker */}

@@ -38,7 +38,7 @@ export async function FamilyQuickFilters({
             BOOL_OR(i.is_minor = true) AS has_minor,
             BOOL_OR(i.segment_tag = 'HNI') AS any_hni
           FROM families f
-          LEFT JOIN investors i ON i.family_id = f.id
+          LEFT JOIN investors i ON i.family_id = f.id AND i.deleted_at IS NULL
           GROUP BY f.id
         )
         SELECT

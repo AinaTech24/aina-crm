@@ -11,7 +11,9 @@ export const tenantIntegrations = pgTable(
     // NULL = firm-wide default (owner-managed). Set = that user's personal
     // mailbox (per-RM IMAP/SMTP, or a Gmail / M365 account over OAuth).
     userId: uuid("user_id"),
-    provider: text("provider", { enum: ["resend", "aisensy", "msg91", "waina", "mailbox", "zoho"] }).notNull(),
+    provider: text("provider", {
+      enum: ["resend", "aisensy", "msg91", "waina", "mailbox", "zoho", "fintech_primitives"],
+    }).notNull(),
     encryptedConfig: text("encrypted_config").notNull(),
     senderConfig: jsonb("sender_config").$type<{
       fromEmail?: string;

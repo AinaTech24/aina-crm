@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ChevronLeft, Webhook, Check, AlertCircle, ExternalLink } from "lucide-react";
 import WainaConnectCard from "./WainaConnectCard";
 import { ZohoIntegrationCard } from "@/components/integrations/ZohoIntegrationCard";
+import { FintechPrimitivesCard } from "@/components/integrations/FintechPrimitivesCard";
 
 const INTEGRATIONS = [
   {
@@ -65,6 +66,9 @@ export default function IntegrationsPage() {
       <Suspense fallback={null}>
         <ZohoIntegrationCard />
       </Suspense>
+
+      {/* Self-serve: connect the firm's own FintechPrimitives account (transaction pull). */}
+      <FintechPrimitivesCard />
 
       <div className="grid grid-cols-1 gap-3">
         {INTEGRATIONS.map((i) => {

@@ -83,9 +83,6 @@ export default async function PnlPage({
             </Link>
           </div>
           <h1 className="text-2xl font-semibold">P&amp;L statement</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Income from AMC commissions minus business expenses — FY {fy}.
-          </p>
         </div>
         <div className="flex items-center gap-2">
           <div className="inline-flex rounded-lg border border-border bg-secondary/40 p-0.5 gap-0.5">
@@ -93,9 +90,8 @@ export default async function PnlPage({
               <Link
                 key={y}
                 href={`/dashboard/finances/pnl?fy=${y}`}
-                className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
-                  y === fy ? "bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
-                }`}
+                className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${y === fy ? "bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
+                  }`}
               >
                 FY {y}
               </Link>
@@ -202,9 +198,8 @@ export default async function PnlPage({
       </div>
 
       {/* Net profit band */}
-      <div className={`rounded-lg border p-4 flex items-center justify-between ${
-        netProfit >= 0 ? "border-emerald-200 bg-emerald-50/50" : "border-rose-200 bg-rose-50/50"
-      }`}>
+      <div className={`rounded-lg border p-4 flex items-center justify-between ${netProfit >= 0 ? "border-emerald-200 bg-emerald-50/50" : "border-rose-200 bg-rose-50/50"
+        }`}>
         <span className="font-semibold text-sm">Net profit (FY {fy})</span>
         <span className={`text-xl font-bold tabular-nums ${netProfit >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
           {formatINR(netProfit)}{margin != null ? ` · ${margin.toFixed(1)}% margin` : ""}
