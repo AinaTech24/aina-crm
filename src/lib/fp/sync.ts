@@ -73,110 +73,30 @@ export async function pullFpData(
   return { folios, transactions, foliosCapHit: capHit };
 }
 
-/** Pull from FP and upsert into one local tenant. Returns the import summary. */
+/** Pull from the mailback service and upsert into one local tenant. */
 export async function syncFpForTenant(
   tenantId: string,
   ctx: { userId?: string; branchId?: string | null; roles: string[] },
   opts: { lookbackDays?: number; cfg?: FpConfig } = {}
 ): Promise<FpImportSummary> {
-  const mock = process.env.FP_MOCK === "1";
   const days = opts.lookbackDays ?? lookbackDays();
   const to = new Date();
   const from = new Date(to.getTime() - days * 86_400_000);
-  // Resolve THIS tenant's FP credentials (their own first, env fallback).
-  const cfg = mock ? undefined : opts.cfg ?? (await resolveFpConfigForTenant(tenantId));
-  if (!mock && !cfg) {
+  // Resolve THIS tenant's credentials (their own first, env fallback).
+  const cfg = opts.cfg ?? (await resolveFpConfigForTenant(tenantId));
+  if (!cfg) {
     throw new Error("Mailback Import is not configured for this firm. Add your credentials in Settings → Integrations.");
   }
-  const data = mock
-    ? mockFpData()
-    : await pullFpData({
-        from: from.toISOString().slice(0, 10),
-        to: to.toISOString().slice(0, 10),
-        cfg: cfg ?? undefined, // non-null here (guarded above); satisfies the type
-      });
-  return withTenant(
-    tenantId,
-    async (tx) => {
-      // DEV ONLY: seed the investors the mock folios reference so the upsert has
-      // someone to attach transactions to (real syncs match pre-existing clients).
-      if (mock) await ensureMockInvestors(tx as Tx, tenantId, data.folios);
-      return applyFpMailback(tx as Tx, tenantId, data);
-    },
-    { userId: ctx.userId, branchId: ctx.branchId ?? undefined, roles: ctx.roles }
-  );
-}
-
-// ── Dev mock (FP_MOCK=1) ─────────────────────────────────────────────────────
-// Lets you exercise the full pull→upsert→dashboard→capital-gains path locally
-// while the FP sandbox is empty. NEVER enabled in production (gated on env).
-
-function mockFpData(): FpUpsertInput {
-  const mk = (i: number) => {
-    const folioNo = `FPMOCK000${i}`;
-    const pan = `AAAPM000${i}A`;
-    const scheme = `ICICI Pru Mock Scheme ${i} - Growth`;
-    return {
-      folio: {
-        object: "mf_folio" as const,
-        amc: "109K",
-        number: folioNo,
-        primary_investor_pan: pan,
-        primary_investor_name: `Mock Investor ${i}`,
-      },
-      txns: [
-        {
-          object: "transaction" as const,
-          folio_number: folioNo,
-          isin: "INF109K01423",
-          type: "purchase",
-          amount: 100000,
-          units: 1000,
-          traded_on: "2024-01-01",
-          traded_at: 100,
-          rta_order_reference: `FPM${i}P`,
-          rta_product_code: `109KMOCK${i}`,
-          rta_scheme_name: scheme,
-        },
-        {
-          object: "transaction" as const,
-          folio_number: folioNo,
-          isin: "INF109K01423",
-          type: "redemption",
-          amount: 55000,
-          units: 500,
-          traded_on: "2024-06-01",
-          traded_at: 110,
-          rta_order_reference: `FPM${i}R`,
-          rta_product_code: `109KMOCK${i}`,
-          rta_scheme_name: scheme,
-          // FIFO lot: 500 units bought @100, sold @110 → ₹5,000 realised gain.
-          sources: [{ days_held: 152, units: 500, purchased_on: "2024-01-01", purchased_at: 100, gain: 5000 }],
-        },
-      ],
-    };
-  };
-  const a = mk(1);
-  const b = mk(2);
-  return {
-    folios: [a.folio, b.folio],
-    transactions: [...a.txns, ...b.txns],
-    foliosCapHit: false,
-  };
-}
-
-async function ensureMockInvestors(tx: Tx, tenantId: string, folios: FpUpsertInput["folios"]): Promise<void> {
-  for (const f of folios) {
-    if (!f.primary_investor_pan) continue;
-    const pan = f.primary_investor_pan.toUpperCase();
-    await tx.execute(sql`
-      INSERT INTO investors (tenant_id, pan, name)
-      SELECT ${tenantId}::uuid, ${pan}, ${f.primary_investor_name ?? "Mock Investor"}
-      WHERE NOT EXISTS (
-        SELECT 1 FROM investors WHERE tenant_id = ${tenantId}::uuid AND pan = ${pan}
-      )
-    `);
-  }
+  const data = await pullFpData({
+    from: from.toISOString().slice(0, 10),
+    to: to.toISOString().slice(0, 10),
+    cfg,
+  });
+  return withTenant(tenantId, (tx) => applyFpMailback(tx as Tx, tenantId, data), {
+    userId: ctx.userId,
+    branchId: ctx.branchId ?? undefined,
+    roles: ctx.roles,
+  });
 }
 
 /**
