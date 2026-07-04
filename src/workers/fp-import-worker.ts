@@ -189,13 +189,32 @@ export async function runFpSyncJob(
     ctxOf(job)
   );
 
+  // Live phase text → the import row's `remarks`, so the Settings card (which
+  // polls the row) shows dynamic progress: Connecting → Fetching folios →
+  // Fetching transactions → Importing.
+  const onProgress = async (msg: string) => {
+    report?.({ phase: msg, pct: 40 });
+    try {
+      await withTenant(
+        job.tenantId,
+        (tx) =>
+          tx.execute(sql`
+            UPDATE rta_file_imports SET remarks = ${msg.slice(0, 200)}
+            WHERE id = ${job.importId}::uuid AND status = 'parsing'
+          `),
+        ctxOf(job)
+      );
+    } catch {
+      /* progress text is best-effort — never fail the sync over it */
+    }
+  };
+
   let summary: FpImportSummary;
   try {
-    report?.({ phase: "Pulling mailback data", pct: 30 });
     summary = await syncFpForTenant(
       job.tenantId,
       { userId: job.userId ?? undefined, branchId: job.branchId, roles: job.roles },
-      { lookbackDays: job.lookbackDays }
+      { lookbackDays: job.lookbackDays, onProgress }
     );
   } catch (e: any) {
     captureError("[fp-sync] failed", e, { tenantId: job.tenantId, importId: job.importId });
@@ -219,10 +238,15 @@ async function finalizeImport(job: AnyFpJob, summary: FpImportSummary): Promise<
         : "completed";
 
   const remarks =
-    `${summary.txImported}/${summary.txTotal} transactions · ` +
-    `${summary.foliosMatched}/${summary.foliosTotal} folios matched · ` +
-    `realised cap-gains ₹${summary.capitalGainsTotal.toLocaleString("en-IN")}` +
-    (summary.foliosCapHit ? " · NOTE: folio list hit page cap — some folios may be unimported" : "");
+    summary.foliosTotal === 0 && summary.txTotal === 0
+      ? "Connected — no folios or transactions in this account yet. Records appear once your registrar feeds are processed."
+      : `${summary.txImported}/${summary.txTotal} transactions · ` +
+        `${summary.foliosMatched}/${summary.foliosTotal} folios matched · ` +
+        `realised cap-gains ₹${summary.capitalGainsTotal.toLocaleString("en-IN")}` +
+        (summary.foliosUnmatched > 0
+          ? ` · ${summary.foliosUnmatched} folio(s) had no matching client (PAN not in your book)`
+          : "") +
+        (summary.foliosCapHit ? " · NOTE: folio list hit page cap — some folios may be unimported" : "");
 
   await withTenant(
     job.tenantId,

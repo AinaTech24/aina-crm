@@ -29,6 +29,9 @@ export function FintechPrimitivesCard() {
   const [testing, setTesting] = useState(false);
   const [busy, setBusy] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  // Live sync feedback shown inline while a pull runs and after it finishes.
+  const [syncProgress, setSyncProgress] = useState<string | null>(null);
+  const [syncResult, setSyncResult] = useState<{ kind: "ok" | "empty" | "error"; text: string } | null>(null);
 
   async function load() {
     setLoading(true);
@@ -62,7 +65,7 @@ export function FintechPrimitivesCard() {
       if (j.ok) toast.success("Credentials verified successfully.", "Connection OK");
       else {
         const msg = /\b404\b/.test(j.error || "")
-          ? "Not found (404) — check the Tenant ID. It's your account code (e.g. wcfw), not your email."
+          ? "Not found (404) — check the Tenant ID. It's your account tenant code, not your email."
           : j.error || "Those credentials were rejected.";
         toast.error(msg, "Test failed");
       }
@@ -109,11 +112,52 @@ export function FintechPrimitivesCard() {
 
   async function syncNow() {
     setSyncing(true);
+    setSyncResult(null);
+    setSyncProgress("Starting…");
     try {
       const r = await fetch("/api/integrations/fp/sync", { method: "POST" });
       const j = await r.json().catch(() => ({}));
-      if (!r.ok) toast.error(j.error || "Couldn't start the sync.", "Mailback Import");
-      else toast.success("Pulling your folios & transactions…", "Sync started");
+      if (!r.ok) {
+        setSyncProgress(null);
+        setSyncResult({ kind: "error", text: j.error || "Couldn't start the sync." });
+        return;
+      }
+      const importId = j.importId as string;
+      const startedAt = Date.now();
+      // Poll the import row for live phase text + terminal outcome.
+      while (Date.now() - startedAt < 5 * 60 * 1000) {
+        await new Promise((res) => setTimeout(res, 1500));
+        let row: any = null;
+        try {
+          const s = await fetch(`/api/rta-imports/${importId}`, { cache: "no-store" });
+          if (s.ok) row = await s.json();
+        } catch {
+          /* transient — keep polling */
+        }
+        const st = row?.status as string | undefined;
+        if (st === "parsing" || st === "uploaded" || st === "queued") {
+          setSyncProgress(row?.remarks || "Pulling…");
+          continue;
+        }
+        if (st === "completed" || st === "partial" || st === "failed" || st === "rejected") {
+          setSyncProgress(null);
+          const remarks = row?.remarks || "";
+          if (st === "failed" || st === "rejected") {
+            setSyncResult({ kind: "error", text: remarks || "Sync failed." });
+          } else if ((row?.rows_total ?? 0) === 0) {
+            setSyncResult({ kind: "empty", text: remarks || "Connected — no records to import yet." });
+          } else {
+            setSyncResult({ kind: "ok", text: remarks || "Import complete." });
+          }
+          await load();
+          return;
+        }
+      }
+      setSyncProgress(null);
+      setSyncResult({ kind: "error", text: "Still running — check back shortly." });
+    } catch (e: any) {
+      setSyncProgress(null);
+      setSyncResult({ kind: "error", text: e?.message || "Network error during sync." });
     } finally {
       setSyncing(false);
     }
@@ -170,6 +214,33 @@ export function FintechPrimitivesCard() {
               <KeyRound className="size-3.5" /> Edit credentials
             </button>
           </div>
+
+          {/* Live progress while pulling */}
+          {syncing && syncProgress && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground rounded-lg border border-border bg-secondary/40 px-3 py-2">
+              <Loader2 className="size-3.5 animate-spin shrink-0" />
+              <span>{syncProgress}</span>
+            </div>
+          )}
+          {/* Result banner */}
+          {!syncing && syncResult && (
+            <div
+              className={`flex items-start gap-2 text-xs rounded-lg border px-3 py-2 ${
+                syncResult.kind === "ok"
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                  : syncResult.kind === "empty"
+                    ? "border-amber-200 bg-amber-50 text-amber-800"
+                    : "border-rose-200 bg-rose-50 text-rose-800"
+              }`}
+            >
+              {syncResult.kind === "ok" ? (
+                <CheckCircle2 className="size-3.5 mt-0.5 shrink-0" />
+              ) : (
+                <AlertCircle className="size-3.5 mt-0.5 shrink-0" />
+              )}
+              <span>{syncResult.text}</span>
+            </div>
+          )}
         </>
       )}
 
@@ -182,9 +253,9 @@ export function FintechPrimitivesCard() {
           </p>
           <div>
             <label className="text-xs font-medium text-muted-foreground">Tenant ID</label>
-            <input value={tenantId} onChange={(e) => setTenantId(e.target.value.trim())} required placeholder="e.g. wcfw" className="input-base mt-1 text-sm" />
+            <input value={tenantId} onChange={(e) => setTenantId(e.target.value.trim())} required placeholder="" className="input-base mt-1 text-sm" />
             <p className="text-[11px] text-muted-foreground mt-1">
-              Your account <strong>tenant code</strong> (e.g. <code className="px-1 rounded bg-secondary">wcfw</code>) — <strong>not</strong> your email address.
+              Your account <strong>tenant code</strong> from onboarding — <strong>not</strong> your email address.
             </p>
           </div>
           <div>

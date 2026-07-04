@@ -55,16 +55,25 @@ function lookbackDays(): number {
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : DEFAULT_LOOKBACK_DAYS;
 }
 
+export type FpProgress = (msg: string) => void | Promise<void>;
+
 /** Pull folios + transactions for a [from, to] window using the given firm's
  *  credentials. `cfg` is REQUIRED — there is no env fallback (strict isolation). */
 export async function pullFpData(opts: {
   from?: string;
   to?: string;
   cfg: FpConfig;
+  onProgress?: FpProgress;
 }): Promise<FpUpsertInput> {
-  const { cfg } = opts;
+  const { cfg, onProgress } = opts;
+  await onProgress?.("Fetching folios…");
   const { folios, capHit } = await listFpMfFolios(cfg);
   const folioNumbers = [...new Set(folios.map((f) => f.number).filter(Boolean))];
+  await onProgress?.(
+    folioNumbers.length
+      ? `Fetching transactions for ${folioNumbers.length} folio(s)…`
+      : "No folios in this account"
+  );
   const transactions = await listFpTransactions(folioNumbers, { from: opts.from, to: opts.to, cfg });
   return { folios, transactions, foliosCapHit: capHit };
 }
@@ -73,11 +82,12 @@ export async function pullFpData(opts: {
 export async function syncFpForTenant(
   tenantId: string,
   ctx: { userId?: string; branchId?: string | null; roles: string[] },
-  opts: { lookbackDays?: number; cfg?: FpConfig } = {}
+  opts: { lookbackDays?: number; cfg?: FpConfig; onProgress?: FpProgress } = {}
 ): Promise<FpImportSummary> {
   const days = opts.lookbackDays ?? lookbackDays();
   const to = new Date();
   const from = new Date(to.getTime() - days * 86_400_000);
+  await opts.onProgress?.("Connecting…");
   // Resolve THIS firm's OWN credentials only (no shared fallback).
   const cfg = opts.cfg ?? (await resolveFpConfigForTenant(tenantId));
   if (!cfg) {
@@ -87,7 +97,11 @@ export async function syncFpForTenant(
     from: from.toISOString().slice(0, 10),
     to: to.toISOString().slice(0, 10),
     cfg,
+    onProgress: opts.onProgress,
   });
+  await opts.onProgress?.(
+    data.transactions.length ? `Importing ${data.transactions.length} transaction(s)…` : "Nothing to import"
+  );
   return withTenant(tenantId, (tx) => applyFpMailback(tx as Tx, tenantId, data), {
     userId: ctx.userId,
     branchId: ctx.branchId ?? undefined,
