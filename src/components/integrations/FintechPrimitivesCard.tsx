@@ -60,7 +60,12 @@ export function FintechPrimitivesCard() {
       });
       const j = await r.json().catch(() => ({}));
       if (j.ok) toast.success("Credentials verified successfully.", "Connection OK");
-      else toast.error(j.error || "Those credentials were rejected.", "Test failed");
+      else {
+        const msg = /\b404\b/.test(j.error || "")
+          ? "Not found (404) — check the Tenant ID. It's your account code (e.g. wcfw), not your email."
+          : j.error || "Those credentials were rejected.";
+        toast.error(msg, "Test failed");
+      }
     } finally {
       setTesting(false);
     }
@@ -177,7 +182,10 @@ export function FintechPrimitivesCard() {
           </p>
           <div>
             <label className="text-xs font-medium text-muted-foreground">Tenant ID</label>
-            <input value={tenantId} onChange={(e) => setTenantId(e.target.value)} required placeholder="your-tenant-id" className="input-base mt-1 text-sm" />
+            <input value={tenantId} onChange={(e) => setTenantId(e.target.value.trim())} required placeholder="e.g. wcfw" className="input-base mt-1 text-sm" />
+            <p className="text-[11px] text-muted-foreground mt-1">
+              Your account <strong>tenant code</strong> (e.g. <code className="px-1 rounded bg-secondary">wcfw</code>) — <strong>not</strong> your email address.
+            </p>
           </div>
           <div>
             <label className="text-xs font-medium text-muted-foreground">Client ID</label>

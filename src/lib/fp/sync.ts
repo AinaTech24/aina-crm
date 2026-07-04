@@ -21,25 +21,18 @@ import { and, eq, sql } from "drizzle-orm";
 import { withSystem, withTenant, type Tx } from "@/db/client";
 import { tenantIntegrations } from "@/db/schema/tenant_integrations";
 import { Q } from "@/workers/queues";
-import { getFpConfig, listFpMfFolios, listFpTransactions, type FpConfig } from "./client";
+import { listFpMfFolios, listFpTransactions, type FpConfig } from "./client";
 import { getFpConfigForTenant } from "./credentials";
 import { applyFpMailback, type FpUpsertInput, type FpImportSummary } from "./import";
 
 /**
- * Resolve a tenant's FP config: their own saved credentials first (the
- * per-MFD path), then the shared env creds as a fallback (sandbox default).
- * Returns null when neither is configured.
+ * Resolve a tenant's credentials — STRICTLY their own saved credentials, nothing
+ * else. There is NO shared env fallback: every MFD must enter its own account, so
+ * one firm can never pull another account's (e.g. the sandbox) data. Returns null
+ * when this firm has not configured its own credentials.
  */
 export async function resolveFpConfigForTenant(tenantId: string): Promise<FpConfig | null> {
-  const perTenant = await withTenant(tenantId, (tx) => getFpConfigForTenant(tx as Tx, tenantId), {
-    roles: ["system"],
-  });
-  if (perTenant) return perTenant;
-  try {
-    return getFpConfig(); // env fallback (throws if unset)
-  } catch {
-    return null;
-  }
+  return withTenant(tenantId, (tx) => getFpConfigForTenant(tx as Tx, tenantId), { roles: ["system"] });
 }
 
 /** Tenant ids with an active FP integration configured (per-tenant creds). */
@@ -62,11 +55,14 @@ function lookbackDays(): number {
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : DEFAULT_LOOKBACK_DAYS;
 }
 
-/** Pull folios + transactions from FP for a [from, to] trade-date window. */
-export async function pullFpData(
-  opts: { from?: string; to?: string; cfg?: FpConfig } = {}
-): Promise<FpUpsertInput> {
-  const cfg = opts.cfg ?? getFpConfig();
+/** Pull folios + transactions for a [from, to] window using the given firm's
+ *  credentials. `cfg` is REQUIRED — there is no env fallback (strict isolation). */
+export async function pullFpData(opts: {
+  from?: string;
+  to?: string;
+  cfg: FpConfig;
+}): Promise<FpUpsertInput> {
+  const { cfg } = opts;
   const { folios, capHit } = await listFpMfFolios(cfg);
   const folioNumbers = [...new Set(folios.map((f) => f.number).filter(Boolean))];
   const transactions = await listFpTransactions(folioNumbers, { from: opts.from, to: opts.to, cfg });
@@ -82,7 +78,7 @@ export async function syncFpForTenant(
   const days = opts.lookbackDays ?? lookbackDays();
   const to = new Date();
   const from = new Date(to.getTime() - days * 86_400_000);
-  // Resolve THIS tenant's credentials (their own first, env fallback).
+  // Resolve THIS firm's OWN credentials only (no shared fallback).
   const cfg = opts.cfg ?? (await resolveFpConfigForTenant(tenantId));
   if (!cfg) {
     throw new Error("Mailback Import is not configured for this firm. Add your credentials in Settings → Integrations.");
@@ -149,33 +145,20 @@ export async function enqueueFpSync(
 }
 
 /**
- * Scheduled entry point (called by the worker's daily tick). Env-MVP: FP creds
- * are global (one sandbox tenant), mapped to ONE local tenant via
- * FP_SYNC_TENANT_ID. When per-tenant creds land (tenant_integrations provider
- * "fintech_primitives"), iterate tenants here instead.
+ * Scheduled entry point (called by the worker's daily tick). Syncs EVERY firm
+ * that has saved its OWN Mailback credentials — strictly per-tenant, each with
+ * its own account. No shared/env fallback.
  */
 export async function runFpSync(): Promise<{ enqueued: string[]; skipped?: string }> {
-  const tenantIds = new Set<string>();
-
-  // 1. Every tenant that saved its OWN FP credentials.
+  let tenantIds: string[] = [];
   try {
-    for (const t of await tenantsWithFpConfigured()) tenantIds.add(t);
+    tenantIds = await tenantsWithFpConfigured();
   } catch (e) {
-    console.error("[fp-sync] listing configured tenants failed:", (e as Error).message);
+    console.error("[fp-sync] listing configured firms failed:", (e as Error).message);
   }
 
-  // 2. Env fallback: one shared-sandbox tenant (FP_* + FP_SYNC_TENANT_ID).
-  let envConfigured = false;
-  try {
-    getFpConfig();
-    envConfigured = true;
-  } catch {
-    /* env not set */
-  }
-  if (envConfigured && process.env.FP_SYNC_TENANT_ID) tenantIds.add(process.env.FP_SYNC_TENANT_ID);
-
-  if (!tenantIds.size) {
-    return { enqueued: [], skipped: "no tenant has FP configured (per-tenant creds or FP_SYNC_TENANT_ID)" };
+  if (!tenantIds.length) {
+    return { enqueued: [], skipped: "no firm has Mailback credentials configured" };
   }
 
   // System actor — uploaded_by stays NULL (no real user behind a cron sync).
@@ -185,7 +168,7 @@ export async function runFpSync(): Promise<{ enqueued: string[]; skipped?: strin
       await enqueueFpSync(tenantId, { roles: ["system"] }, "scheduled");
       enqueued.push(tenantId);
     } catch (e) {
-      console.error(`[fp-sync] enqueue failed for tenant ${tenantId}:`, (e as Error).message);
+      console.error(`[fp-sync] enqueue failed for firm ${tenantId}:`, (e as Error).message);
     }
   }
   return { enqueued };
