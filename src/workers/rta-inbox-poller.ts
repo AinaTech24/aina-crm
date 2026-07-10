@@ -94,7 +94,7 @@ async function ingestAttachment(
   att: InboundAttachment,
   cls: MailbackClass,
   pw: MailbackPasswords
-): Promise<boolean> {
+): Promise<"queued" | "duplicate"> {
   const checksum = createHash("sha256").update(att.content).digest("hex");
 
   // Dedupe — same file already imported (or in flight) for this tenant/kind.
@@ -109,8 +109,8 @@ async function ingestAttachment(
     `)
   );
   if (dup.rows.length) {
-    console.log(`[rta-inbox] ${tenantId}: '${att.filename}' already imported — skipped`);
-    return false;
+    console.log(`[rta-inbox] ${tenantId}: '${att.filename}' already imported — skipped (duplicate)`);
+    return "duplicate";
   }
 
   const safe = att.filename.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 80);
@@ -174,7 +174,7 @@ async function ingestAttachment(
     );
   }
   console.log(`[rta-inbox] ${tenantId}: queued ${cls.label} '${att.filename}' (${att.size}b) → ${importId}`);
-  return true;
+  return "queued";
 }
 
 async function handleMessage(msg: InboundRawMessage): Promise<void> {
@@ -201,8 +201,12 @@ async function handleMessage(msg: InboundRawMessage): Promise<void> {
   // 3. Load the firm's CAMS + KFintech ZIP passwords once.
   const pw = await withTenant(tenantId, async (tx) => getMailbackPasswords(tx, tenantId));
 
-  // 4. Ingest each recognised attachment.
+  // 4. Ingest each recognised attachment. Track outcomes so we only quarantine
+  //    mail we genuinely couldn't use — a recognised-but-already-imported file
+  //    (dedup) is a legitimate no-op, NOT junk to quarantine.
   let queued = 0;
+  let duplicates = 0;
+  let recognised = 0;
   for (const att of msg.attachments) {
     if (!isImportableAttachment(att.filename)) continue;
     const cls = classifyMailback(att.filename, msg.from);
@@ -210,14 +214,25 @@ async function handleMessage(msg: InboundRawMessage): Promise<void> {
       console.warn(`[rta-inbox] ${tenantId}: unrecognised attachment '${att.filename}' from ${msg.from ?? "?"} — skipped`);
       continue;
     }
+    recognised++;
     try {
-      if (await ingestAttachment(tenantId, msg, att, cls, pw)) queued++;
+      const res = await ingestAttachment(tenantId, msg, att, cls, pw);
+      if (res === "queued") queued++;
+      else if (res === "duplicate") duplicates++;
     } catch (e) {
       captureError("[rta-inbox] attachment ingest failed", e, { tenantId, filename: att.filename });
     }
   }
 
-  if (queued === 0 && !confirm) {
+  if (queued > 0) return; // something imported — done
+  if (recognised > 0) {
+    // Recognised but nothing new to import (all duplicates of prior imports).
+    // A no-op, not junk — do NOT quarantine.
+    console.log(`[rta-inbox] ${tenantId}: ${duplicates} attachment(s) already imported — no new import (no-op)`);
+    return;
+  }
+  // Nothing recognised at all (and not a forwarding-confirmation) → quarantine.
+  if (!confirm) {
     await quarantine(msg, "routed to tenant but no importable RTA attachment recognised");
   }
 }
