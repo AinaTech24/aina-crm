@@ -4,6 +4,7 @@ import { ChevronLeft, Webhook, Check, AlertCircle, ExternalLink } from "lucide-r
 import WainaConnectCard from "./WainaConnectCard";
 import { ZohoIntegrationCard } from "@/components/integrations/ZohoIntegrationCard";
 import { FintechPrimitivesCard } from "@/components/integrations/FintechPrimitivesCard";
+import { RtaMailbackCard } from "@/components/integrations/RtaMailbackCard";
 
 const INTEGRATIONS = [
   {
@@ -17,12 +18,6 @@ const INTEGRATIONS = [
     desc: "Alternative to BSE for transaction execution.",
     envCheck: () => false,
     setupSteps: ["NSE registration required", "Per-tenant credentials"],
-  },
-  {
-    name: "CAMS / KFintech reverse feed",
-    desc: "Daily transaction + folio + AUM reconciliation from RTAs.",
-    envCheck: () => false,
-    setupSteps: ["Sign up for distributor reverse feed with each RTA", "Share SFTP credentials with AINA", "Daily auto-import into your CRM"],
   },
   {
     name: "Razorpay",
@@ -66,6 +61,9 @@ export default function IntegrationsPage() {
       <Suspense fallback={null}>
         <ZohoIntegrationCard />
       </Suspense>
+
+      {/* Self-serve: direct RTA mailback auto-import via email forwarding. */}
+      <RtaMailbackCard />
 
       {/* Self-serve: connect the firm's own FintechPrimitives account (transaction pull). */}
       <FintechPrimitivesCard />

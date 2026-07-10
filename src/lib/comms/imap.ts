@@ -42,6 +42,149 @@ export interface InboundEmail {
   date?: Date;
 }
 
+/** A decoded attachment (RTA mailback ZIP / spreadsheet) from an inbound email. */
+export interface InboundAttachment {
+  filename: string;
+  contentType: string;
+  content: Buffer;
+  size: number;
+}
+
+/**
+ * A raw inbound message with everything the RTA-mailback ingest needs: the FROM,
+ * every recipient candidate (to route a forwarded mail to a tenant), and the
+ * attachment bytes. Distinct from InboundEmail (which is threading-focused and
+ * drops attachments).
+ */
+export interface InboundRawMessage {
+  uid: number;
+  messageId?: string;
+  from?: string;
+  fromName?: string;
+  subject?: string;
+  text?: string;
+  date?: Date;
+  /** All addresses the mail was delivered to (To/Cc + Delivered-To/X-*-To). */
+  recipients: string[];
+  attachments: InboundAttachment[];
+}
+
+const EMAIL_RE = /[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}/gi;
+/** Raw headers where auto-forwarders (Gmail/Outlook/Postfix) stamp the RCPT TO. */
+const RECIPIENT_HEADER_KEYS = new Set([
+  "delivered-to",
+  "x-delivered-to",
+  "x-original-to",
+  "x-forwarded-to",
+  "envelope-to",
+  "x-envelope-to",
+  "resent-to",
+]);
+
+function collectRecipients(parsed: any, envelope: any): string[] {
+  const out = new Set<string>();
+  const add = (v: any) => {
+    const a = typeof v === "string" ? v : v?.address;
+    if (a) out.add(String(a).toLowerCase().trim());
+  };
+  for (const a of envelope?.to ?? []) add(a);
+  for (const a of envelope?.cc ?? []) add(a);
+  for (const grp of [parsed?.to, parsed?.cc, parsed?.bcc]) {
+    for (const v of grp?.value ?? []) add(v);
+  }
+  // The visible To on a forwarded mail is usually the MFD's OWN address — the
+  // address WE were addressed at lives in the Delivered-To / X-*-To headers.
+  for (const line of parsed?.headerLines ?? []) {
+    const key = String(line?.key ?? "").toLowerCase();
+    if (!RECIPIENT_HEADER_KEYS.has(key)) continue;
+    const matches = String(line?.line ?? "").match(EMAIL_RE);
+    if (matches) for (const m of matches) out.add(m.toLowerCase());
+  }
+  return [...out];
+}
+
+/**
+ * Poll the INBOX for UNSEEN messages and hand each (with attachments + recipient
+ * candidates) to `handler`. Each message is marked \Seen after the handler runs
+ * — success OR failure — so a poison message can't loop every tick (the caller's
+ * dedupe + quarantine guarantee correctness). Bounded by `limit` per call.
+ *
+ * Uses a dedicated ingest mailbox (we own it), so marking \Seen as the
+ * high-water is safe — unlike imapFetchSince, which polls the MFD's own mailbox
+ * and must not touch their flags.
+ */
+export async function processUnseenMailback(
+  cfg: ImapConfig,
+  handler: (msg: InboundRawMessage) => Promise<void>,
+  limit = 25
+): Promise<{ processed: number }> {
+  const client = new ImapFlow({
+    host: cfg.host,
+    port: cfg.port,
+    secure: cfg.secure,
+    auth: imapAuth(cfg),
+    logger: false,
+    socketTimeout: 60_000,
+    greetingTimeout: 10_000,
+  });
+  client.on("error", () => {});
+  let processed = 0;
+  await client.connect();
+  try {
+    const lock = await client.getMailboxLock("INBOX");
+    try {
+      const uids = (await client.search({ seen: false }, { uid: true })) || [];
+      if (uids.length) {
+        // imapflow accepts a comma-joined UID list as the fetch range.
+        const take = uids.slice(0, limit).join(",");
+        const msgs: InboundRawMessage[] = [];
+        for await (const m of client.fetch(take, { uid: true, source: true, envelope: true }, { uid: true })) {
+          if (!m.uid || !m.source) continue;
+          const parsed = await simpleParser(m.source as Buffer);
+          const fromAddr = parsed.from?.value?.[0];
+          const attachments: InboundAttachment[] = (parsed.attachments ?? [])
+            .filter((a: any) => a?.filename && Buffer.isBuffer(a.content))
+            .map((a: any) => ({
+              filename: String(a.filename),
+              contentType: String(a.contentType ?? "application/octet-stream"),
+              content: a.content as Buffer,
+              size: (a.content as Buffer).length,
+            }));
+          msgs.push({
+            uid: m.uid,
+            messageId: parsed.messageId ?? undefined,
+            from: fromAddr?.address,
+            fromName: fromAddr?.name,
+            subject: parsed.subject,
+            text: parsed.text,
+            date: parsed.date,
+            recipients: collectRecipients(parsed, m.envelope),
+            attachments,
+          });
+        }
+        for (const msg of msgs) {
+          try {
+            await handler(msg);
+          } catch (e) {
+            console.error(`[rta-inbox] handler error uid=${msg.uid}: ${(e as Error).message}`);
+          }
+          try {
+            await client.messageFlagsAdd(String(msg.uid), ["\\Seen"], { uid: true });
+          } catch {
+            /* best-effort — a re-read is deduped by checksum */
+          }
+          processed++;
+        }
+      }
+    } finally {
+      lock.release();
+    }
+  } finally {
+    await client.logout().catch(() => {});
+  }
+  return { processed };
+}
+
 /** Connect, authenticate, and confirm the INBOX is readable. Throws on failure. */
 export async function verifyImap(cfg: ImapConfig): Promise<void> {
   const client = new ImapFlow({

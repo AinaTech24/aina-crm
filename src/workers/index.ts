@@ -19,6 +19,7 @@ import { startReportSchedulerWorker } from "./report-scheduler";
 import { startWapiTemplateSyncWorker } from "./wapi-template-sync";
 import { startCampaignDispatcherWorker } from "./campaign-dispatcher";
 import { startImapPollerWorker } from "./imap-poller";
+import { startRtaInboxPollerWorker } from "./rta-inbox-poller";
 import { startZohoSyncWorker } from "./zoho-sync";
 import { startRtaImportWorker } from "./rta-import-worker";
 import { startFpImportWorker } from "./fp-import-worker";
@@ -115,7 +116,11 @@ if (groups.includes("sched")) {
   stops.push(startReportSchedulerWorker());
 }
 if (groups.includes("wa_sync")) stops.push(startWapiTemplateSyncWorker());
-if (groups.includes("mail")) stops.push(startImapPollerWorker());
+if (groups.includes("mail")) {
+  stops.push(startImapPollerWorker());
+  // Direct RTA mailback auto-import: polls the catch-all inbox MFDs forward to.
+  stops.push(startRtaInboxPollerWorker());
+}
 if (groups.includes("zoho")) stops.push(startZohoSyncWorker());
 if (groups.includes("rta")) {
   stops.push(startRtaImportWorker());
