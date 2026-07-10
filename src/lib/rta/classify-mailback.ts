@@ -38,7 +38,13 @@ export function sourceFromSender(fromAddress: string | undefined | null): RtaSou
 /** Resolve CAMS vs KFintech from the file name when the sender is ambiguous. */
 function sourceFromFileName(name: string): RtaSource | null {
   const n = name.toLowerCase();
-  if (/\br9\b|\bwbr|\br2\b|\br10\b|cams/.test(n)) return "cams";
+  // CAMS report codes are often GLUED to a long numeric prefix (e.g.
+  // "…214436725R9.zip"), so match on a TRAILING boundary (separator or end) —
+  // NOT a leading word boundary — mirroring the kind detector. `\br9\b` failed
+  // exactly this case and quarantined real R9 masters as "unrecognised".
+  if (/r9(?=[._\-\s]|$)/.test(n) || /wbr/.test(n) || /r2(?=[._\-\s]|$)/.test(n) || /r10(?=[._\-\s]|$)/.test(n) || /cams/.test(n)) {
+    return "cams";
+  }
   if (/mfsd|kfin|karvy/.test(n)) return "kfintech";
   return null;
 }
