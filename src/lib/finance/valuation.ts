@@ -205,11 +205,71 @@ export async function valueInvestor(
     holdings.push(h);
   }
 
-  // XIRR over PRICED holdings only: their dated cashflows + today's market value.
+  // Market value from PRICED TRANSACTION holdings only — the basis for XIRR
+  // (folio-import holdings added below have no cashflow history, so including
+  // their value in XIRR would fabricate a return from money that never flowed).
+  const txnPricedValue = currentValue;
+
+  // ── Pass 3 — holdings imported via the RTA folio-master / holdings feed ──────
+  // `folios.schemes` carries units/NAV/value straight from the registrar. Surface
+  // any scheme with NO transaction coverage so imported holdings show up on the
+  // profile (and roll into AUM) even when a firm has only uploaded the folio
+  // master, not the transaction feed. Cost basis is unknown, so invested is set
+  // equal to current value (gain 0) — these never invent a gain — and they're
+  // kept out of XIRR (above).
+  const txnKeys = new Set(bySchemeKey.keys());
+  const folioRes = await tx.execute(sql`
+    SELECT f.folio_number, f.amc_name, sc AS scheme
+    FROM folios f, LATERAL jsonb_array_elements(COALESCE(f.schemes, '[]'::jsonb)) AS sc
+    WHERE f.investor_id = ${investorId}
+  `);
+  const folioByKey = new Map<string, SchemeHolding>();
+  for (const fr of folioRes.rows as any[]) {
+    const sc = (fr.scheme ?? {}) as any;
+    const schemeCode = sc.schemeCode ?? null;
+    const schemeName = sc.schemeName ?? null;
+    const key = (schemeCode ?? schemeName) as string | null;
+    if (!key || txnKeys.has(key)) continue; // covered by a transaction → no double-count
+    const units = Number(sc.units ?? 0) || 0;
+    const nav = sc.nav != null && isFinite(Number(sc.nav)) ? Number(sc.nav) : null;
+    let value = sc.value != null && isFinite(Number(sc.value)) ? Number(sc.value) : null;
+    if (value == null && nav != null && units > 0) value = units * nav;
+    if (!((value ?? 0) > 0) && !(units > 0)) continue; // nothing to show
+    let h = folioByKey.get(key);
+    if (!h) {
+      h = {
+        schemeCode, schemeName, amcName: fr.amc_name ?? null,
+        folioNumber: fr.folio_number ?? null, folioNumbers: [],
+        netUnits: 0, investedNet: 0, latestNav: nav, navDate: null,
+        currentValue: 0, gain: null, xirr: null, kind: null, priced: false,
+      };
+      folioByKey.set(key, h);
+    }
+    h.netUnits += units;
+    if (value != null) h.currentValue = (h.currentValue ?? 0) + value;
+    if (fr.folio_number && !h.folioNumbers.includes(fr.folio_number)) {
+      h.folioNumbers.push(fr.folio_number);
+      if (!h.folioNumber) h.folioNumber = fr.folio_number;
+    }
+  }
+  for (const h of folioByKey.values()) {
+    const cv = h.currentValue ?? 0;
+    if (cv > 0) {
+      h.priced = true;
+      h.investedNet = cv;   // cost unknown → invested = current value (gain 0)
+      currentValue += cv;
+      investedNet += cv;
+      pricedInvested += cv;
+    }
+    holdings.push(h);
+  }
+
+  // XIRR over PRICED holdings only: their dated cashflows + today's market value
+  // (transaction-priced value only — folio-import holdings have no cashflows).
   const cashflows: CashFlow[] = flowCandidates
     .filter((f) => pricedKeys.has(f.key))
     .map((f) => ({ date: f.date, amount: f.amount }));
-  if (currentValue > 0) cashflows.push({ date: new Date(), amount: currentValue });
+  if (txnPricedValue > 0) cashflows.push({ date: new Date(), amount: txnPricedValue });
 
   const irr = xirr(cashflows);
   const abs = absoluteReturn(pricedInvested, currentValue);
