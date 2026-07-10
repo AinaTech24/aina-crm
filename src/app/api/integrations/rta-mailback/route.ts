@@ -6,12 +6,15 @@
  *          (Provisions the address on first call.)
  *   POST → save/merge the CAMS + KFintech ZIP passwords (encrypted).
  *
- * Owner-only, same guard as the other self-serve integrations.
+ * Gated on `transactions.execute` — the same capability as the manual RTA upload
+ * (owner + back-office/ops + RM). Configuring the RTA mailback import is an
+ * RTA-operations task, not an owner-only account setting.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { requireSession } from "@/lib/auth/session";
+import { can } from "@/lib/auth/rbac";
 import { withTenant } from "@/db/client";
 import { rtaForwardAddresses } from "@/db/schema/rta_forward_addresses";
 import { rtaFileImports } from "@/db/schema/rta_imports";
@@ -22,8 +25,8 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   const session = await requireSession();
-  if (!session.roles.includes("owner")) {
-    return NextResponse.json({ error: "Only the firm owner can configure integrations." }, { status: 403 });
+  if (!can(session.roles, "transactions.execute")) {
+    return NextResponse.json({ error: "You need RTA import access (owner or back-office) to configure this." }, { status: 403 });
   }
 
   const inbox = await loadRtaInboxConfig();
@@ -91,8 +94,8 @@ const Body = z.object({
 
 export async function POST(req: NextRequest) {
   const session = await requireSession();
-  if (!session.roles.includes("owner")) {
-    return NextResponse.json({ error: "Only the firm owner can configure integrations." }, { status: 403 });
+  if (!can(session.roles, "transactions.execute")) {
+    return NextResponse.json({ error: "You need RTA import access (owner or back-office) to configure this." }, { status: 403 });
   }
   const parsed = Body.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) {
