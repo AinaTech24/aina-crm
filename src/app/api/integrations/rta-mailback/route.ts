@@ -15,13 +15,8 @@ import { requireSession } from "@/lib/auth/session";
 import { withTenant } from "@/db/client";
 import { rtaForwardAddresses } from "@/db/schema/rta_forward_addresses";
 import { rtaFileImports } from "@/db/schema/rta_imports";
-import {
-  ensureForwardAddress,
-  getMailbackPasswords,
-  saveMailbackPasswords,
-  inboundDomain,
-  isInboxConfigured,
-} from "@/lib/rta/mailback-config";
+import { ensureForwardAddress, getMailbackPasswords, saveMailbackPasswords } from "@/lib/rta/mailback-config";
+import { loadRtaInboxConfig } from "@/lib/rta/inbox-config";
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +26,7 @@ export async function GET() {
     return NextResponse.json({ error: "Only the firm owner can configure integrations." }, { status: 403 });
   }
 
+  const inbox = await loadRtaInboxConfig();
   const data = await withTenant(session.tenantId, async (tx) => {
     const { address } = await ensureForwardAddress(tx, session.tenantId);
     const [row] = await tx
@@ -72,8 +68,8 @@ export async function GET() {
 
     return {
       address,
-      inboundDomain: inboundDomain(),
-      inboxReady: isInboxConfigured(),
+      inboundDomain: inbox.domain,
+      inboxReady: inbox.configured,
       hasCamsPassword: !!pw.camsPassword,
       hasKfintechPassword: !!pw.kfintechPassword,
       verifiedAt: row?.verifiedAt ?? null,

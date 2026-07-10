@@ -47,17 +47,20 @@ CAMS/KFintech ──daily──▶ MFD's inbox
 - Ensure `crm.ainatech.in` **MX** points to Hostinger's mail servers. Leave the existing
   **A record → EC2** untouched (MX and A coexist).
 
-### 2. Server env (`~/app/.env.production`)
-```
-RTA_INBOX_HOST=imap.hostinger.com
-RTA_INBOX_PORT=993
-RTA_INBOX_SECURE=true
-RTA_INBOX_USER=rta@crm.ainatech.in
-RTA_INBOX_PASS=<mailbox password>
-RTA_INBOX_DOMAIN=crm.ainatech.in
-# optional: RTA_INBOX_POLLER_INTERVAL_MS (default 120000)
-```
-- The poller **no-ops** until `RTA_INBOX_HOST/USER/PASS` are set — safe to deploy first.
+### 2. Inbox config — **Aina Admin → RTA Mailbox** (no redeploy)
+Enter the IMAP details in the admin panel (`/super-admin/rta-inbox`):
+- **IMAP host** `imap.hostinger.com`, **port** `993`, **SSL/TLS** on
+- **Mailbox** `rta@crm.ainatech.in` + its password
+- **Forwarding domain** `crm.ainatech.in`
+
+Save, then **Test connection**. Stored in `platform_settings('rta_inbox')` with the
+password encrypted (AES-256-GCM). The poller re-reads it every ~2 min — no restart.
+
+> **Env fallback:** if the admin config is empty, the poller falls back to
+> `RTA_INBOX_HOST/PORT/SECURE/USER/PASS/DOMAIN` (+ optional
+> `RTA_INBOX_POLLER_INTERVAL_MS`) in `~/app/.env.production`. Admin config always wins.
+
+- The poller **no-ops** until configured (admin or env) — safe to deploy first.
 - The worker also needs `ALLOW_SYSTEM_TX=1` (already set in prod) for cross-tenant routing.
 
 ### 3. Deploy

@@ -33,14 +33,13 @@ import { putObject } from "@/lib/storage/s3";
 import { Q } from "./queues";
 import { classifyMailback, isImportableAttachment, type MailbackClass } from "@/lib/rta/classify-mailback";
 import {
-  inboundDomain,
-  isInboxConfigured,
   getMailbackPasswords,
   resolveTenantByAddresses,
   stampReceived,
   recordForwardingConfirmation,
   type MailbackPasswords,
 } from "@/lib/rta/mailback-config";
+import { loadRtaInboxConfig } from "@/lib/rta/inbox-config";
 import { captureError } from "@/lib/observability/capture";
 
 // Background imports have no human uploader. A stable sentinel enables the
@@ -224,26 +223,29 @@ async function handleMessage(msg: InboundRawMessage): Promise<void> {
 }
 
 export function startRtaInboxPollerWorker() {
-  if (!isInboxConfigured()) {
-    console.log("[rta-inbox] catch-all inbox not configured (set RTA_INBOX_HOST/USER/PASS) — poller idle");
-    return () => {};
-  }
   const interval = Number(process.env.RTA_INBOX_POLLER_INTERVAL_MS ?? 120_000);
-  const cfg: ImapConfig = {
-    host: process.env.RTA_INBOX_HOST!,
-    port: Number(process.env.RTA_INBOX_PORT ?? 993),
-    secure: process.env.RTA_INBOX_SECURE ? process.env.RTA_INBOX_SECURE !== "false" : true,
-    user: process.env.RTA_INBOX_USER!,
-    pass: process.env.RTA_INBOX_PASS!,
-  };
-
   let running = false;
+  let warnedIdle = false;
+
   const tick = async () => {
     if (running) return;
     running = true;
     try {
+      // The inbox config lives in Aina Admin (platform_settings, env fallback)
+      // and is re-read each tick (60s-cached) — so enabling/changing it in the
+      // admin panel takes effect within one interval, no worker restart needed.
+      const rc = await loadRtaInboxConfig();
+      if (!rc.configured) {
+        if (!warnedIdle) {
+          console.log("[rta-inbox] inbox not configured (Aina Admin → RTA Mailbox, or RTA_INBOX_* env) — poller idle");
+          warnedIdle = true;
+        }
+        return;
+      }
+      warnedIdle = false;
+      const cfg: ImapConfig = { host: rc.host!, port: rc.port, secure: rc.secure, user: rc.user!, pass: rc.pass! };
       const { processed } = await processUnseenMailback(cfg, handleMessage);
-      if (processed) console.log(`[rta-inbox] processed ${processed} message(s)`);
+      if (processed) console.log(`[rta-inbox] processed ${processed} message(s) (domain=${rc.domain})`);
     } catch (e) {
       console.error(`[rta-inbox] poll failed: ${describeMailError(e, "imap")} (raw: ${(e as Error).message})`);
     } finally {
@@ -253,6 +255,6 @@ export function startRtaInboxPollerWorker() {
 
   const handle = setInterval(tick, interval);
   handle.unref?.();
-  console.log(`[rta-inbox] mailback poller started (interval=${interval}ms, domain=${inboundDomain()})`);
+  console.log(`[rta-inbox] mailback poller started (interval=${interval}ms; config from Aina Admin)`);
   return () => clearInterval(handle);
 }

@@ -19,6 +19,7 @@ import type { Tx } from "@/db/client";
 import { tenantIntegrations } from "@/db/schema/tenant_integrations";
 import { rtaForwardAddresses } from "@/db/schema/rta_forward_addresses";
 import { decrypt, encrypt } from "@/lib/crypto";
+import { getInboundDomain } from "./inbox-config";
 
 const PROVIDER = "rta_mailback" as const;
 
@@ -29,19 +30,9 @@ export type MailbackPasswords = {
   kfintechPassword?: string;
 };
 
-/**
- * The inbound domain unique addresses are minted under. Firms forward to
- * `rta-<token>@<domain>`, which a catch-all delivers into the single
- * rta@<domain> mailbox. Overridable per deploy via RTA_INBOX_DOMAIN.
- */
-export function inboundDomain(): string {
-  return (process.env.RTA_INBOX_DOMAIN || "crm.ainatech.in").trim().replace(/^@/, "").toLowerCase();
-}
-
-/** Whether a catch-all inbox is actually configured (poller no-ops otherwise). */
-export function isInboxConfigured(): boolean {
-  return !!(process.env.RTA_INBOX_HOST && process.env.RTA_INBOX_USER && process.env.RTA_INBOX_PASS);
-}
+// The inbound mailbox/domain config now lives in Aina Admin (platform_settings,
+// env fallback) — see src/lib/rta/inbox-config.ts (getInboundDomain /
+// loadRtaInboxConfig / isInboxConfigured).
 
 // ── Passwords (tenant_integrations, encrypted) ──────────────────────────────
 
@@ -107,9 +98,9 @@ export async function saveMailbackPasswords(tx: Tx, tenantId: string, input: Mai
 
 // ── Forwarding address (rta_forward_addresses) ──────────────────────────────
 
-function mintAddress(): { address: string; token: string } {
+function mintAddress(domain: string): { address: string; token: string } {
   const token = randomBytes(6).toString("hex"); // 12 hex chars — unguessable
-  return { address: `rta-${token}@${inboundDomain()}`, token };
+  return { address: `rta-${token}@${domain}`, token };
 }
 
 /** The firm's active forwarding address, creating one on first use. */
@@ -117,15 +108,16 @@ export async function ensureForwardAddress(
   tx: Tx,
   tenantId: string
 ): Promise<{ address: string; token: string }> {
+  const domain = await getInboundDomain();
   const [row] = await tx
     .select({ address: rtaForwardAddresses.address, token: rtaForwardAddresses.token })
     .from(rtaForwardAddresses)
     .where(and(eq(rtaForwardAddresses.tenantId, tenantId), eq(rtaForwardAddresses.isActive, true)))
     .limit(1);
   if (row) {
-    // If the deploy's inbound domain changed, re-issue the address on the SAME
+    // If the configured inbound domain changed, re-issue the address on the SAME
     // token so an already-set-up forward keeps its local-part where possible.
-    const want = `rta-${row.token}@${inboundDomain()}`;
+    const want = `rta-${row.token}@${domain}`;
     if (row.address.toLowerCase() !== want.toLowerCase()) {
       await tx
         .update(rtaForwardAddresses)
@@ -135,7 +127,7 @@ export async function ensureForwardAddress(
     }
     return row;
   }
-  const minted = mintAddress();
+  const minted = mintAddress(domain);
   await tx.insert(rtaForwardAddresses).values({
     tenantId,
     address: minted.address,
@@ -150,11 +142,12 @@ export async function regenerateForwardAddress(
   tx: Tx,
   tenantId: string
 ): Promise<{ address: string; token: string }> {
+  const domain = await getInboundDomain();
   await tx
     .update(rtaForwardAddresses)
     .set({ isActive: false, updatedAt: new Date() })
     .where(and(eq(rtaForwardAddresses.tenantId, tenantId), eq(rtaForwardAddresses.isActive, true)));
-  const minted = mintAddress();
+  const minted = mintAddress(domain);
   await tx.insert(rtaForwardAddresses).values({
     tenantId,
     address: minted.address,
