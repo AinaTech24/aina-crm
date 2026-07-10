@@ -52,19 +52,23 @@ export function RtaMailbackCard() {
   const [copied, setCopied] = useState(false);
   const [rotating, setRotating] = useState(false);
 
-  async function load() {
-    setLoading(true);
+  async function load(opts?: { quiet?: boolean }) {
+    if (!opts?.quiet) setLoading(true);
     try {
       const r = await fetch("/api/integrations/rta-mailback", { cache: "no-store" });
       if (r.ok) setStatus(await r.json());
     } catch {
       /* ignore */
     } finally {
-      setLoading(false);
+      if (!opts?.quiet) setLoading(false);
     }
   }
   useEffect(() => {
     void load();
+    // Live refresh — pick up "Receiving mail" + new auto-imports without a manual
+    // reload (the poller ingests forwarded mail every ~2 min in the background).
+    const id = setInterval(() => void load({ quiet: true }), 15_000);
+    return () => clearInterval(id);
   }, []);
 
   async function copyAddress() {

@@ -97,19 +97,23 @@ async function ingestAttachment(
 ): Promise<"queued" | "duplicate"> {
   const checksum = createHash("sha256").update(att.content).digest("hex");
 
-  // Dedupe — same file already imported (or in flight) for this tenant/kind.
-  // Re-forwarding yesterday's mail, or an overlapping poll, is a no-op.
+  // Guard only against a file that is STILL IN FLIGHT (uploaded/parsing) for this
+  // tenant/kind — prevents an overlapping poll from double-enqueuing the same job.
+  // A previously completed/partial/failed import is deliberately NOT skipped: the
+  // downstream import upserts (overwrites folios/transactions in place), so every
+  // re-forward refreshes the book to the LATEST data. Idempotency-by-skip would
+  // stop a re-sent file from ever refreshing, which is not what MFDs want.
   const dup = await withTenant(tenantId, async (tx) =>
     tx.execute(sql`
       SELECT id FROM rta_file_imports
       WHERE tenant_id = ${tenantId}::uuid AND source = ${cls.source} AND kind = ${cls.kind}
         AND file_checksum = ${checksum}
-        AND status IN ('completed', 'partial', 'parsing', 'uploaded')
+        AND status IN ('parsing', 'uploaded')
       LIMIT 1
     `)
   );
   if (dup.rows.length) {
-    console.log(`[rta-inbox] ${tenantId}: '${att.filename}' already imported — skipped (duplicate)`);
+    console.log(`[rta-inbox] ${tenantId}: '${att.filename}' already in flight — skipped (duplicate)`);
     return "duplicate";
   }
 

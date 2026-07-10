@@ -89,9 +89,12 @@ export default async function RtaImportsPage() {
     return b.def.priority - a.def.priority;
   });
 
-  // Summary counters
+  // Summary counters. "Up to date" counts the DISPLAYED file-type tiles that have
+  // a recent, non-late import — NOT every kind ever imported. (data.latest can
+  // include kinds not shown here, e.g. redemption_report / cas_holdings, which
+  // previously inflated the count to e.g. "2/5" while only one tile was green.)
   const totalConfigured = RTA_FILE_TYPES.length;
-  const everReceived = data.latest.length;
+  const upToDateCount = tiles.filter((t) => t.last && t.late === 0).length;
   const lateCount = tiles.filter((t) => t.late > 0).length;
 
   return (
@@ -118,7 +121,7 @@ export default async function RtaImportsPage() {
         />
         <SummaryTile
           label="Up to date"
-          value={`${everReceived - lateCount} / ${totalConfigured}`}
+          value={`${upToDateCount} / ${totalConfigured}`}
           sub="received on schedule"
           tone="emerald"
         />
@@ -209,7 +212,13 @@ function FileKindTile({
           <span>Not yet received. Upload your first file to populate downstream data.</span>
         </div>
       )}
-      {status === "fresh" && (
+      {status === "fresh" && t.last.status === "partial" && (
+        <div className="mt-3 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800 flex items-center gap-2">
+          <AlertTriangle className="size-3.5 flex-shrink-0" />
+          <span>Partial · {t.last.rows_imported ?? 0} rows imported, some skipped. Re-send the file to refresh.</span>
+        </div>
+      )}
+      {status === "fresh" && t.last.status !== "partial" && (
         <div className="mt-3 rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2 text-xs text-emerald-800 flex items-center gap-2">
           <CheckCircle2 className="size-3.5 flex-shrink-0" />
           <span>Up to date · {t.last.rows_imported ?? 0} rows in last upload.</span>
