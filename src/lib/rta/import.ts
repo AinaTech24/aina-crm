@@ -99,36 +99,28 @@ export async function importRtaFolios(
     return n ? `N${n}` : null;
   };
   const clientKeyFor = (
-    inv: RtaFolioRecord["investor"],
-    folioNumber?: string | null
+    inv: RtaFolioRecord["investor"]
   ): { key: string | null; isMinor: boolean; guardianPan: string | null; noPan: boolean } => {
-    // Last-resort key: a folio with NO PAN and NO natural id (mobile/email/name)
-    // still imports — keyed by its own folio number as a "no-PAN" stub — instead
-    // of being dropped. Import every holding; never silently skip a folio.
-    const folioKey = (): string | null => {
-      const f = folioNumber ? slug(folioNumber) : "";
-      return f ? `NOPAN:F${f}` : null;
-    };
     const isMinor = inv.category === "minor" || !!inv.isMinor;
     if (isMinor) {
       const gp = (inv.guardianPan ?? "").toUpperCase().trim() || null;
       const own = inv.pan ? inv.pan.toUpperCase() : null;
       // ALWAYS "MINOR:"-prefixed so a minor key can never equal an adult's plain
       // PAN. Scope by guardian PAN + name when available, else the minor's own
-      // PAN. If neither exists, fall back to a natural key, then the folio number,
+      // PAN. If neither exists, fall back to a natural key (PAN-less import)
       // rather than dropping the holding.
       const key = gp && inv.name ? `MINOR:${gp}:${slug(inv.name)}` : own ? `MINOR:${own}` : null;
       if (key) return { key, isMinor: true, guardianPan: gp, noPan: false };
       const nk = naturalKeyFor(inv);
-      const fk = nk ? `NOPAN:${nk}` : folioKey();
-      return { key: fk, isMinor: true, guardianPan: gp, noPan: !!fk };
+      return { key: nk ? `NOPAN:${nk}` : null, isMinor: true, guardianPan: gp, noPan: !!nk };
     }
     if (inv.pan) return { key: inv.pan.toUpperCase(), isMinor: false, guardianPan: null, noPan: false };
-    // No PAN: import with pan NULL, keyed on a natural id, else the folio number
-    // (NOPAN:-prefixed so it can never collide with a real PAN). Nothing is skipped.
+    // No PAN: import with pan NULL, keyed on a natural id (mobile / email / name),
+    // NOPAN:-prefixed so it can never collide with a real PAN. A row with NO
+    // identity at all (no PAN, name, mobile, or email) is a data-gap folio, not a
+    // client — skip it rather than create a nameless "Unnamed" stub.
     const nk = naturalKeyFor(inv);
-    const fk = nk ? `NOPAN:${nk}` : folioKey();
-    return { key: fk, isMinor: false, guardianPan: null, noPan: !!fk };
+    return { key: nk ? `NOPAN:${nk}` : null, isMinor: false, guardianPan: null, noPan: !!nk };
   };
 
   type ClientEntry = {
@@ -145,7 +137,7 @@ export async function importRtaFolios(
   let skippedNoPan = 0;
 
   for (const r of records) {
-    const { key, isMinor, guardianPan, noPan } = clientKeyFor(r.investor, r.folioNumber);
+    const { key, isMinor, guardianPan, noPan } = clientKeyFor(r.investor);
     recordKeys.push(key);
     if (!key) {
       skippedNoPan++;
