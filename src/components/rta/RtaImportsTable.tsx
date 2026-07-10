@@ -7,7 +7,7 @@
  * imported transactions/folios are untouched).
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Loader2, Trash2, RotateCcw } from "lucide-react";
@@ -54,6 +54,17 @@ export function RtaImportsTable({ recent, trashed }: { recent: Row[]; trashed: R
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [purgeIds, setPurgeIds] = useState<string[] | null>(null); // non-null = confirm open
+
+  // Live-refresh while any recent import is still in flight (uploaded/parsing) —
+  // an auto-imported file lands as 'uploaded', then the worker parses it a few
+  // seconds later. Poll the server data until every row reaches a terminal state
+  // so the table doesn't sit on a stale "uploaded · 0 rows".
+  useEffect(() => {
+    const inFlight = recent.some((r) => r.status === "uploaded" || r.status === "parsing");
+    if (!inFlight) return;
+    const id = setInterval(() => router.refresh(), 4000);
+    return () => clearInterval(id);
+  }, [recent, router]);
 
   const rows = tab === "recent" ? recent : trashed;
 

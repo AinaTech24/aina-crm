@@ -34,7 +34,7 @@ export default async function RtaImportsPage() {
     // Latest successful import per kind
     const latest = await tx.execute(sql`
       SELECT DISTINCT ON (kind)
-        kind, source, period_end, status, parsed_at, rows_imported, created_at, file_name
+        kind, source, period_end, status, parsed_at, rows_imported, rows_skipped, created_at, file_name
       FROM rta_file_imports
       WHERE status IN ('completed', 'partial') AND deleted_at IS NULL
       ORDER BY kind, period_end DESC, created_at DESC
@@ -212,16 +212,13 @@ function FileKindTile({
           <span>Not yet received. Upload your first file to populate downstream data.</span>
         </div>
       )}
-      {status === "fresh" && t.last.status === "partial" && (
-        <div className="mt-3 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800 flex items-center gap-2">
-          <AlertTriangle className="size-3.5 flex-shrink-0" />
-          <span>Partial · {t.last.rows_imported ?? 0} rows imported, some skipped. Re-send the file to refresh.</span>
-        </div>
-      )}
-      {status === "fresh" && t.last.status !== "partial" && (
+      {status === "fresh" && (
         <div className="mt-3 rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2 text-xs text-emerald-800 flex items-center gap-2">
           <CheckCircle2 className="size-3.5 flex-shrink-0" />
-          <span>Up to date · {t.last.rows_imported ?? 0} rows in last upload.</span>
+          <span>
+            Up to date · {t.last.rows_imported ?? 0} rows imported
+            {(t.last.rows_skipped ?? 0) > 0 ? ` · ${t.last.rows_skipped} skipped` : ""}.
+          </span>
         </div>
       )}
     </div>
