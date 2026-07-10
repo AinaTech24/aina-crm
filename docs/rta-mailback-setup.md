@@ -64,8 +64,28 @@ password encrypted (AES-256-GCM). The poller re-reads it every ~2 min — no res
 - The worker also needs `ALLOW_SYSTEM_TX=1` (already set in prod) for cross-tenant routing.
 
 ### 3. Deploy
-`bash ~/run-deploy.sh` — applies migration `0175` and restarts the worker. Look for
-`[rta-inbox] mailback poller started` in the worker logs.
+Production builds from the **`deploy/aws`** branch — a push there triggers the GitHub
+Actions deploy (SSH → `scripts/redeploy.sh`), which builds, runs `migrate:all` (applies
+`0175`), and blue-green restarts web + worker. Watch the **Actions** tab, or on the box
+`tail -f ~/deploy-current.log` for `DEPLOY_DONE_EXIT=0`. If Actions says "Auto-deploy
+skipped", the `DEPLOY_SSH_*` secrets aren't set — run `bash scripts/redeploy.sh` on the
+server. Confirm `[rta-inbox] mailback poller started` in the worker logs.
+
+---
+
+## First-run smoke test (operator, ~2 min)
+
+1. **Configure the inbox** — Aina Admin → **RTA Mailbox** (`/super-admin/rta-inbox`):
+   `imap.hostinger.com` · `993` · SSL · `rta@crm.ainatech.in` · password · domain
+   `crm.ainatech.in` → **Save** → **Test connection** (expect "Connected").
+2. **Copy the address** — as a firm **owner**: Settings → Integrations → "RTA Mailback"
+   card → **"Your forwarding address"** box (`rta-<token>@crm.ainatech.in`) → copy button.
+   (Auto-generated on first load.) Enter CAMS + KFintech passwords here too.
+3. **Send a test** — from any mail account, email an attachment **to that address**.
+4. **Observe** — within ~2 min the chip flips to **"Receiving mail"** (proves routing).
+   For it to also appear under **"Recent auto-imports"**, the attachment filename must look
+   like an RTA report (e.g. `WBR2_test.csv`) — a real report code — otherwise it's
+   quarantined by design. Best real test: **forward an actual CAMS/KFintech mailback email**.
 
 ---
 
