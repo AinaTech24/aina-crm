@@ -34,6 +34,13 @@ echo "=== migrate $(date) ==="
 $COMPOSE run --rm migrate
 RC=$?; [ $RC -ne 0 ] && { echo "DEPLOY_DONE_EXIT=$RC (migrate failed — old colour still serving)"; exit $RC; }
 
+# Schema guard: fail the deploy if the ORM expects a table/column the DB lacks
+# (the drift that 500'd every lead/client page when a migration shipped in code
+# but not in the DB). Runs in the freshly-built image against the live DB.
+echo "=== schema guard $(date) ==="
+$COMPOSE run --rm migrate npm run check:schema
+RC=$?; [ $RC -ne 0 ] && { echo "DEPLOY_DONE_EXIT=$RC (schema drift — code expects DB objects that don't exist; old colour still serving)"; exit $RC; }
+
 ACTIVE=$(cat $STATE 2>/dev/null)
 if [ "$ACTIVE" = "blue" ]; then TARGET=green; else TARGET=blue; fi
 echo "=== active=${ACTIVE:-none} target=$TARGET $(date) ==="
