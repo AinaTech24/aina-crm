@@ -14,6 +14,7 @@ export default defineConfig({
   },
   test: {
     include: ["tests/**/*.test.ts"],
+    setupFiles: ["tests/setup.ts"],
     environment: "node",
     // DB-backed tests gate themselves on TEST_DATABASE_URL and skip when absent,
     // so `vitest run` is green on a laptop with no Postgres.
