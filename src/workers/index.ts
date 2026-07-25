@@ -16,6 +16,7 @@ import { startWorkflowRulesTimeScannerWorker } from "./workflow-rules-time-scann
 import { startBlueprintSLAWorker } from "./blueprint-sla-worker";
 import { startScheduledCommsWorker } from "./scheduled-comms";
 import { startReportSchedulerWorker } from "./report-scheduler";
+import { startTaskReminderScannerWorker } from "./task-reminder-scanner";
 import { startWapiTemplateSyncWorker } from "./wapi-template-sync";
 import { startCampaignDispatcherWorker } from "./campaign-dispatcher";
 import { startImapPollerWorker } from "./imap-poller";
@@ -23,6 +24,7 @@ import { startRtaInboxPollerWorker } from "./rta-inbox-poller";
 import { startZohoSyncWorker } from "./zoho-sync";
 import { startRtaImportWorker } from "./rta-import-worker";
 import { startFpImportWorker } from "./fp-import-worker";
+import { startDailyBriefingWorker } from "./daily-briefing";
 import { runFpSync } from "@/lib/fp/sync";
 import { runDailyOpsScan } from "./daily-ops-scanner";
 import { runMonthlyComplianceSweep } from "./monthly-compliance-seeder";
@@ -34,9 +36,10 @@ import { runStatementScheduler } from "./statement-scheduler";
 import { refreshNav } from "@/lib/finance/nav-feed";
 import { syncMfSchemeCatalog, enrichMfSchemes } from "@/lib/finance/mfapi";
 import { getLastRun, recordRun } from "./scheduler-state";
+import { recordDailySnapshots } from "./firm-snapshot-recorder";
 import { captureError } from "@/lib/observability/capture";
 
-const groups = (process.env.WORKER_GROUPS ?? "outbox,wf,seg,sched,wa_sync,mail,ops,monthly,nav,recon,market,feed,statements,zoho,rta,fpsync")
+const groups = (process.env.WORKER_GROUPS ?? "outbox,wf,seg,sched,wa_sync,mail,ops,monthly,nav,recon,market,feed,statements,zoho,rta,fpsync,briefing")
   .split(",")
   .map((s) => s.trim());
 // 'sched' covers the scheduled-comms drain too (kept with the other schedulers).
@@ -114,6 +117,9 @@ if (groups.includes("sched")) {
   stops.push(startScheduledCommsWorker());
   stops.push(startCampaignDispatcherWorker());
   stops.push(startReportSchedulerWorker());
+  // Task due-date/reminder sweep — fires overdue alerts (previously never
+  // triggered) + per-task reminders every 5 min.
+  stops.push(startTaskReminderScannerWorker());
 }
 if (groups.includes("wa_sync")) stops.push(startWapiTemplateSyncWorker());
 if (groups.includes("mail")) {
@@ -127,6 +133,10 @@ if (groups.includes("rta")) {
   // FP mailback import shares the "rta" worker group (same import surface).
   stops.push(startFpImportWorker());
 }
+// Morning briefing — 8 AM IST digest (in-app + email) per RM/owner. The worker
+// computes the IST window itself (server clock is UTC) and dedupes per day, so
+// a plain interval registration is correct here (not scheduleDaily/local-time).
+if (groups.includes("briefing")) stops.push(startDailyBriefingWorker());
 
 /**
  * Daily ops scanner — fires once a day at 06:30 local time. Scans every
@@ -139,6 +149,14 @@ if (groups.includes("rta")) {
  * to reason about.
  */
 scheduleDaily("ops", "daily-ops-scanner", 6, 30, runDailyOpsScan, "DAILY_OPS_ON_BOOT");
+
+/**
+ * Daily firm snapshot — records each tenant's AUM / clients / SIP book at 00:05
+ * local, powering the copilot's AUM/SIP trend. Scheduled early so the missed-run
+ * catch-up in scheduleDaily seeds the very first data point immediately on the
+ * deploy that ships this (00:05 has already passed on any normal-hours deploy).
+ */
+scheduleDaily("ops", "daily-firm-snapshot", 0, 5, recordDailySnapshots, "FIRM_SNAPSHOT_ON_BOOT");
 
 /**
  * Monthly compliance checklist — seeds the standard SEBI-flavoured tasks
