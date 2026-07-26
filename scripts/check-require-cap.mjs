@@ -64,6 +64,39 @@ const SKIP_FILES = new Set([
   // a tenant-prefix match (a user may only read/write within their own tenant's
   // key namespace); callers that mint keys are themselves capability-gated.
   "upload-local/[...key]/route.ts",
+
+  // ── SELF-SCOPED (audited 2026-07-25) ────────────────────────────────────────
+  // Each handler is hard-scoped to the caller's own row(s) via session.userId,
+  // so a capability check would be meaningless — a user acting on their own
+  // chat / dashboard / device / tracker is the entire point. Same rationale as
+  // me/profile + notifications/mark-read above.
+  "ai/ask/route.ts",
+  "ai/chats/route.ts",
+  "ai/chats/[id]/route.ts",
+  "ai/chats/[id]/messages/route.ts",
+  "announcements/[id]/read/route.ts",          // own read receipt
+  "command-center/snooze/route.ts",            // own snooze
+  "command-center/digest/route.ts",            // own digest
+  "daily-tracker/route.ts",                    // own daily tracker
+  "dashboards/route.ts",                       // own custom dashboards
+  "dashboards/templates/route.ts",
+  "dashboards/[id]/clone/route.ts",
+  "dashboards/[id]/default/route.ts",
+  "dashboards/[id]/restore/route.ts",
+  "dashboard/custom-chart/route.ts",
+  "devices/route.ts",                          // own device registration
+  "me/devices/[id]/route.ts",                  // own device
+  "me/session/register/route.ts",              // own session
+  "me/sign-out-everywhere/route.ts",           // own sessions
+  "nba/draft/route.ts",                        // own NBA draft
+  // Calculators — personal what-if maths + the PDF/share of one's own result.
+  // No firm data is mutated; save-to-client writes an attachment the user can
+  // already create via documents.
+  "calculators/pdf/route.ts",
+  "calculators/pdf-combined/route.ts",
+  "calculators/scenarios/route.ts",
+  "calculators/share/route.ts",
+  "calculators/save-to-client/route.ts",
 ]);
 
 const MUTATION = /export\s+async\s+function\s+(POST|PUT|PATCH|DELETE)/g;
@@ -80,6 +113,13 @@ const MUTATION = /export\s+async\s+function\s+(POST|PUT|PATCH|DELETE)/g;
 // genuinely UNGATED mutations, not false-positive on a non-require idiom.
 const HAS_REQUIRE =
   /\b(?:require|requireCap|requireAny|requirePlatform|isPlatformAdmin|isManager|loadEditableLead|loadViewableLead)\s*\(|\.includes\(\s*["']owner["']\s*\)|\[\s*["']owner["']/;
+
+// `can(roles, cap)` + an explicit 403 is an equally valid gate — several routes
+// (rta/import, team/targets, integrations/rta-mailback, …) use it to return a
+// custom message instead of the generic thrown 403. Both parts are required:
+// a bare `can()` may just be a UI hint, so it only counts as a gate when the
+// handler actually refuses with a 403.
+const HAS_CAN_403 = (src) => /\bcan\s*\(/.test(src) && /\b403\b/.test(src);
 
 async function walk(dir) {
   const out = [];
@@ -100,7 +140,7 @@ for (const file of await walk(ROOT)) {
   const src = await readFile(file, "utf8");
   if (!MUTATION.test(src)) continue;
   MUTATION.lastIndex = 0;
-  if (!HAS_REQUIRE.test(src)) {
+  if (!HAS_REQUIRE.test(src) && !HAS_CAN_403(src)) {
     offenders.push(rel);
   }
 }

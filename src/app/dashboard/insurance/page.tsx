@@ -22,7 +22,9 @@ import { FilterBar } from "@/components/common/FilterBar";
 import { CustomViews } from "@/components/common/CustomViews";
 import { Avatar } from "@/components/ui/Avatar";
 import { Pager } from "@/components/common/Pager";
-import { StatusChips, type StatusChip } from "@/components/common/StatusChips";
+import { StatusChips, type StatusChip as FilterChip } from "@/components/common/StatusChips";
+import { StatusChip, type Tone } from "@/components/common/StatusChip";
+import { ModuleTabs, INSURANCE_TABS } from "@/components/common/ModuleTabs";
 import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
 
 const TYPE_LABEL: Record<string, string> = {
@@ -55,16 +57,16 @@ const TYPE_ICON: Record<string, any> = {
   general_other: Shield,
 };
 
-const STATUS_TONE: Record<string, string> = {
-  proposed: "bg-blue-50 text-blue-700",
-  in_underwriting: "bg-amber-50 text-amber-700",
-  active: "bg-emerald-50 text-emerald-700",
-  lapsed: "bg-rose-50 text-rose-700",
-  matured: "bg-slate-50 text-slate-700",
-  surrendered: "bg-slate-50 text-slate-700",
-  cancelled: "bg-gray-50 text-gray-700",
-  claim_filed: "bg-amber-50 text-amber-700",
-  claim_settled: "bg-cyan-50 text-cyan-700",
+const STATUS_TONE: Record<string, Tone> = {
+  proposed: "info",
+  in_underwriting: "warning",
+  active: "success",
+  lapsed: "danger",
+  matured: "neutral",
+  surrendered: "neutral",
+  cancelled: "neutral",
+  claim_filed: "warning",
+  claim_settled: "info",
 };
 
 export const dynamic = "force-dynamic";
@@ -187,11 +189,11 @@ export default async function InsurancePage({
 
   const countOf = (st: string) => data.statusCounts.find((r) => r.status === st)?.c ?? 0;
   const totalPolicies = data.statusCounts.reduce((a, r) => a + Number(r.c), 0);
-  const STATUS_CHIP_TONE: Record<string, StatusChip["tone"]> = {
+  const STATUS_CHIP_TONE: Record<string, FilterChip["tone"]> = {
     active: "emerald", lapsed: "rose", proposed: "sky", in_underwriting: "amber",
     claim_filed: "amber", claim_settled: "sky", matured: "slate", surrendered: "slate", cancelled: "slate",
   };
-  const statusChips: StatusChip[] = [
+  const statusChips: FilterChip[] = [
     { value: "", label: "All", count: totalPolicies, tone: "slate" },
     ...["active", "in_underwriting", "proposed", "lapsed", "claim_filed", "claim_settled", "matured", "surrendered", "cancelled"]
       .map((st) => ({ value: st, label: st.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase()), count: countOf(st), tone: STATUS_CHIP_TONE[st] }))
@@ -207,7 +209,6 @@ export default async function InsurancePage({
           </h1>
         </div>
         <div className="flex items-center gap-2">
-          <Link href="/dashboard/insurance/renewals" className="btn-secondary"><CalendarClock className="size-4" /> Renewals</Link>
           <Link href="/dashboard/insurance/import" className="btn-secondary"><FileDown className="size-4" /> Import</Link>
           <Link href="/dashboard/insurance/new" className="btn-primary">
             <Plus className="size-4" /> New policy
@@ -215,38 +216,7 @@ export default async function InsurancePage({
         </div>
       </div>
 
-      {/* KPI strip */}
-      <div className="grid grid-cols-5 gap-3">
-        <Stat icon={Shield} label="Active policies" value={String(data.s.active_count ?? 0)} accent="cyan" />
-        <Stat
-          icon={IndianRupee}
-          label="Total cover"
-          value={data.s.total_sum_assured ? formatINR(Number(data.s.total_sum_assured)) : "₹0"}
-          accent="emerald"
-        />
-        <Stat
-          icon={IndianRupee}
-          label="Annual premium book"
-          value={
-            data.s.annual_premium_book
-              ? formatINR(Number(data.s.annual_premium_book))
-              : "₹0"
-          }
-          accent="emerald"
-        />
-        <Stat
-          icon={AlertTriangle}
-          label="Premium due (30d)"
-          value={String(data.s.due_30d ?? 0)}
-          accent={Number(data.s.due_30d) > 0 ? "amber" : "muted"}
-        />
-        <Stat
-          icon={AlertTriangle}
-          label="Lapsed"
-          value={String(data.s.lapsed_count ?? 0)}
-          accent={Number(data.s.lapsed_count) > 0 ? "rose" : "muted"}
-        />
-      </div>
+      <ModuleTabs tabs={INSURANCE_TABS} />
 
       <StatusChips basePath="/dashboard/insurance" paramKey="status" current={sp.status ?? ""} params={sp} chips={statusChips} />
 
@@ -439,9 +409,9 @@ export default async function InsurancePage({
                         )}
                       </td>
                       <td className="py-3">
-                        <span className={`chip capitalize ${STATUS_TONE[p.status] ?? ""}`}>
+                        <StatusChip tone={STATUS_TONE[p.status] ?? "neutral"} className="capitalize">
                           {p.status.replace(/_/g, " ")}
-                        </span>
+                        </StatusChip>
                       </td>
                       <td className="px-4 py-3 text-right">
                         <RowActions

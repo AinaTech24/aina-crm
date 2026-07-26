@@ -7,6 +7,7 @@ import { require as requireCap, can } from "@/lib/auth/rbac";
 import { formatINR } from "@/lib/utils";
 import { AddCommissionEntry } from "@/components/insurance/AddCommissionEntry";
 import { CommissionLedger } from "@/components/insurance/CommissionLedger";
+import { ModuleTabs, INSURANCE_TABS } from "@/components/common/ModuleTabs";
 
 export const dynamic = "force-dynamic";
 
@@ -81,18 +82,11 @@ export default async function InsuranceCommissionPage() {
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2"><IndianRupee className="size-6 text-brand-cyan" /> Insurance Commission</h1>
         </div>
         <div className="flex items-center gap-2">
-          <Link href="/dashboard/insurance/renewals" className="btn-secondary text-sm"><Repeat className="size-4" /> Renewals due</Link>
           <AddCommissionEntry />
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        <Kpi icon={Wallet} label="Commission received (net)" value={formatINR(netReceived)} tone="emerald" />
-        <Kpi icon={IndianRupee} label="Recorded on policies" value={formatINR(Number(t.recorded ?? 0))} />
-        <Kpi icon={Shield} label="Active premium book" value={formatINR(premiumBook)} />
-        <Kpi icon={Repeat} label="Est. renewal income / yr" value={formatINR(estRenewal)} tone="emerald" />
-        <Kpi icon={FileText} label="Active policies" value={String(t.active ?? 0)} />
-      </div>
+      <ModuleTabs tabs={INSURANCE_TABS} />
 
       <div className="card-surface table-scroll">
         <div className="px-4 py-3 border-b font-semibold text-sm flex items-center gap-2"><TrendingUp className="size-4 text-brand-cyan" /> By insurer</div>

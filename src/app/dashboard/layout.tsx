@@ -6,7 +6,6 @@ import {
   Users,
   Workflow,
   Zap,
-  FileText,
   MessageSquare,
   ListChecks,
   ShieldCheck,
@@ -19,7 +18,6 @@ import {
   Target,
   TrendingUp,
   Repeat,
-  XOctagon,
   Calendar,
   FileSignature,
   Shield,
@@ -50,32 +48,26 @@ import {
   // ── unique-icon replacements for the de-duplicated sidebar ──
   UserPlus,
   Presentation,
-  CalendarClock,
   ShieldAlert,
   LayoutTemplate,
   Library,
   Gauge,
   FileCheck,
-  UserCheck,
   ClipboardList,
   Newspaper,
   Stamp,
   BellRing,
   Package,
   FolderOpen,
-  LineChart,
-  Scissors,
-  Shuffle,
   Building2,
-  TrendingDown,
   Network,
-  IndianRupee,
+  LifeBuoy,
 } from "lucide-react";
 import { eq, sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
-import { tenants, users } from "@/db/schema";
+import { tenants, users, tenantUiLayouts } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
-import { primaryRoleLabel } from "@/lib/auth/rbac";
+import { primaryRoleLabel, can } from "@/lib/auth/rbac";
 import { loadTenantLicense, isPathAllowedWhenRestricted } from "@/lib/auth/license";
 import { tenantAccessibleNavKeys, isGatableNav, gatedNavKeyForPath } from "@/config/nav-access";
 import { pickLogo } from "@/lib/branding/logo";
@@ -84,9 +76,12 @@ import { GlobalSearch } from "@/components/layout/GlobalSearch";
 import { NotificationBell } from "@/components/layout/NotificationBell";
 import { BirthdayBell } from "@/components/layout/BirthdayBell";
 import { DesktopSidebar } from "@/components/layout/DesktopSidebar";
+import { SessionRegister } from "@/components/layout/SessionRegister";
 import { CustomizableNav, type NavItemData } from "@/components/layout/CustomizableNav";
 import { loadModuleControls } from "@/lib/platform/module-controls";
 import { QuickCreateFab } from "@/components/layout/QuickCreateFab";
+import { CommandPalette } from "@/components/layout/CommandPalette";
+import ProductTour from "@/components/layout/ProductTour";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { ProfileMenu } from "@/components/layout/ProfileMenu";
 import { ToastProvider } from "@/components/ui/Toast";
@@ -116,7 +111,9 @@ const NAV: NavSection[] = [
         roles: ["owner", "rm", "branch_head", "back_office", "ops", "compliance"] },
       { href: "/dashboard/next-best-action", label: "Next Best Action", icon: Sparkles,
         roles: ["owner", "rm", "branch_head", "back_office", "ops"] },
-      { href: "/dashboard/tasks", label: "Tasks & Requests", icon: ListChecks, module: "tasks" },
+      { href: "/dashboard/tasks", label: "Tasks", icon: ListChecks, module: "tasks" },
+      { href: "/dashboard/service-requests", label: "Service Requests", icon: LifeBuoy, module: "service_requests" },
+      { href: "/dashboard/tasks/daily", label: "Daily Tracker", icon: ClipboardCheck, module: "tasks" },
       { href: "/dashboard/review-meetings", label: "Meetings", icon: Presentation, module: "review_meetings",
         roles: ["owner", "rm", "branch_head", "back_office", "ops"] },
       { href: "/dashboard/calendar", label: "Calendar", icon: Calendar },
@@ -153,16 +150,12 @@ const NAV: NavSection[] = [
         roles: ["owner", "rm", "branch_head", "back_office", "ops", "compliance"] },
       { href: "/dashboard/financial-plans", label: "Financial Plans", icon: ClipboardList, module: "goal_planning",
         roles: ["owner", "rm", "branch_head", "back_office", "ops", "compliance"] },
-      { href: "/dashboard/insurance", label: "Insurance Policies", icon: Shield, module: "insurance",
+      // One Insurance module. Claims / Renewals / Protection-gap / Commission
+      // were separate sidebar entries for what is really one domain — they are
+      // now tabs inside the module (see ModuleTabs INSURANCE_TABS), so every
+      // view is still one click away without five nav rows.
+      { href: "/dashboard/insurance", label: "Insurance", icon: Shield, module: "insurance",
         roles: ["owner", "rm", "branch_head", "back_office", "ops", "compliance"] },
-      { href: "/dashboard/insurance-claims", label: "Insurance Claims", icon: FileText, module: "insurance",
-        roles: ["owner", "rm", "branch_head", "back_office", "ops", "compliance"] },
-      { href: "/dashboard/insurance/renewals", label: "Insurance Renewals", icon: CalendarClock, module: "insurance",
-        roles: ["owner", "rm", "branch_head", "back_office", "ops"] },
-      { href: "/dashboard/insurance/protection-gap", label: "Protection-Gap Radar", icon: ShieldAlert, module: "insurance",
-        roles: ["owner", "rm", "branch_head", "back_office", "ops"] },
-      { href: "/dashboard/insurance/commission", label: "Insurance Commission", icon: IndianRupee, module: "insurance",
-        roles: ["owner", "branch_head", "back_office"] },
     ],
   },
   {
@@ -177,18 +170,16 @@ const NAV: NavSection[] = [
         roles: ["owner", "back_office", "ops", "compliance"] },
       { href: "/dashboard/reconciliation", label: "Reconciliation", icon: Scale, module: "transactions",
         roles: ["owner", "back_office", "ops", "compliance"] },
-      { href: "/dashboard/sips", label: "SIP Tracker", icon: TrendingUp, module: "sip_tracker",
+      // One SIP module. Rejections + At-risk were separate sidebar entries (and
+      // SIP Rejections additionally existed as a report) — they are now tabs
+      // inside the module (see ModuleTabs SIP_TABS).
+      { href: "/dashboard/sips", label: "SIP Book", icon: TrendingUp, module: "sip_tracker",
         roles: ["owner", "back_office", "ops", "rm", "branch_head", "compliance"] },
-      { href: "/dashboard/sip-rejections", label: "SIP Rejections", icon: XOctagon, module: "sip_rejection",
-        roles: ["owner", "back_office", "ops", "rm", "branch_head"] },
-      { href: "/dashboard/sips/at-risk", label: "SIP At-Risk", icon: AlertTriangle, module: "sip_tracker",
-        roles: ["owner", "back_office", "ops", "rm", "branch_head"] },
       { href: "/dashboard/activities", label: "Activity Log", icon: PhoneCall,
         roles: ["owner", "rm", "branch_head", "back_office", "ops", "compliance"] },
-      // Service Requests + Complaints are now reached via the "View" dropdown on
-      // the Tasks & Requests page (one unified work area), so they're no longer
-      // separate sidebar items. The /dashboard/service-requests and
-      // /dashboard/complaints pages still exist and keep their own access gates.
+      // Service Requests, Complaints and Daily Tracker are now their own sidebar
+      // items in the General group (directly under Tasks), each with its own
+      // access gate — no longer bundled into the Tasks page module switcher.
     ],
   },
   {
@@ -210,7 +201,6 @@ const NAV: NavSection[] = [
       { href: "/dashboard/compliance/command-center", label: "Compliance Center", icon: ShieldCheck, roles: ["owner", "compliance", "branch_head"] },
       { href: "/dashboard/compliance", label: "DDQ Readiness", icon: FileCheck, module: "ddq", roles: ["owner", "compliance"] },
       { href: "/dashboard/compliance/amfi-circulars", label: "Circular Digest", icon: Newspaper, roles: ["owner", "compliance", "back_office", "ops", "rm", "branch_head"] },
-      { href: "/dashboard/reports/nomination-tracker", label: "Nomination Tracker", icon: UserCheck, roles: ["owner", "compliance", "branch_head", "back_office"] },
       { href: "/dashboard/documents", label: "Documents", icon: FolderOpen, module: "documents" },
       { href: "/dashboard/sops", label: "SOP Library", icon: ScrollText, roles: ["owner", "compliance"] },
       { href: "/dashboard/announcements", label: "Announcements", icon: BellRing },
@@ -231,14 +221,16 @@ const NAV: NavSection[] = [
     title: "Insights",
     items: [
       { href: "/dashboard/reports", label: "Reports & MIS", icon: BarChart3, module: "reports", roles: ["owner", "branch_head", "compliance"] },
-      { href: "/dashboard/reports/trail-forecast", label: "Trail Forecast", icon: LineChart, roles: ["owner", "branch_head", "compliance"] },
+      // NOTE: Trail Forecast / Churn-risk / Tax-Harvesting / Cross-sell (and
+      // Nomination Tracker, removed from Compliance below) were standalone sidebar
+      // items that only deep-linked into /dashboard/reports/* — the identical pages
+      // already live in the Reports & MIS catalog (see reports/page.tsx). The
+      // duplicate nav entries are removed; every report is unchanged and still
+      // reachable from Reports & MIS.
       { href: "/dashboard/portfolio-intelligence", label: "Portfolio Intelligence", icon: PieChart, roles: ["owner", "branch_head", "compliance", "rm", "back_office", "ops"] },
-      { href: "/dashboard/reports/churn-risk", label: "Churn-risk Radar", icon: TrendingDown, roles: ["owner", "branch_head", "compliance", "rm", "back_office", "ops"] },
-      { href: "/dashboard/reports/tax-harvesting", label: "Tax-Harvesting", icon: Scissors, roles: ["owner", "branch_head", "compliance", "rm", "back_office", "ops"] },
-      { href: "/dashboard/reports/cross-sell", label: "Cross-sell Radar", icon: Shuffle, roles: ["owner", "branch_head", "compliance", "rm", "back_office", "ops"] },
       { href: "/dashboard/commission-reconciliation", label: "Commission Reconciliation", icon: CreditCard, module: "reports", roles: ["owner", "compliance", "back_office"] },
       { href: "/dashboard/finances", label: "Practice Finances", icon: Wallet, module: "reports", roles: ["owner", "compliance", "back_office"] },
-      { href: "/dashboard/ai-assistant", label: "AI Assistant", icon: Bot, module: "ai_assistant" },
+      { href: "/dashboard/ai-assistant", label: "Aina CRM Copilot", icon: Bot, module: "ai_assistant" },
       { href: "/dashboard/audit-log", label: "Audit Log", icon: ClipboardCheck, module: "audit_log", roles: ["owner", "compliance"] },
     ],
   },
@@ -347,6 +339,19 @@ export default async function DashboardLayout({ children }: { children: React.Re
     };
   });
 
+  // Firm-wide layout defaults (owner-set) — injected as a global so the
+  // RelatedLists + ColumnManager components can use them as the fallback before
+  // a user personalizes (their own localStorage choice still wins).
+  const firmLayoutRows = await withTenant(session.tenantId, async (tx) =>
+    tx
+      .select({ moduleKey: tenantUiLayouts.moduleKey, kind: tenantUiLayouts.kind, data: tenantUiLayouts.data })
+      .from(tenantUiLayouts)
+      .where(eq(tenantUiLayouts.tenantId, session.tenantId))
+  );
+  const firmLayoutMap: Record<string, Record<string, any>> = {};
+  for (const r of firmLayoutRows) (firmLayoutMap[r.moduleKey] ??= {})[r.kind] = r.data;
+  const layoutAdmin = can(session.roles, "settings.users", (session as any).permissions);
+
   // Sidebar badge uses the square icon variant, falling back to monogram → full
   // logo so a firm that only uploaded a wide logo still gets a sensible badge.
   const sidebarLogo = pickLogo(tenant, "icon");
@@ -372,24 +377,32 @@ export default async function DashboardLayout({ children }: { children: React.Re
     tenant?.primaryColor,
     (tenant as any)?.secondaryColor,
     (tenant as any)?.textColor,
-    (tenant as any)?.hoverColor
+    (tenant as any)?.hoverColor,
+    (tenant as any)?.fontFamily,
+    (tenant as any)?.uiDensity
   );
 
   // Global module controls (platform admin): 'disabled' hides a module for every
   // tenant; 'beta' shows a Beta tag. Loaded from platform_settings('modules').
   const moduleControls = await loadModuleControls();
 
-  // "dashboards" module — gates the top Dashboards dropdown. On unless the tenant
-  // lacks the module OR the platform admin globally disabled it (Module Controls).
-  const dashModuleOk = tenantAllowedSet.size === 0 || license.enabledModules.length === 0 || license.enabledModules.includes("dashboards");
-  // Per-MFD / per-user master: if the admin disabled the whole Dashboards group
-  // (every dashboard item removed from the tenant's nav grant or the user's
-  // module grant), hide the entire dropdown — not just its individual items.
-  const DASH_GROUP_KEYS = ["/dashboard/boards", "/dashboard/team", "/dashboard/team/scorecard"];
-  const dashGroupVisible =
-    (tenantAllowedSet.size === 0 || DASH_GROUP_KEYS.some((k) => tenantAllowedSet.has(k))) &&
-    (isOwnerUser || userModules === null || DASH_GROUP_KEYS.some((k) => userModules.includes(k)));
-  const showDashboards = dashModuleOk && moduleControls["/dashboard"] !== "disabled" && dashGroupVisible;
+  // Whether the top Dashboards nav shows at all.
+  //
+  // `/dashboard` is in CORE_HREFS ("never gated — always accessible regardless of
+  // grants") and is where every login lands, so it must ALWAYS be reachable from
+  // the sidebar. Only the platform admin's explicit Module Control kill-switch
+  // may hide it. The sub-items (My Dashboards / Team Dashboard / Team Scorecard)
+  // stay individually gated below via dashSubGated() — when they're all withheld
+  // the nav simply collapses to the single Dashboard link.
+  //
+  // This used to ALSO require `license.enabledModules.includes("dashboards")` and
+  // at least one granted sub-item. Both were wrong: "dashboards" is not a real
+  // module key in the nav catalog (so that clause could never be true once a
+  // tenant had a package with modules), and the core /dashboard was never part of
+  // the group check. Any firm on an explicit nav grant therefore lost the
+  // Dashboard link from the sidebar entirely, while /dashboard remained their
+  // landing page.
+  const showDashboards = moduleControls["/dashboard"] !== "disabled";
 
   const visible = NAV.map((section) => ({
     ...section,
@@ -462,12 +475,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // a single source of truth and never drifts between the two.
   const sidebarInner = (
     <>
-        {/* Brand header — gradient mesh + logo */}
-        <div className="relative overflow-hidden border-b border-white/10">
-          <div className="absolute inset-0 brand-mesh opacity-95" />
-          {/* faint cyan glow accent in the corner for depth */}
-          <div className="absolute -top-8 -right-8 size-24 rounded-full bg-brand-cyan/20 blur-2xl" />
-          <div className="sidebar-brand-row relative px-5 h-16 flex items-center gap-3">
+        {/* Brand header — flat deep-maroon on the light sidebar. */}
+        <div className="border-b border-white/10 bg-brand-navy-deep">
+          <div className="sidebar-brand-row px-5 h-16 flex items-center gap-3">
             {tenant ? (
               <>
                 {sidebarLogo ? (
@@ -525,6 +535,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
       {themeCss && (
         <style id="tenant-theme" dangerouslySetInnerHTML={{ __html: themeCss }} />
       )}
+      {/* Firm-wide layout defaults + whether this user can save them. Read
+          synchronously by RelatedLists/ColumnManager — no extra fetch, no flash. */}
+      <script
+        dangerouslySetInnerHTML={{
+          __html: `window.__AINA_FIRM_LAYOUTS__=${JSON.stringify(firmLayoutMap)};window.__AINA_LAYOUT_ADMIN__=${layoutAdmin ? "true" : "false"};`,
+        }}
+      />
     {/* h-screen + overflow-hidden on the outer wrapper means the page itself
         never scrolls — the sidebar and the main pane each get their own
         scrollbar from the `overflow-y-auto` they already declare. Print mode
@@ -545,8 +562,23 @@ export default async function DashboardLayout({ children }: { children: React.Re
                 Firm name + ARN live in the sidebar header only (no duplication). */}
             <MobileNav>{sidebarInner}</MobileNav>
           </div>
-          <GlobalSearch />
+          <div data-tour="global-search" className="flex-1 min-w-0 flex">
+            <GlobalSearch />
+          </div>
           <div className="flex items-center gap-3 text-sm">
+            {/* Two-factor authentication — amber nudge when off, calm when on. */}
+            <Link
+              href="/dashboard/settings/security"
+              className={`size-9 rounded-full grid place-items-center transition-colors ${
+                twoFaEnabled
+                  ? "bg-secondary/70 hover:bg-secondary text-muted-foreground hover:text-foreground"
+                  : "bg-amber-100 hover:bg-amber-200 text-amber-700"
+              }`}
+              aria-label="Two-factor authentication"
+              title={twoFaEnabled ? "Two-factor authentication is on" : "Enable two-factor authentication (2FA)"}
+            >
+              {twoFaEnabled ? <ShieldCheck className="size-4" /> : <ShieldAlert className="size-4" />}
+            </Link>
             <Link
               href="/dashboard/help"
               className="size-9 rounded-full bg-secondary/70 hover:bg-secondary text-muted-foreground hover:text-foreground grid place-items-center transition-colors"
@@ -556,7 +588,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
               <HelpCircle className="size-4" />
             </Link>
             <BirthdayBell />
-            <NotificationBell />
+            <span data-tour="notifications" className="inline-flex">
+              <NotificationBell />
+            </span>
             <span className="h-6 w-px bg-border mx-0.5" />
             <ProfileMenu
               name={session.name}
@@ -582,14 +616,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
           ) : (
             <>
               {license.isRestricted && pathAllowed && <RestrictedBanner license={license} />}
-              {!twoFaEnabled && session.roles.some((r) => ["owner", "branch_head", "compliance", "platform_admin"].includes(r)) && (
-                <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm text-amber-900">
-                  <ShieldAlert className="size-4 shrink-0" />
-                  <span>Your role can access client PAN / KYC data. Protect it with two-factor authentication.</span>
-                  <Link href="/dashboard/settings/security" className="ml-auto font-semibold underline hover:no-underline">Enable 2FA →</Link>
-                </div>
-              )}
               {children}
+              <SessionRegister />
             </>
           )}
         </div>
@@ -598,6 +626,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
           client, task, meeting, proposal or service request from anywhere
           without hunting through the sidebar. */}
       {!license.isRestricted && <QuickCreateFab />}
+      {/* Ctrl/⌘-K command palette — jump to any module, quick-create, or search
+          records. Gets the same role/license-filtered nav as the sidebar. */}
+      {!license.isRestricted && <CommandPalette navItems={flatNavItems} />}
+      {/* First-run coachmark tour — runs once, spotlighting nav, search, Ctrl+K,
+          quick-create and notifications so a new user isn't overwhelmed. */}
+      {!license.isRestricted && <ProductTour />}
     </div>
     </ToastProvider>
   );

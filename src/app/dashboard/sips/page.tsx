@@ -11,6 +11,7 @@ import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
 import { CustomViews } from "@/components/common/CustomViews";
 import { ColumnManager } from "@/components/common/ColumnManager";
 import { Pager } from "@/components/common/Pager";
+import { ModuleTabs, SIP_TABS } from "@/components/common/ModuleTabs";
 
 const SIPS_COLUMNS = [
   { key: "investor", label: "Investor", required: true },
@@ -167,7 +168,7 @@ export default async function SipsPage({
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <TrendingUp className="size-6 text-brand-cyan" /> SIP Tracker
+            <TrendingUp className="size-6 text-brand-cyan" /> SIP Book
           </h1>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -181,6 +182,8 @@ export default async function SipsPage({
           </Link>
         </div>
       </div>
+
+      <ModuleTabs tabs={SIP_TABS} />
 
       <div className="grid grid-cols-5 gap-3">
         <Stat icon={CheckCircle2} label="Active SIPs" value={String(data.activeSips)} tone="emerald" />

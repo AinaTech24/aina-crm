@@ -10,6 +10,7 @@ import { FilterBar } from "@/components/common/FilterBar";
 import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
 import { CustomViews } from "@/components/common/CustomViews";
 import { ColumnManager } from "@/components/common/ColumnManager";
+import { ModuleTabs, SIP_TABS } from "@/components/common/ModuleTabs";
 
 const SIP_REJ_COLUMNS = [
   { key: "rejected_on", label: "Rejected on", required: true },
@@ -175,6 +176,8 @@ export default async function SipRejectionsPage({
           </Link>
         </div>
       </div>
+
+      <ModuleTabs tabs={SIP_TABS} />
 
       <div className="grid grid-cols-6 gap-3">
         <Stat icon={AlertTriangle} label="Total" value={data.total} />

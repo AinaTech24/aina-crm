@@ -8,6 +8,7 @@ import { formatDate, formatINR } from "@/lib/utils";
 import { StatusChips, type StatusChip } from "@/components/common/StatusChips";
 import { ContactQuickActions } from "@/components/common/ContactQuickActions";
 import { RenewAction } from "@/components/insurance/RenewAction";
+import { ModuleTabs, INSURANCE_TABS } from "@/components/common/ModuleTabs";
 
 export const dynamic = "force-dynamic";
 
@@ -76,15 +77,9 @@ export default async function RenewalsPage({ searchParams }: { searchParams: Pro
         <div>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2"><CalendarClock className="size-6 text-brand-cyan" /> Insurance Renewals</h1>
         </div>
-        <Link href="/dashboard/insurance" className="btn-secondary text-sm"><Shield className="size-4" /> All policies</Link>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Kpi icon={AlertTriangle} label="Overdue (in grace)" value={String(c.overdue ?? 0)} tone={Number(c.overdue) > 0 ? "rose" : undefined} />
-        <Kpi icon={CalendarClock} label="Due this week" value={String(c.this_week ?? 0)} tone="amber" />
-        <Kpi icon={IndianRupee} label="Premium due (30d)" value={formatINR(Number(c.due_premium ?? 0))} tone="emerald" />
-        <Kpi icon={ShieldAlert} label="Lapsing (past grace)" value={String(c.lapsing ?? 0)} tone={Number(c.lapsing) > 0 ? "rose" : undefined} />
-      </div>
+      <ModuleTabs tabs={INSURANCE_TABS} />
 
       <StatusChips basePath="/dashboard/insurance/renewals" paramKey="bucket" current={bucket} params={sp} chips={chips} />
 

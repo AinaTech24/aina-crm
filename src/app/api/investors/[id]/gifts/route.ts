@@ -16,6 +16,7 @@ import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { requireAny } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 
 export const dynamic = "force-dynamic";
@@ -85,6 +86,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
   try {
     const session = await requireSession();
+    // Client-linked write — same bar as editing the client record itself.
+    requireAny(session.roles, ["investor.edit.all", "investor.edit.assigned"], session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
     const parse = AddBody.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) {
@@ -128,6 +131,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const { id } = await params;
   try {
     const session = await requireSession();
+    // Client-linked write — same bar as editing the client record itself.
+    requireAny(session.roles, ["investor.edit.all", "investor.edit.assigned"], session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
     const parse = BudgetBody.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) {

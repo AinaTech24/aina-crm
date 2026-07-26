@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { ShieldAlert, AlertTriangle, Repeat, IndianRupee, ArrowLeft } from "lucide-react";
+import { ShieldAlert, AlertTriangle, Repeat, IndianRupee } from "lucide-react";
+import { ModuleTabs, SIP_TABS } from "@/components/common/ModuleTabs";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
@@ -47,13 +48,12 @@ export default async function SipAtRiskPage() {
   return (
     <div className="space-y-6 max-w-6xl">
       <div>
-        <Link href="/dashboard/sips" className="text-sm text-muted-foreground hover:underline flex items-center gap-1">
-          <ArrowLeft className="size-4" /> SIP Tracker
-        </Link>
-        <h1 className="page-title mt-1">
+        <h1 className="page-title">
           <ShieldAlert className="size-6 text-rose-600" /> SIP At-Risk — save before they stop
         </h1>
       </div>
+
+      <ModuleTabs tabs={SIP_TABS} />
 
       {/* Summary */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">

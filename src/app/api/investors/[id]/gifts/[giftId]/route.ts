@@ -12,6 +12,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { requireAny } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 
 export const dynamic = "force-dynamic";
@@ -23,6 +24,8 @@ export async function DELETE(
   const { id, giftId } = await params;
   try {
     const session = await requireSession();
+    // Client-linked write — same bar as editing the client record itself.
+    requireAny(session.roles, ["investor.edit.all", "investor.edit.assigned"], session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
     await withTenant(session.tenantId, async (tx) => {
       await tx.execute(sql`

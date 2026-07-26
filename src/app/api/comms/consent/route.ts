@@ -12,6 +12,7 @@ import { z } from "zod";
 import { and, eq } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { require as requireCap } from "@/lib/auth/rbac";
 import { handleApiError } from "@/lib/api/error-handler";
 import { consents } from "@/db/schema";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
@@ -28,6 +29,10 @@ const Body = z.object({
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
+    // Consent is the compliance record that gates every outbound message
+    // (SEBI/DPDP). Writing it must be a deliberate, capability-gated action —
+    // not something any logged-in user can flip.
+    requireCap(session.roles, "consent.manage", session.permissions);
     const parsed = Body.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
       return NextResponse.json({ error: "invalid input", issues: parsed.error.issues }, { status: 400 });

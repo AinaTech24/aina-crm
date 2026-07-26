@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { BarChart3 } from "lucide-react";
 import { ReportsGrid } from "@/components/reports/ReportsGrid";
+import { HelpTip } from "@/components/common/HelpTip";
 
 /**
  * Canned report catalog. `icon` is a lucide displayName (string) so the list
@@ -86,12 +87,22 @@ const REPORTS: { group: string; items: ReportItem[] }[] = [
       { key: "segmentation", label: "Client Segmentation", icon: "Users" },
       { key: "high_aum", label: "High-AUM Clients", icon: "TrendingUp" },
       { key: "dormant", label: "Dormant Clients", icon: "AlertTriangle" },
+      { key: "nomination-tracker", label: "Nomination Tracker", icon: "ShieldCheck" },
     ]
   },
   {
     group: "Retention & Tax", items: [
       { key: "churn-risk", label: "Churn-risk radar", icon: "ShieldCheck" },
       { key: "tax-harvesting", label: "Tax-harvesting", icon: "TrendingUp" },
+      { key: "cross-sell", label: "Cross-sell Radar", icon: "Users" },
+    ]
+  },
+  {
+    group: "Practice Intelligence", items: [
+      { key: "risk-drift", label: "Risk-Drift Radar", icon: "ShieldCheck" },
+      { key: "referral-radar", label: "Referral Radar", icon: "Users" },
+      { key: "revenue-intelligence", label: "Revenue Intelligence", icon: "TrendingUp" },
+      { key: "trail-forecast", label: "Trail Forecast", icon: "TrendingUp" },
     ]
   },
   {
@@ -176,8 +187,13 @@ export default function ReportsPage() {
   return (
     <div className="space-y-6 max-w-7xl">
       <div className="flex items-start justify-between flex-wrap gap-3">
-        <div>
+        <div className="flex items-center gap-2">
           <h1 className="text-2xl font-bold tracking-tight">Reports &amp; MIS</h1>
+          <HelpTip title="Reports & MIS">
+            Every MIS and analytics report, grouped by area. Business &amp; SIP numbers, team
+            performance, retention &amp; tax, and the new Practice Intelligence reports (risk-drift,
+            referrals, revenue).
+          </HelpTip>
         </div>
         <Link href="/dashboard/reports/custom" className="btn-primary whitespace-nowrap">
           <BarChart3 className="size-4" /> Custom Reports

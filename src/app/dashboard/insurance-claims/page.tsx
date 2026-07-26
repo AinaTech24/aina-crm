@@ -2,13 +2,14 @@ import Link from "next/link";
 import { and, desc, eq, ilike, or, sql } from "drizzle-orm";
 import { FileText, Plus, IndianRupee, CheckCircle2, XCircle, Clock } from "lucide-react";
 import { withTenant } from "@/db/client";
-import { insuranceClaims, investors, insurancePolicies, users, CLAIM_STATUSES } from "@/db/schema";
+import { insuranceClaims, investors, insurancePolicies, users, CLAIM_STATUSES, CLAIM_MODES } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { formatINR } from "@/lib/utils";
 import { claimTatDays, claimAgeDays, OPEN_CLAIM_STATUSES } from "@/lib/insurance/claim-status";
 import { Pager } from "@/components/common/Pager";
 import { Avatar } from "@/components/ui/Avatar";
+import { ModuleTabs, INSURANCE_TABS } from "@/components/common/ModuleTabs";
 
 export const dynamic = "force-dynamic";
 
@@ -35,12 +36,16 @@ export default async function ClaimsPage({ searchParams }: { searchParams: Promi
   requireCap(session.roles, "insurance.view");
   const sp = await searchParams;
   const status = sp.status && (CLAIM_STATUSES as readonly string[]).includes(sp.status) ? sp.status : "";
+  // Claim-MODE filter (cashless / reimbursement / grievance) — a separate axis
+  // from the status pipeline. Only one of status/mode is active at a time.
+  const mode = sp.mode && (CLAIM_MODES as readonly string[]).includes(sp.mode) ? sp.mode : "";
   const q = (sp.q ?? "").trim();
   const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
 
   const data = await withTenant(session.tenantId, async (tx) => {
     const conds: any[] = [];
-    if (status) conds.push(eq(insuranceClaims.claimStatus, status as any));
+    if (mode) conds.push(eq(insuranceClaims.claimMode, mode as any));
+    else if (status) conds.push(eq(insuranceClaims.claimStatus, status as any));
     if (q) conds.push(or(ilike(insuranceClaims.proposerName, `%${q}%`), ilike(insuranceClaims.policyNumber, `%${q}%`), ilike(insuranceClaims.insurer, `%${q}%`))!);
     const where = conds.length ? and(...conds) : undefined;
 
@@ -61,6 +66,10 @@ export default async function ClaimsPage({ searchParams }: { searchParams: Promi
     const statusCounts: Record<string, number> = {};
     for (const r of byStatus.rows as any[]) statusCounts[r.claim_status] = Number(r.c);
 
+    const byMode = await tx.execute(sql`SELECT claim_mode, count(*)::int AS c FROM insurance_claims WHERE claim_mode IS NOT NULL GROUP BY claim_mode`);
+    const modeCounts: Record<string, number> = {};
+    for (const r of byMode.rows as any[]) modeCounts[r.claim_mode] = Number(r.c);
+
     const stats = await tx.execute(sql`
       SELECT
         count(*)::int AS total,
@@ -70,10 +79,14 @@ export default async function ClaimsPage({ searchParams }: { searchParams: Promi
         COALESCE(SUM(settled_amount::numeric),0) AS settled_amount
       FROM insurance_claims
     `);
-    return { rows, filteredTotal: Number(cnt[0]?.c ?? 0), statusCounts, s: stats.rows[0] as any };
+    return { rows, filteredTotal: Number(cnt[0]?.c ?? 0), statusCounts, modeCounts, s: stats.rows[0] as any };
   });
 
-  const tabs = [{ key: "", label: "All", count: Number(data.s.total ?? 0) }, ...CLAIM_STATUSES.map((k) => ({ key: k, label: STATUS_META[k].label, count: data.statusCounts[k] ?? 0 }))];
+  const statusTabs = [{ key: "", label: "All", count: Number(data.s.total ?? 0) }, ...CLAIM_STATUSES.map((k) => ({ key: k, label: STATUS_META[k].label, count: data.statusCounts[k] ?? 0 }))];
+  const modeTabs = [
+    { key: "reimbursement", label: "Reimbursement", count: data.modeCounts.reimbursement ?? 0 },
+    { key: "grievance", label: "Grievance", count: data.modeCounts.grievance ?? 0 },
+  ];
   const qp = (next: Record<string, string>) => {
     const u = new URLSearchParams();
     if (q) u.set("q", q);
@@ -94,20 +107,19 @@ export default async function ClaimsPage({ searchParams }: { searchParams: Promi
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Kpi label="Total claims" value={String(data.s.total ?? 0)} icon={FileText} tone="cyan" />
-        <Kpi label="Open" value={String(data.s.open ?? 0)} icon={Clock} tone="amber" />
-        <Kpi label="Settled" value={String(data.s.settled ?? 0)} icon={CheckCircle2} tone="emerald" />
-        <Kpi label="Settled amount" value={formatINR(Number(data.s.settled_amount ?? 0))} icon={IndianRupee} tone="emerald" />
-      </div>
+      <ModuleTabs tabs={INSURANCE_TABS} />
 
-      {/* Status pipeline tabs */}
-      <div className="card-surface p-2 overflow-x-auto scrollbar-thin">
+      {/* Status pipeline + claim-mode filters — one uniform set of chips on a
+          single row that scrolls horizontally with a HIDDEN scrollbar. */}
+      <div className="card-surface p-2 overflow-x-auto scrollbar-none">
         <div className="flex gap-1.5 min-w-max">
-          {tabs.map((t) => (
-            <Link key={t.key || "all"} href={`/dashboard/insurance-claims${qp({ status: t.key, page: "" })}`}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors ${status === t.key ? "bg-brand-navy text-white" : "text-muted-foreground hover:bg-secondary"}`}>
-              {t.label} <span className={`ml-1 ${status === t.key ? "text-white/70" : "text-muted-foreground/60"}`}>{t.count}</span>
+          {[
+            ...statusTabs.map((t) => ({ ...t, href: qp({ status: t.key, mode: "", page: "" }), active: !mode && status === t.key })),
+            ...modeTabs.map((t) => ({ ...t, href: qp({ mode: t.key, status: "", page: "" }), active: mode === t.key })),
+          ].map((t) => (
+            <Link key={`${t.key || "all"}-${t.label}`} href={`/dashboard/insurance-claims${t.href}`}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors ${t.active ? "bg-brand-navy text-white" : "text-muted-foreground hover:bg-secondary"}`}>
+              {t.label} <span className={`ml-1 ${t.active ? "text-white/70" : "text-muted-foreground/60"}`}>{t.count}</span>
             </Link>
           ))}
         </div>
@@ -116,6 +128,7 @@ export default async function ClaimsPage({ searchParams }: { searchParams: Promi
       {/* Search */}
       <form className="max-w-sm">
         {status && <input type="hidden" name="status" value={status} />}
+        {mode && <input type="hidden" name="mode" value={mode} />}
         <input name="q" defaultValue={q} placeholder="Search proposer, policy no., insurer…" className="input-base" />
       </form>
 
@@ -123,7 +136,7 @@ export default async function ClaimsPage({ searchParams }: { searchParams: Promi
         {data.rows.length === 0 ? (
           <div className="p-12 text-center text-sm text-muted-foreground">
             <FileText className="size-8 mx-auto text-muted-foreground/40" />
-            <div className="mt-2 font-medium">No claims{status ? ` in "${STATUS_META[status].label}"` : ""}.</div>
+            <div className="mt-2 font-medium">No claims{mode ? ` — ${mode.charAt(0).toUpperCase() + mode.slice(1)}` : status ? ` in "${STATUS_META[status].label}"` : ""}.</div>
             <Link href="/dashboard/insurance-claims/new" className="text-brand-cyan-deep hover:underline text-xs mt-1 inline-block">+ Log a claim</Link>
           </div>
         ) : (

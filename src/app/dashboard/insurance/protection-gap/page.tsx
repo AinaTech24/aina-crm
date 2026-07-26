@@ -6,6 +6,7 @@ import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { formatINR } from "@/lib/utils";
 import { ContactQuickActions } from "@/components/common/ContactQuickActions";
+import { ModuleTabs, INSURANCE_TABS } from "@/components/common/ModuleTabs";
 
 export const dynamic = "force-dynamic";
 
@@ -80,12 +81,7 @@ export default async function ProtectionGapPage({ searchParams }: { searchParams
         )}
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Kpi icon={Umbrella} label="No life cover" value={String(s.life ?? 0)} tone="rose" />
-        <Kpi icon={HeartPulse} label="No health cover" value={String(s.health ?? 0)} tone="amber" />
-        <Kpi icon={Users} label="Both gaps" value={String(s.both ?? 0)} tone="rose" />
-        <Kpi icon={IndianRupee} label="Est. cover gap" value={formatINR(Number(s.cover_gap ?? 0))} tone="emerald" />
-      </div>
+      <ModuleTabs tabs={INSURANCE_TABS} />
 
       <div className="flex flex-wrap gap-1.5">{tab("", "All gaps", data.rows.length)}{tab("life", "Life gap", Number(s.life ?? 0))}{tab("health", "Health gap", Number(s.health ?? 0))}</div>
 

@@ -30,6 +30,16 @@ docker build -t mfd-app:latest \
   --build-arg NEXT_PUBLIC_S3_PUBLIC_URL="$S3_URL" .
 RC=$?; [ $RC -ne 0 ] && { echo "DEPLOY_DONE_EXIT=$RC (build failed — old colour still serving)"; exit $RC; }
 
+# Typecheck gate. next.config sets typescript.ignoreBuildErrors, so `next build`
+# succeeds even with type errors — that's how a silently-broken change can reach
+# prod. Run tsc against the freshly-built image BEFORE migrating, so bad code
+# never triggers a schema change and the old colour keeps serving.
+# --incremental false: with incremental on, tsc tries to write tsconfig.tsbuildinfo
+# into /app, which the unprivileged runtime user can't do (EACCES → false failure).
+echo "=== typecheck $(date) ==="
+$COMPOSE run --rm migrate npx tsc --noEmit --incremental false
+RC=$?; [ $RC -ne 0 ] && { echo "DEPLOY_DONE_EXIT=$RC (type errors — old colour still serving)"; exit $RC; }
+
 echo "=== migrate $(date) ==="
 $COMPOSE run --rm migrate
 RC=$?; [ $RC -ne 0 ] && { echo "DEPLOY_DONE_EXIT=$RC (migrate failed — old colour still serving)"; exit $RC; }

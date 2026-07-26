@@ -16,6 +16,7 @@
     "check:rls": "node scripts/check-rls.mjs",
     "check:migrations": "node scripts/check-migration-dups.mjs",
     "check:schema": "tsx scripts/check-schema.ts",
+    "check:types": "tsc --noEmit",
     "check:colors": "node scripts/check-hardcoded-colors.mjs",
     "check:asany": "node scripts/check-as-any.mjs",
     "check:mathimports": "node scripts/check-math-imports.mjs",
