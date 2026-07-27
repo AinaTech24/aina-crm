@@ -108,7 +108,7 @@ export function buildInvestorConditions(
   }
   if (qf.dormant) {
     conditions.push(
-      sql`(${investors.lastTransactionAt} IS NULL OR ${investors.lastTransactionAt} < now() - interval '180 days')`
+      sql`(${investors.lastTransactionAt} IS NULL OR ${investors.lastTransactionAt} < now() - make_interval(days => COALESCE((SELECT dormancy_window_days FROM tenants WHERE id = ${investors.tenantId}), 180)))`
     );
   }
   if (qf.birthday_week) {

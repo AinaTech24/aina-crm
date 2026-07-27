@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { formatRelative } from "@/lib/utils";
 import { RowActions } from "@/components/common/RowActions";
 import { SelectField } from "@/components/ui/SelectField";
@@ -11,11 +11,56 @@ import { TaskDetailDrawer } from "./TaskDetailDrawer";
 import { Avatar } from "@/components/ui/Avatar";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { taskChecklist, type Task } from "@/db/schema";
-import { Loader2, ListChecks, Trash2 } from "lucide-react";
+import { Loader2, ListChecks, Trash2, Clock3, ShieldCheck, CalendarClock, Gauge, Check, Pencil, ChevronDown } from "lucide-react";
+
+// Priority → left-accent stripe colour (row hierarchy at a glance).
+const PRIORITY_ACCENT: Record<string, string> = {
+  urgent: "bg-rose-500",
+  high: "bg-amber-400",
+  normal: "bg-slate-300",
+  low: "bg-slate-200",
+};
+// Priority / status → tinted select text so the inline controls read as pills.
+const PRIORITY_TEXT: Record<string, string> = {
+  urgent: "text-rose-700",
+  high: "text-amber-700",
+  normal: "text-slate-600",
+  low: "text-slate-400",
+};
+const STATUS_TEXT: Record<string, string> = {
+  open: "text-sky-700",
+  in_progress: "text-violet-700",
+  blocked: "text-rose-700",
+  completed: "text-emerald-700",
+  cancelled: "text-slate-400",
+};
+
+// Due-date buckets for the "Group by due" view — fixed display order.
+const BUCKET_ORDER = ["overdue", "today", "week", "later", "nodate", "done"] as const;
+const BUCKET_META: Record<string, { label: string; tone: string }> = {
+  overdue: { label: "Overdue", tone: "text-rose-600" },
+  today: { label: "Due today", tone: "text-amber-600" },
+  week: { label: "This week", tone: "text-slate-700" },
+  later: { label: "Later", tone: "text-slate-600" },
+  nodate: { label: "No due date", tone: "text-slate-500" },
+  done: { label: "Completed & closed", tone: "text-slate-400" },
+};
+function dueBucketKey(t: { status: string; dueAt: Date | string | null }): string {
+  if (t.status === "completed" || t.status === "cancelled") return "done";
+  if (!t.dueAt) return "nodate";
+  const due = new Date(t.dueAt).getTime();
+  const now = Date.now();
+  if (due < now) return "overdue";
+  if (new Date(t.dueAt).toDateString() === new Date().toDateString()) return "today";
+  if (due < now + 7 * 86400000) return "week";
+  return "later";
+}
 
 interface TaskRow {
   task: Task;
   assignee: string | null;
+  /** Creator's name ("assigned by"). */
+  createdBy?: string | null;
   investorName: string | null;
   investorAvatarUrl?: string | null;
   leadName: string | null;
@@ -25,19 +70,49 @@ interface TaskRow {
 interface TaskListProps {
   initialRows: TaskRow[];
   currentUserId: string;
+  canManageAll?: boolean;
+  /** ?task=<id> deep-link (e.g. from the Service tracker) — opens the drawer. */
+  initialOpenTaskId?: string;
+  /** Total tasks matching the current filters (across all pages). */
+  total?: number;
+  /** Search + filter + sort + view controls, rendered in the table header. */
+  toolbar?: ReactNode;
 }
 
-export function TaskList({ initialRows, currentUserId }: TaskListProps) {
+export function TaskList({ initialRows, currentUserId, canManageAll = false, initialOpenTaskId, total = 0, toolbar }: TaskListProps) {
   const router = useRouter();
   const toast = useToast();
   const [rows, setRows] = useState(initialRows);
   const [selectedRow, setSelectedRow] = useState<TaskRow | null>(null);
+
+  // Open the drawer for a ?task=<id> deep-link. If the task isn't in the current
+  // (filtered) page, fetch it directly so the link still works.
+  useEffect(() => {
+    if (!initialOpenTaskId) return;
+    const inList = initialRows.find((r) => r.task.id === initialOpenTaskId);
+    if (inList) { setSelectedRow(inList); return; }
+    let cancelled = false;
+    fetch(`/api/tasks/${initialOpenTaskId}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((task) => {
+        if (!cancelled && task && task.id) {
+          setSelectedRow({ task, assignee: null, investorName: null, investorAvatarUrl: null, leadName: null, leadAvatarUrl: null });
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialOpenTaskId]);
   const [completingTaskId, setCompletingTaskId] = useState<string | null>(null);
 
   // Bulk-select states
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+  const [selectMenuOpen, setSelectMenuOpen] = useState(false);
+  const [selectingAll, setSelectingAll] = useState(false);
+  const selectMenuRef = useRef<HTMLDivElement>(null);
+  const sp = useSearchParams();
 
   // Sync rows from parent when query changes
   if (JSON.stringify(initialRows.map(r => r.task.id)) !== JSON.stringify(rows.map(r => r.task.id))) {
@@ -45,12 +120,42 @@ export function TaskList({ initialRows, currentUserId }: TaskListProps) {
     setSelected(new Set());
   }
 
-  const allSelected = rows.length > 0 && selected.size === rows.length;
+  useEffect(() => {
+    if (!selectMenuOpen) return;
+    function onDown(e: MouseEvent) {
+      if (selectMenuRef.current && !selectMenuRef.current.contains(e.target as Node)) setSelectMenuOpen(false);
+    }
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [selectMenuOpen]);
+
+  const pageIds = rows.map((r) => r.task.id);
+  const allPageSelected = rows.length > 0 && pageIds.every((id) => selected.has(id));
   function toggleSelect(id: string) {
     setSelected((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
   }
+  function selectThisPage() {
+    setSelected(new Set(pageIds));
+    setSelectMenuOpen(false);
+  }
+  /** Select every task matching the current filters (across all pages). */
+  async function selectAllPages() {
+    setSelectMenuOpen(false);
+    setSelectingAll(true);
+    try {
+      const res = await fetch(`/api/tasks/ids?${sp.toString()}`);
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j?.error ?? "Failed");
+      setSelected(new Set(Array.isArray(j.ids) ? j.ids : []));
+      if (j.capped) toast.success(`Selected the first ${j.limit} tasks (the max per bulk action).`);
+    } catch {
+      toast.error("Couldn't select all tasks");
+    } finally {
+      setSelectingAll(false);
+    }
+  }
 
-  async function runBulk(action: "status" | "priority" | "assign" | "cancel" | "delete", value?: string) {
+  async function runBulk(action: "status" | "priority" | "assign" | "cancel" | "delete" | "reschedule", value?: string) {
     if (selected.size === 0 || bulkBusy) return;
     setBulkBusy(true);
     try {
@@ -189,6 +294,30 @@ export function TaskList({ initialRows, currentUserId }: TaskListProps) {
           <div className="w-44">
             <RmSelector value={null} onChange={(id) => id && runBulk("assign", id)} placeholder="Reassign to…" />
           </div>
+          {/* Bulk reschedule — clear an overdue backlog fast. */}
+          <div className="inline-flex items-center gap-1">
+            <span className="text-slate-500">Due:</span>
+            <button
+              onClick={() => { const d = new Date(); d.setHours(18, 0, 0, 0); runBulk("reschedule", d.toISOString()); }}
+              disabled={bulkBusy}
+              className="btn-ghost text-xs py-1 px-2"
+            >
+              Today
+            </button>
+            <button
+              onClick={() => { const d = new Date(); d.setDate(d.getDate() + 7); d.setHours(18, 0, 0, 0); runBulk("reschedule", d.toISOString()); }}
+              disabled={bulkBusy}
+              className="btn-ghost text-xs py-1 px-2"
+            >
+              +1w
+            </button>
+            <input
+              type="date"
+              onChange={(e) => { if (e.target.value) { const d = new Date(e.target.value); d.setHours(18, 0, 0, 0); runBulk("reschedule", d.toISOString()); } }}
+              className="input-base h-7 text-xs w-[130px]"
+              aria-label="Reschedule to date"
+            />
+          </div>
           <button onClick={() => runBulk("cancel")} disabled={bulkBusy} className="btn-ghost text-xs py-1 px-2 text-rose-600">Cancel tasks</button>
           <button onClick={() => setConfirmBulkDelete(true)} disabled={bulkBusy} className="text-xs py-1 px-2.5 rounded-md border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 inline-flex items-center gap-1 font-medium">
             <Trash2 className="size-3.5" /> Delete
@@ -199,197 +328,138 @@ export function TaskList({ initialRows, currentUserId }: TaskListProps) {
       )}
 
       {rows.length === 0 ? (
-        <div className="p-12 text-center text-sm text-muted-foreground bg-slate-50/20">
-          No open tasks found. Workflows will create tasks automatically when SIPs fail, reviews come due, etc.
+        <div className="p-12 text-center bg-slate-50/20">
+          <div className="mx-auto size-12 rounded-full bg-brand-cyan-light/40 flex items-center justify-center mb-3">
+            <ListChecks className="size-6 text-brand-cyan" />
+          </div>
+          <div className="text-sm font-semibold text-slate-700">You're all caught up</div>
+          <p className="text-xs text-muted-foreground mt-1 max-w-sm mx-auto">
+            No tasks match this view. Create one, or let workflows add them automatically when SIPs fail, reviews come due, or KYC expires.
+          </p>
+          <button
+            type="button"
+            onClick={() => router.push("/dashboard/tasks/new")}
+            className="mt-4 inline-flex items-center gap-1.5 rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-sm font-medium"
+          >
+            <ListChecks className="size-4" /> New task
+          </button>
         </div>
       ) : (
-        <>
-        {/* Select-all header */}
-        <div className="px-4 py-1.5 border-b bg-white flex items-center gap-2.5">
-          <input
-            type="checkbox"
-            checked={allSelected}
-            onChange={() => setSelected(allSelected ? new Set() : new Set(rows.map((r) => r.task.id)))}
-            className="size-3.5 rounded border-slate-300"
-            aria-label="Select all tasks"
-          />
-          <span className="text-[11px] text-muted-foreground">{allSelected ? "Deselect all" : "Select all"}</span>
+        <div className="group/list">
+        {/* Table header — select control (hover-reveal) + search/filter/sort/view toolbar. */}
+        <div className="px-3 sm:px-4 py-2 border-b bg-white flex items-center gap-3">
+          <div className={`flex items-center gap-2 shrink-0 transition-opacity ${selected.size > 0 ? "opacity-100" : "opacity-0 group-hover/list:opacity-100 focus-within:opacity-100"}`}>
+            <input
+              type="checkbox"
+              checked={allPageSelected}
+              onChange={() => (allPageSelected ? setSelected(new Set()) : selectThisPage())}
+              className="size-3.5 rounded border-slate-300"
+              aria-label="Select tasks on this page"
+            />
+            <div className="relative" ref={selectMenuRef}>
+              <button
+                type="button"
+                onClick={() => setSelectMenuOpen((o) => !o)}
+                className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
+              >
+                {selectingAll ? <Loader2 className="size-3 animate-spin" /> : null}
+                Select <ChevronDown className="size-3 opacity-60" />
+              </button>
+              {selectMenuOpen && (
+                <div className="absolute left-0 top-full mt-1 z-20 w-56 rounded-md border bg-popover shadow-md py-1 text-xs">
+                  <button type="button" onClick={selectThisPage} className="w-full text-left px-3 py-1.5 hover:bg-accent">
+                    This page <span className="text-muted-foreground">({rows.length})</span>
+                  </button>
+                  <button type="button" onClick={selectAllPages} className="w-full text-left px-3 py-1.5 hover:bg-accent">
+                    All tasks <span className="text-muted-foreground">({total.toLocaleString("en-IN")})</span>
+                  </button>
+                  {selected.size > 0 && (
+                    <button type="button" onClick={() => { setSelected(new Set()); setSelectMenuOpen(false); }} className="w-full text-left px-3 py-1.5 hover:bg-accent text-rose-600">
+                      Clear selection
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+            {selected.size > 0 && <span className="text-[11px] text-muted-foreground whitespace-nowrap">· {selected.size} selected</span>}
+          </div>
+          {toolbar && <div className="flex-1 min-w-0">{toolbar}</div>}
         </div>
         <ul className="divide-y divide-slate-100 max-h-[60vh] overflow-y-auto scrollbar-thin">
           {rows.map((row) => {
             const t = row.task;
-            const assigneeName = row.assignee;
-            const isDone = t.status === "completed";
-            const isOverdue = t.dueAt && new Date(t.dueAt).getTime() < Date.now() && !isDone;
-            const checklist = taskChecklist(t.meta);
-            const checklistDone = checklist.filter((c) => c.done).length;
-
-            // SLA warning badges
-            const isSlaBreached = t.slaDueAt && new Date(t.slaDueAt).getTime() < Date.now() && !isDone;
-            const isSlaAtRisk = t.slaDueAt && new Date(t.slaDueAt).getTime() < Date.now() + 24 * 60 * 60 * 1000 && !isDone;
-            
-            let slaText = "";
-            let slaColor = "";
-            if (t.slaDueAt && !isDone) {
-              const diffMs = new Date(t.slaDueAt).getTime() - Date.now();
-              const diffHours = Math.round(diffMs / (60 * 60 * 1000));
-              if (isSlaBreached) {
-                slaText = "SLA Breached";
-                slaColor = "bg-rose-100 text-rose-800 border-rose-200 font-bold";
-              } else if (diffHours <= 24) {
-                slaText = `SLA: ${diffHours}h left`;
-                slaColor = "bg-amber-100 text-amber-800 border-amber-200 font-semibold animate-pulse";
-              } else {
-                const diffDays = Math.round(diffHours / 24);
-                slaText = `SLA: ${diffDays}d left`;
-                slaColor = "bg-slate-100 text-slate-600 border-slate-200";
-              }
-            }
-
+            const isDone = t.status === "completed" || t.status === "cancelled";
+            const creatorName = row.createdBy ?? "System";
+            const assigneeLabel = row.assignee ? (t.assigneeId === currentUserId ? "Me" : row.assignee) : "Unassigned";
             return (
               <li
                 key={t.id}
                 onClick={() => setSelectedRow(row)}
-                className={`px-4 py-3.5 flex items-center gap-3 hover:bg-slate-50/70 transition-colors cursor-pointer select-none ${
-                  isDone ? "opacity-60 bg-slate-50/30" : ""
-                }`}
+                className={`group/row px-4 py-2.5 flex items-center gap-3 transition-colors cursor-pointer select-none hover:bg-slate-50/70 ${isDone ? "opacity-70" : ""}`}
               >
-                {/* Single per-row checkbox (bulk select; complete via bulk action or the detail drawer) */}
+                {/* Bulk-select checkbox — revealed on row hover (or when checked). */}
                 <input
                   type="checkbox"
                   checked={selected.has(t.id)}
                   onClick={(e) => e.stopPropagation()}
                   onChange={() => toggleSelect(t.id)}
-                  className="size-3.5 rounded border-slate-300 flex-shrink-0"
+                  className={`size-3.5 rounded border-slate-300 flex-shrink-0 transition-opacity ${
+                    selected.has(t.id) ? "opacity-100" : "opacity-0 group-hover/row:opacity-100 focus:opacity-100"
+                  }`}
                   aria-label="Select task"
                 />
 
-                {(row.investorName || row.leadName) && (
-                  <Avatar
-                    src={
-                      row.investorName && t.relatedInvestorId && row.investorAvatarUrl
-                        ? `/api/investors/${t.relatedInvestorId}/avatar`
-                        : row.leadName && t.relatedLeadId && row.leadAvatarUrl
-                          ? `/api/leads/${t.relatedLeadId}/avatar`
-                          : null
-                    }
-                    name={row.investorName ?? row.leadName}
-                    size={30}
-                    className="flex-shrink-0"
-                  />
-                )}
+                {/* Complete / reopen — strikes through the title when done. */}
+                <button
+                  type="button"
+                  onClick={(e) => handleToggleComplete(t.id, !isDone, e)}
+                  disabled={completingTaskId === t.id}
+                  className={`shrink-0 rounded-full border size-5 flex items-center justify-center transition ${
+                    isDone
+                      ? "bg-emerald-500 border-emerald-500 text-white"
+                      : "border-slate-300 text-transparent hover:border-emerald-400 hover:text-emerald-400"
+                  }`}
+                  title={isDone ? "Reopen task" : "Mark complete"}
+                  aria-label={isDone ? "Reopen task" : "Mark complete"}
+                >
+                  {completingTaskId === t.id ? <Loader2 className="size-3 animate-spin text-slate-400" /> : <Check className="size-3" />}
+                </button>
 
-                <div className="flex-1 min-w-0">
-                  <div
-                    className={`font-semibold text-sm text-slate-800 truncate ${
-                      isDone ? "line-through text-slate-400 font-normal" : ""
-                    }`}
-                  >
-                    {t.title}
+                {/* Task content */}
+                <span className={`flex-1 min-w-0 text-sm truncate ${isDone ? "line-through text-slate-400 font-normal" : "font-medium text-slate-800"}`}>
+                  {t.title}
+                </span>
+
+                {/* Assigned by / assigned to — two clearly-labelled columns */}
+                <div className="hidden md:flex items-center gap-5 shrink-0">
+                  <div className="w-28 min-w-0">
+                    <div className="text-[9px] uppercase tracking-wide text-slate-400 leading-none">Assigned by</div>
+                    <div className="text-xs text-slate-700 font-medium truncate mt-0.5">{creatorName}</div>
                   </div>
-                  <div className="text-xs text-muted-foreground mt-1 flex items-center gap-2 flex-wrap">
-                    <span className="font-mono bg-slate-100 text-slate-600 px-1.5 py-0.2 rounded border text-[10px] uppercase font-bold tracking-wide">
-                      {t.type.replace(/_/g, " ")}
-                    </span>
-                    {t.workflowRunId && (
-                      <span className="text-[11px] text-slate-400 font-medium">via workflow</span>
-                    )}
-                    {t.department && (
-                      <>
-                        <span className="text-slate-300">·</span>
-                        <span className="capitalize text-[11px] text-slate-500 font-medium">{t.department}</span>
-                      </>
-                    )}
-                    {(row.investorName || row.leadName) && (
-                      <>
-                        <span className="text-slate-300">·</span>
-                        <span className="text-[11px] text-slate-500 truncate max-w-[150px]">
-                          {row.investorName ? `Client: ${row.investorName}` : `Lead: ${row.leadName}`}
-                        </span>
-                      </>
-                    )}
-                    {checklist.length > 0 && (
-                      <>
-                        <span className="text-slate-300">·</span>
-                        <span
-                          className={`inline-flex items-center gap-1 text-[11px] font-medium ${
-                            checklistDone === checklist.length ? "text-emerald-600" : "text-slate-500"
-                          }`}
-                          title={`${checklistDone} of ${checklist.length} action points done`}
-                        >
-                          <ListChecks className="size-3" /> {checklistDone}/{checklist.length}
-                        </span>
-                      </>
-                    )}
+                  <div className="w-28 min-w-0">
+                    <div className="text-[9px] uppercase tracking-wide text-slate-400 leading-none">Assigned to</div>
+                    <div className="text-xs text-slate-700 font-medium truncate mt-0.5">{assigneeLabel}</div>
                   </div>
                 </div>
 
-                {/* SLA Warning Badge */}
-                {slaText && (
-                  <span className={`text-[10px] px-2 py-0.5 rounded border ${slaColor} flex-shrink-0`}>
-                    {slaText}
-                  </span>
-                )}
-
-                {/* Priority Selector (branded dropdown) */}
-                <div onClick={(e) => e.stopPropagation()} className="flex-shrink-0">
-                  <SelectField
-                    value={t.priority}
-                    onChange={(e) => handlePriorityChange(t.id, e.target.value)}
-                    size="sm"
-                    className="w-28"
+                {/* Edit (opens the modal) + delete */}
+                <div onClick={(e) => e.stopPropagation()} className="flex items-center gap-0.5 flex-shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedRow(row)}
+                    className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+                    aria-label="Edit task"
+                    title="Edit"
                   >
-                    <option value="low">Low</option>
-                    <option value="normal">Normal</option>
-                    <option value="high">High</option>
-                    <option value="urgent">Urgent</option>
-                  </SelectField>
-                </div>
-
-                {/* Status Selector (branded dropdown) */}
-                <div onClick={(e) => e.stopPropagation()} className="flex-shrink-0">
-                  <SelectField
-                    value={t.status}
-                    onChange={(e) => handleStatusChange(t.id, e.target.value)}
-                    size="sm"
-                    className="w-32"
-                  >
-                    <option value="open">Open</option>
-                    <option value="in_progress">In Progress</option>
-                    <option value="blocked">Blocked</option>
-                    <option value="completed">Completed</option>
-                    <option value="cancelled">Cancelled</option>
-                  </SelectField>
-                </div>
-
-                {t.dueAt && (
-                  <span className={`text-xs tabular-nums flex-shrink-0 font-semibold ${
-                    isOverdue ? "text-rose-600" : "text-muted-foreground"
-                  }`}>
-                    {formatRelative(t.dueAt)}
-                    {isOverdue && " (Overdue)"}
-                  </span>
-                )}
-
-                {assigneeName && (
-                  <span className="text-xs text-slate-600 font-medium border bg-slate-50 px-2 py-0.5 rounded flex-shrink-0">
-                    {t.assigneeId === currentUserId ? "Me" : assigneeName}
-                  </span>
-                )}
-
-                <div onClick={(e) => e.stopPropagation()}>
-                  <RowActions
-                    deleteUrl={`/api/tasks/${t.id}`}
-                    itemLabel="task"
-                    itemName={t.title}
-                    verb="Delete"
-                  />
+                    <Pencil className="size-4" />
+                  </button>
+                  <RowActions inline deleteUrl={`/api/tasks/${t.id}`} itemLabel="task" itemName={t.title} verb="Delete" />
                 </div>
               </li>
             );
           })}
         </ul>
-        </>
+        </div>
       )}
 
       {selectedRow && (
@@ -400,6 +470,8 @@ export function TaskList({ initialRows, currentUserId }: TaskListProps) {
             investorName: selectedRow.investorName,
             leadName: selectedRow.leadName,
           }}
+          currentUserId={currentUserId}
+          canManageAll={canManageAll}
           onClose={() => setSelectedRow(null)}
           onUpdate={handleUpdate}
         />

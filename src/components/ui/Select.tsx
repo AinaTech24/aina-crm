@@ -56,6 +56,7 @@ export function Select({
   const [query, setQuery] = useState("");
   const ref = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLUListElement>(null);
+  const rafRef = useRef<number | null>(null);
 
   const selected = options.find((o) => o.value === value);
   const visible =
@@ -73,18 +74,24 @@ export function Select({
     const rect = el.getBoundingClientRect();
     const alignRight = window.innerWidth - rect.left < 256;
     const flip = window.innerHeight - rect.bottom < 280 && rect.top > 280;
+    // Cap minWidth at the menu's own max-width (mirrors the max-w-[min(20rem,90vw)]
+    // class). Without this, a very wide trigger forces minWidth past max-width
+    // (min-width wins in CSS) and the popup sprawls across the page, overlapping
+    // the sidebar / side rails.
+    const maxMenuW = Math.min(320, Math.round(window.innerWidth * 0.9));
     const style: React.CSSProperties = {
       position: "fixed",
       // Above modals/drawers (which sit at z-[100]) so a Select used inside a
       // modal opens in front of it, not hidden behind it.
       zIndex: 200,
-      minWidth: Math.round(rect.width),
+      minWidth: Math.min(Math.round(rect.width), maxMenuW),
     };
     if (alignRight) style.right = Math.round(Math.max(8, window.innerWidth - rect.right));
     else style.left = Math.round(rect.left);
     // Anchor by `bottom` when flipping so the exact menu height isn't needed.
-    if (flip) style.bottom = Math.round(window.innerHeight - rect.top + 4);
-    else style.top = Math.round(rect.bottom + 4);
+    // A 2px seam keeps the menu visually attached to the trigger (no floating gap).
+    if (flip) style.bottom = Math.round(window.innerHeight - rect.top + 2);
+    else style.top = Math.round(rect.bottom + 2);
     setFlipUp(flip);
     setMenuStyle(style);
   }
@@ -106,7 +113,18 @@ export function Select({
     }
     // Fixed coords go stale on scroll/resize — recompute so the menu tracks the
     // trigger (a scroll in any ancestor bubbles to this capture-phase listener).
-    const onReflow = () => reposition();
+    // Two guards keep this cheap: (1) scrolling INSIDE the open menu must not
+    // reposition it — the trigger hasn't moved, and a getBoundingClientRect +
+    // setState on every wheel frame is what made the list stutter; (2) coalesce
+    // reflows to one per animation frame so a fast page-scroll can't queue many.
+    const onReflow = (e?: Event) => {
+      if (e && e.target instanceof Node && menuRef.current?.contains(e.target)) return;
+      if (rafRef.current != null) return;
+      rafRef.current = requestAnimationFrame(() => {
+        rafRef.current = null;
+        reposition();
+      });
+    };
     document.addEventListener("mousedown", onDown);
     document.addEventListener("keydown", onKey);
     window.addEventListener("resize", onReflow);
@@ -116,6 +134,7 @@ export function Select({
       document.removeEventListener("keydown", onKey);
       window.removeEventListener("resize", onReflow);
       window.removeEventListener("scroll", onReflow, true);
+      if (rafRef.current != null) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
     };
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -182,11 +201,12 @@ export function Select({
         <ul
           ref={menuRef}
           role="listbox"
+          data-floating-popup
           style={menuStyle}
           className={`w-max max-w-[min(20rem,90vw)] max-h-72 overflow-y-auto scrollbar-none card-elevated bg-card p-1 animate-scale-in ${flipUp ? "origin-bottom" : "origin-top"} ${menuClassName}`}
         >
           {searchable && (
-            <li className="sticky top-0 bg-card p-1 -m-1 mb-1 border-b border-border z-10">
+            <li className="sticky -top-1 bg-card px-1 pt-1 pb-1.5 -mx-1 -mt-1 mb-1 border-b border-border z-10">
               <input
                 autoFocus
                 value={query}

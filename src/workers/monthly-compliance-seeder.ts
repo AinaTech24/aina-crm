@@ -204,25 +204,10 @@ export async function seedTenant(tenantId: string, monthDate?: Date): Promise<Se
   return { tenantId, created, skippedExisting: skipped, durationMs: Date.now() - started };
 }
 
-export async function runMonthlyComplianceSweep(monthDate?: Date) {
-  const startedAt = Date.now();
-  const tenants = await listActiveTenants();
-  let totalCreated = 0;
-  let totalSkipped = 0;
-  const failed: string[] = [];
-  for (const tenantId of tenants) {
-    try {
-      const r = await seedTenant(tenantId, monthDate);
-      totalCreated += r.created;
-      totalSkipped += r.skippedExisting;
-    } catch (err: any) {
-      console.error(`[monthly-compliance] tenant ${tenantId} failed:`, err.message);
-      failed.push(tenantId);
-    }
-  }
-  const durationMs = Date.now() - startedAt;
-  console.log(
-    `[monthly-compliance] swept ${tenants.length} tenants in ${durationMs}ms — created ${totalCreated} tasks, skipped ${totalSkipped} duplicates`
-  );
-  return { tenants: tenants.length, created: totalCreated, skipped: totalSkipped, failed, durationMs };
+export async function runMonthlyComplianceSweep(_monthDate?: Date) {
+  // Monthly compliance-checklist task seeding is DISABLED per firm preference
+  // ("turn off all auto tasks"). The per-tenant seedTenant()/CHECKLIST logic is
+  // preserved in git history — restore this body to re-enable the monthly
+  // SEBI-checklist auto-tasks.
+  return { tenants: 0, created: 0, skipped: 0, failed: [] as string[], durationMs: 0 };
 }

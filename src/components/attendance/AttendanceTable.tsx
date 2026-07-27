@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Clock } from "lucide-react";
 import { formatDate } from "@/lib/utils";
@@ -52,7 +52,7 @@ function hhmm(iso: string | null): string {
   return new Date(iso).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Kolkata" });
 }
 
-export function AttendanceTable({ rows, canManage }: { rows: AttRow[]; canManage: boolean }) {
+export function AttendanceTable({ rows, canManage, toolbar }: { rows: AttRow[]; canManage: boolean; toolbar?: ReactNode }) {
   const router = useRouter();
   const toast = useToast();
   const [busy, setBusy] = useState<string | null>(null);
@@ -126,8 +126,22 @@ export function AttendanceTable({ rows, canManage }: { rows: AttRow[]; canManage
     }
   }
 
+  const header = toolbar ? (
+    <div className="flex items-center justify-between gap-2 px-4 py-2.5 border-b border-border">
+      <div className="text-sm font-semibold whitespace-nowrap">
+        Attendance <span className="text-muted-foreground font-normal text-xs">· {rows.length}</span>
+      </div>
+      {toolbar}
+    </div>
+  ) : null;
+
   if (rows.length === 0) {
-    return <div className="card-surface p-12 text-center text-sm text-muted-foreground">No attendance records match.</div>;
+    return (
+      <div className="card-surface overflow-hidden">
+        {header}
+        <div className="p-12 text-center text-sm text-muted-foreground">No attendance records match these filters.</div>
+      </div>
+    );
   }
 
   return (
@@ -152,7 +166,9 @@ export function AttendanceTable({ rows, canManage }: { rows: AttRow[]; canManage
         </div>
       )}
 
-      <div className="card-surface table-scroll">
+      <div className="card-surface overflow-hidden">
+        {header}
+        <div className="table-scroll">
         <table className="w-full text-sm">
           <thead className="text-xs text-muted-foreground border-b sticky top-0 z-10 bg-card">
             <tr>
@@ -262,6 +278,7 @@ export function AttendanceTable({ rows, canManage }: { rows: AttRow[]; canManage
             ))}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );

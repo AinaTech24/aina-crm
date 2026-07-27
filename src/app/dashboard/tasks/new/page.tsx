@@ -26,11 +26,40 @@ import {
   Sparkles,
   LifeBuoy,
   Calendar,
+  LayoutTemplate,
+  Plus,
+  Bell,
+  ShieldCheck,
+  Timer,
+  Tag as TagIcon,
 } from "lucide-react";
 import { InvestorLookup } from "@/components/common/InvestorLookup";
 import { RmSelector } from "@/components/common/RmSelector";
 import { SelectField } from "@/components/ui/SelectField";
 import { DateField } from "@/components/ui/DateField";
+
+type TaskTemplate = {
+  id: string;
+  name: string;
+  description: string | null;
+  taskType: string | null;
+  department: string | null;
+  priority: string | null;
+  dueOffsetDays: number | null;
+  subtasks: Array<{ id: string; text: string }>;
+  isActive: boolean;
+};
+
+type ChecklistItem = { id: string; text: string; done: boolean };
+
+/** Type values the form's Type <SelectField> knows natively. */
+const KNOWN_TYPES = [
+  "follow_up",
+  "review_meeting",
+  "collect_document",
+  "kyc_renewal",
+  "mandate_renewal",
+];
 
 const DEPARTMENTS: [string, string][] = [
   ["sales", "Sales"],
@@ -56,6 +85,10 @@ export default function NewTaskPage() {
     department: "",
     assigneeId: "",
     remarks: "",
+    requiresApproval: false,
+    reminder: "none", // none | at_due | 1h | 3h | 1d | 2d | 1w  (relative to due)
+    estimateMinutes: "", // planned effort (minutes)
+    tags: [] as string[],
     recurrence: "", // "" = one-off
     recurrenceUntil: "",
     relatedInvestorId: "",
@@ -69,6 +102,70 @@ export default function NewTaskPage() {
   });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [tagInput, setTagInput] = useState("");
+  function addTag(raw: string) {
+    const v = raw.trim().replace(/,$/, "").slice(0, 40);
+    setForm((s) => (v && !s.tags.includes(v) ? { ...s, tags: [...s.tags, v] } : s));
+    setTagInput("");
+  }
+
+  // ── Task templates ──
+  const [templates, setTemplates] = useState<TaskTemplate[]>([]);
+  const [templateId, setTemplateId] = useState("");
+  const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
+  const [titleTouched, setTitleTouched] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await fetch("/api/task-templates");
+        if (!r.ok) return;
+        const j = await r.json();
+        setTemplates(Array.isArray(j.templates) ? j.templates : []);
+      } catch {
+        /* templates are optional — ignore */
+      }
+    })();
+  }, []);
+
+  function applyTemplate(id: string) {
+    setTemplateId(id);
+    if (!id) {
+      // "— blank task —": drop template-derived sub-tasks; leave typed fields alone.
+      setChecklist([]);
+      if (!titleTouched) set("title", "");
+      return;
+    }
+    const t = templates.find((x) => x.id === id);
+    if (!t) return;
+    setForm((s) => {
+      const next = { ...s };
+      if (!titleTouched || !s.title.trim()) next.title = t.name;
+      if (t.description && !s.description.trim()) next.description = t.description;
+      if (t.taskType) {
+        if (KNOWN_TYPES.includes(t.taskType)) {
+          next.type = t.taskType;
+          next.customType = "";
+        } else {
+          next.type = "custom";
+          next.customType = t.taskType;
+        }
+      }
+      if (t.priority && ["low", "normal", "high", "urgent"].includes(t.priority))
+        next.priority = t.priority;
+      if (t.department && DEPARTMENTS.some(([k]) => k === t.department))
+        next.department = t.department;
+      if (t.dueOffsetDays != null) next.dueDate = defaultDueDate(t.dueOffsetDays);
+      return next;
+    });
+    setChecklist(
+      (t.subtasks ?? []).map((st) => ({
+        id: st.id || crypto.randomUUID(),
+        text: st.text,
+        done: false,
+      }))
+    );
+  }
 
   function set<K extends keyof typeof form>(k: K, v: (typeof form)[K]) {
     setForm((s) => ({ ...s, [k]: v }));
@@ -95,7 +192,20 @@ export default function NewTaskPage() {
         department: form.department || undefined,
         assigneeId: form.assigneeId || undefined,
         remarks: form.remarks || undefined,
+        requiresApproval: form.requiresApproval || undefined,
+        estimateMinutes: form.estimateMinutes ? Math.max(0, parseInt(form.estimateMinutes, 10) || 0) : undefined,
+        tags: form.tags.length ? form.tags : undefined,
       };
+      // Reminder — computed relative to the due date.
+      if (form.reminder !== "none" && form.dueDate) {
+        const offsetMin: Record<string, number> = { at_due: 0, "1h": 60, "3h": 180, "1d": 1440, "2d": 2880, "1w": 10080 };
+        const base = new Date(form.dueDate).getTime();
+        payload.remindAt = new Date(base - (offsetMin[form.reminder] ?? 0) * 60000).toISOString();
+      }
+      const cleanChecklist = checklist
+        .map((c) => ({ id: c.id.slice(0, 64), text: c.text.trim(), done: false }))
+        .filter((c) => c.text.length > 0);
+      if (cleanChecklist.length > 0) payload.checklist = cleanChecklist;
       if (form.recurrence) {
         payload.recurrence = form.recurrence;
         if (form.recurrenceUntil) payload.recurrenceUntil = form.recurrenceUntil;
@@ -137,6 +247,33 @@ export default function NewTaskPage() {
         </h1>
       </div>
 
+      {/* Start from a template */}
+      {templates.length > 0 && (
+        <div className="card-surface p-5 space-y-3">
+          <div className="flex items-center gap-2">
+            <div className="h-4 w-1 rounded-full brand-bar" />
+            <h2 className="section-title flex items-center gap-1.5">
+              <LayoutTemplate className="size-4 text-brand-cyan" /> Start from a template
+            </h2>
+          </div>
+          <SelectField
+            value={templateId}
+            onChange={(e) => applyTemplate(e.target.value)}
+            className="w-full sm:max-w-sm"
+          >
+            <option value="">— blank task —</option>
+            {templates.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </SelectField>
+          <p className="text-[11px] text-muted-foreground">
+            Switching template replaces the sub-task list.
+          </p>
+        </div>
+      )}
+
       {/* Title + description */}
       <div className="card-surface p-5 space-y-3">
         <div className="flex items-center gap-2">
@@ -149,7 +286,10 @@ export default function NewTaskPage() {
           </div>
           <input
             value={form.title}
-            onChange={(e) => set("title", e.target.value)}
+            onChange={(e) => {
+              setTitleTouched(true);
+              set("title", e.target.value);
+            }}
             // placeholder="Call client to share quarterly review"
             className="input-base"
           />
@@ -385,6 +525,138 @@ export default function NewTaskPage() {
             </div>
           )}
         </div>
+
+        {/* Reminder + approval */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <label className="block">
+            <div className="text-xs font-medium mb-1 flex items-center gap-1">
+              <Bell className="size-3.5 text-brand-cyan" /> Reminder <span className="text-[10px] text-muted-foreground font-normal">· pings the assignee</span>
+            </div>
+            <SelectField
+              value={form.reminder}
+              onChange={(e) => set("reminder", e.target.value)}
+              className="w-full"
+              disabled={!form.dueDate}
+            >
+              <option value="none">No reminder</option>
+              <option value="at_due">At due time</option>
+              <option value="1h">1 hour before due</option>
+              <option value="3h">3 hours before due</option>
+              <option value="1d">1 day before due</option>
+              <option value="2d">2 days before due</option>
+              <option value="1w">1 week before due</option>
+            </SelectField>
+          </label>
+          <label className="flex items-start gap-2 sm:pt-6 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={form.requiresApproval}
+              onChange={(e) => set("requiresApproval", e.target.checked)}
+              className="size-3.5 rounded mt-0.5"
+            />
+            <span className="text-xs">
+              <span className="font-medium flex items-center gap-1"><ShieldCheck className="size-3.5 text-brand-cyan" /> Require my approval</span>
+              <span className="block text-[10px] text-muted-foreground mt-0.5">
+                The assignee submits for sign-off instead of completing it directly.
+              </span>
+            </span>
+          </label>
+
+          <label className="block">
+            <div className="text-xs font-medium mb-1 flex items-center gap-1">
+              <Timer className="size-3.5 text-brand-cyan" /> Estimate <span className="text-[10px] text-muted-foreground font-normal">· minutes</span>
+            </div>
+            <input
+              type="number"
+              min={0}
+              value={form.estimateMinutes}
+              onChange={(e) => set("estimateMinutes", e.target.value)}
+              placeholder="e.g. 30"
+              className="input-base"
+            />
+          </label>
+
+          <div className="block">
+            <div className="text-xs font-medium mb-1 flex items-center gap-1">
+              <TagIcon className="size-3.5 text-brand-cyan" /> Tags
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-border bg-background px-2 py-1.5 min-h-[38px]">
+              {form.tags.map((tg) => (
+                <span key={tg} className="chip text-[10px] bg-slate-100 text-slate-600 border border-slate-200 inline-flex items-center gap-1">
+                  {tg}
+                  <button type="button" onClick={() => set("tags", form.tags.filter((x) => x !== tg))} className="hover:text-rose-600" aria-label={`Remove ${tg}`}>
+                    <X className="size-2.5" />
+                  </button>
+                </span>
+              ))}
+              <input
+                value={tagInput}
+                onChange={(e) => setTagInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === ",") { e.preventDefault(); addTag(tagInput); } }}
+                onBlur={() => tagInput.trim() && addTag(tagInput)}
+                placeholder="Add tag…"
+                className="flex-1 min-w-[80px] bg-transparent text-xs focus:outline-none"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Sub-tasks (checklist — stored in meta.checklist, editable in the task drawer) */}
+        {checklist.length > 0 || templateId ? (
+          <div className="rounded-lg border border-border bg-secondary/30 p-3 space-y-2">
+            <div className="flex items-center gap-2">
+              <ListChecks className="size-3.5 text-brand-cyan" />
+              <span className="text-xs font-medium">Sub-tasks</span>
+              <span className="inline-flex items-center rounded-full bg-brand-cyan-light/60 text-brand-cyan-deep text-[10px] font-medium px-2 py-0.5">
+                {checklist.length} sub-task{checklist.length === 1 ? "" : "s"}
+              </span>
+            </div>
+            {checklist.map((c, i) => (
+              <div key={c.id} className="flex items-center gap-2">
+                <input
+                  value={c.text}
+                  onChange={(e) =>
+                    setChecklist((list) =>
+                      list.map((x, j) => (j === i ? { ...x, text: e.target.value } : x))
+                    )
+                  }
+                  placeholder="Sub-task…"
+                  className="input-base flex-1"
+                />
+                <button
+                  type="button"
+                  onClick={() => setChecklist((list) => list.filter((_, j) => j !== i))}
+                  className="btn-icon"
+                  title="Remove sub-task"
+                >
+                  <X className="size-3.5" />
+                </button>
+              </div>
+            ))}
+            <button
+              type="button"
+              onClick={() =>
+                setChecklist((list) => [
+                  ...list,
+                  { id: crypto.randomUUID(), text: "", done: false },
+                ])
+              }
+              className="btn-secondary text-xs"
+            >
+              <Plus className="size-3.5" /> Add sub-task
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() =>
+              setChecklist([{ id: crypto.randomUUID(), text: "", done: false }])
+            }
+            className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+          >
+            <Plus className="size-3.5" /> Add sub-tasks
+          </button>
+        )}
 
         {err && (
           <div className="rounded-lg border border-destructive/30 bg-destructive/5 text-destructive text-sm px-3 py-2">

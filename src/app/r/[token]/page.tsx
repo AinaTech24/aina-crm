@@ -10,7 +10,7 @@
  */
 
 import { notFound } from "next/navigation";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { ShieldCheck } from "lucide-react";
 import { withSystem } from "@/db/client";
 import { tenants, leads, investors, riskProfileTemplates } from "@/db/schema";
@@ -36,12 +36,15 @@ export default async function PublicRiskFormPage({ params }: { params: Promise<{
   const data = await withSystem(async (tx) => {
     const [tenant] = await tx.select().from(tenants).where(eq(tenants.id, info.tenantId));
     let recipientName = "";
+    let subjectEmail: string | null = null;
     if (info.subjectType === "lead") {
       const [l] = await tx.select().from(leads).where(eq(leads.id, info.subjectId));
       recipientName = l?.name ?? "";
+      subjectEmail = l?.email ?? null;
     } else if (info.subjectType === "investor") {
       const [i] = await tx.select().from(investors).where(eq(investors.id, info.subjectId));
       recipientName = i?.name ?? "";
+      subjectEmail = i?.email ?? null;
     }
     const [activeTpl] = await tx
       .select()
@@ -61,7 +64,27 @@ export default async function PublicRiskFormPage({ params }: { params: Promise<{
     } else {
       tpl = defaultTemplate();
     }
-    return { tenant, recipientName, tpl };
+
+    // Email-OTP flag on the active template. Raw select for just this column —
+    // the Drizzle schema field may lag the migration (0xxx adds
+    // risk_profile_templates.require_email_otp), and we only need the boolean.
+    // Reads the LATEST version (same row the submit endpoint enforces against).
+    let requireOtp = false;
+    try {
+      const flagRes = await tx.execute(sql`
+        select require_email_otp as flag
+        from risk_profile_templates
+        where tenant_id = ${info.tenantId}
+        order by version_number desc
+        limit 1
+      `);
+      const rows: any[] = (flagRes as any)?.rows ?? (flagRes as any) ?? [];
+      requireOtp = rows[0]?.flag === true;
+    } catch {
+      requireOtp = false; // column not migrated yet — behave as before
+    }
+
+    return { tenant, recipientName, tpl, requireOtp, maskedEmailOnFile: maskEmail(subjectEmail) };
   });
 
   return (
@@ -84,6 +107,8 @@ export default async function PublicRiskFormPage({ params }: { params: Promise<{
           tokenId={info.id}
           recipientName={data.recipientName}
           template={data.tpl}
+          requireOtp={data.requireOtp}
+          maskedEmailOnFile={data.maskedEmailOnFile}
         />
       </main>
 
@@ -93,6 +118,22 @@ export default async function PublicRiskFormPage({ params }: { params: Promise<{
       </footer>
     </div>
   );
+}
+
+/**
+ * Mask an email for display on the public page: "pritesh@gmail.com" →
+ * "pr•••@gmail.com". The raw email is NEVER sent to the client — only this
+ * masked form crosses the server/client boundary.
+ */
+function maskEmail(email: string | null): string | null {
+  if (!email) return null;
+  const trimmed = email.trim();
+  const at = trimmed.indexOf("@");
+  if (at <= 0 || at === trimmed.length - 1) return null;
+  const local = trimmed.slice(0, at);
+  const domain = trimmed.slice(at); // includes "@"
+  const keep = local.slice(0, Math.min(2, local.length));
+  return `${keep}•••${domain}`;
 }
 
 function ErrorScreen({ message }: { message: string }) {

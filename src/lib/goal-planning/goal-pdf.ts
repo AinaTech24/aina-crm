@@ -7,8 +7,9 @@
  * footer. Returned as a Buffer for the goal "Email" attachment.
  */
 
-import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage, type PDFImage, type RGB } from "pdf-lib";
-import { drawReportHeader } from "@/lib/pdf/report-header";
+import { PDFDocument, rgb, type PDFFont, type PDFPage, type PDFImage, type RGB } from "pdf-lib";
+import { drawReportHeader, drawContinuationHeader, drawPageNumbers } from "@/lib/pdf/report-header";
+import { embedPdfFonts, pdfSanitize } from "@/lib/pdf/fonts";
 import { computeGoal, monthsBetween, sensitivitySipRates, projectYearly } from "./calc";
 
 export type GoalBrand = {
@@ -38,14 +39,23 @@ const DISCLAIMER =
   "Mutual Fund investments are subject to market risks. Read all scheme related documents carefully. " +
   "Projections are illustrative based on the stated assumptions and are not guaranteed.";
 
-const PW = 595.28, PH = 841.89, MARGIN = 44;
+const PW = 595.28, PH = 841.89, MARGIN = 40;
 type Col = { h: string; w: number; align?: "r"; get: (r: any) => string };
+
+// Glyph switches — set per render from the embedded font's capabilities. The
+// Unicode embed is process-stable (depends only on font files on disk), so a
+// module-level flag is safe and lets every helper (inr/ascii) pick it up
+// without threading a parameter through each call site.
+let KEEP_RUPEE = false;
+let CUR = "Rs ";
 
 export async function renderGoalPdf(args: {
   goal: Record<string, any>;
   investor: { name?: string | null } | null;
   brand: GoalBrand;
   generatedAt?: string;
+  /** Audit reference (goal id) — printed in the footer as "Ref XXXXXXXX". */
+  refId?: string | null;
 }): Promise<Buffer> {
   const { goal, investor, brand } = args;
   const generatedAt = args.generatedAt ?? new Date().toISOString();
@@ -72,17 +82,25 @@ export async function renderGoalPdf(args: {
   } as any);
 
   const doc = await PDFDocument.create();
-  const helv = await doc.embedFont(StandardFonts.Helvetica);
-  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const { font: helv, bold, rupeeOk } = await embedPdfFonts(doc);
+  KEEP_RUPEE = rupeeOk;
+  CUR = rupeeOk ? "₹" : "Rs ";
   const primary = hexToRgb(brand.primaryColor);
   const secondary = brand.secondaryColor ? hexToRgb(brand.secondaryColor) : ACCENT;
   doc.setTitle(ascii(`Goal plan — ${goal.name ?? "Goal"}`));
   doc.setProducer("Aina CRM");
+  if (brand.legalName || brand.displayName) doc.setAuthor(ascii(brand.legalName ?? brand.displayName ?? ""));
 
   const usable = PW - 2 * MARGIN;
   const logo = await embedLogo(doc, brand.logoUrl);
   const cur = { page: doc.addPage([PW, PH]), y: 0 };
-  const newPage = () => { cur.page = doc.addPage([PW, PH]); cur.y = PH - MARGIN; };
+  const newPage = () => {
+    cur.page = doc.addPage([PW, PH]);
+    cur.y = drawContinuationHeader({
+      page: cur.page, helv, bold, pageWidth: PW, pageHeight: PH, margin: MARGIN,
+      firmName: brand.legalName ?? brand.displayName, title: "Goal plan", primary,
+    });
+  };
   const ensure = (need: number) => { if (cur.y - need < 92) { newPage(); return true; } return false; };
 
   // ── Letterhead — shared report header ──
@@ -175,7 +193,9 @@ export async function renderGoalPdf(args: {
   cur.y -= 14;
   drawTable(cur, { helv, bold }, projCols, projection, usable, newPage, ensure);
 
-  for (const pg of doc.getPages()) drawFooter(pg, { helv, bold, brand, generatedAt });
+  for (const pg of doc.getPages()) drawFooter(pg, { helv, bold, brand, generatedAt, refId: args.refId });
+  drawPageNumbers(doc, helv, PW, 8);
+  if (args.refId) doc.setSubject(`Ref ${String(args.refId).slice(0, 8)}`);
   return Buffer.from(await doc.save());
 }
 
@@ -222,12 +242,15 @@ function drawTable(
     cur.y -= 16;
   }
 }
-function drawFooter(page: PDFPage, a: { helv: PDFFont; bold: PDFFont; brand: GoalBrand; generatedAt: string }) {
+function drawFooter(page: PDFPage, a: { helv: PDFFont; bold: PDFFont; brand: GoalBrand; generatedAt: string; refId?: string | null }) {
   const pw = page.getWidth();
   page.drawRectangle({ x: MARGIN, y: 52, width: pw - 2 * MARGIN, height: 1, color: LINE });
   const legal = ascii(a.brand.legalName ?? a.brand.displayName ?? "Your Advisor");
   const arn = ascii(`ARN-${(a.brand.arn ?? "—").toString().replace(/^ARN-?/i, "")}`);
   page.drawText(`${legal}  -  ${arn}`, { x: MARGIN, y: 40, size: 8, font: a.bold, color: SLATE });
+  const gen = ascii(`Generated ${fmtDate(a.generatedAt)}${a.refId ? ` - Ref ${String(a.refId).slice(0, 8).toUpperCase()}` : ""}`);
+  const gw = a.helv.widthOfTextAtSize(gen, 7.5);
+  page.drawText(gen, { x: pw - MARGIN - gw, y: 40, size: 7.5, font: a.helv, color: MUTED });
   let dy = 26;
   for (const line of wrap(DISCLAIMER, a.helv, 7, pw - 2 * MARGIN).slice(0, 2)) {
     page.drawText(line, { x: MARGIN, y: dy, size: 7, font: a.helv, color: MUTED });
@@ -262,8 +285,8 @@ function drawGradientStrip(page: PDFPage, x: number, y: number, w: number, h: nu
 }
 function inr(n: any): string {
   const v = typeof n === "string" ? Number(n) : n;
-  if (v == null || !isFinite(v)) return "Rs 0";
-  return "Rs " + Math.round(v).toLocaleString("en-IN");
+  if (v == null || !isFinite(v)) return `${CUR}0`;
+  return CUR + Math.round(v).toLocaleString("en-IN");
 }
 function fmtDate(iso: string | Date): string {
   const d = new Date(iso);
@@ -294,7 +317,8 @@ function wrap(text: string, font: PDFFont, size: number, maxWidth: number): stri
 }
 function ascii(s: string): string {
   if (!s) return "";
-  return s.replace(/₹/g, "Rs ").replace(/[•]/g, "-").replace(/[–—]/g, "-").replace(/[''‘’]/g, "'").replace(/[“”]/g, '"').replace(/·/g, "-").replace(/[^\x20-\x7E]/g, "").trim();
+  // Keeps "₹" when the Unicode font is embedded; strips/converts otherwise.
+  return pdfSanitize(s.replace(/·/g, "-"), KEEP_RUPEE);
 }
 function hexToRgb(hex: string | null | undefined): RGB {
   const m = (hex ?? "").replace(/^#/, "").match(/^([0-9a-fA-F]{6})$/);

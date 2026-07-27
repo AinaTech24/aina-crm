@@ -2,6 +2,7 @@ import { handleApiError } from "@/lib/api/error-handler";
 /**
  * Single activity.
  *
+ *   GET    /api/activities/[id]  — one activity's full detail (mobile detail screen)
  *   PATCH  /api/activities/[id]  — edit outcome/notes/status/follow-up
  *   DELETE /api/activities/[id]  — remove a mis-logged activity
  *
@@ -9,7 +10,7 @@ import { handleApiError } from "@/lib/api/error-handler";
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
@@ -18,6 +19,31 @@ import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { ACTIVITY_DIRECTIONS, ACTIVITY_STATUSES, activities } from "@/db/schema";
 
 export const dynamic = "force-dynamic";
+
+export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  try {
+    const session = await requireSession();
+    const row = await withTenant(session.tenantId, async (tx) => {
+      const r = await tx.execute(sql`
+        SELECT a.id, a.kind, a.direction, a.status, a.subject, a.notes,
+               a.occurred_at, a.duration_sec, a.next_followup_at,
+               a.subject_type, a.subject_id, a.subject_name, a.subject_phone,
+               a.owner_user_id, a.location_label, a.geo_lat, a.geo_lng,
+               u.name AS owner_name
+        FROM activities a
+        LEFT JOIN users u ON u.id = a.owner_user_id
+        WHERE a.tenant_id = ${session.tenantId}::uuid AND a.id = ${id}::uuid
+        LIMIT 1
+      `);
+      return r.rows[0] ?? null;
+    });
+    if (!row) return NextResponse.json({ error: "not found" }, { status: 404 });
+    return NextResponse.json(row);
+  } catch (err: any) {
+    return handleApiError(err);
+  }
+}
 
 const Patch = z.object({
   subject: z.string().max(200).nullable().optional(),

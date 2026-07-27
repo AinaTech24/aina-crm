@@ -40,6 +40,7 @@ type Template = {
   questions: Question[];
   bands: Band[];
   reviewIntervalDays: number;
+  requireEmailOtp: boolean;
 };
 
 const SWATCHES = ["#10b981", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6", "#0ea5e9", "#64748b", "#ec4899"];
@@ -208,6 +209,7 @@ export function RiskTemplateEditor({
           questions: t.questions,
           bands: t.bands,
           reviewIntervalDays: t.reviewIntervalDays,
+          requireEmailOtp: t.requireEmailOtp,
         }),
       });
       const data = await r.json().catch(() => ({}));
@@ -324,6 +326,23 @@ export function RiskTemplateEditor({
           placeholder="Optional — context shown to RMs when they run this questionnaire."
         />
       </div>
+
+      {/* Client-submission email OTP */}
+      <label className="card-surface p-4 flex items-start gap-3 cursor-pointer select-none">
+        <input
+          type="checkbox"
+          checked={t.requireEmailOtp}
+          onChange={(e) => setMeta("requireEmailOtp", e.target.checked)}
+          className="mt-0.5 size-4 rounded border-input accent-brand-cyan"
+        />
+        <span>
+          <span className="block text-sm font-semibold">Require email OTP verification on client submissions</span>
+          <span className="block text-xs text-muted-foreground mt-0.5">
+            Clients must confirm a 6-digit code sent to their email before the form is accepted — the
+            verified email is stored on the profile.
+          </span>
+        </span>
+      </label>
 
       {/* ── Questions ───────────────────────────────────────────────────── */}
       <div>

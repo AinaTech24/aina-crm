@@ -15,9 +15,58 @@ import { useModuleList } from "../../../../src/features/list";
 import { REGISTRY, defaultFilter } from "../../../../src/features/registry";
 import { MENU } from "../../../../src/navigation/menu";
 import { palette } from "../../../../src/theme/tokens";
+import { CalendarScreen } from "../../../../src/features/calendar/Calendar";
+import { Billing } from "../../../../src/features/billing/Billing";
+import { FirmProfile } from "../../../../src/features/firm/FirmProfile";
+import { ProfileSettings } from "../../../../src/features/settings/ProfileSettings";
+import { SecuritySettings } from "../../../../src/features/settings/SecuritySettings";
+import { AppearanceSettings } from "../../../../src/features/settings/AppearanceSettings";
+import { OrganisationSettings } from "../../../../src/features/settings/OrganisationSettings";
+import { CustomFieldsSettings } from "../../../../src/features/settings/CustomFieldsSettings";
+import { OnboardingFieldsSettings } from "../../../../src/features/settings/OnboardingFieldsSettings";
+import { MastersHub, MasterTypeScreen } from "../../../../src/features/settings/MasterSettings";
+import { DesksSettings } from "../../../../src/features/settings/DesksSettings";
+import { IntegrationsSettings } from "../../../../src/features/settings/IntegrationsSettings";
+import { EmailSettings } from "../../../../src/features/settings/EmailSettings";
+import { WhatsAppSettings } from "../../../../src/features/settings/WhatsAppSettings";
+import { TargetsSettings } from "../../../../src/features/settings/TargetsSettings";
+import { AssignmentRulesSettings } from "../../../../src/features/settings/AssignmentRulesSettings";
+import { NotificationTemplatesSettings } from "../../../../src/features/settings/NotificationTemplatesSettings";
+import { RiskQuestionnaireSettings } from "../../../../src/features/settings/RiskQuestionnaireSettings";
+import { BlueprintsHub, BlueprintEditor } from "../../../../src/features/settings/BlueprintSettings";
+import { SettingsPlaceholder } from "../../../../src/features/settings/SettingsPlaceholder";
 
 export default function GenericModuleList() {
   const { module } = useLocalSearchParams<{ module: string }>();
+
+  // Bespoke screens (not registry list/detail): the Calendar module + the two
+  // infra screens reached from Settings / the header profile menu.
+  if (module === "calendar") return <CalendarScreen />;
+  if (module === "billing") return <Billing />;
+  if (module === "firm-profile") return <FirmProfile />;
+
+  // Settings sub-pages (routed as /m/settings-<x> so they reuse this stack's
+  // proper index anchor → clean one-press back to the Settings tab).
+  if (module === "settings-profile") return <ProfileSettings />;
+  if (module === "settings-security") return <SecuritySettings />;
+  if (module === "settings-appearance") return <AppearanceSettings />;
+  if (module === "settings-organisation") return <OrganisationSettings />;
+  if (module === "settings-custom-fields") return <CustomFieldsSettings />;
+  if (module === "settings-onboarding-fields") return <OnboardingFieldsSettings />;
+  if (module === "settings-masters") return <MastersHub />;
+  if (module?.startsWith("masters-")) return <MasterTypeScreen type={module.slice("masters-".length)} />;
+  if (module === "settings-desks") return <DesksSettings />;
+  if (module === "settings-integrations") return <IntegrationsSettings />;
+  if (module === "settings-email") return <EmailSettings />;
+  if (module === "settings-whatsapp") return <WhatsAppSettings />;
+  if (module === "settings-targets") return <TargetsSettings />;
+  if (module === "settings-assignment-rules") return <AssignmentRulesSettings />;
+  if (module === "settings-notification-templates") return <NotificationTemplatesSettings />;
+  if (module === "settings-risk-profile") return <RiskQuestionnaireSettings />;
+  if (module === "settings-blueprints") return <BlueprintsHub />;
+  if (module?.startsWith("blueprint-")) return <BlueprintEditor id={module.slice("blueprint-".length)} />;
+  if (module?.startsWith("settings-")) return <SettingsPlaceholder sectionKey={module.slice("settings-".length)} />;
+
   const cfg = REGISTRY[module];
 
   if (!cfg) {

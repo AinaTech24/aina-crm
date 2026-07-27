@@ -6,8 +6,11 @@ import { handleApiError } from "@/lib/api/error-handler";
 
 import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from "xlsx";
+import { and, asc, eq } from "drizzle-orm";
+import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
+import { customFieldDefs } from "@/db/schema";
 
 export const dynamic = "force-dynamic";
 
@@ -99,9 +102,20 @@ export async function POST(req: NextRequest) {
     if (rows.length > 5000) return NextResponse.json({ error: "too many rows (max 5000)" }, { status: 413 });
 
     const headers = Object.keys(rows[0]);
+
+    // Append the firm's custom fields so they're mappable in the dropdown.
+    const cfDefs = await withTenant(session.tenantId, (tx) =>
+      tx
+        .select({ key: customFieldDefs.key, label: customFieldDefs.label })
+        .from(customFieldDefs)
+        .where(and(eq(customFieldDefs.tenantId, session.tenantId), eq(customFieldDefs.entity, "lead")))
+        .orderBy(asc(customFieldDefs.sortOrder))
+    );
+    const ourFields = [...OUR_FIELDS, ...cfDefs.map((d) => ({ key: d.key, label: `${d.label} (custom)` }))];
+
     return NextResponse.json({
       headers,
-      ourFields: OUR_FIELDS,
+      ourFields,
       suggestedMapping: suggestMapping(headers),
       rows: rows.slice(0, 200),
       total: rows.length,

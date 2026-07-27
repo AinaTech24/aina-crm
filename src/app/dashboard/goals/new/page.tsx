@@ -47,8 +47,10 @@ export default async function NewGoalPage({
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Add a goal</h1>
         </div>
+        {/* Limited-height, scrollable picker (hidden scrollbar) so a long book
+            doesn't stretch the page. */}
         <div className="card-surface overflow-hidden">
-          <ul className="divide-y">
+          <ul className="divide-y max-h-[60vh] overflow-y-auto scrollbar-none">
             {list.map((i) => (
               <li key={i.id}>
                 <Link

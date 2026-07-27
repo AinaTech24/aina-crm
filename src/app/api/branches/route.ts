@@ -44,7 +44,7 @@ const PostBody = z.object({
 export async function GET() {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "settings.users");
+    requireCap(session.roles, "settings.users", session.permissions);
 
     const rows = await withTenant(session.tenantId, async (tx) => {
       return tx
@@ -64,7 +64,7 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "settings.users");
+    requireCap(session.roles, "settings.users", session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
 
     const parse = PostBody.safeParse(await req.json().catch(() => ({})));

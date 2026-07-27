@@ -8,9 +8,8 @@ import { Settings, ShieldCheck, Building2, UserCircle, LogOut, ChevronDown, Load
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
 /**
- * Header profile control. Opens on hover OR click and exposes account links +
- * Log out. Closes on outside-click or when the pointer leaves (small grace
- * delay so moving from the avatar into the menu doesn't dismiss it).
+ * Header profile control. Opens on CLICK (toggle) and exposes account links +
+ * Log out. Closes on outside-click or Escape.
  */
 export function ProfileMenu({
   name,
@@ -43,7 +42,6 @@ export function ProfileMenu({
   const [coords, setCoords] = useState<{ top: number; right: number }>({ top: 0, right: 0 });
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
-  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const router = useRouter();
 
   /** Recompute the menu's viewport-fixed position from the trigger's rect. */
@@ -78,19 +76,6 @@ export function ProfileMenu({
     };
   }, [open]);
 
-  useEffect(() => () => {
-    if (closeTimer.current) clearTimeout(closeTimer.current);
-  }, []);
-
-  const openNow = () => {
-    if (closeTimer.current) clearTimeout(closeTimer.current);
-    setOpen(true);
-  };
-  const scheduleClose = () => {
-    if (closeTimer.current) clearTimeout(closeTimer.current);
-    closeTimer.current = setTimeout(() => setOpen(false), 180);
-  };
-
   function requestLogout() {
     setOpen(false);
     setConfirmOpen(true);
@@ -122,7 +107,7 @@ export function ProfileMenu({
     );
 
   return (
-    <div className="relative" onMouseEnter={openNow} onMouseLeave={scheduleClose}>
+    <div className="relative">
       <button
         ref={triggerRef}
         type="button"
@@ -141,8 +126,6 @@ export function ProfileMenu({
       {open && typeof document !== "undefined" && createPortal(
         <div
           ref={menuRef}
-          onMouseEnter={openNow}
-          onMouseLeave={scheduleClose}
           style={{ position: "fixed", top: coords.top, right: coords.right }}
           className="w-64 z-[100] origin-top-right animate-scale-in"
         >

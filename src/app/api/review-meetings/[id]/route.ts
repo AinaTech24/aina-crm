@@ -34,6 +34,74 @@ import {
 
 export const dynamic = "force-dynamic";
 
+/**
+ * GET /api/review-meetings/[id] — single meeting bundle.
+ *
+ * Returns the meeting row (snake_case, mirroring the list) with the subject
+ * (investor / lead) + RM names joined, plus an optional "prep brief" for
+ * upcoming investor meetings (same shape the web detail page computes). This
+ * one endpoint serves BOTH the mobile detail screen and the edit-form hydration.
+ */
+export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  try {
+    const session = await requireSession();
+    requireAny(session.roles, ["review_meeting.manage.all", "review_meeting.manage.assigned"], session.permissions);
+    const canAll = can(session.roles, "review_meeting.manage.all", session.permissions);
+    const data = await withTenant(
+      session.tenantId,
+      async (tx) => {
+        const r = await tx.execute(sql`
+          SELECT m.*, COALESCE(i.name, l.name) AS investor_name, l.name AS lead_name,
+                 i.segment_tag, i.pan AS investor_pan, u.name AS rm_name
+          FROM review_meetings m
+          LEFT JOIN investors i ON i.id = m.investor_id
+          LEFT JOIN leads l ON l.id = m.lead_id
+          LEFT JOIN users u ON u.id = m.rm_id
+          WHERE m.id = ${id}::uuid AND m.tenant_id = ${session.tenantId}::uuid
+          LIMIT 1
+        `);
+        const m = r.rows[0] as any;
+        if (!m) return null;
+        // RMs (manage.assigned) may only view their own meetings.
+        if (!canAll && m.rm_id !== session.userId) return { forbidden: true as const };
+
+        // Prep brief — only for upcoming/in-progress INVESTOR meetings.
+        let prep: any = null;
+        if (m.investor_id && ["scheduled", "confirmed", "in_progress"].includes(m.status)) {
+          const p = await tx.execute(sql`
+            SELECT
+              i.aum, i.last_review_at, i.active_sip_amount, i.health_score, i.health_band,
+              (SELECT count(*) FROM service_requests sr WHERE sr.investor_id = i.id
+                 AND sr.status IN ('open','in_progress','waiting_customer','escalated'))::int AS open_srs,
+              (SELECT count(*) FROM sips s WHERE s.investor_id = i.id
+                 AND s.status NOT IN ('stopped','cancelled','completed'))::int AS active_sips,
+              (SELECT count(*) FROM transactions t WHERE t.investor_id = i.id AND t.type = 'sip'
+                 AND t.status IN ('rejected','failed')
+                 AND t.order_date >= current_date - interval '180 days')::int AS bounces_6mo,
+              (SELECT count(*) FROM goals g WHERE g.investor_id = i.id)::int AS goals_count
+            FROM investors i WHERE i.id = ${m.investor_id}::uuid
+          `);
+          prep = (p.rows[0] as any) ?? null;
+        }
+        return { meeting: m, prep };
+      },
+      { userId: session.userId, branchId: session.branchId, roles: session.roles }
+    );
+    if (!data) return NextResponse.json({ error: "not found" }, { status: 404 });
+    if ("forbidden" in data) return NextResponse.json({ error: "you can only view your own meetings" }, { status: 403 });
+    const m = data.meeting;
+    return NextResponse.json({
+      ...m,
+      prep: data.prep,
+      subject_name: m.investor_name ?? m.lead_name ?? "Subject",
+      subject_kind: m.lead_id ? "lead" : "client",
+    });
+  } catch (err: any) {
+    return handleApiError(err);
+  }
+}
+
 const ActionItem = z.object({
   title: z.string().min(2).max(300),
   assigneeId: z.string().uuid().optional(),

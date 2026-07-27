@@ -141,7 +141,8 @@ async function loadTenantLicenseImpl(tenantId: string, roles?: string[]): Promis
     allowedFields,
     allowedNav,
     allowedDashboardWidgets,
-    featureFlags: (pkg?.featureFlags as Record<string, any>) ?? {},
+    // Package flags + per-tenant overrides (migration 0163) — the override wins.
+    featureFlags: { ...((pkg?.featureFlags as Record<string, any>) ?? {}), ...((sub.featureFlagsOverride as Record<string, any>) ?? {}) },
     maxUsers: pkg?.maxUsers ?? 1,
     maxInvestors: pkg?.maxInvestors ?? 100,
     trialEndsAt: sub.trialEndsAt ? new Date(sub.trialEndsAt) : null,

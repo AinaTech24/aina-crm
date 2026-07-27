@@ -130,38 +130,6 @@ export default async function FinancialPlansPage({
         </Link>
       </div>
 
-      {/* KPI Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <StatCard
-          icon={FileText}
-          label="Total Plans"
-          value={String(totalPlans)}
-          subtext="Generated for clients"
-          tone="muted"
-        />
-        <StatCard
-          icon={TrendingUp}
-          label="Surplus Analyzed"
-          value={formatINR(totalSurplus)}
-          subtext="Total monthly surplus cash flow"
-          tone="emerald"
-        />
-        <StatCard
-          icon={Briefcase}
-          label="Net Worth Tracked"
-          value={formatINR(totalNetWorth)}
-          subtext="Total assets minus liabilities"
-          tone="cyan"
-        />
-        <StatCard
-          icon={ShieldCheck}
-          label="Average Surplus"
-          value={formatINR(avgSurplus)}
-          subtext="Per financial plan"
-          tone="emerald"
-        />
-      </div>
-
       {/* Filter and Table Container */}
       <div className="space-y-4">
         <FilterBar

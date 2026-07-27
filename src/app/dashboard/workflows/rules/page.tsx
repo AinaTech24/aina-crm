@@ -8,6 +8,7 @@ import { MODULES, type ModuleKey } from "@/lib/workflow-rules/modules";
 import { RuleToggle } from "@/components/workflow-rules/RuleToggle";
 import { MoveRuleButton } from "@/components/workflow-rules/MoveRuleButton";
 import { ClickableRow } from "@/components/common/ClickableRow";
+import { HelpTip } from "@/components/common/HelpTip";
 import { formatRelative } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -89,28 +90,41 @@ export default async function WorkflowRulesPage({
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <div className="flex items-center justify-between flex-wrap gap-3">
+      <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
-          <h1 className="page-title">
-            <Workflow className="size-6 text-brand-cyan" /> Workflow Rules
-          </h1>
+          <div className="flex items-center gap-1.5">
+            <h1 className="page-title">
+              <Workflow className="size-6 text-brand-cyan" /> Workflow Rules
+            </h1>
+            <HelpTip title="What are automations?">
+              Automations do repetitive work for you — send a WhatsApp when a SIP
+              bounces, create a task on a birthday, and more. Start from a
+              ready-made recipe; you can tweak it. The blank builder is only for
+              advanced custom rules.
+            </HelpTip>
+          </div>
         </div>
-        <div className="flex gap-2">
-          <Link href="/dashboard/workflows/rules/library" className="btn-secondary">
-            <BookMarked className="size-4" /> Rule Library
-          </Link>
-          <Link href="/dashboard/workflows/actions" className="btn-secondary">
-            <ListChecks className="size-4" /> Actions
-          </Link>
-          <Link
-            href={`/dashboard/workflows/rules${moduleFilter ? `?module=${moduleFilter}&` : "?"}view=${view === "summary" ? "list" : "summary"}`}
-            className="btn-secondary"
-          >
-            {view === "summary" ? "List View" : "Summary View"}
-          </Link>
-          <Link href="/dashboard/workflows/rules/new" className="btn-primary">
-            <Plus className="size-4" /> Create Rule
-          </Link>
+        <div className="flex flex-col items-end gap-1.5">
+          <div className="flex gap-2">
+            <Link href="/dashboard/workflows/actions" className="btn-secondary">
+              <ListChecks className="size-4" /> Actions
+            </Link>
+            <Link
+              href={`/dashboard/workflows/rules${moduleFilter ? `?module=${moduleFilter}&` : "?"}view=${view === "summary" ? "list" : "summary"}`}
+              className="btn-secondary"
+            >
+              {view === "summary" ? "List View" : "Summary View"}
+            </Link>
+            <Link href="/dashboard/workflows/rules/new" className="btn-secondary text-xs">
+              <Plus className="size-3.5" /> Advanced: build your own
+            </Link>
+            <Link href="/dashboard/workflows/rules/library" className="btn-primary">
+              <BookMarked className="size-4" /> Start from a recipe
+            </Link>
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            New here? Start from a recipe — the blank builder is only for power users.
+          </p>
         </div>
       </div>
 
@@ -146,9 +160,19 @@ export default async function WorkflowRulesPage({
           <Workflow className="size-8 mx-auto text-muted-foreground/50" />
           <div className="mt-2 font-medium">No workflow rules yet.</div>
           <p className="mt-2 text-xs max-w-md mx-auto">
-            Click <strong>Create Rule</strong> to set up your first automation — e.g., "When a lead
-            stage becomes <em>proposal_shared</em>, send a WhatsApp follow-up after 3 days."
+            The easiest way to start is <strong>Start from a recipe</strong> — pick a
+            ready-made automation (e.g., "When a lead stage becomes <em>proposal_shared</em>,
+            send a WhatsApp follow-up after 3 days") and tweak it. Advanced users can build a
+            custom rule from scratch.
           </p>
+          <div className="mt-4 flex items-center justify-center gap-2">
+            <Link href="/dashboard/workflows/rules/library" className="btn-primary">
+              <BookMarked className="size-4" /> Start from a recipe
+            </Link>
+            <Link href="/dashboard/workflows/rules/new" className="btn-secondary text-xs">
+              <Plus className="size-3.5" /> Advanced: build your own
+            </Link>
+          </div>
         </div>
       ) : (
         [...byModule.entries()].map(([moduleKey, items]) => {

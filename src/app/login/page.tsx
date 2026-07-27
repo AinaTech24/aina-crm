@@ -1,22 +1,20 @@
-"use client";
+import { headers } from "next/headers";
+import { AuthShell } from "@/components/auth/AuthShell";
+import { resolveLoginBrandingByHost } from "@/lib/tenant/host";
 
-import { Suspense } from "react";
-import { Loader2 } from "lucide-react";
-import { ToastProvider } from "@/components/ui/Toast";
-import { AuthScreen } from "@/components/auth/AuthScreen";
+// Reads the request host to brand the login page for a firm's white-label domain
+// (their logo + theme show before login when hit on their subdomain/custom domain).
+export const dynamic = "force-dynamic";
 
-export default function LoginPage() {
+export default async function LoginPage() {
+  const h = await headers();
+  const host = h.get("x-forwarded-host") ?? h.get("host");
+  const branding = await resolveLoginBrandingByHost(host).catch(() => null);
+
   return (
-    <ToastProvider>
-      <Suspense
-        fallback={
-          <div className="min-h-screen grid place-items-center bg-secondary/20">
-            <Loader2 className="size-6 animate-spin text-primary" />
-          </div>
-        }
-      >
-        <AuthScreen initialMode="login" />
-      </Suspense>
-    </ToastProvider>
+    <>
+      {branding?.themeCss ? <style dangerouslySetInnerHTML={{ __html: branding.themeCss }} /> : null}
+      <AuthShell brandLogoUrl={branding?.logoUrl ?? null} brandName={branding?.name ?? null} />
+    </>
   );
 }

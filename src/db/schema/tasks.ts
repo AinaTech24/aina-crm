@@ -1,4 +1,4 @@
-import { date, index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { boolean, date, index, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { id, tenantId, timestamps } from "./_shared";
 import { tenants } from "./tenants";
 import { users } from "./users";
@@ -62,6 +62,44 @@ export const tasks = pgTable(
     startedAt: timestamp("started_at", { withTimezone: true }),
     completedAt: timestamp("completed_at", { withTimezone: true }),
 
+    /**
+     * Approval / verification loop (10x-Task-style delegation). When
+     * `requiresApproval` is set, the assignee "Submits for approval" instead of
+     * completing; the approver (creator or an owner) then Approves → completed,
+     * or Rejects → back to in_progress with a note. `approvalStatus` is NULL for
+     * ordinary tasks that don't use the loop.
+     */
+    requiresApproval: boolean("requires_approval").notNull().default(false),
+    approvalStatus: text("approval_status", { enum: ["pending", "approved", "rejected"] }),
+    submittedAt: timestamp("submitted_at", { withTimezone: true }),
+    approvedBy: uuid("approved_by"),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+    approvalNote: text("approval_note"),
+
+    /**
+     * Per-task reminder. `remindAt` is an absolute time to ping the assignee;
+     * `reminderFiredAt` stays NULL until the scanner fires it (and is cleared
+     * whenever remindAt changes so an edited reminder re-arms).
+     */
+    remindAt: timestamp("remind_at", { withTimezone: true }),
+    reminderFiredAt: timestamp("reminder_fired_at", { withTimezone: true }),
+    /** Set once the overdue scan has fired its one-time alert for this task. */
+    overdueNotifiedAt: timestamp("overdue_notified_at", { withTimezone: true }),
+
+    /**
+     * Time tracking. `estimateMinutes` is the planned effort; `timeSpentMinutes`
+     * is the accumulated logged effort (sum of task_time_logs). A running timer
+     * is represented by `startedAt` being non-null (set on start, cleared on
+     * stop when the elapsed span is written as a time log).
+     */
+    estimateMinutes: integer("estimate_minutes"),
+    timeSpentMinutes: integer("time_spent_minutes").notNull().default(0),
+
+    /** Dependency — this task is blocked until `blockedByTaskId` is completed. */
+    blockedByTaskId: uuid("blocked_by_task_id"),
+    /** Set once the "stale pending-approval" nudge fired (dedup watermark). */
+    approvalEscalatedAt: timestamp("approval_escalated_at", { withTimezone: true }),
+
     /** Soft-delete (Trash) — recoverable until permanently removed (migration 0155). */
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     deletedBy: uuid("deleted_by"),
@@ -97,6 +135,8 @@ export const tasks = pgTable(
     relSRIdx: index("tasks_related_sr_idx").on(t.tenantId, t.relatedServiceRequestId),
     relMeetingIdx: index("tasks_related_meeting_idx").on(t.tenantId, t.relatedMeetingId),
     deptIdx: index("tasks_department_idx").on(t.tenantId, t.department, t.status),
+    remindIdx: index("tasks_remind_idx").on(t.tenantId, t.remindAt),
+    approvalIdx: index("tasks_approval_idx").on(t.tenantId, t.approvalStatus),
   })
 );
 
@@ -121,6 +161,11 @@ export type TaskChecklistItem = {
   status?: SubTaskStatus;
   actionDate?: string | null; // ISO yyyy-mm-dd
   remark?: string;
+  /** Team member this sub-task is delegated to (a tenant user id). When set, the
+   *  assignee is notified and can open + edit the parent task. */
+  assigneeId?: string | null;
+  /** Denormalised name for display (resolved when assigned). */
+  assigneeName?: string | null;
 };
 
 /** Effective status of a sub-task — falls back to the legacy `done` flag. */

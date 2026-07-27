@@ -36,6 +36,11 @@ ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL \
 ENV DATABASE_URL=postgresql://build:build@127.0.0.1:5432/build \
     REDIS_URL=redis://127.0.0.1:6379 \
     NEXTAUTH_SECRET=build-time-placeholder-not-used-at-runtime
+# Bound V8's old-space heap for the build. Inside the container Node can't read
+# the host's real memory, so it picks a default ceiling too low for a cold
+# `next build` and OOMs ("Ineffective mark-compacts near heap limit"). Scoped to
+# the build stage only — the runtime stage is a separate FROM.
+ENV NODE_OPTIONS=--max-old-space-size=4096
 RUN npm run build
 
 # ---- runtime: lean image that runs either role -------------------------------

@@ -60,7 +60,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       status: 200,
       headers: {
         "content-type": "application/pdf",
-        "content-disposition": `${disposition}; filename="Proposal_${safe}.pdf"`,
+        "content-disposition": `${disposition}; filename="Proposal_${safe}_${new Date().toISOString().slice(0, 10)}.pdf"`,
         "cache-control": "no-store",
       },
     });

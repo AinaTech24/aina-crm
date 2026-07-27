@@ -76,7 +76,7 @@ export default function NewTenantPage() {
           <Section icon={Building2} title="Firm">
             <div className="grid sm:grid-cols-2 gap-3">
               <Field label="Firm legal name" value={form.firmName} setValue={(v) => set("firmName", v)} required />
-              <Field label="ARN" value={form.arn} setValue={(v) => set("arn", v)} required placeholder="ARN-XXXXX" />
+              <Field label="ARN (optional)" value={form.arn} setValue={(v) => set("arn", v)} placeholder="ARN-XXXXX — leave blank if not issued yet" />
             </div>
           </Section>
 

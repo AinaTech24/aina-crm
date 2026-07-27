@@ -28,11 +28,28 @@ function humanize(action: string): string {
   return map[verb] ?? action.replace(/[._]/g, " ").replace(/^\w/, (c) => c.toUpperCase());
 }
 
+// Meta / derived columns that change on every save but aren't meaningful edits.
+const NOISE_FIELDS = new Set([
+  "id", "tenantId", "updatedAt", "createdAt", "updatedById", "searchVector",
+  "healthScore", "healthBand", "healthReasons", "healthComputedAt",
+  "emailNormalized", "phoneNormalized", "leadScore", "scoreBand", "scoredAt",
+]);
+
+/** Every field that ACTUALLY changed in this entry — no arbitrary cap, and
+ *  unchanged fields are dropped so the log reflects real edits only. On a
+ *  create (no `before`) we show the populated fields as the initial snapshot. */
 function changedFields(e: Entry): Array<{ k: string; from?: any; to?: any }> {
   const after = e.after ?? {};
   const before = e.before ?? {};
-  const keys = Object.keys(after).filter((k) => !["id", "tenantId", "updatedAt", "createdAt"].includes(k));
-  return keys.slice(0, 8).map((k) => ({ k, from: (before as any)[k], to: after[k] }));
+  const isCreate = !e.before;
+  const keys = [...new Set([...Object.keys(before), ...Object.keys(after)])].filter((k) => !NOISE_FIELDS.has(k));
+  return keys
+    .filter((k) =>
+      isCreate
+        ? (after as any)[k] != null && (after as any)[k] !== ""
+        : JSON.stringify((before as any)[k]) !== JSON.stringify((after as any)[k])
+    )
+    .map((k) => ({ k, from: (before as any)[k], to: after[k] }));
 }
 
 const fmt = (v: any) => (v == null ? "—" : typeof v === "object" ? JSON.stringify(v) : String(v));

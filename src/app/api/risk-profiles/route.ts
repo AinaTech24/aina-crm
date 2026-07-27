@@ -19,14 +19,16 @@ import { requireSession } from "@/lib/auth/session";
 import { require as requireCap, requireAny, can } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
-import { riskProfileResponses, investors, eventsOutbox } from "@/db/schema";
+import { riskProfileResponses, investors, eventsOutbox, publicEmailOtps } from "@/db/schema";
 import { loadActiveTemplate, scoreAnswersAgainst } from "@/lib/risk-profile/template";
 
 export const dynamic = "force-dynamic";
 
 const Body = z.object({
   investorId: z.string().uuid(),
-  age: z.number().int().min(1).max(120).optional(),
+  // Tolerate null (a NaN age serializes to null) and coerce numeric strings —
+  // then treat anything outside 1–120 as "no age".
+  age: z.coerce.number().int().min(1).max(120).nullish(),
   answers: z.record(z.string(), z.string()), // { questionKey → answerValue }
   documentUrl: z.string().optional(),
   signedByName: z.string().optional(),
@@ -105,6 +107,15 @@ export async function POST(req: NextRequest) {
       const inv = (await tx.select().from(investors).where(eq(investors.id, body.investorId)).limit(1))[0];
       if (!inv) throw Object.assign(new Error("investor not found"), { status: 404 });
 
+      // Mandatory client authentication — a risk profile can only be saved once
+      // the client's email OTP has been verified for this investor (see
+      // /api/risk-profiles/otp/{send,verify}). The verified row is consumed below
+      // so it can't be reused for a second profile.
+      const [otp] = await tx.select().from(publicEmailOtps).where(eq(publicEmailOtps.tokenId, body.investorId));
+      if (!otp || !otp.verifiedAt) {
+        throw Object.assign(new Error("Client email is not verified — complete the email OTP step first."), { status: 403 });
+      }
+
       // Insert the response row — historical row is immutable; it carries the
       // resolved band label + score breakdown for SEBI audit.
       await tx.insert(riskProfileResponses).values({
@@ -131,8 +142,13 @@ export async function POST(req: NextRequest) {
         signedByName: body.signedByName ?? inv.name,
         nextReviewAt: nextReview.toISOString().slice(0, 10),
         rmRemarks: body.rmRemarks ?? null,
+        // Client authenticated via the email OTP verified above.
+        verificationMethod: "client_otp",
         createdById: session.userId,
       } as any);
+
+      // Consume the OTP so it can't be reused for another profile.
+      await tx.delete(publicEmailOtps).where(eq(publicEmailOtps.tokenId, body.investorId));
 
       await tx
         .update(investors)

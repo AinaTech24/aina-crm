@@ -10,6 +10,7 @@
  */
 
 import { useEffect } from "react";
+import { createPortal } from "react-dom";
 import { X, Download, FileText } from "lucide-react";
 
 export type ViewerDoc = {
@@ -64,7 +65,12 @@ export function DocumentViewerModal({ doc, onClose }: { doc: ViewerDoc | null; o
     </button>
   ) : null;
 
-  return (
+  if (typeof document === "undefined") return null;
+
+  // Portal to <body> so the fixed overlay escapes any ancestor stacking context
+  // (e.g. the scrolling <main>) — otherwise the sticky topbar paints over the
+  // top of the backdrop, leaving an unblurred strip.
+  return createPortal(
     <div
       className="fixed inset-0 z-[200] flex items-center justify-center p-3 sm:p-6"
       role="dialog"
@@ -111,6 +117,7 @@ export function DocumentViewerModal({ doc, onClose }: { doc: ViewerDoc | null; o
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

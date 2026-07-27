@@ -17,6 +17,8 @@ import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { AutoRefresh } from "@/components/common/AutoRefresh";
 import { OwnerCockpit } from "@/components/dashboards/OwnerCockpit";
+import { DashboardHeaderBar } from "@/components/dashboards/DashboardHeaderBar";
+import { resolvePeriodRange } from "@/lib/dashboard/period";
 import { RmDashboard } from "@/components/dashboards/RmDashboard";
 import { BackOfficeDashboard } from "@/components/dashboards/BackOfficeDashboard";
 import { MarketingDashboard } from "@/components/dashboards/MarketingDashboard";
@@ -41,6 +43,10 @@ export default async function DashboardPage({
   const sp = await searchParams;
   const period = (sp.period ?? "mtd") as "mtd" | "qtd" | "fytd" | "lm" | "custom";
   const pstart = sp.pstart;
+  // Owner cockpit custom-range window (Monthly / Quarterly / Custom range picks).
+  const pfrom = (sp.pfrom ?? "").slice(0, 10) || undefined;
+  const pto = (sp.pto ?? "").slice(0, 10) || undefined;
+  const periodLabel = resolvePeriodRange(period, new Date(), { customStart: pstart, from: pfrom, to: pto }).label;
   // Per-user dashboards use an explicit date range (date_from/date_to); the
   // firm-wide OwnerCockpit still uses the period chips.
   const dateFrom = (sp.date_from ?? "").slice(0, 10);
@@ -84,6 +90,9 @@ export default async function DashboardPage({
   // selector that scopes the dashboard to a single team member's RmDashboard.
   let dash: React.ReactNode;
   let memberBar: React.ReactNode = null;
+  // View / Create / Period controls — shown on the right of the "Viewing" row,
+  // only for the firm-wide Owner cockpit (not when drilled into one member).
+  let headerControls: React.ReactNode = null;
   if (can(roles, "dashboard.view.owner", perms)) {
     // Active-user roster drives the member dropdown. Tenant-scoped by RLS.
     const members = await withTenant(session.tenantId, async (tx) => {
@@ -109,8 +118,11 @@ export default async function DashboardPage({
     dash = selected ? (
       <RmDashboard session={session} targetUserId={selected.id} targetName={selected.name} from={dateFrom} to={dateTo} />
     ) : (
-      <OwnerCockpit session={session} period={period} customStart={pstart} />
+      <OwnerCockpit session={session} period={period} customStart={pstart} customFrom={pfrom} customTo={pto} />
     );
+    if (!selected) {
+      headerControls = <DashboardHeaderBar period={period} currentLabel={periodLabel} variant="light" />;
+    }
   } else if (can(roles, "dashboard.view.compliance", perms)) {
     dash = <ComplianceCockpit session={session} period={period} customStart={pstart} />;
   } else if (can(roles, "dashboard.view.marketing", perms)) {
@@ -130,7 +142,12 @@ export default async function DashboardPage({
           Conservative interval — pauses when the tab is hidden. */}
       <AutoRefresh intervalMs={30000} />
       <AnnouncementsStrip session={session} />
-      {memberBar && <div className="mb-5 mt-1">{memberBar}</div>}
+      {memberBar && (
+        <div className="mb-5 mt-1 flex items-center justify-between gap-3 flex-wrap">
+          {memberBar}
+          {headerControls}
+        </div>
+      )}
       {/* The role cockpits are async server components doing their own data
           fetching — stream them in behind a skeleton so the shell (sidebar,
           topbar, announcements) paints immediately. */}

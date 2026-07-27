@@ -59,6 +59,8 @@ export function SelectField({
   name,
   size = "md",
   placeholder,
+  searchable = false,
+  searchPlaceholder,
   "aria-label": ariaLabel,
 }: {
   value?: string | number | null;
@@ -71,6 +73,9 @@ export function SelectField({
   name?: string;
   size?: "sm" | "md";
   placeholder?: string;
+  /** Show a filter box at the top of the menu — handy for long option lists. */
+  searchable?: boolean;
+  searchPlaceholder?: string;
   "aria-label"?: string;
   // tolerate (and ignore) leftover native props from a mechanical conversion
   required?: boolean;
@@ -100,6 +105,8 @@ export function SelectField({
       ariaLabel={ariaLabel}
       size={size}
       id={id}
+      searchable={searchable}
+      searchPlaceholder={searchPlaceholder}
     />
   );
 }

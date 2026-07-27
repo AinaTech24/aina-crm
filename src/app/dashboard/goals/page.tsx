@@ -97,16 +97,6 @@ export default async function GoalsPage({
         </Link>
       </div>
 
-      {/* KPI row — spec statuses + reviews overdue */}
-      <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
-        <Stat label="Total goals" value={stats.total} />
-        <Stat label="On Track" value={stats.onTrack} tone="emerald" />
-        <Stat label="Behind Track" value={stats.behind} tone={stats.behind > 0 ? "amber" : "muted"} />
-        <Stat label="Achieved" value={stats.achieved} tone="emerald" />
-        <Stat label="Not Started" value={stats.notStarted} tone={stats.notStarted > 0 ? "amber" : "muted"} />
-        <Stat label="Reviews overdue" value={stats.reviewsOverdue} tone={stats.reviewsOverdue > 0 ? "rose" : "muted"} />
-      </div>
-
       <FilterBar
         totalCount={stats.total}
         filters={[

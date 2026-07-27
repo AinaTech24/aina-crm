@@ -11,6 +11,7 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { requireAny, can } from "@/lib/auth/rbac";
 import { renderRiskProfilePdf } from "@/lib/risk-profile/risk-profile-pdf";
+import { loadActiveTemplate } from "@/lib/risk-profile/template";
 
 export const dynamic = "force-dynamic";
 
@@ -55,10 +56,17 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         `)
       ).rows[0] as any;
 
+      // Template max score gives the number a scale ("24 / 40" on the PDF).
+      const tpl = await loadActiveTemplate(tx, session.tenantId).catch(() => null);
+      const maxScore = tpl
+        ? tpl.questions.reduce((s, q) => s + Math.max(...q.options.map((o) => o.score)), 0)
+        : null;
+
       const pdf = await renderRiskProfilePdf({
         profile: {
           category: row.final_category ?? null,
           totalScore: row.total_score != null ? Number(row.total_score) : null,
+          maxScore,
           profileDate: row.profile_date ?? null,
           signedAt: row.signed_at ? new Date(row.signed_at).toISOString() : null,
           signedByName: row.signed_by_name ?? null,
@@ -82,6 +90,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
           website: t?.website,
         },
         generatedAt: new Date().toISOString(),
+        refId: id,
       });
       return { pdf, name: row.investor_name ?? "client" };
     });
@@ -94,7 +103,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       status: 200,
       headers: {
         "content-type": "application/pdf",
-        "content-disposition": `${disposition}; filename="risk_profile_${safe}.pdf"`,
+        "content-disposition": `${disposition}; filename="RiskProfile_${safe}_${new Date().toISOString().slice(0, 10)}.pdf"`,
         // Inline previews re-open instantly within the window (the statement is
         // generated server-side and rarely changes); downloads stay uncached.
         "cache-control": download ? "no-store" : "private, max-age=120, must-revalidate",

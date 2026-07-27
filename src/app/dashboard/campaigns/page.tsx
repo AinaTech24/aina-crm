@@ -25,6 +25,7 @@ import { RowActions } from "@/components/common/RowActions";
 import { FilterBar } from "@/components/common/FilterBar";
 import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
 import { CustomViews } from "@/components/common/CustomViews";
+import { StatusChip, type Tone } from "@/components/common/StatusChip";
 
 const KIND_LABEL: Record<string, string> = {
   social_media: "Social Media",
@@ -54,34 +55,34 @@ const KIND_ICON: Record<string, any> = {
   other: Megaphone,
 };
 
-const STATUS_TONE: Record<string, string> = {
-  draft: "bg-gray-50 text-gray-700",
-  scheduled: "bg-blue-50 text-blue-700",
-  sending: "bg-amber-50 text-amber-700",
-  sent: "bg-emerald-50 text-emerald-700",
-  paused: "bg-slate-50 text-slate-700",
-  cancelled: "bg-rose-50 text-rose-700",
+const STATUS_TONE: Record<string, Tone> = {
+  draft: "neutral",
+  scheduled: "info",
+  sending: "warning",
+  sent: "success",
+  paused: "neutral",
+  cancelled: "danger",
 };
 
-const CONTENT_TONE: Record<string, string> = {
-  not_started: "bg-gray-50 text-gray-700",
-  drafting: "bg-amber-50 text-amber-700",
-  ready: "bg-blue-50 text-blue-700",
-  published: "bg-emerald-50 text-emerald-700",
+const CONTENT_TONE: Record<string, Tone> = {
+  not_started: "neutral",
+  drafting: "warning",
+  ready: "info",
+  published: "success",
 };
 
-const COMPLIANCE_TONE: Record<string, string> = {
-  pending: "bg-amber-50 text-amber-700",
-  cleared: "bg-emerald-50 text-emerald-700",
-  blocked: "bg-rose-50 text-rose-700",
-  not_required: "bg-slate-50 text-slate-700",
+const COMPLIANCE_TONE: Record<string, Tone> = {
+  pending: "warning",
+  cleared: "success",
+  blocked: "danger",
+  not_required: "neutral",
 };
 
-const APPROVAL_TONE: Record<string, string> = {
-  pending: "bg-amber-50 text-amber-700",
-  approved: "bg-emerald-50 text-emerald-700",
-  rejected: "bg-rose-50 text-rose-700",
-  not_required: "bg-slate-50 text-slate-700",
+const APPROVAL_TONE: Record<string, Tone> = {
+  pending: "warning",
+  approved: "success",
+  rejected: "danger",
+  not_required: "neutral",
 };
 
 export const dynamic = "force-dynamic";
@@ -327,9 +328,9 @@ export default async function CampaignsPage({
                           {c.name}
                         </Link>
                         <div className="mt-0.5">
-                          <span className={`chip text-[10px] ${STATUS_TONE[c.status] ?? ""}`}>
+                          <StatusChip tone={STATUS_TONE[c.status] ?? "neutral"} className="text-[10px]">
                             {c.status}
-                          </span>
+                          </StatusChip>
                         </div>
                       </td>
                       <td className="py-3">
@@ -363,19 +364,19 @@ export default async function CampaignsPage({
                         )}
                       </td>
                       <td className="py-3">
-                        <span className={`chip ${CONTENT_TONE[c.content_status] ?? ""}`}>
+                        <StatusChip tone={CONTENT_TONE[c.content_status] ?? "neutral"}>
                           {(c.content_status ?? "—").replace(/_/g, " ")}
-                        </span>
+                        </StatusChip>
                       </td>
                       <td className="py-3">
-                        <span className={`chip ${COMPLIANCE_TONE[c.compliance_check_status] ?? ""}`}>
+                        <StatusChip tone={COMPLIANCE_TONE[c.compliance_check_status] ?? "neutral"}>
                           {(c.compliance_check_status ?? "—").replace(/_/g, " ")}
-                        </span>
+                        </StatusChip>
                       </td>
                       <td className="py-3">
-                        <span className={`chip ${APPROVAL_TONE[c.approval_status] ?? ""}`}>
+                        <StatusChip tone={APPROVAL_TONE[c.approval_status] ?? "neutral"}>
                           {(c.approval_status ?? "—").replace(/_/g, " ")}
-                        </span>
+                        </StatusChip>
                       </td>
                       <td className="py-3 text-right tabular-nums">{c.leads_generated ?? 0}</td>
                       <td className="py-3 text-right tabular-nums">{c.meetings_booked ?? 0}</td>

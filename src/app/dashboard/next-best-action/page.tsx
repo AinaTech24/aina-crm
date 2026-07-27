@@ -16,6 +16,7 @@ import { NbaDateFilter } from "@/components/nba/NbaDateFilter";
 import { NbaUserFilter } from "@/components/nba/NbaUserFilter";
 import { NbaRowActions } from "@/components/nba/NbaRowActions";
 import { NbaFocusMode, type FocusAction } from "@/components/nba/NbaFocusMode";
+import { HelpTip } from "@/components/common/HelpTip";
 
 export const dynamic = "force-dynamic";
 
@@ -104,7 +105,13 @@ export default async function NextBestActionPage({ searchParams }: { searchParam
     <div className="space-y-6 max-w-5xl">
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2"><Sparkles className="size-6 text-brand-cyan" /> Next Best Action</h1>
+          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+            <Sparkles className="size-6 text-brand-cyan" /> Next Best Action
+            <HelpTip title="Next Best Action">
+              A prioritised, one-at-a-time worklist of the highest-value action for each client
+              right now — so nothing slips and your team always knows what to do next.
+            </HelpTip>
+          </h1>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <div className="inline-flex rounded-lg border border-border bg-card p-0.5 gap-0.5">

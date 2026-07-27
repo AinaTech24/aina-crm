@@ -77,6 +77,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       address: (tenant as any).address ?? null,
       logoUrl: (tenant as any).logoUrl ?? null,
       primaryColor: (tenant as any).primaryColor ?? null,
+      secondaryColor: (tenant as any).secondaryColor ?? null,
     };
 
     // Best-effort logo fetch (same SSRF guard). A failure just falls back to a

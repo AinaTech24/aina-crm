@@ -20,6 +20,7 @@ import { require as requireCap, areAssignableRoles, areKnownCapabilities } from 
 import { areKnownNavKeys } from "@/config/nav-access";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { offboardUser, type OffboardSummary } from "@/lib/offboarding";
+import { clearSessionRevocationCache, clearDeviceSessionCache } from "@/lib/auth/revocation";
 
 export const dynamic = "force-dynamic";
 
@@ -92,7 +93,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   // HR/PII (certificates, permissions, targets) — owner/admin only, matching the
   // PATCH/DELETE write paths. Without this any authenticated user could read a
   // colleague's full record by id.
-  requireCap(session.roles, "settings.users");
+  requireCap(session.roles, "settings.users", session.permissions);
   const { id } = await params;
   const data = await withTenant(session.tenantId, async (tx) => {
     // Tenant predicate is mandatory under the superuser/RLS-bypass model —
@@ -122,7 +123,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "settings.users");
+    requireCap(session.roles, "settings.users", session.permissions);
     const { id } = await params;
 
     const parse = PatchBody.safeParse(await req.json().catch(() => ({})));
@@ -204,9 +205,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       if (body.permissions !== undefined) patch.permissions = body.permissions;
       if (body.enabledModules !== undefined) patch.enabledModules = body.enabledModules;
       if (body.customLeaveEntitlements !== undefined) patch.customLeaveEntitlements = body.customLeaveEntitlements;
+      const deactivating =
+        body.status !== undefined &&
+        (body.status === "suspended" || body.status === "offboarded") &&
+        existing.status !== body.status;
       if (body.status !== undefined) {
         patch.status = body.status;
         if (body.status === "offboarded") patch.offboardedAt = new Date();
+        // Deactivating (suspend) must log the user out everywhere too — offboard
+        // already does this via offboardUser(), but suspend didn't.
+        if (deactivating) patch.sessionsInvalidAfter = new Date();
       }
 
       const [next] = await tx
@@ -225,6 +233,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         ...meta,
       });
 
+      // Revoke recorded device sessions so a suspended/offboarded user drops off
+      // their "devices" list and is kicked immediately.
+      if (deactivating) {
+        await tx.execute(
+          sql`UPDATE user_sessions SET revoked_at = now(), updated_at = now() WHERE user_id = ${id}::uuid AND revoked_at IS NULL`
+        );
+      }
+
       // Run the cascade only on the actual transition into offboarded —
       // skip the work if the user was already offboarded (idempotent
       // PATCHes shouldn't re-create the "redistribute clients" task).
@@ -241,22 +257,45 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         });
       }
 
-      return { user: next, cascade };
+      return { user: next, cascade, deactivated: deactivating };
     });
 
     if (!result) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    // Kick the just-deactivated user on their next request (drop cached epochs).
+    if ((result as any).deactivated) {
+      clearSessionRevocationCache(id);
+      clearDeviceSessionCache();
+    }
     return NextResponse.json(result);
   } catch (err: any) {
     return handleApiError(err);
   }
 }
 
+/**
+ * DELETE /api/employees/[id]
+ *   ?trash=1  → move the employee to Trash (soft-delete). Recoverable; the
+ *               record is hidden from the team list and blocked at login until
+ *               restored. This is NOT the same as offboarding — clients stay
+ *               assigned and nothing is redistributed.
+ *   ?purge=1  → permanent removal FROM Trash. A hard row-delete is unsafe
+ *               (dozens of tables FK to users with ON DELETE RESTRICT), so this
+ *               runs the full offboard cascade (redistribute clients/tasks,
+ *               revoke sessions) and marks the user offboarded — preserving
+ *               audit/history while making the removal final.
+ *   (default) → legacy offboard (status='offboarded' + cascade).
+ */
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "settings.users");
+    requireCap(session.roles, "settings.users", session.permissions);
     const { id } = await params;
     const meta = clientMetaFromHeaders(req.headers);
+    const mode = req.nextUrl.searchParams.get("trash") === "1"
+      ? "trash"
+      : req.nextUrl.searchParams.get("purge") === "1"
+        ? "purge"
+        : "offboard";
 
     const result = await withTenant(session.tenantId, async (tx) => {
       const [existing] = await tx
@@ -265,23 +304,60 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
         .where(and(eq(users.id, id), eq(users.tenantId, session.tenantId)));
       if (!existing) return null;
 
-      // Lockout guards: can't offboard yourself, and can't remove the last owner.
+      // Lockout guards: can't remove yourself, and can't remove the last owner.
       if (id === session.userId) {
-        throw Object.assign(new Error("you cannot offboard your own account"), { status: 400 });
+        throw Object.assign(new Error("you cannot remove your own account"), { status: 400 });
       }
       if (((existing.roles as string[] | null)?.includes("owner") ?? false) && (await countOtherActiveOwners(tx, session.tenantId, id)) === 0) {
-        throw Object.assign(new Error("cannot offboard the last active owner of the firm"), { status: 409 });
+        throw Object.assign(new Error("cannot remove the last active owner of the firm"), { status: 409 });
       }
 
+      // ── Move to Trash (soft-delete) ──────────────────────────────────────
+      if (mode === "trash") {
+        const [next] = await tx
+          .update(users)
+          .set({
+            deletedAt: new Date(),
+            deletedBy: session.userId,
+            // Kick every live session so a trashed user is logged out at once.
+            sessionsInvalidAfter: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(and(eq(users.id, id), eq(users.tenantId, session.tenantId)))
+          .returning();
+        await tx.execute(
+          sql`UPDATE user_sessions SET revoked_at = now(), updated_at = now() WHERE user_id = ${id}::uuid AND revoked_at IS NULL`
+        );
+        await recordAudit(tx, {
+          tenantId: session.tenantId,
+          actorUserId: session.userId,
+          action: "employee.trash",
+          entityType: "user",
+          entityId: id,
+          before: existing,
+          after: next,
+          ...meta,
+        });
+        return { user: next, cascade: null, kicked: true };
+      }
+
+      // ── Offboard, or permanent removal from Trash ────────────────────────
+      // Both end in status='offboarded' + cascade. Purge additionally clears
+      // the deleted_at flag so the row leaves Trash.
       const [next] = await tx
         .update(users)
-        .set({ status: "offboarded", offboardedAt: new Date(), updatedAt: new Date() })
+        .set({
+          status: "offboarded",
+          offboardedAt: new Date(),
+          ...(mode === "purge" ? { deletedAt: null, deletedBy: null } : {}),
+          updatedAt: new Date(),
+        })
         .where(and(eq(users.id, id), eq(users.tenantId, session.tenantId)))
         .returning();
       await recordAudit(tx, {
         tenantId: session.tenantId,
         actorUserId: session.userId,
-        action: "employee.offboard",
+        action: mode === "purge" ? "employee.purge" : "employee.offboard",
         entityType: "user",
         entityId: id,
         before: existing,
@@ -289,7 +365,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
         ...meta,
       });
 
-      // Only cascade on actual transition.
+      // Only cascade on the actual transition into offboarded.
       let cascade: OffboardSummary | null = null;
       if (existing.status !== "offboarded") {
         cascade = await offboardUser({
@@ -300,10 +376,15 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
         });
       }
 
-      return { user: next, cascade };
+      return { user: next, cascade, kicked: existing.status !== "offboarded" };
     });
 
     if (!result) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    // Drop cached session epochs so the removed user is kicked on next request.
+    if ((result as any).kicked) {
+      clearSessionRevocationCache(id);
+      clearDeviceSessionCache();
+    }
     return NextResponse.json(result);
   } catch (err: any) {
     return handleApiError(err);

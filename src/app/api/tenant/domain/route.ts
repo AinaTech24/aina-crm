@@ -55,7 +55,7 @@ async function pointsToUs(host: string): Promise<boolean> {
 export async function GET() {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "settings.users");
+    requireCap(session.roles, "settings.users", session.permissions);
     const t = await withTenant(session.tenantId, async (tx) =>
       (await tx.select({
         subdomain: tenants.subdomain,
@@ -82,7 +82,7 @@ export async function GET() {
 export async function PATCH(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "settings.users");
+    requireCap(session.roles, "settings.users", session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
     const parse = Body.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) return NextResponse.json({ error: "invalid body", issues: parse.error.issues }, { status: 400 });

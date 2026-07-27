@@ -28,6 +28,7 @@ import { RowActions } from "@/components/common/RowActions";
 import { RecordAutomations } from "@/components/sales-ops/RecordAutomations";
 import { SignalScoreCard } from "@/components/leads/SignalScoreCard";
 import { LeadEditPanel } from "@/components/leads/LeadEditPanel";
+import { CustomFieldsCard } from "@/components/common/CustomFieldsCard";
 import { LeadScoreButton } from "@/components/leads/LeadScoreButton";
 import { stageBadgeClass, stageLabel } from "@/lib/leads/stages";
 import { bandBadgeClass, bandLabel } from "@/lib/leads/score";
@@ -202,6 +203,10 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
           </div>
         </div>
 
+        {/* Next best step — hoisted directly under the name/badges so "what to do
+            now" is the FIRST thing the RM sees, before the stat strip. */}
+        {next && <NextStepBanner label={next.label} hint={next.hint} />}
+
         {/* Smart snapshot — instant, deterministic (no AI call on load) */}
         <p className="text-sm text-muted-foreground">{snapshot}</p>
 
@@ -254,9 +259,6 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
             />
           </div>
         </div>
-
-        {/* Next best step — pulled from the blueprint so it's visible up top */}
-        {next && <NextStepBanner label={next.label} hint={next.hint} />}
 
         {/* Actions — primary bar + a tidy secondary row with a "More" menu */}
         <div className="pt-3 border-t space-y-3" data-lead-actions>
@@ -346,6 +348,9 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
       <RelatedListSection moduleKey="leads-detail" sectionKey="edit_panel">
         <LeadEditPanel lead={JSON.parse(JSON.stringify(l))} />
       </RelatedListSection>
+
+      {/* MFD-defined custom fields (renders only if the firm has defined any). */}
+      <CustomFieldsCard entity="lead" recordId={l.id} initialValues={(l as any).customFields ?? null} />
 
       <RelatedListSection moduleKey="leads-detail" sectionKey="whatsapp">
         <WhatsAppRelatedList entityType="lead" entityId={l.id} entityName={l.name} entityPhone={l.phone} />

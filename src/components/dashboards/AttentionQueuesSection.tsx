@@ -1,6 +1,6 @@
 import React from "react";
 import { sql } from "drizzle-orm";
-import { ClipboardList, AlertOctagon } from "lucide-react";
+import { ClipboardList, AlertOctagon, Crown, ShieldAlert } from "lucide-react";
 import { withTenant } from "@/db/client";
 import type { SessionUser } from "@/lib/auth/session";
 import { Group, Stat } from "./DashboardShared";
@@ -25,7 +25,16 @@ export async function AttentionQueuesSection({ session }: { session: SessionUser
                 AND (last_review_at IS NULL OR last_review_at < now() - interval '120 days')) AS hni_not_reviewed,
           (SELECT COUNT(*)::int FROM investors
               WHERE status = 'active' AND deleted_at IS NULL
-                AND (last_transaction_at IS NULL OR last_transaction_at < ${dormantCutoff})) AS dormant_clients
+                AND (last_transaction_at IS NULL OR last_transaction_at < ${dormantCutoff})) AS dormant_clients,
+          (SELECT COUNT(*)::int FROM investors
+              WHERE status = 'active' AND deleted_at IS NULL AND service_tier = 'A') AS tier_a,
+          (SELECT COUNT(*)::int FROM investors
+              WHERE status = 'active' AND deleted_at IS NULL
+                AND (
+                  kyc_status IN ('expired', 're_kyc_required')
+                  OR (ckyc_expiry_at IS NOT NULL
+                      AND ckyc_expiry_at BETWEEN current_date AND current_date + interval '30 days')
+                )) AS kyc_expiring
       `);
       return res.rows[0] as any;
     },
@@ -66,6 +75,20 @@ export async function AttentionQueuesSection({ session }: { session: SessionUser
           label="Dormant Clients"
           value={String(data.dormant_clients ?? 0)}
           tone={Number(data.dormant_clients ?? 0) > 0 ? "amber" : "muted"}
+        />
+        <Stat
+          href="/dashboard/investors"
+          label="KYC Expiring 30d"
+          value={String(data.kyc_expiring ?? 0)}
+          tone={Number(data.kyc_expiring ?? 0) > 0 ? "amber" : "muted"}
+          icon={ShieldAlert}
+        />
+        <Stat
+          href="/dashboard/investors"
+          label="A-Tier Clients"
+          value={String(data.tier_a ?? 0)}
+          tone="muted"
+          icon={Crown}
         />
       </div>
     </Group>

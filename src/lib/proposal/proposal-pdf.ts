@@ -9,8 +9,9 @@
  * so the "Send via email" route attaches it.
  */
 
-import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage, type PDFImage, type RGB } from "pdf-lib";
-import { drawReportHeader } from "@/lib/pdf/report-header";
+import { PDFDocument, rgb, type PDFFont, type PDFPage, type PDFImage, type RGB } from "pdf-lib";
+import { drawReportHeader, drawContinuationHeader, drawPageNumbers } from "@/lib/pdf/report-header";
+import { embedPdfFonts, pdfSanitize } from "@/lib/pdf/fonts";
 
 export type ProposalBrand = {
   displayName?: string | null;
@@ -53,6 +54,12 @@ const DISCLAIMER =
 const A4: [number, number] = [595.28, 841.89];
 const MARGIN = 40;
 
+// Glyph switches — set per render from the embedded font (process-stable, so a
+// module flag is safe); lets amt()/ascii() render a real ₹ without threading
+// a parameter through every call site.
+let KEEP_RUPEE = false;
+let CUR = "Rs ";
+
 type Col = { h: string; w: number; align?: "l" | "r"; get: (it: any) => string };
 
 function colsFor(kind: string): Col[] {
@@ -90,23 +97,29 @@ export async function renderProposalPdf(args: { proposal: ProposalData; brand: P
   const { proposal: p, brand } = args;
   const generatedAt = args.generatedAt ?? new Date().toISOString();
   const doc = await PDFDocument.create();
-  const helv = await doc.embedFont(StandardFonts.Helvetica);
-  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const { font: helv, bold, rupeeOk } = await embedPdfFonts(doc);
+  KEEP_RUPEE = rupeeOk;
+  CUR = rupeeOk ? "₹" : "Rs ";
   const primary = hexToRgb(brand.primaryColor);
   const secondary = brand.secondaryColor ? hexToRgb(brand.secondaryColor) : ACCENT;
 
   doc.setTitle(ascii(`Proposal ${p.proposalNumber ?? ""} — ${p.recipientName ?? "Client"}`));
   doc.setProducer("Aina CRM");
+  if (brand.legalName || brand.displayName) doc.setAuthor(ascii(brand.legalName ?? brand.displayName ?? ""));
 
   const logo = await embedLogo(doc, brand.logoUrl);
   const W = A4[0];
   const usable = W - 2 * MARGIN;
 
-  // Cursor — pages are added as content overflows.
+  // Cursor — pages are added as content overflows, each opening with the
+  // shared slim continuation header.
   const cur = { page: doc.addPage(A4), y: 0 };
   const newPage = () => {
     cur.page = doc.addPage(A4);
-    cur.y = A4[1] - MARGIN;
+    cur.y = drawContinuationHeader({
+      page: cur.page, helv, bold, pageWidth: W, pageHeight: A4[1], margin: MARGIN,
+      firmName: brand.legalName ?? brand.displayName, title: "Investment proposal", primary,
+    });
   };
   const ensure = (need: number) => {
     if (cur.y - need < 96) newPage();
@@ -135,9 +148,9 @@ export async function renderProposalPdf(args: { proposal: ProposalData; brand: P
   cur.page.drawText(ascii(`Prepared for ${p.recipientName ?? "Client"}`), { x: MARGIN, y: cur.y, size: 10, font: helv, color: SLATE });
   cur.y -= 24;
 
-  // ── Cover note ──
+  // ── Cover note — flows across pages, never silently truncated ──
   if (p.coverLetter && p.coverLetter.trim()) {
-    for (const ln of wrap(ascii(p.coverLetter), helv, 9.5, usable).slice(0, 12)) {
+    for (const ln of wrap(ascii(p.coverLetter), helv, 9.5, usable)) {
       ensure(13);
       cur.page.drawText(ln, { x: MARGIN, y: cur.y, size: 9.5, font: helv, color: SLATE });
       cur.y -= 13;
@@ -193,8 +206,9 @@ export async function renderProposalPdf(args: { proposal: ProposalData; brand: P
     drawHeader();
 
     for (const it of items) {
+      const pageBefore = cur.page;
       ensure(15);
-      if (cur.y === A4[1] - MARGIN) drawHeader(); // re-draw header on a fresh page
+      if (cur.page !== pageBefore) drawHeader(); // re-draw header on a fresh page
       let x = MARGIN + 4;
       for (const c of cols) {
         const cw = c.w * usable;
@@ -217,19 +231,24 @@ export async function renderProposalPdf(args: { proposal: ProposalData; brand: P
     cur.y -= 8;
   }
 
-  // ── Footer on every page ──
-  for (const pg of doc.getPages()) drawFooter(pg, { helv, bold, brand, generatedAt });
+  // ── Footer on every page + centered page numbers ──
+  for (const pg of doc.getPages()) drawFooter(pg, { helv, bold, brand, generatedAt, refId: p.proposalNumber });
+  drawPageNumbers(doc, helv, W, 8);
+  if (p.proposalNumber) doc.setSubject(`Ref ${p.proposalNumber}`);
 
   return Buffer.from(await doc.save());
 }
 
 /* ── helpers ── */
-function drawFooter(page: PDFPage, a: { helv: PDFFont; bold: PDFFont; brand: ProposalBrand; generatedAt: string }) {
+function drawFooter(page: PDFPage, a: { helv: PDFFont; bold: PDFFont; brand: ProposalBrand; generatedAt: string; refId?: string | null }) {
   const W = page.getWidth();
   page.drawRectangle({ x: MARGIN, y: 52, width: W - 2 * MARGIN, height: 1, color: LINE });
   const legal = ascii(a.brand.legalName ?? a.brand.displayName ?? "Your Advisor");
   const arn = ascii(`ARN-${(a.brand.arn ?? "—").toString().replace(/^ARN-?/i, "")}`);
   page.drawText(`${legal}  -  ${arn}`, { x: MARGIN, y: 40, size: 8, font: a.bold, color: SLATE });
+  const gen = ascii(`Generated ${fmtDate(a.generatedAt)}${a.refId ? ` - Ref ${a.refId}` : ""}`);
+  const gw = a.helv.widthOfTextAtSize(gen, 7.5);
+  page.drawText(gen, { x: W - MARGIN - gw, y: 40, size: 7.5, font: a.helv, color: MUTED });
   let dy = 26;
   for (const line of wrap(DISCLAIMER, a.helv, 7, W - 2 * MARGIN).slice(0, 2)) {
     page.drawText(line, { x: MARGIN, y: dy, size: 7, font: a.helv, color: MUTED });
@@ -244,7 +263,7 @@ function projected(amount: any, ret: any, years: any): number | null {
 function amt(n: any): string {
   const v = typeof n === "string" ? Number(n) : n;
   if (v == null || !isFinite(v) || v === 0) return "-";
-  return "Rs " + Math.round(v).toLocaleString("en-IN");
+  return CUR + Math.round(v).toLocaleString("en-IN");
 }
 function yrs(n: any): string {
   const v = Number(n);
@@ -303,7 +322,8 @@ function wrap(text: string, font: PDFFont, size: number, maxWidth: number): stri
 }
 function ascii(s: string): string {
   if (!s) return "";
-  return s.replace(/₹/g, "Rs ").replace(/[•]/g, "-").replace(/[–—]/g, "-").replace(/[''‘’]/g, "'").replace(/[“”]/g, '"').replace(/·/g, "-").replace(/[^\x20-\x7E]/g, "").trim();
+  // Keeps "₹" when the Unicode font is embedded; strips/converts otherwise.
+  return pdfSanitize(s.replace(/·/g, "-"), KEEP_RUPEE);
 }
 function hexToRgb(hex: string | null | undefined): RGB {
   const m = (hex ?? "").replace(/^#/, "").match(/^([0-9a-fA-F]{6})$/);

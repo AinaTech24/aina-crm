@@ -1,119 +1,79 @@
 /**
- * The drawer ("sidebar") — every module that isn't a bottom tab, grouped and
- * shown only if the user's capabilities allow it (same gate as the server).
- * Header shows who's signed in; footer signs out.
+ * The drawer ("sidebar") — pure navigation: every module that isn't a bottom
+ * tab, grouped and capability-gated (same gate as the server), with an
+ * active-module highlight. Profile + Sign out live in the TOP HEADER's profile
+ * menu now (HeaderProfileButton) — NOT here.
+ *
+ * The whole drawer is wrapped in SafeAreaView with edges top+bottom so its
+ * content never sits under the status bar or the gesture-navigation area.
  */
 
 import React from "react";
-import { View, Pressable, StyleSheet } from "react-native";
-import { DrawerContentScrollView, type DrawerContentComponentProps } from "expo-router/drawer";
-import { useRouter } from "expo-router";
+import { View, ScrollView, Pressable, StyleSheet } from "react-native";
+import { type DrawerContentComponentProps } from "@react-navigation/drawer";
+import { useRouter, usePathname } from "expo-router";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { palette, spacing, radius, fontWeight } from "../theme/tokens";
+import { useBrand } from "../theme/brand";
 import { Text } from "../components/ui/Text";
 import { useMe, hasAnyCap } from "../api/me";
-import { useSession } from "../state/session";
 import { MENU } from "./menu";
 
 export function CustomDrawer(props: DrawerContentComponentProps) {
   const router = useRouter();
+  const pathname = usePathname();
+  const { brand, brandLight } = useBrand();
   const { data: me } = useMe();
-  const signOut = useSession((s) => s.signOut);
   const caps = me?.capabilities;
 
   const go = (route: string) => {
     props.navigation.closeDrawer();
     router.push(route as any);
   };
+  const isActive = (route: string) => pathname === route || pathname.startsWith(route + "/");
 
   return (
-    <View style={styles.container}>
-      {/* Profile header */}
-      <View style={styles.header}>
-        <View style={styles.avatar}>
-          <Text style={{ color: palette.white, fontWeight: fontWeight.bold }}>
-            {(me?.user.name ?? "?").slice(0, 1).toUpperCase()}
-          </Text>
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text variant="subtitle" numberOfLines={1}>
-            {me?.user.name ?? "Loading…"}
-          </Text>
-          <Text variant="caption" tone="muted" numberOfLines={1}>
-            {me?.user.roleLabel ?? ""}
-          </Text>
-        </View>
-      </View>
-
-      <DrawerContentScrollView {...props} contentContainerStyle={{ paddingTop: spacing.sm }}>
-        {MENU.map((group) => {
+    // SafeAreaView is TRANSPARENT (edges top+bottom) so the status-bar and
+    // gesture-bar strips show the system scrim; the white menu panel lives
+    // INSIDE the safe area and never touches those system areas.
+    <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
+      <View style={styles.panel}>
+        <ScrollView
+          contentContainerStyle={{ paddingTop: spacing.md, paddingBottom: spacing.lg }}
+          showsVerticalScrollIndicator={false}
+        >
+          {MENU.map((group) => {
           const items = group.items.filter((it) => !it.anyCap || hasAnyCap(caps, it.anyCap));
           if (items.length === 0) return null;
           return (
             <View key={group.title} style={styles.group}>
-              <Text variant="caption" tone="faint" style={styles.groupTitle}>
-                {group.title.toUpperCase()}
-              </Text>
-              {items.map((it) => (
-                <Pressable key={it.key} onPress={() => go(it.route)} style={styles.item}>
-                  <Feather name={it.icon} size={18} color={palette.muted} />
-                  <Text variant="body" style={{ color: palette.ink, flex: 1 }}>
-                    {it.label}
-                  </Text>
-                  <Feather name="chevron-right" size={16} color={palette.faint} />
-                </Pressable>
-              ))}
+              <Text variant="caption" tone="faint" style={styles.groupTitle}>{group.title.toUpperCase()}</Text>
+              {items.map((it) => {
+                const active = isActive(it.route);
+                return (
+                  <Pressable key={it.key} onPress={() => go(it.route)} style={[styles.item, active && { backgroundColor: brandLight }]}>
+                    <Feather name={it.icon} size={18} color={active ? brand : palette.muted} />
+                    <Text variant="body" style={{ color: active ? brand : palette.ink, flex: 1, fontWeight: (active ? fontWeight.semibold : fontWeight.regular) as any }}>{it.label}</Text>
+                    <Feather name="chevron-right" size={16} color={active ? brand : palette.faint} />
+                  </Pressable>
+                );
+              })}
             </View>
           );
-        })}
-      </DrawerContentScrollView>
-
-      {/* Footer */}
-      <Pressable style={styles.signOut} onPress={() => signOut()}>
-        <Feather name="log-out" size={18} color={palette.danger} />
-        <Text variant="body" style={{ color: palette.danger, fontWeight: fontWeight.medium }}>
-          Sign out
-        </Text>
-      </Pressable>
-    </View>
+          })}
+        </ScrollView>
+      </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: palette.surface },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-    paddingTop: 56,
-    paddingBottom: spacing.lg,
-    paddingHorizontal: spacing.lg,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: palette.line,
-  },
-  avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: radius.pill,
-    backgroundColor: palette.brand,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  safe: { flex: 1, backgroundColor: "transparent" },
+  // White menu panel with rounded right-side corners (the drawer slides from the
+  // left, so only the right edge shows a corner) — floats inside the safe area.
+  panel: { flex: 1, backgroundColor: palette.surface, borderTopRightRadius: radius.xl, borderBottomRightRadius: radius.xl, overflow: "hidden" },
   group: { marginBottom: spacing.lg },
   groupTitle: { paddingHorizontal: spacing.lg, marginBottom: spacing.xs, letterSpacing: 0.6 },
-  item: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-  },
-  signOut: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-    padding: spacing.lg,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: palette.line,
-  },
+  item: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.md, paddingHorizontal: spacing.lg, marginHorizontal: spacing.sm, borderRadius: radius.md },
 });

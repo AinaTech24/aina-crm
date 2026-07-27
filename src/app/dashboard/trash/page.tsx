@@ -6,17 +6,15 @@
  */
 
 import { redirect } from "next/navigation";
-import { and, desc, eq, isNotNull, or } from "drizzle-orm";
-import { Trash2, Info, Users, ListChecks } from "lucide-react";
+import { and, desc, eq, inArray, isNotNull, or } from "drizzle-orm";
+import { Trash2, Info, Users, ListChecks, UserCog } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { can } from "@/lib/auth/rbac";
-import { investors, tasks } from "@/db/schema";
+import { can, ROLE_LABELS } from "@/lib/auth/rbac";
+import { investors, tasks, users } from "@/db/schema";
 import { DEFAULT_SOFT_DELETE_RETENTION_DAYS } from "@/lib/platform/retention";
 import { formatINR, formatDate } from "@/lib/utils";
-import { TrashActions } from "@/components/investors/TrashActions";
-import { TrashSection } from "@/components/trash/TrashSection";
-import { TaskTrashActions } from "@/components/trash/TaskTrashActions";
+import { TrashTable, type TrashColumn } from "@/components/trash/TrashTable";
 
 export const dynamic = "force-dynamic";
 
@@ -28,11 +26,12 @@ export default async function TrashPage() {
   const canTasksAll = can(session.roles, "task.edit.all", session.permissions);
   const canTasksOwn = can(session.roles, "task.edit.assigned", session.permissions);
   const canTasks = canTasksAll || canTasksOwn;
-  if (!canInvestors && !canTasks) redirect("/dashboard");
+  const canEmployees = can(session.roles, "settings.users", session.permissions);
+  if (!canInvestors && !canTasks && !canEmployees) redirect("/dashboard");
 
   const retention = DEFAULT_SOFT_DELETE_RETENTION_DAYS;
 
-  const { invRows, taskRows } = await withTenant(session.tenantId, async (tx) => {
+  const { invRows, taskRows, empRows, deleterNameById } = await withTenant(session.tenantId, async (tx) => {
     const invRows = canInvestors
       ? await tx
           .select({
@@ -43,6 +42,7 @@ export default async function TrashPage() {
             phone: investors.phone,
             aum: investors.aum,
             deletedAt: investors.deletedAt,
+            deletedBy: investors.deletedBy,
           })
           .from(investors)
           .where(and(eq(investors.tenantId, session.tenantId), isNotNull(investors.deletedAt)))
@@ -63,6 +63,7 @@ export default async function TrashPage() {
             status: tasks.status,
             priority: tasks.priority,
             deletedAt: tasks.deletedAt,
+            deletedBy: tasks.deletedBy,
           })
           .from(tasks)
           .where(and(eq(tasks.tenantId, session.tenantId), isNotNull(tasks.deletedAt), taskScope))
@@ -70,10 +71,106 @@ export default async function TrashPage() {
           .limit(500)
       : [];
 
-    return { invRows, taskRows };
+    const empRows = canEmployees
+      ? await tx
+          .select({
+            id: users.id,
+            name: users.name,
+            email: users.email,
+            department: users.department,
+            roles: users.roles,
+            deletedAt: users.deletedAt,
+            deletedBy: users.deletedBy,
+          })
+          .from(users)
+          .where(and(eq(users.tenantId, session.tenantId), isNotNull(users.deletedAt)))
+          .orderBy(desc(users.deletedAt))
+          .limit(500)
+      : [];
+
+    // Resolve the "deleted by" user ids to display names in one lookup.
+    const deleterIds = [
+      ...new Set(
+        [...invRows, ...taskRows, ...empRows]
+          .map((r: any) => r.deletedBy as string | null)
+          .filter((v): v is string => !!v)
+      ),
+    ];
+    const deleters = deleterIds.length
+      ? await tx.select({ id: users.id, name: users.name }).from(users).where(inArray(users.id, deleterIds))
+      : [];
+    const deleterNameById = new Map(deleters.map((u) => [u.id, u.name]));
+
+    return { invRows, taskRows, empRows, deleterNameById };
   });
 
-  const isEmpty = invRows.length === 0 && taskRows.length === 0;
+  const deleterName = (id: string | null | undefined) => (id && deleterNameById.get(id)) || "—";
+
+  const isEmpty = invRows.length === 0 && taskRows.length === 0 && empRows.length === 0;
+
+  // Precompute serializable rows + column specs for the reusable TrashTable
+  // (Server Component can't pass render functions across the RSC boundary).
+  const invTrashRows = invRows.map((r) => {
+    const deletedAt = r.deletedAt ? new Date(r.deletedAt as any) : null;
+    const daysLeft = deletedAt
+      ? Math.max(0, retention - Math.floor((Date.now() - deletedAt.getTime()) / DAY_MS))
+      : retention;
+    return {
+      id: r.id,
+      label: r.name,
+      name: r.name,
+      contact: r.email || r.phone || "—",
+      pan: r.pan || "—",
+      aum: r.aum ? formatINR(Math.round(Number(r.aum))) : "—",
+      deletedByName: deleterName(r.deletedBy),
+      deletedText: deletedAt ? formatDate(deletedAt) : "—",
+      expiryText: `in ${daysLeft} day${daysLeft === 1 ? "" : "s"}`,
+      expiryTone: daysLeft <= 3 ? "rose" : "amber",
+    };
+  });
+  const invCols: TrashColumn[] = [
+    { header: "Client", field: "name", kind: "primary", subField: "contact" },
+    { header: "PAN", field: "pan", mono: true },
+    { header: "AUM", field: "aum", align: "right" },
+    { header: "Deleted by", field: "deletedByName" },
+    { header: "Deleted at", field: "deletedText" },
+    { header: "Auto-deletes", field: "expiryText", kind: "chip", toneField: "expiryTone" },
+  ];
+
+  const taskTrashRows = taskRows.map((r) => ({
+    id: r.id,
+    label: r.title,
+    title: r.title,
+    type: String(r.type).replace(/_/g, " "),
+    status: String(r.status).replace(/_/g, " "),
+    deletedByName: deleterName(r.deletedBy),
+    deletedText: r.deletedAt ? formatDate(new Date(r.deletedAt as any)) : "—",
+  }));
+  const taskCols: TrashColumn[] = [
+    { header: "Task", field: "title", kind: "primary", truncate: true },
+    { header: "Type", field: "type" },
+    { header: "Status", field: "status" },
+    { header: "Deleted by", field: "deletedByName" },
+    { header: "Deleted at", field: "deletedText" },
+  ];
+
+  const empTrashRows = empRows.map((r) => ({
+    id: r.id,
+    label: r.name,
+    name: r.name,
+    email: r.email || "",
+    department: r.department ? String(r.department).replace(/_/g, " ") : "",
+    roles: (r.roles ?? []).map((role: string) => ROLE_LABELS[role] ?? role).join(", "),
+    deletedByName: deleterName(r.deletedBy),
+    deletedText: r.deletedAt ? formatDate(new Date(r.deletedAt as any)) : "",
+  }));
+  const empCols: TrashColumn[] = [
+    { header: "Employee", field: "name", kind: "primary", subField: "email" },
+    { header: "Department", field: "department" },
+    { header: "Roles", field: "roles" },
+    { header: "Deleted by", field: "deletedByName" },
+    { header: "Deleted at", field: "deletedText" },
+  ];
 
   return (
     <div className="space-y-5">
@@ -91,91 +188,54 @@ export default async function TrashPage() {
         <div className="card-surface flex flex-col items-center justify-center gap-2 py-16 text-center">
           <Trash2 className="size-10 text-muted-foreground/30" />
           <div className="text-sm font-medium">Trash is empty</div>
-          <div className="text-xs text-muted-foreground">Deleted clients and tasks will appear here.</div>
+          <div className="text-xs text-muted-foreground">Deleted clients, tasks, and employees will appear here.</div>
         </div>
       ) : (
         <div className="space-y-3">
           {/* ── Clients ─────────────────────────────────────────────────── */}
-          {canInvestors && invRows.length > 0 && (
-            <TrashSection title="Clients" count={invRows.length} icon={<Users className="size-4 text-muted-foreground" />}>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
-                    <th className="px-4 py-3 font-medium">Client</th>
-                    <th className="px-4 py-3 font-medium">PAN</th>
-                    <th className="px-4 py-3 font-medium text-right">AUM</th>
-                    <th className="px-4 py-3 font-medium">Deleted</th>
-                    <th className="px-4 py-3 font-medium">Auto-deletes</th>
-                    <th className="px-4 py-3 font-medium text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {invRows.map((r) => {
-                    const deletedAt = r.deletedAt ? new Date(r.deletedAt as any) : null;
-                    const daysLeft = deletedAt
-                      ? Math.max(0, retention - Math.floor((Date.now() - deletedAt.getTime()) / DAY_MS))
-                      : retention;
-                    return (
-                      <tr key={r.id} className="border-b last:border-0 hover:bg-secondary/30">
-                        <td className="px-4 py-3">
-                          <div className="font-medium">{r.name}</div>
-                          <div className="text-xs text-muted-foreground">{r.email || r.phone || "—"}</div>
-                        </td>
-                        <td className="px-4 py-3 font-mono text-xs">{r.pan || "—"}</td>
-                        <td className="px-4 py-3 text-right tabular-nums">
-                          {r.aum ? formatINR(Math.round(Number(r.aum))) : "—"}
-                        </td>
-                        <td className="px-4 py-3 text-xs text-muted-foreground">{deletedAt ? formatDate(deletedAt) : "—"}</td>
-                        <td className="px-4 py-3">
-                          <span
-                            className={`chip text-[11px] font-medium ${
-                              daysLeft <= 3
-                                ? "bg-rose-50 text-rose-700 border border-rose-200"
-                                : "bg-amber-50 text-amber-700 border border-amber-200"
-                            }`}
-                          >
-                            in {daysLeft} day{daysLeft === 1 ? "" : "s"}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3">
-                          <TrashActions id={r.id} name={r.name} />
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </TrashSection>
+          {canInvestors && invTrashRows.length > 0 && (
+            <TrashTable
+              title="Clients"
+              count={invTrashRows.length}
+              icon={<Users className="size-4 text-muted-foreground" />}
+              rows={invTrashRows}
+              columns={invCols}
+              restoreTemplate="/api/investors/{id}/restore"
+              purgeTemplate="/api/investors/{id}?purge=1"
+              itemLabel="client"
+            />
           )}
 
           {/* ── Tasks ───────────────────────────────────────────────────── */}
-          {canTasks && taskRows.length > 0 && (
-            <TrashSection title="Tasks" count={taskRows.length} icon={<ListChecks className="size-4 text-muted-foreground" />}>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
-                    <th className="px-4 py-3 font-medium">Task</th>
-                    <th className="px-4 py-3 font-medium">Type</th>
-                    <th className="px-4 py-3 font-medium">Status</th>
-                    <th className="px-4 py-3 font-medium">Deleted</th>
-                    <th className="px-4 py-3 font-medium text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {taskRows.map((r) => (
-                    <tr key={r.id} className="border-b last:border-0 hover:bg-secondary/30">
-                      <td className="px-4 py-3 font-medium max-w-[28rem] truncate" title={r.title}>{r.title}</td>
-                      <td className="px-4 py-3 text-xs text-muted-foreground capitalize">{String(r.type).replace(/_/g, " ")}</td>
-                      <td className="px-4 py-3 text-xs text-muted-foreground capitalize">{String(r.status).replace(/_/g, " ")}</td>
-                      <td className="px-4 py-3 text-xs text-muted-foreground">{r.deletedAt ? formatDate(new Date(r.deletedAt as any)) : "—"}</td>
-                      <td className="px-4 py-3">
-                        <TaskTrashActions id={r.id} title={r.title} />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </TrashSection>
+          {canTasks && taskTrashRows.length > 0 && (
+            <TrashTable
+              title="Tasks"
+              count={taskTrashRows.length}
+              icon={<ListChecks className="size-4 text-muted-foreground" />}
+              rows={taskTrashRows}
+              columns={taskCols}
+              restoreTemplate="/api/tasks/{id}/restore"
+              purgeTemplate="/api/tasks/{id}?permanent=1"
+              itemLabel="task"
+            />
+          )}
+
+          {/* ── Employees ───────────────────────────────────────────────── */}
+          {canEmployees && empTrashRows.length > 0 && (
+            <TrashTable
+              title="Employees"
+              count={empTrashRows.length}
+              icon={<UserCog className="size-4 text-muted-foreground" />}
+              rows={empTrashRows}
+              columns={empCols}
+              restoreTemplate="/api/employees/{id}/restore"
+              purgeTemplate="/api/employees/{id}?purge=1"
+              itemLabel="employee"
+              purgeButtonLabel="Remove"
+              purgeTitle="Remove permanently?"
+              purgeMessage="This offboards the employee for good — their clients are redistributed and they lose all access. Their record is kept for audit/history but leaves Trash. This can't be undone here."
+              purgeCta="Remove permanently"
+            />
           )}
         </div>
       )}

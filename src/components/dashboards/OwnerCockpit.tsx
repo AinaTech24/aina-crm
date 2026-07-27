@@ -1,18 +1,15 @@
 import React, { Suspense } from "react";
 import Link from "next/link";
 import { sql } from "drizzle-orm";
-import { ArrowDownRight, ArrowUpRight, TrendingUp, Users, UserPlus, AlertOctagon, Sparkles, ClipboardList, AlertCircle } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, TrendingUp, Users, UserPlus } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { formatINR } from "@/lib/utils";
 import type { SessionUser } from "@/lib/auth/session";
-import { GettingStartedChecklist } from "./GettingStartedChecklist";
 import { DataGapsTile } from "./DataGapsTile";
 import { SipPersistencyTile } from "./SipPersistencyTile";
-import { PeriodSelector } from "./PeriodSelector";
 import { resolvePeriodRange, type Period } from "@/lib/dashboard/period";
 import { getDashboardThresholds } from "@/lib/dashboard/thresholds";
 import { Sparkline } from "./Sparkline";
-import { DashboardEmptyState } from "./DashboardEmptyState";
 import { loadTenantLicense } from "@/lib/auth/license";
 import { isDashboardWidgetVisible } from "@/config/dashboard-widgets";
 
@@ -22,16 +19,19 @@ import { AttentionQueuesSection } from "./AttentionQueuesSection";
 import { RmLeaderboard } from "./RmLeaderboard";
 import { LeadFunnelSection } from "./LeadFunnelSection";
 import { AumSegmentSection } from "./AumSegmentSection";
-import { NetSalesChart } from "./NetSalesChart";
 import { CardSkeleton, ChartSkeleton, LeaderboardSkeleton } from "./DashboardSkeletons";
 
 /** Build a "?period=…(&pstart=…)" query suffix so drill-down links open scoped
  *  to the same window the cockpit is showing. Returns "" for the default (mtd,
  *  no custom start) so plain links stay clean. */
-function buildPeriodQuery(period: Period, customStart?: string): string {
+function buildPeriodQuery(period: Period, customStart?: string, customFrom?: string, customTo?: string): string {
   const params = new URLSearchParams();
   if (period !== "mtd") params.set("period", period);
-  if (period === "custom" && customStart) params.set("pstart", customStart);
+  if (period === "custom") {
+    if (customFrom) params.set("pfrom", customFrom);
+    if (customTo) params.set("pto", customTo);
+    if (!customFrom && customStart) params.set("pstart", customStart);
+  }
   const qs = params.toString();
   return qs ? `?${qs}` : "";
 }
@@ -62,13 +62,16 @@ export async function OwnerCockpit({
   session,
   period = "mtd",
   customStart,
+  customFrom,
+  customTo,
 }: {
   session: SessionUser;
   period?: Period;
   customStart?: string;
+  customFrom?: string;
+  customTo?: string;
 }) {
   const now = new Date();
-  const { label: periodLabel } = resolvePeriodRange(period, now, { customStart });
   const today = now.toLocaleDateString("en-IN", {
     weekday: "long",
     day: "numeric",
@@ -84,29 +87,19 @@ export async function OwnerCockpit({
         <div className="brand-mesh px-6 py-5 text-white">
           <div className="flex items-end justify-between flex-wrap gap-3">
             <div>
-              <div className="text-[11px] uppercase tracking-[0.18em] text-white/70 font-semibold">
-                Owner cockpit
-              </div>
-              <h1 className="text-2xl font-bold tracking-tight mt-1">
+              <h1 className="text-2xl font-bold tracking-tight">
                 Welcome back, {session.name.split(" ")[0]}
               </h1>
               <p className="text-white/80 text-sm mt-1">
-                {today} · Showing data for{" "}
-                <span className="font-semibold">{periodLabel}</span>.
+                Showing Data For : <span className="font-semibold">{today}</span>
               </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <PeriodSelector current={period} />
-              <span className="chip bg-white/10 text-white backdrop-blur-sm border border-white/20 text-xs">
-                <span className="pulse-dot" /> Live
-              </span>
             </div>
           </div>
         </div>
       </div>
 
       <Suspense fallback={<CockpitBodySkeleton />}>
-        <OwnerCockpitBody session={session} period={period} customStart={customStart} />
+        <OwnerCockpitBody session={session} period={period} customStart={customStart} customFrom={customFrom} customTo={customTo} />
       </Suspense>
     </div>
   );
@@ -134,16 +127,20 @@ async function OwnerCockpitBody({
   session,
   period = "mtd",
   customStart,
+  customFrom,
+  customTo,
 }: {
   session: SessionUser;
   period?: Period;
   customStart?: string;
+  customFrom?: string;
+  customTo?: string;
 }) {
   const now = new Date();
   // Resolve period → start/end range. All "MTD" aggregates in the queries below
   // use this start instead of the hard-coded startOfMonth, and the net-sales
   // chart honours the SAME window so it matches the KPI tiles.
-  const range = resolvePeriodRange(period, now, { customStart });
+  const range = resolvePeriodRange(period, now, { customStart, from: customFrom, to: customTo });
   const { fromISO: startOfPeriodISO, toISO: endOfPeriodISO, label: periodLabel, days: rangeDays } = range;
   // Keep the original variable name so existing SQL template literals stay unchanged.
   const startOfMonthISO = startOfPeriodISO;
@@ -155,7 +152,7 @@ async function OwnerCockpitBody({
   ).toISOString();
 
   // Drill-down links carry the active window so the destination opens scoped.
-  const periodQuery = buildPeriodQuery(period, customStart);
+  const periodQuery = buildPeriodQuery(period, customStart, customFrom, customTo);
 
   // Chart bucketing: short ranges stay daily for resolution; longer ranges
   // bucket by week so the x-axis doesn't turn into a comb of 90+ ticks.
@@ -210,6 +207,54 @@ async function OwnerCockpitBody({
         WHERE e.tenant_id = ${session.tenantId}::uuid
           AND e.status <> 'cancelled'
           AND e.business_date >= ${startOfMonthISO}::date
+      `);
+
+      // ---------- 2c. Business summary — net flows by asset class + product ----------
+      // Detailed MIS the owner asked for: SIP (new/stop/net), Equity & Liquid
+      // (purchase/redemption/net), the combined total, PMS/AIF/SIF, and new
+      // insurance premium. Mutual-fund asset-class metrics are scoped to
+      // product_type mutual_fund/direct_equity so PMS/AIF/SIF (whose lines may
+      // carry an equity class) are counted ONCE, in their own tiles.
+      const bizFlows = await tx.execute(sql`
+        WITH lines AS (
+          SELECT l.amount::numeric AS amt, l.txn_type, l.asset_class, l.from_asset_class,
+                 (e.product_type IN ('mutual_fund','direct_equity')) AS mf
+          FROM business_entry_lines l
+          JOIN business_entries e ON e.id = l.entry_id
+          WHERE e.tenant_id = ${session.tenantId}::uuid
+            AND e.status <> 'cancelled'
+            AND e.business_date >= ${startOfPeriodISO}::date
+            AND e.business_date <= ${endOfPeriodISO}::date
+        )
+        SELECT
+          COALESCE(SUM(amt) FILTER (WHERE mf AND txn_type = 'sip'), 0)::numeric AS new_sip,
+          COALESCE(SUM(amt) FILTER (WHERE mf AND txn_type = 'sip_stop'), 0)::numeric AS sip_stop,
+          COALESCE(SUM(amt) FILTER (WHERE mf AND asset_class = 'equity' AND txn_type IN ('lumpsum','additional_purchase','switch','stp')), 0)::numeric AS eq_pur,
+          COALESCE(SUM(amt) FILTER (WHERE mf AND ((txn_type IN ('redemption','swp') AND asset_class = 'equity') OR (txn_type IN ('switch','stp') AND from_asset_class = 'equity'))), 0)::numeric AS eq_red,
+          COALESCE(SUM(amt) FILTER (WHERE mf AND asset_class = 'liquid' AND txn_type IN ('lumpsum','additional_purchase','switch','stp')), 0)::numeric AS liq_pur,
+          COALESCE(SUM(amt) FILTER (WHERE mf AND ((txn_type IN ('redemption','swp') AND asset_class = 'liquid') OR (txn_type IN ('switch','stp') AND from_asset_class = 'liquid'))), 0)::numeric AS liq_red,
+          COALESCE(SUM(amt) FILTER (WHERE mf AND txn_type IN ('lumpsum','additional_purchase','switch','stp')), 0)::numeric AS total_pur
+        FROM lines
+      `);
+      const bizProducts = await tx.execute(sql`
+        SELECT
+          COALESCE(SUM(total_amount::numeric) FILTER (WHERE product_type = 'pms'), 0)::numeric AS pms,
+          COALESCE(SUM(total_amount::numeric) FILTER (WHERE product_type = 'aif'), 0)::numeric AS aif,
+          COALESCE(SUM(total_amount::numeric) FILTER (WHERE product_type = 'sif'), 0)::numeric AS sif
+        FROM business_entries
+        WHERE tenant_id = ${session.tenantId}::uuid
+          AND status <> 'cancelled'
+          AND business_date >= ${startOfPeriodISO}::date
+          AND business_date <= ${endOfPeriodISO}::date
+      `);
+      const insBiz = await tx.execute(sql`
+        SELECT COALESCE(SUM(annual_premium::numeric), 0)::numeric AS premium, COUNT(*)::int AS cnt
+        FROM insurance_policies
+        WHERE tenant_id = ${session.tenantId}::uuid
+          AND status <> 'cancelled'
+          AND policy_start_date IS NOT NULL
+          AND policy_start_date >= ${startOfPeriodISO}::date
+          AND policy_start_date <= ${endOfPeriodISO}::date
       `);
 
       // NB: "SIP stopped this period" is already computed as stopped_sips_period
@@ -351,6 +396,9 @@ async function OwnerCockpitBody({
       const q = queues.rows[0] as any;
       const t = team.rows[0] as any;
       const lf = leadFunnel.rows[0] as any;
+      const bf = bizFlows.rows[0] as any;
+      const bp = bizProducts.rows[0] as any;
+      const ib = insBiz.rows[0] as any;
       const netBusiness =
         Number(b.sip_added_amt) + Number(b.lumpsum_amt) - Number(b.redemption_amt);
       const conversionPct =
@@ -378,6 +426,15 @@ async function OwnerCockpitBody({
         sipRejectedCount: Number(b.sip_rejected_count),
         sipStoppedCount: Number(b.sip_stopped_count ?? 0),
         netBusiness,
+        // detailed business summary (net flows by asset class + product)
+        bizSummary: {
+          newSip: Number(bf.new_sip), sipStop: Number(bf.sip_stop),
+          eqPur: Number(bf.eq_pur), eqRed: Number(bf.eq_red),
+          liqPur: Number(bf.liq_pur), liqRed: Number(bf.liq_red),
+          totalPur: Number(bf.total_pur),
+          pms: Number(bp.pms), aif: Number(bp.aif), sif: Number(bp.sif),
+          insPremium: Number(ib.premium), insCount: Number(ib.cnt),
+        },
         // queues
         reviewsDue: Number(q.reviews_due),
         srPending: Number(q.sr_pending),
@@ -419,12 +476,6 @@ async function OwnerCockpitBody({
     show("kpi.open_leads") ||
     show("kpi.active_sip_book") ||
     show("kpi.net_business");
-  const anyBusiness =
-    show("kpi.sip_added") ||
-    show("kpi.lumpsum") ||
-    show("kpi.redemption") ||
-    show("kpi.sip_rejected") ||
-    show("kpi.sip_stopped");
   const anyAnalytics =
     show("section.lead_funnel") ||
     show("section.aum_segment") ||
@@ -432,12 +483,6 @@ async function OwnerCockpitBody({
 
   return (
     <div className="space-y-6">
-      {/* Getting-started checklist — auto-hides when all steps complete */}
-      {show("section.getting_started") && <GettingStartedChecklist tenantId={session.tenantId} />}
-
-      {/* ---------- State of the firm — daily brief strip ---------- */}
-      {show("section.firm_brief") && <FirmBriefStrip data={data} period={period} />}
-
       {/* ---------- 1. Headline KPIs — hero tiles (with period trajectory) ---------- */}
       {anyHeadline && (
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -488,33 +533,6 @@ async function OwnerCockpitBody({
       </div>
       )}
 
-      {/* ---------- 2. Monthly business breakdown ---------- */}
-      {anyBusiness && (
-      <Group title={`Business — ${periodLabel}`} link={{ href: withPeriod("/dashboard/reports/net_sales", periodQuery), label: "Open report" }}>
-        {data.sipAddedCount === 0 &&
-        data.lumpsumCount === 0 &&
-        data.redemptionAmt === 0 &&
-        data.sipRejectedCount === 0 &&
-        data.sipStoppedCount === 0 ? (
-          <DashboardEmptyState
-            icon={ClipboardList}
-            title={`No business booked in ${periodLabel}`}
-            hint="SIPs, lumpsums and redemptions booked in this window will tally here. Record an entry or widen the period."
-            cta={{ href: withPeriod("/dashboard/business-entries", periodQuery), label: "Add business entry" }}
-            compact
-          />
-        ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-          {show("kpi.sip_added") && <Stat href={withPeriod("/dashboard/sips", periodQuery)} label="SIP Added" value={String(data.sipAddedCount)} sub={formatINR(data.sipAddedAmt)} />}
-          {show("kpi.lumpsum") && <Stat href={withPeriod("/dashboard/transactions", periodQuery)} label="Lumpsum" value={String(data.lumpsumCount)} sub={formatINR(data.lumpsumAmt)} />}
-          {show("kpi.redemption") && <Stat href={withPeriod("/dashboard/transactions?type=redemption", periodQuery)} label="Redemption" value={formatINR(data.redemptionAmt)} tone={data.redemptionAmt > 0 ? "rose" : "muted"} />}
-          {show("kpi.sip_rejected") && <Stat href={withPeriod("/dashboard/sip-rejections", periodQuery)} label="SIP Rejected" value={String(data.sipRejectedCount)} tone={data.sipRejectedCount > 0 ? "rose" : "muted"} />}
-          {show("kpi.sip_stopped") && <Stat href={withPeriod("/dashboard/sips?status=stopped", periodQuery)} label="SIP Stopped" value={String(data.sipStoppedCount)} tone={data.sipStoppedCount > 0 ? "amber" : "muted"} />}
-        </div>
-        )}
-      </Group>
-      )}
-
       {/* ---------- Growth & retention — churn, tax-harvest, referrals, regulatory (streamed) ---------- */}
       {show("section.growth_retention") && (
       <Suspense fallback={<CardSkeleton />}>
@@ -555,112 +573,8 @@ async function OwnerCockpitBody({
       </div>
       )}
 
-      {/* ---------- Net-sales chart — period-scoped, matches the KPI tiles ---------- */}
-      {show("section.net_sales") && (
-      <div className="card-surface glass-card p-5">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="font-semibold flex items-center gap-2">
-            <div className="size-7 rounded-lg bg-brand-cyan-light grid place-items-center">
-              <TrendingUp className="size-3.5 text-brand-cyan-deep" />
-            </div>
-            Net sales — {periodLabel}
-          </h2>
-          <span className="text-xs text-muted-foreground">
-            {netSalesGranularity === "week" ? "Weekly" : "Daily"} inflow vs redemption
-          </span>
-        </div>
-        <NetSalesChart
-          data={data.netSalesSeries}
-          granularity={netSalesGranularity}
-          emptyCta={{ href: withPeriod("/dashboard/transactions", periodQuery), label: "View transactions" }}
-        />
-      </div>
-      )}
-
       {/* ---------- SIP Persistency — franchise health metric ---------- */}
       {show("section.sip_persistency") && <SipPersistencyTile session={session} />}
-    </div>
-  );
-}
-
-/* -------------------- State of the firm — daily brief -------------------- */
-
-function FirmBriefStrip({
-  data,
-  period,
-}: {
-  data: {
-    totalClients: number;
-    totalAum: number;
-    sipBook: number;
-    sipRejectedCount: number;
-    reviewsDue: number;
-    complaintsOpen: number;
-    netBusiness: number;
-    sipAddedCount: number;
-    sipStoppedCount: number;
-  };
-  period: string;
-}) {
-  const netSipFlow = data.sipAddedCount - data.sipStoppedCount;
-  const signals: Array<{ text: string; tone: "rose" | "amber" | "emerald" | "muted" }> = [];
-
-  if (data.sipRejectedCount > 0) {
-    signals.push({
-      text: `${data.sipRejectedCount} SIP rejection${data.sipRejectedCount > 1 ? "s" : ""} this period`,
-      tone: data.sipRejectedCount >= 5 ? "rose" : "amber",
-    });
-  }
-  if (data.reviewsDue > 0) {
-    signals.push({
-      text: `${data.reviewsDue} review${data.reviewsDue > 1 ? "s" : ""} overdue`,
-      tone: data.reviewsDue >= 10 ? "rose" : "amber",
-    });
-  }
-  if (data.complaintsOpen > 0) {
-    signals.push({
-      text: `${data.complaintsOpen} complaint${data.complaintsOpen > 1 ? "s" : ""} open`,
-      tone: "rose",
-    });
-  }
-  if (netSipFlow > 0) {
-    signals.push({ text: `net +${netSipFlow} SIPs ${period.toUpperCase()}`, tone: "emerald" });
-  } else if (netSipFlow < 0) {
-    signals.push({ text: `net ${netSipFlow} SIPs ${period.toUpperCase()}`, tone: "rose" });
-  }
-
-  const colorMap = {
-    rose: "text-rose-700 bg-rose-50 border-rose-200",
-    amber: "text-amber-700 bg-amber-50 border-amber-200",
-    emerald: "text-emerald-700 bg-emerald-50 border-emerald-200",
-    muted: "text-muted-foreground bg-secondary border-border/40",
-  };
-
-  return (
-    <div className="flex items-center gap-3 p-3 rounded-xl bg-card border border-border/50 flex-wrap">
-      <span className="text-xs text-muted-foreground font-semibold">Today:</span>
-      <span className="text-xs font-semibold text-foreground">
-        {data.totalClients.toLocaleString("en-IN")} clients ·{" "}
-        <span className="text-emerald-700">₹</span>
-        {(data.totalAum / 10_000_000).toFixed(2)} Cr AUM ·{" "}
-        {(data.sipBook / 100_000).toFixed(1)}L SIP/mo
-      </span>
-      {signals.length > 0 && (
-        <span className="text-muted-foreground text-xs">·</span>
-      )}
-      {signals.map((s, i) => (
-        <span
-          key={i}
-          className={`inline-flex items-center text-[11px] font-semibold px-2 py-0.5 rounded-full border ${colorMap[s.tone]}`}
-        >
-          {s.text}
-        </span>
-      ))}
-      {signals.length === 0 && (
-        <span className="inline-flex items-center text-[11px] font-semibold px-2 py-0.5 rounded-full border text-emerald-700 bg-emerald-50 border-emerald-200">
-          ✓ No alerts today
-        </span>
-      )}
     </div>
   );
 }

@@ -68,9 +68,12 @@ export type ColumnDef = {
 export function ColumnManager({
   moduleKey,
   columns,
+  compact = false,
 }: {
   moduleKey: string;
   columns: ColumnDef[];
+  /** Icon-only trigger (no "Columns" label) — for compact toolbars. */
+  compact?: boolean;
 }) {
   const storageKey = `cols:${moduleKey}`;
 
@@ -90,7 +93,12 @@ export function ColumnManager({
         return;
       }
     } catch {}
-    // First visit: hide the columns marked defaultHidden.
+    // No personal choice → firm default (owner-set), else built-in defaultHidden.
+    const firm = (typeof window !== "undefined" && (window as any).__AINA_FIRM_LAYOUTS__?.[moduleKey]?.columns) || null;
+    if (Array.isArray(firm)) {
+      setHidden(new Set(firm as string[]));
+      return;
+    }
     setHidden(
       new Set(columns.filter((c) => c.defaultHidden && !c.required).map((c) => c.key))
     );
@@ -132,6 +140,20 @@ export function ColumnManager({
     );
   }
 
+  // Firm-admins can save the current columns as the firm-wide default.
+  const canSaveFirm = typeof window !== "undefined" && (window as any).__AINA_LAYOUT_ADMIN__ === true;
+  const [savedFirm, setSavedFirm] = useState(false);
+  async function saveFirmDefault() {
+    if (!hidden) return;
+    await fetch("/api/settings/ui-layout", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ moduleKey, kind: "columns", data: [...hidden] }),
+    }).catch(() => {});
+    setSavedFirm(true);
+    setTimeout(() => setSavedFirm(false), 2000);
+  }
+
   // Build the CSS once per hidden-set change.
   const css = useMemo(() => {
     if (!hidden || hidden.size === 0) return "";
@@ -158,18 +180,32 @@ export function ColumnManager({
     <>
       {css ? <style dangerouslySetInnerHTML={{ __html: css }} /> : null}
       <div className="relative" ref={rootRef}>
-        <button
-          type="button"
-          onClick={() => setOpen((o) => !o)}
-          className="rounded-md border border-border bg-secondary/40 px-2.5 py-1.5 text-xs font-medium hover:bg-secondary inline-flex items-center gap-1.5"
-          title="Show or hide columns"
-        >
-          <Columns3 className="size-3.5" />
-          Columns
-          <span className="text-[10px] text-muted-foreground tabular-nums">
-            {visibleCount}/{columns.length}
-          </span>
-        </button>
+        {compact ? (
+          <button
+            type="button"
+            onClick={() => setOpen((o) => !o)}
+            title={`Columns (${visibleCount}/${columns.length})`}
+            aria-label="Show or hide columns"
+            className={`relative inline-flex items-center justify-center rounded-lg border size-8 transition ${
+              hiddenCount > 0 ? "bg-brand-cyan-light/40 border-brand-cyan/40 text-brand-cyan-deep" : "bg-card border-border hover:bg-secondary"
+            }`}
+          >
+            <Columns3 className="size-4" />
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setOpen((o) => !o)}
+            className="rounded-md border border-border bg-secondary/40 px-2.5 py-1.5 text-xs font-medium hover:bg-secondary inline-flex items-center gap-1.5"
+            title="Show or hide columns"
+          >
+            <Columns3 className="size-3.5" />
+            Columns
+            <span className="text-[10px] text-muted-foreground tabular-nums">
+              {visibleCount}/{columns.length}
+            </span>
+          </button>
+        )}
         {open && (
           <div
             className="absolute right-0 mt-1 z-50 w-64 max-h-[420px] overflow-y-auto bg-card border border-border rounded-lg shadow-xl py-1"
@@ -182,14 +218,26 @@ export function ColumnManager({
                   Pick what you want to see in the table.
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={reset}
-                className="text-[10px] text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
-                title="Reset to defaults"
-              >
-                <RotateCcw className="size-3" /> Reset
-              </button>
+              <div className="flex items-center gap-2">
+                {canSaveFirm && (
+                  <button
+                    type="button"
+                    onClick={saveFirmDefault}
+                    className="text-[10px] text-brand-cyan-deep hover:underline"
+                    title="Make these columns the default for everyone in your firm"
+                  >
+                    {savedFirm ? "✓ Saved" : "Save as firm default"}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={reset}
+                  className="text-[10px] text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
+                  title="Reset to defaults"
+                >
+                  <RotateCcw className="size-3" /> Reset
+                </button>
+              </div>
             </div>
             {grouped.map(([group, cols]) => (
               <div key={group} className="py-1">

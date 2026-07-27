@@ -6,6 +6,32 @@ import { withTenant } from "@/db/client";
 import { currentFiscalYear } from "@/lib/business/sif-status";
 import { TARGETABLE_METRICS } from "@/lib/team/scorecard";
 
+/** List the targetable metrics, active members, and the current FY's targets
+ *  (for the mobile Targets screen). Owners / branch heads. */
+export async function GET() {
+  const session = await requireSession();
+  if (!can(session.roles, "dashboard.view.owner", session.permissions)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+  const fiscalYear = currentFiscalYear();
+  const data = await withTenant(session.tenantId, async (tx) => {
+    const members = await tx.execute(sql`
+      SELECT id, name FROM users
+      WHERE tenant_id = ${session.tenantId}::uuid AND status = 'active'
+      ORDER BY name
+    `);
+    const targets = await tx.execute(sql`
+      SELECT user_id, metric_key, annual_target
+      FROM kra_targets
+      WHERE tenant_id = ${session.tenantId}::uuid AND fiscal_year = ${fiscalYear}
+    `);
+    return { members: members.rows as any[], targets: targets.rows as any[] };
+  });
+  const map: Record<string, Record<string, number>> = {};
+  for (const t of data.targets) (map[t.user_id] ??= {})[t.metric_key] = Number(t.annual_target);
+  return NextResponse.json({ fiscalYear, metrics: TARGETABLE_METRICS, members: data.members, targets: map });
+}
+
 /** Upsert one person's annual target for one KRA metric. Owners / branch heads. */
 export async function POST(req: Request) {
   const session = await requireSession();

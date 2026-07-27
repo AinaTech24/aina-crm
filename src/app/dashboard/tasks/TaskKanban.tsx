@@ -46,7 +46,7 @@ function fmtDue(d: any): string | null {
   return dt.toLocaleDateString("en-IN", { day: "2-digit", month: "short" });
 }
 
-export function TaskKanban({ initialRows, currentUserId }: { initialRows: TaskRow[]; currentUserId: string }) {
+export function TaskKanban({ initialRows, currentUserId, canManageAll = false }: { initialRows: TaskRow[]; currentUserId: string; canManageAll?: boolean }) {
   const router = useRouter();
   const toast = useToast();
   const [rows, setRows] = useState(initialRows);
@@ -265,6 +265,8 @@ export function TaskKanban({ initialRows, currentUserId }: { initialRows: TaskRo
             investorName: selected.investorName,
             leadName: selected.leadName,
           }}
+          currentUserId={currentUserId}
+          canManageAll={canManageAll}
           onClose={() => setSelected(null)}
           onUpdate={() => router.refresh()}
         />

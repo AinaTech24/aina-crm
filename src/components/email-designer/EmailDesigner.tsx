@@ -41,13 +41,43 @@ import {
   Loader2,
   Check,
   UploadCloud,
-  Layers as LayersIcon,
 } from "lucide-react";
 import type { EmailDesignerBody, EmailBlock, EmailTheme } from "@/lib/email-designer/types";
-import { mergeFieldsByCategory, type MergeField } from "@/lib/email-designer/merge-fields";
+import { mergeFieldsByCategory, MERGE_FIELDS, type MergeField } from "@/lib/email-designer/merge-fields";
 
 type Mode = "designer" | "html";
 type SectionId = "properties" | "blocks" | "theme" | "fields";
+
+// Sample values keyed by token — the SAME examples the preview API uses to
+// render the body — so the subject/preheader preview resolves to realistic text
+// (e.g. "Rajesh") instead of showing raw {{investor.first_name}} tokens.
+const EXAMPLE_BY_TOKEN: Record<string, string> = Object.fromEntries(
+  MERGE_FIELDS.map((f) => [f.token, String(f.example ?? "")])
+);
+function resolvePreviewTokens(text: string): string {
+  if (!text) return text;
+  return text.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (m, tok) => (tok in EXAMPLE_BY_TOKEN ? EXAMPLE_BY_TOKEN[tok] : m));
+}
+
+/** Friendly, content-aware label for a block in the Properties list. */
+function blockTypeLabel(b: any): string {
+  switch (b.type) {
+    case "logo": return "Logo";
+    case "hero": return "Hero";
+    case "heading": return `Heading (${String(b.level ?? "h2").toUpperCase()})`;
+    case "text": return "Paragraph";
+    case "button": return "Button";
+    case "image": return "Image";
+    case "image_row": return "Image row";
+    case "data_table": return "Data table";
+    case "divider": return "Divider";
+    case "spacer": return "Spacer";
+    case "quote": return "Quote";
+    case "social": return "Social links";
+    case "html": return "Custom HTML";
+    default: return String(b.type).replace(/_/g, " ");
+  }
+}
 
 export function EmailDesigner({
   value,
@@ -122,20 +152,34 @@ export function EmailDesigner({
     }
   }, []);
 
-  // Live preview refresh — server renders
+  // Live preview refresh — server renders.
   const debounce = useRef<NodeJS.Timeout | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  // Always send the latest body, but only RE-RENDER the preview when the body
+  // content actually changes. Subject/preheader show in the inbox header (not
+  // the email body), so keying the refresh on the body alone stops the preview
+  // iframe from reloading — and flickering — on every subject keystroke.
+  const valueRef = useRef(value);
+  valueRef.current = value;
+  const previewKey = JSON.stringify({ ...value, subject: undefined, preheader: undefined });
   useEffect(() => {
     if (debounce.current) clearTimeout(debounce.current);
     debounce.current = setTimeout(() => {
       void fetch("/api/email-designer/preview", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ body: value }),
+        body: JSON.stringify({ body: valueRef.current }),
       })
         .then(async (r) => {
           if (!r.ok) {
-            setPreviewError(`Preview API returned ${r.status}`);
+            // Surface the server's actual reason (e.g. a permissions message)
+            // rather than a bare status code — "returned 500" told the user
+            // nothing and made this class of failure undiagnosable from the UI.
+            const detail = await r
+              .json()
+              .then((d: any) => (typeof d?.error === "string" ? d.error : ""))
+              .catch(() => "");
+            setPreviewError(detail ? `${detail} (HTTP ${r.status})` : `Preview API returned ${r.status}`);
             return { html: "" };
           }
           setPreviewError(null);
@@ -143,11 +187,12 @@ export function EmailDesigner({
         })
         .then((d) => setPreviewHtml(d.html ?? ""))
         .catch(() => setPreviewHtml(""));
-    }, 120);
+    }, 250);
     return () => {
       if (debounce.current) clearTimeout(debounce.current);
     };
-  }, [value]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewKey]);
 
   function update<K extends keyof EmailDesignerBody>(patch: Partial<EmailDesignerBody>) {
     onChange({ ...value, ...patch });
@@ -158,6 +203,12 @@ export function EmailDesigner({
   // Select a block and make sure its editor (the Properties section) is visible.
   function selectBlock(id: string) {
     setSelectedId(id);
+    setOpen((o) => ({ ...o, properties: true }));
+  }
+  // Properties lists every block; clicking a block's header expands its editor
+  // (and highlights it in the preview) — clicking again collapses it.
+  function toggleSelect(id: string) {
+    setSelectedId((cur) => (cur === id ? null : id));
     setOpen((o) => ({ ...o, properties: true }));
   }
   function addBlock(type: any) {
@@ -241,7 +292,6 @@ export function EmailDesigner({
       update({ subject: `${value.subject ?? ""}${token}` });
     }
   }
-  const selectedBlock = (value.blocks ?? []).find((b: any) => b.id === selectedId);
   const blocks = value.blocks ?? [];
 
   return (
@@ -274,58 +324,43 @@ export function EmailDesigner({
         <div className="flex-1 overflow-y-auto scrollbar-none min-h-0">
           {mode === "designer" ? (
             <>
-              {/* Properties of the selected block */}
+              {/* Properties — EVERY block, prefilled, expand to edit in place.
+                  Seeing all content at once (Heading, Paragraph, Button, …) makes
+                  it obvious which control maps to which part of the preview. */}
               <AccordionSection
                 id="properties"
-                title={selectedBlock ? selectedBlock.type.replace(/_/g, " ") : "Properties"}
+                title="Properties"
                 icon={PaintBucket}
                 open={open.properties}
                 onToggle={() => toggleSection("properties")}
-                titleClassName="capitalize"
-                action={
-                  selectedBlock ? (
-                    <div className="flex items-center gap-1">
-                      <FieldMenu onPick={insertMergeField} />
-                      <span
-                        role="button"
-                        onClick={(e) => { e.stopPropagation(); removeBlock(selectedBlock.id); }}
-                        title="Delete block"
-                        className="btn-icon h-6 w-6 text-rose-600 inline-flex items-center justify-center"
-                      >
-                        <Trash2 className="size-3.5" />
-                      </span>
-                    </div>
-                  ) : undefined
-                }
+                count={blocks.length}
               >
-                {selectedBlock ? (
-                  <BlockEditor block={selectedBlock} onChange={(patch) => updateBlock(selectedBlock.id, patch)} />
-                ) : (
+                {blocks.length === 0 ? (
                   <div className="text-center text-xs text-muted-foreground py-6 px-3">
                     <Sparkles className="size-6 mx-auto text-muted-foreground/40 mb-2" />
-                    {blocks.length === 0 ? "Add a block below to start building." : "Select a layer to edit it here."}
+                    Add a block below to start building.
                   </div>
+                ) : (
+                  <BlockList
+                    blocks={blocks}
+                    selectedId={selectedId}
+                    dragId={dragId}
+                    onToggleSelect={toggleSelect}
+                    onMoveUp={(id) => moveBlock(id, -1)}
+                    onMoveDown={(id) => moveBlock(id, 1)}
+                    onRemove={removeBlock}
+                    onDragStart={setDragId}
+                    onDragEnd={() => setDragId(null)}
+                    onDropOn={(toId) => { if (dragId) moveBlockTo(dragId, toId); setDragId(null); }}
+                    onEditBlock={updateBlock}
+                    onInsertField={insertMergeField}
+                  />
                 )}
               </AccordionSection>
 
-              {/* Blocks — palette + layers */}
-              <AccordionSection id="blocks" title="Blocks" icon={Sparkles} open={open.blocks} onToggle={() => toggleSection("blocks")} count={blocks.length}>
+              {/* Blocks — palette to add new blocks (edit/reorder live in Properties) */}
+              <AccordionSection id="blocks" title="Add a block" icon={Sparkles} open={open.blocks} onToggle={() => toggleSection("blocks")}>
                 <BlockPalette onAdd={addBlock} />
-                <div className="mt-4 mb-1.5 flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
-                  <LayersIcon className="size-3" /> Layers
-                </div>
-                <OutlineList
-                  blocks={blocks}
-                  selectedId={selectedId}
-                  dragId={dragId}
-                  onSelect={selectBlock}
-                  onMoveUp={(id) => moveBlock(id, -1)}
-                  onMoveDown={(id) => moveBlock(id, 1)}
-                  onRemove={removeBlock}
-                  onDragStart={setDragId}
-                  onDragEnd={() => setDragId(null)}
-                  onDropOn={(toId) => { if (dragId) moveBlockTo(dragId, toId); setDragId(null); }}
-                />
               </AccordionSection>
 
               {/* Theme */}
@@ -373,6 +408,17 @@ export function EmailDesigner({
             </button>
           </div>
         </div>
+        {/* Opened-email header — the Subject + preheader read as the top of the
+            message being previewed (not a separate labelled box), with merge
+            tokens resolved to sample values so it matches the body preview. */}
+        <div className="border-b border-border px-6 pt-4 pb-3 bg-white shrink-0">
+          <div className={`text-[17px] font-semibold leading-snug ${value.subject?.trim() ? "text-foreground" : "text-muted-foreground italic"}`}>
+            {value.subject?.trim() ? resolvePreviewTokens(value.subject) : "(no subject yet)"}
+          </div>
+          {value.preheader?.trim() && (
+            <div className="text-[13px] text-muted-foreground mt-1 leading-snug">{resolvePreviewTokens(value.preheader)}</div>
+          )}
+        </div>
         <div className="flex-1 min-h-0">
           <LivePreview html={previewHtml} error={previewError} scrollToId={mode === "designer" ? selectedId : null} />
         </div>
@@ -405,6 +451,25 @@ function LivePreview({ html, error, scrollToId }: { html: string; error: string 
       st.id = "__hide_sb";
       st.textContent = "html{scrollbar-width:none;-ms-overflow-style:none;} ::-webkit-scrollbar{width:0;height:0;display:none;}";
       doc.head.appendChild(st);
+    }
+    // Neutralise link clicks in the preview: button/link hrefs still hold
+    // unresolved merge tokens (e.g. "{{tenant.websiteUrl}}"), which as a relative
+    // URL would navigate the iframe INTO the app and throw. This is only a
+    // preview — real sends resolve the tokens to working URLs. Block once per
+    // loaded document (the flag lives on the doc, so a reload re-arms it).
+    if (!(doc as any).__linksBlocked) {
+      (doc as any).__linksBlocked = true;
+      doc.addEventListener(
+        "click",
+        (e) => {
+          const a = (e.target as HTMLElement | null)?.closest?.("a");
+          if (a) {
+            e.preventDefault();
+            e.stopPropagation();
+          }
+        },
+        true
+      );
     }
     if (scrollToId) {
       doc.getElementById(`eb-${scrollToId}`)?.scrollIntoView({ block: "center", behavior: "auto" });
@@ -494,58 +559,81 @@ function blockSummary(b: any): string {
   }
 }
 
-function OutlineList({
-  blocks, selectedId, dragId, onSelect, onMoveUp, onMoveDown, onRemove, onDragStart, onDragEnd, onDropOn,
+/** The Properties list: every block shown with a content-aware label + summary,
+ *  expandable in place to reveal its prefilled editor. Also supports drag / up /
+ *  down / delete so the whole content of the email is authored from one panel. */
+function BlockList({
+  blocks, selectedId, dragId,
+  onToggleSelect, onMoveUp, onMoveDown, onRemove,
+  onDragStart, onDragEnd, onDropOn, onEditBlock, onInsertField,
 }: {
   blocks: any[];
   selectedId: string | null;
   dragId: string | null;
-  onSelect: (id: string) => void;
+  onToggleSelect: (id: string) => void;
   onMoveUp: (id: string) => void;
   onMoveDown: (id: string) => void;
   onRemove: (id: string) => void;
   onDragStart: (id: string) => void;
   onDragEnd: () => void;
   onDropOn: (id: string) => void;
+  onEditBlock: (id: string, patch: any) => void;
+  onInsertField: (f: MergeField) => void;
 }) {
-  if (blocks.length === 0) {
-    return <div className="mt-2 text-[11px] text-muted-foreground italic">No blocks yet — add one above.</div>;
-  }
   return (
-    <div className="mt-1.5 space-y-1">
+    <div className="space-y-1.5">
       {blocks.map((b, i) => {
         const Icon = PALETTE.find((p) => p.type === b.type)?.icon ?? TypeIcon;
         const sel = selectedId === b.id;
+        // logo/divider/spacer have no text to insert merge fields into.
+        const canInsertField = !["logo", "divider", "spacer"].includes(b.type);
         return (
           <div
             key={b.id}
-            onClick={() => onSelect(b.id)}
             onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
             onDrop={(e) => { e.preventDefault(); onDropOn(b.id); }}
-            className={`group flex items-center gap-1.5 rounded-lg border px-2 py-1.5 cursor-pointer transition-colors ${
-              sel ? "border-primary bg-primary/5" : "border-border hover:bg-secondary/40"
+            className={`rounded-lg border overflow-hidden transition-colors ${
+              sel ? "border-primary" : "border-border"
             } ${dragId === b.id ? "opacity-40" : ""}`}
           >
-            <span
-              draggable
-              onDragStart={(e) => { e.stopPropagation(); onDragStart(b.id); }}
-              onDragEnd={onDragEnd}
-              onClick={(e) => e.stopPropagation()}
-              title="Drag to reorder"
-              className="cursor-grab text-muted-foreground/50 hover:text-muted-foreground active:cursor-grabbing shrink-0"
+            <div
+              onClick={() => onToggleSelect(b.id)}
+              className={`group flex items-center gap-1.5 px-2 py-1.5 cursor-pointer transition-colors ${
+                sel ? "bg-primary/5" : "hover:bg-secondary/40"
+              }`}
             >
-              <GripVertical className="size-3.5" />
-            </span>
-            <Icon className={`size-3.5 shrink-0 ${sel ? "text-primary" : "text-muted-foreground"}`} />
-            <div className="min-w-0 flex-1">
-              <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground leading-none">{b.type.replace(/_/g, " ")}</div>
-              <div className="text-[11px] truncate text-foreground/80 leading-tight mt-0.5">{blockSummary(b)}</div>
+              <span
+                draggable
+                onDragStart={(e) => { e.stopPropagation(); onDragStart(b.id); }}
+                onDragEnd={onDragEnd}
+                onClick={(e) => e.stopPropagation()}
+                title="Drag to reorder"
+                className="cursor-grab text-muted-foreground/50 hover:text-muted-foreground active:cursor-grabbing shrink-0"
+              >
+                <GripVertical className="size-3.5" />
+              </span>
+              <Icon className={`size-3.5 shrink-0 ${sel ? "text-primary" : "text-muted-foreground"}`} />
+              <div className="min-w-0 flex-1">
+                <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground leading-none">{blockTypeLabel(b)}</div>
+                <div className="text-[11px] truncate text-foreground/80 leading-tight mt-0.5">{blockSummary(b)}</div>
+              </div>
+              <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                <button onClick={(e) => { e.stopPropagation(); onMoveUp(b.id); }} disabled={i === 0} title="Move up" className="btn-icon h-5 w-5 disabled:opacity-30"><ChevronUp className="size-3" /></button>
+                <button onClick={(e) => { e.stopPropagation(); onMoveDown(b.id); }} disabled={i === blocks.length - 1} title="Move down" className="btn-icon h-5 w-5 disabled:opacity-30"><ChevronDown className="size-3" /></button>
+                <button onClick={(e) => { e.stopPropagation(); onRemove(b.id); }} title="Delete block" className="btn-icon h-5 w-5 text-rose-600"><Trash2 className="size-3" /></button>
+              </div>
+              <ChevronDown className={`size-3.5 text-muted-foreground shrink-0 transition-transform duration-200 ${sel ? "rotate-180" : ""}`} />
             </div>
-            <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-              <button onClick={(e) => { e.stopPropagation(); onMoveUp(b.id); }} disabled={i === 0} className="btn-icon h-5 w-5 disabled:opacity-30"><ChevronUp className="size-3" /></button>
-              <button onClick={(e) => { e.stopPropagation(); onMoveDown(b.id); }} disabled={i === blocks.length - 1} className="btn-icon h-5 w-5 disabled:opacity-30"><ChevronDown className="size-3" /></button>
-              <button onClick={(e) => { e.stopPropagation(); onRemove(b.id); }} className="btn-icon h-5 w-5 text-rose-600"><Trash2 className="size-3" /></button>
-            </div>
+            {sel && (
+              <div className="border-t border-border p-2.5 bg-card space-y-1.5">
+                {canInsertField && (
+                  <div className="flex justify-end">
+                    <FieldMenu onPick={onInsertField} />
+                  </div>
+                )}
+                <BlockEditor block={b} onChange={(patch) => onEditBlock(b.id, patch)} />
+              </div>
+            )}
           </div>
         );
       })}

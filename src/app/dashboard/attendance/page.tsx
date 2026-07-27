@@ -3,11 +3,10 @@ import { sql } from "drizzle-orm";
 import { CalendarCheck, CheckCircle2, XCircle, CalendarOff, Grid3x3, CalendarDays, Settings, ClipboardCheck, ChevronLeft, ChevronRight } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { FilterBar } from "@/components/common/FilterBar";
-import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
-import { CustomViews } from "@/components/common/CustomViews";
+import { dateRangeCond } from "@/lib/filters/date-range";
 import { ClockWidget } from "@/components/attendance/ClockWidget";
 import { AttendanceTable } from "@/components/attendance/AttendanceTable";
+import { AttendanceToolbar } from "@/components/attendance/AttendanceToolbar";
 import { ATTENDANCE_STATUS_LABELS, computeAttendanceFlags } from "@/lib/attendance/policy";
 import { loadAttendancePolicy } from "@/lib/attendance/settings";
 
@@ -130,32 +129,15 @@ export default async function AttendancePage({
         <Stat icon={CalendarCheck} label="Active employees" value={s.active_employees ?? 0} />
       </div>
 
-      <FilterBar
-        totalCount={data.rows.length}
-        filters={[
-          { type: "search", key: "q", placeholder: "Search by employee name…" },
-          {
-            type: "multi",
-            key: "status",
-            label: "Status",
-            options: Object.entries(ATTENDANCE_STATUS_LABELS).map(([value, label]) => ({ value, label })),
-          },
-          { type: "select", key: "today", label: "Day", options: [{ value: "1", label: "Today only" }] },
-          dateRangeFilter("date", "Date"),
-        ]}
-        rightSlot={
-          <CustomViews
-            viewsKey="views:attendance"
-            presets={[
-              { id: "today", name: "Today", params: "today=1" },
-              { id: "absent", name: "Absent", params: "status=absent" },
-              { id: "on_leave", name: "On leave", params: "status=on_leave" },
-            ]}
+      <AttendanceTable
+        rows={data.rows}
+        canManage={canManage}
+        toolbar={
+          <AttendanceToolbar
+            statusOptions={Object.entries(ATTENDANCE_STATUS_LABELS).map(([value, label]) => ({ value, label }))}
           />
         }
       />
-
-      <AttendanceTable rows={data.rows} canManage={canManage} />
 
       {pageCount > 1 && (
         <div className="flex items-center justify-between text-xs text-muted-foreground">

@@ -15,7 +15,7 @@ const CLAIM_STATUSES: [string, string][] = [
   ["settled_fully", "Settled Fully"], ["settled_partially", "Settled Partially"], ["rejected", "Rejected"], ["withdrawn", "Withdrawn"],
 ];
 const CLAIM_TYPES: [string, string][] = [["", "Select"], ["main_claim", "Main Claim"], ["supplementary", "Supplementary"], ["pre_authorization", "Pre-authorization"], ["rider", "Rider"], ["other", "Other"]];
-const CLAIM_MODES: [string, string][] = [["", "Select"], ["cashless", "Cashless"], ["reimbursement", "Reimbursement"]];
+const CLAIM_MODES: [string, string][] = [["", "Select"], ["cashless", "Cashless"], ["reimbursement", "Reimbursement"], ["grievance", "Grievance"]];
 const INTIMATION_MODES: [string, string][] = [["", "Select"], ["phone", "Phone"], ["email", "Email"], ["portal", "Portal"], ["branch", "Branch"], ["agent", "Agent"], ["letter", "Letter"], ["other", "Other"]];
 const SUBMITTED_MODES: [string, string][] = [["", "Select"], ["online", "Online"], ["physical", "Physical"], ["courier", "Courier"], ["email", "Email"], ["agent", "Agent"], ["other", "Other"]];
 

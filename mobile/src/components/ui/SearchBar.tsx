@@ -12,10 +12,14 @@ export function SearchBar({
   value,
   onChangeText,
   placeholder = "Search…",
+  autoFocus = false,
 }: {
   value: string;
   onChangeText: (v: string) => void;
   placeholder?: string;
+  /** Opens the keyboard with the screen — for the dedicated search screen, where
+   *  typing is the only reason the user is there. Leave off inside lists. */
+  autoFocus?: boolean;
 }) {
   return (
     <View style={styles.wrap}>
@@ -29,6 +33,7 @@ export function SearchBar({
         autoCapitalize="none"
         autoCorrect={false}
         returnKeyType="search"
+        autoFocus={autoFocus}
       />
       {value.length > 0 ? (
         <Pressable onPress={() => onChangeText("")} hitSlop={10}>

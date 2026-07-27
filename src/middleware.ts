@@ -38,6 +38,18 @@ export const config = {
   ],
 };
 
+/**
+ * Logged-OUT landing surfaces. A visitor who already holds a session should be
+ * sent straight into their app instead of being shown the marketing page (or a
+ * login form) — opening crm.ainatech.in in a second tab used to render the
+ * public landing page even though the user was signed in in the first tab.
+ *
+ * Deliberately NOT the whole PUBLIC_PATHS set: /terms, /privacy, /refund must
+ * stay readable while signed in, and /reset-password + /accept-invite are
+ * email-link flows that must work even when another session is present.
+ */
+const AUTHED_HOME_PATHS = new Set(["/", "/login", "/signup"]);
+
 const PUBLIC_PATHS = new Set([
   "/",
   "/login",
@@ -70,6 +82,9 @@ const PUBLIC_PATHS = new Set([
 const PUBLIC_PATH_PREFIXES = ["/r/", "/lc/", "/d/", "/p/", "/lf/", "/fd/"];
 const PUBLIC_API_PREFIXES = [
   "/api/public/",
+  // Public landing-page pricing feed — the marketing site polls this so an
+  // open tab reflects admin edits live. Only published, display-only copy.
+  "/api/landing/",
   "/api/webhooks/",
   "/api/health",
   "/api/auth/",
@@ -83,6 +98,27 @@ const PUBLIC_API_PREFIXES = [
   // (no session) instead of being bounced to /login → broken <img>.
   "/api/upload-local/",
 ];
+
+/**
+ * Where an already-signed-in visitor to a logged-out page should land, or null
+ * if they hold no session.
+ *
+ * Signature + expiry only (Edge can't reach Postgres). That's sufficient here
+ * because this only ROUTES — it never grants access. The destination still runs
+ * the full Node-side revocation check via getSession(), so a revoked token gets
+ * bounced to /login from there.
+ */
+async function signedInDestination(req: NextRequest): Promise<string | null> {
+  const mfdToken = req.cookies.get(SESSION_COOKIE)?.value;
+  const mfdSession = mfdToken ? await verifySession(mfdToken) : null;
+  if (mfdSession) return mfdSession.isPlatformAdmin ? "/super-admin" : "/dashboard";
+
+  const adminToken = req.cookies.get(ADMIN_SESSION_COOKIE)?.value;
+  const adminSession = adminToken ? await verifySession(adminToken) : null;
+  if (adminSession?.isPlatformAdmin) return "/super-admin";
+
+  return null;
+}
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
@@ -113,8 +149,21 @@ export async function middleware(req: NextRequest) {
     return pre;
   }
 
-  // Public marketing pages
-  if (PUBLIC_PATHS.has(pathname)) return tag(NextResponse.next());
+  // Public marketing pages. A signed-in visitor gets routed into their app
+  // rather than shown the logged-out landing/login page.
+  if (PUBLIC_PATHS.has(pathname)) {
+    if (AUTHED_HOME_PATHS.has(pathname)) {
+      // A `?next=` on /login means we bounced them here FROM a protected page
+      // (e.g. a revoked-but-unexpired token). Redirecting back would ping-pong,
+      // so let the login form render in that case.
+      const isBounce = pathname === "/login" && req.nextUrl.searchParams.has("next");
+      if (!isBounce) {
+        const dest = await signedInDestination(req);
+        if (dest) return tag(NextResponse.redirect(new URL(dest, req.url)));
+      }
+    }
+    return tag(NextResponse.next());
+  }
   // Public form routes — clients click WA/email links without logging in
   if (PUBLIC_PATH_PREFIXES.some((p) => pathname.startsWith(p))) return tag(NextResponse.next());
   if (PUBLIC_API_PREFIXES.some((p) => pathname.startsWith(p))) return tag(NextResponse.next());

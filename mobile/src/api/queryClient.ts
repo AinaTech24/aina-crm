@@ -4,10 +4,21 @@
  * thrash on focus (manual pull-to-refresh instead).
  */
 
-import { QueryClient } from "@tanstack/react-query";
+import { QueryClient, MutationCache } from "@tanstack/react-query";
 import { ApiError } from "./client";
+import { toast } from "../lib/toast";
 
 export const queryClient = new QueryClient({
+  // Every mutation (save / delete / log …) surfaces failures as a global toast,
+  // so no screen has to wire its own error banner. A mutation can opt out with
+  // `meta: { silent: true }` (e.g. optimistic background writes).
+  mutationCache: new MutationCache({
+    onError: (err, _vars, _ctx, mutation) => {
+      if (mutation.meta?.silent) return;
+      const msg = err instanceof ApiError ? err.message : "Something went wrong. Please try again.";
+      toast.error(msg);
+    },
+  }),
   defaultOptions: {
     queries: {
       staleTime: 30_000,

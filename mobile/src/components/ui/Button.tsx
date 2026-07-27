@@ -9,6 +9,7 @@ import { Pressable, ActivityIndicator, Platform, StyleSheet, View, type ViewStyl
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 import { palette, radius, spacing, fontSize, fontWeight, TOUCH_MIN } from "../../theme/tokens";
+import { useBrand } from "../../theme/brand";
 import { Text } from "./Text";
 
 type Variant = "primary" | "secondary" | "ghost" | "danger";
@@ -35,8 +36,16 @@ const VARIANTS: Record<Variant, { bg: string; fg: string; border: string }> = {
 };
 
 function useButtonBits(size: Size, variant: Variant) {
+  const { brand, brandDark } = useBrand();
   const height = size === "lg" ? 54 : size === "sm" ? 38 : TOUCH_MIN;
-  return { height, v: VARIANTS[variant] };
+  // Brand-tinted variants read the live tenant colour; semantic ones stay fixed.
+  const v =
+    variant === "primary"
+      ? { bg: brand, fg: palette.white, border: brand }
+      : variant === "ghost"
+      ? { bg: "transparent", fg: brandDark, border: "transparent" }
+      : VARIANTS[variant];
+  return { height, v };
 }
 
 function Inner({ loading, icon, label, size, fg }: { loading?: boolean; icon?: React.ReactNode; label: string; size: Size; fg: string }) {

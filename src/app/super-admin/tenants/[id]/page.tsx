@@ -31,6 +31,12 @@ export default async function TenantDetailPage({ params }: { params: Promise<{ i
     if (!tenant) return null;
     const sub = (await tx.select().from(subscriptions).where(eq(subscriptions.tenantId, id)).limit(1))[0];
     const pkg = sub ? (await tx.select().from(packages).where(eq(packages.id, sub.packageId)).limit(1))[0] : null;
+    // Owner user + all packages — for the editable admin panel.
+    const owner = (await tx.execute(sql`
+      SELECT id, name, email FROM users WHERE tenant_id = ${id}::uuid AND 'owner' = ANY(roles) AND status <> 'inactive'
+      ORDER BY created_at ASC LIMIT 1
+    `)).rows[0] as { id: string; name: string; email: string } | undefined;
+    const allPackages = await tx.select({ key: packages.key, name: packages.name }).from(packages).orderBy(packages.name);
     const events = await tx
       .select()
       .from(subscriptionEvents)
@@ -40,6 +46,8 @@ export default async function TenantDetailPage({ params }: { params: Promise<{ i
     const usage = await tx.execute(sql`
       SELECT
         (SELECT COUNT(*)::int FROM users WHERE tenant_id = ${id} AND status = 'active') AS active_users,
+        (SELECT COUNT(DISTINCT user_id)::int FROM user_sessions
+           WHERE tenant_id = ${id} AND revoked_at IS NULL AND last_seen_at > now() - interval '5 minutes') AS online_now,
         (SELECT COUNT(*)::int FROM investors WHERE tenant_id = ${id}) AS total_investors,
         (SELECT COUNT(*)::int FROM leads WHERE tenant_id = ${id}) AS total_leads,
         (SELECT COUNT(*)::int FROM transactions WHERE tenant_id = ${id}
@@ -48,7 +56,7 @@ export default async function TenantDetailPage({ params }: { params: Promise<{ i
            AND created_at >= now() - interval '30 days') AS runs_30d,
         (SELECT COALESCE(SUM(aum::numeric),0) FROM investors WHERE tenant_id = ${id}) AS aum
     `);
-    return { tenant, subscription: sub, package: pkg, events, usage: usage.rows[0] as any };
+    return { tenant, subscription: sub, package: pkg, owner, allPackages, events, usage: usage.rows[0] as any };
   });
 
   if (!data) notFound();
@@ -72,7 +80,7 @@ export default async function TenantDetailPage({ params }: { params: Promise<{ i
             <div>
               <h1 className="text-2xl font-bold tracking-tight">{data.tenant.legalName}</h1>
               <div className="flex items-center gap-3 mt-1 text-sm text-muted-foreground">
-                <span className="font-mono">{data.tenant.arn}</span>
+                <span className="font-mono">{data.tenant.arn ?? "No ARN"}</span>
                 {data.subscription && (
                   <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_COLORS[data.subscription.status] ?? ""}`}>
                     {data.subscription.status}
@@ -91,6 +99,7 @@ export default async function TenantDetailPage({ params }: { params: Promise<{ i
 
       <div className="grid grid-cols-5 gap-3">
         <Kpi icon={Users} label="Active users" value={data.usage.active_users} />
+        <Kpi icon={Users} label="Online now" value={data.usage.online_now} />
         <Kpi icon={Users} label="Investors" value={data.usage.total_investors} />
         <Kpi label="Leads" value={data.usage.total_leads} />
         <Kpi label="Transactions (30d)" value={data.usage.tx_30d} />
@@ -160,8 +169,14 @@ export default async function TenantDetailPage({ params }: { params: Promise<{ i
       <TenantAdminPanel
         tenantId={id}
         currentEmail={data.tenant.email ?? null}
-        arn={data.tenant.arn}
+        arn={data.tenant.arn ?? null}
         legalName={data.tenant.legalName}
+        displayName={data.tenant.displayName ?? data.tenant.legalName}
+        ownerName={data.owner?.name ?? ""}
+        ownerEmail={data.owner?.email ?? ""}
+        packageKey={data.subscription?.packageKey ?? ""}
+        billingCycle={data.subscription?.billingCycle ?? "yearly"}
+        packages={data.allPackages ?? []}
       />
 
       {data.subscription && (
@@ -170,6 +185,7 @@ export default async function TenantDetailPage({ params }: { params: Promise<{ i
           initialAllowedNav={(data.subscription as any).allowedNav as string[] | null}
           initialAllowedFields={data.subscription.allowedFields as string[] | null}
           initialAllowedDashboardWidgets={(data.subscription as any).allowedDashboardWidgets as string[] | null}
+          initialFeatureFlags={(data.subscription as any).featureFlagsOverride as Record<string, any> | null}
           packageNavKeys={tenantAccessibleNavKeys({
             allowedNav: null,
             enabledModules: ((data.package as any)?.enabledModules as string[]) ?? [],

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { X, Calendar, User, Sparkles, LifeBuoy, AlertCircle, Trash, Plus, CheckCircle2, ListChecks, Loader2 } from "lucide-react";
+import { X, Calendar, User, Sparkles, LifeBuoy, AlertCircle, Trash, Plus, CheckCircle2, ListChecks, Loader2, ShieldCheck, Clock3, Bell, Send, RotateCcw } from "lucide-react";
 import { RmSelector } from "@/components/common/RmSelector";
 import { SelectField } from "@/components/ui/SelectField";
 import { DateField } from "@/components/ui/DateField";
@@ -10,6 +10,10 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { taskChecklist, subTaskStatus, type Task, type TaskChecklistItem, type SubTaskStatus } from "@/db/schema";
 import Link from "next/link";
 import { RecordProvenance } from "@/components/common/RecordProvenance";
+import { TaskComments } from "./TaskComments";
+import { TaskTimePanel } from "./TaskTimePanel";
+import { TaskAttachments } from "./TaskAttachments";
+import { TaskWatchersDeps } from "./TaskWatchersDeps";
 
 interface TaskDetailDrawerProps {
   task: Task & {
@@ -17,9 +21,23 @@ interface TaskDetailDrawerProps {
     investorName?: string | null;
     leadName?: string | null;
   };
+  currentUserId: string;
+  /** True for owners / task.view.all — they can approve anyone's tasks. */
+  canManageAll?: boolean;
   onClose: () => void;
   onUpdate: () => void;
 }
+
+/** ISO → value for a <input type="datetime-local"> (local time, minute precision). */
+function toLocalInput(iso: string | Date | null | undefined): string {
+  if (!iso) return "";
+  const d = typeof iso === "string" ? new Date(iso) : iso;
+  if (isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+const REMINDER_OFFSETS_MIN: Record<string, number> = { at_due: 0, "1h": 60, "3h": 180, "1d": 1440, "2d": 2880, "1w": 10080 };
 
 const DEPARTMENTS: [string, string][] = [
   ["sales", "Sales"],
@@ -33,9 +51,36 @@ const DEPARTMENTS: [string, string][] = [
   ["other", "Other"],
 ];
 
-export function TaskDetailDrawer({ task, onClose, onUpdate }: TaskDetailDrawerProps) {
+export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, onClose, onUpdate }: TaskDetailDrawerProps) {
   const toast = useToast();
   const [confirmCancelOpen, setConfirmCancelOpen] = useState(false);
+
+  // Approval / verification loop state.
+  const [requiresApproval, setRequiresApproval] = useState(!!task.requiresApproval);
+  const [approvalStatus, setApprovalStatus] = useState(task.approvalStatus ?? null);
+  const [approvalNoteShown, setApprovalNoteShown] = useState(task.approvalNote ?? "");
+  const [rejectOpen, setRejectOpen] = useState(false);
+  const [rejectNote, setRejectNote] = useState("");
+  const [approvalBusy, setApprovalBusy] = useState(false);
+  const isAssignee = task.assigneeId === currentUserId;
+  const isApprover = task.createdById === currentUserId || canManageAll;
+
+  // Per-task reminder state. Default to "custom" (pre-filled) when one is set so
+  // saving preserves it; otherwise "none".
+  const [reminderMode, setReminderMode] = useState<string>(task.remindAt ? "custom" : "none");
+  const [reminderCustom, setReminderCustom] = useState<string>(toLocalInput(task.remindAt));
+  // Only push remindAt to the server when the user actually touched the control
+  // (so editing the title doesn't needlessly re-arm an already-fired reminder).
+  const [reminderDirty, setReminderDirty] = useState(false);
+
+  // Tags.
+  const [tags, setTags] = useState<string[]>(Array.isArray(task.tags) ? (task.tags as string[]) : []);
+  const [tagInput, setTagInput] = useState("");
+  function addTag(raw: string) {
+    const v = raw.trim().replace(/,$/, "").slice(0, 40);
+    if (v && !tags.includes(v)) setTags((t) => [...t, v]);
+    setTagInput("");
+  }
   const [title, setTitle] = useState(task.title);
   const [description, setDescription] = useState(task.description ?? "");
   const [status, setStatus] = useState(task.status);
@@ -163,6 +208,16 @@ export function TaskDetailDrawer({ task, onClose, onUpdate }: TaskDetailDrawerPr
     setSlaDate(task.slaDueAt ? new Date(task.slaDueAt).toISOString().split("T")[0] : "");
     setRemarksHistory(task.remarks ?? "");
     setChecklist(taskChecklist(task.meta));
+    setRequiresApproval(!!task.requiresApproval);
+    setApprovalStatus(task.approvalStatus ?? null);
+    setApprovalNoteShown(task.approvalNote ?? "");
+    setRejectOpen(false);
+    setRejectNote("");
+    setReminderMode(task.remindAt ? "custom" : "none");
+    setReminderCustom(toLocalInput(task.remindAt));
+    setReminderDirty(false);
+    setTags(Array.isArray(task.tags) ? (task.tags as string[]) : []);
+    setTagInput("");
     // Re-initialise ONLY when switching to a different task — keyed on task.id,
     // not the whole object. A checklist add saves then triggers router.refresh,
     // which hands us a new (same-id) task object; depending on [task] here would
@@ -188,7 +243,7 @@ export function TaskDetailDrawer({ task, onClose, onUpdate }: TaskDetailDrawerPr
         finalRemarks = remarksHistory ? `${entry}\n\n${remarksHistory}` : entry;
       }
 
-      const payload = {
+      const payload: Record<string, unknown> = {
         title,
         description: description || undefined,
         status,
@@ -199,6 +254,9 @@ export function TaskDetailDrawer({ task, onClose, onUpdate }: TaskDetailDrawerPr
         slaDueAt: slaDate ? new Date(slaDate).toISOString() : null,
         remarks: finalRemarks || undefined,
       };
+      // Only send the reminder when the user changed it (avoids re-arming).
+      if (reminderDirty) payload.remindAt = computeRemindAt();
+      payload.tags = tags;
 
       const res = await fetch(`/api/tasks/${task.id}`, {
         method: "PATCH",
@@ -225,6 +283,65 @@ export function TaskDetailDrawer({ task, onClose, onUpdate }: TaskDetailDrawerPr
     }
   }
 
+  function computeRemindAt(): string | null {
+    if (reminderMode === "none") return null;
+    if (reminderMode === "custom") return reminderCustom ? new Date(reminderCustom).toISOString() : null;
+    if (!task.dueAt) return null;
+    const off = REMINDER_OFFSETS_MIN[reminderMode] ?? 0;
+    return new Date(new Date(task.dueAt).getTime() - off * 60000).toISOString();
+  }
+
+  async function runApproval(action: "submit" | "approve" | "reject") {
+    setApprovalBusy(true);
+    try {
+      const res = await fetch(`/api/tasks/${task.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          approvalAction: action,
+          ...(action === "reject" ? { approvalNote: rejectNote.trim() || undefined } : {}),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error ?? "Action failed");
+      if (action === "submit") {
+        setApprovalStatus("pending");
+        toast.success("Submitted for approval");
+      } else if (action === "approve") {
+        setApprovalStatus("approved");
+        setStatus("completed" as any);
+        toast.success("Approved & marked complete");
+      } else {
+        setApprovalStatus("rejected");
+        setApprovalNoteShown(rejectNote.trim());
+        setStatus("in_progress" as any);
+        setRejectOpen(false);
+        toast.success("Task reopened for changes");
+      }
+      onUpdate();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Action failed");
+    } finally {
+      setApprovalBusy(false);
+    }
+  }
+
+  async function toggleRequiresApproval(v: boolean) {
+    setRequiresApproval(v); // optimistic
+    try {
+      const res = await fetch(`/api/tasks/${task.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ requiresApproval: v }),
+      });
+      if (!res.ok) throw new Error();
+      onUpdate();
+    } catch {
+      setRequiresApproval(!v);
+      toast.error("Couldn't update the approval setting");
+    }
+  }
+
   async function doCancelTask() {
     setLoading(true);
     setErr(null);
@@ -248,15 +365,17 @@ export function TaskDetailDrawer({ task, onClose, onUpdate }: TaskDetailDrawerPr
 
   return (
     <>
-      {/* Backdrop overlay */}
+      {/* Backdrop overlay — clicking outside closes the modal. */}
       <div
-        className="fixed inset-0 bg-black/35 backdrop-blur-[1px] z-40 transition-opacity"
+        className="fixed inset-0 bg-black/40 backdrop-blur-[1px] z-40 transition-opacity flex items-start sm:items-center justify-center p-0 sm:p-6"
         onClick={onClose}
-      />
+      >
+        {/* Centered modal */}
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="relative w-full h-full sm:h-auto sm:max-h-[88vh] sm:w-[560px] sm:max-w-[calc(100vw-2rem)] bg-white text-slate-800 sm:rounded-xl border border-border shadow-2xl z-50 flex flex-col overflow-hidden animate-modal-in"
+        >
 
-      {/* Slide-over Panel */}
-      <div className="fixed top-0 right-0 h-full w-full md:w-[480px] bg-card border-l border-border shadow-2xl z-50 flex flex-col animate-slide-in overflow-hidden bg-white text-slate-800">
-        
         {/* Header */}
         <div className="px-5 py-4 border-b border-border flex items-center justify-between bg-slate-50">
           <div>
@@ -393,6 +512,44 @@ export function TaskDetailDrawer({ task, onClose, onUpdate }: TaskDetailDrawerPr
                 ))}
               </SelectField>
             </div>
+
+            <div className="col-span-2">
+              <label className="text-[10px] uppercase font-bold text-slate-500 mb-1 flex items-center gap-1">
+                <Bell className="size-3" /> Reminder <span className="normal-case font-medium text-slate-400">— pings the assignee</span>
+              </label>
+              <SelectField
+                value={reminderMode}
+                onChange={(e) => { setReminderMode(e.target.value); setReminderDirty(true); }}
+                size="sm"
+                className="w-full"
+              >
+                <option value="none">No reminder</option>
+                <option value="at_due" disabled={!task.dueAt}>At due time</option>
+                <option value="1h" disabled={!task.dueAt}>1 hour before due</option>
+                <option value="3h" disabled={!task.dueAt}>3 hours before due</option>
+                <option value="1d" disabled={!task.dueAt}>1 day before due</option>
+                <option value="2d" disabled={!task.dueAt}>2 days before due</option>
+                <option value="1w" disabled={!task.dueAt}>1 week before due</option>
+                <option value="custom">Custom date &amp; time…</option>
+              </SelectField>
+              {reminderMode === "custom" && (
+                <input
+                  type="datetime-local"
+                  value={reminderCustom}
+                  onChange={(e) => { setReminderCustom(e.target.value); setReminderDirty(true); }}
+                  className="input-base text-xs mt-1.5 w-full"
+                />
+              )}
+              {task.remindAt && !reminderDirty && (
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Reminds {new Date(task.remindAt).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                  {task.reminderFiredAt ? " · sent" : ""}.
+                </p>
+              )}
+              {reminderDirty && reminderMode !== "none" && (
+                <p className="text-[10px] text-slate-400 mt-1">Saved when you click “Save Changes”.</p>
+              )}
+            </div>
           </div>
 
           <div>
@@ -402,6 +559,112 @@ export function TaskDetailDrawer({ task, onClose, onUpdate }: TaskDetailDrawerPr
               onChange={(id) => setAssigneeId(id ?? "")}
               placeholder="Unassigned (defaults to creator)"
             />
+          </div>
+
+          <hr className="border-slate-100" />
+
+          {/* Approval / verification loop */}
+          <div className="space-y-2.5">
+            <div className="flex items-center justify-between">
+              <h4 className="text-[10px] uppercase font-bold text-slate-500 flex items-center gap-1.5">
+                <ShieldCheck className="size-3.5" /> Approval
+              </h4>
+              {isApprover && (
+                <label className="flex items-center gap-1.5 text-[11px] text-slate-600 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={requiresApproval}
+                    onChange={(e) => toggleRequiresApproval(e.target.checked)}
+                    className="size-3.5 rounded border-slate-300"
+                  />
+                  Requires sign-off
+                </label>
+              )}
+            </div>
+
+            {requiresApproval ? (
+              <>
+                {approvalStatus === "pending" ? (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-[11px] text-amber-800 flex items-center gap-1.5">
+                    <Clock3 className="size-3.5 shrink-0" /> Submitted — awaiting sign-off.
+                  </div>
+                ) : approvalStatus === "approved" ? (
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-2.5 text-[11px] text-emerald-800 flex items-center gap-1.5">
+                    <ShieldCheck className="size-3.5 shrink-0" /> Approved.
+                  </div>
+                ) : approvalStatus === "rejected" ? (
+                  <div className="rounded-lg border border-rose-200 bg-rose-50 p-2.5 text-[11px] text-rose-800">
+                    <div className="flex items-center gap-1.5 font-semibold">
+                      <RotateCcw className="size-3.5 shrink-0" /> Reopened for changes
+                    </div>
+                    {approvalNoteShown && <div className="mt-1 text-rose-700">“{approvalNoteShown}”</div>}
+                  </div>
+                ) : (
+                  <div className="text-[11px] text-slate-500">Needs an approver's sign-off before it can be completed.</div>
+                )}
+
+                {approvalStatus === "pending" && isApprover ? (
+                  rejectOpen ? (
+                    <div className="space-y-1.5">
+                      <textarea
+                        value={rejectNote}
+                        onChange={(e) => setRejectNote(e.target.value)}
+                        rows={2}
+                        placeholder="Reason for reopening (optional)…"
+                        className="input-base text-xs bg-white"
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          disabled={approvalBusy}
+                          onClick={() => runApproval("reject")}
+                          className="flex-1 text-xs py-1.5 rounded-md border border-rose-200 bg-rose-50 text-rose-700 font-semibold hover:bg-rose-100"
+                        >
+                          Confirm reopen
+                        </button>
+                        <button type="button" onClick={() => setRejectOpen(false)} className="text-xs py-1.5 px-3 rounded-md border bg-white">
+                          Back
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        disabled={approvalBusy}
+                        onClick={() => runApproval("approve")}
+                        className="flex-1 btn-primary text-xs py-1.5 flex items-center justify-center gap-1.5"
+                      >
+                        <CheckCircle2 className="size-3.5" /> Approve
+                      </button>
+                      <button
+                        type="button"
+                        disabled={approvalBusy}
+                        onClick={() => setRejectOpen(true)}
+                        className="flex-1 text-xs py-1.5 rounded-md border border-rose-200 text-rose-700 bg-white font-semibold hover:bg-rose-50 flex items-center justify-center gap-1.5"
+                      >
+                        <RotateCcw className="size-3.5" /> Reopen
+                      </button>
+                    </div>
+                  )
+                ) : approvalStatus !== "approved" && isAssignee ? (
+                  <button
+                    type="button"
+                    disabled={approvalBusy}
+                    onClick={() => runApproval("submit")}
+                    className="w-full btn-primary text-xs py-1.5 flex items-center justify-center gap-1.5"
+                  >
+                    <Send className="size-3.5" /> {approvalStatus === "pending" ? "Re-submit for approval" : "Submit for approval"}
+                  </button>
+                ) : null}
+              </>
+            ) : (
+              isApprover && (
+                <p className="text-[11px] text-slate-400">
+                  Turn on sign-off to require an approver to verify this task before it's marked complete.
+                </p>
+              )
+            )}
           </div>
 
           <hr className="border-slate-100" />
@@ -542,11 +805,11 @@ export function TaskDetailDrawer({ task, onClose, onUpdate }: TaskDetailDrawerPr
                       </button>
                     </div>
                     <div className="flex items-center gap-2">
-                      <input
-                        type="date"
+                      <DateField
                         value={c.actionDate ?? ""}
                         onChange={(e) => setPointField(c.id, { actionDate: e.target.value || null })}
-                        className="input-base h-7 text-[11px] w-[8.5rem] bg-white"
+                        size="sm"
+                        className="w-[8.5rem]"
                         aria-label="Action date"
                       />
                       <input
@@ -556,6 +819,28 @@ export function TaskDetailDrawer({ task, onClose, onUpdate }: TaskDetailDrawerPr
                         placeholder="Remark…"
                         className="input-base h-7 text-[11px] flex-1 bg-white"
                         aria-label="Remark"
+                      />
+                    </div>
+                    {/* Delegate this sub-task to a teammate — they're notified and
+                        can open + edit this task. */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] uppercase font-bold text-slate-400 shrink-0">Assign</span>
+                      <RmSelector
+                        value={c.assigneeId ?? null}
+                        onChange={(uid) =>
+                          setPointField(c.id, {
+                            assigneeId: uid,
+                            status: uid
+                              ? subTaskStatus(c) === "completed"
+                                ? c.status
+                                : "assigned_to_other"
+                              : subTaskStatus(c) === "assigned_to_other"
+                                ? "not_started"
+                                : c.status,
+                          })
+                        }
+                        placeholder="Unassigned — assign to a teammate…"
+                        className="flex-1"
                       />
                     </div>
                   </div>
@@ -596,51 +881,86 @@ export function TaskDetailDrawer({ task, onClose, onUpdate }: TaskDetailDrawerPr
 
           <hr className="border-slate-100" />
 
-          {/* Remarks Append Section */}
-          <div className="space-y-3">
-            <h4 className="text-[10px] uppercase font-bold text-slate-500">Remarks & Comments Log</h4>
-            
-            <div className="space-y-2">
-              <textarea
-                value={newRemark}
-                onChange={(e) => setNewRemark(e.target.value)}
-                placeholder="Type a new comment/work log and click 'Save Changes' to append..."
-                rows={2}
-                className="input-base text-xs bg-slate-50 border-slate-200 focus:bg-white transition-colors"
+          {/* Watchers + dependency (blocked by) */}
+          <TaskWatchersDeps
+            taskId={task.id}
+            currentUserId={currentUserId}
+            initialBlockedById={task.blockedByTaskId ?? null}
+            onChanged={onUpdate}
+          />
+
+          <hr className="border-slate-100" />
+
+          {/* Time tracking */}
+          <TaskTimePanel
+            taskId={task.id}
+            initialEstimate={task.estimateMinutes ?? null}
+            initialSpent={task.timeSpentMinutes ?? 0}
+            initialRunningSince={task.startedAt ?? null}
+            onChanged={onUpdate}
+          />
+
+          <hr className="border-slate-100" />
+
+          {/* Attachments */}
+          <TaskAttachments taskId={task.id} />
+
+          <hr className="border-slate-100" />
+
+          {/* Tags */}
+          <div className="space-y-2">
+            <h4 className="text-[10px] uppercase font-bold text-slate-500">Tags</h4>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {tags.map((tg) => (
+                <span key={tg} className="chip text-[10px] bg-slate-100 text-slate-600 border border-slate-200 inline-flex items-center gap-1">
+                  {tg}
+                  <button type="button" onClick={() => setTags((t) => t.filter((x) => x !== tg))} className="hover:text-rose-600" aria-label={`Remove ${tg}`}>
+                    <X className="size-2.5" />
+                  </button>
+                </span>
+              ))}
+              <input
+                value={tagInput}
+                onChange={(e) => setTagInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === ",") { e.preventDefault(); addTag(tagInput); } }}
+                onBlur={() => tagInput.trim() && addTag(tagInput)}
+                placeholder="Add tag…"
+                className="input-base h-7 text-[11px] w-24 bg-white"
               />
             </div>
+            <p className="text-[10px] text-slate-400">Saved with the task.</p>
+          </div>
 
-            {remarksHistory ? (
-              <div className="space-y-3 max-h-60 overflow-y-auto pr-1 scrollbar-thin">
-                {remarksHistory.split("\n\n").map((chunk, idx) => {
-                  const match = chunk.match(/^\[(.*?)\]\s*([\s\S]*)$/);
-                  const timestamp = match ? match[1] : null;
-                  const content = match ? match[2] : chunk;
+          <hr className="border-slate-100" />
 
-                  return (
-                    <div key={idx} className="flex gap-2.5 items-start">
-                      {/* Timeline dot */}
-                      <div className="w-6 h-6 rounded-full bg-slate-100 border text-[10px] font-bold text-slate-600 flex items-center justify-center flex-shrink-0 mt-0.5">
-                        💬
-                      </div>
-                      <div className="flex-1 min-w-0 bg-slate-50 border border-slate-100 rounded-lg p-2.5">
-                        {timestamp && (
-                          <div className="text-[10px] text-slate-400 font-semibold mb-1">
-                            {timestamp}
-                          </div>
-                        )}
-                        <div className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed">
-                          {content}
+          {/* Comments — real threaded log with author + @mentions. */}
+          <div className="space-y-3">
+            <h4 className="text-[10px] uppercase font-bold text-slate-500">Comments</h4>
+            <TaskComments taskId={task.id} currentUserId={currentUserId} />
+
+            {/* Legacy prepend-only remarks (pre-comments) — read-only, collapsed. */}
+            {remarksHistory && (
+              <details className="mt-1">
+                <summary className="text-[10px] uppercase font-bold text-slate-400 cursor-pointer">Earlier notes (legacy log)</summary>
+                <div className="space-y-3 max-h-48 overflow-y-auto pr-1 scrollbar-thin mt-2">
+                  {remarksHistory.split("\n\n").map((chunk, idx) => {
+                    const match = chunk.match(/^\[(.*?)\]\s*([\s\S]*)$/);
+                    const timestamp = match ? match[1] : null;
+                    const content = match ? match[2] : chunk;
+                    return (
+                      <div key={idx} className="flex gap-2.5 items-start">
+                        <div className="w-6 h-6 rounded-full bg-slate-100 border text-[10px] font-bold text-slate-600 flex items-center justify-center flex-shrink-0 mt-0.5">
+                          💬
+                        </div>
+                        <div className="flex-1 min-w-0 bg-slate-50 border border-slate-100 rounded-lg p-2.5">
+                          {timestamp && <div className="text-[10px] text-slate-400 font-semibold mb-1">{timestamp}</div>}
+                          <div className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed">{content}</div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="text-[11px] text-muted-foreground text-center py-2">
-                No comments registered yet.
-              </div>
+                    );
+                  })}
+                </div>
+              </details>
             )}
           </div>
         </div>
@@ -675,8 +995,9 @@ export function TaskDetailDrawer({ task, onClose, onUpdate }: TaskDetailDrawerPr
             </button>
           </div>
         </div>
+        </div>
       </div>
-      
+
       <ConfirmDialog
         open={confirmCancelOpen}
         title="Cancel this task?"
@@ -689,18 +1010,20 @@ export function TaskDetailDrawer({ task, onClose, onUpdate }: TaskDetailDrawerPr
         onCancel={() => setConfirmCancelOpen(false)}
       />
 
-      {/* Slide-in styles keyframe */}
+      {/* Modal open animation (fade + subtle scale) */}
       <style jsx global>{`
-        @keyframes slide-in {
+        @keyframes modal-in {
           from {
-            transform: translateX(100%);
+            opacity: 0;
+            transform: translateY(8px) scale(0.98);
           }
           to {
-            transform: translateX(0);
+            opacity: 1;
+            transform: translateY(0) scale(1);
           }
         }
-        .animate-slide-in {
-          animation: slide-in 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        .animate-modal-in {
+          animation: modal-in 0.18s cubic-bezier(0.16, 1, 0.3, 1) forwards;
         }
       `}</style>
     </>

@@ -11,6 +11,7 @@ import { Card } from "../ui/Card";
 import { Text } from "../ui/Text";
 import { StatusPill } from "../ui/StatusPill";
 import { palette, radius, spacing } from "../../theme/tokens";
+import { useBrand } from "../../theme/brand";
 import type { Tone } from "../../theme";
 
 type FeatherName = React.ComponentProps<typeof Feather>["name"];
@@ -36,8 +37,9 @@ export function GenericCard({
   rightValue?: string;
   onPress: () => void;
 }) {
+  const { brandDark, brandLight } = useBrand();
   const iconBg: Record<string, string> = {
-    brand: palette.brandLight,
+    brand: brandLight,
     violet: palette.violetBg,
     success: palette.successBg,
     warning: palette.warningBg,
@@ -45,7 +47,7 @@ export function GenericCard({
     info: palette.infoBg,
   };
   const iconFg: Record<string, string> = {
-    brand: palette.brandDark,
+    brand: brandDark,
     violet: palette.violet,
     success: palette.success,
     warning: palette.warning,

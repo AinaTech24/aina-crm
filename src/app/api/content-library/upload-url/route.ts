@@ -28,7 +28,15 @@ export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
     const platformAdmin = isPlatformAdmin(session.roles);
-    const canUpload = platformAdmin || can(session.roles, "template.edit");
+    // Uploading a template attachment / library asset is available to any staff
+    // role that works with templates or client comms — not just `marketing`
+    // (the sole holder of `template.edit`). Pass `session.permissions` so custom
+    // per-user grants count; omitting it silently ignored those grants.
+    const canUpload =
+      platformAdmin ||
+      ["template.edit", "template.view", "communication.send", "workflow.edit"].some((c) =>
+        can(session.roles, c as any, session.permissions)
+      );
     if (!canUpload) {
       return NextResponse.json({ error: "forbidden — insufficient capabilities" }, { status: 403 });
     }

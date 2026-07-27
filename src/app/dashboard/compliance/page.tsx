@@ -7,6 +7,7 @@ import { requireSession } from "@/lib/auth/session";
 import { formatRelative, formatDate } from "@/lib/utils";
 import { calculateDdqScore } from "@/lib/compliance/ddq-calculator";
 import { RecalculateButton } from "@/components/compliance/RecalculateButton";
+import { HelpTip } from "@/components/common/HelpTip";
 
 export const dynamic = "force-dynamic";
 
@@ -219,8 +220,13 @@ export default async function CompliancePage() {
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <div>
+      <div className="flex items-center gap-2">
         <h1 className="text-2xl font-bold tracking-tight">Compliance & DDQ readiness</h1>
+        <HelpTip title="Compliance / DDQ">
+          Your firm&apos;s audit-readiness score. It checks the documents and records SEBI/AMFI
+          expect in a due-diligence review (DDQ = Due Diligence Questionnaire) and shows what&apos;s
+          missing, so you&apos;re always inspection-ready.
+        </HelpTip>
       </div>
 
       {/* AMFI DDQ audit checklist */}

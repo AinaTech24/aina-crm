@@ -24,7 +24,7 @@ export const dynamic = "force-dynamic";
 
 export default async function OnboardingFieldsPage() {
   const session = await requireSession();
-  requireCap(session.roles, "settings.users");
+  requireCap(session.roles, "settings.users", session.permissions);
 
   const overrides = await withTenant(session.tenantId, async (tx) => {
     const res = await tx.execute(sql`

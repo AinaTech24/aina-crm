@@ -11,7 +11,7 @@
 import { useMemo, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, CheckCircle2, Loader2, ShieldCheck, Download } from "lucide-react";
+import { ChevronLeft, ChevronRight, CheckCircle2, Loader2, ShieldCheck, Download, Mail, KeyRound } from "lucide-react";
 import { DownloadButton, OpenDocButton } from "@/components/common/SecureLinkButtons";
 
 type Option = { value: string; label: string; score: number };
@@ -34,6 +34,67 @@ export function RiskProfileWizard({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [doneId, setDoneId] = useState<string | null>(null);
+
+  // ── Mandatory client email-OTP (verified on the review step, before submit) ──
+  const [otpVerified, setOtpVerified] = useState(false);
+  const [otpSent, setOtpSent] = useState(false);
+  const [needEmail, setNeedEmail] = useState(false);
+  const [otpEmail, setOtpEmail] = useState("");
+  const [otpCode, setOtpCode] = useState("");
+  const [maskedEmail, setMaskedEmail] = useState<string | null>(null);
+  const [otpBusy, setOtpBusy] = useState(false);
+  const [otpErr, setOtpErr] = useState<string | null>(null);
+  const [resendIn, setResendIn] = useState(0);
+
+  useEffect(() => {
+    if (resendIn <= 0) return;
+    const t = setTimeout(() => setResendIn((s) => s - 1), 1000);
+    return () => clearTimeout(t);
+  }, [resendIn]);
+
+  async function sendOtp() {
+    setOtpBusy(true);
+    setOtpErr(null);
+    try {
+      const res = await fetch("/api/risk-profiles/otp/send", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ investorId: investor.id, email: needEmail ? otpEmail.trim() : undefined }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (j.needEmail) setNeedEmail(true);
+        if (j.retryInSeconds) setResendIn(Number(j.retryInSeconds));
+        setOtpErr(j.error ?? "Couldn't send the code.");
+        return;
+      }
+      setOtpSent(true);
+      setMaskedEmail(j.maskedEmail ?? null);
+      setResendIn(Number(j.resendInSeconds ?? 60));
+    } finally {
+      setOtpBusy(false);
+    }
+  }
+
+  async function verifyOtp() {
+    setOtpBusy(true);
+    setOtpErr(null);
+    try {
+      const res = await fetch("/api/risk-profiles/otp/verify", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ investorId: investor.id, code: otpCode.trim() }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setOtpErr((j.error ?? "Verification failed.") + (typeof j.remaining === "number" ? ` (${j.remaining} attempt${j.remaining === 1 ? "" : "s"} left)` : ""));
+        return;
+      }
+      setOtpVerified(true);
+    } finally {
+      setOtpBusy(false);
+    }
+  }
 
   // Auto-sync exact age value with the template's age category options
   useEffect(() => {
@@ -96,20 +157,28 @@ export function RiskProfileWizard({
     setBusy(true);
     setErr(null);
     try {
+      // Only send a valid whole age in range — otherwise omit it. A bad/blank dob
+      // used to yield NaN, which JSON-serializes to null and failed validation.
+      const numAge = Number(age);
+      const ageValue =
+        age !== "" && Number.isFinite(numAge) && numAge >= 1 && numAge <= 120 ? Math.round(numAge) : undefined;
       const res = await fetch("/api/risk-profiles", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           investorId: investor.id,
-          age: age ? Number(age) : undefined,
+          age: ageValue,
           answers,
           rmRemarks: remarks || undefined,
-          signedByName: investor.name,
+          signedByName: investor.name || undefined,
         }),
       });
       const j = await res.json();
       if (!res.ok) {
-        setErr(j.error ?? `Submit failed (${res.status})`);
+        const fields = Array.isArray(j.issues)
+          ? j.issues.map((i: any) => (Array.isArray(i.path) ? i.path.join(".") : "")).filter(Boolean).join(", ")
+          : "";
+        setErr((j.error ?? `Submit failed (${res.status})`) + (fields ? ` — check: ${fields}` : ""));
         return;
       }
       // Show a completion screen with the PDF download instead of jumping
@@ -160,6 +229,8 @@ export function RiskProfileWizard({
       </div>
     );
   }
+
+  const firstName = investor.name.split(" ")[0] || "the client";
 
   return (
     <div className="max-w-3xl mx-auto">
@@ -308,6 +379,66 @@ export function RiskProfileWizard({
               </label>
             </div>
 
+            {/* Client email OTP — verified here, at the end, before the profile can be saved */}
+            <div className="card-surface p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <Mail className="size-4 text-brand-cyan" />
+                <h3 className="font-semibold">Client email confirmation</h3>
+                {otpVerified && (
+                  <span className="ml-auto inline-flex items-center gap-1 text-xs text-emerald-600 font-medium">
+                    <CheckCircle2 className="size-4" /> Verified
+                  </span>
+                )}
+              </div>
+
+              {otpVerified ? (
+                <p className="text-sm text-muted-foreground">
+                  {firstName}&apos;s email is verified — you can now submit the profile.
+                </p>
+              ) : (
+                <>
+                  <p className="text-sm text-muted-foreground">
+                    For compliance, {firstName} confirms this risk profile with a one-time code sent to their
+                    email. Verify to enable submit.
+                  </p>
+
+                  {!otpSent ? (
+                    <>
+                      {needEmail && (
+                        <label className="block">
+                          <div className="text-xs font-medium mb-1">Client email</div>
+                          <input type="email" value={otpEmail} onChange={(e) => setOtpEmail(e.target.value)} placeholder="client@example.com" className="input-base" />
+                        </label>
+                      )}
+                      {otpErr && <div className="text-sm text-rose-600">{otpErr}</div>}
+                      <button onClick={sendOtp} disabled={otpBusy || (needEmail && !otpEmail.trim())} className="btn-secondary gap-2">
+                        {otpBusy ? <Loader2 className="size-4 animate-spin" /> : <Mail className="size-4" />} Send code
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <div className="text-sm text-muted-foreground">
+                        Code sent to <span className="font-medium text-foreground">{maskedEmail}</span> — ask the client for it (valid 10 minutes).
+                      </div>
+                      <div className="flex flex-wrap items-end gap-2">
+                        <label className="block">
+                          <div className="text-xs font-medium mb-1">6-digit code</div>
+                          <input inputMode="numeric" maxLength={6} value={otpCode} onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ""))} placeholder="------" className="input-base tracking-[0.4em] text-center font-mono max-w-[10rem]" />
+                        </label>
+                        <button onClick={verifyOtp} disabled={otpBusy || otpCode.length < 4} className="btn-secondary gap-2">
+                          {otpBusy ? <Loader2 className="size-4 animate-spin" /> : <KeyRound className="size-4" />} Verify
+                        </button>
+                        <button onClick={sendOtp} disabled={otpBusy || resendIn > 0} className="btn-ghost text-xs disabled:opacity-60">
+                          {resendIn > 0 ? `Resend in ${resendIn}s` : "Resend"}
+                        </button>
+                      </div>
+                      {otpErr && <div className="text-sm text-rose-600">{otpErr}</div>}
+                    </>
+                  )}
+                </>
+              )}
+            </div>
+
             {err && (
               <div className="border border-destructive/30 bg-destructive/5 text-destructive rounded-lg px-3 py-2 text-sm">
                 {err}
@@ -332,9 +463,14 @@ export function RiskProfileWizard({
           <span style={{ color: live.band.color ?? undefined }}>{live.band.label}</span>
         </div>
         {onReview ? (
-          <button onClick={submit} disabled={busy || !canAdvance} className="btn-primary">
+          <button
+            onClick={submit}
+            disabled={busy || !canAdvance || !otpVerified}
+            title={!otpVerified ? "Verify the client's email above to submit" : undefined}
+            className="btn-primary"
+          >
             {busy ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
-            {busy ? "Saving…" : "Submit profile"}
+            {busy ? "Saving…" : otpVerified ? "Submit profile" : "Verify email to submit"}
           </button>
         ) : (
           <button
@@ -354,11 +490,12 @@ function deriveAge(dob: string | null): string | null {
   if (!dob) return null;
   try {
     const d = new Date(dob);
+    if (isNaN(d.getTime())) return null; // malformed dob → no derived age (never "NaN")
     const now = new Date();
     let age = now.getFullYear() - d.getFullYear();
     const m = now.getMonth() - d.getMonth();
     if (m < 0 || (m === 0 && now.getDate() < d.getDate())) age -= 1;
-    return String(age);
+    return age >= 1 && age <= 120 ? String(age) : null;
   } catch {
     return null;
   }

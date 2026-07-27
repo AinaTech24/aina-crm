@@ -413,29 +413,10 @@ async function runSendSms(config: Record<string, unknown>, ctx: ActionContext): 
 // Task / Meeting / Call
 // ---------------------------------------------------------------------------
 
-async function runCreateTask(config: Record<string, unknown>, ctx: ActionContext): Promise<ActionResult> {
-  const dueOffset = (config.dueOffset as { amount?: number; unit?: string } | undefined) ?? undefined;
-  const dueAt = dueOffset ? offsetDate(dueOffset.amount ?? 1, (dueOffset.unit as any) ?? "day") : undefined;
-  const assigneeId = resolveAssignee(config.assignee, ctx.record);
-
-  const inserted = await ctx.tx
-    .insert(tasks)
-    .values({
-      tenantId: ctx.tenantId,
-      title: String(config.title ?? "Workflow task"),
-      description: String(config.description ?? ""),
-      type: String(config.taskType ?? "follow_up"),
-      priority: (config.priority as any) ?? "normal",
-      status: "open",
-      assigneeId: assigneeId,
-      department: (config.department as any) ?? "operations",
-      dueAt,
-      relatedInvestorId: ctx.subjectType === "investor" ? ctx.subjectId : undefined,
-      relatedLeadId: ctx.subjectType === "lead" ? ctx.subjectId : undefined,
-      relatedServiceRequestId: ctx.subjectType === "service_request" ? ctx.subjectId : undefined,
-    })
-    .returning({ id: tasks.id });
-  return { type: "create_task", status: "succeeded", externalId: inserted[0]?.id };
+async function runCreateTask(_config: Record<string, unknown>, _ctx: ActionContext): Promise<ActionResult> {
+  // Automated task creation via workflow rules is disabled per firm preference
+  // ("turn off all auto tasks"). Restore the body (git history) to re-enable.
+  return { type: "create_task", status: "skipped", detail: "auto task creation disabled" };
 }
 
 async function runScheduleMeeting(config: Record<string, unknown>, ctx: ActionContext): Promise<ActionResult> {

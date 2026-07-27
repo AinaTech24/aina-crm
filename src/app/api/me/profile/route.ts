@@ -7,14 +7,83 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { users } from "@/db/schema";
 import { handleApiError } from "@/lib/api/error-handler";
+import { LEAVE_TYPE_LABELS, getEntitlement, currentFyStart } from "@/lib/leave/policy";
+import { primaryRoleLabel } from "@/lib/auth/rbac";
 
 export const dynamic = "force-dynamic";
+
+const LEAVE_TYPES = ["casual", "sick", "earned", "comp_off"];
+
+/** GET — the mobile profile bundle (identity, 2FA status, targets, leave, activity). */
+export async function GET() {
+  try {
+    const session = await requireSession();
+    const data = await withTenant(
+      session.tenantId,
+      async (tx) => {
+        const [u] = await tx.select().from(users).where(eq(users.id, session.userId)).limit(1);
+        const fyStart = currentFyStart();
+        const leaveRows = (
+          await tx.execute(sql`
+            SELECT leave_type, COALESCE(SUM(no_of_days), 0)::float AS used
+            FROM leave_applications
+            WHERE tenant_id = ${session.tenantId}::uuid AND employee_user_id = ${session.userId}::uuid
+              AND status = 'approved' AND from_date >= ${fyStart}
+            GROUP BY leave_type
+          `)
+        ).rows as any[];
+        const activity = (
+          await tx.execute(sql`
+            SELECT action, entity_type, at FROM audit_log
+            WHERE tenant_id = ${session.tenantId}::uuid AND actor_user_id = ${session.userId}::uuid
+            ORDER BY at DESC LIMIT 12
+          `)
+        ).rows as any[];
+        return { u, leaveRows, activity };
+      },
+      { userId: session.userId, branchId: session.branchId, roles: session.roles }
+    );
+
+    const u: any = data.u ?? {};
+    const custom = (u.customLeaveEntitlements ?? {}) as Record<string, number>;
+    const usedByType: Record<string, number> = {};
+    for (const r of data.leaveRows) usedByType[r.leave_type] = Number(r.used) || 0;
+    const leave = LEAVE_TYPES.map((type) => {
+      const entitlement = getEntitlement(type as any, custom);
+      const used = usedByType[type] ?? 0;
+      return {
+        type,
+        label: LEAVE_TYPE_LABELS[type] ?? type,
+        entitlement,
+        used,
+        remaining: entitlement == null ? null : Math.max(0, entitlement - used),
+      };
+    });
+
+    return NextResponse.json({
+      user: {
+        name: u.name ?? "",
+        email: u.email ?? "",
+        emailVerified: !!u.emailVerifiedAt,
+        avatarUrl: u.avatarUrl ?? null,
+        department: u.department ?? null,
+        roleLabel: primaryRoleLabel(session.roles),
+      },
+      twoFaEnabled: !!u.twoFaEnabled,
+      targets: { annual: u.annualTarget ?? null, sipMonthly: u.sipMonthlyTarget ?? null },
+      leave,
+      activity: data.activity.map((a) => ({ action: a.action, entityType: a.entity_type, at: a.at })),
+    });
+  } catch (err) {
+    return handleApiError(err);
+  }
+}
 
 const Body = z.object({
   name: z.string().trim().min(2).max(120).optional(),

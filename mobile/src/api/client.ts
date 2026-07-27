@@ -14,6 +14,7 @@
 
 import { API_BASE_URL } from "../config";
 import { useSession } from "../state/session";
+import { useConnectivity } from "../state/connectivity";
 import { refreshToken } from "../api";
 
 export class ApiError extends Error {
@@ -84,6 +85,7 @@ export async function apiRequest<T = any>(path: string, opts: RequestOptions = {
   try {
     res = await rawFetch(path, opts, token);
   } catch (e: any) {
+    useConnectivity.getState().setOnline(false);
     if (e?.name === "AbortError") throw new ApiError(0, "Request timed out", undefined, "timeout");
     throw new ApiError(0, "Network error — check your connection", undefined, "network");
   }
@@ -106,6 +108,9 @@ export async function apiRequest<T = any>(path: string, opts: RequestOptions = {
       throw new ApiError(401, "Your session has expired. Please sign in again.");
     }
   }
+
+  // Got an HTTP response → we're online (even a 4xx/5xx means the network is up).
+  useConnectivity.getState().setOnline(true);
 
   const text = await res.text();
   const data = text ? safeJson(text) : null;

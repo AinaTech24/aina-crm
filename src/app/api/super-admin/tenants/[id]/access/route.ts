@@ -8,6 +8,7 @@ import { requirePlatform } from "@/lib/auth/rbac";
 import { subscriptions, subscriptionEvents } from "@/db/schema";
 import { areKnownNavKeys } from "@/config/nav-access";
 import { areKnownWidgetKeys } from "@/config/dashboard-widgets";
+import { sanitizeFeatureFlagOverride } from "@/config/feature-flags";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +19,8 @@ const Body = z.object({
   allowedNav: z.array(z.string()).nullable().optional(),
   /** Admin → MFD dashboard widgets — widget keys the firm can see. null = all. */
   allowedDashboardWidgets: z.array(z.string()).nullable().optional(),
+  /** Per-tenant feature-flag override. null = inherit the package's flags. */
+  featureFlags: z.record(z.string(), z.any()).nullable().optional(),
 });
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -30,7 +33,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!parse.success) {
       return NextResponse.json({ error: "invalid body", issues: parse.error.issues }, { status: 400 });
     }
-    const { modulesOverride, allowedFields, allowedNav, allowedDashboardWidgets } = parse.data;
+    const { modulesOverride, allowedFields, allowedNav, allowedDashboardWidgets, featureFlags } = parse.data;
     if (allowedNav != null && !areKnownNavKeys(allowedNav)) {
       return NextResponse.json({ error: "one or more sidebar items are not recognised" }, { status: 400 });
     }
@@ -49,6 +52,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       if (allowedFields !== undefined) patch.allowedFields = allowedFields;
       if (allowedNav !== undefined) patch.allowedNav = allowedNav;
       if (allowedDashboardWidgets !== undefined) patch.allowedDashboardWidgets = allowedDashboardWidgets;
+      // Per-tenant feature-flag override — sanitize to known flags; null clears it.
+      if (featureFlags !== undefined) patch.featureFlagsOverride = featureFlags === null ? null : sanitizeFeatureFlagOverride(featureFlags);
 
       await tx.update(subscriptions).set(patch).where(eq(subscriptions.id, sub.id));
 

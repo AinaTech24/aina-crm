@@ -158,15 +158,6 @@ export default async function RiskProfilesPage({
         </Link>
       </div>
 
-      {/* KPI row */}
-      <div className="grid grid-cols-5 gap-3">
-        <Stat label="Active clients" value={data.total} />
-        <Stat label="Profiled" value={data.profiled} tone="emerald" />
-        <Stat label="Not yet profiled" value={data.notProfiled} tone={data.notProfiled > 0 ? "amber" : "muted"} />
-        <Stat label="Due soon (<30d)" value={data.dueSoon} tone={data.dueSoon > 0 ? "amber" : "muted"} />
-        <Stat label="Expired (>12mo)" value={data.expired} tone={data.expired > 0 ? "rose" : "muted"} />
-      </div>
-
       {/* Filter tabs */}
       <div className="flex flex-wrap items-center gap-1.5">
         {FILTERS.map((f) => {

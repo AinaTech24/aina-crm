@@ -1,0 +1,325 @@
+"use client";
+
+/**
+ * CompactFilterBar — one clean row: a search box + a single "Filters" button
+ * whose dropdown holds every filter as a collapsible sub-section (multi-select
+ * or date range). Replaces a long strip of individual filter chips.
+ *
+ * All state lives in URL search params, so the SSR'd page reads them and the
+ * URL stays shareable — same contract as the older FilterBar.
+ */
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
+import { Search, X, ChevronDown, ChevronRight, SlidersHorizontal, Loader2, ArrowDownUp, Check } from "lucide-react";
+
+export type CompactFilter =
+  | { type: "multi"; key: string; label: string; options: { value: string; label: string }[] }
+  | { type: "date_range"; key: string; label: string };
+
+export function CompactFilterBar({
+  searchKey = "q",
+  searchPlaceholder = "Search…",
+  filters,
+  sort,
+  totalCount,
+  rightSlot,
+  bare = false,
+}: {
+  searchKey?: string;
+  searchPlaceholder?: string;
+  filters: CompactFilter[];
+  /** Optional sort control rendered inline (a list is always sorted by something). */
+  sort?: { key: string; options: { value: string; label: string }[] };
+  totalCount?: number;
+  rightSlot?: React.ReactNode;
+  /** Render without the card wrapper (e.g. embedded inside a table header). */
+  bare?: boolean;
+}) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const sp = useSearchParams();
+  const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [openSection, setOpenSection] = useState<string | null>(null);
+  const [sortOpen, setSortOpen] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const sortRef = useRef<HTMLDivElement>(null);
+
+  const values = useMemo(() => {
+    const out: Record<string, any> = {};
+    for (const f of filters) {
+      if (f.type === "multi") {
+        const v = sp.get(f.key);
+        out[f.key] = v ? v.split(",").filter(Boolean) : [];
+      } else {
+        out[`${f.key}_from`] = sp.get(`${f.key}_from`) ?? "";
+        out[`${f.key}_to`] = sp.get(`${f.key}_to`) ?? "";
+      }
+    }
+    return out;
+  }, [sp, filters]);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDown(e: MouseEvent) {
+      if (panelRef.current && !panelRef.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
+
+  useEffect(() => {
+    if (!sortOpen) return;
+    function onDown(e: MouseEvent) {
+      if (sortRef.current && !sortRef.current.contains(e.target as Node)) setSortOpen(false);
+    }
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [sortOpen]);
+
+  function pushParams(next: Record<string, any>) {
+    setBusy(true);
+    const params = new URLSearchParams(sp.toString());
+    for (const [k, v] of Object.entries(next)) {
+      if (v == null || v === "" || (Array.isArray(v) && v.length === 0)) params.delete(k);
+      else if (Array.isArray(v)) params.set(k, v.join(","));
+      else params.set(k, String(v));
+    }
+    params.delete("page");
+    router.push(`${pathname}?${params.toString()}`);
+    setTimeout(() => setBusy(false), 600);
+  }
+
+  /** How many distinct filters are active (search excluded). */
+  const activeCount = filters.reduce((n, f) => {
+    if (f.type === "multi") return n + ((values[f.key] as string[]).length > 0 ? 1 : 0);
+    return n + (values[`${f.key}_from`] || values[`${f.key}_to`] ? 1 : 0);
+  }, 0);
+
+  function clearAll() {
+    const next: Record<string, any> = {};
+    for (const f of filters) {
+      if (f.type === "multi") next[f.key] = [];
+      else {
+        next[`${f.key}_from`] = "";
+        next[`${f.key}_to`] = "";
+      }
+    }
+    pushParams(next);
+  }
+
+  /** Short summary of a section's active selection, shown on its collapsed row. */
+  function summaryFor(f: CompactFilter): string {
+    if (f.type === "multi") {
+      const v = values[f.key] as string[];
+      if (!v.length) return "";
+      const labels = v.map((x) => f.options.find((o) => o.value === x)?.label ?? x);
+      return labels.length <= 2 ? labels.join(", ") : `${labels.length} selected`;
+    }
+    const from = values[`${f.key}_from`];
+    const to = values[`${f.key}_to`];
+    if (!from && !to) return "";
+    return `${from || "…"} → ${to || "…"}`;
+  }
+
+  return (
+    <div className={bare ? "relative z-30 w-full" : "card-surface p-2.5 relative z-30"}>
+      <div className="flex items-center gap-2 flex-wrap">
+        {/* Search */}
+        <div className="relative flex-1 min-w-[200px] max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none" />
+          <SearchInput
+            initial={sp.get(searchKey) ?? ""}
+            placeholder={searchPlaceholder}
+            onSubmit={(v) => pushParams({ [searchKey]: v })}
+          />
+        </div>
+
+        {/* Push the filter / sort / view controls to the right, grouped. */}
+        <div className="flex-1" />
+
+        {/* Single Filters dropdown */}
+        <div className="relative" ref={panelRef}>
+          <button
+            type="button"
+            onClick={() => setOpen((o) => !o)}
+            title="Filters"
+            aria-label="Filters"
+            className={`relative inline-flex items-center justify-center rounded-lg border size-8 transition ${
+              activeCount > 0
+                ? "bg-brand-cyan-light/40 border-brand-cyan/40 text-brand-cyan-deep"
+                : "bg-card border-border hover:bg-brand-cyan-light/40"
+            }`}
+          >
+            <SlidersHorizontal className="size-4" />
+            {activeCount > 0 && (
+              <span className="absolute -top-1.5 -right-1.5 bg-brand-cyan text-white rounded-full min-w-[15px] h-[15px] px-1 text-[9px] font-bold tabular-nums flex items-center justify-center">{activeCount}</span>
+            )}
+          </button>
+
+          {open && (
+            <div className="absolute right-0 top-full mt-1 z-50 w-[300px] card-elevated bg-card p-1.5">
+              <div className="max-h-[60vh] overflow-y-auto scrollbar-thin">
+                {filters.map((f) => {
+                  const isOpen = openSection === f.key;
+                  const summary = summaryFor(f);
+                  return (
+                    <div key={f.key} className="border-b border-slate-100 last:border-0">
+                      <button
+                        type="button"
+                        onClick={() => setOpenSection(isOpen ? null : f.key)}
+                        className="w-full flex items-center gap-1.5 px-2 py-2 text-xs hover:bg-secondary/60 rounded"
+                      >
+                        {isOpen ? <ChevronDown className="size-3 opacity-60" /> : <ChevronRight className="size-3 opacity-60" />}
+                        <span className="font-medium">{f.label}</span>
+                        {summary && <span className="ml-auto text-[10px] text-brand-cyan-deep truncate max-w-[120px]">{summary}</span>}
+                      </button>
+
+                      {isOpen && (
+                        <div className="px-2 pb-2 pt-0.5">
+                          {f.type === "multi" ? (
+                            <ul className="space-y-0.5 max-h-52 overflow-y-auto scrollbar-thin">
+                              {f.options.length === 0 && <li className="text-[11px] text-muted-foreground px-1 py-1">No options</li>}
+                              {f.options.map((o) => {
+                                const cur = values[f.key] as string[];
+                                const checked = cur.includes(o.value);
+                                return (
+                                  <li key={o.value}>
+                                    <label
+                                      className={`flex items-center gap-2 px-2 py-1.5 text-xs rounded cursor-pointer transition ${
+                                        checked ? "bg-brand-cyan-light/40 text-brand-cyan-deep font-medium" : "hover:bg-secondary/60"
+                                      }`}
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={checked}
+                                        onChange={() =>
+                                          pushParams({ [f.key]: checked ? cur.filter((v) => v !== o.value) : [...cur, o.value] })
+                                        }
+                                        className="size-3.5 rounded border-border accent-brand-cyan"
+                                      />
+                                      <span className="capitalize truncate">{o.label}</span>
+                                    </label>
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          ) : (
+                            <div className="flex items-center gap-1.5">
+                              <input
+                                type="date"
+                                value={values[`${f.key}_from`]}
+                                onChange={(e) => pushParams({ [`${f.key}_from`]: e.target.value })}
+                                className="input-base h-7 text-[11px] flex-1"
+                                aria-label={`${f.label} from`}
+                              />
+                              <span className="text-slate-400 text-xs">→</span>
+                              <input
+                                type="date"
+                                value={values[`${f.key}_to`]}
+                                onChange={(e) => pushParams({ [`${f.key}_to`]: e.target.value })}
+                                className="input-base h-7 text-[11px] flex-1"
+                                aria-label={`${f.label} to`}
+                              />
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {activeCount > 0 && (
+                <div className="border-t border-slate-100 pt-1.5 mt-1">
+                  <button onClick={clearAll} className="w-full text-xs text-rose-600 hover:bg-rose-50 rounded py-1.5 font-medium">
+                    Clear all filters
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {sort && (
+          <div className="relative" ref={sortRef}>
+            <button
+              type="button"
+              onClick={() => setSortOpen((o) => !o)}
+              title="Sort"
+              aria-label="Sort"
+              className={`inline-flex items-center justify-center rounded-lg border size-8 transition ${
+                sp.get(sort.key)
+                  ? "bg-brand-cyan-light/40 border-brand-cyan/40 text-brand-cyan-deep"
+                  : "bg-card border-border hover:bg-brand-cyan-light/40"
+              }`}
+            >
+              <ArrowDownUp className="size-4" />
+            </button>
+            {sortOpen && (
+              <div className="absolute right-0 top-full mt-1 z-50 w-52 card-elevated bg-card p-1 animate-scale-in">
+                <div className="px-2 py-1 text-[10px] uppercase font-bold tracking-wide text-muted-foreground">Sort by</div>
+                {sort.options.map((o) => {
+                  const active = o.value === (sp.get(sort.key) || sort.options[0]?.value || "");
+                  return (
+                    <button
+                      key={o.value}
+                      type="button"
+                      onClick={() => { pushParams({ [sort.key]: o.value }); setSortOpen(false); }}
+                      className={`w-full text-left flex items-center gap-2 rounded px-2 py-1.5 text-xs transition ${
+                        active ? "bg-brand-cyan-light/50 text-brand-cyan-deep font-semibold" : "hover:bg-secondary/60"
+                      }`}
+                    >
+                      {active ? <Check className="size-3.5 shrink-0" /> : <span className="size-3.5 shrink-0" />}
+                      {o.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeCount > 0 && (
+          <button onClick={clearAll} className="btn-ghost text-xs text-muted-foreground hover:text-rose-600">
+            <X className="size-3" /> Clear
+          </button>
+        )}
+
+        {busy && <Loader2 className="size-3.5 animate-spin text-brand-cyan" />}
+        {totalCount != null && (
+          <span className="text-xs text-muted-foreground tabular-nums">
+            {totalCount.toLocaleString("en-IN")} result{totalCount === 1 ? "" : "s"}
+          </span>
+        )}
+        {rightSlot}
+      </div>
+    </div>
+  );
+}
+
+function SearchInput({ initial, placeholder, onSubmit }: { initial: string; placeholder: string; onSubmit: (v: string) => void }) {
+  const [v, setV] = useState(initial);
+  const dirty = useRef(false);
+  useEffect(() => {
+    setV(initial);
+    dirty.current = false;
+  }, [initial]);
+  useEffect(() => {
+    if (!dirty.current || v === initial) return;
+    const t = setTimeout(() => onSubmit(v), 300);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [v]);
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); onSubmit(v); }}>
+      <input
+        value={v}
+        onChange={(e) => { dirty.current = true; setV(e.target.value); }}
+        placeholder={placeholder}
+        className="input-base pl-9 text-xs h-8"
+      />
+    </form>
+  );
+}

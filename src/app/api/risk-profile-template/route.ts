@@ -34,7 +34,7 @@ export async function PUT(req: NextRequest) {
   try {
     const session = await requireSession();
     // Reuse the same capability as other settings edits.
-    requireCap(session.roles, "settings.users");
+    requireCap(session.roles, "settings.users", session.permissions);
 
     const parse = RiskTemplateSchema.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) {
@@ -87,6 +87,7 @@ export async function PUT(req: NextRequest) {
           questions: tpl.questions as any,
           bands: tpl.bands as any,
           reviewIntervalDays: tpl.reviewIntervalDays,
+          requireEmailOtp: tpl.requireEmailOtp,
           publishedBy: session.userId,
           publishedAt: new Date(),
         })

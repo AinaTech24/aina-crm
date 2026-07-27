@@ -74,6 +74,10 @@ export const riskProfileResponses = pgTable(
       enum: ["rm_entry", "client_otp", "client_physical", "client_link"],
     }).notNull().default("rm_entry"),
     otpTransactionId: text("otp_transaction_id"),
+    /** Email-OTP proof (client self-submission): the address that received and
+     *  confirmed the 6-digit code, and when it was verified. */
+    verifiedEmail: text("verified_email"),
+    emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
     clientIp: text("client_ip"),
     clientUserAgent: text("client_user_agent"),
 

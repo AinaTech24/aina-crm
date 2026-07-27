@@ -175,21 +175,44 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
     tenantId,
     async (tx) => {
       // ── 1. Birthdays today (age >= 18) ────────────────────────────────
+      // Also pulls the client's birthday-gift budget + what's been logged as
+      // given this year (client_gifts has no Drizzle schema — raw SQL only),
+      // so the RM's task carries the budget status inline.
       const birthdayRows = await tx.execute(sql`
-        SELECT id, name, dob, rm_id FROM investors
-        WHERE dob IS NOT NULL
-          AND status = 'active'
-          AND deleted_at IS NULL
-          AND EXTRACT(MONTH FROM dob) = EXTRACT(MONTH FROM CURRENT_DATE)
-          AND EXTRACT(DAY   FROM dob) = EXTRACT(DAY   FROM CURRENT_DATE)
-          AND (CURRENT_DATE - dob) / 365 >= 18
+        SELECT i.id, i.name, i.dob, i.rm_id,
+               i.birthday_gift_budget AS gift_budget,
+               COALESCE((
+                 SELECT SUM(g.amount)::int FROM client_gifts g
+                 WHERE g.tenant_id = i.tenant_id AND g.investor_id = i.id
+                   AND g.occasion = 'birthday'
+                   AND EXTRACT(YEAR FROM g.given_on) = EXTRACT(YEAR FROM CURRENT_DATE)
+               ), 0) AS gift_spent
+        FROM investors i
+        WHERE i.dob IS NOT NULL
+          AND i.status = 'active'
+          AND i.deleted_at IS NULL
+          AND EXTRACT(MONTH FROM i.dob) = EXTRACT(MONTH FROM CURRENT_DATE)
+          AND EXTRACT(DAY   FROM i.dob) = EXTRACT(DAY   FROM CURRENT_DATE)
+          AND (CURRENT_DATE - i.dob) / 365 >= 18
       `);
       result.birthday = birthdayRows.rows.length;
+      // Fallback assignee when a client has no RM: the firm owner/branch head.
+      let birthdayFallbackAssignee: string | null = null;
+      if (birthdayRows.rows.length > 0) {
+        const owner = await tx.execute(sql`
+          SELECT id FROM users
+          WHERE tenant_id = ${tenantId}::uuid AND roles && ARRAY['owner','branch_head']::text[]
+          ORDER BY created_at ASC LIMIT 1
+        `);
+        birthdayFallbackAssignee = ((owner.rows[0] as any)?.id as string) ?? null;
+      }
       for (const row of birthdayRows.rows as Array<{
         id: string;
         name: string;
         dob: string;
         rm_id: string | null;
+        gift_budget: number | null;
+        gift_spent: number | string;
       }>) {
         await tx.insert(eventsOutbox).values({
           tenantId,
@@ -199,6 +222,11 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
           after: { name: row.name, dob: row.dob, rmId: row.rm_id } as any,
           meta: { scanDate, source: "daily-ops-scanner" } as any,
         } as any).onConflictDoNothing();
+
+        // NOTE: auto birthday follow-up TASK creation is disabled per firm
+        // preference. The investor.birthday EVENT above still fires (so
+        // WhatsApp/email birthday wishes via recipes keep working) — we simply
+        // no longer auto-create a task in the Tasks list for each birthday.
       }
 
       // ── 2. Anniversaries — onboardedAt matches today, > 1 yr ago ──────
@@ -1080,19 +1108,10 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
               )
             `);
           }
-          // Open one urgent task for the assignee (or owner if unassigned).
-          const taskAssignee = sr.assigned_to_user_id ?? leadIds[0] ?? null;
-          if (taskAssignee) {
-            await tx.execute(sql`
-              INSERT INTO tasks (tenant_id, assignee_id, subject_type, subject_id, type, title, description, priority, status, due_at, sla_due_at)
-              VALUES (
-                ${tenantId}::uuid, ${taskAssignee}::uuid, 'service_request', ${sr.id}::uuid,
-                'service_request_escalation', ${`Resolve escalated SR ${sr.ticket_no}`},
-                ${`${why}. Client: ${sr.investor_name ?? "—"}.`}, 'urgent', 'open',
-                now() + interval '1 day', now() + interval '1 day'
-              )
-            `);
-          }
+          // NOTE: the auto SR-escalation TASK is disabled per firm preference
+          // ("turn off all auto tasks"). The escalation status flip + the
+          // owner/assignee notification above still fire — only the task-list
+          // entry is no longer auto-created.
           // Emit an event (scanner-deduped) so any subscribed workflow can react.
           await tx
             .insert(eventsOutbox)

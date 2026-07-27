@@ -36,7 +36,7 @@ const Body = z.object({ stages: z.array(StagePatch).min(1) });
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "settings.users");
+    requireCap(session.roles, "settings.users", session.permissions);
     const { id } = await params;
     const meta = clientMetaFromHeaders(req.headers);
     const parsed = Body.safeParse(await req.json().catch(() => ({})));

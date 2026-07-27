@@ -38,8 +38,8 @@ export type Role =
   | "investor";
 
 export const ROLE_LABELS: Record<string, string> = {
-  platform_admin: "Platform Super Admin (AINA)",
-  platform_support: "Platform Support (AINA)",
+  platform_admin: "Super Admin (AINA)",
+  platform_support: "Admin (AINA)",
   owner: "MFD Owner / Admin",
   rm: "Relationship Manager",
   back_office: "Back Office Executive",
@@ -146,7 +146,8 @@ export type Capability =
   | "settings.users"
   | "settings.billing"
   | "settings.masters"
-  | "settings.security";
+  | "settings.security"
+  | "settings.desks";
 
 
 /**
@@ -280,6 +281,10 @@ const MATRIX: Record<Capability, Role[]> = {
   "settings.billing": [],
   "settings.masters": ["compliance", "back_office", "ops"],
   "settings.security": ["compliance"],
+  // Desks are sub-branch team structure (RM → desk → branch rollup). Branch
+  // heads own their branch's desks; ops/back-office admins maintain the org
+  // chart. Owner is granted via the hard-case in can().
+  "settings.desks": ["branch_head", "back_office", "ops"],
 };
 
 /**
@@ -400,7 +405,11 @@ export function requireAny(userRoles: string[] | undefined, caps: Capability[], 
  */
 export function canPlatform(userRoles: string[] | undefined, cap: PlatformCapability): boolean {
   if (!userRoles?.length) return false;
-  if (!userRoles.includes("platform_admin")) return false;
+  // "Super Admin" (platform_admin) and "Admin" (platform_support) are BOTH full
+  // platform administrators — each can perform every platform action, including
+  // creating other Admins and Super Admins. (Historically platform_support was
+  // read-only; it was promoted to a full "Admin" tier.)
+  if (!userRoles.includes("platform_admin") && !userRoles.includes("platform_support")) return false;
   return PLATFORM_CAPS.includes(cap);
 }
 

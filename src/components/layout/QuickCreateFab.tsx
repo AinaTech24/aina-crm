@@ -145,6 +145,7 @@ export function QuickCreateFab() {
       )}
       <button
         type="button"
+        data-tour="quick-create"
         onClick={() => setOpen((v) => !v)}
         aria-label={open ? "Close quick create menu" : "Open quick create menu"}
         className="size-14 rounded-full brand-gradient text-white grid place-items-center shadow-2xl hover:scale-105 active:scale-95 transition-transform ring-4 ring-white"

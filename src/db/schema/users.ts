@@ -159,12 +159,21 @@ export const users = pgTable(
     offboardedAt: timestamp("offboarded_at", { withTimezone: true }),
     /** Self-serve signup verification. null = email not yet confirmed. */
     emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
+    /**
+     * Soft-delete → Trash. Set when an owner/admin moves the employee to Trash
+     * (an alternative to offboarding). A row with deletedAt set is hidden from
+     * the team list and blocked at login; restoring clears it. Distinct from
+     * offboardedAt, which is the formal HR exit (redistributes clients).
+     */
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    deletedBy: uuid("deleted_by"),
     ...timestamps,
   },
   (t) => ({
     emailUnique: uniqueIndex("users_tenant_email_unique").on(t.tenantId, t.email),
     deptIdx: index("users_tenant_department_idx").on(t.tenantId, t.department, t.status),
     managerIdx: index("users_reporting_manager_idx").on(t.tenantId, t.reportingManagerId),
+    deletedIdx: index("users_tenant_deleted_idx").on(t.tenantId, t.deletedAt),
   })
 );
 

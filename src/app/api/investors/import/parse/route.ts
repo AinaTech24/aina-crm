@@ -11,7 +11,10 @@ import { handleApiError } from "@/lib/api/error-handler";
 
 import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from "xlsx";
+import { and, asc, eq } from "drizzle-orm";
+import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { customFieldDefs } from "@/db/schema";
 
 export const dynamic = "force-dynamic";
 
@@ -54,12 +57,15 @@ const FIELD_DEFS: FieldDef[] = [
   { key: "investorCategory", label: "Investor Category (entity type)", group: "Classification" },
   { key: "segmentTag", label: "Segment", group: "Classification" },
   { key: "clientCategory", label: "Client Category (A–D)", group: "Classification" },
-  { key: "householdType", label: "Household Type", group: "Classification" },
+  { key: "status", label: "Client Status (active/dormant/inactive/redemption_risk/closed)", group: "Classification" },
+  { key: "riskProfile", label: "Risk Profile (conservative/moderate/aggressive/very_aggressive)", group: "Classification" },
+  { key: "householdType", label: "Family or Individual (household type)", group: "Classification" },
   { key: "familyOwnerName", label: "Family Head Name", group: "Classification" },
   { key: "referralClientName", label: "Referral Client Name", group: "Classification" },
   { key: "modeOfHolding", label: "Mode of Holding", group: "Classification" },
   { key: "bseUccCode", label: "BSE UCC Code", group: "Classification" },
   { key: "nseCanCode", label: "NSE CAN Code", group: "Classification" },
+  { key: "uccCodes", label: "Other UCC codes (comma-separated)", group: "Classification" },
   // Compliance
   { key: "taxStatus", label: "Tax Status", group: "Compliance" },
   { key: "residencyStatus", label: "Residential Status", group: "Compliance" },
@@ -73,6 +79,7 @@ const FIELD_DEFS: FieldDef[] = [
   { key: "secondHolderMotherName", label: "2nd Holder — Mother's Name", group: "Second Holder" },
   { key: "secondHolderMaritalStatus", label: "2nd Holder — Marital Status", group: "Second Holder" },
   // Relationship & review
+  { key: "rmId", label: "Assigned RM (name or email)", group: "Relationship & Review" },
   { key: "onboardedAt", label: "Onboarded Date", group: "Relationship & Review" },
   { key: "anniversaryDate", label: "Anniversary Date", group: "Relationship & Review" },
   { key: "lastReviewAt", label: "Last Meeting Date", group: "Relationship & Review" },
@@ -125,6 +132,9 @@ function suggestMapping(headers: string[]): Record<string, string> {
     [/segment/i, "segmentTag"],
     [/client.?cat|grade/i, "clientCategory"],
     [/entity.?type|investor.?cat|^category$|^type$/i, "investorCategory"],
+    [/assigned.?rm|^rm$|relationship.?manager|advisor|servicing.?rm/i, "rmId"],
+    [/risk.?profile|risk.?category|^risk$|risk.?appetite/i, "riskProfile"],
+    [/client.?status|account.?status|lifecycle.?status|^status$/i, "status"],
     [/review.?freq|frequency/i, "reviewFrequency"],
     [/last.?(meeting|review|contact)/i, "lastReviewAt"],
     [/next.?(meeting|review)/i, "nextReviewAt"],
@@ -173,7 +183,7 @@ function nameColumnScore(rows: Record<string, any>[], header: string): number {
 
 export async function POST(req: NextRequest) {
   try {
-    await requireSession();
+    const session = await requireSession();
     const form = await req.formData();
     const file = form.get("file");
     if (!(file instanceof File)) {
@@ -225,11 +235,25 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Append the firm's custom fields as a "Custom fields" group so they're
+    // mappable alongside the built-in client-master fields.
+    const cfDefs = await withTenant(session.tenantId, (tx) =>
+      tx
+        .select({ key: customFieldDefs.key, label: customFieldDefs.label })
+        .from(customFieldDefs)
+        .where(and(eq(customFieldDefs.tenantId, session.tenantId), eq(customFieldDefs.entity, "investor")))
+        .orderBy(asc(customFieldDefs.sortOrder))
+    );
+    const ourFields: FieldDef[] = [
+      ...FIELD_DEFS,
+      ...cfDefs.map((d) => ({ key: d.key, label: d.label, group: "Custom fields" })),
+    ];
+
     // Return every parsed row (capped at the 5,000 import limit) so the commit
     // step imports the whole file — the preview UI only renders the first row.
     return NextResponse.json({
       headers,
-      ourFields: FIELD_DEFS,
+      ourFields,
       suggestedMapping: suggested,
       rows: rows.slice(0, 5000),
       total: rows.length,

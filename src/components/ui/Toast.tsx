@@ -14,7 +14,7 @@
  * whole shell, so any client component below can call useToast().
  */
 
-import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from "react";
 import { CheckCircle2, AlertTriangle, XCircle, Info, X } from "lucide-react";
 
 type ToastType = "success" | "error" | "warning" | "info";
@@ -61,14 +61,21 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     [dismiss]
   );
 
-  const api: ToastApi = {
-    toast: push,
-    success: (message, title) => push({ type: "success", message, title }),
-    error: (message, title) => push({ type: "error", message, title }),
-    warning: (message, title) => push({ type: "warning", message, title }),
-    info: (message, title) => push({ type: "info", message, title }),
-    dismiss,
-  };
+  // Memoised so the context value is a STABLE reference across renders. Without
+  // this, every pushed toast re-rendered the provider → a fresh `api` object →
+  // any consumer whose effect deps include `toast` (e.g. a load-on-mount that
+  // also toasts on error) would re-run, re-fetch, re-toast… an infinite loop.
+  const api: ToastApi = useMemo(
+    () => ({
+      toast: push,
+      success: (message, title) => push({ type: "success", message, title }),
+      error: (message, title) => push({ type: "error", message, title }),
+      warning: (message, title) => push({ type: "warning", message, title }),
+      info: (message, title) => push({ type: "info", message, title }),
+      dismiss,
+    }),
+    [push, dismiss]
+  );
 
   return (
     <ToastCtx.Provider value={api}>

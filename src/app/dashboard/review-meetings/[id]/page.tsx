@@ -7,6 +7,7 @@ import { reviewMeetings, investors, leads, users } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { formatINR, formatRelative } from "@/lib/utils";
 import { ReviewMeetingDetailEditor } from "@/components/review-meetings/ReviewMeetingDetailEditor";
+import { MeetingPrepButton } from "@/components/review-meetings/MeetingPrepButton";
 import { RecordProvenance } from "@/components/common/RecordProvenance";
 
 export const dynamic = "force-dynamic";
@@ -103,6 +104,7 @@ export default async function ReviewMeetingDetailPage({
             className="mt-1"
           />
         </div>
+        <MeetingPrepButton meetingId={data.meeting.id} className="shrink-0" />
       </div>
 
       {data.prep && (

@@ -51,6 +51,13 @@ export const riskProfileTemplates = pgTable(
     /** Annual review reminder window — auto-bumps `next_review_at` on save. */
     reviewIntervalDays: integer("review_interval_days").notNull().default(365),
 
+    /**
+     * Require email-OTP verification when a CLIENT submits the public
+     * /r/<token> form. When true, the submit route rejects without a verified
+     * 6-digit code and stamps verified_email/email_verified_at on the response.
+     */
+    requireEmailOtp: boolean("require_email_otp").notNull().default(true),
+
     publishedBy: uuid("published_by").references(() => users.id),
     publishedAt: timestamp("published_at", { withTimezone: true }).defaultNow(),
 

@@ -30,7 +30,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   const { id } = await params;
   try {
     const session = await requireSession();
-    requireCap(session.roles, "template.edit");
+    requireCap(session.roles, "template.edit", session.permissions);
 
     const result = await withTenant(session.tenantId, async (tx) => {
       const tpl = (await tx.select().from(templates).where(and(eq(templates.id, id), eq(templates.tenantId, session.tenantId))).limit(1))[0];

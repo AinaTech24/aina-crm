@@ -14,7 +14,12 @@ type Branch = { id: string; name: string };
 type Desk = { id: string; branchId: string; branchName: string; name: string; code: string | null; memberCount: number };
 type Member = { id: string; name: string; branchId: string | null; deskId: string | null; roles: string[] };
 
-const isRm = (m: Member) => m.roles.includes("rm") || m.roles.includes("branch_head");
+// Any team member can sit on a desk — not just RMs. Exclude only investors and
+// platform-level accounts (which aren't part of a firm's org chart).
+const isAssignable = (m: Member) =>
+  !m.roles.includes("investor") &&
+  !m.roles.includes("platform_admin") &&
+  !m.roles.includes("platform_support");
 
 export function DeskManager() {
   const toast = useToast();
@@ -54,7 +59,7 @@ export function DeskManager() {
     return m;
   }, [desks]);
 
-  const rms = useMemo(() => members.filter(isRm), [members]);
+  const assignable = useMemo(() => members.filter(isAssignable), [members]);
 
   const createDesk = async (branchId: string, name: string, code: string) => {
     if (!name.trim()) return;
@@ -151,12 +156,12 @@ export function DeskManager() {
       <div className="rounded-xl border border-border">
         <div className="px-4 py-3 border-b border-border bg-muted/40">
           <h2 className="font-semibold text-sm flex items-center gap-2">
-            <Network className="size-4" /> Assign RMs to desks
+            <Network className="size-4" /> Assign users to desks
           </h2>
         </div>
         <div className="divide-y divide-border">
-          {rms.length === 0 && <div className="px-4 py-3 text-sm text-muted-foreground">No RMs found.</div>}
-          {rms.map((m) => {
+          {assignable.length === 0 && <div className="px-4 py-3 text-sm text-muted-foreground">No users found.</div>}
+          {assignable.map((m) => {
             const branchDesks = m.branchId ? desksByBranch.get(m.branchId) ?? [] : [];
             const branchName = branches.find((b) => b.id === m.branchId)?.name ?? "—";
             return (
@@ -252,7 +257,7 @@ function BranchDesks({
               <span className="flex-1">
                 <span className="font-medium">{d.name}</span>
                 {d.code && <span className="text-xs text-muted-foreground ml-1.5">({d.code})</span>}
-                <span className="text-xs text-muted-foreground ml-2">{d.memberCount} RM{d.memberCount === 1 ? "" : "s"}</span>
+                <span className="text-xs text-muted-foreground ml-2">{d.memberCount} member{d.memberCount === 1 ? "" : "s"}</span>
               </span>
               <button
                 type="button"

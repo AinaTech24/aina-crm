@@ -8,17 +8,21 @@ import { handleApiError } from "@/lib/api/error-handler";
 
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuid } from "uuid";
-import { and, desc, eq, ilike, isNull, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap, can } from "@/lib/auth/rbac";
 import { assertActiveLicense, assertModuleEnabled, assertInvestorQuota } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
+import { buildInvestorConditions } from "@/lib/investors/list-filters";
 import { healthFields } from "@/lib/investors/health";
 import { NomineesArray } from "@/lib/investors/nominee";
 import { ReferralsArray } from "@/lib/investors/referral";
 import { registerNomineePanDocs } from "@/lib/investors/nominee-docs";
+import { loadCustomFieldDefs, sanitizeCustomFields } from "@/lib/custom-fields/values";
+import { applyRiskCategory, RISK_CATEGORIES } from "@/lib/risk-profile/apply";
+import { cleanUccCodes } from "@/lib/investors/ucc";
 import { investors, eventsOutbox } from "@/db/schema";
 
 export const dynamic = "force-dynamic";
@@ -44,6 +48,7 @@ const CreateBody = z.object({
   familyId: z.string().uuid().optional(),
   bseUccCode: z.string().optional(),
   nseCanCode: z.string().optional(),
+  uccCodes: z.array(z.string()).optional(),
   mandateStatus: z
     .enum(["none", "pending", "active", "expired", "rejected", "cancelled"])
     .optional(),
@@ -93,6 +98,10 @@ const CreateBody = z.object({
   secondHolderBirthPlace: z.string().optional(),
   secondHolderMotherName: z.string().optional(),
   secondHolderMaritalStatus: z.string().optional(),
+  /** MFD-defined custom fields — sanitized against the firm's definitions. */
+  customFields: z.record(z.string(), z.any()).optional(),
+  /** Risk-profile category — auto-creates a risk_profile_responses record. */
+  riskProfile: z.enum(RISK_CATEGORIES).optional(),
 });
 
 export async function GET(req: NextRequest) {
@@ -109,58 +118,60 @@ export async function GET(req: NextRequest) {
     }
 
     const url = new URL(req.url);
-    const q = url.searchParams.get("q")?.trim() ?? "";
-    const segment = url.searchParams.get("segment") ?? "";
+    // Full web-parity filter set (q, segment, category, tier, status, kyc, rm,
+    // gaps, quick-filters, created date range) via the SAME builder the web list
+    // + Excel export use, so mobile and web return identical rows.
+    const sp: Record<string, string | undefined> = {};
+    url.searchParams.forEach((v, k) => {
+      sp[k] = v;
+    });
     const page = Math.max(0, Number(url.searchParams.get("page") ?? "0"));
     const limit = Math.min(200, Math.max(1, Number(url.searchParams.get("limit") ?? "50")));
     const offset = page * limit;
 
-    const result = await withTenant(session.tenantId, async (tx) => {
-      const conditions = [];
-      // Never list records that were merged into another client (the retired
-      // "loser" of a duplicate merge) — they'd otherwise still show alongside
-      // the survivor.
-      conditions.push(isNull(investors.mergedIntoId));
-      // Scope: branch heads → their whole branch; RMs → their assigned clients.
-      // (Owner / back-office / compliance with view.all see the full tenant book.)
-      const branchScoped =
-        !session.roles.includes("owner") && session.roles.includes("branch_head") && !!session.branchId;
-      if (!seesAll) {
-        if (branchScoped) {
-          conditions.push(eq(investors.branchId, session.branchId!));
-        } else if (seesAssigned) {
-          conditions.push(eq(investors.rmId, session.userId));
+    // Sort — mirrors InvestorSortSelect (aum / created / name / sip / health / review).
+    const SORT_COLS: Record<string, any> = {
+      aum: investors.aum,
+      created: investors.createdAt,
+      name: investors.name,
+      sip: investors.activeSipAmount,
+      health: investors.healthScore,
+      review: investors.nextReviewAt,
+    };
+    const sortCol = SORT_COLS[url.searchParams.get("sort") ?? "created"] ?? investors.createdAt;
+    const dir = url.searchParams.get("dir") === "asc" ? asc : desc;
+
+    const result = await withTenant(
+      session.tenantId,
+      async (tx) => {
+        const conditions: any[] = buildInvestorConditions(sp, session.userId);
+        // Never list records merged into another client (the retired duplicate).
+        conditions.push(isNull(investors.mergedIntoId));
+        // Scope: branch heads → their whole branch; assigned-only RMs → their book.
+        const branchScoped =
+          !session.roles.includes("owner") && session.roles.includes("branch_head") && !!session.branchId;
+        if (!seesAll) {
+          if (branchScoped) conditions.push(eq(investors.branchId, session.branchId!));
+          else if (seesAssigned) conditions.push(eq(investors.rmId, session.userId));
         }
-      }
-      if (q) {
-        conditions.push(
-          or(
-            ilike(investors.name, `%${q}%`),
-            ilike(investors.pan, `%${q.toUpperCase()}%`),
-            ilike(investors.phone ?? sql`''`, `%${q}%`),
-            ilike(investors.email ?? sql`''`, `%${q}%`)
-          )!
-        );
-      }
-      if (segment) {
-        conditions.push(eq(investors.segmentTag, segment as any));
-      }
-      const where = conditions.length ? and(...conditions) : undefined;
-      const rows = await tx
-        .select()
-        .from(investors)
-        .where(where as any)
-        .orderBy(desc(investors.updatedAt))
-        .limit(limit)
-        .offset(offset);
+        const where = and(...conditions);
+        const rows = await tx
+          .select()
+          .from(investors)
+          .where(where as any)
+          .orderBy(dir(sortCol))
+          .limit(limit)
+          .offset(offset);
 
-      const countRes = await tx
-        .select({ c: sql<number>`count(*)::int` })
-        .from(investors)
-        .where(where as any);
+        const countRes = await tx
+          .select({ c: sql<number>`count(*)::int` })
+          .from(investors)
+          .where(where as any);
 
-      return { rows, total: Number(countRes[0]?.c ?? 0), page, limit };
-    });
+        return { rows, total: Number(countRes[0]?.c ?? 0), page, limit };
+      },
+      { userId: session.userId, branchId: session.branchId, roles: session.roles }
+    );
 
     return NextResponse.json(result);
   } catch (err: any) {
@@ -185,6 +196,10 @@ export async function POST(req: NextRequest) {
     const id = uuid();
     const clientMeta = clientMetaFromHeaders(req.headers);
     await withTenant(session.tenantId, async (tx) => {
+      // Sanitize firm custom fields against their definitions before storing.
+      const cfDefs = await loadCustomFieldDefs(tx, session.tenantId, "investor");
+      const customFields = sanitizeCustomFields(cfDefs, body.customFields);
+
       const inserted = await tx
         .insert(investors)
         .values({
@@ -215,6 +230,7 @@ export async function POST(req: NextRequest) {
           notes: body.notes,
           bseUccCode: body.bseUccCode || null,
           nseCanCode: body.nseCanCode || null,
+          uccCodes: cleanUccCodes(body.uccCodes),
           // KYC / compliance
           kycStatus: body.kycStatus ?? "pending",
           taxStatus: body.taxStatus || null,
@@ -244,6 +260,7 @@ export async function POST(req: NextRequest) {
           lastReviewAt: body.lastReviewAt ? new Date(body.lastReviewAt) : null,
           nextReviewAt: body.nextReviewAt ? new Date(body.nextReviewAt) : null,
           onboardedAt: body.onboardedAt ? new Date(body.onboardedAt) : new Date(),
+          customFields: Object.keys(customFields).length ? customFields : null,
           status: "active",
           // Deterministic initial health from the captured fields.
           ...healthFields({
@@ -277,6 +294,20 @@ export async function POST(req: NextRequest) {
 
       // Register each nominee's PAN file as a client document.
       await registerNomineePanDocs(tx, session.tenantId, id, body.nominees, session.userId);
+
+      // Risk profile chosen on the form → create a risk_profile_responses record
+      // + cache it on the investor row (no-op if not provided).
+      if (body.riskProfile) {
+        await applyRiskCategory({
+          tx,
+          tenantId: session.tenantId,
+          investorId: id,
+          category: body.riskProfile,
+          currentCategory: null,
+          createdById: session.userId,
+          signedByName: body.name,
+        });
+      }
     });
 
     return NextResponse.json({ id }, { status: 201 });

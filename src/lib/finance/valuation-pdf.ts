@@ -1,18 +1,20 @@
 /**
  * Server-rendered portfolio valuation statement (PDF).
  *
- * Builds an emailable/printable one-page statement from the LIVE valuation
+ * Builds an emailable/printable MULTI-PAGE statement from the LIVE valuation
  * engine (valueInvestor + AMFI NAV) — not the stale stored figures. Pure
  * pdf-lib, no native deps / no headless Chrome. Returns a Buffer the API route
  * streams as application/pdf or attaches to an email.
  *
  * SEBI hygiene: every page carries the firm name + ARN + the standard market-
- * risk disclaimer. Helvetica is WinAnsi-only, so all dynamic text passes
- * through ascii() (₹ → "Rs ", smart-quotes/dashes normalised) before drawing.
+ * risk disclaimer, plus "Page X of Y" when the statement spans pages. A
+ * Unicode font (DejaVu) is embedded so amounts render with a real ₹ glyph;
+ * if the font can't load we fall back to Helvetica and "Rs ".
  */
 
-import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage, type PDFImage, type RGB } from "pdf-lib";
-import { drawReportHeader } from "@/lib/pdf/report-header";
+import { PDFDocument, rgb, type PDFFont, type PDFPage, type PDFImage, type RGB } from "pdf-lib";
+import { drawReportHeader, drawContinuationHeader, drawPageNumbers } from "@/lib/pdf/report-header";
+import { embedPdfFonts, pdfSanitize } from "@/lib/pdf/fonts";
 import type { InvestorValuation } from "./valuation";
 
 export type StatementInvestor = {
@@ -59,13 +61,16 @@ export type RenderStatementArgs = {
   brand: StatementBrand;
   /** ISO date the statement was generated (injected for determinism). */
   generatedAt: string;
+  /** Audit reference (record id) — printed in the footer as "Ref XXXXXXXX". */
+  refId?: string | null;
 };
 
 export async function renderValuationStatementPdf(args: RenderStatementArgs): Promise<Buffer> {
   const { valuation: v, investor, brand } = args;
   const doc = await PDFDocument.create();
-  const helv = await doc.embedFont(StandardFonts.Helvetica);
-  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const { font: helv, bold, rupeeOk } = await embedPdfFonts(doc);
+  const san = (s: string) => pdfSanitize(s, rupeeOk);
+  const rupee = rupeeOk ? "₹" : "Rs ";
   const primary = hexToRgb(brand.primaryColor);
   const secondary = brand.secondaryColor ? hexToRgb(brand.secondaryColor) : ACCENT;
 
@@ -73,11 +78,25 @@ export async function renderValuationStatementPdf(args: RenderStatementArgs): Pr
   doc.setProducer("Aina CRM");
   if (brand.legalName || brand.displayName) doc.setAuthor(ascii(brand.legalName ?? brand.displayName ?? ""));
 
-  const page = doc.addPage([595.28, 841.89]); // A4
+  let page = doc.addPage([595.28, 841.89]); // A4
   const W = page.getWidth();
   const H = page.getHeight();
-  const margin = 44;
+  const margin = 40;
+  const BOTTOM = 110; // content floor — leaves room for the footer band
   let y = H;
+
+  // Multi-page: when content reaches the floor, start a fresh page with the
+  // shared slim continuation header (footers are stamped in a post-pass).
+  const newPage = () => {
+    page = doc.addPage([595.28, 841.89]);
+    y = drawContinuationHeader({
+      page, helv, bold, pageWidth: W, pageHeight: H, margin,
+      firmName: brand.legalName ?? brand.displayName,
+      title: "Portfolio statement",
+      primary,
+    });
+  };
+  const ensure = (need: number) => { if (y - need < BOTTOM) newPage(); };
 
   // ── Branded letterhead — the LOGO is the brand identity (no firm-name text
   //    when a logo is present), + ARN, + a gradient strip in the firm's own
@@ -109,11 +128,13 @@ export async function renderValuationStatementPdf(args: RenderStatementArgs): Pr
   y -= 44;
 
   // ── Summary cards ─────────────────────────────────────────────────────
+  const money = (n: number | null | undefined) =>
+    n == null || !isFinite(n) ? `${rupee}0` : rupee + Math.round(n).toLocaleString("en-IN");
   const gainPositive = (v.gain ?? 0) >= 0;
   const cards: Array<{ label: string; value: string; tone?: RGB }> = [
-    { label: "Current value", value: inr(v.currentValue) },
-    { label: "Net invested", value: inr(v.pricedInvested) },
-    { label: "Total gain", value: `${gainPositive ? "+" : ""}${inr(v.gain)}`, tone: gainPositive ? GREEN : RED },
+    { label: "Current value", value: money(v.currentValue) },
+    { label: "Net invested", value: money(v.pricedInvested) },
+    { label: "Total gain", value: `${gainPositive ? "+" : ""}${money(v.gain)}`, tone: gainPositive ? GREEN : RED },
     {
       label: "Absolute return",
       value: v.absoluteReturn != null ? pct(v.absoluteReturn) : "—",
@@ -132,8 +153,8 @@ export async function renderValuationStatementPdf(args: RenderStatementArgs): Pr
     const x = margin + i * (cardW + gap);
     page.drawRectangle({ x, y: y - cardH, width: cardW, height: cardH, color: rgb(0.97, 0.98, 0.99), borderColor: LINE, borderWidth: 1 });
     page.drawText(ascii(c.label).toUpperCase(), { x: x + 8, y: y - 16, size: 6.6, font: bold, color: MUTED });
-    const vs = fitText(ascii(c.value), bold, 12, cardW - 14, 8);
-    page.drawText(ascii(c.value), { x: x + 8, y: y - 38, size: vs, font: bold, color: c.tone ?? INK });
+    const vs = fitText(san(c.value), bold, 12, cardW - 14, 8);
+    page.drawText(san(c.value), { x: x + 8, y: y - 38, size: vs, font: bold, color: c.tone ?? INK });
   });
   y -= cardH + 30;
 
@@ -148,30 +169,36 @@ export async function renderValuationStatementPdf(args: RenderStatementArgs): Pr
   const colUnits = margin + 250;
   const colNav = margin + 330;
   const colVal = W - margin;
-  const header = (t: string, x: number, right = false) => {
-    const size = 7.5;
-    const tw = right ? helv.widthOfTextAtSize(t, size) : 0;
-    page.drawText(t, { x: right ? x - tw : x, y, size, font: bold, color: MUTED });
+  const drawColHeaders = () => {
+    const header = (t: string, x: number, right = false) => {
+      const size = 7.5;
+      const tw = right ? helv.widthOfTextAtSize(t, size) : 0;
+      page.drawText(t, { x: right ? x - tw : x, y, size, font: bold, color: MUTED });
+    };
+    header("SCHEME", colScheme);
+    header("UNITS", colUnits, true);
+    header("NAV", colNav, true);
+    header("VALUE", colVal, true);
+    y -= 14;
   };
-  header("SCHEME", colScheme);
-  header("UNITS", colUnits, true);
-  header("NAV", colNav, true);
-  header("VALUE", colVal, true);
-  y -= 14;
+  drawColHeaders();
 
+  // EVERY priced holding is rendered — the statement paginates instead of
+  // silently dropping rows (a 20-folio client gets a complete statement).
   const priced = v.holdings.filter((h) => h.priced && (h.currentValue ?? 0) > 0);
-  const rows = priced.length ? priced : v.holdings.slice(0, 12);
+  const rows = priced.length ? priced : v.holdings;
   for (const h of rows) {
-    if (y < 130) break; // keep room for footer; (single-page statement by design)
-    const name = ascii(h.schemeName ?? h.schemeCode ?? "—");
+    if (y - 16 < BOTTOM) { newPage(); drawColHeaders(); }
+    const name = san(h.schemeName ?? h.schemeCode ?? "—");
     page.drawText(truncate(name, helv, 9, colUnits - colScheme - 12), { x: colScheme, y, size: 9, font: helv, color: INK });
     drawRight(page, helv, num(h.netUnits, 3), colUnits, y, 8.5, SLATE);
     drawRight(page, helv, h.latestNav != null ? num(h.latestNav, 2) : "—", colNav, y, 8.5, SLATE);
-    drawRight(page, bold, h.currentValue != null ? inr(h.currentValue) : "—", colVal, y, 9, INK);
+    drawRight(page, bold, h.currentValue != null ? san(money(h.currentValue)) : "—", colVal, y, 9, INK);
     y -= 16;
   }
 
-  if (v.unpricedSchemes > 0 && y > 120) {
+  if (v.unpricedSchemes > 0) {
+    ensure(20);
     y -= 4;
     page.drawText(
       ascii(`Note: ${v.unpricedSchemes} holding(s) could not be priced against a live NAV and are excluded from the value/return above.`),
@@ -180,18 +207,22 @@ export async function renderValuationStatementPdf(args: RenderStatementArgs): Pr
     y -= 14;
   }
 
-  // ── Fee transparency line (fixed just above the footer band) ──────────
-  {
-    let fy = 74;
-    page.drawText("FEE TRANSPARENCY", { x: margin, y: fy + 12, size: 6.4, font: bold, color: MUTED });
-    for (const line of wrap(FEE_NOTE, helv, 7, W - 2 * margin).slice(0, 2)) {
-      page.drawText(line, { x: margin, y: fy, size: 7, font: helv, color: SLATE });
-      fy -= 9;
+  // ── Per-page furniture (post-pass, once the page count is final) ──────
+  const pages = doc.getPages();
+  pages.forEach((p, i) => {
+    // Fee-transparency line — last page only, just above the footer band.
+    if (i === pages.length - 1) {
+      let fy = 74;
+      p.drawText("FEE TRANSPARENCY", { x: margin, y: fy + 12, size: 6.4, font: bold, color: MUTED });
+      for (const line of wrap(FEE_NOTE, helv, 7, W - 2 * margin).slice(0, 2)) {
+        p.drawText(line, { x: margin, y: fy, size: 7, font: helv, color: SLATE });
+        fy -= 9;
+      }
     }
-  }
-
-  // ── Footer (firm · ARN · disclaimer · generated) ──────────────────────
-  drawFooter(page, { helv, bold, brand, primary, generatedAt: args.generatedAt });
+    drawFooter(p, { helv, bold, brand, primary, generatedAt: args.generatedAt, margin, refId: args.refId });
+  });
+  drawPageNumbers(doc, helv, W, 8);
+  if (args.refId) doc.setSubject(`Ref ${String(args.refId).slice(0, 8)}`);
 
   const bytes = await doc.save();
   return Buffer.from(bytes);
@@ -201,16 +232,18 @@ export async function renderValuationStatementPdf(args: RenderStatementArgs): Pr
 
 function drawFooter(
   page: PDFPage,
-  a: { helv: PDFFont; bold: PDFFont; brand: StatementBrand; primary: RGB; generatedAt: string }
+  a: { helv: PDFFont; bold: PDFFont; brand: StatementBrand; primary: RGB; generatedAt: string; margin?: number; refId?: string | null }
 ) {
   const W = page.getWidth();
-  const margin = 44;
+  const margin = a.margin ?? 40;
   // Thin top rule (matches the proposal footer; no filled band).
   page.drawRectangle({ x: margin, y: 52, width: W - 2 * margin, height: 1, color: LINE });
   const legal = ascii(a.brand.legalName ?? a.brand.displayName ?? "Your Advisor");
   const arn = ascii(`ARN-${(a.brand.arn ?? "—").toString().replace(/^ARN-?/i, "")}`);
   page.drawText(`${legal}  -  ${arn}`, { x: margin, y: 40, size: 8, font: a.bold, color: SLATE });
-  const gen = ascii(`Generated ${fmtDateTime(a.generatedAt)}`);
+  const gen = ascii(
+    `Generated ${fmtDateTime(a.generatedAt)}${a.refId ? ` - Ref ${String(a.refId).slice(0, 8).toUpperCase()}` : ""}`
+  );
   const gw = a.helv.widthOfTextAtSize(gen, 7.5);
   page.drawText(gen, { x: W - margin - gw, y: 40, size: 7.5, font: a.helv, color: MUTED });
   let dy = 26;
@@ -268,10 +301,6 @@ function drawGradientStrip(page: PDFPage, x: number, y: number, w: number, h: nu
   }
 }
 
-function inr(n: number | null | undefined): string {
-  if (n == null || !isFinite(n)) return "Rs 0";
-  return "Rs " + Math.round(n).toLocaleString("en-IN");
-}
 function num(n: number | null | undefined, dp: number): string {
   if (n == null || !isFinite(n)) return "—";
   return n.toLocaleString("en-IN", { minimumFractionDigits: dp, maximumFractionDigits: dp });

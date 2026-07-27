@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Loader2, Plus, Trash2, GitBranch } from "lucide-react";
+import { SelectField } from "@/components/ui/SelectField";
 
 type TeamMember = { id: string; name: string };
 type Rule = {
@@ -85,15 +86,15 @@ export default function AssignmentRulesManager({ team }: { team: TeamMember[] })
         <h3 className="font-semibold text-sm flex items-center gap-2"><Plus className="size-4" /> New auto-assignment rule</h3>
         <div className="grid sm:grid-cols-2 gap-3">
           <input className={field} placeholder="Rule name (e.g. Website leads → Sales team)" value={name} onChange={(e) => setName(e.target.value)} />
-          <div className="grid grid-cols-3 gap-2">
-            <select className={field} value={subjectType} onChange={(e) => setSubjectType(e.target.value)}>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <SelectField className="w-full" value={subjectType} onChange={(e) => setSubjectType(e.target.value)}>
               <option value="lead">Leads</option>
               <option value="investor">Clients</option>
-            </select>
-            <select className={field} value={strategy} onChange={(e) => setStrategy(e.target.value)}>
+            </SelectField>
+            <SelectField className="w-full" value={strategy} onChange={(e) => setStrategy(e.target.value)}>
               <option value="round_robin">Round-robin</option>
               <option value="load_balanced">Load-balanced</option>
-            </select>
+            </SelectField>
             <input className={field} type="number" min={0} max={1000} value={priority} onChange={(e) => setPriority(Number(e.target.value))} title="Priority (lower runs first)" />
           </div>
         </div>

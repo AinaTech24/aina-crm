@@ -10,6 +10,7 @@ import { RmSelector } from "@/components/common/RmSelector";
 import { SubDistributorLookup } from "@/components/common/SubDistributorLookup";
 import { SelectField } from "@/components/ui/SelectField";
 import { ThemeDate } from "@/components/ui/ThemeDate";
+import { CustomFieldsSection, missingRequired, type CustomFieldDef } from "@/components/common/CustomFieldInputs";
 
 type DupMatch = {
   id: string;
@@ -72,6 +73,8 @@ export default function NewLeadPage() {
     subDistributorId: "" as string | null | "",
     subDistributorName: "" as string | null | "",
   });
+  const [customFields, setCustomFields] = useState<Record<string, any>>({});
+  const [cfDefs, setCfDefs] = useState<CustomFieldDef[]>([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [duplicates, setDuplicates] = useState<DupMatch[]>([]);
@@ -151,6 +154,8 @@ export default function NewLeadPage() {
     setBusy(true);
     setErr(null);
     try {
+      const missCf = missingRequired(cfDefs, customFields);
+      if (missCf) { setErr(`${missCf.label} is required.`); return; }
       // Build a clean payload — coerce numbers/dates, omit empties (an empty
       // string would fail the API's enum / uuid / number validators).
       const payload: any = {
@@ -180,6 +185,7 @@ export default function NewLeadPage() {
       }
       if (form.ownerId) payload.ownerId = form.ownerId;
       if (form.subDistributorId) payload.subDistributorId = form.subDistributorId;
+      if (Object.keys(customFields).length) payload.customFields = customFields;
       const res = await fetch("/api/leads", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -480,6 +486,11 @@ export default function NewLeadPage() {
             placeholder="Anything the RM should know about this lead…"
             className="input-base"
           />
+        </div>
+
+        {/* Firm-defined custom fields (Settings → Custom fields) */}
+        <div className="sm:col-span-2">
+          <CustomFieldsSection entity="lead" values={customFields} onChange={setCustomFields} onDefsLoaded={setCfDefs} />
         </div>
 
         {err && (

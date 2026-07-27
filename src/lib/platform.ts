@@ -9,12 +9,15 @@
 
 export const PLATFORM_TENANT_ID = "00000000-0000-0000-0000-000000000000";
 
-/** Canonical AINA admin role names. */
+/** Canonical AINA admin role names. `platform_admin` = "Super Admin",
+ *  `platform_support` = "Admin". Both are FULL platform administrators. */
 export const PLATFORM_ROLES = ["platform_admin", "platform_support"] as const;
 
 export function isPlatformAdmin(roles: string[] | undefined): boolean {
   if (!roles?.length) return false;
-  return roles.includes("platform_admin");
+  // Super Admin (platform_admin) AND Admin (platform_support) are both full
+  // platform administrators with identical powers — they differ only in label.
+  return roles.includes("platform_admin") || roles.includes("platform_support");
 }
 
 export function isPlatformStaff(roles: string[] | undefined): boolean {

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Building2, Database, Users, CreditCard, MessageCircle, Mail, Webhook, ShieldCheck, Workflow, KeyRound, Palette, UserCircle, GitBranch, Target, Network, BellRing, ClipboardCheck } from "lucide-react";
+import { Building2, Database, Users, CreditCard, MessageCircle, Mail, Webhook, ShieldCheck, Workflow, KeyRound, Palette, UserCircle, GitBranch, Target, Network, BellRing, ClipboardCheck, SlidersHorizontal } from "lucide-react";
 
 const SECTIONS = [
   {
@@ -17,8 +17,14 @@ const SECTIONS = [
   {
     icon: Palette,
     title: "Appearance & theme",
-    desc: "Re-skin the CRM to your brand — preset palettes or custom primary & accent colours.",
+    desc: "Re-skin the CRM to your brand — colours, font & density, and your white-label URL.",
     href: "/dashboard/settings/appearance",
+  },
+  {
+    icon: SlidersHorizontal,
+    title: "Custom fields",
+    desc: "Add your own fields to leads & clients — text, number, date, dropdown and more.",
+    href: "/dashboard/settings/custom-fields",
   },
   {
     icon: Database,
@@ -49,6 +55,12 @@ const SECTIONS = [
     title: "Onboarding form fields",
     desc: "Choose which client account-opening / KYC fields your team MUST fill — make any field mandatory or optional.",
     href: "/dashboard/settings/onboarding-fields",
+  },
+  {
+    icon: Workflow,
+    title: "Task templates",
+    desc: "Design predefined tasks with sub-task checklists (SOPs) — your team applies them when creating a task.",
+    href: "/dashboard/settings/task-templates",
   },
   {
     icon: Users,

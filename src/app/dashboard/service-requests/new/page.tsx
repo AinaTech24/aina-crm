@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { RmSelector } from "@/components/common/RmSelector";
+import { SelectField } from "@/components/ui/SelectField";
 
 const TYPES = [
   { key: "nominee_update", label: "Nominee update" },
@@ -119,28 +120,28 @@ export default function NewServiceRequestPage() {
       <form onSubmit={submit} className="border rounded-lg bg-card p-5 space-y-3">
         <label className="block">
           <div className="text-xs font-medium mb-1">Investor</div>
-          <select value={form.investorId} onChange={(e) => setForm({ ...form, investorId: e.target.value })} className="w-full border rounded-md px-3 py-2 text-sm bg-background">
+          <SelectField value={form.investorId} onChange={(e) => setForm({ ...form, investorId: e.target.value })} className="w-full" searchable>
             <option value="">Select investor (or leave blank for general)…</option>
             {investors.map((i: any) => (
               <option key={i.id} value={i.id}>{i.name} · {i.pan}</option>
             ))}
-          </select>
+          </SelectField>
         </label>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <label className="block">
             <div className="text-xs font-medium mb-1">Type<span className="text-rose-600">*</span></div>
-            <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} className="w-full border rounded-md px-3 py-2 text-sm bg-background">
+            <SelectField value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} className="w-full">
               {TYPES.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
-            </select>
+            </SelectField>
           </label>
           <label className="block">
             <div className="text-xs font-medium mb-1">Priority</div>
-            <select value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })} className="w-full border rounded-md px-3 py-2 text-sm bg-background">
+            <SelectField value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })} className="w-full">
               <option value="low">Low</option>
               <option value="normal">Normal</option>
               <option value="high">High</option>
               <option value="urgent">Urgent</option>
-            </select>
+            </SelectField>
           </label>
         </div>
         <label className="block">
@@ -151,16 +152,16 @@ export default function NewServiceRequestPage() {
           <div className="text-xs font-medium mb-1">Description</div>
           <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={4} className="w-full border rounded-md px-3 py-2 text-sm bg-background" />
         </label>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <label className="block">
             <div className="text-xs font-medium mb-1">Channel</div>
-            <select value={form.channel} onChange={(e) => setForm({ ...form, channel: e.target.value })} className="w-full border rounded-md px-3 py-2 text-sm bg-background">
+            <SelectField value={form.channel} onChange={(e) => setForm({ ...form, channel: e.target.value })} className="w-full">
               <option value="phone">Phone</option>
               <option value="whatsapp">WhatsApp</option>
               <option value="email">Email</option>
               <option value="in_person">In person</option>
               <option value="form">Web form</option>
-            </select>
+            </SelectField>
           </label>
           <label className="block">
             <div className="text-xs font-medium mb-1">
@@ -179,12 +180,12 @@ export default function NewServiceRequestPage() {
         {form.type === "complaint" && (
           <div className="rounded-md border border-amber-200 bg-amber-50/40 p-3 space-y-3">
             <div className="text-xs font-semibold text-amber-800">SEBI complaint register</div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <label className="block">
                 <div className="text-xs font-medium mb-1">SEBI category<span className="text-rose-600">*</span></div>
-                <select value={form.sebiCategory} onChange={(e) => setForm({ ...form, sebiCategory: e.target.value })} className="w-full border rounded-md px-3 py-2 text-sm bg-background">
+                <SelectField value={form.sebiCategory} onChange={(e) => setForm({ ...form, sebiCategory: e.target.value })} className="w-full">
                   {SEBI_CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
-                </select>
+                </SelectField>
               </label>
               <label className="block">
                 <div className="text-xs font-medium mb-1">Sub-category</div>
@@ -192,9 +193,9 @@ export default function NewServiceRequestPage() {
               </label>
               <label className="block">
                 <div className="text-xs font-medium mb-1">Source</div>
-                <select value={form.complaintSource} onChange={(e) => setForm({ ...form, complaintSource: e.target.value })} className="w-full border rounded-md px-3 py-2 text-sm bg-background">
+                <SelectField value={form.complaintSource} onChange={(e) => setForm({ ...form, complaintSource: e.target.value })} className="w-full">
                   {COMPLAINT_SOURCES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
-                </select>
+                </SelectField>
               </label>
               {form.complaintSource === "scores" && (
                 <label className="block">

@@ -29,11 +29,11 @@ export function TaskViewSelect({ current }: { current: string }) {
     // Re-scoping restarts from the first page of the new result set.
     params.delete("page");
     // The kanban's columns ARE the statuses, so a lingering status/due filter
-    // (e.g. from clicking the "Open" / "Overdue" stat cards) would collapse the
-    // board to one column. Clear them when entering the board.
+    // would collapse the board to one column. Clear those when entering it.
     if (v === "kanban") {
       params.delete("status");
       params.delete("due");
+      params.delete("page");
     }
     const qs = params.toString();
     router.push(qs ? `${pathname}?${qs}` : pathname);

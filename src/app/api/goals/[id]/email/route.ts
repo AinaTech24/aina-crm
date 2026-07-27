@@ -75,6 +75,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     try {
       pdf = await renderGoalPdf({
         goal: ctx.goal as any,
+        refId: (ctx.goal as any)?.id ?? null,
         investor: { name: ctx.inv?.name },
         brand: {
           displayName: (ctx.tenant as any)?.displayName, legalName: (ctx.tenant as any)?.legalName,

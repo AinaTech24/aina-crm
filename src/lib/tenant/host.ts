@@ -12,6 +12,8 @@
 
 import { sql } from "drizzle-orm";
 import { withSystem } from "@/db/client";
+import { pickLogo } from "@/lib/branding/logo";
+import { buildTenantThemeCss } from "@/lib/branding/theme";
 
 /** The apex the vanity subdomains hang off, e.g. "crm.ainatech.in". */
 export function appBaseDomain(): string {
@@ -75,6 +77,30 @@ export function canonicalHostForTenant(t: {
   if (t.customDomain && t.customDomainVerifiedAt) return t.customDomain.toLowerCase();
   if (t.subdomain) return `${t.subdomain.toLowerCase()}.${appBaseDomain()}`;
   return appBaseDomain();
+}
+
+/** Branding to show on a firm's white-label login page (resolved by host). */
+export type LoginBranding = { name: string; logoUrl: string | null; themeCss: string } | null;
+
+export async function resolveLoginBrandingByHost(host?: string | null): Promise<LoginBranding> {
+  const resolved = await resolveTenantByHost(host);
+  if (!resolved) return null;
+  const t = await withSystem(async (tx) =>
+    (await tx.execute(sql`
+      SELECT display_name, logo_url, logo_icon_url, logo_mark_url, favicon_url,
+             primary_color, secondary_color, text_color, hover_color, font_family, ui_density
+      FROM tenants WHERE id = ${resolved.tenantId}::uuid LIMIT 1
+    `)).rows[0] as any
+  );
+  if (!t) return null;
+  const logoUrl = pickLogo(
+    { logoUrl: t.logo_url, logoIconUrl: t.logo_icon_url, logoMarkUrl: t.logo_mark_url, faviconUrl: t.favicon_url },
+    "full"
+  );
+  const themeCss = buildTenantThemeCss(
+    t.primary_color, t.secondary_color, t.text_color, t.hover_color, t.font_family, t.ui_density
+  );
+  return { name: t.display_name ?? "", logoUrl, themeCss };
 }
 
 /** Subdomains that can never be claimed (product/infra names). */

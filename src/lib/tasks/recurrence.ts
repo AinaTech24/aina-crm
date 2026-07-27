@@ -76,6 +76,9 @@ export async function spawnNextOccurrence(
     recurrence: before.recurrence,
     recurrenceUntil: before.recurrenceUntil,
     recurrenceParentId: before.recurrenceParentId ?? before.id,
+    // Carry the approval requirement across the series; approval STATE (pending/
+    // approved) and reminders deliberately start fresh on each occurrence.
+    requiresApproval: before.requiresApproval,
   } as any);
 
   await recordAudit(tx, {

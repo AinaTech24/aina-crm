@@ -40,31 +40,37 @@ export async function GET() {
         }
       };
 
-      const [clients, aum, leadsOpen, tasksOpen, tasksOverdue, reviewsDue, followupsDue] = await Promise.all([
+      const [clients, aum, sipBook, leadsOpen, tasksOverdue, tasksToday, reviewsDue, followupsDue, meetingsToday] = await Promise.all([
         one(sql`SELECT count(*)::int AS v FROM investors WHERE status = 'active' AND deleted_at IS NULL${mine}`),
         one(sql`SELECT COALESCE(sum(aum),0)::float AS v FROM investors WHERE deleted_at IS NULL${mine}`),
+        one(sql`SELECT COALESCE(sum(active_sip_amount),0)::float AS v FROM investors WHERE status = 'active' AND deleted_at IS NULL${mine}`),
         one(sql`SELECT count(*)::int AS v FROM leads WHERE converted_at IS NULL AND (stage IS NULL OR stage NOT IN ('lost','not_interested','not_qualified'))${mineOwner}`),
-        one(sql`SELECT count(*)::int AS v FROM tasks WHERE status IN ('open','in_progress','blocked') AND deleted_at IS NULL AND (assignee_id = ${session.userId} OR ${seesAll})`),
         one(sql`SELECT count(*)::int AS v FROM tasks WHERE status IN ('open','in_progress','blocked') AND deleted_at IS NULL AND due_at < now() AND (assignee_id = ${session.userId} OR ${seesAll})`),
+        one(sql`SELECT count(*)::int AS v FROM tasks WHERE status IN ('open','in_progress','blocked') AND deleted_at IS NULL AND due_at >= date_trunc('day', now()) AND due_at < date_trunc('day', now()) + interval '1 day' AND (assignee_id = ${session.userId} OR ${seesAll})`),
         one(sql`SELECT count(*)::int AS v FROM investors WHERE status = 'active' AND deleted_at IS NULL AND next_review_at IS NOT NULL AND next_review_at <= now()${mine}`),
         one(sql`SELECT count(*)::int AS v FROM leads WHERE converted_at IS NULL AND next_follow_up_at IS NOT NULL AND next_follow_up_at <= now()${mineOwner}`),
+        one(sql`SELECT count(*)::int AS v FROM review_meetings WHERE status IN ('scheduled','confirmed') AND meeting_date >= date_trunc('day', now()) AND meeting_date < date_trunc('day', now()) + interval '1 day'${mine}`),
       ]);
 
-      return { clients, aum, leadsOpen, tasksOpen, tasksOverdue, reviewsDue, followupsDue };
+      return { clients, aum, sipBook, leadsOpen, tasksOverdue, tasksToday, reviewsDue, followupsDue, meetingsToday };
     });
 
     return NextResponse.json({
       scope: seesAll ? "firm" : "me",
       kpis: [
+        { key: "aum", label: "Total AUM", value: data.aum, format: "inr" },
         { key: "clients", label: "Active Clients", value: data.clients, format: "number" },
-        { key: "aum", label: "AUM", value: data.aum, format: "inr" },
+        { key: "sipBook", label: "Monthly SIP", value: data.sipBook, format: "inr" },
         { key: "leadsOpen", label: "Open Leads", value: data.leadsOpen, format: "number" },
-        { key: "tasksOpen", label: "Open Tasks", value: data.tasksOpen, format: "number" },
       ],
+      // "Today" — only actionable items; the app hides zero-count rows so Home
+      // shows just what needs attention. All deep-link into kept modules.
       worklist: [
         { key: "tasksOverdue", label: "Overdue tasks", count: data.tasksOverdue, icon: "alert-triangle", tone: "danger", href: "/(app)/(tabs)/tasks" },
+        { key: "tasksToday", label: "Tasks due today", count: data.tasksToday, icon: "check-square", tone: "warning", href: "/(app)/(tabs)/tasks" },
         { key: "followupsDue", label: "Follow-ups due", count: data.followupsDue, icon: "corner-up-right", tone: "warning", href: "/m/leads" },
-        { key: "reviewsDue", label: "Reviews due", count: data.reviewsDue, icon: "calendar", tone: "info", href: "/m/review-meetings" },
+        { key: "meetingsToday", label: "Meetings today", count: data.meetingsToday, icon: "video", tone: "info", href: "/m/review-meetings" },
+        { key: "reviewsDue", label: "Client reviews due", count: data.reviewsDue, icon: "calendar", tone: "info", href: "/m/review-meetings" },
       ],
     });
   } catch (err: any) {

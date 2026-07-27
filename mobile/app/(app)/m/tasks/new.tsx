@@ -1,14 +1,14 @@
+/**
+ * Create Task — exact parity with the web /dashboard/tasks/new form, rendered
+ * by the config-driven FormScreen from the taskForm spec (What / Related to /
+ * Routing + schedule, conditional custom-type + recurrence, related-entity
+ * typeaheads). Posts to POST /api/tasks.
+ */
+
 import React from "react";
-import { View } from "react-native";
-import { ScreenHeader } from "../../../../src/components/ui/ScreenHeader";
-import { EmptyState } from "../../../../src/components/states";
-import { palette } from "../../../../src/theme/tokens";
+import { FormScreen } from "../../../../src/components/form/FormScreen";
+import { taskForm } from "../../../../src/features/forms/tasks";
 
 export default function NewTask() {
-  return (
-    <View style={{ flex: 1, backgroundColor: palette.surfaceAlt }}>
-      <ScreenHeader title="New task" />
-      <EmptyState icon="plus-circle" title="Create task" message="Title, type, priority, assignee, due date → POST /api/tasks. Native form in the forms pass." />
-    </View>
-  );
+  return <FormScreen spec={taskForm} />;
 }

@@ -12,6 +12,7 @@ import { v4 as uuid } from "uuid";
 import { sql, eq, asc } from "drizzle-orm";
 import { withSystem } from "@/db/client";
 import { packages, subscriptions, subscriptionEvents } from "@/db/schema";
+import { PLATFORM_TENANT_ID } from "@/lib/platform";
 import { signSession, SESSION_COOKIE, SESSION_TTL_SECONDS } from "@/lib/auth/session";
 import { MASTER_SEEDS } from "@/lib/masters/seeds";
 import { installDefaultRecipes } from "@/lib/recipes/install-defaults";
@@ -42,6 +43,19 @@ export async function POST(req: NextRequest) {
       { error: "firmName, arn, ownerName, ownerEmail, password (min 8 chars) all required" },
       { status: 400 }
     );
+  }
+
+  // An email reserved for an AINA Admin / Super Admin can't be reused for an MFD
+  // signup either — otherwise two rows would share the email across tenants and
+  // login would become ambiguous.
+  const adminEmailTaken = await withSystem(async (tx) => {
+    const r = await tx.execute(
+      sql`SELECT 1 FROM users WHERE lower(email) = ${ownerEmail} AND tenant_id = ${PLATFORM_TENANT_ID}::uuid LIMIT 1`
+    );
+    return r.rows.length > 0;
+  });
+  if (adminEmailTaken) {
+    return NextResponse.json({ error: "Email already in use" }, { status: 409 });
   }
 
   const tenantId = uuid();

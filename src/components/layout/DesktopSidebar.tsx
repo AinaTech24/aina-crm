@@ -74,8 +74,6 @@ export function DesktopSidebar({ children }: { children: React.ReactNode }) {
 
   return (
     <aside
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
       style={{ width: expanded ? FULL : RAIL }}
       className={[
         "hidden lg:flex relative z-30 flex-shrink-0 h-full flex-col",
@@ -84,12 +82,16 @@ export function DesktopSidebar({ children }: { children: React.ReactNode }) {
         expanded ? "" : "sidebar-collapsed",
       ].join(" ")}
     >
-      {/* Edge handle — straddles the sidebar's right border, always visible, so
-          there's an obvious affordance to open/close. Icon reflects the pinned
-          state: ‹ collapses, › keeps it open. */}
+      {/* Edge handle — straddles the sidebar's right border, always visible.
+          CLICK toggles the pinned/collapsed state. It is deliberately OUTSIDE
+          the hover-tracking wrapper below (and stops mouse events from bubbling)
+          so that merely hovering the pin does NOT auto open/close the rail — the
+          pin is click-only, while hovering the nav area still hover-expands. */}
       <button
         type="button"
         onClick={toggle}
+        onMouseEnter={(e) => e.stopPropagation()}
+        onMouseLeave={(e) => e.stopPropagation()}
         aria-label={pinned === "open" ? "Collapse sidebar" : "Keep sidebar open"}
         title={pinned === "open" ? "Collapse sidebar" : "Keep sidebar open"}
         className="absolute top-1/2 -right-3 z-40 grid size-6 -translate-y-1/2 place-items-center
@@ -104,7 +106,16 @@ export function DesktopSidebar({ children }: { children: React.ReactNode }) {
         )}
       </button>
 
-      {children}
+      {/* Hover-expand zone — ONLY the nav content. Hovering here expands a
+          collapsed rail; leaving shrinks it (unless pinned open). The pin button
+          above is excluded, so it never triggers a hover open/close. */}
+      <div
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        className="flex-1 flex flex-col min-h-0"
+      >
+        {children}
+      </div>
     </aside>
   );
 }

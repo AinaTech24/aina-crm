@@ -18,7 +18,8 @@ export const dynamic = "force-dynamic";
 
 const Body = z.object({
   firmName: z.string().min(2),
-  arn: z.string().min(2),
+  // ARN is optional — a firm can be onboarded before its ARN is issued.
+  arn: z.string().trim().optional().default(""),
   ownerName: z.string().min(2),
   ownerEmail: z.string().email(),
   ownerPassword: z.string().min(8),
@@ -41,6 +42,9 @@ export async function POST(req: NextRequest) {
     const subId = uuid();
     const passwordHash = await bcrypt.hash(body.ownerPassword, 12);
     const trialEnds = new Date(Date.now() + body.trialDays * 24 * 60 * 60 * 1000);
+    // Normalise ARN: empty string → null (optional column, unique index treats
+    // NULLs as distinct so multiple ARN-less tenants coexist).
+    const arn = body.arn && body.arn.trim() ? body.arn.trim() : null;
 
     await withPlatformAdmin(session.userId, async (tx) => {
       // Resolve package
@@ -50,16 +54,20 @@ export async function POST(req: NextRequest) {
       // If a SOFT-DELETED tenant still holds this ARN, free it first (deleting a
       // tenant is meant to release its ARN) so re-creation succeeds. Active
       // tenants holding the ARN are left alone → the INSERT below 409s clearly.
-      await tx.execute(sql`
-        UPDATE tenants
-        SET arn = arn || '_deleted_' || to_char(now(), 'YYYYMMDDHH24MISS'), updated_at = now()
-        WHERE arn = ${body.arn} AND deleted_at IS NOT NULL
-      `);
+      // Skipped entirely when no ARN was provided.
+      if (arn) {
+        await tx.execute(sql`
+          UPDATE tenants
+          SET arn = arn || '_deleted_' || to_char(now(), 'YYYYMMDDHH24MISS'), updated_at = now()
+          WHERE arn = ${arn} AND deleted_at IS NOT NULL
+        `);
+      }
 
-      // Tenant
+      // Tenant — seed the contact email from the owner's email so the detail
+      // page isn't left blank (admin can change it later).
       await tx.execute(sql`
-        INSERT INTO tenants (id, legal_name, display_name, arn, plan, status, trial_ends_at, created_at, updated_at)
-        VALUES (${tenantId}, ${body.firmName}, ${body.firmName}, ${body.arn}, 'starter', 'trial', ${trialEnds}, now(), now())
+        INSERT INTO tenants (id, legal_name, display_name, arn, email, plan, status, trial_ends_at, created_at, updated_at)
+        VALUES (${tenantId}, ${body.firmName}, ${body.firmName}, ${arn}, ${body.ownerEmail.toLowerCase()}, 'starter', 'trial', ${trialEnds}, now(), now())
       `);
 
       // Branch
@@ -119,7 +127,7 @@ export async function POST(req: NextRequest) {
         eventType: "created" as any,
         actor: `aina_admin:${session.userId}`,
         toStatus: "trial",
-        notes: `Provisioned '${body.firmName}' (ARN ${body.arn}) on '${body.packageKey}' — ${body.trialDays}-day trial.`,
+        notes: `Provisioned '${body.firmName}' (ARN ${arn ?? "—"}) on '${body.packageKey}' — ${body.trialDays}-day trial.`,
       } as any);
     });
 

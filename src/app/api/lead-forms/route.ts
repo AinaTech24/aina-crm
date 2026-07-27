@@ -58,7 +58,7 @@ const PostBody = z.object({
 export async function GET() {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "settings.users");
+    requireCap(session.roles, "settings.users", session.permissions);
     const rows = await withTenant(session.tenantId, async (tx) => {
       return tx.select().from(leadCaptureForms).where(eq(leadCaptureForms.tenantId, session.tenantId));
     });
@@ -71,7 +71,7 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "settings.users");
+    requireCap(session.roles, "settings.users", session.permissions);
     const parse = PostBody.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) {
       return NextResponse.json(

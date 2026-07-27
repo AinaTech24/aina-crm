@@ -165,6 +165,8 @@ export const leads = pgTable(
     /** Qualification context the RM gathers up-front: occupation + what the
      *  lead already holds elsewhere (for the pitch). JSONB so it can grow. */
     profile: jsonb("profile").$type<{ occupation?: string; currentInvestments?: string[] }>().default({}),
+    // MFD-defined custom fields (migration 0166) — keyed by custom_field_defs.key.
+    customFields: jsonb("custom_fields").$type<Record<string, any>>(),
     /** Secondary contact points (work vs personal). Primary stays in
      *  phone/email so dedup via the normalized columns keeps working. */
     altPhone: text("alt_phone"),

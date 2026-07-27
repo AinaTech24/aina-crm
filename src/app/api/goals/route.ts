@@ -8,7 +8,7 @@ import { handleApiError } from "@/lib/api/error-handler";
 
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuid } from "uuid";
-import { desc, eq, sql } from "drizzle-orm";
+import { and, or, asc, desc, eq, ilike, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
@@ -44,24 +44,66 @@ const Body = z.object({
   nextReviewAt: z.string().optional(),
 });
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     const session = await requireSession();
     // Goals expose client financial planning (targets, required SIP, client
-    // name). Require an investor-view capability (was open to any role) and
-    // scope non-managers to their own clients' goals.
+    // name). Require an investor-view capability and scope non-managers to
+    // their own clients' goals.
     requireAny(session.roles, ["investor.view.all", "investor.view.assigned"], session.permissions);
     const canViewAll = can(session.roles, "investor.view.all", session.permissions);
-    const rows = await withTenant(session.tenantId, async (tx) => {
-      return tx
-        .select({ goal: goals, investorName: investors.name })
-        .from(goals)
-        .leftJoin(investors, eq(investors.id, goals.investorId))
-        .where(canViewAll ? undefined : eq(investors.rmId, session.userId))
-        .orderBy(goals.targetDate)
-        .limit(500);
-    });
-    return NextResponse.json({ goals: rows });
+
+    const url = req.nextUrl;
+    const q = (url.searchParams.get("q") ?? "").trim();
+    const statusFilter = (url.searchParams.get("status") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+    const sortKey = url.searchParams.get("sort") ?? "target_date_asc";
+    const orderBy =
+      sortKey === "target_date_desc" ? desc(goals.targetDate)
+      : sortKey === "target_amount_desc" ? desc(goals.targetAmount)
+      : sortKey === "target_amount_asc" ? asc(goals.targetAmount)
+      : asc(goals.targetDate);
+
+    const data = await withTenant(
+      session.tenantId,
+      async (tx) => {
+        const conds: any[] = [isNull(investors.deletedAt)];
+        if (!canViewAll) conds.push(eq(investors.rmId, session.userId));
+        if (q) conds.push(or(ilike(goals.name, `%${q}%`), ilike(investors.name, `%${q}%`)));
+        if (statusFilter.length) conds.push(inArray(goals.status, statusFilter as any));
+
+        const rows = await tx
+          .select({ goal: goals, investorName: investors.name, investorAvatarUrl: investors.avatarUrl })
+          .from(goals)
+          .leftJoin(investors, eq(investors.id, goals.investorId))
+          .where(and(...conds))
+          .orderBy(orderBy)
+          .limit(500);
+
+        // KPI ribbon — over the full scope (not the filtered/searched slice),
+        // mirroring the web goals page.
+        const scope = canViewAll
+          ? sql`(g.investor_id IS NULL OR g.investor_id IN (SELECT id FROM investors WHERE deleted_at IS NULL))`
+          : sql`g.investor_id IN (SELECT id FROM investors WHERE rm_id = ${session.userId}::uuid AND deleted_at IS NULL)`;
+        const statsRes = await tx.execute(sql`
+          SELECT
+            COUNT(*)::int AS total,
+            COUNT(*) FILTER (WHERE status = 'on_track')::int AS on_track,
+            COUNT(*) FILTER (WHERE status = 'behind_track')::int AS behind,
+            COUNT(*) FILTER (WHERE status = 'achieved')::int AS achieved,
+            COUNT(*) FILTER (WHERE status = 'not_started')::int AS not_started,
+            COUNT(*) FILTER (WHERE next_review_at IS NOT NULL AND next_review_at < now() AND status NOT IN ('achieved','abandoned'))::int AS reviews_overdue
+          FROM goals g WHERE ${scope}
+        `);
+
+        return {
+          goals: rows.map((r) => ({ ...r.goal, investorName: r.investorName, investorAvatarUrl: r.investorAvatarUrl })),
+          stats: (statsRes.rows[0] ?? {}) as any,
+        };
+      },
+      { userId: session.userId, branchId: session.branchId, roles: session.roles }
+    );
+
+    return NextResponse.json({ goals: data.goals, stats: data.stats });
   } catch (err: any) {
     return handleApiError(err);
   }

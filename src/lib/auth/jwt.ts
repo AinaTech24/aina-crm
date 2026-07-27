@@ -61,6 +61,9 @@ export type SessionUser = {
    *  is routed to /super-admin instead of /dashboard on login. */
   isPlatformAdmin?: boolean;
   permissions?: string[];
+  /** Per-device session id — links this token to a `user_sessions` row so the
+   *  device can be listed and logged out individually. Set at issue time. */
+  sid?: string;
   /** JWT issued-at (seconds since epoch). Populated by verifySession so the
    *  Node-side revocation check can compare it against users.sessions_invalid_after.
    *  Carried through the middleware `x-mfd-session` header. */
@@ -124,6 +127,7 @@ export async function verifySession(token: string): Promise<SessionUser | null> 
       name: String(payload.name ?? ""),
       isPlatformAdmin: roles.includes("platform_admin") || roles.includes("platform_support"),
       permissions,
+      sid: payload.sid ? String(payload.sid) : undefined,
       iat: typeof payload.iat === "number" ? payload.iat : undefined,
     };
   } catch {

@@ -10,6 +10,7 @@ import { create } from "zustand";
 import { storageGet, storageSet, storageDelete } from "../lib/storage";
 import { TOKEN_KEY, PUSH_TOKEN_KEY } from "../config";
 import { refreshToken, unregisterDevice } from "../api";
+import { useRecentlyViewed } from "./recentlyViewed";
 
 type Status = "loading" | "authed" | "guest";
 
@@ -67,6 +68,9 @@ export const useSession = create<SessionState>((set, get) => ({
     }
     await storageDelete(PUSH_TOKEN_KEY);
     await storageDelete(TOKEN_KEY);
+    // Client names cached for the Home rail are PII — they must not outlive the
+    // session (or greet the next user to sign in on this device).
+    await useRecentlyViewed.getState().clear();
     set({ token: null, status: "guest" });
   },
 }));

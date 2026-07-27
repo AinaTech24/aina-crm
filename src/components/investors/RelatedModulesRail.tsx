@@ -11,6 +11,7 @@
  */
 
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { Layers, X, Plus, ChevronRight } from "lucide-react";
 
@@ -49,8 +50,8 @@ export function RelatedModulesRail({ items }: { items: RelatedModuleItem[] }) {
         <span className="text-[11px] font-semibold tracking-wide">Related Modules</span>
       </button>
 
-      {open && (
-        <div className="fixed inset-0 z-40 bg-black/30 flex justify-end" onClick={() => setOpen(false)}>
+      {open && typeof document !== "undefined" && createPortal(
+        <div className="fixed inset-0 z-[60] bg-black/40 backdrop-blur-sm flex justify-end" onClick={() => setOpen(false)}>
           <div
             onClick={(e) => e.stopPropagation()}
             className="w-72 max-w-[85vw] h-full bg-card border-l border-border shadow-2xl flex flex-col"
@@ -111,7 +112,8 @@ export function RelatedModulesRail({ items }: { items: RelatedModuleItem[] }) {
               {total} related record{total === 1 ? "" : "s"} across {items.length} modules
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );

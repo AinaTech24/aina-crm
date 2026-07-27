@@ -5,6 +5,7 @@ import WainaConnectCard from "./WainaConnectCard";
 import { ZohoIntegrationCard } from "@/components/integrations/ZohoIntegrationCard";
 import { FintechPrimitivesCard } from "@/components/integrations/FintechPrimitivesCard";
 import { RtaMailbackCard } from "@/components/integrations/RtaMailbackCard";
+import { StatusChip } from "@/components/common/StatusChip";
 
 const INTEGRATIONS = [
   {
@@ -78,9 +79,9 @@ export default function IntegrationsPage() {
                   <h3 className="font-semibold">{i.name}</h3>
                   <p className="text-sm text-muted-foreground mt-1">{i.desc}</p>
                 </div>
-                <span className={`text-xs px-2 py-1 rounded-full flex items-center gap-1 ${ok ? "bg-emerald-50 text-emerald-700" : "bg-gray-50 text-gray-600"}`}>
+                <StatusChip tone={ok ? "success" : "neutral"} className="whitespace-nowrap">
                   {ok ? <><Check className="size-3" /> Connected</> : <><AlertCircle className="size-3" /> Not connected</>}
-                </span>
+                </StatusChip>
               </div>
               <div className="mt-3 pt-3 border-t">
                 <div className="text-xs font-medium text-muted-foreground">Setup</div>

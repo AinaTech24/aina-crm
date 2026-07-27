@@ -131,31 +131,6 @@ export default async function DocumentsPage() {
         </Link>
       </div>
 
-      {/* Compliance-readiness strip — links the vault to DDQ + SOPs. */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <Link href="/dashboard/compliance" className="border rounded-lg p-4 bg-card flex items-center gap-3 hover:bg-accent/30 transition-colors">
-          <ShieldCheck className={`size-5 ${data.ddqScore != null && data.ddqScore >= 70 ? "text-emerald-600" : data.ddqScore != null ? "text-amber-600" : "text-muted-foreground"}`} />
-          <div>
-            <div className="text-xs text-muted-foreground">DDQ readiness</div>
-            <div className="text-xl font-bold">{data.ddqScore != null ? `${Math.round(data.ddqScore)}%` : "—"}</div>
-          </div>
-        </Link>
-        <Link href="/dashboard/compliance" className="border rounded-lg p-4 bg-card flex items-center gap-3 hover:bg-accent/30 transition-colors">
-          <ScrollText className="size-5 text-brand-cyan" />
-          <div>
-            <div className="text-xs text-muted-foreground">SOPs in library</div>
-            <div className="text-xl font-bold">{data.sopCount}</div>
-          </div>
-        </Link>
-        <Link href="/dashboard/documents?expiry=soon" className="border rounded-lg p-4 bg-card flex items-center gap-3 hover:bg-accent/30 transition-colors">
-          <Upload className="size-5 text-muted-foreground rotate-180" />
-          <div>
-            <div className="text-xs text-muted-foreground">Renewals due (30d)</div>
-            <div className={`text-xl font-bold ${stats.expiringSoon + stats.expired > 0 ? "text-amber-600" : ""}`}>{stats.expiringSoon + stats.expired}</div>
-          </div>
-        </Link>
-      </div>
-
       <DocumentsFeed initialRows={initialRows} stats={stats} />
     </div>
   );

@@ -11,6 +11,9 @@ import { NomineesField } from "@/components/investors/NomineesField";
 import type { Nominee } from "@/lib/investors/nominee";
 import { ReferralsField } from "@/components/investors/ReferralsField";
 import type { Referral } from "@/lib/investors/referral";
+import { UccCodesField } from "@/components/investors/UccCodesField";
+import { cleanUccCodes } from "@/lib/investors/ucc";
+import { CustomFieldsSection, missingRequired, type CustomFieldDef } from "@/components/common/CustomFieldInputs";
 
 function NewInvestorPageInner() {
   const router = useRouter();
@@ -45,11 +48,13 @@ function NewInvestorPageInner() {
     investorCategory: "individual",
     segmentTag: "Retail",
     clientCategory: "",
+    riskProfile: "",
     householdType: "", // Family or Individual
     familyOwnerName: "",
     referralClientName: "",
     modeOfHolding: "",
     bseUccCode: "", // UCC No
+    uccCodes: [] as string[],
     taxStatus: "",
     residencyStatus: "",
     kycStatus: "pending",
@@ -73,6 +78,8 @@ function NewInvestorPageInner() {
   });
   const [nominees, setNominees] = useState<Nominee[]>([]);
   const [referrals, setReferrals] = useState<Referral[]>([]);
+  const [customFields, setCustomFields] = useState<Record<string, any>>({});
+  const [cfDefs, setCfDefs] = useState<CustomFieldDef[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -103,6 +110,8 @@ function NewInvestorPageInner() {
     setErr(null);
     setBusy(true);
     try {
+      const missCf = missingRequired(cfDefs, customFields);
+      if (missCf) { setErr(`${missCf.label} is required.`); return; }
       const res = await fetch("/api/investors", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -132,11 +141,13 @@ function NewInvestorPageInner() {
           investorCategory: form.investorCategory,
           segmentTag: form.segmentTag,
           clientCategory: form.clientCategory || undefined,
+          riskProfile: form.riskProfile || undefined,
           householdType: u(form.householdType),
           familyOwnerName: u(form.familyOwnerName),
           referralClientName: u(form.referralClientName),
           modeOfHolding: u(form.modeOfHolding),
           bseUccCode: u(form.bseUccCode),
+          uccCodes: cleanUccCodes(form.uccCodes),
           taxStatus: u(form.taxStatus),
           residencyStatus: form.residencyStatus || undefined,
           kycStatus: form.kycStatus || undefined,
@@ -171,6 +182,7 @@ function NewInvestorPageInner() {
           nextReviewAt: u(form.nextReviewAt),
           reviewFrequency: form.reviewFrequency || undefined,
           notes: u(form.notes),
+          customFields: Object.keys(customFields).length ? customFields : undefined,
         }),
       });
       if (!res.ok) {
@@ -262,7 +274,7 @@ function NewInvestorPageInner() {
 
         {/* Classification */}
         <Section title="Classification & compliance">
-          <SelectField label="Family or individual" value={form.householdType} onChange={(v) => set("householdType", v)} options={["", "Individual", "Family"]} />
+          <SelectField label="Family or individual" value={form.householdType} onChange={(v) => set("householdType", v)} options={["", "Individual", "Family", "Family head", "Family member"]} />
           <Field label="Family owner" value={form.familyOwnerName} onChange={(v) => set("familyOwnerName", v)} placeholder="head of family (if part of one)" />
           <SelectField label="Category" value={form.investorCategory} onChange={(v) => set("investorCategory", v)} options={["individual", "huf", "corporate", "trust", "nri", "minor", "other"]} />
           <SelectField label="Segment" value={form.segmentTag} onChange={(v) => set("segmentTag", v)} options={["HNI", "Affluent", "Retail", "NRI", "Corporate"]} />
@@ -270,9 +282,13 @@ function NewInvestorPageInner() {
           <Field label="Referral client name" value={form.referralClientName} onChange={(v) => set("referralClientName", v)} />
           <SelectField label="Mode of holding" value={form.modeOfHolding} onChange={(v) => set("modeOfHolding", v)} options={["", "Single", "Joint", "Anyone or Survivor"]} />
           <Field label="UCC no" value={form.bseUccCode} onChange={(v) => set("bseUccCode", v)} />
+          <div className="sm:col-span-2">
+            <UccCodesField value={form.uccCodes} onChange={(v) => setForm((p) => ({ ...p, uccCodes: v }))} label="Other UCC codes" />
+          </div>
           <Field label="Tax status" value={form.taxStatus} onChange={(v) => set("taxStatus", v)} placeholder="e.g. Resident Individual" />
           <SelectField label="Residential status" value={form.residencyStatus} onChange={(v) => set("residencyStatus", v)} options={[{ value: "", label: "Select" }, { value: "indian_resident", label: "Indian resident" }, { value: "nri", label: "NRI" }, { value: "oci", label: "OCI" }, { value: "pio", label: "PIO" }, { value: "foreign_national", label: "Foreign national" }]} />
           <SelectField label="KYC status" value={form.kycStatus} onChange={(v) => set("kycStatus", v)} options={[{ value: "pending", label: "Pending" }, { value: "registered", label: "Registered" }, { value: "verified", label: "Verified" }, { value: "hold", label: "Hold" }, { value: "rejected", label: "Rejected" }, { value: "expired", label: "Expired" }, { value: "re_kyc_required", label: "Re-KYC required" }]} />
+          <SelectField label="Risk profile" value={form.riskProfile} onChange={(v) => set("riskProfile", v)} options={[{ value: "", label: "Select" }, { value: "conservative", label: "Conservative" }, { value: "moderate", label: "Moderate" }, { value: "aggressive", label: "Aggressive" }, { value: "very_aggressive", label: "Very aggressive" }]} />
         </Section>
 
         {/* Second / joint holder */}
@@ -321,6 +337,9 @@ function NewInvestorPageInner() {
             className="w-full border rounded-md px-3 py-2 text-sm bg-background"
           />
         </Section>
+
+        {/* Firm-defined custom fields (Settings → Custom fields) */}
+        <CustomFieldsSection entity="investor" values={customFields} onChange={setCustomFields} onDefsLoaded={setCfDefs} />
 
         {err && <div className="text-sm text-rose-600">{err}</div>}
 

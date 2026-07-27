@@ -22,7 +22,7 @@ export const dynamic = "force-dynamic";
 
 export default async function LeadFormsPage() {
   const session = await requireSession();
-  requireCap(session.roles, "settings.users");
+  requireCap(session.roles, "settings.users", session.permissions);
   await assertActiveLicense(session.tenantId, session.roles);
 
   const forms = await withTenant(session.tenantId, async (tx) => {

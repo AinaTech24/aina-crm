@@ -108,8 +108,9 @@ export default async function WorkflowActionsPage() {
             <div className="border-b border-border px-4 py-2.5 font-semibold text-sm">
               Action library ({actions.length})
             </div>
+            <div className="max-h-[60vh] overflow-auto scrollbar-none">
             <table className="w-full text-sm">
-              <thead className="text-xs text-muted-foreground border-b">
+              <thead className="text-xs text-muted-foreground border-b sticky top-0 z-10 bg-card">
                 <tr>
                   <th className="text-left px-4 py-2 font-medium">Action</th>
                   <th className="text-left py-2 font-medium">Rule</th>
@@ -147,6 +148,7 @@ export default async function WorkflowActionsPage() {
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
 
           <div className="space-y-3">

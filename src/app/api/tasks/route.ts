@@ -1,7 +1,7 @@
 import { handleApiError } from "@/lib/api/error-handler";
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuid } from "uuid";
-import { and, desc, eq, isNull, or } from "drizzle-orm";
+import { and, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
@@ -9,7 +9,7 @@ import { can, requireAny } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { createNotification } from "@/lib/notifications/create";
-import { tasks, users } from "@/db/schema";
+import { tasks, users, investors, leads } from "@/db/schema";
 
 export const dynamic = "force-dynamic";
 
@@ -49,6 +49,15 @@ const Body = z.object({
   /** Recurrence — null/omitted = one-off. */
   recurrence: z.enum(["daily", "weekly", "monthly", "quarterly", "yearly"]).optional(),
   recurrenceUntil: z.string().optional(), // YYYY-MM-DD
+  /** Approval loop — when true, the assignee submits for sign-off instead of
+   *  completing directly (creator / owner approves or reopens). */
+  requiresApproval: z.boolean().optional(),
+  /** Per-task reminder — absolute ISO time to ping the assignee. */
+  remindAt: z.string().optional(),
+  /** Planned effort in minutes (time tracking). */
+  estimateMinutes: z.number().int().min(0).max(100000).optional(),
+  /** Free-form tags. */
+  tags: z.array(z.string().min(1).max(40)).max(30).optional(),
   /** Action points (checklist) — optional at creation; stored in meta.checklist. */
   checklist: z
     .array(z.object({ id: z.string().max(64), text: z.string().min(1).max(500), done: z.boolean() }))
@@ -71,21 +80,94 @@ const Body = z.object({
  */
 const SLA_HOURS_BY_PRIORITY: Record<string, number> = { urgent: 4, high: 24, normal: 72, low: 168 };
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     const session = await requireSession();
     requireAny(session.roles, ["task.view.all", "task.view.assigned"], session.permissions);
     const canViewAll = can(session.roles, "task.view.all", session.permissions);
-    const rows = await withTenant(session.tenantId, async (tx) => {
-      // Tenant predicate is mandatory (RLS-bypass); view.assigned users see
-      // only their own (assignee/creator) tasks.
-      const conds: any[] = [eq(tasks.tenantId, session.tenantId), isNull(tasks.deletedAt)];
-      if (!canViewAll) {
-        conds.push(or(eq(tasks.assigneeId, session.userId), eq(tasks.createdById, session.userId))!);
-      }
-      return tx.select().from(tasks).where(and(...conds)).orderBy(desc(tasks.createdAt)).limit(200);
-    });
-    return NextResponse.json({ tasks: rows });
+
+    const url = new URL(req.url);
+    const g = (k: string) => url.searchParams.get(k) ?? "";
+    const csv = (v: string) => v.split(",").filter(Boolean);
+    const q = g("q").trim();
+    const statusFilter = csv(g("status"));
+    const priorityFilter = csv(g("priority"));
+    const typeFilter = csv(g("type"));
+    const deptFilter = csv(g("department"));
+    const assigneeFilter = csv(g("assignee"));
+    const due = g("due"); // today | overdue | sla_risk
+    const approval = g("approval"); // "" | pending | mine  (awaiting sign-off)
+    const view = g("view"); // "" | to_me | by_me | kanban
+    const isKanban = view === "kanban";
+    const sortKey = (["created", "created_asc", "due", "due_desc", "priority"] as const).includes(g("sort") as any) ? g("sort") : "created";
+    const createdFrom = g("created_from") || g("created");
+    const createdTo = g("created_to") || g("created_end");
+    const isDate = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s);
+    const page = Math.max(1, Number(g("page") || "1") || 1);
+    const PAGE_SIZE = 50;
+
+    const result = await withTenant(
+      session.tenantId,
+      async (tx) => {
+        const conds: any[] = [eq(tasks.tenantId, session.tenantId), isNull(tasks.deletedAt)];
+        if (!canViewAll) conds.push(or(eq(tasks.assigneeId, session.userId), eq(tasks.createdById, session.userId))!);
+        if (view === "to_me") conds.push(eq(tasks.assigneeId, session.userId));
+        else if (view === "by_me") conds.push(eq(tasks.createdById, session.userId));
+        // Kanban shows every status; the list defaults to open when no status
+        // filter — UNLESS an approval filter is active (pending-approval tasks
+        // are usually in_progress and would be hidden by the default-open rule).
+        if (!isKanban) {
+          if (statusFilter.length) conds.push(inArray(tasks.status, statusFilter as any));
+          else if (!approval) conds.push(eq(tasks.status, "open"));
+        } else if (statusFilter.length) conds.push(inArray(tasks.status, statusFilter as any));
+        // Awaiting sign-off. `pending` = any task awaiting approval; `mine` =
+        // ones this user is the approver for (its creator, or any if view-all).
+        if (approval === "pending") conds.push(eq(tasks.approvalStatus, "pending"));
+        else if (approval === "mine") {
+          conds.push(eq(tasks.approvalStatus, "pending"));
+          if (!canViewAll) conds.push(eq(tasks.createdById, session.userId));
+        }
+        if (q) conds.push(or(ilike(tasks.title, `%${q}%`), ilike(tasks.description, `%${q}%`), ilike(users.name, `%${q}%`))!);
+        if (priorityFilter.length) conds.push(inArray(tasks.priority, priorityFilter as any));
+        if (typeFilter.length) conds.push(inArray(tasks.type, typeFilter as any));
+        if (deptFilter.length) conds.push(inArray(tasks.department, deptFilter as any));
+        if (assigneeFilter.length) conds.push(inArray(tasks.assigneeId, assigneeFilter as any));
+        if (due === "today") conds.push(sql`due_at::date = current_date`);
+        else if (due === "overdue") conds.push(sql`due_at < now()`);
+        else if (due === "sla_risk") conds.push(sql`sla_due_at IS NOT NULL AND sla_due_at < now() + interval '24 hours'`);
+        if (isDate(createdFrom)) conds.push(sql`${tasks.createdAt} >= ${createdFrom}::date`);
+        if (isDate(createdTo)) conds.push(sql`${tasks.createdAt} < (${createdTo}::date + interval '1 day')`);
+        const where = and(...conds);
+
+        const orderByExpr =
+          sortKey === "priority"
+            ? sql`case ${tasks.priority} when 'urgent' then 0 when 'high' then 1 when 'normal' then 2 else 3 end asc, ${tasks.dueAt} asc nulls last, ${tasks.createdAt} desc`
+            : sortKey === "created" ? sql`${tasks.createdAt} desc`
+            : sortKey === "created_asc" ? sql`${tasks.createdAt} asc`
+            : sortKey === "due_desc" ? sql`${tasks.dueAt} desc nulls last, ${tasks.createdAt} desc`
+            : sql`${tasks.dueAt} asc nulls last, ${tasks.createdAt} desc`;
+
+        const totalRow = await tx.select({ c: sql<number>`count(*)::int` }).from(tasks).leftJoin(users, eq(users.id, tasks.assigneeId)).where(where as any);
+        const rows = await tx
+          .select({ task: tasks, assignee: users.name, investorName: investors.name, investorAvatarUrl: investors.avatarUrl, leadName: leads.name, leadAvatarUrl: leads.avatarUrl })
+          .from(tasks)
+          .leftJoin(users, eq(users.id, tasks.assigneeId))
+          .leftJoin(investors, eq(investors.id, tasks.relatedInvestorId))
+          .leftJoin(leads, eq(leads.id, tasks.relatedLeadId))
+          .where(where as any)
+          .orderBy(orderByExpr)
+          .limit(isKanban ? 300 : PAGE_SIZE)
+          .offset(isKanban ? 0 : (page - 1) * PAGE_SIZE);
+
+        return {
+          tasks: rows.map((r) => ({ ...r.task, assignee: r.assignee, investorName: r.investorName, investorAvatarUrl: r.investorAvatarUrl, leadName: r.leadName, leadAvatarUrl: r.leadAvatarUrl })),
+          total: Number(totalRow[0]?.c ?? 0),
+        };
+      },
+      { userId: session.userId, branchId: session.branchId, roles: session.roles }
+    );
+
+    return NextResponse.json({ tasks: result.tasks, total: result.total, page, limit: PAGE_SIZE });
   } catch (err: any) {
     return handleApiError(err);
   }
@@ -166,6 +248,10 @@ export async function POST(req: NextRequest) {
         recurrenceUntil: body.recurrenceUntil ?? null,
         // Chain root = this task itself when recurring.
         recurrenceParentId: body.recurrence ? id : null,
+        requiresApproval: body.requiresApproval ?? false,
+        remindAt: body.remindAt ? new Date(body.remindAt) : null,
+        estimateMinutes: body.estimateMinutes ?? null,
+        ...(body.tags?.length ? { tags: body.tags } : {}),
         meta: (() => {
           const m: Record<string, unknown> = {};
           if (body.checklist?.length) m.checklist = body.checklist.map((c) => ({ ...c, done: false }));

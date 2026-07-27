@@ -7,7 +7,7 @@ import { handleApiError } from "@/lib/api/error-handler";
 
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuid } from "uuid";
-import { and, desc, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { pickAssignee } from "@/lib/assignment/engine";
@@ -16,7 +16,8 @@ import { require as requireCap, requireAny } from "@/lib/auth/rbac";
 import { assertActiveLicense, assertModuleEnabled } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { pickRmForNewLead } from "@/lib/leads/assign";
-import { canEditAllLeads, leadScopeCondition, requireLeadView } from "@/lib/leads/access";
+import { canEditAllLeads, leadScopeCondition, leadScopeSql, requireLeadView } from "@/lib/leads/access";
+import { users } from "@/db/schema";
 import {
   normalizeEmail,
   normalizeLeadSource,
@@ -25,6 +26,7 @@ import {
 } from "@/lib/leads/normalize";
 import { leads, eventsOutbox, tasks } from "@/db/schema";
 import { scoreFields } from "@/lib/leads/score";
+import { loadCustomFieldDefs, sanitizeCustomFields } from "@/lib/custom-fields/values";
 
 export const dynamic = "force-dynamic";
 
@@ -66,24 +68,86 @@ const CreateBody = z.object({
   referredByName: z.string().max(200).optional(),
   /** When sourced by a channel partner — drives commission split on conversion. */
   subDistributorId: z.string().uuid().optional(),
+  /** MFD-defined custom fields — sanitized against the firm's definitions. */
+  customFields: z.record(z.string(), z.any()).optional(),
 });
 
-export async function GET() {
+// Lead-phase blueprint stages (mirror of the web list page) — leads live here
+// until Convert-to-Client. Excludes converted (converted_investor_id) + archived.
+const LEAD_PHASE_STAGES = [
+  "new", "call_done", "contacted", "first_call_pending", "call_back_later", "call_not_connected",
+  "contact_in_future", "follow_up", "meeting_scheduled", "appointment_scheduled", "qualified",
+  "meeting_pending", "meeting_done", "won_lead", "converted", "post_meeting_qualified",
+  "not_qualified", "lost", "not_interested", "cold",
+];
+
+export async function GET(req: NextRequest) {
   try {
     const session = await requireSession();
     await assertModuleEnabled(session.tenantId, "lead_management", session.roles);
     requireLeadView(session);
-    const rows = await withTenant(session.tenantId, async (tx) => {
-      const scope = leadScopeCondition(session);
-      // Exclude soft-deleted (archived) leads from every consumer of this API.
-      const notArchived = sql`${leads.lostReason} IS DISTINCT FROM '__deleted__'`;
-      const base = and(isNull(leads.convertedInvestorId), notArchived);
-      const where = scope ? and(base, scope) : base;
-      // Hottest leads first (persisted deterministic score), newest as tiebreak.
-      // Bounded so a large tenant can't return an unbounded payload.
-      return tx.select().from(leads).where(where).orderBy(desc(leads.leadScore), desc(leads.createdAt)).limit(1000);
-    });
-    return NextResponse.json({ leads: rows });
+
+    const url = new URL(req.url);
+    const g = (k: string) => url.searchParams.get(k) ?? "";
+    const csv = (v: string) => v.split(",").filter(Boolean);
+    const q = g("q").trim();
+    const stageFilter = csv(g("stage"));
+    const sourceFilter = csv(g("source"));
+    const ownerFilter = csv(g("owner"));
+    const qf = {
+      mine: g("mine") === "1", unassigned: g("unassigned") === "1", hot: g("hot") === "1",
+      stuck: g("stuck") === "1", followup_today: g("followup_today") === "1",
+      followup_overdue: g("followup_overdue") === "1", new_week: g("new_week") === "1",
+    };
+    const createdFrom = g("created_from"), createdTo = g("created_to");
+    const isDate = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s);
+    const sortKey = g("sort") === "recent" ? "recent" : "score";
+    const dirSql = sql.raw(g("dir") === "asc" ? "ASC" : "DESC");
+    const page = Math.max(1, Number(g("page") || "1") || 1);
+    const limit = Math.min(400, Math.max(1, Number(g("limit") || "50") || 50));
+
+    const result = await withTenant(
+      session.tenantId,
+      async (tx) => {
+        const conds: any[] = [
+          sql`leads.stage IN (${sql.join(LEAD_PHASE_STAGES.map((s) => sql`${s}`), sql`, `)})`,
+          sql`leads.lost_reason IS DISTINCT FROM '__deleted__'`,
+          sql`leads.converted_investor_id IS NULL`,
+          leadScopeSql(session, "leads"),
+        ];
+        if (q) conds.push(sql`(leads.name ILIKE ${`%${q}%`} OR leads.phone ILIKE ${`%${q}%`} OR leads.email ILIKE ${`%${q}%`} OR users.name ILIKE ${`%${q}%`})`);
+        if (stageFilter.length) conds.push(sql`leads.stage IN (${sql.join(stageFilter.map((v) => sql`${v}`), sql`, `)})`);
+        if (sourceFilter.length) conds.push(sql`leads.source IN (${sql.join(sourceFilter.map((v) => sql`${v}`), sql`, `)})`);
+        if (ownerFilter.length) conds.push(sql`leads.owner_id IN (${sql.join(ownerFilter.map((v) => sql`${v}::uuid`), sql`, `)})`);
+        if (qf.mine) conds.push(sql`leads.owner_id = ${session.userId}::uuid`);
+        if (qf.unassigned) conds.push(sql`leads.owner_id IS NULL`);
+        if (qf.hot) conds.push(sql`leads.score_band = 'hot'`);
+        if (qf.stuck) conds.push(sql`COALESCE(leads.stage_changed_at, leads.updated_at, leads.created_at) < now() - interval '14 days'`);
+        if (qf.followup_today) conds.push(sql`leads.next_follow_up_at::date = current_date`);
+        if (qf.followup_overdue) conds.push(sql`leads.next_follow_up_at IS NOT NULL AND leads.next_follow_up_at < now()`);
+        if (qf.new_week) conds.push(sql`leads.created_at >= now() - interval '7 days'`);
+        if (isDate(createdFrom)) conds.push(sql`leads.created_at >= ${createdFrom}::date`);
+        if (isDate(createdTo)) conds.push(sql`leads.created_at < (${createdTo}::date + interval '1 day')`);
+        const whereClause = sql.join(conds, sql` AND `);
+
+        const orderBy = sortKey === "recent" ? sql`leads.updated_at ${dirSql}` : sql`leads.lead_score ${dirSql}, leads.updated_at DESC`;
+
+        const totalRes = await tx.select({ c: sql<number>`count(*)::int` }).from(leads).leftJoin(users, eq(users.id, leads.ownerId)).where(whereClause as any);
+        const rows = await tx
+          .select({ lead: leads, owner: users.name })
+          .from(leads)
+          .leftJoin(users, eq(users.id, leads.ownerId))
+          .where(whereClause as any)
+          .orderBy(orderBy as any)
+          .limit(limit)
+          .offset((page - 1) * limit);
+
+        return { rows: rows.map((r) => ({ ...r.lead, ownerName: r.owner })), total: Number(totalRes[0]?.c ?? 0) };
+      },
+      { userId: session.userId, branchId: session.branchId, roles: session.roles }
+    );
+
+    return NextResponse.json({ leads: result.rows, total: result.total, page, limit });
   } catch (err: any) {
     return handleApiError(err);
   }
@@ -152,6 +216,10 @@ export async function POST(req: NextRequest) {
       const followUpAt =
         body.followUpDate && body.followUpDate !== "" ? new Date(body.followUpDate) : null;
 
+      // Sanitize firm custom fields against their definitions before storing.
+      const cfDefs = await loadCustomFieldDefs(tx, session.tenantId, "lead");
+      const customFields = sanitizeCustomFields(cfDefs, body.customFields);
+
       const inserted = await tx
         .insert(leads)
         .values({
@@ -188,6 +256,7 @@ export async function POST(req: NextRequest) {
           referredByInvestorId: body.referredByInvestorId ?? null,
           referredByName: body.referredByName ?? null,
           subDistributorId: body.subDistributorId ?? null,
+          customFields: Object.keys(customFields).length ? customFields : null,
           // Deterministic initial score from the captured signals.
           ...scoreFields({
             source: normalizeLeadSource(body.source),

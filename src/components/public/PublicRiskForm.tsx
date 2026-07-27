@@ -12,10 +12,16 @@ export function PublicRiskForm({
   tokenId,
   recipientName,
   template,
+  requireOtp = false,
+  maskedEmailOnFile = null,
 }: {
   tokenId: string;
   recipientName: string;
   template: { name: string; description?: string; questions: Question[]; bands: Band[]; reviewIntervalDays: number };
+  /** Template-level flag: this submission must be confirmed with an email OTP. */
+  requireOtp?: boolean;
+  /** Masked form of the email the firm has on file (e.g. "pr•••@gmail.com"), or null if none. */
+  maskedEmailOnFile?: string | null;
 }) {
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
@@ -24,13 +30,67 @@ export function PublicRiskForm({
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<null | { bandLabel: string; total: number; color?: string; description?: string }>(null);
 
-  // OTP Verification State
-  const [otpSent, setOtpSent] = useState(false);
+  // ── Email-OTP verification state ──
+  // otpForced covers the edge where the server answers 422 otp_required even
+  // though the page rendered with requireOtp=false (flag flipped mid-session).
+  const [otpForced, setOtpForced] = useState(false);
+  const [otpEmail, setOtpEmail] = useState(""); // only used when no email on file
+  const [otpSent, setOtpSent] = useState(false); // a code has been requested at least once
+  const [otpMaskedTo, setOtpMaskedTo] = useState<string | null>(null); // where the server said it sent the code
   const [otpCode, setOtpCode] = useState("");
-  const [otpVerified, setOtpVerified] = useState(false);
-  const [otpTxnId, setOtpTxnId] = useState("");
-  const [otpLoading, setOtpLoading] = useState(false);
-  const [otpError, setOtpError] = useState<string | null>(null);
+  const [otpSending, setOtpSending] = useState(false);
+  const [otpError, setOtpError] = useState<string | null>(null); // send-step + verify-step errors
+  const [resendIn, setResendIn] = useState(0); // seconds until "Send code" re-enables
+
+  const otpRequired = requireOtp || otpForced;
+
+  // Tick the resend countdown once per second while it's running.
+  const counting = resendIn > 0;
+  useEffect(() => {
+    if (!counting) return;
+    const t = setInterval(() => setResendIn((s) => Math.max(0, s - 1)), 1000);
+    return () => clearInterval(t);
+  }, [counting]);
+
+  async function sendOtp() {
+    setOtpError(null);
+    const typedEmail = otpEmail.trim();
+    if (!maskedEmailOnFile) {
+      if (!typedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(typedEmail)) {
+        setOtpError("Please enter a valid email address.");
+        return;
+      }
+    }
+    setOtpSending(true);
+    try {
+      const r = await fetch("/api/public/risk-profile/otp/send", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          token: tokenId,
+          ...(maskedEmailOnFile ? {} : { email: typedEmail }),
+        }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (r.status === 429) {
+        setOtpError(data?.error ?? "Too many codes requested — please wait a moment.");
+        setResendIn(Math.max(1, Number(data?.retryInSeconds) || 60));
+        return;
+      }
+      if (!r.ok) {
+        setOtpError(data?.error ?? "Could not send the code. Please try again.");
+        return;
+      }
+      setOtpSent(true);
+      setOtpMaskedTo(data?.maskedEmail ?? maskedEmailOnFile ?? typedEmail);
+      setResendIn(Math.max(1, Number(data?.resendInSeconds) || 60));
+      setOtpCode("");
+    } catch {
+      setOtpError("Network error — please check your connection and try again.");
+    } finally {
+      setOtpSending(false);
+    }
+  }
 
   // Canvas drawing state
   const [drawing, setDrawing] = useState(false);
@@ -145,11 +205,42 @@ export function PublicRiskForm({
           tokenId,
           answers,
           signatureName: signature.trim(),
-          verificationMethod: "client_otp",
-          otpTransactionId: otpTxnId || undefined
+          ...(otpRequired
+            ? {
+                otp: otpCode.trim(),
+                // Only sent when the client typed an email (no email on file
+                // with the firm) — the server ignores it otherwise.
+                ...(otpEmail.trim() ? { otpEmail: otpEmail.trim() } : {}),
+              }
+            : {}),
         }),
       });
       const data = await r.json().catch(() => ({}));
+
+      // OTP-specific rejections — keep the form and every answer intact.
+      if (r.status === 422 && typeof data?.error === "string") {
+        if (data.error === "otp_required") {
+          setOtpForced(true);
+          setOtpError("This form requires email verification — please request a code below.");
+          return;
+        }
+        if (data.error === "otp_invalid") {
+          const left = Number(data?.attemptsLeft);
+          setOtpError(
+            Number.isFinite(left)
+              ? `That code isn't right — ${left} attempt${left === 1 ? "" : "s"} left.`
+              : "That code isn't right — please check and try again."
+          );
+          return;
+        }
+        if (data.error === "otp_expired") {
+          setOtpError("That code has expired — please send a new one.");
+          setResendIn(0); // re-enable "Send code" immediately
+          setOtpCode("");
+          return;
+        }
+      }
+
       if (!r.ok) throw new Error(data?.error ?? `HTTP ${r.status}`);
       setDone({
         bandLabel: data.bandLabel,
@@ -278,108 +369,92 @@ export function PublicRiskForm({
               </div>
             </div>
 
-            {/* OTP Verification Block */}
-            <div className="border border-slate-200 bg-slate-50/50 rounded-lg p-4 space-y-3">
-              <div className="text-sm font-semibold flex items-center gap-1.5 text-slate-800">
-                Contact Verification (SEBI Suitability Compliance)
-              </div>
-              <p className="text-xs text-muted-foreground">
-                To complete your profile, we require a verification code sent to your registered contact number.
-              </p>
+            {/* Email-OTP verification — only when the template requires it */}
+            {otpRequired && (
+              <div className="border border-slate-200 bg-slate-50/50 rounded-lg p-4 space-y-3">
+                <div className="text-sm font-semibold text-slate-800">Verify it&apos;s you</div>
+                <p className="text-xs text-muted-foreground">
+                  We&apos;ll email you a 6-digit code to confirm this submission.
+                </p>
 
-              {!otpSent && !otpVerified && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setOtpLoading(true);
-                    setTimeout(() => {
-                      setOtpSent(true);
-                      setOtpLoading(false);
-                      setOtpError(null);
-                    }, 1200);
-                  }}
-                  disabled={otpLoading}
-                  className="rounded-md bg-brand-cyan text-white px-3.5 py-1.5 text-xs font-semibold hover:bg-brand-cyan/90 transition-colors disabled:opacity-50 flex items-center gap-1"
-                >
-                  {otpLoading ? <Loader2 className="size-3 animate-spin" /> : null}
-                  {otpLoading ? "Sending OTP..." : "Send Verification Code"}
-                </button>
-              )}
+                {maskedEmailOnFile ? (
+                  <p className="text-xs">
+                    Code will be sent to <span className="font-medium text-foreground">{maskedEmailOnFile}</span>
+                  </p>
+                ) : (
+                  <label className="block">
+                    <div className="text-xs font-semibold mb-1">Your email address</div>
+                    <input
+                      type="email"
+                      required
+                      value={otpEmail}
+                      onChange={(e) => setOtpEmail(e.target.value)}
+                      placeholder="you@example.com"
+                      autoComplete="email"
+                      className="w-full sm:w-72 border rounded-md px-3 py-2 text-sm"
+                    />
+                  </label>
+                )}
 
-              {otpSent && !otpVerified && (
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={sendOtp}
+                    disabled={otpSending || resendIn > 0}
+                    className="rounded-md bg-brand-cyan text-white px-3.5 py-1.5 text-xs font-semibold hover:bg-brand-cyan/90 transition-colors disabled:opacity-50 flex items-center gap-1"
+                  >
+                    {otpSending ? <Loader2 className="size-3 animate-spin" /> : null}
+                    {otpSending
+                      ? "Sending…"
+                      : resendIn > 0
+                        ? `Resend in ${resendIn}s…`
+                        : otpSent
+                          ? "Resend code"
+                          : "Send code"}
+                  </button>
+                  {otpSent && otpMaskedTo && (
+                    <span className="text-xs text-emerald-700 flex items-center gap-1">
+                      <CheckCircle2 className="size-3.5 text-emerald-500" />
+                      Code sent to <span className="font-medium">{otpMaskedTo}</span>
+                    </span>
+                  )}
+                </div>
+
+                {otpSent && (
+                  <div>
                     <input
                       type="text"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
                       maxLength={6}
                       value={otpCode}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setOtpCode(val);
-                        if (val === "123456") {
-                          setOtpVerified(true);
-                          setOtpError(null);
-                          setOtpTxnId("waina_otp_" + Math.random().toString(36).slice(2, 9));
-                        } else if (val.length === 6) {
-                          setOtpError("Invalid code. For testing, please enter '123456'.");
-                        } else {
-                          setOtpError(null);
-                        }
-                      }}
-                      placeholder="Enter 6-digit code"
-                      className="border rounded-md px-3 py-1.5 text-sm w-36 font-mono tracking-widest text-center"
+                      onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                      placeholder="6-digit code"
+                      className="border rounded-md px-3 py-2 text-sm w-36 font-mono tracking-widest text-center"
                     />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setOtpCode("");
-                        setOtpError(null);
-                        setOtpLoading(true);
-                        setTimeout(() => {
-                          setOtpLoading(false);
-                        }, 800);
-                      }}
-                      disabled={otpLoading}
-                      className="text-xs text-brand-cyan hover:underline disabled:opacity-50"
-                    >
-                      Resend Code
-                    </button>
+                    <div className="text-[10px] text-muted-foreground mt-1">The code is valid for 10 minutes.</div>
                   </div>
-                  <div className="text-[10px] text-amber-600 bg-amber-50 px-2 py-1 rounded">
-                    Demo Mode: Enter <strong>123456</strong> as the security verification code.
-                  </div>
-                </div>
-              )}
+                )}
 
-              {otpVerified && (
-                <div className="text-xs text-emerald-700 bg-emerald-50 px-3 py-2 rounded-md font-medium border border-emerald-100 flex items-center gap-1.5">
-                  <CheckCircle2 className="size-4 text-emerald-500" />
-                  Identity verified successfully. Transaction Ref: <code className="font-mono text-[10px] bg-emerald-100 px-1 rounded">{otpTxnId}</code>
-                </div>
-              )}
-
-              {otpError && (
-                <div className="text-xs text-rose-700 bg-rose-50 px-3 py-1.5 rounded-md">
-                  {otpError}
-                </div>
-              )}
-            </div>
-
-            {otpVerified && (
-              <label className="block animate-fade-in">
-                <div className="text-xs font-semibold mb-1">Signature (type your full name)</div>
-                <input
-                  value={signature}
-                  onChange={(e) => setSignature(e.target.value)}
-                  placeholder="e.g. Rajesh Sharma"
-                  className="w-full border rounded-lg px-3 py-2 text-sm"
-                />
-                <div className="text-[10px] text-muted-foreground mt-1">
-                  By signing, you confirm that the answers above reflect your true financial situation and risk
-                  appetite. Mutual fund investments are subject to market risks.
-                </div>
-              </label>
+                {otpError && (
+                  <div className="text-xs text-rose-700 bg-rose-50 px-3 py-1.5 rounded-md">{otpError}</div>
+                )}
+              </div>
             )}
+
+            <label className="block">
+              <div className="text-xs font-semibold mb-1">Signature (type your full name)</div>
+              <input
+                value={signature}
+                onChange={(e) => setSignature(e.target.value)}
+                placeholder="e.g. Rajesh Sharma"
+                className="w-full border rounded-lg px-3 py-2 text-sm"
+              />
+              <div className="text-[10px] text-muted-foreground mt-1">
+                By signing, you confirm that the answers above reflect your true financial situation and risk
+                appetite. Mutual fund investments are subject to market risks.
+              </div>
+            </label>
 
             {error && <div className="text-xs text-rose-700 bg-rose-50 rounded-md p-2">{error}</div>}
           </div>
@@ -399,7 +474,7 @@ export function PublicRiskForm({
         {onReview ? (
           <button
             onClick={submit}
-            disabled={busy || !canAdvance || !signature.trim() || !otpVerified}
+            disabled={busy || !canAdvance || !signature.trim() || (otpRequired && !(otpSent && otpCode.trim().length === 6))}
             className="rounded-md bg-brand-cyan text-white px-4 py-2 text-sm font-semibold flex items-center gap-1 disabled:opacity-50"
           >
             {busy ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}

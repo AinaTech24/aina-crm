@@ -42,7 +42,10 @@ export function HelpHint({ term, children, className }: Props) {
       {open && (
         <span
           role="tooltip"
-          className="absolute left-1/2 -translate-x-1/2 top-full mt-2 z-50 w-64 rounded-lg border border-border bg-popover p-3 text-xs text-popover-foreground shadow-xl"
+          // Anchor the tooltip's LEFT edge to the icon so it always opens to the
+          // right — a centered popup (left-1/2 -translate-x-1/2) overflowed and
+          // clipped when the field sat near a panel's left edge.
+          className="absolute left-0 top-full mt-2 z-50 w-64 max-w-[min(16rem,75vw)] rounded-lg border border-border bg-popover p-3 text-xs text-popover-foreground shadow-xl"
         >
           {term && (
             <span className="block text-[10px] font-bold uppercase tracking-wider text-brand-cyan mb-1">

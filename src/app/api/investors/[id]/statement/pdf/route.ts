@@ -35,6 +35,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       const [t] = await tx.select().from(tenants).where(eq(tenants.id, session.tenantId)).limit(1);
       const pdf = await renderValuationStatementPdf({
         valuation,
+        refId: id,
         investor: { name: inv.name, pan: inv.pan },
         brand: {
           displayName: (t as any)?.displayName,
@@ -61,7 +62,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       status: 200,
       headers: {
         "content-type": "application/pdf",
-        "content-disposition": `${disposition}; filename="statement_${safe}.pdf"`,
+        "content-disposition": `${disposition}; filename="Statement_${safe}_${new Date().toISOString().slice(0, 10)}.pdf"`,
         "cache-control": "no-store",
       },
     });

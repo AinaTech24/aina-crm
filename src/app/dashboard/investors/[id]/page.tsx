@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
-import { ChevronLeft, Phone, Mail, MessageCircle, MapPin, AlertTriangle, User2, ShieldCheck } from "lucide-react";
+import { ChevronLeft, Phone, Mail, MessageCircle, MapPin, AlertTriangle, User2, ShieldCheck, Sparkles, ArrowRight, Wallet } from "lucide-react";
 import { withTenant } from "@/db/client";
 import {
   investors,
@@ -30,10 +30,12 @@ import { RecommendedActions } from "@/components/investors/RecommendedActions";
 import { AiClientBrief } from "@/components/investors/AiClientBrief";
 import { BestTimeBadge } from "@/components/investors/BestTimeBadge";
 import { OnboardingWizardButton } from "@/components/investors/OnboardingWizard";
+import { OverflowMenu } from "@/components/leads/LeadHeaderTools";
 import { QuickCommsPanel } from "@/components/investors/QuickCommsPanel";
 import { ActivityTimeline } from "@/components/investors/ActivityTimeline";
 import { NomineeSection } from "@/components/investors/NomineeSection";
 import { ReferralSection } from "@/components/investors/ReferralSection";
+import { CustomFieldsCard } from "@/components/common/CustomFieldsCard";
 import { RiskProfilePdfButtons } from "@/components/risk-profile/RiskProfileName";
 import { loadTenantLicense } from "@/lib/auth/license";
 import { isFieldAllowed } from "@/lib/auth/field-gate";
@@ -42,8 +44,8 @@ import { ClientGifts } from "@/components/investors/ClientGifts";
 import { ClientHealthCard } from "@/components/investors/ClientHealthCard";
 import { PortfolioAllocation } from "@/components/investors/PortfolioAllocation";
 import { FamilySnapshot } from "@/components/investors/FamilySnapshot";
-import { PortfolioValuationCard } from "@/components/investors/PortfolioValuationCard";
 import { StatementActions } from "@/components/investors/StatementActions";
+import { WealthStoryButton } from "@/components/investors/WealthStoryButton";
 import { valueInvestor } from "@/lib/finance/valuation";
 import { ChurnRiskCard } from "@/components/investors/ChurnRiskCard";
 import { churnForInvestor } from "@/lib/churn/scan";
@@ -57,6 +59,8 @@ import { EmailRelatedList } from "@/components/comms/EmailRelatedList";
 import { WhatsAppRelatedList } from "@/components/comms/WhatsAppRelatedList";
 import { InvestorDetailTabs } from "@/components/investors/InvestorDetailTabs";
 import { MasterRecordEditor } from "@/components/investors/MasterRecordEditor";
+import { InlineEditField, type InlineEditSpec } from "@/components/investors/InlineEditField";
+import { BlueprintStatusKV } from "@/components/investors/BlueprintStatusKV";
 import { ReviewCadenceEditor } from "@/components/investors/ReviewCadenceEditor";
 import { ClientReadinessStrip } from "@/components/investors/ClientReadinessStrip";
 import { PanReveal } from "@/components/investors/PanReveal";
@@ -84,6 +88,7 @@ const INVESTOR_DETAIL_SECTIONS: RelatedListDef[] = [
   { key: "referrals", label: "Referrals" },
   { key: "family", label: "Family snapshot" },
   { key: "valuation", label: "Portfolio valuation" },
+  { key: "holdings", label: "Holdings" },
   { key: "churn", label: "Churn-risk scorecard" },
   { key: "allocation", label: "Portfolio allocation" },
   { key: "sip_health", label: "SIP health" },
@@ -104,9 +109,11 @@ const INVESTOR_DETAIL_SECTIONS: RelatedListDef[] = [
 /** Tab groups for the client-detail page — the header stays pinned above. */
 const INVESTOR_DETAIL_TABS = [
   { key: "overview", label: "Overview", sections: ["health", "recommended", "summary"] },
-  { key: "portfolio", label: "Portfolio", sections: ["valuation", "churn", "allocation", "sip_health", "transactions", "cross_sell"] },
-  { key: "profile", label: "KYC & Profile", sections: ["nominees", "referrals", "master", "completeness", "kyc_data", "risk_history"] },
+  { key: "portfolio", label: "Portfolio", sections: ["valuation", "holdings", "churn", "allocation", "sip_health", "transactions", "cross_sell"] },
+  { key: "profile", label: "KYC & Profile", sections: ["nominees", "referrals", "custom_fields", "master"] },
   { key: "engagement", label: "Engagement", sections: ["family", "documents", "emails", "whatsapp", "gifts", "blueprint", "related"] },
+  // Rarely-opened detail — tucked behind "More" so the core tabs stay uncluttered.
+  { key: "more", label: "More", sections: ["completeness", "kyc_data", "risk_history"] },
 ];
 
 export const dynamic = "force-dynamic";
@@ -286,6 +293,21 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
   const exposure = assetClassExposure(data.folios as any);
   const suitability = assessSuitability((inv as any).riskProfile ?? null, exposure.equityPct, exposure.classifiedPct);
   const isRiskProfileMissing = !inv.riskProfile;
+
+  // Next best action — one prioritised nudge surfaced as a banner in the header
+  // (parity with the lead page) so the RM sees "what to do now" without hunting
+  // through tabs. All inputs are already loaded above; no extra query.
+  const reviewOverdue = !!inv.nextReviewAt && new Date(inv.nextReviewAt as any).getTime() < Date.now();
+  const clientNext: { label: string; hint: string; href?: string; cta?: string } | null =
+    showKyc && inv.kycStatus && inv.kycStatus !== "verified"
+      ? { label: "KYC isn't verified yet", hint: "Finish onboarding to activate this client" }
+      : reviewOverdue
+      ? { label: "Portfolio review is overdue", hint: `Was due ${formatDate(inv.nextReviewAt as any)}`, href: "/dashboard/review-meetings/new", cta: "Schedule" }
+      : showSip && Number(inv.activeSipAmount ?? 0) === 0
+      ? { label: "No active SIP", hint: "Propose a SIP to deepen the relationship", href: "/dashboard/proposals/new", cta: "Propose" }
+      : completeness.score < 70
+      ? { label: `Profile is ${completeness.score}% complete`, hint: "Fill the missing details for cleaner records" }
+      : null;
   const isRiskProfileExpired = inv.riskProfileSignedAt
     ? new Date(inv.riskProfileSignedAt).getTime() < Date.now() - 365 * 24 * 60 * 60 * 1000
     : false;
@@ -374,17 +396,8 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
                   {inv.segmentTag}
                 </span>
               )}
-              {showKyc && (
-                <span
-                  className={`text-xs px-2 py-0.5 rounded-full ${
-                    inv.kycStatus === "verified"
-                      ? "bg-emerald-50 text-emerald-700"
-                      : "bg-amber-50 text-amber-700"
-                  }`}
-                >
-                  KYC: {inv.kycStatus}
-                </span>
-              )}
+              {/* KYC status intentionally omitted here — it lives in the
+                  "Onboarding & compliance readiness" strip below (no duplication). */}
               <span className="text-xs">Onboarded {inv.onboardedAt ? formatDate(inv.onboardedAt) : "—"}</span>
               <BestTimeBadge session={{ tenantId: session.tenantId, userId: session.userId, branchId: session.branchId, roles: session.roles }} investorId={inv.id} />
             </div>
@@ -424,6 +437,8 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
               )}
             </div>
             <div className="flex flex-wrap items-center gap-2 mt-3">
+              {/* Primary action — the thing an RM does most from this page */}
+              <LogActivityButton subject={{ type: "investor", id: inv.id, name: inv.name, phone: inv.phone }} label="Log call / visit" variant="primary" />
               <OnboardingWizardButton
                 investorId={inv.id}
                 investor={{
@@ -435,15 +450,25 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
               />
               <AiClientBrief investorId={inv.id} name={inv.name} phone={inv.phone} />
               <CheckInButton subject={{ type: "investor", id: inv.id, name: inv.name, phone: inv.phone }} />
-              <LogActivityButton subject={{ type: "investor", id: inv.id, name: inv.name, phone: inv.phone }} label="Log call / visit" variant="secondary" />
-              <ChangeLogButton entityType="investor" entityId={inv.id} />
-              <RowActions
-                deleteUrl={`/api/investors/${inv.id}`}
-                itemLabel="client"
-                itemName={inv.name}
-                verb="Delete"
-                redirectTo="/dashboard/investors"
-              />
+              {/* Rare / secondary actions tucked into a single "More" menu so the bar stays calm */}
+              <OverflowMenu>
+                <ChangeLogButton entityType="investor" entityId={inv.id} />
+                <VerifyContact
+                  investorId={inv.id}
+                  hasEmail={!!inv.email}
+                  hasPhone={!!inv.phone}
+                  emailVerified={!!inv.emailVerifiedAt}
+                  phoneVerified={!!inv.phoneVerifiedAt}
+                />
+                <RowActions
+                  inline
+                  deleteUrl={`/api/investors/${inv.id}`}
+                  itemLabel="client"
+                  itemName={inv.name}
+                  verb="Delete"
+                  redirectTo="/dashboard/investors"
+                />
+              </OverflowMenu>
               <RecordProvenance
                 entityType="investor"
                 entityId={inv.id}
@@ -451,49 +476,30 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
                 updatedAt={inv.updatedAt}
                 className="basis-full mt-1"
               />
-              <VerifyContact
-                investorId={inv.id}
-                hasEmail={!!inv.email}
-                hasPhone={!!inv.phone}
-                emailVerified={!!inv.emailVerifiedAt}
-                phoneVerified={!!inv.phoneVerifiedAt}
-              />
             </div>
           </div>
-          {/* KPI rail — stacked cards fill the right column so the header reads
-              balanced instead of empty on one side. */}
-          <div className="flex flex-col gap-2.5 w-full sm:w-56 shrink-0 self-stretch">
-            {/* `inv.aum` is the nightly-refreshed COMBINED figure (folios +
-                uncovered transactions); `data.valuation.currentValue` is the live
-                priced-transaction value. Show the greater so we never understate
-                a folio-only (RTA-imported) book, nor display a stale ₹0. */}
-            <HeaderKpi
-              label="AUM"
-              value={showAum ? formatINR(Math.max(Number(inv.aum ?? 0), data.valuation?.currentValue ?? 0)) : "—"}
-              primary
-              sub={showAum && !hasPortfolio ? "No investments yet" : undefined}
-            />
-            <HeaderKpi
-              label="Active SIP"
-              value={showSip ? formatINR(Number(inv.activeSipAmount ?? 0)) + (showSip && Number(inv.activeSipAmount ?? 0) > 0 ? "/mo" : "") : "—"}
-              sub={showSip && Number(inv.activeSipAmount ?? 0) === 0 ? "No active SIP" : undefined}
-            />
-            <HeaderKpi
-              label="Lifetime inflow"
-              value={showInflow ? formatINR(Number(inv.lifetimeInflow ?? 0)) : "—"}
-              sub={showInflow && Number(inv.lifetimeInflow ?? 0) === 0 ? "Awaiting first inflow" : undefined}
-            />
-            {data.valuation?.xirr != null && (
-              <HeaderKpi
-                label="XIRR (annualised)"
-                value={`${data.valuation.xirr >= 0 ? "+" : ""}${(data.valuation.xirr * 100).toFixed(1)}%`}
-                tone={data.valuation.xirr >= 0 ? "good" : "bad"}
-              />
-            )}
-          </div>
+          {/* AUM / Active SIP / Lifetime inflow moved out of the header into the
+              Portfolio tab (see the "valuation" section) for a simpler profile. */}
         </div>
       </div>
       </RelatedListSection>
+
+      {/* Next best action — one prioritised nudge, up top, so the RM knows what
+          to do now without scrolling (parity with the lead page). */}
+      {clientNext && (
+        <div className="flex items-center gap-3 rounded-lg border border-brand-cyan/25 bg-brand-cyan-light/40 px-4 py-2.5">
+          <Sparkles className="size-4 text-brand-cyan-deep shrink-0" />
+          <div className="min-w-0 flex-1 text-sm">
+            <span className="font-semibold text-foreground">Next: {clientNext.label}</span>
+            {clientNext.hint && <span className="text-muted-foreground"> — {clientNext.hint}</span>}
+          </div>
+          {clientNext.href && (
+            <Link href={clientNext.href} className="btn-primary text-xs inline-flex items-center gap-1 shrink-0 whitespace-nowrap">
+              {clientNext.cta} <ArrowRight className="size-3.5" />
+            </Link>
+          )}
+        </div>
+      )}
 
       {/* Category tabs — group the sections so the page shows one clean group at
           a time. Renders right under the header (which stays pinned). */}
@@ -525,7 +531,7 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
 
       {/* Risk + meta — at-a-glance status */}
       <RelatedListSection moduleKey="investors-detail" sectionKey="summary">
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           {showRisk && <InfoCard label="Risk profile" value={inv.riskProfile ?? "Not assessed"} sub={inv.riskProfileSignedAt ? `Signed ${formatDate(inv.riskProfileSignedAt)}` : "Pending"} tone={!inv.riskProfile ? "warn" : undefined} />}
           {showNominee && <InfoCard label="Nominee" value={inv.nomineeName ?? "Not set"} sub={inv.nomineeRelation ?? undefined} tone={!inv.nomineeName ? "warn" : undefined} />}
           {showCkycExpiry && <InfoCard label="CKYC expiry" value={inv.ckycExpiryAt ? formatDate(inv.ckycExpiryAt) : "—"} sub={inv.ckycNumber ?? undefined} />}
@@ -563,6 +569,12 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
         <ReferralSection investorId={inv.id} referrals={((inv.referrals as any[]) ?? []) as any} />
       </RelatedListSection>
 
+      {/* MFD-defined custom fields — KYC & Profile tab only (renders only if the
+          firm has defined any). */}
+      <RelatedListSection moduleKey="investors-detail" sectionKey="custom_fields">
+        <CustomFieldsCard entity="investor" recordId={inv.id} initialValues={(inv as any).customFields ?? null} />
+      </RelatedListSection>
+
       {/* Family snapshot — only renders when familyId is set */}
       <RelatedListSection moduleKey="investors-detail" sectionKey="family">
         <FamilySnapshot
@@ -573,6 +585,24 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
         />
       </RelatedListSection>
 
+      {/* Empty Portfolio tab — instead of a blank tab, point the RM at how to
+          load holdings (RTA statement import). Lives in the Portfolio tab. */}
+      {!hasPortfolio && (
+        <RelatedListSection moduleKey="investors-detail" sectionKey="valuation">
+          <div className="rounded-lg border border-dashed bg-muted/20 px-6 py-10 text-center">
+            <Wallet className="size-8 mx-auto text-muted-foreground/60" />
+            <div className="mt-3 text-sm font-medium">No portfolio yet</div>
+            <p className="mt-1 text-sm text-muted-foreground max-w-sm mx-auto">
+              This client has no holdings or transactions loaded. Import their folios from a
+              CAMS / KFintech statement to see live valuation, XIRR and SIP health here.
+            </p>
+            <Link href="/dashboard/rta-imports" className="btn-primary text-xs mt-4 inline-flex items-center gap-1">
+              Import their portfolio <ArrowRight className="size-3.5" />
+            </Link>
+          </div>
+        </RelatedListSection>
+      )}
+
       {/* Portfolio-centric sections — hidden for onboarding-phase clients with
           no holdings/transactions so the page isn't a wall of empty ₹0 cards.
           Cross-sell stays visible below (useful even pre-investment). */}
@@ -582,11 +612,44 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
           {showAum && data.valuation && (
             <RelatedListSection moduleKey="investors-detail" sectionKey="valuation">
             <div className="space-y-2">
-              <PortfolioValuationCard valuation={data.valuation} />
+              {/* AUM / Active SIP / Lifetime inflow — relocated here from the
+                  header so the profile stays clean and the money lives on the
+                  Portfolio tab next to the live valuation. */}
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-2.5">
+                <HeaderKpi
+                  label="AUM"
+                  value={showAum ? formatINR(Math.max(Number(inv.aum ?? 0), data.valuation?.currentValue ?? 0)) : "—"}
+                  primary
+                  sub={showAum && !hasPortfolio ? "No investments yet" : undefined}
+                />
+                <HeaderKpi
+                  label="Active SIP"
+                  value={showSip ? formatINR(Number(inv.activeSipAmount ?? 0)) + (showSip && Number(inv.activeSipAmount ?? 0) > 0 ? "/mo" : "") : "—"}
+                  sub={showSip && Number(inv.activeSipAmount ?? 0) === 0 ? "No active SIP" : undefined}
+                />
+                <HeaderKpi
+                  label="Lifetime inflow"
+                  value={showInflow ? formatINR(Number(inv.lifetimeInflow ?? 0)) : "—"}
+                  sub={showInflow && Number(inv.lifetimeInflow ?? 0) === 0 ? "Awaiting first inflow" : undefined}
+                />
+              </div>
               <StatementActions investorId={inv.id} statementCadence={(inv as any).statementCadence ?? "off"} />
+              <WealthStoryButton investorId={inv.id} clientName={inv.name} />
             </div>
             </RelatedListSection>
           )}
+
+          {/* Per-scheme holdings — full tabular breakdown, on the Portfolio tab
+              (moved here from the Engagement "related" group). */}
+          <RelatedListSection moduleKey="investors-detail" sectionKey="holdings">
+            <div id="rel-folios" className="scroll-mt-24">
+              <HoldingsTable
+                holdings={data.valuation.holdings as any}
+                asOf={data.valuation.asOf}
+                unpricedSchemes={data.valuation.unpricedSchemes}
+              />
+            </div>
+          </RelatedListSection>
 
           {/* Churn-risk scorecard + AI retention play */}
           {showAum && data.churn && (
@@ -672,9 +735,6 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
             <User2 className="size-4" /> Client details
           </h2>
           <div className="flex items-center gap-3">
-            <span className="text-xs text-muted-foreground">
-              Client ID <code className="font-mono">{inv.id.slice(0, 8)}…</code>
-            </span>
             <MasterRecordEditor
               investor={JSON.parse(JSON.stringify(inv))}
               flags={{
@@ -689,6 +749,9 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
                 showBank,
                 showStatus,
                 showRm,
+                showAum,
+                showSip,
+                showInflow,
               }}
             />
           </div>
@@ -697,25 +760,25 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
         <Group title="Identity">
           <KV label="Client ID" value={inv.id} mono />
           {showPan && <KV label="PAN" value={inv.pan ?? "—"} mono />}
-          <KV label="Name" value={inv.name} />
-          <KV label="Name as per PAN" value={inv.nameAsPerPan ?? "—"} />
-          {showDob && <KV label="DOB" value={inv.dob ? formatDate(inv.dob) : "—"} />}
-          <KV label="Gender" value={inv.gender === "M" ? "Male" : inv.gender === "F" ? "Female" : inv.gender === "O" ? "Other" : "—"} />
+          <KV label="Name" value={inv.name} edit={{ id: inv.id, field: "name", value: inv.name ?? "" }} />
+          <KV label="Name as per PAN" value={inv.nameAsPerPan ?? "—"} edit={{ id: inv.id, field: "nameAsPerPan", value: inv.nameAsPerPan ?? "", nullable: true }} />
+          {showDob && <KV label="DOB" value={inv.dob ? formatDate(inv.dob) : "—"} edit={{ id: inv.id, field: "dob", type: "date", value: inv.dob ? String(inv.dob).slice(0, 10) : "", nullable: true }} />}
+          <KV label="Gender" value={inv.gender === "M" ? "Male" : inv.gender === "F" ? "Female" : inv.gender === "O" ? "Other" : "—"} edit={{ id: inv.id, field: "gender", type: "select", options: GENDER_OPTS, value: inv.gender ?? "", nullable: true }} />
           <KV label="Marital status" value={inv.maritalStatus ?? "—"} cap />
           <KV label="Mother's name" value={inv.motherName ?? "—"} />
           <KV label="Place of birth" value={inv.birthPlace ?? "—"} />
-          <KV label="Aadhaar (last 4)" value={inv.aadhaarLast4 ? `••••${inv.aadhaarLast4}` : "—"} mono />
-          <KV label="Client since" value={inv.onboardedAt ? formatDate(inv.onboardedAt) : "—"} />
-          <KV label="Anniversary" value={inv.anniversaryDate ? formatDate(inv.anniversaryDate) : "—"} />
+          <KV label="Aadhaar (last 4)" value={inv.aadhaarLast4 ? `••••${inv.aadhaarLast4}` : "—"} mono edit={{ id: inv.id, field: "aadhaarLast4", value: inv.aadhaarLast4 ?? "", nullable: true, maxLength: 4, placeholder: "1234" }} />
+          <KV label="Client since" value={inv.onboardedAt ? formatDate(inv.onboardedAt) : "—"} edit={{ id: inv.id, field: "onboardedAt", type: "date", value: inv.onboardedAt ? String(inv.onboardedAt).slice(0, 10) : "", nullable: true }} />
+          <KV label="Anniversary" value={inv.anniversaryDate ? formatDate(inv.anniversaryDate) : "—"} edit={{ id: inv.id, field: "anniversaryDate", type: "date", value: inv.anniversaryDate ? String(inv.anniversaryDate).slice(0, 10) : "", nullable: true }} />
         </Group>
 
         <Group title="Contact">
-          {showPhone && <KV label="Mobile" value={inv.phone ?? "—"} />}
+          {showPhone && <KV label="Mobile" value={inv.phone ?? "—"} edit={{ id: inv.id, field: "phone", type: "tel", value: inv.phone ?? "" }} />}
           <KV label="Mobile belongs to" value={inv.mobileRelation ?? "—"} cap />
-          {showPhone && <KV label="Alternate mobile" value={inv.alternatePhone ?? "—"} />}
-          {showEmail && <KV label="Email" value={inv.email ?? "—"} />}
+          {showPhone && <KV label="Alternate mobile" value={inv.alternatePhone ?? "—"} edit={{ id: inv.id, field: "alternatePhone", type: "tel", value: inv.alternatePhone ?? "", nullable: true }} />}
+          {showEmail && <KV label="Email" value={inv.email ?? "—"} edit={{ id: inv.id, field: "email", type: "email", value: inv.email ?? "" }} />}
           <KV label="Email belongs to" value={inv.emailRelation ?? "—"} cap />
-          {showPhone && <KV label="WhatsApp" value={inv.whatsappPhone ?? "—"} />}
+          {showPhone && <KV label="WhatsApp" value={inv.whatsappPhone ?? "—"} edit={{ id: inv.id, field: "whatsappPhone", type: "tel", value: inv.whatsappPhone ?? "" }} />}
           {showAddress && (
             <KV
               label="Address"
@@ -734,19 +797,19 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
               colSpan={2}
             />
           )}
-          {showCity && <KV label="City" value={(inv.address as any)?.city ?? "—"} />}
-          {showState && <KV label="State" value={(inv.address as any)?.state ?? "—"} />}
-          {showAddress && <KV label="Pincode" value={(inv.address as any)?.pincode ?? "—"} />}
-          {showAddress && <KV label="Country" value={(inv.address as any)?.country ?? "—"} />}
+          {showCity && <KV label="City" value={(inv.address as any)?.city ?? "—"} edit={{ id: inv.id, field: "address", addressKey: "city", address: (inv.address as any) ?? {}, value: (inv.address as any)?.city ?? "" }} />}
+          {showState && <KV label="State" value={(inv.address as any)?.state ?? "—"} edit={{ id: inv.id, field: "address", addressKey: "state", address: (inv.address as any) ?? {}, value: (inv.address as any)?.state ?? "" }} />}
+          {showAddress && <KV label="Pincode" value={(inv.address as any)?.pincode ?? "—"} edit={{ id: inv.id, field: "address", addressKey: "pincode", address: (inv.address as any) ?? {}, value: (inv.address as any)?.pincode ?? "" }} />}
+          {showAddress && <KV label="Country" value={(inv.address as any)?.country ?? "—"} edit={{ id: inv.id, field: "address", addressKey: "country", address: (inv.address as any) ?? {}, value: (inv.address as any)?.country ?? "" }} />}
         </Group>
 
         <Group title="Profile">
-          <KV label="Occupation" value={inv.occupation ?? "—"} />
-          <KV label="Employer" value={inv.employerName ?? "—"} />
-          <KV label="Income range" value={inv.incomeRange ?? "—"} />
-          <KV label="Entity type" value={(inv.investorCategory ?? "—").replace("corporate", "Company")} cap />
-          {showSegment && <KV label="Client type" value={inv.segmentTag ?? "—"} />}
-          <KV label="Client category" value={inv.clientCategory ?? "—"} />
+          <KV label="Occupation" value={inv.occupation ?? "—"} edit={{ id: inv.id, field: "occupation", value: inv.occupation ?? "", nullable: true }} />
+          <KV label="Employer" value={inv.employerName ?? "—"} edit={{ id: inv.id, field: "employerName", value: inv.employerName ?? "", nullable: true }} />
+          <KV label="Income range" value={inv.incomeRange ?? "—"} edit={{ id: inv.id, field: "incomeRange", value: inv.incomeRange ?? "", nullable: true, placeholder: "e.g. 10–25L" }} />
+          <KV label="Entity type" value={(inv.investorCategory ?? "—").replace("corporate", "Company")} cap edit={{ id: inv.id, field: "investorCategory", type: "select", options: ENTITY_OPTS, value: inv.investorCategory ?? "" }} />
+          {showSegment && <KV label="Client type" value={inv.segmentTag ?? "—"} edit={{ id: inv.id, field: "segmentTag", type: "select", options: SEGMENT_OPTS, value: inv.segmentTag ?? "" }} />}
+          <KV label="Client category" value={inv.clientCategory ?? "—"} edit={{ id: inv.id, field: "clientCategory", type: "select", options: CATEGORY_OPTS, value: inv.clientCategory ?? "", nullable: true }} />
           <KV label="Mode of holding" value={inv.modeOfHolding ?? "—"} cap />
           <KV label="Household type" value={inv.householdType ?? "—"} />
           <KV label="Family head name" value={inv.familyOwnerName ?? "—"} />
@@ -757,20 +820,21 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
 
         <Group title="Compliance status">
           {showKyc && <Status label="KYC status" value={inv.kycStatus} good={inv.kycStatus === "verified"} />}
-          <KV label="Residential status" value={inv.residencyStatus ?? "—"} cap />
+          <KV label="Residential status" value={inv.residencyStatus ?? "—"} cap edit={{ id: inv.id, field: "residencyStatus", type: "select", options: RESIDENCY_OPTS, value: inv.residencyStatus ?? "", nullable: true }} />
           <KV label="Tax status" value={inv.taxStatus ?? "—"} />
-          <KV label="PAN–Aadhaar link" value={inv.panAadhaarLinkStatus ?? "—"} cap />
-          <KV label="CKYC number" value={inv.ckycNumber ?? "—"} mono />
-          <KV label="CKYC expiry" value={inv.ckycExpiryAt ? formatDate(inv.ckycExpiryAt) : "—"} />
-          <KV label="KYC validated" value={inv.kycValidatedAt ? formatDate(inv.kycValidatedAt) : "—"} />
+          <KV label="PAN–Aadhaar link" value={inv.panAadhaarLinkStatus ?? "—"} cap edit={{ id: inv.id, field: "panAadhaarLinkStatus", type: "select", options: PAN_AADHAAR_OPTS, value: inv.panAadhaarLinkStatus ?? "", nullable: true }} />
+          <KV label="CKYC number" value={inv.ckycNumber ?? "—"} mono edit={{ id: inv.id, field: "ckycNumber", value: inv.ckycNumber ?? "", nullable: true }} />
+          <KV label="CKYC expiry" value={inv.ckycExpiryAt ? formatDate(inv.ckycExpiryAt) : "—"} edit={{ id: inv.id, field: "ckycExpiryAt", type: "date", value: inv.ckycExpiryAt ? String(inv.ckycExpiryAt).slice(0, 10) : "", nullable: true }} />
+          <KV label="KYC validated" value={inv.kycValidatedAt ? formatDate(inv.kycValidatedAt) : "—"} edit={{ id: inv.id, field: "kycValidatedAt", type: "date", value: inv.kycValidatedAt ? String(inv.kycValidatedAt).slice(0, 10) : "", nullable: true }} />
           <KV label="KRA" value={inv.kraName ?? "—"} />
           <KV label="FATCA status" value={inv.fatcaStatus ?? "—"} cap />
           <KV label="FATCA expiry" value={inv.fatcaExpiryAt ? formatDate(inv.fatcaExpiryAt) : "—"} />
           {showRisk && <Status label="Risk profile" value={inv.riskProfile ?? "not_assessed"} good={!!inv.riskProfile && !!inv.riskProfileSignedAt} />}
-          {showPan && <KV label="UCC (BSE)" value={inv.bseUccCode ?? "—"} mono />}
-          {showPan && <KV label="CAN (NSE)" value={inv.nseCanCode ?? "—"} mono />}
+          {showPan && <KV label="UCC (BSE)" value={inv.bseUccCode ?? "—"} mono edit={{ id: inv.id, field: "bseUccCode", value: inv.bseUccCode ?? "", nullable: true }} />}
+          {showPan && <KV label="CAN (NSE)" value={inv.nseCanCode ?? "—"} mono edit={{ id: inv.id, field: "nseCanCode", value: inv.nseCanCode ?? "", nullable: true }} />}
+          {showPan && ((inv as any).uccCodes as string[] | undefined)?.length ? <KV label="Other UCCs" value={((inv as any).uccCodes as string[]).join(", ")} mono /> : null}
           <Status label="Mandate" value={inv.mandateStatus ?? "none"} good={inv.mandateStatus === "active"} />
-          <KV label="Mandate ref" value={inv.mandateRefNo ?? "—"} mono />
+          <KV label="Mandate ref" value={inv.mandateRefNo ?? "—"} mono edit={{ id: inv.id, field: "mandateRefNo", value: inv.mandateRefNo ?? "", nullable: true }} />
           {inv.mandateAmount != null && <KV label="Mandate amount" value={formatINR(Number(inv.mandateAmount))} />}
         </Group>
 
@@ -844,6 +908,7 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
               bad={inv.status === "redemption_risk" || inv.status === "closed" || inv.status === "exited"}
             />
           )}
+          <BlueprintStatusKV investorId={inv.id} />
           {showStatus && inv.status === "redemption_risk" && inv.redemptionRiskReason && (
             <KV label="Redemption-risk reason" value={inv.redemptionRiskReason} colSpan={2} />
           )}
@@ -939,17 +1004,9 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
       </RelatedListSection>
 
       <RelatedListSection moduleKey="investors-detail" sectionKey="related">
-      <div className="grid grid-cols-3 gap-6">
-        {/* Folios + SIPs */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        {/* SIPs (Holdings moved to the Portfolio tab) */}
         <div className="col-span-2 space-y-6">
-          <div id="rel-folios" className="scroll-mt-24">
-            <HoldingsTable
-              holdings={data.valuation.holdings as any}
-              asOf={data.valuation.asOf}
-              unpricedSchemes={data.valuation.unpricedSchemes}
-            />
-          </div>
-
           <Section id="rel-sips" title="Active SIPs" count={data.sips.filter((s) => s.status === "active").length}>
             {data.sips.length === 0 ? (
               <EmptyRow text="No SIPs yet." />
@@ -1047,6 +1104,15 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
               </ul>
             )}
           </Section>
+
+          {/* Unified activity timeline — sits under Goals at the left-column
+              width (was full-width below the whole grid, leaving a gap here). */}
+          <ActivityTimeline
+            communications={data.communications}
+            tasks={data.tasks}
+            serviceRequests={data.serviceRequests}
+            reviewMeetings={data.reviewMeetings}
+          />
         </div>
 
         {/* Side panel */}
@@ -1113,13 +1179,6 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
         </aside>
       </div>
 
-      {/* Unified activity timeline — full width below the related-lists grid */}
-      <ActivityTimeline
-        communications={data.communications}
-        tasks={data.tasks}
-        serviceRequests={data.serviceRequests}
-        reviewMeetings={data.reviewMeetings}
-      />
       </RelatedListSection>
       </RelatedListsContainer>
     </div>
@@ -1190,13 +1249,21 @@ function ConsentChip({ label, granted }: { label: string; granted: boolean }) {
 }
 
 /** Master-record group header + 3-col grid for KV rows. */
+// Option sets for the inline-editable selects — mirror the PATCH zod enums.
+const GENDER_OPTS = [{ value: "M", label: "Male" }, { value: "F", label: "Female" }, { value: "O", label: "Other" }];
+const ENTITY_OPTS = ([["individual", "Individual"], ["huf", "HUF"], ["nri", "NRI"], ["company", "Company"], ["corporate", "Corporate (legacy)"], ["trust", "Trust"], ["minor", "Minor"], ["other", "Other"]] as const).map(([value, label]) => ({ value, label }));
+const SEGMENT_OPTS = ["HNI", "Affluent", "Retail", "NRI", "Corporate"].map((v) => ({ value: v, label: v }));
+const CATEGORY_OPTS = ["A", "B", "C", "D"].map((v) => ({ value: v, label: `Category ${v}` }));
+const RESIDENCY_OPTS = ([["indian_resident", "Indian resident"], ["nri", "NRI"], ["oci", "OCI"], ["pio", "PIO"], ["foreign_national", "Foreign national"]] as const).map(([value, label]) => ({ value, label }));
+const PAN_AADHAAR_OPTS = ([["linked", "Linked"], ["not_linked", "Not linked"], ["pending", "Pending"], ["not_applicable", "Not applicable"]] as const).map(([value, label]) => ({ value, label }));
+
 function Group({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="border-t first:border-t-0 first:pt-0 pt-4 mt-4 first:mt-0">
       <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
         {title}
       </div>
-      <div className="grid grid-cols-3 gap-x-6 gap-y-2">{children}</div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-6 gap-y-2">{children}</div>
     </div>
   );
 }
@@ -1209,6 +1276,7 @@ function KV({
   cap,
   highlight,
   colSpan,
+  edit,
 }: {
   label: string;
   value: string;
@@ -1217,6 +1285,7 @@ function KV({
   cap?: boolean;
   highlight?: boolean;
   colSpan?: number;
+  edit?: InlineEditSpec;
 }) {
   return (
     <div className={colSpan === 2 ? "col-span-2" : ""}>
@@ -1226,7 +1295,13 @@ function KV({
           highlight ? "font-semibold tabular-nums" : ""
         }`}
       >
-        {value || "—"}
+        {edit ? (
+          <InlineEditField spec={edit} display={value} />
+        ) : value && value.trim() && value.trim() !== "—" ? (
+          value
+        ) : (
+          " "
+        )}
       </div>
       {sub && <div className="text-xs text-muted-foreground mt-0.5">{sub}</div>}
     </div>

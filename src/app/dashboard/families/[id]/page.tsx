@@ -185,7 +185,7 @@ export default async function FamilyDetailPage({ params }: { params: Promise<{ i
       />
 
       {/* Top status row — primary, RM, review, nominee */}
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <InfoCard
           icon={Users}
           label="Primary client"

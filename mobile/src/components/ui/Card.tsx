@@ -13,6 +13,7 @@ import { palette, radius, spacing, shadow } from "../../theme/tokens";
 interface CardProps {
   children: React.ReactNode;
   onPress?: () => void;
+  onLongPress?: () => void;
   style?: ViewStyle;
   padded?: boolean;
   flat?: boolean;
@@ -31,14 +32,15 @@ function baseStyle(padded: boolean, flat?: boolean): ViewStyle {
 
 const AView = Animated.createAnimatedComponent(View);
 
-function AnimatedCard({ children, onPress, style, padded = true, flat }: CardProps) {
+function AnimatedCard({ children, onPress, onLongPress, style, padded = true, flat }: CardProps) {
   const scale = useSharedValue(1);
   const animStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
   const base = baseStyle(padded, flat);
-  if (!onPress) return <View style={[base, style]}>{children}</View>;
+  if (!onPress && !onLongPress) return <View style={[base, style]}>{children}</View>;
   return (
     <Pressable
       onPress={onPress}
+      onLongPress={onLongPress}
       onPressIn={() => (scale.value = withTiming(0.98, { duration: 90 }))}
       onPressOut={() => (scale.value = withTiming(1, { duration: 120 }))}
     >
@@ -47,11 +49,11 @@ function AnimatedCard({ children, onPress, style, padded = true, flat }: CardPro
   );
 }
 
-function StaticCard({ children, onPress, style, padded = true, flat }: CardProps) {
+function StaticCard({ children, onPress, onLongPress, style, padded = true, flat }: CardProps) {
   const base = baseStyle(padded, flat);
-  if (!onPress) return <View style={[base, style]}>{children}</View>;
+  if (!onPress && !onLongPress) return <View style={[base, style]}>{children}</View>;
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [base, pressed && { opacity: 0.92 }, style]}>
+    <Pressable onPress={onPress} onLongPress={onLongPress} style={({ pressed }) => [base, pressed && { opacity: 0.92 }, style]}>
       {children}
     </Pressable>
   );

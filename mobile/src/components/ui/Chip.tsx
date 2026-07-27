@@ -7,6 +7,7 @@ import React from "react";
 import { Pressable, StyleSheet } from "react-native";
 import * as Haptics from "expo-haptics";
 import { palette, radius, spacing, fontSize, fontWeight } from "../../theme/tokens";
+import { useBrand } from "../../theme/brand";
 import { Text } from "./Text";
 
 interface ChipProps {
@@ -17,13 +18,14 @@ interface ChipProps {
 }
 
 export function Chip({ label, selected, onPress, count }: ChipProps) {
+  const { brand } = useBrand();
   return (
     <Pressable
       onPress={() => {
         Haptics.selectionAsync().catch(() => {});
         onPress?.();
       }}
-      style={[styles.chip, selected ? styles.selected : styles.unselected]}
+      style={[styles.chip, selected ? [styles.selected, { backgroundColor: brand, borderColor: brand }] : styles.unselected]}
     >
       <Text
         style={{

@@ -30,7 +30,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 const Body = z.object({
   ids: z.array(z.string().uuid()).min(1).max(500),
-  action: z.enum(["status", "priority", "assign", "cancel", "delete"]),
+  action: z.enum(["status", "priority", "assign", "cancel", "delete", "reschedule"]),
   value: z.string().nullable().optional(),
 });
 
@@ -60,6 +60,12 @@ export async function POST(req: NextRequest) {
       const ok = ["low", "normal", "high", "urgent"];
       if (!value || !ok.includes(value)) return NextResponse.json({ error: "invalid priority" }, { status: 400 });
       patch.priority = value;
+    } else if (action === "reschedule") {
+      const d = value ? new Date(value) : null;
+      if (!d || isNaN(d.getTime())) return NextResponse.json({ error: "invalid date" }, { status: 400 });
+      patch.dueAt = d;
+      // A rescheduled task should re-arm its overdue alert.
+      patch.overdueNotifiedAt = null;
     } else if (action === "assign") {
       if (!value) return NextResponse.json({ error: "value (userId) required" }, { status: 400 });
       if (!UUID_RE.test(value)) return NextResponse.json({ error: "value must be a user id" }, { status: 400 });

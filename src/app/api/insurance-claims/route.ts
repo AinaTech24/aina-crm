@@ -6,11 +6,11 @@ import { handleApiError } from "@/lib/api/error-handler";
  */
 import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuid } from "uuid";
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, inArray, desc, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { require as requireCap } from "@/lib/auth/rbac";
+import { require as requireCap, can } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { insuranceClaims, insurancePolicies, investors, CLAIM_STATUSES, CLAIM_TYPES, CLAIM_MODES, INTIMATION_MODES, SUBMITTED_MODES } from "@/db/schema";
@@ -51,6 +51,49 @@ const ClaimBody = z.object({
     uploadedAt: z.string().optional(),
   })).max(50).optional(),
 });
+
+export async function GET() {
+  try {
+    const session = await requireSession();
+    requireCap(session.roles, "insurance.view");
+    // Claims carry proposer PII + settled amounts. Managers see all; everyone
+    // else only claims for a client they manage OR that they own (rmId).
+    const seesAll =
+      can(session.roles, "investor.view.all", session.permissions) ||
+      can(session.roles, "compliance.view", session.permissions);
+    const scope = seesAll
+      ? undefined
+      : sql`(${insuranceClaims.rmId} = ${session.userId}::uuid OR ${insuranceClaims.investorId} IN (SELECT id FROM investors WHERE rm_id = ${session.userId}::uuid))`;
+    const rows = await withTenant(session.tenantId, async (tx) =>
+      tx
+        .select({
+          id: insuranceClaims.id,
+          investorId: insuranceClaims.investorId,
+          proposerName: insuranceClaims.proposerName,
+          insurer: insuranceClaims.insurer,
+          policyNumber: insuranceClaims.policyNumber,
+          claimStatus: insuranceClaims.claimStatus,
+          claimType: insuranceClaims.claimType,
+          claimMode: insuranceClaims.claimMode,
+          claimedAmount: insuranceClaims.claimedAmount,
+          settledAmount: insuranceClaims.settledAmount,
+          intimationDate: insuranceClaims.intimationDate,
+          submissionDate: insuranceClaims.submissionDate,
+          settlementDate: insuranceClaims.settlementDate,
+          createdAt: insuranceClaims.createdAt,
+          investorName: investors.name,
+        })
+        .from(insuranceClaims)
+        .leftJoin(investors, eq(insuranceClaims.investorId, investors.id))
+        .where(scope)
+        .orderBy(desc(insuranceClaims.createdAt))
+        .limit(500)
+    );
+    return NextResponse.json({ claims: rows });
+  } catch (err: any) {
+    return handleApiError(err);
+  }
+}
 
 export async function POST(req: NextRequest) {
   try {

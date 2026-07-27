@@ -19,7 +19,7 @@ export const dynamic = "force-dynamic";
 
 export default async function BranchesPage() {
   const session = await requireSession();
-  requireCap(session.roles, "settings.users");
+  requireCap(session.roles, "settings.users", session.permissions);
 
   const data = await withTenant(session.tenantId, async (tx) => {
     const branchRows = await tx

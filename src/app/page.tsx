@@ -5,11 +5,18 @@ import {
   MessageSquare, BarChart3, Lock, ArrowRight, Check, Calculator,
   Clock, Star,
   ShieldAlert, Zap, CheckCircle2, ChevronRight, Upload, Cog, Rocket,
-  Users2,
+  Users2, Building2, User,
 } from "lucide-react";
+import { loadLandingPlans } from "@/lib/landing/packages";
 import { CountUp } from "@/components/landing/CountUp";
 import { FaqAccordion } from "@/components/landing/FaqAccordion";
 import { MobileNav } from "@/components/landing/MobileNav";
+import { LivePricingCards } from "@/components/landing/LivePricingCards";
+
+// Re-render at most once a minute so admin-managed pricing cards go live without
+// a rebuild. Admin saves also fire an on-demand revalidatePath("/") for instant
+// reflection (see /api/super-admin/landing-packages); this is the safety net.
+export const revalidate = 60;
 
 /** WhatsApp community — primary "Join Our Community" CTA across the page. */
 const COMMUNITY_URL = "https://chat.whatsapp.com/C6ttmFYUtxHA7GYna5YGcN";
@@ -128,7 +135,10 @@ const JSON_LD = {
   ],
 };
 
-export default function Home() {
+export default async function Home() {
+  // Pricing cards are admin-managed (Super Admin → Landing packages), with a
+  // hardcoded fallback so the public page never breaks.
+  const plans = await loadLandingPlans();
   return (
     <main className="min-h-screen flex flex-col bg-background relative overflow-x-clip">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(JSON_LD) }} />
@@ -470,57 +480,44 @@ export default function Home() {
             Flat, honest pricing — your bill doesn&apos;t grow with your AUM
           </h2>
           <p className="mt-3 text-muted-foreground">
-            A one-time setup gets your firm fully live, then a flat per-user yearly fee — from ₹9,999.
+            A one-time setup gets your firm fully live, then a flat per-user yearly fee — from ₹9,499.
             No per-client charges. No AUM-linked fees. No surprises.
           </p>
         </div>
 
-        <div className="mt-16 grid sm:grid-cols-2 lg:grid-cols-3 gap-6 items-stretch max-w-6xl mx-auto">
-          {PLANS.map((p) => (
-            <div
-              key={p.name}
-              className={`glass-card rounded-2xl p-6 sm:p-8 flex flex-col relative border ${
-                p.featured
-                  ? "border-2 border-red-500 bg-red-500/[0.04] md:-translate-y-2 animate-premium-glow"
-                  : "border-border/60"
-              }`}
-            >
-              {p.featured && (
-                <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-red-600 text-white text-[10px] uppercase font-bold tracking-widest px-3 py-1 rounded-full ring-2 ring-red-300 animate-premium-badge">
-                  Recommended
-                </span>
-              )}
-              <h3 className="font-extrabold text-xl text-foreground">{p.name}</h3>
-              <p className="text-xs text-muted-foreground mt-2 min-h-[30px] leading-relaxed">{p.for}</p>
+        <LivePricingCards initial={plans} />
 
-              <div className="mt-4 pt-4 border-t border-border/40">
-                <div className="flex items-baseline gap-1.5">
-                  <span className="text-3xl font-extrabold text-foreground">{p.price}</span>
-                  <span className="text-sm text-muted-foreground font-semibold">{p.unit}</span>
-                </div>
-                <div className="mt-1.5 text-sm text-muted-foreground font-medium">
-                  + <span className="font-bold text-foreground">{p.setup}</span> one-time setup (per firm)
-                </div>
-                <div className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-secondary/70 border border-border/50 px-2 py-1 text-[11px] font-semibold text-muted-foreground tabular-nums">
-                  <Users2 className="size-3" /> {p.seats}
-                </div>
+        {/* RTA data-import add-on */}
+        <div className="mt-8 rounded-2xl border-2 border-primary/25 bg-primary/[0.03] px-6 py-6 sm:px-8 max-w-4xl mx-auto">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-5">
+            <div className="flex items-center gap-3.5 sm:min-w-[240px]">
+              <div className="size-11 rounded-xl bg-primary/15 text-primary flex items-center justify-center border border-primary/30 shrink-0">
+                <Upload className="size-5" />
               </div>
-
-              {p.inherits && <p className="mt-5 text-sm font-bold text-foreground">{p.inherits}</p>}
-              <ul className="mt-5 flex flex-col gap-2.5 flex-grow">
-                {p.items.map((f) => (
-                  <li key={f} className="flex items-start gap-2.5 text-xs text-muted-foreground font-medium">
-                    <Check className="size-3.5 text-emerald-600 mt-0.5 shrink-0" />
-                    <span>{f}</span>
-                  </li>
-                ))}
-              </ul>
-
-              <Link href="/signup" className={`mt-8 w-full ${p.featured ? "btn-primary !bg-red-600 hover:!bg-red-700" : "btn-secondary"} font-bold py-3 text-center justify-center shadow-md`}>
-                {p.cta}
-              </Link>
+              <div>
+                <h3 className="font-extrabold text-lg text-foreground leading-tight">RTA Data Import</h3>
+                <p className="text-[11px] text-muted-foreground font-semibold mt-0.5">One-time onboarding add-on</p>
+              </div>
             </div>
-          ))}
+            <p className="text-xs text-muted-foreground leading-relaxed sm:flex-1">
+              We import your full historical book from CAMS &amp; KFintech RTA files — folios, holdings,
+              transactions &amp; capital gains — so you go live with clean, complete data from day one.
+            </p>
+            <div className="grid grid-cols-2 gap-3 sm:min-w-[300px]">
+              <div className="rounded-xl border border-border/60 bg-background/60 px-4 py-3 text-center">
+                <div className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
+                  <User className="size-3.5 text-primary" /> Individual ARN
+                </div>
+                <div className="mt-1 text-2xl font-extrabold text-foreground tabular-nums">₹10,000</div>
+              </div>
+              <div className="rounded-xl border border-border/60 bg-background/60 px-4 py-3 text-center">
+                <div className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
+                  <Building2 className="size-3.5 text-primary" /> Corporate ARN
+                </div>
+                <div className="mt-1 text-2xl font-extrabold text-foreground tabular-nums">₹20,000</div>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div className="mt-10 rounded-2xl border border-border/50 bg-secondary/20 px-6 py-5 max-w-4xl mx-auto">
@@ -779,89 +776,6 @@ const CORE_FEATURES = [
     bg: "bg-emerald-500/10",
     fg: "text-emerald-600 dark:text-emerald-400",
     impact: "Scale beyond the owner",
-  },
-];
-
-const PLANS = [
-  {
-    name: "Starter",
-    for: "Everything an established MFD firm needs to run day-to-day — clients, money, service & basics in one organised place.",
-    setup: "₹49,000",
-    price: "₹9,999",
-    unit: "/ user / year",
-    seats: "3 users = ₹29,997 / year",
-    featured: false,
-    cta: "Start Free Trial",
-    inherits: null,
-    items: [
-      "Dashboard",
-      "Tasks, Meetings & Calendar",
-      "Leads & Clients",
-      "Family Mapping",
-      "Risk Profile",
-      "10 Calculators",
-      "Insurance — policies, claims & renewal alerts",
-      "Business entries for all products",
-      "Email automation",
-      "Product master",
-      "User management",
-      "Reports & MIS",
-      "Basic support",
-      "CRM onboarding & training",
-    ],
-  },
-  {
-    name: "Growth",
-    for: "Automation, AI alerts & team tools to scale your AUM without adding headcount.",
-    setup: "₹79,000",
-    price: "₹12,999",
-    unit: "/ user / year",
-    seats: "3 users = ₹38,997 / year",
-    featured: false,
-    cta: "Start Free Trial",
-    inherits: "Everything in Starter, plus:",
-    items: [
-      "Command Center — AI alerts",
-      "Next Best Action — AI alerts",
-      "20 Calculators",
-      "Goal Planning",
-      "Service Requests",
-      "Proposals",
-      "Insurance Commission Tracker",
-      "WhatsApp Automation",
-      "Attendance & Leave Tracker",
-      "Sub-Distributor Module",
-      "Workflow Rules & Basic Automation",
-      "Aina Content Library",
-      "Personalised training",
-    ],
-  },
-  {
-    name: "Premium",
-    for: "Full AI, compliance & practice management for firms scaling seriously.",
-    setup: "₹97,000",
-    price: "₹14,999",
-    unit: "/ user / year",
-    seats: "3 users = ₹44,997 / year",
-    featured: true,
-    cta: "Start Free Trial",
-    inherits: "Everything in Starter & Growth, plus:",
-    items: [
-      "AI Assistant",
-      "RTA File Import",
-      "Advanced Goal Planning",
-      "Brokerage Management",
-      "DDQ Compliance Management & Audit",
-      "Portfolio Intelligence",
-      "Practice & Finance",
-      "Advanced Automation",
-      "Website Management",
-      "Social Media Management",
-      "Custom CRM customisation",
-      "AI tool training",
-      "IT-related training & support",
-      "Custom presentation & tools",
-    ],
   },
 ];
 

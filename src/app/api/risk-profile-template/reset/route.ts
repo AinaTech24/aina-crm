@@ -18,7 +18,7 @@ export const dynamic = "force-dynamic";
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "settings.users");
+    requireCap(session.roles, "settings.users", session.permissions);
     const tpl = defaultTemplate();
     const meta = clientMetaFromHeaders(req.headers);
 
@@ -47,6 +47,9 @@ export async function POST(req: NextRequest) {
           questions: tpl.questions as any,
           bands: tpl.bands as any,
           reviewIntervalDays: tpl.reviewIntervalDays,
+          // Resetting the questionnaire shouldn't silently flip the firm's
+          // OTP policy — carry the current setting forward.
+          requireEmailOtp: current?.requireEmailOtp ?? true,
           publishedBy: session.userId,
           publishedAt: new Date(),
         })

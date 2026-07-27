@@ -39,7 +39,16 @@ const PANEL = {
   },
 } as const;
 
-export function AuthScreen({ initialMode }: { initialMode: Mode }) {
+export function AuthScreen({
+  initialMode,
+  brandLogoUrl = null,
+  brandName = null,
+}: {
+  initialMode: Mode;
+  /** White-label branding for a firm's own login host — falls back to Aina. */
+  brandLogoUrl?: string | null;
+  brandName?: string | null;
+}) {
   const [mode, setMode] = useState<Mode>(initialMode);
   const params = useSearchParams();
   const next = params.get("next") ?? "/dashboard";
@@ -165,9 +174,9 @@ export function AuthScreen({ initialMode }: { initialMode: Mode }) {
       <div className="hidden lg:flex relative flex-col justify-between p-12 overflow-hidden text-white bg-gradient-to-br from-[#D8434B] via-[#C21F28] to-[#B71A20]">
         <div className="absolute inset-0 opacity-[0.06] bg-[radial-gradient(circle_at_1px_1px,white_1px,transparent_0)] [background-size:22px_22px]" />
 
-        <Link href="/" className="relative z-10 inline-flex w-fit items-center" aria-label="Aina CRM home">
+        <Link href="/" className="relative z-10 inline-flex w-fit items-center" aria-label={`${brandName ?? "Aina CRM"} home`}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/aina-logo.png" alt="Aina CRM" className="h-11 w-auto bg-white rounded-xl px-3 py-2 shadow-lg" />
+          <img src={brandLogoUrl || "/aina-logo.png"} alt={brandName ?? "Aina CRM"} className="h-11 w-auto bg-white rounded-xl px-3 py-2 shadow-lg object-contain" />
         </Link>
 
         <div key={`panel-${mode}`} className="auth-swap relative z-10 max-w-md">
@@ -210,7 +219,7 @@ export function AuthScreen({ initialMode }: { initialMode: Mode }) {
           {/* Mobile-only logo (desktop uses the left panel — never both) */}
           <div className="lg:hidden mb-8 flex justify-center">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/aina-wordmark.png" alt="Aina CRM" className="h-9 w-auto" />
+            <img src={brandLogoUrl || "/aina-wordmark.png"} alt={brandName ?? "Aina CRM"} className="h-9 w-auto object-contain" />
           </div>
 
           <div key={`form-${mode}-${challenge ? "2fa" : "x"}`} className="auth-swap">

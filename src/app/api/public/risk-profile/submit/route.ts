@@ -16,7 +16,9 @@ import {
   investors,
   leads,
   eventsOutbox,
+  publicEmailOtps,
 } from "@/db/schema";
+import { otpHashMatches, OTP_MAX_ATTEMPTS } from "@/lib/public-otp";
 import {
   claimShareToken,
   releaseShareToken,
@@ -63,11 +65,11 @@ export async function POST(req: NextRequest) {
     const signatureName: string = String(body.signatureName ?? "").trim().slice(0, 120);
     if (!signatureName) return NextResponse.json({ error: "Signature required" }, { status: 400 });
 
-    // The client cannot ASSERT how it was verified. We do NOT run an OTP check
-    // on this path, so recording "client_otp" would overclaim on a SEBI audit
-    // trail. The token (single-use, signed, tenant-scoped) is the credential —
-    // record that truthfully as a secure-link signature.
-    const verificationMethod = "client_link";
+    // Optional email-OTP proof. The code itself is verified server-side below
+    // (against the hashed public_email_otps row); `otpEmail` is display-only on
+    // the client — the stored row's email is the authoritative verified address.
+    const otpInput: string = String(body.otp ?? "").trim().slice(0, 12);
+
     const otpTransactionId: string | undefined = undefined;
 
     // Re-fetch via the token id rather than re-resolving the plaintext — the
@@ -88,6 +90,85 @@ export async function POST(req: NextRequest) {
       if (t.kind !== "risk_profile") throw new Error("Not a risk-profile token");
       return t;
     });
+
+    // Step 1a: email-OTP gate. Runs BEFORE the token claim in its OWN tenant
+    // transaction so (a) a rejected code never claims the token or saves
+    // anything, and (b) wrong-attempt increments COMMIT even though we return
+    // 422 (they'd roll back if this lived inside the main transaction).
+    // When the tenant requires OTP (template flag, default ON) a verified code
+    // is mandatory; when it doesn't, a supplied valid code still stamps the
+    // proof but a missing/failed one falls through to today's behavior.
+    type OtpGate =
+      | { status: "ok"; verifiedEmail: string; emailVerifiedAt: Date }
+      | { status: "skip" }
+      | { status: "otp_required" }
+      | { status: "otp_expired" }
+      | { status: "otp_invalid"; attemptsLeft: number };
+
+    const otpGate: OtpGate = await withTenant(tk.tenantId!, async (tx): Promise<OtpGate> => {
+      const [tplRow] = await tx
+        .select({ requireEmailOtp: riskProfileTemplates.requireEmailOtp })
+        .from(riskProfileTemplates)
+        .where(eq(riskProfileTemplates.tenantId, tk.tenantId!))
+        .orderBy(desc(riskProfileTemplates.versionNumber))
+        .limit(1);
+      // No template row → migration default applies (OTP required).
+      const required = tplRow ? tplRow.requireEmailOtp !== false : true;
+
+      if (!required && !otpInput) return { status: "skip" };
+
+      const [otpRow] = await tx
+        .select()
+        .from(publicEmailOtps)
+        .where(eq(publicEmailOtps.tokenId, tk.id));
+
+      // Never requested a code / no code typed.
+      if (!otpRow || !otpInput) return required ? { status: "otp_required" } : { status: "skip" };
+
+      // Expired by time or burned by too many wrong tries — client must resend.
+      const expired =
+        new Date(otpRow.expiresAt as any) < new Date() ||
+        (otpRow.attempts ?? 0) >= OTP_MAX_ATTEMPTS;
+      if (expired) return required ? { status: "otp_expired" } : { status: "skip" };
+
+      if (!otpHashMatches(otpInput, otpRow.codeHash)) {
+        const attempts = (otpRow.attempts ?? 0) + 1;
+        await tx
+          .update(publicEmailOtps)
+          .set({ attempts })
+          .where(eq(publicEmailOtps.id, otpRow.id));
+        return required
+          ? { status: "otp_invalid", attemptsLeft: Math.max(0, OTP_MAX_ATTEMPTS - attempts) }
+          : { status: "skip" };
+      }
+
+      // Valid — mark verified (idempotent on retry after a later failure).
+      const verifiedAt = new Date();
+      await tx
+        .update(publicEmailOtps)
+        .set({ verifiedAt })
+        .where(eq(publicEmailOtps.id, otpRow.id));
+      return { status: "ok", verifiedEmail: otpRow.email, emailVerifiedAt: verifiedAt };
+    });
+
+    if (otpGate.status === "otp_required") {
+      return NextResponse.json({ error: "otp_required" }, { status: 422 });
+    }
+    if (otpGate.status === "otp_expired") {
+      return NextResponse.json({ error: "otp_expired" }, { status: 422 });
+    }
+    if (otpGate.status === "otp_invalid") {
+      return NextResponse.json(
+        { error: "otp_invalid", attemptsLeft: otpGate.attemptsLeft },
+        { status: 422 }
+      );
+    }
+    const otpVerified = otpGate.status === "ok";
+
+    // Verification method for the audit trail: "client_otp" ONLY when a code
+    // was actually verified server-side above; otherwise the single-use signed
+    // token remains the credential — record that truthfully as "client_link".
+    const verificationMethod = otpVerified ? "client_otp" : "client_link";
 
     // Step 1b: atomically CLAIM the single-use token before doing any work.
     // This is the serialization point — two concurrent submits both pass the
@@ -159,6 +240,8 @@ export async function POST(req: NextRequest) {
         nextReviewAt: next.toISOString().slice(0, 10),
         verificationMethod,
         otpTransactionId: otpTransactionId || null,
+        verifiedEmail: otpGate.status === "ok" ? otpGate.verifiedEmail : null,
+        emailVerifiedAt: otpGate.status === "ok" ? otpGate.emailVerifiedAt : null,
         clientIp: ip || null,
         clientUserAgent: ua || null,
       } as any);

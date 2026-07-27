@@ -62,11 +62,21 @@ export async function composeBrandedPdf(
   template: BrandingTemplate,
   opts: ComposePdfOpts
 ): Promise<Buffer> {
-  const src = await PDFDocument.load(sourceBuffer, {
-    ignoreEncryption: true,
-    throwOnInvalidObject: false,
-    updateMetadata: false,
-  });
+  // Encrypted/restricted sources are REJECTED (not silently re-branded) — a
+  // password on the source means someone intended to restrict it. The route
+  // surfaces this message as a clean 422 with a "Download original" fallback.
+  let src: PDFDocument;
+  try {
+    src = await PDFDocument.load(sourceBuffer, {
+      throwOnInvalidObject: false,
+      updateMetadata: false,
+    });
+  } catch (e: any) {
+    if (/encrypt/i.test(String(e?.message ?? ""))) {
+      throw new Error("the source PDF is password-protected and can't be co-branded");
+    }
+    throw e;
+  }
 
   const out = await PDFDocument.create();
   const helv = await out.embedFont(StandardFonts.Helvetica);
@@ -140,13 +150,16 @@ function drawCover(
 ) {
   const { brand, style } = args;
   const primary = hexToRgb(brand.primaryColor);
+  // Accent follows the tenant's secondary brand colour; falls back to the
+  // platform cyan only when the firm hasn't set one.
+  const accent = brand.secondaryColor ? hexToRgb(brand.secondaryColor) : ACCENT;
 
   if (style === "sidebar") {
-    drawSidebarCover(page, { ...args, primary });
+    drawSidebarCover(page, { ...args, primary, accent });
   } else if (style === "minimal") {
-    drawMinimalCover(page, { ...args, primary });
+    drawMinimalCover(page, { ...args, primary, accent });
   } else {
-    drawBannerCover(page, { ...args, primary });
+    drawBannerCover(page, { ...args, primary, accent });
   }
 }
 
@@ -158,6 +171,7 @@ type CoverArgs = {
   title: string;
   category: string | null;
   primary: RGB;
+  accent: RGB;
 };
 
 function drawBannerCover(page: PDFPage, a: CoverArgs) {
@@ -169,7 +183,7 @@ function drawBannerCover(page: PDFPage, a: CoverArgs) {
 
   // Header band + accent rule.
   page.drawRectangle({ x: 0, y: H - bandH, width: W, height: bandH, color: primary });
-  page.drawRectangle({ x: 0, y: H - bandH, width: W, height: 5, color: ACCENT });
+  page.drawRectangle({ x: 0, y: H - bandH, width: W, height: 5, color: a.accent });
 
   // Logo / initial tile inside the band.
   const tile = Math.min(76, bandH * 0.46);
@@ -244,7 +258,7 @@ function drawMinimalCover(page: PDFPage, a: CoverArgs) {
 
   // Thin rule under the masthead, with a short accent lead-in.
   page.drawRectangle({ x: margin, y: topY - 16, width: W - 2 * margin, height: 2, color: primary });
-  page.drawRectangle({ x: margin, y: topY - 16, width: 64, height: 2, color: ACCENT });
+  page.drawRectangle({ x: margin, y: topY - 16, width: 64, height: 2, color: a.accent });
 
   drawTitleBlock(page, {
     helv,
@@ -269,7 +283,7 @@ function drawSidebarCover(page: PDFPage, a: CoverArgs) {
 
   // Left colour band + accent edge.
   page.drawRectangle({ x: 0, y: 0, width: barW, height: H, color: primary });
-  page.drawRectangle({ x: barW - 4, y: 0, width: 4, height: H, color: ACCENT });
+  page.drawRectangle({ x: barW - 4, y: 0, width: 4, height: H, color: a.accent });
 
   // Logo near the top of the band.
   const tile = Math.min(96, barW - 2 * pad);

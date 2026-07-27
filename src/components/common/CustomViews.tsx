@@ -14,9 +14,12 @@
  * Designed to sit in the right-slot of <FilterBar>.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { ListFilter, Plus, Star, Trash2, X, Check } from "lucide-react";
+
+const PANEL_W = 288; // w-72
 
 type SavedView = {
   id: string;
@@ -32,9 +35,12 @@ export function CustomViews({
   viewsKey,
   /** Optional preset views the module ships with (read-only). */
   presets,
+  /** Icon-only trigger (no "View:" label) — for compact toolbars. */
+  compact = false,
 }: {
   viewsKey: string;
   presets?: Array<{ id: string; name: string; params: string }>;
+  compact?: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -43,6 +49,28 @@ export function CustomViews({
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [name, setName] = useState("");
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+
+  // Position the (portaled) panel under the button, right-aligned but clamped
+  // into the viewport so it never clips off-screen wherever the button sits.
+  useEffect(() => {
+    if (!open) return;
+    const compute = () => {
+      const r = btnRef.current?.getBoundingClientRect();
+      if (!r) return;
+      const left = Math.max(8, Math.min(r.right - PANEL_W, window.innerWidth - PANEL_W - 8));
+      setPos({ top: r.bottom + 4, left });
+    };
+    compute();
+    const onScroll = () => setOpen(false);
+    window.addEventListener("resize", compute);
+    window.addEventListener("scroll", onScroll, true);
+    return () => {
+      window.removeEventListener("resize", compute);
+      window.removeEventListener("scroll", onScroll, true);
+    };
+  }, [open]);
 
   // Load views on mount
   useEffect(() => {
@@ -97,22 +125,43 @@ export function CustomViews({
 
   return (
     <div className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((s) => !s)}
-        className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card hover:bg-secondary px-2.5 h-8 text-xs font-medium"
-      >
-        <ListFilter className="size-3.5 text-brand-cyan" />
-        <span className="opacity-70">View:</span>
-        <span className="font-semibold">{activeLabel}</span>
-        <span className="opacity-60 text-[10px]">▾</span>
-      </button>
+      {compact ? (
+        <button
+          ref={btnRef}
+          type="button"
+          onClick={() => setOpen((s) => !s)}
+          title={`View: ${activeLabel}`}
+          aria-label={`View: ${activeLabel}`}
+          className={`relative inline-flex items-center justify-center rounded-lg border size-8 transition ${
+            activeLabel !== "All" ? "bg-brand-cyan-light/40 border-brand-cyan/40 text-brand-cyan-deep" : "bg-card border-border hover:bg-secondary"
+          }`}
+        >
+          <ListFilter className="size-4" />
+          {activeLabel !== "All" && <span className="absolute -top-1 -right-1 size-2 rounded-full bg-brand-cyan" />}
+        </button>
+      ) : (
+        <button
+          ref={btnRef}
+          type="button"
+          onClick={() => setOpen((s) => !s)}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card hover:bg-secondary px-2.5 h-8 text-xs font-medium"
+        >
+          <ListFilter className="size-3.5 text-brand-cyan" />
+          <span className="opacity-70">View:</span>
+          <span className="font-semibold">{activeLabel}</span>
+          <span className="opacity-60 text-[10px]">▾</span>
+        </button>
+      )}
 
-      {open && (
+      {open && pos && typeof document !== "undefined" && createPortal(
         <>
           {/* Click-outside backdrop */}
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-full mt-1 z-50 card-elevated w-72 overflow-hidden bg-card">
+          <div className="fixed inset-0 z-[59]" onClick={() => setOpen(false)} />
+          <div
+            data-floating-popup
+            style={{ top: pos.top, left: pos.left, width: PANEL_W }}
+            className="fixed z-[60] card-elevated overflow-hidden bg-card"
+          >
             {/* Default / presets */}
             <div className="border-b border-border">
               <ViewItem
@@ -203,7 +252,8 @@ export function CustomViews({
               )}
             </div>
           </div>
-        </>
+        </>,
+        document.body
       )}
     </div>
   );

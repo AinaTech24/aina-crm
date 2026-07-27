@@ -45,6 +45,8 @@ export type BrandingTenant = {
   address?: any | null;
   logoUrl?: string | null;
   primaryColor?: string | null;
+  /** Secondary/accent brand colour — used for accent rules on branded PDFs. */
+  secondaryColor?: string | null;
 };
 
 export type BrandingPosition = "top" | "bottom" | "both" | "split" | "frame";

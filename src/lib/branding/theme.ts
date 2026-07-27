@@ -55,6 +55,36 @@ export function isHexColor(s: string | null | undefined): s is string {
   return !!s && /^#[0-9a-fA-F]{6}$/.test(s);
 }
 
+/* ─────────────────── Fonts & density (migration 0164) ─────────────────── */
+
+/** Selectable brand fonts → CSS font stacks (system/webfont-safe, no network). */
+export const FONT_STACKS: Record<string, string> = {
+  inter: "var(--font-inter), ui-sans-serif, system-ui, sans-serif",
+  system: "ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif",
+  serif: "ui-serif, Georgia, Cambria, 'Times New Roman', serif",
+  rounded: "ui-rounded, 'SF Pro Rounded', 'Segoe UI', system-ui, sans-serif",
+  mono: "ui-monospace, 'Cascadia Code', 'Roboto Mono', Menlo, monospace",
+};
+
+export const THEME_FONTS: { id: string; label: string }[] = [
+  { id: "inter", label: "Inter (default)" },
+  { id: "system", label: "System UI" },
+  { id: "serif", label: "Serif" },
+  { id: "rounded", label: "Rounded" },
+  { id: "mono", label: "Monospace" },
+];
+
+export const UI_DENSITIES: { id: string; label: string }[] = [
+  { id: "comfortable", label: "Comfortable (default)" },
+  { id: "compact", label: "Compact" },
+];
+
+/** Root font-size per density — everything is rem-based, so this scales text +
+ *  spacing together. null when the tenant uses the default. */
+function densityRootPx(uiDensity?: string | null): number | null {
+  return uiDensity === "compact" ? 15 : null; // default (comfortable) = browser 16px
+}
+
 /**
  * Resolve the effective theme colours from raw tenant fields, applying the
  * "unbranded → AINA navy" fallback so un-customised tenants keep the polished
@@ -176,7 +206,9 @@ export function buildTenantThemeCss(
   primaryColor?: string | null,
   secondaryColor?: string | null,
   textColor?: string | null,
-  hoverColor?: string | null
+  hoverColor?: string | null,
+  fontFamily?: string | null,
+  uiDensity?: string | null
 ): string {
   const { primary, accent } = resolveThemeColors(primaryColor, secondaryColor);
   const vars: Record<string, string> = {};
@@ -186,12 +218,19 @@ export function buildTenantThemeCss(
   }
   // Text + hover apply independently of the brand colours.
   Object.assign(vars, extraThemeVars(textColor, hoverColor));
+
+  const out: string[] = [];
   const keys = Object.keys(vars);
-  if (keys.length === 0) return "";
-  const body = keys.map((k) => `${k}: ${vars[k]};`).join(" ");
-  // Scope to light mode only — in dark mode the `.dark` palette wins, so the
-  // per-tenant light tints never bleed onto the dark theme.
-  return `:root:not(.dark){ ${body} }`;
+  if (keys.length) {
+    // Colours scope to light mode only — the `.dark` palette wins in dark mode.
+    out.push(`:root:not(.dark){ ${keys.map((k) => `${k}: ${vars[k]};`).join(" ")} }`);
+  }
+  // Font + density apply in BOTH modes.
+  const stack = fontFamily && fontFamily !== "inter" ? FONT_STACKS[fontFamily] : null;
+  if (stack) out.push(`:root{ --brand-font: ${stack}; }`);
+  const px = densityRootPx(uiDensity);
+  if (px) out.push(`html{ font-size: ${px}px; }`);
+  return out.join(" ");
 }
 
 /**

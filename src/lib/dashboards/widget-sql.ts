@@ -181,7 +181,7 @@ export const WIDGET_SQL: Record<string, WidgetSqlDef> = {
   table_dormant: {
     view: { kind: "table", columns: [{ key: "name", label: "Client" }, { key: "aum", label: "AUM", format: "inr" }, { key: "last_transaction_at", label: "Last txn", format: "date" }] },
     run: (s, c) => s`SELECT name, aum, last_transaction_at FROM investors i WHERE status='active' AND i.deleted_at IS NULL
-      AND (last_transaction_at IS NULL OR last_transaction_at < now() - interval '180 days') ${rmInvestor(c.rmId)}
+      AND (last_transaction_at IS NULL OR last_transaction_at < now() - make_interval(days => COALESCE((SELECT dormancy_window_days FROM tenants WHERE id = i.tenant_id), 180))) ${rmInvestor(c.rmId)}
       ORDER BY last_transaction_at ASC NULLS FIRST LIMIT 12`,
   },
   table_review_pending: {

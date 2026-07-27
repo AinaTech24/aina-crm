@@ -13,6 +13,7 @@ import { eq, sql } from "drizzle-orm";
 import { withSystem, withTenant } from "@/db/client";
 import { shareTokens } from "@/db/schema";
 import { renderRiskProfilePdf } from "@/lib/risk-profile/risk-profile-pdf";
+import { loadActiveTemplate } from "@/lib/risk-profile/template";
 import { enforce } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
@@ -40,7 +41,7 @@ export async function GET(req: NextRequest) {
 
     const built = await withTenant(tk.tenantId, async (tx) => {
       const r = await tx.execute(sql`
-        SELECT final_category, total_score, responses, profile_date, age,
+        SELECT id, final_category, total_score, responses, profile_date, age,
                signed_at, signed_by_name, next_review_at, verification_method
         FROM risk_profile_responses
         WHERE investor_id = ${tk.subjectId}::uuid AND tenant_id = ${tk.tenantId}::uuid
@@ -75,10 +76,17 @@ export async function GET(req: NextRequest) {
         `)
       ).rows[0] as any;
 
+      // Template max score gives the number a scale ("24 / 40" on the PDF).
+      const tpl = await loadActiveTemplate(tx, tk.tenantId!).catch(() => null);
+      const maxScore = tpl
+        ? tpl.questions.reduce((s, q) => s + Math.max(...q.options.map((o) => o.score)), 0)
+        : null;
+
       const pdf = await renderRiskProfilePdf({
         profile: {
           category: row.final_category ?? null,
           totalScore: row.total_score != null ? Number(row.total_score) : null,
+          maxScore,
           profileDate: row.profile_date ?? null,
           signedAt: row.signed_at ? new Date(row.signed_at).toISOString() : null,
           signedByName: row.signed_by_name ?? null,
@@ -102,6 +110,7 @@ export async function GET(req: NextRequest) {
           website: t?.website,
         },
         generatedAt: new Date().toISOString(),
+        refId: row.id ?? null,
       });
       return { pdf, name };
     });
@@ -114,7 +123,7 @@ export async function GET(req: NextRequest) {
       status: 200,
       headers: {
         "content-type": "application/pdf",
-        "content-disposition": `${disposition}; filename="risk_profile_${safe}.pdf"`,
+        "content-disposition": `${disposition}; filename="RiskProfile_${safe}_${new Date().toISOString().slice(0, 10)}.pdf"`,
         "cache-control": "no-store",
       },
     });

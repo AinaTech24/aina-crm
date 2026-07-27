@@ -6,7 +6,6 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { formatINR, formatDate } from "@/lib/utils";
 import { ReportExportButtons } from "@/components/reports/ReportExportButtons";
-import { TableScroll } from "@/components/common/TableScroll";
 
 /**
  * Generic report viewer. Routes /dashboard/reports/<key> through a registry
@@ -159,7 +158,7 @@ const REPORTS: Record<
     runSql: (sql) => sql`
       SELECT name, aum, last_transaction_at FROM investors
       WHERE status = 'active' AND deleted_at IS NULL
-        AND (last_transaction_at IS NULL OR last_transaction_at < now() - interval '180 days')
+        AND (last_transaction_at IS NULL OR last_transaction_at < now() - make_interval(days => COALESCE((SELECT dormancy_window_days FROM tenants WHERE id = investors.tenant_id), 180)))
       ORDER BY last_transaction_at NULLS FIRST LIMIT 100
     `,
   },
@@ -1392,9 +1391,9 @@ export default async function ReportPage({ params }: { params: Promise<{ key: st
         {rows.length === 0 ? (
           <div className="p-12 text-center text-sm text-muted-foreground">No data for this report.</div>
         ) : (
-          <TableScroll>
+          <div className="max-h-[65vh] overflow-auto scrollbar-none rounded-lg">
             <table className="w-full text-sm">
-            <thead className="text-xs text-muted-foreground border-b">
+            <thead className="text-xs text-muted-foreground border-b sticky top-0 z-10 bg-card">
               <tr>
                 {report.columns.map((c) => (
                   <th key={c.key} className={`px-4 py-2 font-medium ${c.format === "inr" || c.format === "number" ? "text-right" : "text-left"}`}>
@@ -1420,7 +1419,7 @@ export default async function ReportPage({ params }: { params: Promise<{ key: st
               ))}
             </tbody>
             </table>
-          </TableScroll>
+          </div>
         )}
       </div>
     </div>

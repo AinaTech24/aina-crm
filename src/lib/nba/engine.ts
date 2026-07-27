@@ -241,7 +241,7 @@ export async function buildNextBestActions(
       SELECT i.id, i.name, i.avatar_url, i.phone, i.email, COALESCE(i.aum,0)::numeric AS aum, i.last_transaction_at, u.name AS rm_name
       FROM investors i LEFT JOIN users u ON u.id = i.rm_id
       WHERE i.merged_into_id IS NULL AND i.deleted_at IS NULL AND i.status = 'active'
-        AND (i.last_transaction_at IS NULL OR i.last_transaction_at < now() - interval '180 days')
+        AND (i.last_transaction_at IS NULL OR i.last_transaction_at < now() - make_interval(days => COALESCE((SELECT dormancy_window_days FROM tenants WHERE id = i.tenant_id), 180)))
         AND COALESCE(i.aum,0) > 0 ${invScope}
       ORDER BY i.aum DESC NULLS LAST ${cap}
     `);

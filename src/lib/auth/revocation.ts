@@ -82,3 +82,57 @@ export function clearSessionRevocationCache(userId?: string): void {
   if (userId) cache.delete(userId);
   else cache.clear();
 }
+
+// ---------------------------------------------------------------------------
+// Per-DEVICE session revocation (user_sessions.revoked_at) + last-seen touch.
+// ---------------------------------------------------------------------------
+
+const SID_CACHE_TTL_MS = 60_000;
+const TOUCH_INTERVAL_MS = 60_000;
+type SidEntry = { revoked: boolean; cachedAt: number; lastTouch: number };
+const sidCache = new Map<string, SidEntry>();
+
+/**
+ * True if the token's device session (its `sid`) has been individually revoked
+ * (per-device logout / sign-out-all / deactivation set user_sessions.revoked_at).
+ * Also opportunistically updates last_seen_at (throttled) to power presence.
+ *
+ * Fails OPEN: a missing row (legacy token, or a login where the best-effort
+ * insert didn't land) or a DB error is treated as NOT revoked — the global
+ * users.sessions_invalid_after check remains the primary teeth.
+ */
+export async function isDeviceSessionRevoked(opts: { sid?: string; tenantId: string }): Promise<boolean> {
+  const { sid, tenantId } = opts;
+  if (!sid || !tenantId) return false;
+  const now = Date.now();
+  let entry = sidCache.get(sid);
+  if (!entry || now - entry.cachedAt > SID_CACHE_TTL_MS) {
+    try {
+      const revoked = await withTenant(tenantId, async (tx) => {
+        const r = await tx.execute(sql`SELECT revoked_at FROM user_sessions WHERE session_id = ${sid} LIMIT 1`);
+        const row = (r.rows as Array<{ revoked_at: string | null }>)[0];
+        if (!row) return false; // no row → fail open
+        return row.revoked_at != null;
+      });
+      entry = { revoked, cachedAt: now, lastTouch: entry?.lastTouch ?? 0 };
+      sidCache.set(sid, entry);
+    } catch {
+      return false; // fail open
+    }
+  }
+  // Presence heartbeat — throttled, fire-and-forget (never blocks the request).
+  if (!entry.revoked && now - entry.lastTouch > TOUCH_INTERVAL_MS) {
+    entry.lastTouch = now;
+    void withTenant(tenantId, async (tx) => {
+      await tx.execute(sql`UPDATE user_sessions SET last_seen_at = now() WHERE session_id = ${sid} AND revoked_at IS NULL`);
+    }).catch(() => {});
+  }
+  return entry.revoked;
+}
+
+/** Drop the cached device-session state so a just-revoked device is kicked on
+ *  its very next request (call after setting revoked_at). */
+export function clearDeviceSessionCache(sid?: string): void {
+  if (sid) sidCache.delete(sid);
+  else sidCache.clear();
+}

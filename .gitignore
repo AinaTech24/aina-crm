@@ -32,6 +32,19 @@ yarn-error.log*
 # real production / staging secret files (the *.example templates ARE committed)
 .env.production
 .env.staging
+# env BACKUPS / pg-preview dumps — these hold real credentials. The rules above
+# miss them: `.env*.local` only matches names ENDING in `.local`, so a file like
+# `.env.local.bak.pgpreview` slipped through and was staged by `git add -A`.
+.env.bak*
+.env*.bak*
+*.pgpreview
+
+# deploy tarballs built by the scp deploy flow (multi-MB build artefacts)
+*.tgz
+*.tar.gz
+# stray 68 MB unreadable blob at the repo root (no read permission) — it aborts
+# `git add -A` outright. Not a source file; ignore rather than commit.
+/.zip
 
 # terraform — never commit state or real var values (keep *.example + lock file)
 infra/**/.terraform/

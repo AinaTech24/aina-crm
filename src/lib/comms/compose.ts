@@ -156,7 +156,7 @@ async function performEmailSend(
     category: args.category,
     tenant: {
       legalName: tenantRow?.legalName,
-      arn: tenantRow?.arn,
+      arn: tenantRow?.arn ?? undefined,
       principalEuin: tenantRow?.principalEuin ?? undefined,
       riaRegistered: tenantRow?.riaRegistered ?? false,
     },
@@ -276,7 +276,7 @@ export async function scheduleEmail(
     category: input.category,
     tenant: {
       legalName: tenantRow?.legalName,
-      arn: tenantRow?.arn,
+      arn: tenantRow?.arn ?? undefined,
       principalEuin: tenantRow?.principalEuin ?? undefined,
       riaRegistered: tenantRow?.riaRegistered ?? false,
     },

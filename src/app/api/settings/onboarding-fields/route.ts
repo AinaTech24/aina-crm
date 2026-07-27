@@ -45,9 +45,17 @@ async function loadOverrides(tenantId: string): Promise<Record<string, boolean>>
 export async function GET() {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "settings.users");
+    requireCap(session.roles, "settings.users", session.permissions);
     const overrides = await loadOverrides(session.tenantId);
-    return NextResponse.json({ overrides });
+    // Include the field catalog so the mobile app can render the toggle list
+    // (the web reads getAllUniqueFields() at render — there was no JSON for it).
+    const catalog = getAllUniqueFields().map((f) => ({
+      key: f.key,
+      label: f.label,
+      section: (f as any).section ?? "Other",
+      required: !!f.required,
+    }));
+    return NextResponse.json({ overrides, catalog });
   } catch (err) {
     return handleApiError(err);
   }
@@ -56,7 +64,7 @@ export async function GET() {
 export async function PUT(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "settings.users");
+    requireCap(session.roles, "settings.users", session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
 
     const parse = PutBody.safeParse(await req.json().catch(() => ({})));

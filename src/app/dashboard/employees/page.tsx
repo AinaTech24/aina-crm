@@ -7,6 +7,8 @@ import { ROLE_LABELS } from "@/lib/auth/rbac";
 import { formatDate, formatINR } from "@/lib/utils";
 import { FilterBar } from "@/components/common/FilterBar";
 import { CustomViews } from "@/components/common/CustomViews";
+import { EmployeeRowActions } from "@/components/employees/EmployeeRowActions";
+import { TeamPresence } from "@/components/employees/TeamPresence";
 
 const STATUS_COLORS: Record<string, string> = {
   active: "bg-emerald-50 text-emerald-700",
@@ -30,7 +32,8 @@ export default async function EmployeesPage({
   const statusFilter = (sp.status ?? "").split(",").filter(Boolean);
 
   const data = await withTenant(session.tenantId, async (tx) => {
-    const conds: any[] = [];
+    // Trashed (soft-deleted) employees live in the Trash bin, not the team list.
+    const conds: any[] = [sql`u.deleted_at IS NULL`];
     if (q) {
       conds.push(
         sql`(u.name ILIKE ${`%${q}%`} OR u.email ILIKE ${`%${q}%`} OR u.phone ILIKE ${`%${q}%`} OR u.euin ILIKE ${`%${q}%`})`
@@ -81,6 +84,7 @@ export default async function EmployeesPage({
           </h1>
         </div>
         <div className="flex items-center gap-2">
+          <TeamPresence members={data.map((e) => ({ id: e.id, name: e.name }))} />
           <Link href="/dashboard/employees/org" className="rounded-md border px-3 py-1.5 text-sm font-medium flex items-center gap-1.5 hover:bg-secondary">
             <Network className="size-4" /> Org chart
           </Link>
@@ -97,13 +101,6 @@ export default async function EmployeesPage({
             <Plus className="size-4" /> Invite employee
           </Link>
         </div>
-      </div>
-
-      <div className="grid grid-cols-4 gap-3">
-        <Stat icon={UserCog} label="Total" value={stats.total} />
-        <Stat icon={UserCog} label="Active" value={stats.active} tone="emerald" />
-        <Stat icon={AlertTriangle} label="NISM expiring (90d)" value={stats.nismExpiring} tone={stats.nismExpiring > 0 ? "amber" : "muted"} />
-        <Stat icon={Target} label="RMs with targets" value={stats.targetedRms} />
       </div>
 
       <FilterBar
@@ -171,7 +168,8 @@ export default async function EmployeesPage({
                   <th className="text-right py-2 font-medium">AUM</th>
                   <th className="text-right py-2 font-medium">Target</th>
                   <th className="text-left py-2 font-medium">NISM</th>
-                  <th className="text-left py-2 font-medium pr-4">Status</th>
+                  <th className="text-left py-2 font-medium">Status</th>
+                  <th className="text-right py-2 font-medium pr-4">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -188,11 +186,11 @@ export default async function EmployeesPage({
                         {e.phone && <div className="text-[10px] text-muted-foreground font-mono">{e.phone}</div>}
                       </td>
                       <td className="py-3 text-xs capitalize">
-                        {e.department ? e.department.replace(/_/g, " ") : <span className="text-muted-foreground">—</span>}
+                        {e.department ? e.department.replace(/_/g, " ") : ""}
                       </td>
-                      <td className="py-3 text-xs">{e.manager_name ?? <span className="text-muted-foreground">—</span>}</td>
+                      <td className="py-3 text-xs">{e.manager_name ?? ""}</td>
                       <td className="py-3 text-xs text-muted-foreground tabular-nums">
-                        {e.joining_date ? formatDate(e.joining_date) : "—"}
+                        {e.joining_date ? formatDate(e.joining_date) : ""}
                       </td>
                       <td className="py-3 text-xs">
                         {(e.roles ?? []).slice(0, 3).map((r: string) => ROLE_LABELS[r] ?? r).join(", ")}
@@ -200,7 +198,7 @@ export default async function EmployeesPage({
                       </td>
                       <td className="py-3 text-right tabular-nums">{e.assigned_clients}</td>
                       <td className="py-3 text-right tabular-nums text-muted-foreground">
-                        {Number(e.my_aum ?? 0) > 0 ? formatINR(Number(e.my_aum)) : "—"}
+                        {Number(e.my_aum ?? 0) > 0 ? formatINR(Number(e.my_aum)) : ""}
                       </td>
                       <td className="py-3 text-right text-xs">
                         {Number(e.annual_target ?? 0) > 0 ? (
@@ -227,7 +225,7 @@ export default async function EmployeesPage({
                             );
                           })()
                         ) : (
-                          <span className="text-muted-foreground">—</span>
+                          ""
                         )}
                       </td>
                       <td className="py-3 text-xs">
@@ -239,11 +237,28 @@ export default async function EmployeesPage({
                             {formatDate(nismExpiry)}
                           </span>
                         ) : (
-                          <span className="text-muted-foreground">—</span>
+                          ""
                         )}
                       </td>
-                      <td className="py-3 pr-4">
+                      <td className="py-3">
                         <span className={`chip ${STATUS_COLORS[e.status] ?? ""}`}>{e.status}</span>
+                      </td>
+                      <td className="py-3 pr-4">
+                        <EmployeeRowActions
+                          employee={{
+                            id: e.id,
+                            name: e.name,
+                            email: e.email ?? null,
+                            phone: e.phone ?? null,
+                            status: e.status,
+                            department: e.department ?? null,
+                            managerName: e.manager_name ?? null,
+                            roles: (e.roles ?? []) as string[],
+                            assignedClients: Number(e.assigned_clients ?? 0),
+                            aum: Number(e.my_aum ?? 0),
+                            joiningDate: e.joining_date ? String(e.joining_date) : null,
+                          }}
+                        />
                       </td>
                     </tr>
                   );

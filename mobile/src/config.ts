@@ -16,7 +16,7 @@ import { Platform } from "react-native";
  * (`npm run dev` on port 3000). The phone is a separate device, so this can't be
  * `localhost`. Update if your network assigns a different address.
  */
-const LAN_IP = "192.168.0.159";
+const LAN_IP = "192.168.29.125";
 
 /**
  * Flip to `true` ONLY when testing against your local `npm run dev` server

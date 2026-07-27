@@ -35,6 +35,9 @@ import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense, loadTenantLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { healthFields } from "@/lib/investors/health";
+import { parseUccCell } from "@/lib/investors/ucc";
+import { loadCustomFieldDefs, sanitizeCustomFields } from "@/lib/custom-fields/values";
+import { applyRiskCategory, normalizeRiskCategory } from "@/lib/risk-profile/apply";
 import { investors } from "@/db/schema";
 
 export const dynamic = "force-dynamic";
@@ -143,21 +146,52 @@ export async function POST(req: NextRequest) {
     }
 
     await withTenant(session.tenantId, async (tx) => {
+      // Firm custom-field definitions — any mapped cf_* column is sanitized + stored.
+      const cfDefs = await loadCustomFieldDefs(tx, session.tenantId, "investor");
+
       // For update/both/skip we need to look existing clients up by the chosen
-      // key. Load the lightweight identity columns (+ address, for the merge)
-      // once and index them in memory rather than querying per row.
-      const keyToExisting = new Map<string, { id: string; address: any }>();
+      // key. Load the lightweight identity columns (+ address & custom fields,
+      // for the merge) once and index them in memory rather than querying per row.
+      const keyToExisting = new Map<string, { id: string; address: any; customFields: any; riskProfile: string | null }>();
       if (matchBy !== "none") {
         const existing = await tx.execute(
-          sql`SELECT id, pan, email, phone, address FROM investors WHERE tenant_id = ${session.tenantId}::uuid`
+          sql`SELECT id, pan, email, phone, address, custom_fields, risk_profile FROM investors WHERE tenant_id = ${session.tenantId}::uuid`
         );
         for (const e of existing.rows as any[]) {
           const src =
             matchBy === "clientId" ? e.id : matchBy === "pan" ? e.pan : matchBy === "phone" ? e.phone : e.email;
           const k = normKey(matchBy, String(src ?? ""));
-          if (k && !keyToExisting.has(k)) keyToExisting.set(k, { id: e.id, address: e.address ?? {} });
+          if (k && !keyToExisting.has(k)) keyToExisting.set(k, { id: e.id, address: e.address ?? {}, customFields: e.custom_fields ?? {}, riskProfile: e.risk_profile ?? null });
         }
       }
+
+      /** Sanitized custom-field values for the current row (empty object if none). */
+      const rowCustomFields = (row: Record<string, any>): Record<string, any> => {
+        const raw: Record<string, any> = {};
+        for (const d of cfDefs) raw[d.key] = pick(row, reverse[d.key]);
+        return sanitizeCustomFields(cfDefs, raw);
+      };
+
+      // Assigned-RM resolution — a mapped "Assigned RM" cell may hold a user's
+      // name, email, or id; resolve it to a real user in this tenant.
+      const rmRows = (await tx.execute(
+        sql`SELECT id, name, email FROM users WHERE tenant_id = ${session.tenantId}::uuid AND status <> 'offboarded'`
+      )).rows as Array<{ id: string; name: string | null; email: string | null }>;
+      const rmById = new Set(rmRows.map((u) => u.id));
+      const rmByName = new Map<string, string>();
+      const rmByEmail = new Map<string, string>();
+      for (const u of rmRows) {
+        if (u.name) rmByName.set(u.name.trim().toLowerCase(), u.id);
+        if (u.email) rmByEmail.set(u.email.trim().toLowerCase(), u.id);
+      }
+      const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      const resolveRm = (cell: string): string | null => {
+        const s = (cell ?? "").trim();
+        if (!s) return null;
+        if (UUID_RE.test(s) && rmById.has(s)) return s;
+        const lc = s.toLowerCase();
+        return rmByEmail.get(lc) ?? rmByName.get(lc) ?? null;
+      };
 
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
@@ -176,7 +210,7 @@ export async function POST(req: NextRequest) {
           }
           try {
             await tx.transaction(async (sp) => {
-              const set = buildUpdateSet(row, reverse, dontUpdateEmpty, existing.address);
+              const set = buildUpdateSet(row, reverse, dontUpdateEmpty, existing.address, rowCustomFields(row), existing.customFields, reverse.rmId ? resolveRm(pick(row, reverse.rmId)) : undefined);
               if (Object.keys(set).length > 1) {
                 // (>1 because updatedAt is always present)
                 await sp
@@ -195,12 +229,17 @@ export async function POST(req: NextRequest) {
         if (mode === "both" && existing) {
           try {
             await tx.transaction(async (sp) => {
-              const set = buildUpdateSet(row, reverse, dontUpdateEmpty, existing.address);
+              const set = buildUpdateSet(row, reverse, dontUpdateEmpty, existing.address, rowCustomFields(row), existing.customFields, reverse.rmId ? resolveRm(pick(row, reverse.rmId)) : undefined);
               if (Object.keys(set).length > 1) {
                 await sp
                   .update(investors)
                   .set(set as any)
                   .where(and(eq(investors.id, existing.id), eq(investors.tenantId, session.tenantId)));
+              }
+              // Risk category → new risk_profile_responses record when it changed.
+              const rowRisk = reverse.riskProfile ? normalizeRiskCategory(pick(row, reverse.riskProfile)) : null;
+              if (rowRisk) {
+                await applyRiskCategory({ tx: sp as any, tenantId: session.tenantId, investorId: existing.id, category: rowRisk, currentCategory: existing.riskProfile, createdById: session.userId });
               }
             });
             updated++;
@@ -293,6 +332,7 @@ export async function POST(req: NextRequest) {
           modeOfHolding: p("modeOfHolding"),
           bseUccCode: p("bseUccCode"),
           nseCanCode: p("nseCanCode"),
+          uccCodes: parseUccCell(reverse["uccCodes"] ? pick(row, reverse["uccCodes"]) : ""),
           taxStatus: p("taxStatus"),
           residencyStatus: enumize(p("residencyStatus"), ["indian_resident", "nri", "oci", "pio", "foreign_national"], null) as any,
           kycStatus: enumize(kycStatus, ["pending", "registered", "verified", "hold", "rejected", "expired", "re_kyc_required"], "pending") as any,
@@ -328,6 +368,8 @@ export async function POST(req: NextRequest) {
           // (migration 0137), so a migrated book may carry the SAME PAN on many
           // rows — every Excel row is inserted, never skipped for a PAN clash.
           const newId = uuid();
+          const cleanCf = rowCustomFields(row);
+          const rowRisk = reverse.riskProfile ? normalizeRiskCategory(pick(row, reverse.riskProfile)) : null;
           await tx.transaction(async (sp) => {
             await sp.insert(investors).values({
               id: newId,
@@ -336,17 +378,22 @@ export async function POST(req: NextRequest) {
               pan,
               dedupPan: false,
               ...core,
+              customFields: Object.keys(cleanCf).length ? cleanCf : null,
               onboardedAt: parseTimestamp(pick(row, reverse.onboardedAt)) ?? new Date(),
-              rmId: session.userId,
-              status: "active",
+              rmId: (reverse.rmId ? resolveRm(pick(row, reverse.rmId)) : null) ?? session.userId,
+              status: enumize(pick(row, reverse.status), ["active", "dormant", "inactive", "redemption_risk", "closed"], "active") ?? "active",
               ...h,
             } as any);
+            // Risk category → create a risk_profile_responses record + cache it.
+            if (rowRisk) {
+              await applyRiskCategory({ tx: sp as any, tenantId: session.tenantId, investorId: newId, category: rowRisk, currentCategory: null, createdById: session.userId, signedByName: core.name });
+            }
           });
           inserted++;
           // Record this row's key so a later duplicate row in the same file is
           // skipped (add mode) or updated rather than re-inserted (both mode).
           if (matchBy !== "none" && key && !keyToExisting.has(key)) {
-            keyToExisting.set(key, { id: newId, address: core.address });
+            keyToExisting.set(key, { id: newId, address: core.address, customFields: cleanCf, riskProfile: rowRisk });
           }
         } catch (err: any) {
           errors.push({ rowIndex: i, error: String(err.message ?? "insert failed"), pan, name });
@@ -393,9 +440,16 @@ function buildUpdateSet(
   row: Record<string, any>,
   reverse: Record<string, string>,
   dontUpdateEmpty: boolean,
-  existingAddress: any
+  existingAddress: any,
+  cleanCustomFields: Record<string, any> = {},
+  existingCustomFields: any = {},
+  rmResolved?: string | null
 ): Record<string, any> {
   const set: Record<string, any> = {};
+
+  // Assigned RM — only when the file mapped it AND it resolved to a real user
+  // (never wipe the current RM on a blank/unknown cell).
+  if (rmResolved) set.rmId = rmResolved;
 
   const put = (col: string, val: any) => {
     const empty = val === null || val === undefined || val === "";
@@ -431,6 +485,7 @@ function buildUpdateSet(
     { field: "modeOfHolding", col: "modeOfHolding" },
     { field: "bseUccCode", col: "bseUccCode" },
     { field: "nseCanCode", col: "nseCanCode" },
+    { field: "uccCodes", col: "uccCodes", parse: (s) => { const a = parseUccCell(s); return a.length ? a : null; } },
     { field: "taxStatus", col: "taxStatus" },
     { field: "residencyStatus", col: "residencyStatus", parse: (s) => enumize(s, ["indian_resident", "nri", "oci", "pio", "foreign_national"], null) },
     { field: "kycStatus", col: "kycStatus", parse: (s) => enumize(s, ["pending", "registered", "verified", "hold", "rejected", "expired", "re_kyc_required"], null) },
@@ -446,6 +501,7 @@ function buildUpdateSet(
     { field: "lastReviewAt", col: "lastReviewAt", parse: parseTimestamp },
     { field: "nextReviewAt", col: "nextReviewAt", parse: parseTimestamp },
     { field: "reviewFrequency", col: "reviewFrequency", parse: (s) => enumize(s, ["monthly", "quarterly", "half_yearly", "annual"], null) },
+    { field: "status", col: "status", parse: (s) => enumize(s, ["active", "dormant", "inactive", "redemption_risk", "closed"], null) },
     { field: "notes", col: "notes" },
   ];
 
@@ -512,6 +568,12 @@ function buildUpdateSet(
       set.bankIfsc = ifsc ?? null;
       set.bankAccounts = [{ bankName: bn, accountMasked: acct, ifsc }];
     }
+  }
+
+  // Custom fields — merge the mapped, sanitized values over the existing bag so
+  // an update only touches the columns present in the file.
+  if (Object.keys(cleanCustomFields).length) {
+    set.customFields = { ...(existingCustomFields ?? {}), ...cleanCustomFields };
   }
 
   set.updatedAt = new Date();

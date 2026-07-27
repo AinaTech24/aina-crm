@@ -154,6 +154,8 @@ export function ImportWizard({
                       onChange={(e) => setMapping({ ...mapping, [h]: e.target.value })}
                       className="min-w-[220px]"
                       aria-label={`Map column ${h}`}
+                      searchable
+                      searchPlaceholder="Search fields…"
                     >
                       <option value="">(skip)</option>
                       {ourFields.map((f) => (

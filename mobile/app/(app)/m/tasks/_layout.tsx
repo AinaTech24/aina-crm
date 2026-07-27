@@ -4,8 +4,8 @@ import { palette } from "../../../../src/theme/tokens";
 
 export default function TasksLayout() {
   return (
-    <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: palette.surfaceAlt } }}>
-      <Stack.Screen name="new" options={{ presentation: "modal" }} />
+    <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: palette.surfaceAlt }, animation: "slide_from_right" }}>
+      <Stack.Screen name="new" />
       <Stack.Screen name="[id]" />
     </Stack>
   );

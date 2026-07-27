@@ -16,7 +16,8 @@ type Results = {
 /**
  * Inline global search. The input lives in the header; results drop into a
  * popover anchored directly beneath it — no full-screen overlay, so the header
- * is never blurred and the bar never jumps. Ctrl/⌘-K focuses it; Esc closes.
+ * is never blurred and the bar never jumps. Esc closes. (Ctrl/⌘-K now opens the
+ * global CommandPalette instead — see components/layout/CommandPalette.tsx.)
  */
 export function GlobalSearch() {
   const [open, setOpen] = useState(false);
@@ -29,14 +30,10 @@ export function GlobalSearch() {
   const inputRef = useRef<HTMLInputElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
 
-  // Ctrl/⌘-K focuses the inline input; Esc closes + blurs.
+  // Esc closes + blurs. (Ctrl/⌘-K is owned by the global CommandPalette now —
+  // binding it here too would open both at once.)
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
-        e.preventDefault();
-        inputRef.current?.focus();
-        setOpen(true);
-      }
       if (e.key === "Escape") {
         setOpen(false);
         inputRef.current?.blur();

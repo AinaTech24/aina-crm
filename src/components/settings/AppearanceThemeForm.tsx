@@ -16,6 +16,8 @@ import {
   DEFAULT_THEME,
   buildThemeStyleObject,
   isHexColor,
+  THEME_FONTS,
+  UI_DENSITIES,
 } from "@/lib/branding/theme";
 
 export function AppearanceThemeForm({ tenant }: { tenant: any }) {
@@ -28,16 +30,22 @@ export function AppearanceThemeForm({ tenant }: { tenant: any }) {
   const initialText = isHexColor(tenant.textColor) ? tenant.textColor : TEXT_DEFAULT;
   const initialHover = isHexColor(tenant.hoverColor) ? tenant.hoverColor : HOVER_DEFAULT;
 
+  const initialFont = (tenant.fontFamily as string) || "inter";
+  const initialDensity = (tenant.uiDensity as string) || "comfortable";
+
   const [primary, setPrimary] = useState(initialPrimary);
   const [accent, setAccent] = useState(initialAccent);
   const [text, setText] = useState(initialText);
   const [hover, setHover] = useState(initialHover);
+  const [font, setFont] = useState<string>(initialFont);
+  const [density, setDensity] = useState<string>(initialDensity);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   const dirty =
-    primary !== initialPrimary || accent !== initialAccent || text !== initialText || hover !== initialHover;
+    primary !== initialPrimary || accent !== initialAccent || text !== initialText || hover !== initialHover ||
+    font !== initialFont || density !== initialDensity;
   const previewVars = useMemo(
     () => buildThemeStyleObject(primary, accent, text, hover) as React.CSSProperties,
     [primary, accent, text, hover]
@@ -54,7 +62,7 @@ export function AppearanceThemeForm({ tenant }: { tenant: any }) {
       const res = await fetch("/api/tenant", {
         method: "PATCH",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ primaryColor: primary, secondaryColor: accent, textColor: text, hoverColor: hover }),
+        body: JSON.stringify({ primaryColor: primary, secondaryColor: accent, textColor: text, hoverColor: hover, fontFamily: font, uiDensity: density }),
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -76,12 +84,34 @@ export function AppearanceThemeForm({ tenant }: { tenant: any }) {
     setAccent(DEFAULT_THEME.accent);
     setText(TEXT_DEFAULT);
     setHover(HOVER_DEFAULT);
+    setFont("inter");
+    setDensity("comfortable");
   }
 
   return (
     <div className="grid lg:grid-cols-[1fr_360px] gap-5 items-start">
       {/* ── Controls ── */}
       <div className="space-y-5">
+        {/* Typography & density */}
+        <div className="border rounded-xl bg-card p-5 space-y-3">
+          <h2 className="font-semibold text-sm uppercase tracking-wide text-muted-foreground">Typography &amp; density</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <label className="block">
+              <div className="text-xs font-medium mb-1">Font</div>
+              <select value={font} onChange={(e) => setFont(e.target.value)} className="input-base text-sm w-full">
+                {THEME_FONTS.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
+              </select>
+            </label>
+            <label className="block">
+              <div className="text-xs font-medium mb-1">Density</div>
+              <select value={density} onChange={(e) => setDensity(e.target.value)} className="input-base text-sm w-full">
+                {UI_DENSITIES.map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}
+              </select>
+            </label>
+          </div>
+          <p className="text-[11px] text-muted-foreground">Applies across the whole workspace for your firm. Compact tightens text &amp; spacing.</p>
+        </div>
+
         {/* Presets */}
         <div className="border rounded-xl bg-card p-5 space-y-3">
           <h2 className="font-semibold text-sm uppercase tracking-wide text-muted-foreground flex items-center gap-2">

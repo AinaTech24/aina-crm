@@ -5,6 +5,7 @@ import { withPlatformAdmin } from "@/db/client";
 import { users } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { PLATFORM_TENANT_ID } from "@/lib/platform";
+import { ROLE_LABELS } from "@/lib/auth/rbac";
 import { formatRelative } from "@/lib/utils";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -30,16 +31,16 @@ export default async function PlatformStaffPage() {
     <div className="space-y-6 max-w-5xl">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Platform staff</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Admins</h1>
           <p className="text-muted-foreground text-sm">
-            AINA team members — platform_admin (full access) and platform_support (read-only).
+            AINA administrators — Super Admin and Admin both have full cross-tenant access.
           </p>
         </div>
         <Link
           href="/super-admin/users/new"
           className="rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-sm font-medium flex items-center gap-1.5"
         >
-          <Plus className="size-4" /> Add platform staff
+          <Plus className="size-4" /> Add admin
         </Link>
       </div>
 
@@ -71,9 +72,9 @@ export default async function PlatformStaffPage() {
                     {(s.roles ?? []).map((r: string) => (
                       <span
                         key={r}
-                        className="mr-1 px-1.5 py-0.5 rounded bg-muted text-[10px] uppercase tracking-wide"
+                        className="mr-1 px-1.5 py-0.5 rounded bg-muted text-[10px] tracking-wide"
                       >
-                        {r}
+                        {ROLE_LABELS[r]?.replace(/\s*\(AINA\)$/, "") ?? r}
                       </span>
                     ))}
                   </td>
@@ -98,12 +99,13 @@ export default async function PlatformStaffPage() {
         <h2 className="font-semibold text-sm">Permission notes</h2>
         <ul className="mt-3 space-y-1.5 text-sm text-muted-foreground">
           <li>
-            <code className="bg-muted px-1 rounded">platform_admin</code> — full cross-tenant read +
-            write. Can create/suspend/activate tenants, edit packages, manage all data.
+            <strong className="text-foreground">Super Admin</strong> and <strong className="text-foreground">Admin</strong> both
+            have full cross-tenant read + write — create/suspend/activate tenants, edit packages,
+            manage billing and all data, and create other Admins &amp; Super Admins.
           </li>
           <li>
-            <code className="bg-muted px-1 rounded">platform_support</code> — cross-tenant read only.
-            Can view tenant data + raise support actions but not mutate billing or packages.
+            An email that is already in use (by any admin or MFD user, in any tenant) cannot be
+            reused when creating a new admin.
           </li>
         </ul>
       </div>

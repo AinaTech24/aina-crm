@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Check, Camera, Trash2, LogOut } from "lucide-react";
+import { Loader2, Check, Camera, Trash2, LogOut, User, KeyRound, ImageIcon, Monitor } from "lucide-react";
 
 /** 0=weak … 3=strong, from length + character-class variety. */
 function pwStrength(pw: string): 0 | 1 | 2 | 3 {
@@ -16,6 +16,7 @@ function pwStrength(pw: string): 0 | 1 | 2 | 3 {
 }
 import { useToast } from "@/components/ui/Toast";
 import { PasswordInput } from "@/components/ui/PasswordInput";
+import { DeviceSessions } from "@/components/settings/DeviceSessions";
 
 export default function ProfileForm({
   initialName,
@@ -221,7 +222,9 @@ export default function ProfileForm({
     <div className="space-y-6">
       {/* Profile photo */}
       <div className="border rounded-lg bg-card p-5">
-        <h3 className="font-semibold text-sm mb-3">Profile photo</h3>
+        <h3 className="font-semibold text-sm mb-3 flex items-center gap-2">
+          <ImageIcon className="size-4 text-muted-foreground" /> Profile photo
+        </h3>
         <div className="flex items-center gap-5">
           <div className="relative">
             {avatarUrl ? (
@@ -274,105 +277,128 @@ export default function ProfileForm({
         </div>
       </div>
 
-      <div className="grid gap-6 sm:grid-cols-2">
-        {/* Profile */}
-        <div className="border rounded-lg bg-card p-5 space-y-3">
-          <h3 className="font-semibold text-sm">Your details</h3>
-          <div>
-            <label className={label}>Full name</label>
-            <input className={field} value={name} onChange={(e) => setName(e.target.value)} />
-          </div>
-          <div>
-            <label className={label}>Email</label>
-            {/* Read-only: your email is your login identity — managed by your firm
-                owner. You can confirm it here, which is required before you can
-                invite team members. */}
-            <input className={`${field} bg-secondary/40 text-muted-foreground`} value={email} readOnly />
-            <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs">
-              {emailVerified ? (
-                <span className="inline-flex items-center gap-1 text-emerald-600 font-medium">
-                  <Check className="size-3.5" /> Verified
-                </span>
-              ) : (
-                <>
-                  <span className="inline-flex items-center gap-1 text-amber-600 font-medium">Not verified</span>
-                  <button
-                    type="button"
-                    onClick={resendVerification}
-                    disabled={resending}
-                    className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 font-medium hover:bg-accent disabled:opacity-50"
-                  >
-                    {resending && <Loader2 className="size-3.5 animate-spin" />} Send verification email
-                  </button>
-                </>
-              )}
+      <div className="grid gap-6 lg:grid-cols-2 items-stretch">
+        {/* Left column — details + password stacked */}
+        <div className="space-y-6">
+          {/* Your details */}
+          <div className="border rounded-lg bg-card p-5 space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="font-semibold text-sm flex items-center gap-2">
+                <User className="size-4 text-muted-foreground" /> Your details
+              </h3>
+              <button
+                onClick={saveProfile}
+                disabled={savingProfile || name.trim().length < 2}
+                className="text-xs px-3 py-1.5 rounded-md bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50 inline-flex items-center gap-1.5 shrink-0"
+              >
+                {savingProfile && <Loader2 className="size-3.5 animate-spin" />} Save details
+              </button>
             </div>
-            {verifyMsg && <p className="mt-1 text-xs text-emerald-600">{verifyMsg}</p>}
+            <div>
+              <label className={label}>Full name</label>
+              <input className={field} value={name} onChange={(e) => setName(e.target.value)} />
+            </div>
+            <div>
+              <label className={label}>Email</label>
+              {/* Read-only: your email is your login identity — managed by your firm
+                  owner. You can confirm it here, which is required before you can
+                  invite team members. */}
+              <input className={`${field} bg-secondary/40 text-muted-foreground`} value={email} readOnly />
+              <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs">
+                {emailVerified ? (
+                  <span className="inline-flex items-center gap-1 text-emerald-600 font-medium">
+                    <Check className="size-3.5" /> Verified
+                  </span>
+                ) : (
+                  <>
+                    <span className="inline-flex items-center gap-1 text-amber-600 font-medium">Not verified</span>
+                    <button
+                      type="button"
+                      onClick={resendVerification}
+                      disabled={resending}
+                      className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 font-medium hover:bg-accent disabled:opacity-50"
+                    >
+                      {resending && <Loader2 className="size-3.5 animate-spin" />} Send verification email
+                    </button>
+                  </>
+                )}
+              </div>
+              {verifyMsg && <p className="mt-1 text-xs text-emerald-600">{verifyMsg}</p>}
+            </div>
+            {profileMsg && (
+              <p className={`text-sm ${profileMsg.kind === "ok" ? "text-emerald-600" : "text-red-600"}`}>
+                {profileMsg.kind === "ok" && <Check className="size-3.5 inline mr-1" />}{profileMsg.text}
+              </p>
+            )}
           </div>
-          <button
-            onClick={saveProfile}
-            disabled={savingProfile || name.trim().length < 2}
-            className="text-sm px-4 py-2 rounded-md bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50 inline-flex items-center gap-2"
-          >
-            {savingProfile && <Loader2 className="size-3.5 animate-spin" />} Save details
-          </button>
-          {profileMsg && (
-            <p className={`text-sm ${profileMsg.kind === "ok" ? "text-emerald-600" : "text-red-600"}`}>
-              {profileMsg.kind === "ok" && <Check className="size-3.5 inline mr-1" />}{profileMsg.text}
-            </p>
-          )}
+
+          {/* Change password */}
+          <div className="border rounded-lg bg-card p-5 space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="font-semibold text-sm flex items-center gap-2">
+                <KeyRound className="size-4 text-muted-foreground" /> Change password
+              </h3>
+              <button
+                onClick={changePassword}
+                disabled={savingPw || !curPw || !newPw}
+                className="text-xs px-3 py-1.5 rounded-md border hover:bg-accent disabled:opacity-50 inline-flex items-center gap-1.5 shrink-0"
+              >
+                {savingPw && <Loader2 className="size-3.5 animate-spin" />} Update password
+              </button>
+            </div>
+            <div>
+              <label className={label}>Current password</label>
+              <PasswordInput autoComplete="current-password" className={field} value={curPw} onChange={(e) => setCurPw(e.target.value)} />
+            </div>
+            <div>
+              <label className={label}>New password</label>
+              <PasswordInput autoComplete="new-password" className={field} value={newPw} onChange={(e) => setNewPw(e.target.value)} />
+              {newPw.length > 0 && (() => {
+                const score = pwStrength(newPw);
+                const meta = [
+                  { label: "Weak", color: "bg-rose-500", text: "text-rose-600" },
+                  { label: "Fair", color: "bg-amber-500", text: "text-amber-600" },
+                  { label: "Good", color: "bg-blue-500", text: "text-blue-600" },
+                  { label: "Strong", color: "bg-emerald-500", text: "text-emerald-600" },
+                ][score];
+                return (
+                  <div className="mt-1.5">
+                    <div className="flex gap-1">
+                      {[0, 1, 2, 3].map((i) => (
+                        <div key={i} className={`h-1 flex-1 rounded-full ${i <= score ? meta.color : "bg-secondary"}`} />
+                      ))}
+                    </div>
+                    <div className={`text-[10px] mt-0.5 ${meta.text}`}>{meta.label} · 8+ chars with a mix of cases, a number &amp; a symbol is best.</div>
+                  </div>
+                );
+              })()}
+            </div>
+            <div>
+              <label className={label}>Confirm new password</label>
+              <PasswordInput autoComplete="new-password" className={field} value={confirmPw} onChange={(e) => setConfirmPw(e.target.value)} />
+            </div>
+          </div>
         </div>
 
-        {/* Password */}
-        <div className="border rounded-lg bg-card p-5 space-y-3">
-          <h3 className="font-semibold text-sm">Change password</h3>
-          <div>
-            <label className={label}>Current password</label>
-            <PasswordInput autoComplete="current-password" className={field} value={curPw} onChange={(e) => setCurPw(e.target.value)} />
-          </div>
-          <div>
-            <label className={label}>New password</label>
-            <PasswordInput autoComplete="new-password" className={field} value={newPw} onChange={(e) => setNewPw(e.target.value)} />
-            {newPw.length > 0 && (() => {
-              const score = pwStrength(newPw);
-              const meta = [
-                { label: "Weak", color: "bg-rose-500", text: "text-rose-600" },
-                { label: "Fair", color: "bg-amber-500", text: "text-amber-600" },
-                { label: "Good", color: "bg-blue-500", text: "text-blue-600" },
-                { label: "Strong", color: "bg-emerald-500", text: "text-emerald-600" },
-              ][score];
-              return (
-                <div className="mt-1.5">
-                  <div className="flex gap-1">
-                    {[0, 1, 2, 3].map((i) => (
-                      <div key={i} className={`h-1 flex-1 rounded-full ${i <= score ? meta.color : "bg-secondary"}`} />
-                    ))}
-                  </div>
-                  <div className={`text-[10px] mt-0.5 ${meta.text}`}>{meta.label} · 8+ chars with a mix of cases, a number &amp; a symbol is best.</div>
-                </div>
-              );
-            })()}
-          </div>
-          <div>
-            <label className={label}>Confirm new password</label>
-            <PasswordInput autoComplete="new-password" className={field} value={confirmPw} onChange={(e) => setConfirmPw(e.target.value)} />
-          </div>
-          <button
-            onClick={changePassword}
-            disabled={savingPw || !curPw || !newPw}
-            className="text-sm px-4 py-2 rounded-md border hover:bg-accent disabled:opacity-50 inline-flex items-center gap-2"
-          >
-            {savingPw && <Loader2 className="size-3.5 animate-spin" />} Update password
-          </button>
-
-          <div className="border-t pt-3 mt-1">
-            <button
-              onClick={signOutEverywhere}
-              className="text-sm px-4 py-2 rounded-md border border-rose-200 text-rose-700 hover:bg-rose-50 inline-flex items-center gap-2"
-            >
-              <LogOut className="size-3.5" /> Sign out of all devices
-            </button>
-            <p className="text-[11px] text-muted-foreground mt-1.5">Revokes every active session, including this one — use if a device was lost.</p>
+        {/* Right column — your devices, matches the combined left-column height
+            and scrolls (hidden scrollbar) when the device list is longer. */}
+        <div className="lg:relative">
+          <div className="border rounded-lg bg-card p-5 flex flex-col lg:absolute lg:inset-0">
+            <h3 className="font-semibold text-sm flex items-center gap-2 shrink-0 mb-3">
+              <Monitor className="size-4 text-muted-foreground" /> Your devices
+            </h3>
+            <div className="flex-1 min-h-0 overflow-y-auto scrollbar-none -mr-1 pr-1">
+              <DeviceSessions />
+            </div>
+            <div className="border-t pt-3 mt-3 shrink-0">
+              <button
+                onClick={signOutEverywhere}
+                className="text-sm px-4 py-2 rounded-md border border-rose-200 text-rose-700 hover:bg-rose-50 inline-flex items-center gap-2"
+              >
+                <LogOut className="size-3.5" /> Sign out of all devices
+              </button>
+              <p className="text-[11px] text-muted-foreground mt-1.5">Revokes every active session, including this one — use if a device was lost.</p>
+            </div>
           </div>
         </div>
       </div>

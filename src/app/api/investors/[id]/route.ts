@@ -18,6 +18,7 @@ import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap, can } from "@/lib/auth/rbac";
+import { cleanUccCodes } from "@/lib/investors/ucc";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { healthFields } from "@/lib/investors/health";
 import { computeNextReview } from "@/lib/investors/review-cadence";
@@ -37,6 +38,17 @@ import {
   auditLog,
   complianceDocuments,
   users,
+  // Tables that reference the client by a plain uuid (NO foreign key), so the
+  // migration-0131 FK cascade never reaches them — cleaned up explicitly on purge.
+  reviewMeetings,
+  sipRejections,
+  onboardingPipelines,
+  riskProfileResponses,
+  activities,
+  shareTokens,
+  financialDiscoveries,
+  leads,
+  families,
 } from "@/db/schema";
 
 export const dynamic = "force-dynamic";
@@ -131,6 +143,7 @@ const Patch = z.object({
   clientCategory: z.enum(["A", "B", "C", "D"]).nullable().optional(),
   bseUccCode: z.string().max(40).nullable().optional(),
   nseCanCode: z.string().max(40).nullable().optional(),
+  uccCodes: z.array(z.string()).nullable().optional(),
   mandateStatus: z.enum(["none", "pending", "active", "expired", "rejected", "cancelled"]).nullable().optional(),
   mandateRefNo: z.string().max(60).nullable().optional(),
   status: z.enum(["active", "dormant", "inactive", "redemption_risk", "closed", "exited"]).optional(),
@@ -306,6 +319,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           ...reviewPatch,
           ...datePatch,
           ...mirror,
+          ...(parse.data.uccCodes !== undefined ? { uccCodes: cleanUccCodes(parse.data.uccCodes) } : {}),
           updatedAt: new Date(),
           ...(touchingKyc
             ? { kycLastUpdatedBy: session.userId }
@@ -416,6 +430,26 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
             eq(complianceDocuments.relatedEntityId, id)
           )
         );
+
+      // Non-FK references: these tables point at the client by a plain uuid, so
+      // the FK cascade (migration 0131) never reaches them. Remove the client's
+      // rows explicitly so NO module keeps orphaned data after a purge; detach
+      // (null) the pointers on records that legitimately outlive the client
+      // (leads that converted from/were referred by them, family primary anchor,
+      // and any minor whose guardian was this client).
+      const T = session.tenantId;
+      await tx.delete(tasks).where(and(eq(tasks.tenantId, T), eq(tasks.relatedInvestorId, id)));
+      await tx.delete(reviewMeetings).where(and(eq(reviewMeetings.tenantId, T), eq(reviewMeetings.investorId, id)));
+      await tx.delete(sipRejections).where(and(eq(sipRejections.tenantId, T), eq(sipRejections.investorId, id)));
+      await tx.delete(onboardingPipelines).where(and(eq(onboardingPipelines.tenantId, T), eq(onboardingPipelines.investorId, id)));
+      await tx.delete(riskProfileResponses).where(and(eq(riskProfileResponses.tenantId, T), eq(riskProfileResponses.investorId, id)));
+      await tx.delete(activities).where(and(eq(activities.tenantId, T), eq(activities.subjectType, "investor"), eq(activities.subjectId, id)));
+      await tx.delete(shareTokens).where(and(eq(shareTokens.tenantId, T), eq(shareTokens.subjectType, "investor"), eq(shareTokens.subjectId, id)));
+      await tx.delete(financialDiscoveries).where(and(eq(financialDiscoveries.tenantId, T), eq(financialDiscoveries.subjectType, "investor"), eq(financialDiscoveries.subjectId, id)));
+      await tx.update(leads).set({ convertedInvestorId: null } as any).where(and(eq(leads.tenantId, T), eq(leads.convertedInvestorId, id)));
+      await tx.update(leads).set({ referredByInvestorId: null } as any).where(and(eq(leads.tenantId, T), eq(leads.referredByInvestorId, id)));
+      await tx.update(families).set({ primaryInvestorId: null } as any).where(and(eq(families.tenantId, T), eq(families.primaryInvestorId, id)));
+      await tx.update(investors).set({ guardianInvestorId: null } as any).where(and(eq(investors.tenantId, T), eq(investors.guardianInvestorId, id)));
 
       // Permanent hard delete — folios/transactions/sips/proposals/goals/etc.
       // cascade automatically (migration 0131).

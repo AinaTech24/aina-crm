@@ -1,20 +1,23 @@
-import { and, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
-import { Plus, ListChecks, CalendarCheck, Headphones } from "lucide-react";
+import { and, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
+import { Plus, ListChecks } from "lucide-react";
 import Link from "next/link";
 import { withTenant } from "@/db/client";
 import { tasks, users, investors, leads } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
-import { FilterBar } from "@/components/common/FilterBar";
+import { CompactFilterBar } from "@/components/common/CompactFilterBar";
 import { Pager } from "@/components/common/Pager";
-import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
+import { dateRangeCond } from "@/lib/filters/date-range";
 import { CustomViews } from "@/components/common/CustomViews";
 import { TaskViewSelect } from "./TaskViewSelect";
 import { TaskList } from "./TaskList";
 import { TaskKanban } from "./TaskKanban";
-import { WorkSwitcher } from "@/components/layout/WorkSwitcher";
 
 export const dynamic = "force-dynamic";
+
+// Aliased users join to resolve the task creator's name ("assigned by").
+const taskCreator = alias(users, "task_creator");
 
 export default async function TasksPage({
   searchParams,
@@ -29,7 +32,11 @@ export default async function TasksPage({
   const typeFilter = (sp.type ?? "").split(",").filter(Boolean);
   const deptFilter = (sp.department ?? "").split(",").filter(Boolean);
   const assigneeFilter = (sp.assignee ?? "").split(",").filter(Boolean);
-  const due = sp.due; // 'today' | 'overdue' | 'sla_risk'
+  const tagsFilter = (sp.tags ?? "").split(",").filter(Boolean);
+  const flagFilter = (sp.flag ?? "").split(",").filter(Boolean);
+  // Due filter — CSV multi-select: today | overdue | sla_risk
+  const dueFilter = (sp.due ?? "").split(",").filter(Boolean);
+  const approval = sp.approval ?? ""; // '' | 'pending' | 'mine' (awaiting sign-off)
   // View tabs: "" (all) | "to_me" (assigned to me) | "by_me" (I assigned) | "kanban".
   const view = sp.view ?? "";
   const isKanban = view === "kanban";
@@ -38,10 +45,10 @@ export default async function TasksPage({
   // due-date or priority via the Sort dropdown.
   // Sort key carries its own direction (asc/desc) so the dropdown can offer both
   // without a separate dir param. Default = newest-created first.
-  const sortKey = (["created", "created_asc", "due", "due_desc", "priority"] as const).includes(
+  const sortKey = (["created", "created_asc", "due", "due_desc", "priority", "title_asc", "title_desc"] as const).includes(
     (sp.sort ?? "") as any
   )
-    ? (sp.sort as "created" | "created_asc" | "due" | "due_desc" | "priority")
+    ? (sp.sort as "created" | "created_asc" | "due" | "due_desc" | "priority" | "title_asc" | "title_desc")
     : "created";
   const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
   const PAGE_SIZE = 50;
@@ -70,11 +77,19 @@ export default async function TasksPage({
     if (!isKanban) {
       if (statusFilter.length) {
         conds.push(inArray(tasks.status, statusFilter as any));
-      } else {
+      } else if (!approval) {
+        // Default to open — unless filtering by approval, where pending tasks
+        // are usually in_progress and would be hidden by the default-open rule.
         conds.push(eq(tasks.status, "open"));
       }
     }
-    
+    // Awaiting sign-off. 'pending' = any; 'mine' = ones this user approves.
+    if (approval === "pending") conds.push(eq(tasks.approvalStatus, "pending"));
+    else if (approval === "mine") {
+      conds.push(eq(tasks.approvalStatus, "pending"));
+      if (!canViewAll) conds.push(eq(tasks.createdById, session.userId));
+    }
+
     if (q) {
       conds.push(or(ilike(tasks.title, `%${q}%`), ilike(tasks.description, `%${q}%`), ilike(users.name, `%${q}%`))!);
     }
@@ -82,14 +97,21 @@ export default async function TasksPage({
     if (typeFilter.length) conds.push(inArray(tasks.type, typeFilter as any));
     if (deptFilter.length) conds.push(inArray(tasks.department, deptFilter as any));
     if (assigneeFilter.length) conds.push(inArray(tasks.assigneeId, assigneeFilter as any));
-    
-    // Apply stats ribbon parameters
-    if (due === "today") {
-      conds.push(sql`due_at::date = current_date`);
-    } else if (due === "overdue") {
-      conds.push(sql`due_at < now()`);
-    } else if (due === "sla_risk") {
-      conds.push(sql`sla_due_at IS NOT NULL AND sla_due_at < now() + interval '24 hours'`);
+    if (tagsFilter.length) conds.push(sql`tasks.tags ?| ${tagsFilter}::text[]`);
+    if (flagFilter.includes("requires_approval")) conds.push(eq(tasks.requiresApproval, true));
+    if (flagFilter.includes("recurring")) conds.push(sql`tasks.recurrence is not null`);
+    if (flagFilter.includes("has_attachments"))
+      conds.push(sql`EXISTS (SELECT 1 FROM task_attachments a WHERE a.task_id = tasks.id AND a.deleted_at IS NULL)`);
+    const dueDr = dateRangeCond(sp, "due", "tasks.due_at");
+    if (dueDr) conds.push(dueDr);
+
+    // Due filter — multi-select, OR'd together (today / overdue / SLA at risk).
+    if (dueFilter.length) {
+      const dueConds: any[] = [];
+      if (dueFilter.includes("today")) dueConds.push(sql`due_at::date = current_date`);
+      if (dueFilter.includes("overdue")) dueConds.push(sql`due_at < now()`);
+      if (dueFilter.includes("sla_risk")) dueConds.push(sql`sla_due_at IS NOT NULL AND sla_due_at < now() + interval '24 hours'`);
+      if (dueConds.length) conds.push(dueConds.length === 1 ? dueConds[0] : or(...dueConds)!);
     }
     const dr = dateRangeCond(sp, "created", "tasks.created_at");
     if (dr) conds.push(dr);
@@ -108,6 +130,10 @@ export default async function TasksPage({
         ? sql`${tasks.createdAt} asc`
         : sortKey === "due_desc"
         ? sql`${tasks.dueAt} desc nulls last, ${tasks.createdAt} desc`
+        : sortKey === "title_asc"
+        ? sql`lower(${tasks.title}) asc`
+        : sortKey === "title_desc"
+        ? sql`lower(${tasks.title}) desc`
         : sql`${tasks.dueAt} asc nulls last, ${tasks.createdAt} desc`;
 
     // Total matching count (for the pager) — same predicate + join (search hits
@@ -124,6 +150,7 @@ export default async function TasksPage({
       .select({
         task: tasks,
         assignee: users.name,
+        createdBy: taskCreator.name,
         investorName: investors.name,
         investorAvatarUrl: investors.avatarUrl,
         leadName: leads.name,
@@ -131,6 +158,7 @@ export default async function TasksPage({
       })
       .from(tasks)
       .leftJoin(users, eq(users.id, tasks.assigneeId))
+      .leftJoin(taskCreator, eq(taskCreator.id, tasks.createdById))
       .leftJoin(investors, eq(investors.id, tasks.relatedInvestorId))
       .leftJoin(leads, eq(leads.id, tasks.relatedLeadId))
       .where(where as any)
@@ -138,119 +166,69 @@ export default async function TasksPage({
       .limit(isKanban ? 300 : PAGE_SIZE)
       .offset(isKanban ? 0 : (page - 1) * PAGE_SIZE);
 
-    // Stats ribbon — must honour the SAME scope as the list (View tab, created
-    // range, search, priority/department/assignee) so switching "Assigned to
-    // me" / "Assigned by me" or applying a filter actually moves the numbers.
-    // We deliberately do NOT apply the `status` or `due` params here, because
-    // the four cards ARE the open / due-today / overdue / SLA breakdown (each
-    // FILTER already pins status = 'open').
-    const statsConds: any[] = [eq(tasks.tenantId, session.tenantId), isNull(tasks.deletedAt)];
-    if (!canViewAll) statsConds.push(or(eq(tasks.assigneeId, session.userId), eq(tasks.createdById, session.userId))!);
-    if (view === "to_me") statsConds.push(eq(tasks.assigneeId, session.userId));
-    else if (view === "by_me") statsConds.push(eq(tasks.createdById, session.userId));
-    if (q) statsConds.push(or(ilike(tasks.title, `%${q}%`), ilike(tasks.description, `%${q}%`))!);
-    if (priorityFilter.length) statsConds.push(inArray(tasks.priority, priorityFilter as any));
-    if (typeFilter.length) statsConds.push(inArray(tasks.type, typeFilter as any));
-    if (deptFilter.length) statsConds.push(inArray(tasks.department, deptFilter as any));
-    if (assigneeFilter.length) statsConds.push(inArray(tasks.assigneeId, assigneeFilter as any));
-    const statsDr = dateRangeCond(sp, "created", "tasks.created_at");
-    if (statsDr) statsConds.push(statsDr);
-
-    // No join here, so the bare column names inside the FILTERs (status, due_at,
-    // sla_due_at) are unambiguously tasks columns (users also has a `status`).
-    const statsRow = await tx
-      .select({
-        open: sql<number>`count(*) filter (where status = 'open')::int`,
-        due_today: sql<number>`count(*) filter (where status = 'open' and due_at::date = current_date)::int`,
-        overdue: sql<number>`count(*) filter (where status = 'open' and due_at < now())::int`,
-        sla_at_risk: sql<number>`count(*) filter (where status = 'open' and sla_due_at is not null and sla_due_at < now() + interval '24 hours')::int`,
-      })
-      .from(tasks)
-      .where(and(...statsConds) as any);
-
-    const s = (statsRow[0] as any) ?? { open: 0, due_today: 0, overdue: 0, sla_at_risk: 0 };
     // Roster for the "Assignee" filter (so owners can see tasks by RM).
     const rmRows = await tx.execute(sql`
       SELECT id, name FROM users
       WHERE tenant_id = ${session.tenantId}::uuid AND status = 'active'
       ORDER BY name ASC
     `);
-    return { rows, stats: s, rms: rmRows.rows as any[], total };
+    // Distinct tags in use — powers the Tags filter dropdown.
+    const tagRows = await tx.execute(sql`
+      SELECT DISTINCT jsonb_array_elements_text(tags) AS tag
+      FROM tasks
+      WHERE tenant_id = ${session.tenantId}::uuid AND deleted_at IS NULL
+        AND tags IS NOT NULL AND jsonb_typeof(tags) = 'array'
+      ORDER BY tag ASC
+      LIMIT 100
+    `);
+    return { rows, rms: rmRows.rows as any[], total, tags: tagRows.rows as any[] };
   });
 
   const rmOptions = (result.rms ?? []).map((r: any) => ({ value: String(r.id), label: r.name ?? "—" }));
-  // Keep the active View tab when a stat card is clicked, so the cards and the
-  // list it filters stay in the same scope.
-  const scopeQS = view === "to_me" ? "&view=to_me" : view === "by_me" ? "&view=by_me" : "";
+  const tagOptions = (result.tags ?? []).map((t: any) => ({ value: String(t.tag), label: String(t.tag) }));
 
   return (
     <div className="space-y-6 max-w-6xl">
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-4 flex-wrap">
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
             <ListChecks className="size-6 text-brand-cyan" /> Tasks
           </h1>
+          {/* View switcher — segmented tabs (list / mine / assigned-by-me / kanban) */}
+          <TaskViewSelect current={view} />
         </div>
-        <div className="flex items-center gap-3">
-          <WorkSwitcher current="/dashboard/tasks" />
-          <Link
-            href="/dashboard/tasks/daily"
-            className="rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium flex items-center gap-1.5 hover:bg-secondary/60"
-          >
-            <CalendarCheck className="size-4 text-brand-cyan" /> Daily Tracker
-          </Link>
-          <Link
-            href="/dashboard/tasks/service"
-            className="rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium flex items-center gap-1.5 hover:bg-secondary/60"
-          >
-            <Headphones className="size-4 text-brand-cyan" /> Service
-          </Link>
-          <Link
-            href="/dashboard/tasks/new"
-            className="rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-sm font-medium flex items-center gap-1.5"
-          >
-            <Plus className="size-4" /> New task
-          </Link>
-        </div>
-      </div>
-
-      {/* View switcher — segmented tabs (list / mine / assigned-by-me / kanban) */}
-      <TaskViewSelect current={view} />
-
-      {/* Clickable Interactive Stats Ribbon */}
-      <div className="grid grid-cols-4 gap-3">
-        <Link href={`/dashboard/tasks?status=open${scopeQS}`} className="block transition-transform hover:scale-[1.01]">
-          <Stat label="Open" value={String(result.stats.open)} active={!due && sp.status !== "completed" && sp.status !== "cancelled"} />
-        </Link>
-        <Link href={`/dashboard/tasks?status=open&due=today${scopeQS}`} className="block transition-transform hover:scale-[1.01]">
-          <Stat label="Due today" value={String(result.stats.due_today)} active={due === "today"} />
-        </Link>
-        <Link href={`/dashboard/tasks?status=open&due=overdue${scopeQS}`} className="block transition-transform hover:scale-[1.01]">
-          <Stat label="Overdue" value={String(result.stats.overdue)} tone="rose" active={due === "overdue"} />
-        </Link>
-        <Link href={`/dashboard/tasks?status=open&due=sla_risk${scopeQS}`} className="block transition-transform hover:scale-[1.01]">
-          <Stat label="SLA at risk" value={String(result.stats.sla_at_risk)} tone="amber" active={due === "sla_risk"} />
+        <Link
+          href="/dashboard/tasks/new"
+          className="rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-sm font-medium flex items-center gap-1.5"
+        >
+          <Plus className="size-4" /> New task
         </Link>
       </div>
 
-      <FilterBar
-        totalCount={result.total}
-        filters={[
-          { type: "search", key: "q", placeholder: "Search by title or description…" },
-          ...(!isKanban
-            ? [{
-                type: "sort" as const,
+      {/* Search + filter + sort + view — rendered inside the table header (list)
+          or above the board (kanban). */}
+      {(() => {
+        const toolbar = (
+      <CompactFilterBar
+        bare
+        searchPlaceholder="Search by title or description…"
+        sort={
+          !isKanban
+            ? {
                 key: "sort",
-                label: "Sort",
                 options: [
                   { value: "created", label: "Newest first" },
                   { value: "created_asc", label: "Oldest first" },
+                  { value: "title_asc", label: "Title A–Z" },
+                  { value: "title_desc", label: "Title Z–A" },
                   { value: "due", label: "Due date — soonest" },
                   { value: "due_desc", label: "Due date — latest" },
                   { value: "priority", label: "Priority — high first" },
                 ],
-              }]
-            : []),
+              }
+            : undefined
+        }
+        filters={[
           // Status is hidden on the kanban — the columns already ARE the statuses.
           ...(!isKanban
             ? [{
@@ -267,7 +245,7 @@ export default async function TasksPage({
               }]
             : []),
           {
-            type: "multi",
+            type: "multi" as const,
             key: "priority",
             label: "Priority",
             options: [
@@ -278,7 +256,17 @@ export default async function TasksPage({
             ],
           },
           {
-            type: "multi",
+            type: "multi" as const,
+            key: "due",
+            label: "Due",
+            options: [
+              { value: "today", label: "Due today" },
+              { value: "overdue", label: "Overdue" },
+              { value: "sla_risk", label: "SLA at risk" },
+            ],
+          },
+          {
+            type: "multi" as const,
             key: "department",
             label: "Department",
             // Values MUST match the schema enum, else the filter matches nothing.
@@ -297,48 +285,46 @@ export default async function TasksPage({
           ...(canViewAll && rmOptions.length
             ? [{ type: "multi" as const, key: "assignee", label: "Assignee", options: rmOptions }]
             : []),
-          dateRangeFilter("created", "Created"),
+          {
+            type: "multi" as const,
+            key: "flag",
+            label: "Flags",
+            options: [
+              { value: "requires_approval", label: "Requires approval" },
+              { value: "recurring", label: "Recurring" },
+              { value: "has_attachments", label: "Has attachments" },
+            ],
+          },
+          ...(tagOptions.length ? [{ type: "multi" as const, key: "tags", label: "Tags", options: tagOptions }] : []),
+          { type: "date_range" as const, key: "created", label: "Created date" },
+          { type: "date_range" as const, key: "due", label: "Due date" },
         ]}
         rightSlot={
           <CustomViews
+            compact
             viewsKey="views:tasks"
             presets={[
               { id: "open", name: "Open tasks", params: "status=open" },
               { id: "urgent", name: "Urgent / High", params: "status=open&priority=urgent,high" },
+              { id: "approval", name: "Awaiting my approval", params: "approval=mine" },
               { id: "done", name: "Completed", params: "status=completed" },
             ]}
           />
         }
       />
-
-      {/* Status-column board, or the interactive list + detail drawer */}
-      {isKanban ? (
-        <TaskKanban initialRows={result.rows} currentUserId={session.userId} />
-      ) : (
-        <div>
-          <TaskList initialRows={result.rows} currentUserId={session.userId} />
-          <Pager page={page} totalPages={Math.ceil(result.total / PAGE_SIZE)} total={result.total} pageSize={PAGE_SIZE} />
-        </div>
-      )}
-    </div>
-  );
-}
-
-function Stat({ label, value, tone, active }: { label: string; value: string; tone?: "rose" | "amber"; active?: boolean }) {
-  const color =
-    tone === "rose" && value !== "0"
-      ? "text-rose-600 font-bold"
-      : tone === "amber" && value !== "0"
-      ? "text-amber-600 font-bold"
-      : "text-foreground";
-  return (
-    <div className={`border rounded-lg p-4 bg-card transition-all ${
-      active 
-        ? "border-primary bg-slate-50 ring-1 ring-primary/45 shadow-sm" 
-        : "hover:border-slate-300 bg-white"
-    }`}>
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className={`text-2xl font-bold mt-1 ${color}`}>{value}</div>
+        );
+        return isKanban ? (
+          <>
+            <div className="card-surface p-2.5">{toolbar}</div>
+            <TaskKanban initialRows={result.rows} currentUserId={session.userId} canManageAll={canViewAll} />
+          </>
+        ) : (
+          <div>
+            <TaskList initialRows={result.rows} currentUserId={session.userId} canManageAll={canViewAll} initialOpenTaskId={sp.task} total={result.total} toolbar={toolbar} />
+            <Pager page={page} totalPages={Math.ceil(result.total / PAGE_SIZE)} total={result.total} pageSize={PAGE_SIZE} />
+          </div>
+        );
+      })()}
     </div>
   );
 }

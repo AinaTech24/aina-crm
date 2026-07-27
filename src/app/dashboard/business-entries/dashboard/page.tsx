@@ -100,7 +100,7 @@ export default async function BusinessDashboardPage({
         <div className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground mb-3">
           <Filter className="size-3.5" /> Filters
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 items-end">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 items-end">
           <label className="block">
             <span className="text-xs text-muted-foreground">From date</span>
             <input type="date" name="from" defaultValue={fromISO} className="input-base mt-1" />

@@ -147,33 +147,6 @@ export default async function ProposalsPage({
         </Link>
       </div>
 
-      <div className="grid grid-cols-5 gap-3">
-        <Stat icon={FileText} label="Total" value={String(data.s.total ?? 0)} />
-        <Stat
-          icon={Send}
-          label="Awaiting client"
-          value={String(data.s.pending ?? 0)}
-          tone={Number(data.s.pending) > 0 ? "amber" : "muted"}
-        />
-        <Stat
-          icon={CheckCircle2}
-          label="Accepted MTD"
-          value={String(data.s.accepted_mtd ?? 0)}
-          tone="emerald"
-        />
-        <Stat
-          icon={Clock}
-          label="Conversion %"
-          value={data.s.conv_pct != null ? `${Number(data.s.conv_pct).toFixed(1)}%` : "—"}
-          tone="emerald"
-        />
-        <Stat
-          icon={IndianRupee}
-          label="Outstanding ₹"
-          value={data.s.outstanding_value ? formatINR(Number(data.s.outstanding_value)) : "₹0"}
-        />
-      </div>
-
       <FilterBar
         totalCount={data.filteredTotal}
         filters={[

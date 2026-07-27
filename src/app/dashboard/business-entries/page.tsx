@@ -111,12 +111,6 @@ export default async function BusinessEntriesPage({
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
-        <Stat label="Entries (all time)" value={String(kpi.entries)} />
-        <Stat label="Business this FY" value={formatINR(Number(kpi.fy_gross))} />
-        <Stat label="Business this month" value={formatINR(Number(kpi.mtd_gross))} tone="cyan" />
-      </div>
-
       <FilterBar
         totalCount={rows.length}
         filters={[

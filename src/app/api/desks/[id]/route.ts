@@ -2,7 +2,7 @@
  * PATCH  /api/desks/[id]  → rename / re-code a desk { name?, code? }
  * DELETE /api/desks/[id]  → delete a desk (members are unassigned)
  *
- * Gated by settings.users.
+ * Gated by settings.desks.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -23,7 +23,7 @@ const PatchBody = z.object({
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "settings.users");
+    requireCap(session.roles, "settings.desks");
     const { id } = await params;
     const parsed = PatchBody.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
@@ -39,7 +39,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "settings.users");
+    requireCap(session.roles, "settings.desks");
     const { id } = await params;
     await withTenant(session.tenantId, async (tx) => deleteDesk(tx, id));
     return NextResponse.json({ ok: true });

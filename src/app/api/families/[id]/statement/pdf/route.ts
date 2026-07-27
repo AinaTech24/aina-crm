@@ -64,6 +64,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       const famName = fam.familyName ?? `${fam.headName} Family`;
       const pdf = await renderValuationStatementPdf({
         valuation: agg,
+        refId: id,
         investor: { name: `${famName} (Household)`, pan: null },
         brand: {
           displayName: (t as any)?.displayName, legalName: (t as any)?.legalName, arn: (t as any)?.arn, euin: (t as any)?.euin,
@@ -81,7 +82,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       status: 200,
       headers: {
         "content-type": "application/pdf",
-        "content-disposition": `${download ? "attachment" : "inline"}; filename="family_statement_${safe}.pdf"`,
+        "content-disposition": `${download ? "attachment" : "inline"}; filename="FamilyStatement_${safe}_${new Date().toISOString().slice(0, 10)}.pdf"`,
         "cache-control": "no-store",
       },
     });

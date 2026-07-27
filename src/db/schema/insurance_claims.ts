@@ -33,7 +33,7 @@ export const CLAIM_STATUSES = [
 export const CLAIM_TYPES = ["main_claim", "supplementary", "pre_authorization", "rider", "other"] as const;
 export const INTIMATION_MODES = ["phone", "email", "portal", "branch", "agent", "letter", "other"] as const;
 export const SUBMITTED_MODES = ["online", "physical", "courier", "email", "agent", "other"] as const;
-export const CLAIM_MODES = ["cashless", "reimbursement"] as const;
+export const CLAIM_MODES = ["cashless", "reimbursement", "grievance"] as const;
 
 export const insuranceClaims = pgTable(
   "insurance_claims",

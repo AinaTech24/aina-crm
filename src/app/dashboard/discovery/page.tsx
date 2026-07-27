@@ -13,6 +13,7 @@ import { requireAny } from "@/lib/auth/rbac";
 import { financialDiscoveries } from "@/db/schema";
 import { formatRelative } from "@/lib/utils";
 import { NewDiscoveryDialog } from "@/components/discovery/NewDiscoveryDialog";
+import { HelpTip } from "@/components/common/HelpTip";
 
 export const dynamic = "force-dynamic";
 
@@ -39,6 +40,11 @@ export default async function DiscoveryListPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
             <ClipboardList className="size-6 text-brand-cyan" /> Discovery &amp; Suitability
+            <HelpTip title="Discovery & Suitability">
+              A guided fact-find you fill with (or send to) a client before advising — goals,
+              income, risk appetite. It produces a suitability view so your recommendations are
+              documented and defensible.
+            </HelpTip>
           </h1>
         </div>
         <NewDiscoveryDialog />

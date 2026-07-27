@@ -2,7 +2,7 @@
  * GET  /api/desks  → { branches, desks, members } — the desk board
  * POST /api/desks  → create a desk { branchId, name, code? }
  *
- * Gated by settings.users (same as managing the team).
+ * Gated by settings.desks (owner + branch_head + ops/back-office).
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -18,7 +18,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "settings.users");
+    requireCap(session.roles, "settings.desks");
     const data = await withTenant(session.tenantId, async (tx) => loadDeskBoard(tx));
     return NextResponse.json(data);
   } catch (err) {
@@ -35,7 +35,7 @@ const CreateBody = z.object({
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "settings.users");
+    requireCap(session.roles, "settings.desks");
     const parsed = CreateBody.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
       return NextResponse.json({ error: "invalid input", issues: parsed.error.issues }, { status: 400 });

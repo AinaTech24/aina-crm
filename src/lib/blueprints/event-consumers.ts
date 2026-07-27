@@ -70,48 +70,13 @@ export async function handleBlueprintStageEvent(event: any): Promise<boolean> {
 }
 
 async function createLeadDelayTask(
-  tenantId: string,
-  leadId: string,
-  after: { stageKey?: string; stageName?: string; slaDays?: number }
+  _tenantId: string,
+  _leadId: string,
+  _after: { stageKey?: string; stageName?: string; slaDays?: number }
 ): Promise<void> {
-  const stageKey = after.stageKey ?? "";
-  const stageName = after.stageName ?? (stageKey || "this stage");
-
-  await withTenant(tenantId, async (tx) => {
-    const leadRes = await tx.execute(
-      sql`SELECT owner_id, name FROM leads WHERE id = ${leadId}::uuid AND tenant_id = ${tenantId}::uuid LIMIT 1`
-    );
-    const lead = leadRes.rows[0] as { owner_id?: string | null; name?: string | null } | undefined;
-    if (!lead) return;
-
-    // Dedup — one open SLA task per (lead, stage). A looped re-entry into the
-    // same stage that breaches again will only re-task once the prior one closes.
-    const dup = await tx.execute(sql`
-      SELECT 1 FROM tasks
-       WHERE tenant_id = ${tenantId}::uuid
-         AND related_lead_id = ${leadId}::uuid
-         AND status IN ('open', 'in_progress')
-         AND type = 'blueprint_sla'
-         AND meta->>'stageKey' = ${stageKey}
-       LIMIT 1
-    `);
-    if (dup.rows.length) return;
-
-    await tx.execute(sql`
-      INSERT INTO tasks (
-        id, tenant_id, subject_type, subject_id, related_lead_id, department,
-        type, title, description, priority, status, assignee_id, due_at, meta,
-        created_at, updated_at
-      ) VALUES (
-        gen_random_uuid(), ${tenantId}::uuid, 'lead', ${leadId}::uuid, ${leadId}::uuid, 'sales',
-        'blueprint_sla',
-        ${`⏰ Lead overdue at "${stageName}" — ${lead.name ?? "lead"}`},
-        ${`This lead has passed its SLA for the "${stageName}" stage. Advance it or update the disposition today so the pipeline stays clean.`},
-        'high', 'open', ${lead.owner_id ?? null},
-        now() + interval '1 day',
-        ${JSON.stringify({ source: "blueprint_sla", stageKey })}::jsonb,
-        now(), now()
-      )
-    `);
-  });
+  // Auto blueprint-SLA "Lead overdue at ..." TASK creation is disabled per firm
+  // preference. The SLA breach still raises an in-app notification (see
+  // workers/blueprint-sla-worker.ts) and flips the blueprint instance's delayed
+  // flag — it simply no longer auto-creates a task in the Tasks list. Restore
+  // the INSERT here (git history) to re-enable.
 }

@@ -154,13 +154,6 @@ export default async function LeaveApplicationsPage({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Stat icon={Clock} label="Pending approval" value={s.pending ?? 0} tone={s.pending > 0 ? "amber" : "muted"} />
-        <Stat icon={CalendarOff} label="On leave today" value={s.on_leave_today ?? 0} tone={s.on_leave_today > 0 ? "rose" : "muted"} />
-        <Stat icon={CalendarDays} label="Upcoming (approved)" value={s.upcoming ?? 0} />
-        <Stat icon={CheckCircle2} label="Approved (MTD)" value={s.approved_mtd ?? 0} tone="emerald" />
-      </div>
-
       {view === "timeline" ? (
         <LeaveTimeline
           users={data.users || []}

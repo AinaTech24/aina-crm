@@ -23,7 +23,7 @@ import { FilterBar } from "@/components/common/FilterBar";
 import { AutoRefresh } from "@/components/common/AutoRefresh";
 import { CommandClientPicker } from "@/components/command-center/CommandClientPicker";
 import { CommandItemActions } from "@/components/command-center/CommandItemActions";
-import { CommandDigestButton } from "@/components/command-center/CommandDigestButton";
+import { HelpTip } from "@/components/common/HelpTip";
 import { sql } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
@@ -63,8 +63,6 @@ export default async function CommandCenterPage({
   const userParam = firmWide ? (sp.user ?? "").trim() : "";
   // Scope the whole board to a single client (search-as-you-type picker).
   const clientId = (sp.client ?? "").trim();
-  // Layout: group by urgency band (default) or consolidate by client.
-  const clientView = (sp.view ?? "") === "client";
 
   const { allGroups, userOptions, clientName } = await withTenant(
     session.tenantId,
@@ -144,11 +142,13 @@ export default async function CommandCenterPage({
         <div>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
             <Inbox className="size-6 text-brand-cyan" /> Command Center
+            <HelpTip title="Command Center">
+              Your single &ldquo;what needs me today&rdquo; screen — overdue tasks, today&apos;s
+              meetings, SIP bounces, birthdays and follow-ups, ranked by urgency. Start your day here.
+            </HelpTip>
           </h1>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
-          <ViewToggle current={clientView ? "client" : "urgency"} sp={sp} />
-          <CommandDigestButton />
           <div className="flex items-center gap-4 rounded-lg border border-border bg-card px-3 py-1.5">
             <Stat label="Act now" value={nowCount} tone={nowCount ? "rose" : "emerald"} />
             <Stat label="Today" value={todayCount} tone={todayCount ? "amber" : "muted"} />
@@ -196,8 +196,6 @@ export default async function CommandCenterPage({
             No overdue reviews, SIP bounces, SLA breaches or follow-ups in {firmWide ? "the firm" : "your book"} right now.
           </p>
         </div>
-      ) : clientView ? (
-        <ByClientView groups={groups} />
       ) : (
         (() => {
           // One full-width masonry of ALL cards, severity-sorted (Act now →
@@ -215,116 +213,6 @@ export default async function CommandCenterPage({
             </div>
           );
         })()
-      )}
-    </div>
-  );
-}
-
-/** Header toggle: group by urgency band (default) or consolidate by client. */
-function ViewToggle({ current, sp }: { current: "urgency" | "client"; sp: Record<string, string | undefined> }) {
-  const mk = (view: "urgency" | "client") => {
-    const params = new URLSearchParams();
-    for (const [k, v] of Object.entries(sp)) if (v && k !== "view") params.set(k, v);
-    if (view === "client") params.set("view", "client");
-    const qs = params.toString();
-    return `/dashboard/command-center${qs ? `?${qs}` : ""}`;
-  };
-  const base = "px-2.5 py-1 rounded-md text-xs font-medium inline-flex items-center gap-1.5 transition-colors";
-  return (
-    <div className="inline-flex rounded-lg border border-border bg-card p-0.5 gap-0.5">
-      <Link href={mk("urgency")} className={`${base} ${current === "urgency" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
-        <LayoutList className="size-3" /> By urgency
-      </Link>
-      <Link href={mk("client")} className={`${base} ${current === "client" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}>
-        <Users className="size-3" /> By client
-      </Link>
-    </div>
-  );
-}
-
-/** Consolidated view — one card per client listing everything open for them. */
-function ByClientView({ groups }: { groups: ActionGroup[] }) {
-  const order: Record<Severity, number> = { now: 0, today: 1, soon: 2 };
-  type Row = ActionItem & { groupKey: string; groupLabel: string; icon: string; severity: Severity };
-  const byClient = new Map<string, { name: string; rows: Row[]; topSeverity: Severity; amount: number }>();
-  const general: Row[] = [];
-
-  for (const g of groups) {
-    for (const it of g.items) {
-      const row: Row = { ...it, groupKey: g.key, groupLabel: g.label, icon: g.icon, severity: g.severity };
-      if (it.client?.id) {
-        const e = byClient.get(it.client.id) ?? { name: it.client.name, rows: [], topSeverity: "soon" as Severity, amount: 0 };
-        e.rows.push(row);
-        if (order[g.severity] < order[e.topSeverity]) e.topSeverity = g.severity;
-        e.amount += Number(it.amount) || 0;
-        byClient.set(it.client.id, e);
-      } else {
-        general.push(row);
-      }
-    }
-  }
-
-  const clients = Array.from(byClient.entries()).sort(
-    (a, b) => order[a[1].topSeverity] - order[b[1].topSeverity] || b[1].amount - a[1].amount || b[1].rows.length - a[1].rows.length
-  );
-
-  return (
-    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-      {clients.map(([cid, c]) => {
-        const tone = TONE[c.topSeverity === "now" ? "rose" : c.topSeverity === "today" ? "amber" : "sky"];
-        return (
-          <div key={cid} className={`card-surface overflow-hidden border ${tone.ring}`}>
-            <Link href={`/dashboard/investors/${cid}`} className="flex items-center justify-between px-4 py-3 border-b bg-secondary/30 hover:bg-secondary/50">
-              <span className="font-semibold text-sm truncate">{c.name}</span>
-              <span className={`text-xs font-bold px-2 py-0.5 rounded-full tabular-nums ${tone.badge}`}>{c.rows.length}</span>
-            </Link>
-            <ul className="divide-y">
-              {c.rows.map((r) => {
-                const Icon = ICONS[r.icon] ?? Inbox;
-                return (
-                  <li key={`${r.groupKey}:${r.id}`} className="flex items-center gap-1 px-4 py-2.5 hover:bg-accent/40">
-                    <Link href={r.href} className="flex items-center gap-2 min-w-0 flex-1">
-                      <Icon className="size-3.5 shrink-0 text-muted-foreground" />
-                      <div className="min-w-0 flex-1">
-                        <div className="text-sm font-medium truncate">{r.groupLabel}</div>
-                        {r.detail && <div className="text-[11px] text-muted-foreground truncate">{r.detail}</div>}
-                      </div>
-                    </Link>
-                    <CommandItemActions
-                      itemKey={r.itemKey ?? `${r.groupKey}:${r.id}`}
-                      actionType={r.actionType}
-                      taskId={r.actionType === "task" ? r.id : undefined}
-                      phone={r.phone}
-                      wishText={wishText(r.actionType, c.name)}
-                    />
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        );
-      })}
-      {general.length > 0 && (
-        <div className="card-surface overflow-hidden border border-border">
-          <div className="px-4 py-3 border-b bg-secondary/30 font-semibold text-sm">Not client-specific</div>
-          <ul className="divide-y">
-            {general.map((r) => {
-              const Icon = ICONS[r.icon] ?? Inbox;
-              return (
-                <li key={`${r.groupKey}:${r.id}`} className="flex items-center gap-2 px-4 py-2.5 hover:bg-accent/40">
-                  <Link href={r.href} className="flex items-center gap-2 min-w-0 flex-1">
-                    <Icon className="size-3.5 shrink-0 text-muted-foreground" />
-                    <div className="min-w-0 flex-1">
-                      <div className="text-sm font-medium truncate">{r.title}</div>
-                      {r.detail && <div className="text-[11px] text-muted-foreground truncate">{r.detail}</div>}
-                    </div>
-                  </Link>
-                  <CommandItemActions itemKey={r.itemKey ?? `${r.groupKey}:${r.id}`} actionType={r.actionType} taskId={r.actionType === "task" ? r.id : undefined} phone={r.phone} wishText={wishText(r.actionType, r.title)} />
-                </li>
-              );
-            })}
-          </ul>
-        </div>
       )}
     </div>
   );

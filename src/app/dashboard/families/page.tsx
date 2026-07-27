@@ -6,7 +6,6 @@ import { requireSession } from "@/lib/auth/session";
 import { requireAny, can } from "@/lib/auth/rbac";
 import { formatINR, formatRelative } from "@/lib/utils";
 import { RowActions } from "@/components/common/RowActions";
-import { FamilyKpiStrip } from "@/components/families/FamilyKpiStrip";
 import { FamilyQuickFilters } from "@/components/families/FamilyQuickFilters";
 import { FamilySuggestionsPanel } from "@/components/families/FamilySuggestionsPanel";
 import { Pager } from "@/components/common/Pager";
@@ -215,9 +214,6 @@ export default async function FamiliesPage({
           </Link>
         </div>
       </div>
-
-      {/* KPI strip — book-wide family snapshot */}
-      <FamilyKpiStrip session={session} />
 
       {/* Wealth-band tiers (Sanchay "Family Category" parity) */}
       <StatusChips basePath="/dashboard/families" paramKey="band" current={band} params={sp} chips={bandChips} />

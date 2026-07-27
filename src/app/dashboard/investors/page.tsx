@@ -15,7 +15,6 @@ import { InvestorsKanban, type InvestorRow } from "@/components/investors/Invest
 import { ColumnManager } from "@/components/common/ColumnManager";
 import { loadTenantLicense } from "@/lib/auth/license";
 import { isFieldAllowed } from "@/lib/auth/field-gate";
-import { InvestorKpiStrip } from "@/components/investors/InvestorKpiStrip";
 // import { InvestorQuickFilters } from "@/components/investors/InvestorQuickFilters"; // hidden for now
 import { dormancyDays, type HealthBand } from "@/lib/investors/health";
 import { InvestorsTable, type InvestorTableRow } from "@/components/investors/InvestorsTable";
@@ -335,9 +334,6 @@ export default async function InvestorsPage({
           </Link>
         </div>
       </div>
-
-      {/* KPI strip — book-wide snapshot */}
-      <InvestorKpiStrip session={session} />
 
       {/* Possible-duplicate nudge — managers can merge from the duplicates tool.
           Especially relevant now the importer allows duplicate PANs on purpose. */}

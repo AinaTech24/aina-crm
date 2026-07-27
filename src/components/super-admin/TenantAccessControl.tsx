@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ShieldAlert, Save } from "lucide-react";
 import { NAV_ACCESS_GROUPS, ALL_NAV_ITEMS } from "@/config/nav-access";
 import { DASHBOARD_WIDGET_GROUPS, ALL_DASHBOARD_WIDGETS } from "@/config/dashboard-widgets";
+import { FEATURE_FLAGS } from "@/config/feature-flags";
 
 // All fields from catalog.ts grouped by subject
 const AVAILABLE_FIELDS = {
@@ -83,12 +84,15 @@ export function TenantAccessControl({
   initialAllowedNav,
   initialAllowedFields,
   initialAllowedDashboardWidgets,
+  initialFeatureFlags = null,
   packageNavKeys = [],
 }: {
   tenantId: string;
   initialAllowedNav: string[] | null;
   initialAllowedFields: string[] | null;
   initialAllowedDashboardWidgets: string[] | null;
+  /** Per-tenant feature-flag override (subscriptions.feature_flags_override). */
+  initialFeatureFlags?: Record<string, any> | null;
   /** Nav keys the firm's PACKAGE grants — the default selection when there's
    *  no per-tenant override (so the toggles reflect the plan, not "all"). */
   packageNavKeys?: string[];
@@ -114,6 +118,19 @@ export function TenantAccessControl({
   // Dashboard widgets: null grant = all widgets visible; an array = exactly those.
   const [widgets, setWidgets] = useState<string[]>(initialAllowedDashboardWidgets || ALL_WIDGET_KEYS);
   const [customWidgetsActive, setCustomWidgetsActive] = useState(!!initialAllowedDashboardWidgets);
+
+  // Per-tenant feature-flag overrides. A key present = override; absent = inherit
+  // the package's flag. setFlag(key, undefined) clears the override.
+  const [flags, setFlags] = useState<Record<string, any>>(initialFeatureFlags ?? {});
+  const setFlag = (key: string, val: any) => {
+    setFlags((prev) => {
+      const next = { ...prev };
+      if (val === undefined) delete next[key];
+      else next[key] = val;
+      return next;
+    });
+    setSaved(false);
+  };
 
   const toggleNav = (key: string) => {
     setNav((prev) => (prev.includes(key) ? prev.filter((m) => m !== key) : [...prev, key]));
@@ -142,6 +159,7 @@ export function TenantAccessControl({
           allowedNav: customNavActive ? nav : null,
           allowedFields: customFieldsActive ? allowedFields : null,
           allowedDashboardWidgets: customWidgetsActive ? widgets : null,
+          featureFlags: Object.keys(flags).length ? flags : null,
         }),
       });
       const j = await res.json();
@@ -180,6 +198,48 @@ export function TenantAccessControl({
       )}
 
       {saved && <div className="text-xs text-emerald-700 bg-emerald-50 rounded-md p-2">✓ Overrides saved successfully</div>}
+
+      {/* Per-tenant feature flags — override individual capabilities without
+          changing the firm's package. Absent = inherit the plan's value. */}
+      <div className="space-y-3">
+        <div>
+          <h3 className="text-sm font-semibold">Feature flags</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">Toggle a capability for just this firm. &quot;Inherit&quot; uses the package default.</p>
+        </div>
+        <div className="border rounded-md divide-y bg-secondary/10">
+          {FEATURE_FLAGS.map((f) => {
+            const has = Object.prototype.hasOwnProperty.call(flags, f.key);
+            return (
+              <div key={f.key} className="flex items-center gap-3 p-3">
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium">{f.label} <span className="text-[10px] text-muted-foreground font-mono">{f.key}</span></div>
+                  <div className="text-[11px] text-muted-foreground">{f.description}</div>
+                </div>
+                {f.type === "boolean" ? (
+                  <div className="flex gap-1 text-[11px] font-medium shrink-0">
+                    {([["inherit", undefined], ["on", true], ["off", false]] as const).map(([lbl, val]) => {
+                      const active = val === undefined ? !has : has && flags[f.key] === val;
+                      return (
+                        <button key={lbl} type="button" onClick={() => setFlag(f.key, val)}
+                          className={`px-2 py-1 rounded border capitalize ${active ? "bg-primary text-primary-foreground border-primary" : "bg-card hover:bg-accent"}`}>
+                          {lbl}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 shrink-0">
+                    <input type="number" min={0} placeholder="inherit"
+                      value={has ? String(flags[f.key]) : ""}
+                      onChange={(e) => setFlag(f.key, e.target.value === "" ? undefined : Number(e.target.value))}
+                      className="input-base text-xs w-28" />
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Sidebar Access (admin → MFD) */}

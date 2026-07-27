@@ -8,22 +8,22 @@ import { ResolutionEditor } from "@/components/complaints/ResolutionEditor";
 import { FilterBar } from "@/components/common/FilterBar";
 import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
 import { CustomViews } from "@/components/common/CustomViews";
-import { WorkSwitcher } from "@/components/layout/WorkSwitcher";
+import { StatusChip, type Tone } from "@/components/common/StatusChip";
 
-const STATUS_TONE: Record<string, string> = {
-  open: "bg-blue-50 text-blue-700",
-  in_progress: "bg-amber-50 text-amber-700",
-  waiting_customer: "bg-slate-50 text-slate-700",
-  resolved: "bg-emerald-50 text-emerald-700",
-  closed: "bg-gray-50 text-gray-700",
-  escalated: "bg-rose-50 text-rose-700",
+const STATUS_TONE: Record<string, Tone> = {
+  open: "info",
+  in_progress: "warning",
+  waiting_customer: "neutral",
+  resolved: "success",
+  closed: "neutral",
+  escalated: "danger",
 };
 
-const PRIORITY_TONE: Record<string, string> = {
-  urgent: "bg-rose-50 text-rose-700",
-  high: "bg-amber-50 text-amber-700",
-  normal: "bg-secondary text-foreground",
-  low: "bg-gray-50 text-gray-700",
+const PRIORITY_TONE: Record<string, Tone> = {
+  urgent: "danger",
+  high: "warning",
+  normal: "neutral",
+  low: "neutral",
 };
 
 const CATEGORY_LABEL: Record<string, string> = {
@@ -148,7 +148,6 @@ export default async function ComplaintsPage({
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <WorkSwitcher current="/dashboard/complaints" />
           <Link href="/dashboard/complaints/disclosure" className="btn-secondary text-xs">
             <FileText className="size-3.5" /> Monthly disclosure
           </Link>
@@ -318,17 +317,17 @@ export default async function ComplaintsPage({
                     </td>
                     <td className="py-3 text-xs whitespace-nowrap">{r.assignee_name ?? "—"}</td>
                     <td className="py-3">
-                      <span className={`chip ${PRIORITY_TONE[r.priority] ?? ""} capitalize`}>
+                      <StatusChip tone={PRIORITY_TONE[r.priority] ?? "neutral"} className="capitalize">
                         {r.priority}
-                      </span>
+                      </StatusChip>
                     </td>
                     <td className="py-3 text-xs text-muted-foreground tabular-nums whitespace-nowrap">
                       {r.sla_resolution_at ? formatDate(r.sla_resolution_at) : "—"}
                     </td>
                     <td className="py-3">
-                      <span className={`chip capitalize ${STATUS_TONE[r.status] ?? ""}`}>
+                      <StatusChip tone={STATUS_TONE[r.status] ?? "neutral"} className="capitalize">
                         {r.status.replace(/_/g, " ")}
-                      </span>
+                      </StatusChip>
                     </td>
                     <td className="py-3 text-xs whitespace-nowrap">
                       {r.resolved_at ? (
@@ -351,7 +350,7 @@ export default async function ComplaintsPage({
                     <td className="py-3 text-xs whitespace-nowrap">
                       {r.escalated_at ? (
                         <div>
-                          <span className="chip bg-rose-50 text-rose-700">Yes</span>
+                          <StatusChip tone="danger">Yes</StatusChip>
                           {r.escalated_to_name && (
                             <div className="text-[11px] text-muted-foreground mt-0.5">
                               → {r.escalated_to_name}

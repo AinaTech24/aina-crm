@@ -54,7 +54,7 @@ export async function InvestorKpiStrip({
           )::int AS nominee_missing,
           COUNT(*) FILTER (
             WHERE status = 'active'
-              AND (last_transaction_at IS NULL OR last_transaction_at < now() - interval '180 days')
+              AND (last_transaction_at IS NULL OR last_transaction_at < now() - make_interval(days => COALESCE((SELECT dormancy_window_days FROM tenants WHERE id = investors.tenant_id), 180)))
           )::int AS dormant
         FROM investors
         -- Trashed (soft-deleted) clients must NOT inflate the counts/AUM — the

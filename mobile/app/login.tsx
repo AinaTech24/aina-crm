@@ -54,7 +54,7 @@ export default function Login() {
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <Animated.View entering={FadeInDown.duration(400)} style={styles.card}>
         <Text variant="title" center>
-          Growth OS
+          Aina CRM
         </Text>
         <Text variant="body" tone="muted" center style={{ marginTop: 4, marginBottom: spacing.xl }}>
           {challenge ? "Enter your authentication code" : "Sign in to your account"}

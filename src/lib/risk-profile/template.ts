@@ -49,6 +49,8 @@ export const RiskTemplateSchema = z.object({
   questions: z.array(QuestionSchema).min(1).max(30),
   bands: z.array(BandSchema).min(2).max(8),
   reviewIntervalDays: z.number().int().min(30).max(3650).default(365),
+  /** Require email-OTP verification on client self-submissions (/r/<token>). */
+  requireEmailOtp: z.boolean().default(true),
 });
 
 export type RiskTemplate = z.infer<typeof RiskTemplateSchema>;
@@ -77,6 +79,7 @@ export function defaultTemplate(): RiskTemplate {
       { id: "aggressive", label: "Aggressive", minScore: 30, maxScore: 40, color: "#ef4444", description: "High growth, higher volatility tolerance." },
     ],
     reviewIntervalDays: 365,
+    requireEmailOtp: true,
   };
 }
 
@@ -107,6 +110,7 @@ export async function loadActiveTemplate(tx: Tx, tenantId: string): Promise<Risk
     questions: row.questions,
     bands: row.bands,
     reviewIntervalDays: row.reviewIntervalDays,
+    requireEmailOtp: row.requireEmailOtp ?? true,
   });
   if (!parsed.success) return defaultTemplate();
   return { ...parsed.data, id: row.id, versionNumber: row.versionNumber };

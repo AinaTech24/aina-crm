@@ -73,6 +73,10 @@ export const investors = pgTable(
      *  every order placement; cached here for UI display without joining feeds. */
     bseUccCode: text("bse_ucc_code"),
     nseCanCode: text("nse_can_code"),
+    /** Additional client codes (a client can hold several UCCs across BSE / NSE /
+     *  MFU or multiple registrations). Free list, editable in the master form and
+     *  importable. Migration 0178. */
+    uccCodes: jsonb("ucc_codes").$type<string[]>().default([]),
     mandateStatus: text("mandate_status", {
       enum: ["none", "pending", "active", "expired", "rejected", "cancelled"],
     }).default("none"),
@@ -317,6 +321,8 @@ export const investors = pgTable(
      *  full submission verbatim (incl. unmapped fields like guardian / overseas
      *  address / TIN / PEP / source-of-wealth). Migration 0130. */
     kycData: jsonb("kyc_data").$type<Record<string, string>>(),
+    // MFD-defined custom fields (migration 0166) — keyed by custom_field_defs.key.
+    customFields: jsonb("custom_fields").$type<Record<string, any>>(),
 
     /** When true, this client participates in PAN uniqueness (the partial unique
      *  index below). RTA-feed, manual create, and lead-convert leave it true so a

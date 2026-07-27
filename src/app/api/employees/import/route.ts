@@ -43,7 +43,7 @@ type RowResult = { email: string; status: "invited" | "skipped" | "error"; reaso
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "settings.users");
+    requireCap(session.roles, "settings.users", session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
 
     const parse = Body.safeParse(await req.json().catch(() => ({})));

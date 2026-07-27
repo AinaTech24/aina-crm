@@ -7,7 +7,8 @@ export const tenants = pgTable(
     id,
     legalName: text("legal_name").notNull(),
     displayName: text("display_name").notNull(),
-    arn: text("arn").notNull(),
+    // Optional — some firms are onboarded before their ARN is issued.
+    arn: text("arn"),
     arnExpiryAt: date("arn_expiry_at"),
     principalEuin: text("principal_euin"),
     gstNumber: text("gst_number"),
@@ -34,6 +35,9 @@ export const tenants = pgTable(
      *  surface colour. Optional hex; null = stock palette. */
     textColor: text("text_color"),
     hoverColor: text("hover_color"),
+    // Deeper theming (migration 0164) — brand font + UI density. null = defaults.
+    fontFamily: text("font_family"),
+    uiDensity: text("ui_density"),
     logoUrl: text("logo_url"),
     faviconUrl: text("favicon_url"),
     /** Square app icon — sidebar badge / small square avatars. */
@@ -109,6 +113,10 @@ export const tenants = pgTable(
     dataProtectionOfficer: jsonb("dpo").$type<{ name?: string; email?: string; phone?: string }>(),
     riaRegistered: boolean("ria_registered").default(false),
     featureFlags: jsonb("feature_flags").$type<Record<string, boolean>>().default({}),
+    /** Days without a transaction after which a client counts as "dormant".
+     *  One firm-level knob so every surface (Investors KPIs, churn report, the
+     *  copilot) agrees. Default 180 (migration 0183). */
+    dormancyWindowDays: integer("dormancy_window_days").notNull().default(180),
     /** Marketing frequency cap (anti-fatigue / WhatsApp-ban protection). The comms
      *  pipeline skips a marketing send to a subject who already received
      *  `marketingFreqCap` marketing messages within the trailing

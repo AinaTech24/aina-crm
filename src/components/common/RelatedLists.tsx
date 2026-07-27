@@ -134,7 +134,13 @@ export function RelatedListsManager({
         return;
       }
     } catch {}
-    // First visit: hide sections marked defaultHidden, no reorder.
+    // No personal choice → fall back to the FIRM default (owner-set), else the
+    // built-in default (hide sections marked defaultHidden).
+    const firm = (typeof window !== "undefined" && (window as any).__AINA_FIRM_LAYOUTS__?.[moduleKey]?.related_lists) || null;
+    if (firm && (Array.isArray(firm.order) || Array.isArray(firm.hidden))) {
+      setPrefs({ order: Array.isArray(firm.order) ? firm.order : [], hidden: Array.isArray(firm.hidden) ? firm.hidden : [] });
+      return;
+    }
     setPrefs({
       order: [],
       hidden: sections.filter((s) => s.defaultHidden && !s.required).map((s) => s.key),
@@ -232,6 +238,17 @@ export function RelatedListsManager({
 
   const visibleCount = ordered.length - hiddenSet.size;
 
+  // Firm-admins can save the current arrangement as the firm-wide default.
+  const canSaveFirm = typeof window !== "undefined" && (window as any).__AINA_LAYOUT_ADMIN__ === true;
+  async function saveFirmDefault() {
+    if (!prefs) return;
+    await fetch("/api/settings/ui-layout", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ moduleKey, kind: "related_lists", data: prefs }),
+    }).catch(() => {});
+  }
+
   return (
     <>
       {css ? <style dangerouslySetInnerHTML={{ __html: css }} /> : null}
@@ -255,6 +272,7 @@ export function RelatedListsManager({
           onToggle={toggleHidden}
           onReorder={reorder}
           onReset={reset}
+          onSaveFirmDefault={canSaveFirm ? saveFirmDefault : undefined}
           onClose={() => setOpen(false)}
         />
       )}
@@ -270,6 +288,7 @@ function CustomizeDrawer({
   onToggle,
   onReorder,
   onReset,
+  onSaveFirmDefault,
   onClose,
 }: {
   sections: RelatedListDef[];
@@ -277,8 +296,10 @@ function CustomizeDrawer({
   onToggle: (k: string) => void;
   onReorder: (fromKey: string, toKey: string) => void;
   onReset: () => void;
+  onSaveFirmDefault?: () => Promise<void> | void;
   onClose: () => void;
 }) {
+  const [savedFirm, setSavedFirm] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const [dragKey, setDragKey] = useState<string | null>(null);
   const [overKey, setOverKey] = useState<string | null>(null);
@@ -399,13 +420,25 @@ function CustomizeDrawer({
         </div>
 
         <div className="px-5 py-3 border-t border-border flex items-center justify-between bg-muted/30">
-          <button
-            type="button"
-            onClick={onReset}
-            className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
-          >
-            <RotateCcw className="size-3" /> Reset to defaults
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={onReset}
+              className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
+            >
+              <RotateCcw className="size-3" /> Reset to defaults
+            </button>
+            {onSaveFirmDefault && (
+              <button
+                type="button"
+                onClick={async () => { await onSaveFirmDefault(); setSavedFirm(true); setTimeout(() => setSavedFirm(false), 2000); }}
+                className="text-xs text-brand-cyan-deep hover:underline inline-flex items-center gap-1"
+                title="Make this the default arrangement for everyone in your firm"
+              >
+                {savedFirm ? "✓ Saved for firm" : "Save as firm default"}
+              </button>
+            )}
+          </div>
           <button
             type="button"
             onClick={onClose}

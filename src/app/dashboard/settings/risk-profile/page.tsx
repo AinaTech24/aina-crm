@@ -37,6 +37,7 @@ export default async function RiskProfileSettingsPage() {
           questions: template.questions,
           bands: template.bands,
           reviewIntervalDays: template.reviewIntervalDays,
+          requireEmailOtp: template.requireEmailOtp ?? true,
         }}
         versionNumber={(template as any).versionNumber ?? null}
       />

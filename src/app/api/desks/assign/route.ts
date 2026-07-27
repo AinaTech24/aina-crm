@@ -1,6 +1,6 @@
 /**
  * POST /api/desks/assign  → assign a user to a desk { userId, deskId|null }
- * Gated by settings.users.
+ * Gated by settings.desks.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -21,7 +21,7 @@ const Body = z.object({
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "settings.users");
+    requireCap(session.roles, "settings.desks");
     const parsed = Body.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
       return NextResponse.json({ error: "invalid input", issues: parsed.error.issues }, { status: 400 });

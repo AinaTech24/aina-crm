@@ -12,6 +12,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { deriveSchemeRisk } from "@/lib/mf/scheme-risk";
 
 export const dynamic = "force-dynamic";
 
@@ -56,6 +57,9 @@ export async function GET(req: NextRequest) {
         category: r.category,
         nav: r.nav != null ? Number(r.nav) : null,
         navDate: r.nav_date,
+        // SEBI riskometer band derived from the scheme category (mfapi has no
+        // official riskometer field). null when it can't be inferred.
+        risk: deriveSchemeRisk(r.category, r.name),
       })),
     });
   } catch (err: any) {

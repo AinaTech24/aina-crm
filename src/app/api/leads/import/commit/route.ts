@@ -13,6 +13,7 @@ import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { scoreFields } from "@/lib/leads/score";
+import { loadCustomFieldDefs, sanitizeCustomFields } from "@/lib/custom-fields/values";
 
 export const dynamic = "force-dynamic";
 
@@ -83,6 +84,9 @@ export async function POST(req: NextRequest) {
     const errors: Array<{ rowIndex: number; error: string }> = [];
 
     await withTenant(session.tenantId, async (tx) => {
+      // Firm custom-field definitions — any mapped cf_* column is sanitized + stored.
+      const cfDefs = await loadCustomFieldDefs(tx, session.tenantId, "lead");
+
       for (let i = 0; i < parse.data.rows.length; i++) {
         const row = parse.data.rows[i];
         const name = pick(row, reverse.name);
@@ -108,6 +112,11 @@ export async function POST(req: NextRequest) {
         const currentInv = listOrNull(pick(row, reverse.currentInvestments));
         const profile = occupation || currentInv ? { occupation: occupation ?? undefined, currentInvestments: currentInv ?? undefined } : null;
         const tags = listOrNull(pick(row, reverse.tags));
+        // Custom fields: read each mapped cf_* column, sanitize against defs.
+        const rawCf: Record<string, any> = {};
+        for (const d of cfDefs) rawCf[d.key] = pick(row, reverse[d.key]);
+        const cleanCf = sanitizeCustomFields(cfDefs, rawCf);
+        const cfJson = Object.keys(cleanCf).length ? JSON.stringify(cleanCf) : null;
         // Deterministic initial score from the imported signals.
         const sc = scoreFields({
           source,
@@ -125,7 +134,7 @@ export async function POST(req: NextRequest) {
               expected_business_amount, aum_potential, lead_type, interest_products, profile,
               referred_by_name, next_follow_up_at, tags,
               lead_score, score_band, scored_at,
-              owner_id, notes, created_at, updated_at
+              owner_id, notes, custom_fields, created_at, updated_at
             )
             VALUES (
               ${uuid()}, ${session.tenantId}, ${session.branchId ?? null},
@@ -151,6 +160,7 @@ export async function POST(req: NextRequest) {
               ${sc.leadScore}, ${sc.scoreBand}, now(),
               ${session.userId},
               ${pick(row, reverse.notes) || null},
+              ${cfJson}::jsonb,
               now(), now()
             )
           `);

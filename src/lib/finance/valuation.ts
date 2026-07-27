@@ -42,7 +42,24 @@ export type SchemeHolding = {
   kind: "sip" | "lumpsum" | "mixed" | null;
   /** true when a live NAV was found for this scheme. */
   priced: boolean;
+  // ── Transaction-derived (null when the holding came from a folio/holdings
+  //    snapshot with no transaction history). ──────────────────────────────
+  /** First purchase date for this scheme (ISO). */
+  startDate: string | null;
+  /** Units-weighted average holding period, in days. */
+  avgDays: number | null;
+  /** Gain already booked on redeemed units (average-cost method, ₹). */
+  realisedGain: number | null;
+  /** Dividend payouts received on this scheme (₹). */
+  dividend: number | null;
+  /** true when this holding has any transaction coverage (drives cost/gain/XIRR columns). */
+  hasTxns: boolean;
 };
+
+/** Whole days between two dates (>= 0). */
+function daysBetween(from: Date, to: Date): number {
+  return Math.max(0, Math.round((to.getTime() - from.getTime()) / 86_400_000));
+}
 
 export type InvestorValuation = {
   /** Market value of all PRICED holdings (units × latest NAV). */
@@ -115,11 +132,19 @@ export async function valueInvestor(
   const flowCandidates: Array<{ key: string; date: Date; amount: number }> = [];
   let latestNavDate: string | null = null;
 
+  // Running average-cost lot tracker per scheme (for realised gain), and a
+  // units-weighted holding-age accumulator (for avg days). Rows are ordered by
+  // order_date ASC, so the running avg cost is correct at each redemption.
+  const costTrackByKey = new Map<string, { boughtUnits: number; boughtCost: number }>();
+  const ageByKey = new Map<string, { unitsSum: number; dayUnitsSum: number }>();
+  const now = new Date();
+
   for (const r of rows) {
     const key = r.scheme_code ?? r.scheme_name ?? "unknown";
     const amount = r.amount != null ? Number(r.amount) : 0;
     const units = r.units != null ? Number(r.units) : 0;
     const isInflow = r.direction === "inflow"; // money/units INTO the holding (buy)
+    const isDividend = !isInflow && !!r.type && /dividend/i.test(r.type); // payout, not a unit redemption
 
     if (r.order_date && isFinite(amount) && amount !== 0) {
       // buy = money out (−), sell/payout = money in (+).
@@ -156,6 +181,11 @@ export async function valueInvestor(
         xirr: null,
         kind: null,
         priced: false,
+        startDate: null,
+        avgDays: null,
+        realisedGain: 0,
+        dividend: 0,
+        hasTxns: true,
       };
       bySchemeKey.set(key, h);
     }
@@ -163,6 +193,37 @@ export async function valueInvestor(
       h.folioNumbers.push(r.folio_number);
       if (!h.folioNumber) h.folioNumber = r.folio_number;
     }
+
+    // First-purchase date (rows are ASC, so the first inflow we see is earliest).
+    if (isInflow && r.order_date && !h.startDate) h.startDate = r.order_date;
+
+    if (isDividend) {
+      // Dividend payout — money to the investor, no unit movement.
+      h.dividend = (h.dividend ?? 0) + Math.abs(amount);
+    } else if (isInflow) {
+      // Buy — add to the average-cost lot + units-weighted age accumulator.
+      const ct = costTrackByKey.get(key) ?? { boughtUnits: 0, boughtCost: 0 };
+      ct.boughtUnits += units;
+      ct.boughtCost += amount;
+      costTrackByKey.set(key, ct);
+      if (r.order_date && units > 0) {
+        const age = ageByKey.get(key) ?? { unitsSum: 0, dayUnitsSum: 0 };
+        age.unitsSum += units;
+        age.dayUnitsSum += units * daysBetween(new Date(r.order_date), now);
+        ageByKey.set(key, age);
+      }
+    } else if (units > 0) {
+      // Redemption / switch-out — book realised gain at the running average cost.
+      const ct = costTrackByKey.get(key);
+      if (ct && ct.boughtUnits > 0) {
+        const avgCost = ct.boughtCost / ct.boughtUnits;
+        const redeemed = Math.min(units, ct.boughtUnits);
+        h.realisedGain = (h.realisedGain ?? 0) + (amount - avgCost * redeemed);
+        ct.boughtUnits -= redeemed;
+        ct.boughtCost -= avgCost * redeemed;
+      }
+    }
+
     h.netUnits += isInflow ? units : -units;
     h.investedNet += isInflow ? amount : -amount;
     if (r.latest_nav_date && (!latestNavDate || r.latest_nav_date > latestNavDate)) {
@@ -186,6 +247,10 @@ export async function valueInvestor(
     // SIP / Lumpsum / Mixed label from the inflow types we saw.
     const t = typesByKey.get(key);
     h.kind = t ? (t.sip && t.lumpsum ? "mixed" : t.sip ? "sip" : "lumpsum") : null;
+
+    // Units-weighted average holding period.
+    const age = ageByKey.get(key);
+    h.avgDays = age && age.unitsSum > 0 ? age.dayUnitsSum / age.unitsSum : null;
 
     if (h.latestNav != null && h.netUnits > 0) {
       h.priced = true;
@@ -242,6 +307,7 @@ export async function valueInvestor(
         folioNumber: fr.folio_number ?? null, folioNumbers: [],
         netUnits: 0, investedNet: 0, latestNav: nav, navDate: null,
         currentValue: 0, gain: null, xirr: null, kind: null, priced: false,
+        startDate: null, avgDays: null, realisedGain: null, dividend: null, hasTxns: false,
       };
       folioByKey.set(key, h);
     }

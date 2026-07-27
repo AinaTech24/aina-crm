@@ -8,11 +8,11 @@
  */
 
 export const palette = {
-  // Brand
-  brand: "#2563EB",
-  brandDark: "#1D4ED8",
-  brandLight: "#EFF4FF",
-  brandTint: "#DBE6FF",
+  // Brand — matched to the "A" logo's red (per-tenant theming overrides these).
+  brand: "#CF1D24",
+  brandDark: "#A8141B",
+  brandLight: "#FCEBEC",
+  brandTint: "#F6CFD2",
 
   // Neutrals (slate)
   ink: "#0F172A", // primary text
@@ -63,14 +63,14 @@ export const radius = {
 } as const;
 
 export const fontSize = {
-  xs: 11,
-  sm: 13,
-  base: 15,
-  md: 16,
-  lg: 18,
-  xl: 22,
-  "2xl": 28,
-  "3xl": 34,
+  xs: 12,
+  sm: 14,
+  base: 16,
+  md: 17,
+  lg: 19,
+  xl: 23,
+  "2xl": 29,
+  "3xl": 35,
 } as const;
 
 export const fontWeight = {

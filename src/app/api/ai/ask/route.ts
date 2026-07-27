@@ -50,7 +50,8 @@ export async function POST(req: NextRequest) {
             COUNT(*) FILTER (WHERE kyc_status NOT IN ('verified','registered') AND deleted_at IS NULL)::int AS kyc_pending,
             COUNT(*) FILTER (WHERE (nominee_name IS NULL OR nominee_name = '') AND deleted_at IS NULL AND status <> 'closed')::int AS no_nominee,
             COUNT(*) FILTER (WHERE segment_tag = 'HNI' AND deleted_at IS NULL)::int AS hni_clients,
-            COUNT(*) FILTER (WHERE last_transaction_at < now() - interval '365 days' AND deleted_at IS NULL AND status <> 'closed')::int AS dormant_clients
+            COUNT(*) FILTER (WHERE last_transaction_at < now() - make_interval(days => (SELECT dormancy_window_days FROM tenants WHERE id = ${session.tenantId}::uuid)) AND deleted_at IS NULL AND status <> 'closed')::int AS dormant_clients,
+            (SELECT dormancy_window_days FROM tenants WHERE id = ${session.tenantId}::uuid)::int AS dormancy_window_days
           FROM investors WHERE tenant_id = ${session.tenantId}::uuid
         `)
       ).rows[0] as any;
@@ -64,7 +65,7 @@ export async function POST(req: NextRequest) {
       ).rows as any[];
 
       const leads = (
-        await tx.execute(sql`SELECT COUNT(*)::int AS open_leads FROM leads WHERE tenant_id = ${session.tenantId}::uuid AND status NOT IN ('won','lost','converted')`)
+        await tx.execute(sql`SELECT COUNT(*)::int AS open_leads FROM leads WHERE tenant_id = ${session.tenantId}::uuid AND stage NOT IN ('converted','lost','not_interested','not_qualified')`)
       ).rows[0] as any;
 
       const tasks = (
@@ -130,7 +131,8 @@ export async function POST(req: NextRequest) {
         kyc_pending_clients: Number(inv.kyc_pending),
         clients_without_nominee: Number(inv.no_nominee),
         hni_clients: Number(inv.hni_clients),
-        dormant_clients_365d: Number(inv.dormant_clients),
+        dormant_clients: Number(inv.dormant_clients),
+        dormancy_window_days: Number(inv.dormancy_window_days) || 180,
         open_leads: Number(leads.open_leads),
         open_tasks: Number(tasks.open_tasks),
         overdue_tasks: Number(tasks.overdue_tasks),
@@ -212,7 +214,7 @@ function deterministicAnswer(question: string, s: any): string {
   if (has("kyc")) return `${s.kyc_pending_clients} clients are KYC-pending.`;
   if (has("sip")) return `You have ${s.active_sips} active SIPs — a monthly SIP book of ${inr(s.monthly_sip_book_inr)}.`;
   if (has("nominee")) return `${s.clients_without_nominee} clients have no nominee on file.`;
-  if (has("dormant")) return `${s.dormant_clients_365d} clients are dormant (no transaction in 365 days).`;
+  if (has("dormant")) return `${s.dormant_clients} clients are dormant (no transaction in ${s.dormancy_window_days} days).`;
   if (has("new", "this month")) return `${s.new_clients_this_month} new clients this month (${s.new_clients_last_30d} in the last 30 days).`;
   if (has("top", "biggest", "largest")) {
     const lines = (s.top_clients_by_aum ?? []).slice(0, 10).map((t: any, i: number) => `${i + 1}. ${t.name} — ${inr(t.aum_inr)}`);

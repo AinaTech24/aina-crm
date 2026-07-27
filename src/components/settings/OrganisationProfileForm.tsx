@@ -55,6 +55,7 @@ export function OrganisationProfileForm({
     sipBookRange: tenant.sipBookRange ?? "",
     teamSize: tenant.teamSize ?? "",
     currentSoftwareUsed: tenant.currentSoftwareUsed ?? "",
+    dormancyWindowDays: String((tenant as any).dormancyWindowDays ?? 180),
     addressLine1: tenant.address?.line1 ?? "",
     city: tenant.address?.city ?? "",
     state: tenant.address?.state ?? "",
@@ -76,6 +77,9 @@ export function OrganisationProfileForm({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           ...form,
+          // The API expects a number in 30–1095; blank → skip (keeps current).
+          dormancyWindowDays:
+            form.dormancyWindowDays === "" ? undefined : Math.min(1095, Math.max(30, Math.round(Number(form.dormancyWindowDays) || 180))),
           address: {
             line1: form.addressLine1,
             city: form.city,
@@ -160,24 +164,28 @@ export function OrganisationProfileForm({
     <form onSubmit={save} className="space-y-4">
       {/* -------------------------------- Identity -------------------------------- */}
       <Section title="Identity">
-        <Row label="Organisation name (display)" value={form.displayName} onChange={(v) => set("displayName", v)} required />
-        <Row label="Legal name" value={form.legalName} onChange={(v) => set("legalName", v)} required />
-        <Row label="Owner name" value={owner?.name ?? "—"} disabled note={owner ? owner.email : ""} />
-        <Row label="ARN" helpTerm="ARN" value={tenant.arn ?? "—"} disabled note="Managed by AINA" />
-        <Row label="Principal EUIN" helpTerm="EUIN" value={tenant.principalEuin ?? "—"} disabled note="Managed by AINA" />
-        <Row label="GSTIN" value={tenant.gstNumber ?? "—"} disabled />
-        <Row
-          label="Created"
-          value={tenant.createdAt ? new Date(tenant.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "—"}
-          disabled
-        />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Row label="Organisation name (display)" value={form.displayName} onChange={(v) => set("displayName", v)} required />
+          <Row label="Legal name" value={form.legalName} onChange={(v) => set("legalName", v)} required />
+          <Row label="Owner name" value={owner?.name ?? "—"} disabled note={owner ? owner.email : ""} />
+          <Row label="ARN" helpTerm="ARN" value={tenant.arn ?? "—"} disabled note="Managed by AINA" />
+          <Row label="Principal EUIN" helpTerm="EUIN" value={tenant.principalEuin ?? "—"} disabled note="Managed by AINA" />
+          <Row label="GSTIN" value={tenant.gstNumber ?? "—"} disabled />
+          <Row
+            label="Created"
+            value={tenant.createdAt ? new Date(tenant.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "—"}
+            disabled
+          />
+        </div>
       </Section>
 
       {/* --------------------------------- Contact -------------------------------- */}
       <Section title="Contact">
-        <Row label="Email" value={form.email} onChange={(v) => set("email", v)} type="email" />
-        <Row label="Mobile / phone" value={form.phone} onChange={(v) => set("phone", v)} placeholder="+91…" />
-        <Row label="Website" value={form.website} onChange={(v) => set("website", v)} placeholder="https://" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Row label="Email" value={form.email} onChange={(v) => set("email", v)} type="email" />
+          <Row label="Mobile / phone" value={form.phone} onChange={(v) => set("phone", v)} placeholder="+91…" />
+          <Row label="Website" value={form.website} onChange={(v) => set("website", v)} placeholder="https://" />
+        </div>
       </Section>
 
       {/* --------------------------------- Address -------------------------------- */}
@@ -311,10 +319,20 @@ export function OrganisationProfileForm({
 
       {/* ----------------------------- Business profile --------------------------- */}
       <Section title="Business profile">
-        <Row label="Approx AUM range" value={form.aumRange} onChange={(v) => set("aumRange", v)} placeholder="e.g. ₹50Cr – ₹100Cr" />
-        <Row label="SIP book range" value={form.sipBookRange} onChange={(v) => set("sipBookRange", v)} placeholder="e.g. ₹50L – ₹1Cr" />
-        <Row label="Team size" value={form.teamSize} onChange={(v) => set("teamSize", v)} placeholder="1–5, 6–10, 11–25, 25+" />
-        <Row label="Current software" value={form.currentSoftwareUsed} onChange={(v) => set("currentSoftwareUsed", v)} placeholder="e.g. Wealth Elite, Excel, Investwell" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Row label="Approx AUM range" value={form.aumRange} onChange={(v) => set("aumRange", v)} placeholder="e.g. ₹50Cr – ₹100Cr" />
+          <Row label="SIP book range" value={form.sipBookRange} onChange={(v) => set("sipBookRange", v)} placeholder="e.g. ₹50L – ₹1Cr" />
+          <Row label="Team size" value={form.teamSize} onChange={(v) => set("teamSize", v)} placeholder="1–5, 6–10, 11–25, 25+" />
+          <Row label="Current software" value={form.currentSoftwareUsed} onChange={(v) => set("currentSoftwareUsed", v)} placeholder="e.g. Wealth Elite, Excel, Investwell" />
+          <Row
+            label="Dormancy window (days)"
+            type="number"
+            value={form.dormancyWindowDays}
+            onChange={(v) => set("dormancyWindowDays", v)}
+            placeholder="180"
+            note="A client with no transaction for this many days counts as “dormant” (Investors KPIs, churn report, and the copilot). 30–1095; default 180."
+          />
+        </div>
       </Section>
 
       {/* --------------------------- License / package ---------------------------- */}

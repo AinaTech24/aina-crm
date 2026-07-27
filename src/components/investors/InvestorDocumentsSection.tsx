@@ -12,6 +12,7 @@ import { FileText, Upload, Download, Trash2, Loader2, FolderOpen, UserCheck, Sen
 import { useToast } from "@/components/ui/Toast";
 import { isNativeApp, nativePickImage } from "@/lib/native-bridge";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { SelectField } from "@/components/ui/SelectField";
 import { DocumentViewerModal, type ViewerDoc } from "@/components/documents/DocumentViewerModal";
 
 type Doc = {
@@ -48,6 +49,7 @@ export function InvestorDocumentsSection({ investorId, investorName, investorPho
   const [busyId, setBusyId] = useState<string | null>(null);
   const [viewer, setViewer] = useState<ViewerDoc | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [dragActive, setDragActive] = useState(false);
   // True only inside the mobile app's WebView — gates the native "Scan" button.
   // Resolved in an effect because `window` isn't available during SSR.
   const [native, setNative] = useState(false);
@@ -299,15 +301,6 @@ export function InvestorDocumentsSection({ investorId, investorName, investorPho
               <Camera className="size-4" /> Scan
             </button>
           )}
-          <button
-            type="button"
-            disabled={uploading}
-            onClick={() => fileRef.current?.click()}
-            className="btn-primary text-sm inline-flex items-center gap-1.5 disabled:opacity-50"
-          >
-            {uploading ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
-            Upload
-          </button>
         </div>
       </div>
 
@@ -338,10 +331,11 @@ export function InvestorDocumentsSection({ investorId, investorName, investorPho
             <div className="mt-3 space-y-2 pl-1">
               <div className="flex items-center gap-2">
                 <span className="text-[11px] text-muted-foreground">Client type:</span>
-                <select
+                <SelectField
                   value={compType}
                   onChange={(e) => { setCompType(e.target.value); void loadCompleteness(e.target.value); }}
-                  className="input-base text-xs w-auto py-1"
+                  size="sm"
+                  className="w-40"
                 >
                   <option value="individual">Individual</option>
                   <option value="huf">HUF</option>
@@ -349,7 +343,7 @@ export function InvestorDocumentsSection({ investorId, investorName, investorPho
                   <option value="minor">Minor</option>
                   <option value="company">Company</option>
                   <option value="trust">Trust</option>
-                </select>
+                </SelectField>
                 {comp.extraCount > 0 && <span className="text-[11px] text-muted-foreground">· {comp.extraCount} other doc(s)</span>}
               </div>
               <ul className="grid sm:grid-cols-2 gap-x-4 gap-y-1">
@@ -378,10 +372,11 @@ export function InvestorDocumentsSection({ investorId, investorName, investorPho
           </p>
           {!reqLink ? (
             <>
-              <select
+              <SelectField
                 value={reqType}
                 onChange={(e) => setReqType(e.target.value as any)}
-                className="input-base text-xs w-full"
+                size="sm"
+                className="w-full"
               >
                 <option value="individual">Individual / Resident</option>
                 <option value="huf">HUF (Hindu Undivided Family)</option>
@@ -389,7 +384,7 @@ export function InvestorDocumentsSection({ investorId, investorName, investorPho
                 <option value="minor">Minor (Below 18)</option>
                 <option value="company">Company / Corporate</option>
                 <option value="trust">Trust</option>
-              </select>
+              </SelectField>
               {reqErr && <div className="text-xs text-rose-700">{reqErr}</div>}
               <div className="flex gap-2">
                 <button
@@ -443,19 +438,43 @@ export function InvestorDocumentsSection({ investorId, investorName, investorPho
         </div>
       )}
 
+      {/* Big drag-and-drop upload area — expected document types shown as chips.
+          Replaces the old top-right Upload button; drop or click to browse. */}
+      <div
+        role="button"
+        tabIndex={0}
+        aria-label="Upload documents"
+        onClick={() => !uploading && fileRef.current?.click()}
+        onKeyDown={(e) => { if ((e.key === "Enter" || e.key === " ") && !uploading) { e.preventDefault(); fileRef.current?.click(); } }}
+        onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
+        onDragEnter={(e) => { e.preventDefault(); setDragActive(true); }}
+        onDragLeave={(e) => { e.preventDefault(); setDragActive(false); }}
+        onDrop={(e) => { e.preventDefault(); setDragActive(false); onFiles(e.dataTransfer.files); }}
+        className={`mb-4 rounded-xl border-2 border-dashed p-8 text-center cursor-pointer select-none transition-colors ${
+          dragActive
+            ? "border-brand-cyan bg-brand-cyan-light/30"
+            : "border-border hover:border-brand-cyan/50 hover:bg-secondary/20"
+        } ${uploading ? "pointer-events-none opacity-70" : ""}`}
+      >
+        <div className="mx-auto size-12 rounded-full bg-brand-cyan-light/40 grid place-items-center">
+          {uploading ? <Loader2 className="size-6 text-brand-cyan animate-spin" /> : <Upload className="size-6 text-brand-cyan" />}
+        </div>
+        <div className="mt-3 font-semibold text-sm">
+          {uploading ? "Uploading…" : dragActive ? "Drop to upload" : "Drag & drop documents here"}
+        </div>
+        <div className="text-xs text-muted-foreground mt-1">
+          or <span className="text-brand-cyan-deep font-medium">click to browse</span> · PDF, JPG, PNG, DOC, XLS · up to 15 MB each
+        </div>
+      </div>
+
       {loading ? (
-        <div className="py-10 text-center text-sm text-muted-foreground flex items-center justify-center gap-2">
+        <div className="py-6 text-center text-sm text-muted-foreground flex items-center justify-center gap-2">
           <Loader2 className="size-4 animate-spin" /> Loading documents…
         </div>
       ) : docs.length === 0 ? (
-        <div className="py-10 text-center text-sm text-muted-foreground">
-          <FileText className="size-8 mx-auto text-muted-foreground/40" />
-          <div className="mt-2">No documents yet.</div>
-          <p className="mt-1 text-xs max-w-sm mx-auto">
-            Upload KYC / agreement files here. Documents {investorName ?? "the client"} submits via the
-            required-documents link appear here automatically.
-          </p>
-        </div>
+        <p className="text-center text-xs text-muted-foreground pb-1">
+          No documents yet — files {investorName ?? "the client"} submits via the required-documents link appear here automatically.
+        </p>
       ) : (
         <div className="space-y-5">
           {clientDocs.length > 0 && (

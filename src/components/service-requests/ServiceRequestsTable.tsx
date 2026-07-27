@@ -130,11 +130,11 @@ export function ServiceRequestsTable({ rows }: { rows: any[] }) {
         </div>
       )}
 
-      <div className="table-scroll">
+      <div className="table-scroll group/tbl">
         <table className="w-full text-sm" data-table="service-requests">
           <thead className="text-xs text-muted-foreground border-b sticky top-0 z-10 bg-card">
             <tr>
-              <th className="px-3 py-2 w-8"><input type="checkbox" checked={allSelected} onChange={toggleAll} className="size-3.5 rounded" aria-label="Select all" /></th>
+              <th className="px-3 py-2 w-8"><input type="checkbox" checked={allSelected} onChange={toggleAll} className={`size-3.5 rounded transition-opacity ${selected.size > 0 ? "opacity-100" : "opacity-0 group-hover/tbl:opacity-100 focus:opacity-100"}`} aria-label="Select all" /></th>
               <th data-col="ticket" className="text-left px-1 py-2 font-medium">Ticket</th>
               <th data-col="client" className="text-left py-2 font-medium">Client</th>
               <th data-col="type" className="text-left py-2 font-medium">Service Type</th>
@@ -152,8 +152,8 @@ export function ServiceRequestsTable({ rows }: { rows: any[] }) {
             {rows.map((sr) => {
               const isSel = selected.has(sr.id);
               return (
-                <tr key={sr.id} className={`border-b last:border-0 hover:bg-secondary/40 ${isSel ? "bg-brand-cyan-light/30" : sr.breached ? "bg-rose-50/30" : ""}`}>
-                  <td className="px-3 py-3"><input type="checkbox" checked={isSel} onChange={() => toggle(sr.id)} className="size-3.5 rounded" aria-label={`Select ${sr.ticket_no}`} /></td>
+                <tr key={sr.id} className={`group/row border-b last:border-0 hover:bg-secondary/40 ${isSel ? "bg-brand-cyan-light/30" : sr.breached ? "bg-rose-50/30" : ""}`}>
+                  <td className="px-3 py-3"><input type="checkbox" checked={isSel} onChange={() => toggle(sr.id)} className={`size-3.5 rounded transition-opacity ${isSel ? "opacity-100" : "opacity-0 group-hover/row:opacity-100 focus:opacity-100"}`} aria-label={`Select ${sr.ticket_no}`} /></td>
                   <td data-col="ticket" className="px-1 py-3 font-mono text-xs whitespace-nowrap">
                     <Link href={`/dashboard/service-requests/${sr.id}`} className="hover:underline text-brand-cyan-deep">{sr.ticket_no}</Link>
                   </td>
@@ -187,7 +187,7 @@ export function ServiceRequestsTable({ rows }: { rows: any[] }) {
                   </td>
                   <td data-col="attachments" className="py-3 text-right tabular-nums text-muted-foreground">{sr.attach_count > 0 ? sr.attach_count : "—"}</td>
                   <td data-col="actions" className="px-4 py-3 text-right">
-                    <RowActions editHref={`/dashboard/service-requests/${sr.id}`} deleteUrl={`/api/service-requests/${sr.id}`} itemLabel="ticket" itemName={sr.ticket_no} verb="Close" />
+                    <RowActions inline editHref={`/dashboard/service-requests/${sr.id}`} deleteUrl={`/api/service-requests/${sr.id}`} itemLabel="ticket" itemName={sr.ticket_no} verb="Close" deleteIcon={Ban} />
                   </td>
                 </tr>
               );

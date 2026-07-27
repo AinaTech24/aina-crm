@@ -4,10 +4,10 @@ import { Calendar, CheckCircle2, Clock, AlertTriangle } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { Avatar } from "@/components/ui/Avatar";
-import { FilterBar } from "@/components/common/FilterBar";
-import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
+import { dateRangeCond } from "@/lib/filters/date-range";
 import { CustomViews } from "@/components/common/CustomViews";
 import { ColumnManager } from "@/components/common/ColumnManager";
+import { CompactFilterBar } from "@/components/common/CompactFilterBar";
 import { AddMeetingButton } from "@/components/review-meetings/AddMeetingButton";
 import { MeetingsBulkTable } from "@/components/review-meetings/MeetingsBulkTable";
 import { MeetingsKanban } from "@/components/review-meetings/MeetingsKanban";
@@ -217,13 +217,6 @@ export default async function ReviewMeetingsPage({
         </div>
       </div>
 
-      <div className="grid grid-cols-4 gap-3">
-        <Stat icon={Calendar} label="Upcoming" value={data.stats.upcoming} />
-        <Stat icon={Clock} label="This week" value={data.stats.this_week} tone={data.stats.this_week > 0 ? "amber" : "muted"} />
-        <Stat icon={AlertTriangle} label="Overdue" value={data.stats.overdue} tone={data.stats.overdue > 0 ? "rose" : "muted"} />
-        <Stat icon={CheckCircle2} label="Completed MTD" value={data.stats.completed_mtd} tone="emerald" />
-      </div>
-
       {todays.length > 0 && (
         <div className="card-surface p-4">
           <div className="flex items-center gap-2 mb-3 font-semibold text-sm">
@@ -262,85 +255,87 @@ export default async function ReviewMeetingsPage({
         </div>
       )}
 
-      <FilterBar
-        totalCount={data.rows.length}
-        filters={[
-          { type: "search", key: "q", placeholder: "Search by client, notes, discussion points…" },
-          {
-            type: "sort",
-            key: "sort",
-            label: "Sort",
-            options: [
-              { value: "meeting_desc", label: "Date — latest first" },
-              { value: "meeting_asc", label: "Date — earliest first" },
-            ],
-          },
-          {
-            type: "multi",
-            key: "category",
-            label: "Category",
-            options: [
-              { value: "review", label: "Review" },
-              { value: "new", label: "New" },
-              { value: "follow_up", label: "Follow-up" },
-            ],
-          },
-          {
-            type: "multi",
-            key: "status",
-            label: "Status",
-            options: [
-              { value: "scheduled", label: "Scheduled" },
-              { value: "confirmed", label: "Confirmed" },
-              { value: "in_progress", label: "In progress" },
-              { value: "completed", label: "Completed" },
-              { value: "rescheduled", label: "Rescheduled" },
-              { value: "cancelled", label: "Cancelled" },
-              { value: "no_show", label: "No show" },
-            ],
-          },
-          {
-            type: "multi",
-            key: "mode",
-            label: "Mode",
-            options: [
-              { value: "office", label: "Office" },
-              { value: "client_place", label: "Client place" },
-              { value: "online", label: "Online" },
-              { value: "phone", label: "Phone" },
-            ],
-          },
-          {
-            type: "multi",
-            key: "type",
-            label: "Agenda",
-            options: Object.entries(TYPE_LABEL).map(([value, label]) => ({ value, label })),
-          },
-          ...(rmOptions.length
-            ? [{ type: "multi" as const, key: "rm", label: "RM", options: rmOptions }]
-            : []),
-          dateRangeFilter("meeting", "Meeting date"),
-        ]}
-        rightSlot={
-          <div className="flex items-center gap-2">
-            <ColumnManager moduleKey="meetings-upcoming" columns={MEETINGS_COLUMNS} />
-            <CustomViews
-              viewsKey="views:review-meetings"
-              presets={[
-                { id: "upcoming", name: "Upcoming", params: "status=scheduled,confirmed" },
-                { id: "reviews", name: "Review meetings", params: "category=review" },
-                { id: "new", name: "New / Follow-ups", params: "category=new,follow_up" },
-                { id: "completed", name: "Completed", params: "status=completed" },
-              ]}
-            />
-          </div>
-        }
-      />
-
       {view === "kanban" ? (
         <MeetingsKanban meetings={data.rows} />
       ) : (
-        <MeetingsBulkTable upcoming={upcoming} past={past} rmOptions={rmOptions} />
+        <MeetingsBulkTable
+          upcoming={upcoming}
+          past={past}
+          rmOptions={rmOptions}
+          toolbar={
+            <CompactFilterBar
+              bare
+              searchPlaceholder="Search meetings…"
+              sort={{
+                key: "sort",
+                options: [
+                  { value: "meeting_desc", label: "Date — latest first" },
+                  { value: "meeting_asc", label: "Date — earliest first" },
+                ],
+              }}
+              filters={[
+                {
+                  type: "multi" as const,
+                  key: "category",
+                  label: "Category",
+                  options: [
+                    { value: "review", label: "Review" },
+                    { value: "new", label: "New" },
+                    { value: "follow_up", label: "Follow-up" },
+                  ],
+                },
+                {
+                  type: "multi" as const,
+                  key: "status",
+                  label: "Status",
+                  options: [
+                    { value: "scheduled", label: "Scheduled" },
+                    { value: "confirmed", label: "Confirmed" },
+                    { value: "in_progress", label: "In progress" },
+                    { value: "completed", label: "Completed" },
+                    { value: "rescheduled", label: "Rescheduled" },
+                    { value: "cancelled", label: "Cancelled" },
+                    { value: "no_show", label: "No show" },
+                  ],
+                },
+                {
+                  type: "multi" as const,
+                  key: "mode",
+                  label: "Mode",
+                  options: [
+                    { value: "office", label: "Office" },
+                    { value: "client_place", label: "Client place" },
+                    { value: "online", label: "Online" },
+                    { value: "phone", label: "Phone" },
+                  ],
+                },
+                {
+                  type: "multi" as const,
+                  key: "type",
+                  label: "Agenda",
+                  options: Object.entries(TYPE_LABEL).map(([value, label]) => ({ value, label })),
+                },
+                ...(rmOptions.length ? [{ type: "multi" as const, key: "rm", label: "RM", options: rmOptions }] : []),
+                { type: "date_range" as const, key: "meeting", label: "Meeting date" },
+              ]}
+              rightSlot={
+                <>
+                  <ColumnManager compact moduleKey="meetings-upcoming" columns={MEETINGS_COLUMNS} />
+                  <CustomViews
+                    compact
+                    viewsKey="views:review-meetings"
+                    presets={[
+                      { id: "upcoming", name: "Upcoming", params: "status=scheduled,confirmed" },
+                      { id: "reviews", name: "Review meetings", params: "category=review" },
+                      { id: "new", name: "New / Follow-ups", params: "category=new,follow_up" },
+                      { id: "completed", name: "Completed", params: "status=completed" },
+                    ]}
+                  />
+                </>
+              }
+            />
+          }
+        />
       )}
     </div>
   );

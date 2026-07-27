@@ -44,7 +44,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
         UPDATE tenants
         SET deleted_at = NULL,
             deleted_by = NULL,
-            arn = ${restoredArn || currentArn},
+            arn = ${restoredArn || currentArn || null},
             updated_at = now()
         WHERE id = ${tenantId}::uuid
       `);

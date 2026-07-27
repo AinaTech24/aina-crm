@@ -48,6 +48,11 @@
     --brand-cyan-light: 176 38% 93%;         /* teal tint */
     --brand-violet: 356 60% 55%;
     --brand-mint: 168 55% 38%;
+    /* Sidebar active-item tint — theme-aware (see .nav-link-active). Soft brand
+       red on light; a muted deep red on dark (brand-navy-light would be near
+       white in dark, so it gets its own value below). */
+    --nav-active-bg: 358 74% 93%;
+    --nav-active-fg: 358 75% 41%;
   }
 
   .dark {
@@ -75,6 +80,27 @@
     --brand-navy-deep: 358 74% 38%;
     --brand-cyan: 176 45% 44%;
     --brand-cyan-deep: 178 45% 30%;
+    --nav-active-bg: 358 45% 20%;
+    --nav-active-fg: 358 72% 52%;
+  }
+
+  /* Dark sidebar — a scoped theme applied to the sidebar shell (desktop aside +
+     mobile drawer). It re-points the neutral + active tokens the nav already
+     consumes to a charcoal/light palette, so the whole rail goes dark without
+     touching any nav component. The rest of the app keeps its own light/dark. */
+  .sidebar-theme {
+    --card: 218 24% 11%;
+    --popover: 218 24% 13%;
+    --secondary: 220 16% 20%;
+    --secondary-foreground: 220 16% 92%;
+    --muted: 220 16% 18%;
+    --muted-foreground: 220 10% 60%;
+    --foreground: 220 18% 91%;
+    --border: 220 14% 22%;
+    --input: 220 14% 24%;
+    --ring: 176 45% 44%;
+    --nav-active-bg: 356 42% 15%;
+    --nav-active-fg: 358 85% 74%;
   }
 
   * {
@@ -100,7 +126,8 @@
   }
 
   html {
-    font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+    /* --brand-font is set per-tenant (Settings → Appearance); falls back to Inter. */
+    font-family: var(--brand-font, var(--font-inter)), ui-sans-serif, system-ui, sans-serif;
   }
 
   body {
@@ -498,32 +525,40 @@
   /* `group` is added as a literal class in the component (Tailwind @apply
      can't consume the group variant). */
 
+  /* Nav rows — calm, modern tinted-pill treatment (Linear/Notion style):
+     a subtle brand-tinted active pill with brand-coloured icon + label, and a
+     neutral hover. Replaces the old heavy solid-red fill, which read as loud
+     when stacked with pinned duplicates + red section headers. */
   .nav-link {
-    @apply relative flex items-center gap-2.5 rounded-lg
-           px-2.5 py-2 text-[13px] font-medium
-           text-foreground/75
-           hover:bg-brand-navy-light hover:text-brand-navy
-           transition-all duration-150;
+    @apply relative flex items-center gap-3 rounded-lg
+           px-3 py-[9px] text-[13px] font-medium
+           text-foreground/70
+           hover:bg-secondary hover:text-foreground
+           transition-colors duration-150;
   }
-  .nav-link-icon {
-    @apply size-4 text-muted-foreground/80 transition-colors;
-  }
+  /* NOTE: the base `.nav-link-icon` sizing/colour lives as PLAIN top-level CSS
+     below (search "nav-link-icon base"). Inside @layer components a bare
+     single-class rule gets tree-shaken and never ships, which left the icons
+     unsized + uncoloured (invisible). The compound rules below are safe here. */
   .nav-link:hover .nav-link-icon {
-    @apply text-brand-cyan;
+    color: hsl(var(--foreground));
   }
-  .nav-link-active {
-    @apply bg-brand-navy text-white shadow-sm;
-  }
+  .nav-link-active,
   .nav-link-active:hover {
-    @apply bg-brand-navy text-white;
+    background-color: hsl(var(--nav-active-bg));
+    color: hsl(var(--nav-active-fg));
+    font-weight: 600;
   }
-  .nav-link-active .nav-link-icon {
-    @apply text-brand-cyan;
+  .nav-link-active .nav-link-icon,
+  .nav-link-active:hover .nav-link-icon {
+    color: hsl(var(--nav-active-fg));
   }
+  /* Clear left accent bar so the active row reads as definitively selected
+     (not just a faint tint). Hidden in the collapsed icon-rail below. */
   .nav-link-active::before {
     content: "";
-    @apply absolute -left-3 top-1/2 -translate-y-1/2
-           h-5 w-1 rounded-full bg-brand-cyan;
+    @apply absolute left-0 top-1/2 -translate-y-1/2 h-[22px] w-1 rounded-r-full;
+    background-color: hsl(var(--nav-active-fg));
   }
 
   /* ─── Modern table polish ────────────────────────────────────────────── */
@@ -802,6 +837,27 @@
   .animate-premium-badge {
     animation: premiumBadgePulse 1.6s ease-in-out infinite;
   }
+
+  /* Featured (Premium) — RED-only animated glow border + slow float. */
+  @keyframes premiumAurora {
+    0%   { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.5), 0 14px 40px -14px rgba(220, 38, 38, 0.45); transform: translateY(-0.4rem); }
+    50%  { box-shadow: 0 0 0 6px rgba(220, 38, 38, 0.14), 0 22px 52px -14px rgba(220, 38, 38, 0.55); transform: translateY(-0.8rem); }
+    100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.5), 0 14px 40px -14px rgba(220, 38, 38, 0.45); transform: translateY(-0.4rem); }
+  }
+  .animate-premium-aurora {
+    animation: premiumAurora 4s ease-in-out infinite;
+  }
+  /* Featured badge — moving sheen sweep across a red gradient + gentle bob. */
+  @keyframes premiumBadgeShine {
+    0%   { transform: translateX(-50%) translateY(0); background-position: -160% 0; }
+    50%  { transform: translateX(-50%) translateY(-2px); }
+    100% { transform: translateX(-50%) translateY(0); background-position: 260% 0; }
+  }
+  .animate-premium-badge-shine {
+    background-image: linear-gradient(110deg, #dc2626 0%, #dc2626 42%, #fecaca 50%, #dc2626 58%, #dc2626 100%);
+    background-size: 260% 100%;
+    animation: premiumBadgeShine 3s ease-in-out infinite;
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -827,6 +883,18 @@
   .dashboard-content .max-w-7xl { max-width: 120rem; }
 }
 
+/* nav-link-icon base — PLAIN top-level CSS (NOT @layer components, where a bare
+   single-class rule gets tree-shaken and never ships → invisible icons). Sets the
+   glyph size + resting colour; the hover / active / ai-assistant rules override
+   the colour on their states via higher specificity. */
+.nav-link-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  color: hsl(var(--muted-foreground));
+  transition: color 150ms ease;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    Collapsed desktop sidebar (icon rail) — see DesktopSidebar.tsx.
    When the panel is in its slim resting state it carries `.sidebar-collapsed`;
@@ -840,8 +908,27 @@
   padding-right: 0;
 }
 .sidebar-collapsed .nav-link > span { display: none; }
+/* The pin/unpin star is a <button>, not a <span>, so the label rule above never
+   caught it — it kept its width in the rail and shoved every icon off-centre.
+   Hide it here, and mark a pinned row with a small dot above the glyph instead
+   (same amber as the star, so the meaning carries over). */
+.sidebar-collapsed .nav-link > button { display: none; }
+.sidebar-collapsed .nav-link[data-pinned="true"]::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 50%;
+  transform: translateX(-50%);
+  height: 4px;
+  width: 4px;
+  border-radius: 9999px;
+  background-color: #fbbf24; /* amber-400 — matches the pinned star */
+}
 .sidebar-collapsed .nav-link-active::before { display: none; }
 .sidebar-collapsed .sidebar-section-title { display: none; }
+/* Folder-item indent + guide line would push the centred rail icons off-centre;
+   strip it in the collapsed icon rail. */
+.sidebar-collapsed .nav-sec-body { margin-left: 0; padding-left: 0; border-left: 0; }
 .sidebar-collapsed .sidebar-brand-text { display: none; }
 .sidebar-collapsed .sidebar-brand-row {
   padding-left: 0;

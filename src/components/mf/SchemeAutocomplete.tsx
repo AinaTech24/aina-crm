@@ -11,6 +11,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Search, Loader2, Check } from "lucide-react";
 
+export type SchemeRisk = { band: number; label: string; tone: string };
 export type SchemePick = {
   schemeCode: string;
   schemeName: string;
@@ -18,6 +19,8 @@ export type SchemePick = {
   category: string | null;
   nav: number | null;
   navDate: string | null;
+  /** SEBI riskometer band, derived from the scheme category (best-effort). */
+  risk?: SchemeRisk | null;
 };
 
 export function SchemeAutocomplete({
@@ -120,6 +123,11 @@ export function SchemeAutocomplete({
                 <div className="text-xs font-medium text-foreground flex items-center gap-1.5">
                   <Check className="size-3 text-brand-cyan shrink-0 opacity-0" />
                   <span className="truncate">{s.schemeName}</span>
+                  {s.risk && (
+                    <span className={`shrink-0 chip text-[9px] leading-none px-1.5 py-0.5 border ${s.risk.tone}`} title={`Risk: ${s.risk.label}`}>
+                      {s.risk.label}
+                    </span>
+                  )}
                 </div>
                 <div className="text-[10px] text-muted-foreground pl-[1.125rem] flex items-center gap-2">
                   {s.amc && <span className="truncate">{s.amc}</span>}

@@ -219,6 +219,8 @@ export default function ImportPage() {
                         className="w-full min-w-[200px]"
                         placeholder="(skip)"
                         aria-label={`Map column ${h}`}
+                        searchable
+                        searchPlaceholder="Search fields…"
                       >
                         <option value="">(skip)</option>
                         {[...new Set(parsed.ourFields.map((f) => f.group))].map((group) => (

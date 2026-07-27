@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import {
   ChevronLeft, ChevronDown, ShieldCheck, AlertCircle, Save, Send, Plus, Trash, Paperclip,
-  Mail, MessageSquare, Smartphone, Check, ArrowRight, Sparkles,
+  Mail, MessageSquare, Smartphone, Check, ArrowRight, Sparkles, Upload, Loader2,
 } from "lucide-react";
 import { runComplianceChecks, missingMandatoryLines } from "@/lib/comms/compliance";
 import { MergeFieldInserter, type VarDecl } from "@/components/templates/MergeFieldInserter";
@@ -83,6 +83,11 @@ export default function NewTemplatePage() {
   const [category, setCategory] = useState<Category>("transactional");
   const [locale, setLocale] = useState("en-IN");
   const [attachments, setAttachments] = useState<Array<{ name: string; url: string }>>([]);
+  // File-upload state for attachments. `uploadingIdx === -1` = the top "Upload"
+  // button is busy (appending a new row); `>= 0` = that row is being replaced.
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const uploadTargetRef = useRef<number>(-1);
+  const [uploadingIdx, setUploadingIdx] = useState<number | null>(null);
   const waRef = useRef<HTMLTextAreaElement>(null);
   const smsRef = useRef<HTMLTextAreaElement>(null);
 
@@ -251,6 +256,63 @@ export default function NewTemplatePage() {
     if (channel === "whatsapp") setWaText((t) => spliceAtCursor(waRef.current, t, token));
     else if (channel === "sms") setSmsText((t) => spliceAtCursor(smsRef.current, t, token));
     else setEmailBody((b) => ({ ...b, subject: `${b.subject ?? ""}${token}` }));
+  }
+
+  const MAX_ATTACH_BYTES = 25 * 1024 * 1024; // 25 MB — matches email provider limits
+
+  /** Upload a picked file to storage and return its hosted URL + display name.
+   *  Reuses the content-library presigned-PUT flow (same tenant `library/`
+   *  prefix whose public URLs are already fetched as email image sources), so
+   *  the resulting URL is reachable by the email provider at send time. */
+  async function uploadAttachmentFile(file: File): Promise<{ url: string; name: string }> {
+    const presignRes = await fetch("/api/content-library/upload-url", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ filename: file.name, contentType: file.type || "application/octet-stream" }),
+    });
+    const presign = await presignRes.json().catch(() => ({}));
+    if (!presignRes.ok || !presign?.url) {
+      throw new Error(presign?.error ?? "Could not start the upload. Please try again.");
+    }
+    const put = await fetch(presign.url, {
+      method: "PUT",
+      headers: { "content-type": file.type || "application/octet-stream" },
+      body: file,
+    });
+    if (!put.ok) throw new Error(`Upload failed (HTTP ${put.status})`);
+    return { url: presign.publicUrl as string, name: file.name };
+  }
+
+  /** Open the OS file picker; `idx` = -1 appends a new attachment row. */
+  function pickAttachmentFile(idx: number) {
+    uploadTargetRef.current = idx;
+    fileInputRef.current?.click();
+  }
+
+  async function onAttachmentFilePicked(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-picking the same file
+    if (!file) return;
+    const idx = uploadTargetRef.current;
+    const appendMode = idx < 0;
+    if (file.size > MAX_ATTACH_BYTES) {
+      setError("That file is over 25 MB — too large to attach to an email.");
+      return;
+    }
+    setError(null);
+    setUploadingIdx(appendMode ? -1 : idx);
+    try {
+      const up = await uploadAttachmentFile(file);
+      setAttachments((arr) =>
+        appendMode
+          ? [...arr, { name: up.name, url: up.url }]
+          : arr.map((x, i) => (i === idx ? { name: x.name?.trim() || up.name, url: up.url } : x))
+      );
+    } catch (err: any) {
+      setError(err?.message ?? "Upload failed");
+    } finally {
+      setUploadingIdx(null);
+    }
   }
 
   async function save(opts: { submitForApproval?: boolean }) {
@@ -644,13 +706,26 @@ export default function NewTemplatePage() {
               <h3 className="font-semibold text-sm flex items-center gap-2">
                 <Paperclip className="size-4 text-brand-cyan" /> Attachments ({attachments.length})
               </h3>
-              <button type="button" onClick={() => setAttachments((a) => [...a, { name: "", url: "" }])} className="btn-ghost text-xs">
-                <Plus className="size-3.5" /> Add
-              </button>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => pickAttachmentFile(-1)}
+                  disabled={uploadingIdx === -1}
+                  className="btn-secondary text-xs disabled:opacity-60"
+                >
+                  {uploadingIdx === -1 ? <Loader2 className="size-3.5 animate-spin" /> : <Upload className="size-3.5" />}
+                  {uploadingIdx === -1 ? "Uploading…" : "Upload file"}
+                </button>
+                <button type="button" onClick={() => setAttachments((a) => [...a, { name: "", url: "" }])} className="btn-ghost text-xs">
+                  <Plus className="size-3.5" /> Add URL
+                </button>
+              </div>
             </div>
+            {/* Shared hidden input — the picker target for every upload button. */}
+            <input ref={fileInputRef} type="file" className="hidden" onChange={onAttachmentFilePicked} />
             {attachments.length === 0 ? (
               <p className="text-xs text-muted-foreground">
-                Attach a hosted file (fund factsheet, KYC form, brochure) — auto-attached on every <strong>email</strong> send.
+                Upload a file (fund factsheet, KYC form, brochure) or paste a hosted link — auto-attached on every <strong>email</strong> send. Max 25 MB.
               </p>
             ) : (
               <ul className="space-y-2">
@@ -665,9 +740,18 @@ export default function NewTemplatePage() {
                     <input
                       value={a.url}
                       onChange={(e) => setAttachments((arr) => arr.map((x, idx) => (idx === i ? { ...x, url: e.target.value } : x)))}
-                      placeholder="https://… (hosted file URL)"
+                      placeholder="https://… (hosted file URL) or upload →"
                       className="input-base text-sm flex-1 font-mono"
                     />
+                    <button
+                      type="button"
+                      onClick={() => pickAttachmentFile(i)}
+                      disabled={uploadingIdx === i}
+                      title="Upload a file for this attachment"
+                      className="p-2 text-muted-foreground hover:text-brand-cyan hover:bg-brand-cyan/10 rounded-md disabled:opacity-60"
+                    >
+                      {uploadingIdx === i ? <Loader2 className="size-3.5 animate-spin" /> : <Upload className="size-3.5" />}
+                    </button>
                     <button
                       type="button"
                       onClick={() => setAttachments((arr) => arr.filter((_, idx) => idx !== i))}

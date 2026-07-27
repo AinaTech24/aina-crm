@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, BarChart3, Loader2, Save, Table2, Grid3x3, Rows3, Plus, X, ArrowUp, ArrowDown } from "lucide-react";
 import { CATALOGS } from "@/lib/filter/catalog";
 import { FilterBuilder } from "@/components/filter/FilterBuilder";
+import { SelectField } from "@/components/ui/SelectField";
 
 const SUBJECTS: [string, string][] = [
   ["investor", "Clients"],
@@ -172,16 +173,16 @@ function Builder() {
 
       {/* 1. Details */}
       <Section title="1. Report details">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label="Name *"><input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. HNI clients with no review in 90 days" className="input-base" /></Field>
           <Field label="Module">
-            <select value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })} className="input-base">
+            <SelectField value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })} className="w-full">
               {SUBJECTS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-            </select>
+            </SelectField>
           </Field>
         </div>
         <Field label="Description"><input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Optional — what this report shows" className="input-base" /></Field>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <Field label="Layout">
             <div className="inline-flex rounded-lg border border-border bg-card p-0.5 w-full">
               {LAYOUTS.map(([t, lbl, icon]) => (
@@ -195,11 +196,11 @@ function Builder() {
             <input value={form.folder} onChange={(e) => setForm({ ...form, folder: e.target.value })} placeholder="e.g. Sales, Compliance" className="input-base" list="report-folders" />
           </Field>
           <Field label="Sharing">
-            <select value={form.sharedScope} onChange={(e) => setForm({ ...form, sharedScope: e.target.value })} className="input-base">
+            <SelectField value={form.sharedScope} onChange={(e) => setForm({ ...form, sharedScope: e.target.value })} className="w-full">
               <option value="private">Private — only me</option>
               <option value="team">Team — my branch</option>
               <option value="tenant">Everyone in the firm</option>
-            </select>
+            </SelectField>
           </Field>
         </div>
       </Section>
@@ -213,19 +214,19 @@ function Builder() {
       {form.reportType === "detailed" && (
         <Section title="3. Columns & sort">
           <ColumnEditor fields={cat.fields} selected={columns} onChange={setColumns} />
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field label="Sort by">
-              <select value={sort?.field ?? ""} onChange={(e) => setSort(e.target.value ? { field: e.target.value, dir: sort?.dir ?? "desc" } : null)} className="input-base">
+              <SelectField value={sort?.field ?? ""} onChange={(e) => setSort(e.target.value ? { field: e.target.value, dir: sort?.dir ?? "desc" } : null)} className="w-full">
                 <option value="">— none —</option>
                 {cat.fields.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}
-              </select>
+              </SelectField>
             </Field>
             {sort && (
               <Field label="Direction">
-                <select value={sort.dir} onChange={(e) => setSort({ ...sort, dir: e.target.value as "asc" | "desc" })} className="input-base">
+                <SelectField value={sort.dir} onChange={(e) => setSort({ ...sort, dir: e.target.value as "asc" | "desc" })} className="w-full">
                   <option value="desc">High → Low / Newest</option>
                   <option value="asc">Low → High / Oldest</option>
-                </select>
+                </SelectField>
               </Field>
             )}
           </div>
@@ -236,9 +237,9 @@ function Builder() {
         <Section title="3. Grouping & totals">
           <div>
             <div className="text-xs font-medium mb-1.5">Group rows by (up to 3 levels)</div>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               {[0, 1, 2].map((i) => (
-                <select
+                <SelectField
                   key={i}
                   value={summary.groupBy[i] ?? ""}
                   onChange={(e) => {
@@ -246,11 +247,11 @@ function Builder() {
                     gb[i] = e.target.value;
                     setSummary({ ...summary, groupBy: gb.filter((v, idx) => v || idx === 0).slice(0, 3) });
                   }}
-                  className="input-base"
+                  className="w-full"
                 >
                   <option value="">{i === 0 ? "— pick a field —" : "— none —"}</option>
                   {cat.fields.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}
-                </select>
+                </SelectField>
               ))}
             </div>
           </div>
@@ -260,30 +261,30 @@ function Builder() {
             <div className="space-y-2">
               {summary.aggregates.map((a, i) => (
                 <div key={i} className="flex items-center gap-2">
-                  <select
+                  <SelectField
                     value={a.fn}
                     onChange={(e) => {
                       const next = [...summary.aggregates];
                       next[i] = { ...a, fn: e.target.value as Agg["fn"] };
                       setSummary({ ...summary, aggregates: next });
                     }}
-                    className="input-base max-w-[180px]"
+                    className="max-w-[180px]"
                   >
                     {AGG_OPTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                  </select>
+                  </SelectField>
                   {a.fn !== "count" && (
-                    <select
+                    <SelectField
                       value={a.field}
                       onChange={(e) => {
                         const next = [...summary.aggregates];
                         next[i] = { ...a, field: e.target.value };
                         setSummary({ ...summary, aggregates: next });
                       }}
-                      className="input-base flex-1"
+                      className="flex-1"
                     >
                       <option value="">— pick a number field —</option>
                       {numericFields.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}
-                    </select>
+                    </SelectField>
                   )}
                   <button type="button" onClick={() => setSummary({ ...summary, aggregates: summary.aggregates.filter((_, idx) => idx !== i) })} className="btn-icon hover:text-rose-600" aria-label="Remove">
                     <X className="size-4" />
@@ -312,40 +313,40 @@ function Builder() {
 
       {form.reportType === "matrix" && (
         <Section title="3. Matrix layout">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field label="Group rows by *">
-              <select value={matrix.groupBy} onChange={(e) => setMatrix({ ...matrix, groupBy: e.target.value })} className="input-base">
+              <SelectField value={matrix.groupBy} onChange={(e) => setMatrix({ ...matrix, groupBy: e.target.value })} className="w-full">
                 {cat.fields.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}
-              </select>
+              </SelectField>
             </Field>
             <Field label="Pivot columns by (optional)">
-              <select value={matrix.pivot} onChange={(e) => setMatrix({ ...matrix, pivot: e.target.value })} className="input-base">
+              <SelectField value={matrix.pivot} onChange={(e) => setMatrix({ ...matrix, pivot: e.target.value })} className="w-full">
                 <option value="">— single column —</option>
                 {cat.fields.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}
-              </select>
+              </SelectField>
             </Field>
             <Field label="Aggregate">
-              <select value={matrix.aggregate} onChange={(e) => setMatrix({ ...matrix, aggregate: e.target.value as Agg["fn"] })} className="input-base">
+              <SelectField value={matrix.aggregate} onChange={(e) => setMatrix({ ...matrix, aggregate: e.target.value as Agg["fn"] })} className="w-full">
                 {AGG_OPTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-              </select>
+              </SelectField>
             </Field>
             {matrix.aggregate !== "count" && (
               <Field label="On field *">
-                <select value={matrix.measure} onChange={(e) => setMatrix({ ...matrix, measure: e.target.value })} className="input-base">
+                <SelectField value={matrix.measure} onChange={(e) => setMatrix({ ...matrix, measure: e.target.value })} className="w-full">
                   <option value="">— pick a number field —</option>
                   {numericFields.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}
-                </select>
+                </SelectField>
               </Field>
             )}
             <Field label="Chart">
-              <select value={form.chartType} onChange={(e) => setForm({ ...form, chartType: e.target.value })} className="input-base">
+              <SelectField value={form.chartType} onChange={(e) => setForm({ ...form, chartType: e.target.value })} className="w-full">
                 <option value="none">No chart</option>
                 <option value="bar">Bar chart</option>
                 <option value="line">Line chart</option>
                 <option value="area">Area chart</option>
                 <option value="pie">Pie chart</option>
                 <option value="donut">Donut chart</option>
-              </select>
+              </SelectField>
             </Field>
           </div>
           <p className="text-[11px] text-muted-foreground">
@@ -360,19 +361,19 @@ function Builder() {
           Email this report automatically
         </label>
         {schedule.enabled && (
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field label="Frequency">
-              <select value={schedule.freq} onChange={(e) => setSchedule({ ...schedule, freq: e.target.value })} className="input-base">
+              <SelectField value={schedule.freq} onChange={(e) => setSchedule({ ...schedule, freq: e.target.value })} className="w-full">
                 <option value="daily">Every day</option>
                 <option value="weekly">Every week</option>
                 <option value="monthly">Every month</option>
-              </select>
+              </SelectField>
             </Field>
             {schedule.freq === "weekly" && (
               <Field label="Day of week">
-                <select value={schedule.day} onChange={(e) => setSchedule({ ...schedule, day: Number(e.target.value) })} className="input-base">
+                <SelectField value={String(schedule.day)} onChange={(e) => setSchedule({ ...schedule, day: Number(e.target.value) })} className="w-full">
                   {["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"].map((d, i) => <option key={i} value={i}>{d}</option>)}
-                </select>
+                </SelectField>
               </Field>
             )}
             {schedule.freq === "monthly" && (
@@ -422,7 +423,7 @@ function ColumnEditor({ fields, selected, onChange }: { fields: { key: string; l
     onChange(next);
   };
   return (
-    <div className="grid grid-cols-2 gap-3">
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
       <div>
         <div className="relative mb-1.5">
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search fields…" className="input-base text-xs py-1.5" />

@@ -221,39 +221,6 @@ export default async function TransactionsPage({
         </div>
       </div>
 
-      {/* KPI cards — reflect the current filter (period: {periodLabel}) and link
-          into the rows behind each number. */}
-      <div className="grid grid-cols-4 gap-3">
-        <Stat
-          icon={TrendingUp}
-          label="Purchases"
-          value={String(data.inflowCount)}
-          sub={formatINR(data.inflowAmt)}
-          href={carry({ txtype: "lumpsum,sip", status: "processed" })}
-        />
-        <Stat
-          icon={ArrowDownToLine}
-          label="Redemptions"
-          value={formatINR(data.outflowAmt)}
-          tone={data.outflowAmt > 0 ? "rose" : "muted"}
-          href={carry({ txtype: "redemption,swp", status: "processed" })}
-        />
-        <Stat
-          icon={TrendingUp}
-          label="Net flow"
-          value={formatINR(netFlow)}
-          sub={periodLabel}
-          tone={netFlow >= 0 ? "emerald" : "rose"}
-        />
-        <Stat
-          icon={AlertCircle}
-          label="Rejected"
-          value={String(data.rejectedCount)}
-          tone={data.rejectedCount > 0 ? "rose" : "muted"}
-          href={carry({ status: "rejected" })}
-        />
-      </div>
-
       <FilterBar
         totalCount={data.total}
         filters={[

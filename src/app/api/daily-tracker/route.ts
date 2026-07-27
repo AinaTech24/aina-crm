@@ -1,7 +1,26 @@
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth/session";
 import { withTenant } from "@/db/client";
-import { saveDailyTracker, type FocusItem } from "@/lib/daily-tracker";
+import { saveDailyTracker, loadDailyTracker, type FocusItem } from "@/lib/daily-tracker";
+
+export const dynamic = "force-dynamic";
+
+/**
+ * GET /api/daily-tracker?date=YYYY-MM-DD
+ * The Daily Job Tracker for the signed-in user: their saved reflection + focus
+ * list, plus auto-derived task context (completed yesterday, carried-over,
+ * due today, productivity %). Powers the mobile Daily Plan screen.
+ */
+export async function GET(req: Request) {
+  const session = await requireSession();
+  const url = new URL(req.url);
+  const raw = url.searchParams.get("date") ?? "";
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : new Date().toISOString().slice(0, 10);
+  const data = await withTenant(session.tenantId, async (tx) =>
+    loadDailyTracker(tx as any, session.tenantId, session.userId, date)
+  );
+  return NextResponse.json(data);
+}
 
 export async function POST(req: Request) {
   const session = await requireSession();

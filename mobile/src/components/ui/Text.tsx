@@ -6,6 +6,7 @@
 import React from "react";
 import { Text as RNText, type TextProps as RNTextProps, type TextStyle } from "react-native";
 import { fontSize, fontWeight, palette } from "../../theme/tokens";
+import { useBrand } from "../../theme/brand";
 
 type Variant = "display" | "title" | "heading" | "subtitle" | "body" | "label" | "caption";
 type ColorTone = "default" | "muted" | "faint" | "brand" | "success" | "warning" | "danger" | "inverse";
@@ -39,11 +40,12 @@ export interface TextProps extends RNTextProps {
 }
 
 export function Text({ variant = "body", tone, weight, center, style, ...rest }: TextProps) {
+  const { brandDark } = useBrand();
   return (
     <RNText
       style={[
         VARIANT[variant],
-        tone ? { color: COLOR[tone] } : null,
+        tone ? { color: tone === "brand" ? brandDark : COLOR[tone] } : null,
         weight ? { fontWeight: fontWeight[weight] } : null,
         center ? { textAlign: "center" } : null,
         style,

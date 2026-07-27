@@ -343,11 +343,27 @@ function resolveTheme(theme: EmailTheme | undefined, tenant: RenderContext["tena
 
 const MERGE_FIELD_RE = /\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}/g;
 
+/** Base app URL for resolving link tokens that must never be empty. */
+const APP_URL = (
+  process.env.NEXT_PUBLIC_APP_URL ||
+  process.env.NEXT_PUBLIC_SITE_URL ||
+  "https://crm.ainatech.in"
+).replace(/\/+$/, "");
+
 export function substituteVariables(input: string, ctx: RenderContext, htmlEscapeValues = false): string {
   if (!input) return "";
   return input.replace(MERGE_FIELD_RE, (full, path: string) => {
     const v = readPath({ ...ctx.variables, tenant: ctx.tenant }, path);
-    if (v === undefined || v === null) return ctx.blankUnresolved ? "" : full; // blank on send, visible in preview
+    if (v === undefined || v === null) {
+      if (!ctx.blankUnresolved) return full; // preview: keep the token visible
+      // On SEND, a URL token that resolved to nothing would produce a dead/blank
+      // button href. Give known link tokens a safe, working fallback so every
+      // button lands somewhere: the firm's site (client CTAs) → the app.
+      if (path === "system.dashboard_url") return `${APP_URL}/dashboard`;
+      if (path === "tenant.websiteUrl") return ctx.tenant?.websiteUrl || APP_URL;
+      if (path === "system.unsubscribe_url" || path === "unsubscribe_url") return ctx.unsubscribeUrl || "#";
+      return ""; // other unresolved fields blank out as before
+    }
     let out: string;
     if (typeof v === "string") out = v;
     else if (typeof v === "number" || typeof v === "boolean") out = String(v);

@@ -326,7 +326,16 @@ Rules:
  */
 export async function nlToFilterAst(
   query: string,
-  subject: "investor" | "lead" | "task"
+  subject: "investor" | "lead" | "task",
+  opts?: {
+    /**
+     * When true, ask the model for `{ ast, explanation }` (one plain-English
+     * sentence) instead of a bare AST. Used by "Ask your book" so the advisor
+     * sees how their question was interpreted. Default false — existing
+     * callers (filter builder, smart search) are unchanged.
+     */
+    explain?: boolean;
+  }
 ): Promise<{ ast: FilterAST; explanation: string } | { error: string }> {
   const catalog = CATALOGS[subject];
   // Give the model the full per-field context — enum values + the exact
@@ -340,6 +349,10 @@ export async function nlToFilterAst(
     })
     .join("\n");
   const today = new Date().toISOString().slice(0, 10);
+
+  const outputRule = opts?.explain
+    ? `CRITICAL: use only field keys from the Fields list above. Output ONLY a JSON object of the exact shape { "ast": <the FilterAST>, "explanation": "<one plain-English sentence describing who this filter selects>" } — no markdown, no prose outside the JSON. (The examples above show the "ast" value only.)`
+    : `CRITICAL: use only field keys from the Fields list above. Output ONLY the JSON AST — no markdown, no prose.`;
 
   const systemPrompt = `You translate a natural-language question about ${subject}s in an Indian Mutual-Fund-Distributor CRM into a JSON FilterAST that SELECTS the matching ${subject}s. Today's date is ${today}.
 
@@ -368,7 +381,7 @@ A: {"type":"group","op":"AND","children":[{"type":"predicate","field":{"kind":"a
 Q: "HNI clients in Mumbai with no contact in 60 days"
 A: {"type":"group","op":"AND","children":[{"type":"predicate","field":{"kind":"attr","path":"aum"},"op":"gte","value":10000000},{"type":"predicate","field":{"kind":"attr","path":"city"},"op":"eq","value":"Mumbai"},{"type":"predicate","field":{"kind":"attr","path":"days_since_last_contact"},"op":"gte","value":60}]}
 
-CRITICAL: use only field keys from the Fields list above. Output ONLY the JSON AST — no markdown, no prose.`;
+${outputRule}`;
 
   if (!(await isAiConfigured())) {
     return { error: "AI isn't set up yet. Ask your admin to configure the AI provider + model under Settings → AI & Models." };
@@ -394,12 +407,20 @@ CRITICAL: use only field keys from the Fields list above. Output ONLY the JSON A
       };
     }
 
-    const parsed = parseAiJson(text);
-    const ast = FilterASTSchema.safeParse(parsed);
+    const parsed = parseAiJson<any>(text);
+    // In explain mode the model wraps the AST as { ast, explanation }; tolerate
+    // a bare AST (and vice-versa) so a shape mix-up never breaks parsing.
+    const rawAst =
+      parsed && typeof parsed === "object" && !Array.isArray(parsed) && "ast" in parsed ? parsed.ast : parsed;
+    const ast = FilterASTSchema.safeParse(rawAst);
     if (!ast.success) {
       return { error: `Generated AST failed schema validation: ${ast.error.issues.map((i) => i.message).join("; ")}` };
     }
-    return { ast: ast.data, explanation: `Translated to ${subject} filter.` };
+    const explanation =
+      opts?.explain && typeof parsed?.explanation === "string" && parsed.explanation.trim()
+        ? parsed.explanation.trim().slice(0, 300)
+        : `Translated to ${subject} filter.`;
+    return { ast: ast.data, explanation };
   } catch (err: any) {
     // Log the real error+stack so a recurring failure is diagnosable in prod
     // logs, but never surface a cryptic "Cannot read properties of undefined
@@ -1120,6 +1141,71 @@ Hard rules (SEBI / AMFI):
       recommendedActions: Array.isArray(p.recommendedActions) ? p.recommendedActions.map(String).slice(0, 5) : [],
       suggestedOpener: String(p.suggestedOpener ?? ""),
       watchouts: Array.isArray(p.watchouts) ? p.watchouts.map(String).slice(0, 4) : [],
+    };
+  } catch (err: any) {
+    return { error: err?.message ?? "AI error" };
+  }
+}
+
+/**
+ * Meeting Prep Pack — talking points for an upcoming review meeting. Given the
+ * deterministic pack we already computed (client snapshot, what changed since
+ * the last meeting, open items, goals), Claude produces 3-5 crisp talking
+ * points + 2 questions to ask. Advisory only — the RM reads it before the
+ * meeting; nothing is persisted or auto-sent.
+ */
+export async function generateMeetingPrepPoints(params: {
+  clientName: string;
+  isLead: boolean;
+  meetingDateIso: string;
+  snapshot: Record<string, unknown>;
+  sinceLast: Record<string, unknown>;
+  openItems: Array<{ title: string; dueAt?: string | null }>;
+  goals: Array<{ name: string; targetAmountInr: number; progressPct?: number | null }>;
+}): Promise<{ talkingPoints: string[]; questions: string[] } | { error: string }> {
+  const ctx = [
+    `${params.isLead ? "Prospect (lead)" : "Client"}: ${params.clientName}`,
+    `Meeting date: ${params.meetingDateIso.slice(0, 10)}`,
+    `Snapshot: ${JSON.stringify(params.snapshot)}`,
+    `Since last meeting: ${JSON.stringify(params.sinceLast)}`,
+    params.openItems.length
+      ? `Open items:\n${params.openItems.map((t) => `  - ${t.title}${t.dueAt ? ` (due ${String(t.dueAt).slice(0, 10)})` : ""}`).join("\n")}`
+      : "Open items: none",
+    params.goals.length
+      ? `Goals:\n${params.goals.map((g) => `  - ${g.name}: target ₹${Math.round(g.targetAmountInr).toLocaleString("en-IN")}${g.progressPct != null ? ` · ${Math.round(Number(g.progressPct))}% funded` : ""}`).join("\n")}`
+      : "Goals: none recorded",
+  ].join("\n");
+
+  const system = `You prepare an Indian Mutual Fund Distributor (MFD) advisor for an upcoming
+${params.isLead ? "prospect" : "client review"} meeting. Given the deterministic prep data, produce
+talking points the advisor scans in 20 seconds before walking in.
+
+Output a JSON object with this exact shape:
+{
+  "talkingPoints": ["3-5 crisp, specific points grounded ONLY in the data given"],
+  "questions": ["exactly 2 open questions the advisor should ask the ${params.isLead ? "prospect" : "client"}"]
+}
+
+Hard rules (SEBI / AMFI):
+- NEVER promise or project returns ("guaranteed", "assured", "X%").
+- NEVER recommend a specific scheme by name (AMFI Code 4(k)) — even if scheme names appear in the data, discuss categories/allocation, not products.
+- Ground every point in the supplied data — do NOT invent holdings, goals, or facts.
+- Each point under 20 words. Lead with the most meeting-relevant change.
+- Output ONLY the JSON object.`;
+
+  try {
+    const res = await client().messages.create({
+      model: REASONING_MODEL,
+      max_tokens: 1024,
+      system,
+      responseFormat: "json",
+      messages: [{ role: "user", content: ctx }],
+    });
+    const text = res.content.filter((b) => b.type === "text").map((b: any) => b.text).join("\n").trim();
+    const p = parseAiJson(text);
+    return {
+      talkingPoints: Array.isArray(p.talkingPoints) ? p.talkingPoints.map(String).slice(0, 5) : [],
+      questions: Array.isArray(p.questions) ? p.questions.map(String).slice(0, 2) : [],
     };
   } catch (err: any) {
     return { error: err?.message ?? "AI error" };

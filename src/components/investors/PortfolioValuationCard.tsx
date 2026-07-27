@@ -33,7 +33,6 @@ export function PortfolioValuationCard({
   const up = gain >= 0;
   const pct = (v: number | null) =>
     v == null ? "—" : `${v >= 0 ? "+" : ""}${(v * 100).toFixed(1)}%`;
-  const pricedHoldings = holdings.filter((h) => h.priced);
 
   return (
     <div className="border rounded-lg bg-card p-5">
@@ -88,33 +87,6 @@ export function PortfolioValuationCard({
           <div className="text-xs text-muted-foreground">annualised</div>
         </div>
       </div>
-
-      {pricedHoldings.length > 0 && (
-        <div className="mt-4 pt-4 border-t">
-          <div className="text-xs text-muted-foreground mb-2">Holdings</div>
-          <div className="space-y-1.5">
-            {pricedHoldings.slice(0, 8).map((h, i) => {
-              const hUp = (h.gain ?? 0) >= 0;
-              return (
-                <div key={i} className="flex items-center justify-between text-sm gap-3">
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate font-medium">{h.schemeName ?? h.schemeCode}</div>
-                    <div className="text-[11px] text-muted-foreground truncate">
-                      {h.amcName ?? "—"} · {h.netUnits.toLocaleString("en-IN", { maximumFractionDigits: 3 })} units @ ₹{h.latestNav?.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
-                    </div>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <div className="font-medium tabular-nums">{formatINR(Math.round(h.currentValue ?? 0))}</div>
-                    <div className={`text-[11px] tabular-nums ${hUp ? "text-emerald-600" : "text-red-600"}`}>
-                      {hUp ? "+" : ""}{formatINR(Math.round(h.gain ?? 0))}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
 
       {unpricedSchemes > 0 && (
         <div className="mt-3 flex items-start gap-2 text-[11px] text-muted-foreground bg-muted/50 rounded p-2">

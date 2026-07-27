@@ -11,7 +11,7 @@ import { Plus, Phone, Mail, ExternalLink } from "lucide-react";
 import { and, eq } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { require as requireCap } from "@/lib/auth/rbac";
+import { require as requireCap, requireAny } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { amcEmpanelments } from "@/db/schema";
 
@@ -30,7 +30,10 @@ export default async function AmcEmpanelmentsListPage({
   searchParams: Promise<{ status?: string }>;
 }) {
   const session = await requireSession();
-  requireCap(session.roles, "compliance.edit");
+  // Viewing the empanelment list is operational data — owner + compliance +
+  // ops/back-office (settings.masters) can read it. Creating/editing stays
+  // gated on compliance.edit at the action + API level.
+  requireAny(session.roles, ["compliance.view", "compliance.edit", "settings.masters"]);
   await assertActiveLicense(session.tenantId, session.roles);
   const sp = await searchParams;
   const statusFilter = sp.status ?? "empanelled";

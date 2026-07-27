@@ -59,7 +59,7 @@ export async function GET(req: NextRequest) {
     const from = sp.get("from") ?? "";
     const to = sp.get("to") ?? "";
 
-    const rows = await withTenant(
+    const data = await withTenant(
       session.tenantId,
       async (tx) => {
         const conds: any[] = [sql`a.tenant_id = ${session.tenantId}::uuid`];
@@ -83,11 +83,22 @@ export async function GET(req: NextRequest) {
           ORDER BY a.occurred_at DESC
           LIMIT 300
         `);
-        return r.rows as any[];
+
+        // KPI ribbon — over the tenant (+ own-logged) scope only, mirroring web.
+        const scope = mine || !firmWide ? sql` AND owner_user_id = ${session.userId}::uuid` : sql``;
+        const statsRes = await tx.execute(sql`
+          SELECT
+            COUNT(*)::int AS total,
+            COUNT(*) FILTER (WHERE kind = 'call' AND occurred_at::date = current_date)::int AS calls_today,
+            COUNT(*) FILTER (WHERE kind = 'visit' AND occurred_at >= current_date - 6)::int AS visits_week,
+            COUNT(*) FILTER (WHERE next_followup_at IS NOT NULL AND next_followup_at::date <= current_date)::int AS followups_due
+          FROM activities WHERE tenant_id = ${session.tenantId}::uuid${scope}
+        `);
+        return { activities: r.rows as any[], stats: (statsRes.rows[0] ?? {}) as any };
       },
       { userId: session.userId, branchId: session.branchId, roles: session.roles }
     );
-    return NextResponse.json({ activities: rows });
+    return NextResponse.json({ activities: data.activities, stats: data.stats });
   } catch (err: any) {
     return handleApiError(err);
   }

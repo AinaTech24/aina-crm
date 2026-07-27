@@ -55,7 +55,7 @@ export async function InvestorQuickFilters({
           )::int AS no_nominee,
           COUNT(*) FILTER (
             WHERE status = 'active'
-              AND (last_transaction_at IS NULL OR last_transaction_at < now() - interval '180 days')
+              AND (last_transaction_at IS NULL OR last_transaction_at < now() - make_interval(days => COALESCE((SELECT dormancy_window_days FROM tenants WHERE id = investors.tenant_id), 180)))
           )::int AS dormant,
           COUNT(*) FILTER (
             WHERE status = 'active'

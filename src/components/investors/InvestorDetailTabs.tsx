@@ -23,6 +23,7 @@ import {
   MessagesSquare,
   FileText,
   Activity,
+  MoreHorizontal,
   type LucideIcon,
 } from "lucide-react";
 
@@ -35,6 +36,7 @@ const ICONS: Record<string, LucideIcon> = {
   engagement: MessagesSquare,
   details: FileText,
   activity: Activity,
+  more: MoreHorizontal,
 };
 
 export function InvestorDetailTabs({ moduleKey, tabs }: { moduleKey: string; tabs: DetailTab[] }) {

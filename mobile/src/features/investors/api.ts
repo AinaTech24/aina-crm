@@ -1,10 +1,11 @@
 /**
  * Investors data layer. Infinite-scroll list (GET /api/investors) + single
- * record (GET /api/investors/[id]). Same endpoints + query params the web uses
- * (q, segment, page, limit); pagination is offset-based per the API.
+ * record (GET /api/investors/[id]) + KPI strip (GET /api/investors/kpis) +
+ * delete. Same endpoints + full web filter/sort param set (q, segment, category,
+ * tier, kyc, status, rm, created_from/to, sort, dir, page, limit).
  */
 
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../api/client";
 
 export interface Investor {
@@ -14,13 +15,18 @@ export interface Investor {
   phone: string | null;
   email: string | null;
   segmentTag: string | null;
+  clientCategory: string | null;
   status: string | null;
   kycStatus: string | null;
   serviceTier: string | null;
   healthBand: string | null;
   healthScore: number | null;
   aum: string | null;
+  activeSipAmount: string | null;
   rmId: string | null;
+  nomineeName?: string | null;
+  lastTransactionAt?: string | null;
+  nextReviewAt?: string | null;
   city?: string | null;
   updatedAt?: string | null;
   // The row carries ~110 fields; the detail screen reads more off `any`.
@@ -38,17 +44,36 @@ const PAGE_SIZE = 30;
 
 export interface InvestorFilters {
   q?: string;
+  /** Comma-joined multi-selects, matching the web FilterBar. */
   segment?: string;
+  category?: string;
+  tier?: string;
+  kyc?: string;
+  status?: string;
+  rm?: string;
+  created_from?: string;
+  created_to?: string;
+  sort?: string; // aum | created | name | sip | health | review
+  dir?: "asc" | "desc";
 }
 
 export function useInvestors(filters: InvestorFilters) {
   return useInfiniteQuery({
-    queryKey: ["investors", filters.q ?? "", filters.segment ?? ""],
+    queryKey: ["investors", filters],
     initialPageParam: 0,
     queryFn: ({ pageParam }) =>
       api.get<ListResponse>("/api/investors", {
         q: filters.q || undefined,
         segment: filters.segment || undefined,
+        category: filters.category || undefined,
+        tier: filters.tier || undefined,
+        kyc: filters.kyc || undefined,
+        status: filters.status || undefined,
+        rm: filters.rm || undefined,
+        created_from: filters.created_from || undefined,
+        created_to: filters.created_to || undefined,
+        sort: filters.sort || undefined,
+        dir: filters.dir || undefined,
         page: pageParam,
         limit: PAGE_SIZE,
       }),
@@ -65,10 +90,98 @@ export function flattenInvestors(data?: { pages: ListResponse[] }): { rows: Inve
   return { rows: data.pages.flatMap((p) => p.rows), total: data.pages[0]?.total ?? 0 };
 }
 
+export interface InvestorKpis {
+  totalActive: number;
+  totalAll: number;
+  totalAum: number;
+  sipBook: number;
+  tierA: number;
+  tierAPct: number;
+  reviewsDue: number;
+  kycExpiring: number;
+  nomineeMissing: number;
+  dormant: number;
+}
+
+export function useInvestorKpis() {
+  return useQuery({
+    queryKey: ["investor-kpis"],
+    queryFn: () => api.get<InvestorKpis>("/api/investors/kpis"),
+    staleTime: 60_000,
+  });
+}
+
 export function useInvestor(id?: string) {
   return useQuery({
     queryKey: ["investor", id],
     enabled: !!id,
     queryFn: () => api.get<Investor>(`/api/investors/${id}`),
+  });
+}
+
+/** The complete client-360 payload (GET /api/investors/[id]/full). */
+export function useInvestorFull(id?: string) {
+  return useQuery({
+    queryKey: ["investor-full", id],
+    enabled: !!id,
+    queryFn: () => api.get<any>(`/api/investors/${id}/full`),
+    staleTime: 30_000,
+  });
+}
+
+export function useVerifyContact(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { channel: "email" | "phone"; verified: boolean }) =>
+      api.post(`/api/investors/${id}/verify-contact`, v),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["investor-full", id] }),
+  });
+}
+
+export function useSetReviewCadence(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { reviewFrequency: string; reviewFrequencyDays?: number | null }) =>
+      api.patch(`/api/investors/${id}`, v),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["investor-full", id] });
+      qc.invalidateQueries({ queryKey: ["investor", id] });
+    },
+  });
+}
+
+export function useSendStatement(id: string) {
+  return useMutation({
+    mutationFn: (channel: "email" | "whatsapp") =>
+      api.post<{ ok?: boolean; waUrl?: string; message?: string }>(`/api/investors/${id}/statement/send`, { channel }),
+  });
+}
+
+export function useInvestorTemplates(id: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["investor-templates", id],
+    enabled,
+    queryFn: () => api.get<any>(`/api/investors/${id}/dispatch`),
+    staleTime: 60_000,
+  });
+}
+
+export function useDispatchComm(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { channel: string; templateKey: string; variables?: Record<string, string> }) =>
+      api.post(`/api/investors/${id}/dispatch`, v),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["investor-full", id] }),
+  });
+}
+
+export function useDeleteInvestor() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.del(`/api/investors/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["investors"] });
+      qc.invalidateQueries({ queryKey: ["investor-kpis"] });
+    },
   });
 }

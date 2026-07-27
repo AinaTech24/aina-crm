@@ -11,7 +11,7 @@ export default function NewPlatformStaffPage() {
     name: "",
     email: "",
     password: "",
-    role: "platform_support",
+    role: "platform_admin",
   });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -42,9 +42,10 @@ export default function NewPlatformStaffPage() {
       <Link href="/super-admin/users" className="text-sm text-muted-foreground hover:underline flex items-center gap-1">
         <ChevronLeft className="size-4" /> Back to platform staff
       </Link>
-      <h1 className="text-2xl font-bold tracking-tight">Add AINA platform staff</h1>
+      <h1 className="text-2xl font-bold tracking-tight">Add admin</h1>
       <p className="text-sm text-muted-foreground">
-        Platform staff get cross-tenant access to the SaaS. Choose role carefully.
+        Admins get full cross-tenant access to the SaaS. Both Admin and Super Admin
+        can create other Admins and Super Admins. The email must not already be in use.
       </p>
 
       <form onSubmit={submit} className="border rounded-lg bg-card p-5 space-y-3">
@@ -66,15 +67,15 @@ export default function NewPlatformStaffPage() {
             <label className="flex items-start gap-2 border rounded p-3 cursor-pointer hover:bg-accent/40">
               <input type="radio" name="role" checked={form.role === "platform_admin"} onChange={() => setForm({ ...form, role: "platform_admin" })} className="mt-1" />
               <div>
-                <div className="font-medium text-sm">Platform Admin</div>
-                <div className="text-xs text-muted-foreground">Full cross-tenant read + write. Can create/suspend tenants, edit packages.</div>
+                <div className="font-medium text-sm">Super Admin</div>
+                <div className="text-xs text-muted-foreground">Full cross-tenant read + write — tenants, packages, billing, staff. The top tier.</div>
               </div>
             </label>
             <label className="flex items-start gap-2 border rounded p-3 cursor-pointer hover:bg-accent/40">
               <input type="radio" name="role" checked={form.role === "platform_support"} onChange={() => setForm({ ...form, role: "platform_support" })} className="mt-1" />
               <div>
-                <div className="font-medium text-sm">Platform Support</div>
-                <div className="text-xs text-muted-foreground">Cross-tenant read-only. Can view + respond to tickets but not change billing.</div>
+                <div className="font-medium text-sm">Admin</div>
+                <div className="text-xs text-muted-foreground">Same full powers as Super Admin — including creating other Admins and Super Admins.</div>
               </div>
             </label>
           </div>

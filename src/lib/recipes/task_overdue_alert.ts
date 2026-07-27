@@ -12,9 +12,12 @@ import type { RecipeDef } from ".";
  *   3. If still not done (handled by re-check at firing time), escalate to the
  *      assignee's RM/owner via in-app alert + email.
  *
- * The trigger is wired by the workflow runner whenever an event of kind
- * `task.overdue` lands in events_outbox — see workers/master-scheduler.ts which
- * scans `tasks WHERE due_at < now() AND status = 'open'` every 15 minutes.
+ * The trigger fires whenever an event of kind `task.overdue` lands in
+ * events_outbox — emitted by workers/task-reminder-scanner.ts, which sweeps
+ * `tasks WHERE due_at < now() AND status IN ('open','in_progress','blocked')`
+ * (deduped via tasks.overdue_notified_at) every 5 minutes. That scanner also
+ * posts a guaranteed in-app alert to the assignee, so overdue surfacing works
+ * even when this escalation recipe isn't installed.
  */
 export const taskOverdueAlertRecipe: RecipeDef = {
   key: "task_overdue_alert",

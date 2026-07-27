@@ -79,7 +79,7 @@ const Body = z.object({
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "settings.users");
+    requireCap(session.roles, "settings.users", session.permissions);
     const { id } = await params;
     const meta = clientMetaFromHeaders(req.headers);
 

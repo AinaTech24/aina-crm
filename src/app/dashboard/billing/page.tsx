@@ -10,14 +10,15 @@ import { BillingCycleChooser } from "@/components/billing/BillingCycleChooser";
 import { AutoPaySetup } from "@/components/billing/AutoPaySetup";
 import { computeAnnualAmountPaise, razorpayConfigured } from "@/lib/billing/razorpay";
 import { getBillingUsage, type UsageMetric } from "@/lib/billing/usage";
+import { StatusChip, type Tone } from "@/components/common/StatusChip";
 
-const STATUS_COLORS: Record<string, string> = {
-  trial: "bg-blue-50 text-blue-700",
-  active: "bg-emerald-50 text-emerald-700",
-  past_due: "bg-amber-50 text-amber-700",
-  suspended: "bg-rose-50 text-rose-700",
-  expired: "bg-rose-50 text-rose-700",
-  cancelled: "bg-gray-50 text-gray-700",
+const STATUS_TONE: Record<string, Tone> = {
+  trial: "info",
+  active: "success",
+  past_due: "warning",
+  suspended: "danger",
+  expired: "danger",
+  cancelled: "neutral",
 };
 
 export const dynamic = "force-dynamic";
@@ -103,9 +104,9 @@ export default async function BillingPage() {
                 </h2>
                 <p className="text-sm text-muted-foreground mt-1 max-w-md">{pkg.description}</p>
               </div>
-              <span className={`text-sm px-3 py-1 rounded-full ${STATUS_COLORS[sub.status] ?? ""}`}>
+              <StatusChip tone={STATUS_TONE[sub.status] ?? "neutral"} className="text-sm px-3 py-1 capitalize">
                 {sub.status}
-              </span>
+              </StatusChip>
             </div>
             <div className="grid grid-cols-3 gap-4 mt-4 pt-4 border-t text-sm">
               <Row label="Billing cycle" value={sub.billingCycle ?? "—"} />

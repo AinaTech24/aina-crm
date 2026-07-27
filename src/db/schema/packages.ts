@@ -128,6 +128,12 @@ export const subscriptions = pgTable(
     modulesOverride: jsonb("modules_override").$type<string[]>(),
     allowedFields: jsonb("allowed_fields").$type<string[]>(),
     /**
+     * Per-tenant feature-flag override (migration 0163). Merged ON TOP of the
+     * package's feature_flags in loadTenantLicense, so a single capability can
+     * be toggled for one firm without changing its package. NULL = inherit.
+     */
+    featureFlagsOverride: jsonb("feature_flags_override").$type<Record<string, any>>(),
+    /**
      * Admin → MFD sidebar access (Module-19). The exact set of sidebar nav
      * hrefs this firm can open (see src/config/nav-access.ts). NULL = the
      * package-module default (legacy behaviour). Set by AINA platform admins.

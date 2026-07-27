@@ -175,6 +175,7 @@ export function DatePicker({
         createPortal(
           <div
             ref={popRef}
+            data-floating-popup
             style={{ position: "fixed", left: coords.left, top: coords.top, width: POPUP_W, zIndex: 80 }}
             className="card-elevated bg-card p-3 animate-scale-in"
           >

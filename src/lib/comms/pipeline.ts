@@ -403,7 +403,7 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
     category: complianceCategory,
     tenant: {
       legalName: tenantRow?.legalName,
-      arn: tenantRow?.arn,
+      arn: tenantRow?.arn ?? undefined,
       principalEuin: tenantRow?.principalEuin ?? undefined,
       riaRegistered: tenantRow?.riaRegistered ?? false,
     },

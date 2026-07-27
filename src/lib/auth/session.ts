@@ -26,7 +26,7 @@ import {
   sessionCookieForPath,
   type SessionUser,
 } from "./jwt";
-import { isSessionRevoked } from "./revocation";
+import { isSessionRevoked, isDeviceSessionRevoked } from "./revocation";
 
 // Re-export the Edge-safe surface so existing `@/lib/auth/session` imports
 // (signSession in the auth routes, verifySession/SESSION_COOKIE, the type) are
@@ -64,6 +64,10 @@ export const getSession = cache(async (): Promise<SessionUser | null> => {
   });
   if (revoked) return null;
 
+  // Per-device revocation ("log out this device") + last-seen touch for presence.
+  const deviceRevoked = await isDeviceSessionRevoked({ sid: session.sid, tenantId: session.tenantId });
+  if (deviceRevoked) return null;
+
   return session;
 });
 
@@ -82,6 +86,16 @@ async function readSession(): Promise<SessionUser | null> {
     const headerPayload = h.get("x-mfd-session");
     if (headerPayload) {
       return JSON.parse(headerPayload) as SessionUser;
+    }
+    // Mobile Bearer fallback: routes under a PUBLIC middleware prefix (/api/auth/*)
+    // don't get x-mfd-session injected and the app has no cookie jar — so verify
+    // the Authorization: Bearer <jwt> here. Same signed session, just a different
+    // transport (mirrors the /api/auth/refresh handler).
+    const authz = h.get("authorization");
+    const bearer = authz?.startsWith("Bearer ") ? authz.slice(7).trim() : null;
+    if (bearer) {
+      const s = await verifySession(bearer);
+      if (s) return s;
     }
     const pathname = h.get("x-pathname");
     if (pathname) cookieName = sessionCookieForPath(pathname);

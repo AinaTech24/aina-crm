@@ -160,7 +160,7 @@ export default async function ProfilePage() {
         {data.activity.length === 0 ? (
           <p className="text-xs text-muted-foreground">No recent activity recorded.</p>
         ) : (
-          <ul className="divide-y divide-border text-sm">
+          <ul className="divide-y divide-border text-sm max-h-64 overflow-y-auto scrollbar-none">
             {data.activity.map((a, i) => (
               <li key={i} className="flex items-center justify-between py-2">
                 <span className="capitalize">{a.action.replace(/[._]/g, " ")}<span className="text-muted-foreground text-xs"> · {a.entity_type}</span></span>

@@ -44,7 +44,7 @@ export async function PATCH(
 ) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "settings.users");
+    requireCap(session.roles, "settings.users", session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
     const { id } = await params;
 
@@ -120,7 +120,7 @@ export async function DELETE(
 ) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "settings.users");
+    requireCap(session.roles, "settings.users", session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
     const { id } = await params;
     const meta = clientMetaFromHeaders(req.headers);

@@ -48,6 +48,9 @@ const Body = z.object({
   secondaryColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
   textColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional().nullable(),
   hoverColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional().nullable(),
+  // Deeper theming (0164) — "" clears to default.
+  fontFamily: z.enum(["inter", "system", "serif", "rounded", "mono"]).optional().nullable().or(z.literal("")),
+  uiDensity: z.enum(["comfortable", "compact"]).optional().nullable().or(z.literal("")),
   logoUrl: LocalOrAbsoluteUrl.optional().or(z.literal("")),
   // Additional brand-logo variants (migration 0083) — each maps to a product
   // context (square icon, monogram, favicon). All optional; empty string clears.
@@ -56,6 +59,9 @@ const Body = z.object({
   faviconUrl: LocalOrAbsoluteUrl.optional().or(z.literal("")),
   aumRange: z.string().optional(),
   sipBookRange: z.string().optional(),
+  // "Dormant" = no transaction within this many days (30–1095). One firm-level
+  // knob every surface reads (Investors KPIs, churn report, the copilot).
+  dormancyWindowDays: z.number().int().min(30).max(1095).optional(),
   teamSize: z.string().optional(),
   currentSoftwareUsed: z.string().optional(),
   address: z
@@ -145,7 +151,7 @@ export async function PATCH(req: NextRequest) {
     const session = await requireSession();
     // Org-profile edits are owner-only. settings.users is owner-only in
     // the matrix; we use that as the umbrella tenant-admin capability.
-    requireCap(session.roles, "settings.users");
+    requireCap(session.roles, "settings.users", session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
 
     const parse = Body.safeParse(await req.json().catch(() => ({})));

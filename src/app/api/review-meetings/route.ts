@@ -68,28 +68,72 @@ export async function GET(req: NextRequest) {
     // RMs (manage.assigned, not .all) to their OWN meetings.
     requireAny(session.roles, ["review_meeting.manage.all", "review_meeting.manage.assigned"], session.permissions);
     const canAll = can(session.roles, "review_meeting.manage.all", session.permissions);
+
+    // Full filter set, mirroring the web list page (/dashboard/review-meetings).
+    const url = req.nextUrl;
+    const g = (k: string) => url.searchParams.get(k) ?? "";
+    const csv = (v: string) => v.split(",").map((s) => s.trim()).filter(Boolean);
+    const q = g("q").trim();
+    const categoryFilter = csv(g("category"));
+    const statusFilter = csv(g("status"));
+    const modeFilter = csv(g("mode"));
+    const typeFilter = csv(g("type"));
+    const rmFilter = csv(g("rm")).filter((v) => /^[0-9a-f-]{36}$/i.test(v));
+    const sortAsc = g("sort") === "meeting_asc";
     // Optional filter — used by the lead blueprint's inline "complete meeting"
     // popup to load only this lead's meetings.
-    const leadIdRaw = req.nextUrl.searchParams.get("leadId");
-    const leadId = /^[0-9a-f-]{36}$/i.test(leadIdRaw ?? "") ? leadIdRaw : null;
-    const rows = await withTenant(session.tenantId, async (tx) => {
-      const scope = canAll ? sql`` : sql` AND m.rm_id = ${session.userId}::uuid`;
-      const leadFilter = leadId ? sql` AND m.lead_id = ${leadId}::uuid` : sql``;
-      const r = await tx.execute(sql`
-        SELECT m.*, COALESCE(i.name, l.name) AS investor_name,
-               i.segment_tag, i.pan AS investor_pan,
-               u.name AS rm_name
-        FROM review_meetings m
-        LEFT JOIN investors i ON i.id = m.investor_id
-        LEFT JOIN leads l ON l.id = m.lead_id
-        LEFT JOIN users u ON u.id = m.rm_id
-        WHERE m.tenant_id = ${session.tenantId}::uuid${scope}${leadFilter}
-        ORDER BY m.meeting_date DESC
-        LIMIT 500
-      `);
-      return r.rows;
-    });
-    return NextResponse.json({ meetings: rows });
+    const leadIdRaw = g("leadId");
+    const leadId = /^[0-9a-f-]{36}$/i.test(leadIdRaw) ? leadIdRaw : null;
+    const isDate = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s);
+    const mFrom = g("meeting_from") || g("meeting");
+    const mTo = g("meeting_to") || g("meeting_end");
+
+    const data = await withTenant(
+      session.tenantId,
+      async (tx) => {
+        const filters: any[] = [sql`m.tenant_id = ${session.tenantId}::uuid`];
+        if (!canAll) filters.push(sql`m.rm_id = ${session.userId}::uuid`);
+        if (leadId) filters.push(sql`m.lead_id = ${leadId}::uuid`);
+        if (q) filters.push(sql`(i.name ILIKE ${`%${q}%`} OR l.name ILIKE ${`%${q}%`} OR u.name ILIKE ${`%${q}%`} OR m.discussion_points ILIKE ${`%${q}%`} OR m.meeting_notes ILIKE ${`%${q}%`})`);
+        if (categoryFilter.length) filters.push(sql`m.category IN (${sql.join(categoryFilter.map((v) => sql`${v}`), sql`, `)})`);
+        if (statusFilter.length) filters.push(sql`m.status IN (${sql.join(statusFilter.map((v) => sql`${v}`), sql`, `)})`);
+        if (modeFilter.length) filters.push(sql`m.meeting_mode IN (${sql.join(modeFilter.map((v) => sql`${v}`), sql`, `)})`);
+        if (typeFilter.length) filters.push(sql`m.meeting_type IN (${sql.join(typeFilter.map((v) => sql`${v}`), sql`, `)})`);
+        if (rmFilter.length) filters.push(sql`m.rm_id IN (${sql.join(rmFilter.map((v) => sql`${v}::uuid`), sql`, `)})`);
+        if (isDate(mFrom)) filters.push(sql`m.meeting_date >= ${mFrom}::date`);
+        if (isDate(mTo)) filters.push(sql`m.meeting_date < (${mTo}::date + interval '1 day')`);
+        const whereSql = sql.join(filters, sql` AND `);
+
+        const meetings = await tx.execute(sql`
+          SELECT m.*, COALESCE(i.name, l.name) AS investor_name,
+                 i.segment_tag, i.pan AS investor_pan,
+                 u.name AS rm_name
+          FROM review_meetings m
+          LEFT JOIN investors i ON i.id = m.investor_id
+          LEFT JOIN leads l ON l.id = m.lead_id
+          LEFT JOIN users u ON u.id = m.rm_id
+          WHERE ${whereSql}
+          ORDER BY ${sortAsc ? sql`m.meeting_date ASC` : sql`m.meeting_date DESC`}
+          LIMIT 500
+        `);
+
+        // Stats ribbon — the 4 fixed metrics, scoped to tenant (+ RM for .assigned).
+        const scopeStats = canAll ? sql`` : sql` AND rm_id = ${session.userId}::uuid`;
+        const statsRes = await tx.execute(sql`
+          SELECT
+            COUNT(*) FILTER (WHERE status IN ('scheduled','confirmed') AND meeting_date >= now())::int AS upcoming,
+            COUNT(*) FILTER (WHERE status IN ('scheduled','confirmed') AND meeting_date >= date_trunc('week', now()) AND meeting_date < date_trunc('week', now()) + interval '7 days')::int AS this_week,
+            COUNT(*) FILTER (WHERE status = 'completed' AND meeting_date >= date_trunc('month', now()))::int AS completed_mtd,
+            COUNT(*) FILTER (WHERE status IN ('scheduled','confirmed','in_progress') AND meeting_date < now())::int AS overdue
+          FROM review_meetings WHERE tenant_id = ${session.tenantId}::uuid${scopeStats}
+        `);
+
+        return { meetings: meetings.rows, stats: (statsRes.rows[0] ?? { upcoming: 0, this_week: 0, completed_mtd: 0, overdue: 0 }) };
+      },
+      { userId: session.userId, branchId: session.branchId, roles: session.roles }
+    );
+
+    return NextResponse.json({ meetings: data.meetings, stats: data.stats });
   } catch (err: any) {
     return handleApiError(err);
   }

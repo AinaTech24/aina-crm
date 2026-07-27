@@ -10,14 +10,17 @@
  * (₹ → "Rs ", smart-quotes/dashes normalised) before drawing.
  */
 
-import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage, type PDFImage, type RGB } from "pdf-lib";
-import { drawReportHeader } from "@/lib/pdf/report-header";
+import { PDFDocument, rgb, type PDFFont, type PDFPage, type PDFImage, type RGB } from "pdf-lib";
+import { drawReportHeader, drawContinuationHeader, drawPageNumbers } from "@/lib/pdf/report-header";
+import { embedPdfFonts, pdfSanitize } from "@/lib/pdf/fonts";
 import type { StatementBrand } from "@/lib/finance/valuation-pdf";
 
 export type RiskProfilePdfData = {
   /** Canonical category: conservative | moderate | aggressive | very_aggressive. */
   category: string | null;
   totalScore: number | null;
+  /** Template's maximum possible score — gives the score context ("24 / 40"). */
+  maxScore?: number | null;
   profileDate?: string | null; // yyyy-mm-dd
   signedAt?: string | null; // ISO
   signedByName?: string | null;
@@ -36,6 +39,8 @@ export type RenderRiskProfileArgs = {
   brand: StatementBrand;
   /** ISO date the PDF was generated (injected for determinism). */
   generatedAt: string;
+  /** Audit reference (response row id) — printed in the footer as "Ref XXXXXXXX". */
+  refId?: string | null;
 };
 
 const INK: RGB = rgb(0.06, 0.09, 0.16);
@@ -46,8 +51,11 @@ const LINE: RGB = rgb(0.89, 0.91, 0.94);
 
 const W = 595.28;
 const H = 841.89; // A4
-const MARGIN = 44;
+const MARGIN = 40;
 const FOOTER_TOP = 56; // body content must stay above this
+
+// Glyph switch — set per render from the embedded font (process-stable).
+let KEEP_RUPEE = false;
 
 const CATEGORY_META: Record<string, { label: string; blurb: string; tone: RGB }> = {
   conservative: {
@@ -79,8 +87,8 @@ const DISCLAIMER =
 export async function renderRiskProfilePdf(args: RenderRiskProfileArgs): Promise<Buffer> {
   const { profile, investor, brand } = args;
   const doc = await PDFDocument.create();
-  const helv = await doc.embedFont(StandardFonts.Helvetica);
-  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const { font: helv, bold, rupeeOk } = await embedPdfFonts(doc);
+  KEEP_RUPEE = rupeeOk;
   const primary = hexToRgb(brand.primaryColor);
   const logo = await embedLogo(doc, brand.logoUrl);
 
@@ -88,8 +96,9 @@ export async function renderRiskProfilePdf(args: RenderRiskProfileArgs): Promise
   doc.setProducer("Aina CRM");
   if (brand.legalName || brand.displayName) doc.setAuthor(ascii(brand.legalName ?? brand.displayName ?? ""));
 
-  const ctx = { helv, bold, primary, logo, brand, generatedAt: args.generatedAt };
+  const ctx = { helv, bold, primary, logo, brand, generatedAt: args.generatedAt, refId: args.refId ?? null };
   const contentW = W - 2 * MARGIN;
+  if (args.refId) doc.setSubject(`Ref ${String(args.refId).slice(0, 8)}`);
 
   let page = doc.addPage([W, H]);
   let y = drawHeader(page, ctx, true);
@@ -119,7 +128,8 @@ export async function renderRiskProfilePdf(args: RenderRiskProfileArgs): Promise
   page.drawText("RISK CATEGORY", { x: MARGIN + 16, y: y - 20, size: 7, font: bold, color: MUTED });
   page.drawText(ascii(meta.label), { x: MARGIN + 16, y: y - 44, size: 22, font: bold, color: meta.tone });
   if (profile.totalScore != null) {
-    const st = `Score ${profile.totalScore}`;
+    // "/ max" gives the number a scale — "Score 24 / 40" reads, "Score 24" doesn't.
+    const st = profile.maxScore ? `Score ${profile.totalScore} / ${profile.maxScore}` : `Score ${profile.totalScore}`;
     const sw = bold.widthOfTextAtSize(st, 11);
     page.drawText(st, { x: W - MARGIN - 16 - sw, y: y - 20, size: 11, font: bold, color: INK });
   }
@@ -130,8 +140,11 @@ export async function renderRiskProfilePdf(args: RenderRiskProfileArgs): Promise
       by -= 11;
     }
   }
-  // meta line at the bottom of the card
+  // meta line at the bottom of the card — leads with the distributor's ARN
+  // (compliance: the ARN must be visible on the risk-profile record).
+  const arnNo = brand.arn ? String(brand.arn).replace(/^ARN[-\s]*/i, "") : "";
   const metaBits = [
+    arnNo ? `ARN ${arnNo}` : null,
     profile.profileDate ? `Profiled on ${fmtDate(profile.profileDate)}` : null,
     profile.signedByName ? `Signed by ${profile.signedByName}` : null,
     profile.nextReviewAt ? `Next review ${fmtDate(profile.nextReviewAt)}` : null,
@@ -187,6 +200,7 @@ export async function renderRiskProfilePdf(args: RenderRiskProfileArgs): Promise
   }
 
   drawFooter(page, ctx);
+  drawPageNumbers(doc, helv, W, 8);
 
   const bytes = await doc.save();
   return Buffer.from(bytes);
@@ -201,6 +215,7 @@ type Ctx = {
   logo: PDFImage | null;
   brand: StatementBrand;
   generatedAt: string;
+  refId?: string | null;
 };
 
 /** Letterhead. `full` = page 1 (logo + ARN + gradient strip); else a slim
@@ -210,14 +225,12 @@ function drawHeader(page: PDFPage, ctx: Ctx, full: boolean): number {
   const topY = H - MARGIN;
 
   if (!full) {
-    page.drawText(ascii(brand.legalName ?? brand.displayName ?? "Risk profile"), {
-      x: MARGIN, y: topY - 10, size: 9, font: bold, color: SLATE,
+    // Shared slim continuation header — same look on every multi-page report.
+    return drawContinuationHeader({
+      page, helv, bold, pageWidth: W, pageHeight: H, margin: MARGIN,
+      firmName: brand.legalName ?? brand.displayName,
+      title: "Risk profile", primary,
     });
-    const cont = "Risk profile (continued)";
-    const cw = helv.widthOfTextAtSize(cont, 8);
-    page.drawText(cont, { x: W - MARGIN - cw, y: topY - 10, size: 8, font: helv, color: MUTED });
-    page.drawRectangle({ x: MARGIN, y: topY - 18, width: W - 2 * MARGIN, height: 1, color: LINE });
-    return topY - 36;
   }
 
   const secondary = brand.secondaryColor ? hexToRgb(brand.secondaryColor) : primary;
@@ -242,9 +255,13 @@ function drawFooter(page: PDFPage, ctx: Ctx) {
   const { helv, bold, brand } = ctx;
   page.drawRectangle({ x: MARGIN, y: 52, width: W - 2 * MARGIN, height: 1, color: LINE });
   const legal = ascii(brand.legalName ?? brand.displayName ?? "Your Advisor");
-  const arn = ascii(`ARN-${(brand.arn ?? "—").toString().replace(/^ARN-?/i, "")}`);
-  page.drawText(`${legal}  -  ${arn}`, { x: MARGIN, y: 40, size: 8, font: bold, color: SLATE });
-  const gen = ascii(`Generated ${fmtDateTime(ctx.generatedAt)}`);
+  // Only show the ARN when the firm actually has one — otherwise it printed an
+  // ugly "ARN--" placeholder for firms with no ARN on record.
+  const arnNo = brand.arn ? String(brand.arn).replace(/^ARN[-\s]*/i, "") : "";
+  page.drawText(ascii(arnNo ? `${legal}  -  ARN-${arnNo}` : legal), { x: MARGIN, y: 40, size: 8, font: bold, color: SLATE });
+  const gen = ascii(
+    `Generated ${fmtDateTime(ctx.generatedAt)}${ctx.refId ? ` - Ref ${String(ctx.refId).slice(0, 8).toUpperCase()}` : ""}`
+  );
   const gw = helv.widthOfTextAtSize(gen, 7.5);
   page.drawText(gen, { x: W - MARGIN - gw, y: 40, size: 7.5, font: helv, color: MUTED });
   let dy = 26;
@@ -324,15 +341,8 @@ function wrap(text: string, font: PDFFont, size: number, maxWidth: number): stri
 }
 function ascii(s: string): string {
   if (!s) return "";
-  return s
-    .replace(/₹/g, "Rs ")
-    .replace(/[•]/g, "-")
-    .replace(/[–—]/g, "-")
-    .replace(/[''‘’]/g, "'")
-    .replace(/[“”]/g, '"')
-    .replace(/·/g, "-")
-    .replace(/[^\x20-\x7E]/g, "")
-    .trim();
+  // Keeps "₹" when the Unicode font is embedded; strips/converts otherwise.
+  return pdfSanitize(s.replace(/·/g, "-"), KEEP_RUPEE);
 }
 function hexToRgb(hex: string | null | undefined): RGB {
   const m = (hex ?? "").replace(/^#/, "").match(/^([0-9a-fA-F]{6})$/);
