@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { Avatar } from "@/components/ui/Avatar";
 import {
@@ -19,6 +20,28 @@ import {
   Clock,
   ExternalLink,
 } from "lucide-react";
+
+/**
+ * Format a Date as YYYY-MM-DD in the *local* calendar, not UTC.
+ *
+ * `date.toISOString().slice(0, 10)` was used here and is wrong for every
+ * timezone east of UTC: a cell built as local midnight (e.g. 2 Jul 00:00 IST)
+ * converts to 1 Jul 18:30Z, so the day key came out one day early. That shifted
+ * the whole grid — each cell listed the previous day's items and the agenda
+ * drawer was titled with the previous day's date.
+ */
+function localISODate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/** Parse a YYYY-MM-DD key back to local midnight (`new Date("…")` is UTC). */
+function parseLocalISODate(iso: string): Date {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(y, (m ?? 1) - 1, d ?? 1);
+}
 
 type Item = {
   date: string; // YYYY-MM-DD
@@ -63,6 +86,9 @@ export function InteractiveCalendar({
   const [activeFilters, setActiveFilters] = useState<Set<Item["kind"]>>(() => new Set(Object.keys(KIND_META) as Item["kind"][]));
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  // The agenda drawer is portalled to <body>; that's only possible after mount.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   // Week View navigation
   const getStartOfWeek = (d: Date) => {
@@ -116,7 +142,7 @@ export function InteractiveCalendar({
   for (let i = 0; i < firstWeekday; i++) monthCells.push(null);
   for (let d = 1; d <= daysInMonth; d++) {
     const date = new Date(yyyy, mm - 1, d);
-    const iso = date.toISOString().slice(0, 10);
+    const iso = localISODate(date);
     monthCells.push({ date, items: filteredItems.filter((it) => it.date === iso) });
   }
   while (monthCells.length % 7 !== 0) monthCells.push(null);
@@ -239,7 +265,7 @@ export function InteractiveCalendar({
           <div className="grid grid-cols-7">
             {monthCells.map((cell, i) => {
               const isToday = cell?.date && cell.date.toDateString() === new Date().toDateString();
-              const iso = cell?.date ? cell.date.toISOString().slice(0, 10) : "";
+              const iso = cell?.date ? localISODate(cell.date) : "";
 
               return (
                 <div
@@ -321,7 +347,7 @@ export function InteractiveCalendar({
           </div>
           <div className="grid grid-cols-7 divide-x divide-slate-100 min-h-[350px]">
             {weekDays.map((day) => {
-              const iso = day.toISOString().slice(0, 10);
+              const iso = localISODate(day);
               const dayItems = filteredItems.filter((it) => it.date === iso);
               const isToday = day.toDateString() === new Date().toDateString();
 
@@ -364,16 +390,22 @@ export function InteractiveCalendar({
         </div>
       )}
 
-      {/* Day Details Drawer Sidebar */}
-      {selectedDay && (
+      {/* Day Details Drawer Sidebar.
+          Portalled to <body> and given a z-index above the dashboard topbar
+          (which is `sticky z-40`). Rendered in place, the backdrop sat inside
+          `.dashboard-content` and left the topbar un-dimmed — it tied the
+          topbar on z-index, and the content wrapper's fade-in animates a
+          `transform`, which makes an ancestor stacking context / containing
+          block that a `fixed` child cannot escape. Portalling sidesteps both. */}
+      {mounted && selectedDay && createPortal(
         <>
           {/* Drawer overlay backdrop */}
           <div
-            className="fixed inset-0 bg-black/30 backdrop-blur-[1px] z-40 transition-opacity"
+            className="fixed inset-0 bg-black/30 backdrop-blur-[1px] z-[60] transition-opacity"
             onClick={() => setSelectedDay(null)}
           />
           {/* Panel */}
-          <div className="fixed top-0 right-0 h-full w-full md:w-[420px] bg-white border-l shadow-2xl z-50 flex flex-col animate-slide-in overflow-hidden bg-card text-slate-800">
+          <div className="fixed top-0 right-0 h-full w-full md:w-[420px] bg-white border-l shadow-2xl z-[70] flex flex-col animate-slide-in overflow-hidden bg-card text-slate-800">
             {/* Header */}
             <div className="px-5 py-4 border-b flex items-center justify-between bg-slate-50">
               <div>
@@ -381,7 +413,7 @@ export function InteractiveCalendar({
                   Agenda for Day
                 </h3>
                 <span className="text-xs font-semibold text-brand-cyan-deep">
-                  {new Date(selectedDay).toLocaleDateString("en-IN", {
+                  {parseLocalISODate(selectedDay).toLocaleDateString("en-IN", {
                     weekday: "long",
                     day: "numeric",
                     month: "long",
@@ -465,7 +497,8 @@ export function InteractiveCalendar({
               animation: slide-in 0.23s cubic-bezier(0.16, 1, 0.3, 1) forwards;
             }
           `}</style>
-        </>
+        </>,
+        document.body
       )}
     </div>
   );

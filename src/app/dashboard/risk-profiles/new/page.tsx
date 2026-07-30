@@ -13,6 +13,7 @@ import { withTenant } from "@/db/client";
 import { investors } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { RiskProfileWizard } from "@/components/risk-profile/RiskProfileWizard";
+import { CompactFilterBar } from "@/components/common/CompactFilterBar";
 import { loadActiveTemplate } from "@/lib/risk-profile/template";
 
 export const dynamic = "force-dynamic";
@@ -20,18 +21,27 @@ export const dynamic = "force-dynamic";
 export default async function NewRiskProfilePage({
   searchParams,
 }: {
-  searchParams: Promise<{ investorId?: string }>;
+  searchParams: Promise<{ investorId?: string; q?: string }>;
 }) {
   const sp = await searchParams;
   const session = await requireSession();
 
   // No investor selected → show a picker
   if (!sp.investorId) {
+    // Search runs in SQL, not on the rendered list: the picker is capped at 200
+    // rows and sorted "never profiled first", so a client-side filter could
+    // never reach a client outside that window.
+    const q = (sp.q ?? "").trim();
+    const searchCond = q
+      ? sql`AND (i.name ILIKE ${`%${q}%`} OR i.pan ILIKE ${`%${q}%`})`
+      : sql``;
+
     const list = await withTenant(session.tenantId, async (tx) => {
       const r = await tx.execute(sql`
         SELECT i.id, i.name, i.pan, i.segment_tag, i.risk_profile, i.risk_profile_signed_at
         FROM investors i
         WHERE i.status = 'active' AND i.deleted_at IS NULL
+        ${searchCond}
         ORDER BY (i.risk_profile_signed_at IS NULL) DESC, i.risk_profile_signed_at ASC NULLS FIRST, i.name
         LIMIT 200
       `);
@@ -49,11 +59,18 @@ export default async function NewRiskProfilePage({
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Start a new risk profile</h1>
         </div>
+        <CompactFilterBar
+          searchPlaceholder="Search clients by name or PAN…"
+          filters={[]}
+          totalCount={list.length}
+        />
         <div className="card-surface overflow-hidden">
           {list.length === 0 ? (
             <div className="p-12 text-center text-sm text-muted-foreground">
               <Users className="size-8 mx-auto text-muted-foreground/50" />
-              <div className="mt-2">No active investors yet.</div>
+              <div className="mt-2">
+                {q ? `No active client matches “${q}”.` : "No active investors yet."}
+              </div>
             </div>
           ) : (
             <ul className="divide-y">

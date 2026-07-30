@@ -139,8 +139,9 @@ export function CompactFilterBar({
         {/* Push the filter / sort / view controls to the right, grouped. */}
         <div className="flex-1" />
 
-        {/* Single Filters dropdown */}
-        <div className="relative" ref={panelRef}>
+        {/* Single Filters dropdown — hidden when there are no filters to show,
+            otherwise the button opens an empty panel (search-only callers). */}
+        <div className={`relative ${filters.length === 0 ? "hidden" : ""}`} ref={panelRef}>
           <button
             type="button"
             onClick={() => setOpen((o) => !o)}
