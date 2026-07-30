@@ -23,7 +23,7 @@ import { LeadsKanban } from "@/components/leads/LeadsKanban";
 import { LeadsTable } from "@/components/leads/LeadsTable";
 import { LeadsViewPersist } from "@/components/leads/LeadsViewPersist";
 // import { LeadQuickFilters } from "@/components/leads/LeadQuickFilters";
-import { FilterBar } from "@/components/common/FilterBar";
+import { CompactFilterBar } from "@/components/common/CompactFilterBar";
 import { Pager } from "@/components/common/Pager";
 import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
 import { CustomViews } from "@/components/common/CustomViews";
@@ -100,6 +100,14 @@ export default async function LeadsPage({
   const stageFilter = (sp.stage ?? "").split(",").filter(Boolean);
   const sourceFilter = (sp.source ?? "").split(",").filter(Boolean);
   const ownerFilter = (sp.owner ?? "").split(",").filter(Boolean);
+  // Describes the active narrowing so the empty state can name it.
+  const activeFilterLabel = [
+    q ? `matching “${q}”` : "",
+    ...stageFilter.map((s) => s.replace(/_/g, " ")),
+    ...sourceFilter.map((s) => s.replace(/_/g, " ")),
+  ]
+    .filter(Boolean)
+    .join(" · ");
   const view = sp.view === "table" ? "table" : "kanban";
   // Table sort: "score" (default — hottest first) or "recent". Both default to
   // descending; an explicit `dir` (set by re-clicking the column header) flips
@@ -278,10 +286,8 @@ export default async function LeadsPage({
             </Link>
           </div>
 
-          {view === "table" && (
-            <ColumnManager moduleKey="leads" columns={LEADS_COLUMNS} />
-          )}
-
+          {/* Columns + Views moved into the filter toolbar (right side), so every
+              list module carries the same compact icon row as Tasks. */}
           <Link href="/dashboard/leads/import" className="btn-secondary text-xs">
             <FileDown className="size-3.5" /> Import Excel
           </Link>
@@ -296,10 +302,10 @@ export default async function LeadsPage({
         <LeadQuickFilters session={session} active={sp as Record<string, string | undefined>} />
       </div> */}
 
-      <FilterBar
+      <CompactFilterBar
         totalCount={data.total}
+        searchPlaceholder="Search lead by name, phone, email…"
         filters={[
-          { type: "search", key: "q", placeholder: "Search lead by name, phone, email…" },
           {
             type: "multi",
             key: "stage",
@@ -330,19 +336,25 @@ export default async function LeadsPage({
           dateRangeFilter("created", "Created"),
         ]}
         rightSlot={
-          <CustomViews
-            viewsKey="views:leads"
-            presets={[
-              {
-                id: "open",
-                name: "All open",
-                params: "stage=new,call_done,call_back_later,call_not_connected,contact_in_future,meeting_scheduled,meeting_pending,meeting_done,won_lead",
-              },
-              { id: "referrals", name: "Referrals only", params: "source=referral,existing_client" },
-              { id: "won", name: "Won leads", params: "stage=won_lead,converted" },
-              { id: "lost", name: "Not qualified / lost", params: "stage=not_qualified,lost,not_interested" },
-            ]}
-          />
+          <div className="flex items-center gap-2">
+            {view === "table" && (
+              <ColumnManager compact moduleKey="leads" columns={LEADS_COLUMNS} />
+            )}
+            <CustomViews
+              compact
+              viewsKey="views:leads"
+              presets={[
+                {
+                  id: "open",
+                  name: "All open",
+                  params: "stage=new,call_done,call_back_later,call_not_connected,contact_in_future,meeting_scheduled,meeting_pending,meeting_done,won_lead",
+                },
+                { id: "referrals", name: "Referrals only", params: "source=referral,existing_client" },
+                { id: "won", name: "Won leads", params: "stage=won_lead,converted" },
+                { id: "lost", name: "Not qualified / lost", params: "stage=not_qualified,lost,not_interested" },
+              ]}
+            />
+          </div>
         }
       />
 
@@ -408,10 +420,23 @@ export default async function LeadsPage({
         </div>
       ) : data.rows.length === 0 ? (
         <div className="card-surface p-12 text-center text-sm text-muted-foreground">
-          No leads match these filters.{" "}
-          <Link href="/dashboard/leads/new" className="text-brand-cyan-deep hover:underline">
-            Add one manually
-          </Link>
+          {/* Name what was filtered on, so an empty result reads as "this filter
+              found nothing" rather than "the list is broken". */}
+          {activeFilterLabel ? (
+            <>
+              No <span className="font-medium text-foreground">{activeFilterLabel}</span> leads.{" "}
+              <Link href="/dashboard/leads" className="text-brand-cyan-deep hover:underline">
+                Clear filters
+              </Link>
+            </>
+          ) : (
+            <>
+              No leads match these filters.{" "}
+              <Link href="/dashboard/leads/new" className="text-brand-cyan-deep hover:underline">
+                Add one manually
+              </Link>
+            </>
+          )}
           .
         </div>
       ) : (

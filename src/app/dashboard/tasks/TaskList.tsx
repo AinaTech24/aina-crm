@@ -11,7 +11,7 @@ import { TaskDetailDrawer } from "./TaskDetailDrawer";
 import { Avatar } from "@/components/ui/Avatar";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { taskChecklist, type Task } from "@/db/schema";
-import { Loader2, ListChecks, Trash2, Clock3, ShieldCheck, CalendarClock, Gauge, Check, Pencil, ChevronDown } from "lucide-react";
+import { Loader2, ListChecks, Trash2, Clock3, ShieldCheck, CalendarClock, Gauge, Check, X, Pencil, ChevronDown } from "lucide-react";
 
 // Priority → left-accent stripe colour (row hierarchy at a glance).
 const PRIORITY_ACCENT: Record<string, string> = {
@@ -113,6 +113,34 @@ export function TaskList({ initialRows, currentUserId, canManageAll = false, ini
   const [selectingAll, setSelectingAll] = useState(false);
   const selectMenuRef = useRef<HTMLDivElement>(null);
   const sp = useSearchParams();
+
+  // Human-readable name for whatever narrowed the list, so an empty result can
+  // say WHICH filter found nothing ("No cancelled tasks") instead of a generic
+  // "all caught up" that reads like the filter silently failed.
+  const activeFilterLabel = (() => {
+    const parts: string[] = [];
+    const q = sp.get("q");
+    if (q) parts.push(`matching “${q}”`);
+    for (const [key, prefix] of [
+      ["status", ""],
+      ["priority", " priority"],
+      ["type", ""],
+      ["department", ""],
+    ] as const) {
+      const v = sp.get(key);
+      if (!v) continue;
+      parts.push(
+        v
+          .split(",")
+          .filter(Boolean)
+          .map((s) => s.replace(/_/g, " "))
+          .join(" / ") + prefix
+      );
+    }
+    if (sp.get("mine") === "1") parts.push("assigned to me");
+    if (sp.get("overdue") === "1") parts.push("overdue");
+    return parts.join(" · ");
+  })();
 
   // Sync rows from parent when query changes
   if (JSON.stringify(initialRows.map(r => r.task.id)) !== JSON.stringify(rows.map(r => r.task.id))) {
@@ -327,25 +355,9 @@ export function TaskList({ initialRows, currentUserId, canManageAll = false, ini
         </div>
       )}
 
-      {rows.length === 0 ? (
-        <div className="p-12 text-center bg-slate-50/20">
-          <div className="mx-auto size-12 rounded-full bg-brand-cyan-light/40 flex items-center justify-center mb-3">
-            <ListChecks className="size-6 text-brand-cyan" />
-          </div>
-          <div className="text-sm font-semibold text-slate-700">You're all caught up</div>
-          <p className="text-xs text-muted-foreground mt-1 max-w-sm mx-auto">
-            No tasks match this view. Create one, or let workflows add them automatically when SIPs fail, reviews come due, or KYC expires.
-          </p>
-          <button
-            type="button"
-            onClick={() => router.push("/dashboard/tasks/new")}
-            className="mt-4 inline-flex items-center gap-1.5 rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-sm font-medium"
-          >
-            <ListChecks className="size-4" /> New task
-          </button>
-        </div>
-      ) : (
-        <div className="group/list">
+      {/* The header always renders — including when the list is empty — so the
+          search / filter / sort / view controls stay reachable. */}
+      <div className="group/list">
         {/* Table header — select control (hover-reveal) + search/filter/sort/view toolbar. */}
         <div className="px-3 sm:px-4 py-2 border-b bg-white flex items-center gap-3">
           <div className={`flex items-center gap-2 shrink-0 transition-opacity ${selected.size > 0 ? "opacity-100" : "opacity-0 group-hover/list:opacity-100 focus-within:opacity-100"}`}>
@@ -385,10 +397,53 @@ export function TaskList({ initialRows, currentUserId, canManageAll = false, ini
           </div>
           {toolbar && <div className="flex-1 min-w-0">{toolbar}</div>}
         </div>
-        <ul className="divide-y divide-slate-100 max-h-[60vh] overflow-y-auto scrollbar-thin">
+        {/* min-h keeps the table the same height when a filter returns nothing,
+            so the page doesn't collapse under the toolbar. The header above is
+            always rendered — previously the empty state replaced it, which hid
+            the very filter controls needed to undo the filter. */}
+        <ul className="divide-y divide-slate-100 max-h-[60vh] min-h-[240px] overflow-y-auto scrollbar-thin">
+          {rows.length === 0 && (
+            <li className="p-12 text-center">
+              <div className="mx-auto size-12 rounded-full bg-brand-cyan-light/40 flex items-center justify-center mb-3">
+                <ListChecks className="size-6 text-brand-cyan" />
+              </div>
+              <div className="text-sm font-semibold text-slate-700">
+                {activeFilterLabel ? `No ${activeFilterLabel} tasks` : "You're all caught up"}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1 max-w-sm mx-auto">
+                {activeFilterLabel
+                  ? `Nothing matches ${activeFilterLabel}. Clear the filter to see the rest.`
+                  : "No tasks match this view. Create one, or let workflows add them automatically when SIPs fail, reviews come due, or KYC expires."}
+              </p>
+              <div className="mt-4 flex items-center justify-center gap-2">
+                {activeFilterLabel && (
+                  <button
+                    type="button"
+                    onClick={() => router.push("/dashboard/tasks")}
+                    className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-accent"
+                  >
+                    <X className="size-4" /> Clear filters
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => router.push("/dashboard/tasks/new")}
+                  className="inline-flex items-center gap-1.5 rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-sm font-medium"
+                >
+                  <ListChecks className="size-4" /> New task
+                </button>
+              </div>
+            </li>
+          )}
           {rows.map((row) => {
             const t = row.task;
-            const isDone = t.status === "completed" || t.status === "cancelled";
+            // `cancelled` and `completed` are different outcomes and must not
+            // look identical: filtering by Cancelled used to render rows with
+            // the green completed tick, so a correct result looked like the
+            // filter was returning completed tasks.
+            const isCompleted = t.status === "completed";
+            const isCancelled = t.status === "cancelled";
+            const isDone = isCompleted || isCancelled;
             const creatorName = row.createdBy ?? "System";
             const assigneeLabel = row.assignee ? (t.assigneeId === currentUserId ? "Me" : row.assignee) : "Unassigned";
             return (
@@ -409,26 +464,40 @@ export function TaskList({ initialRows, currentUserId, canManageAll = false, ini
                   aria-label="Select task"
                 />
 
-                {/* Complete / reopen — strikes through the title when done. */}
+                {/* Complete / reopen — strikes through the title when done.
+                    Cancelled shows a slate ✕ rather than the green tick. */}
                 <button
                   type="button"
                   onClick={(e) => handleToggleComplete(t.id, !isDone, e)}
                   disabled={completingTaskId === t.id}
                   className={`shrink-0 rounded-full border size-5 flex items-center justify-center transition ${
-                    isDone
+                    isCompleted
                       ? "bg-emerald-500 border-emerald-500 text-white"
-                      : "border-slate-300 text-transparent hover:border-emerald-400 hover:text-emerald-400"
+                      : isCancelled
+                        ? "bg-slate-400 border-slate-400 text-white"
+                        : "border-slate-300 text-transparent hover:border-emerald-400 hover:text-emerald-400"
                   }`}
                   title={isDone ? "Reopen task" : "Mark complete"}
                   aria-label={isDone ? "Reopen task" : "Mark complete"}
                 >
-                  {completingTaskId === t.id ? <Loader2 className="size-3 animate-spin text-slate-400" /> : <Check className="size-3" />}
+                  {completingTaskId === t.id ? (
+                    <Loader2 className="size-3 animate-spin text-slate-400" />
+                  ) : isCancelled ? (
+                    <X className="size-3" />
+                  ) : (
+                    <Check className="size-3" />
+                  )}
                 </button>
 
                 {/* Task content */}
                 <span className={`flex-1 min-w-0 text-sm truncate ${isDone ? "line-through text-slate-400 font-normal" : "font-medium text-slate-800"}`}>
                   {t.title}
                 </span>
+                {isCancelled && (
+                  <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-slate-500 bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5">
+                    Cancelled
+                  </span>
+                )}
 
                 {/* Assigned by / assigned to — two clearly-labelled columns */}
                 <div className="hidden md:flex items-center gap-5 shrink-0">
@@ -459,8 +528,7 @@ export function TaskList({ initialRows, currentUserId, canManageAll = false, ini
             );
           })}
         </ul>
-        </div>
-      )}
+      </div>
 
       {selectedRow && (
         <TaskDetailDrawer

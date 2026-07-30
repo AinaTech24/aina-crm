@@ -6,7 +6,7 @@ import { investors } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { RecomputeTiersButton } from "@/components/investors/RecomputeTiersButton";
-import { FilterBar } from "@/components/common/FilterBar";
+import { CompactFilterBar } from "@/components/common/CompactFilterBar";
 import { dateRangeFilter } from "@/lib/filters/date-range";
 import { CustomViews } from "@/components/common/CustomViews";
 import { EmptyState } from "@/components/common/EmptyState";
@@ -76,6 +76,16 @@ export default async function InvestorsPage({
   const tier = (sp.tier ?? "").split(",").filter(Boolean);
   const status = (sp.status ?? "").split(",").filter(Boolean);
   const kyc = (sp.kyc ?? "").split(",").filter(Boolean);
+  // Describes the active narrowing so the empty state can name it.
+  const activeFilterLabel = [
+    q ? `matching “${q}”` : "",
+    ...segment,
+    ...tier.map((t) => `tier ${t}`),
+    ...status,
+    ...kyc.map((k) => `KYC ${k}`),
+  ]
+    .filter(Boolean)
+    .join(" · ");
   const view = sp.view === "kanban" ? "kanban" : "table";
   const userId = session.userId;
   // Only firm-wide viewers (owner / branch_head) get the "RM" book-slice filter.
@@ -309,9 +319,6 @@ export default async function InvestorsPage({
               <LayoutGrid className="size-3.5" /> Kanban
             </Link>
           </div>
-          {view === "table" && (
-            <ColumnManager moduleKey="investors" columns={allowedColumns} />
-          )}
           <RecomputeTiersButton />
           <DownloadButton
             url={`/api/investors/export${exportQs ? `?${exportQs}` : ""}`}
@@ -358,11 +365,10 @@ export default async function InvestorsPage({
         />
       </div> */}
 
-      <FilterBar
+      <CompactFilterBar
         totalCount={total}
-        leftSlot={view === "table" ? <InvestorSortSelect sort={sortKey} dir={dir} /> : undefined}
+        searchPlaceholder="Search by name, PAN, phone…"
         filters={[
-          { type: "search", key: "q", placeholder: "Search by name, PAN, phone…" },
           {
             type: "multi",
             key: "segment",
@@ -425,14 +431,21 @@ export default async function InvestorsPage({
           dateRangeFilter("created", "Added"),
         ]}
         rightSlot={
-          <CustomViews
-            viewsKey="views:investors"
-            presets={[
-              { id: "hni", name: "HNI clients", params: "segment=HNI" },
-              { id: "kyc-pending", name: "KYC pending", params: "kyc=pending,expired" },
-              { id: "tier-a", name: "Tier A (quarterly)", params: "tier=A" },
-            ]}
-          />
+          <div className="flex items-center gap-2">
+            {view === "table" && <InvestorSortSelect sort={sortKey} dir={dir} />}
+            {view === "table" && (
+              <ColumnManager compact moduleKey="investors" columns={allowedColumns} />
+            )}
+            <CustomViews
+              compact
+              viewsKey="views:investors"
+              presets={[
+                { id: "hni", name: "HNI clients", params: "segment=HNI" },
+                { id: "kyc-pending", name: "KYC pending", params: "kyc=pending,expired" },
+                { id: "tier-a", name: "Tier A (quarterly)", params: "tier=A" },
+              ]}
+            />
+          </div>
         }
       />
 
@@ -475,10 +488,23 @@ export default async function InvestorsPage({
             </div>
           ) : (
             <div className="p-12 text-center text-sm text-muted-foreground">
-              No investors match these filters.{" "}
-              <Link href="/dashboard/investors/new" className="text-brand-cyan-deep hover:underline">
-                Add one manually
-              </Link>
+              {/* Name what was filtered on, so an empty result reads as "this
+                  filter found nothing" rather than "the list is broken". */}
+              {activeFilterLabel ? (
+                <>
+                  No <span className="font-medium text-foreground">{activeFilterLabel}</span> clients.{" "}
+                  <Link href="/dashboard/investors" className="text-brand-cyan-deep hover:underline">
+                    Clear filters
+                  </Link>
+                </>
+              ) : (
+                <>
+                  No investors match these filters.{" "}
+                  <Link href="/dashboard/investors/new" className="text-brand-cyan-deep hover:underline">
+                    Add one manually
+                  </Link>
+                </>
+              )}
               .
             </div>
           )}
