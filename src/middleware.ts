@@ -62,6 +62,10 @@ const PUBLIC_PATHS = new Set([
   "/terms",
   "/privacy",
   "/refund",
+  // Public Knowledge Base hub (the KAIZEN series). Individual articles are
+  // covered by the "/knowledge-base/" prefix below. The gated half of an
+  // article is withheld server-side, and /api/kb/image/* still needs a session.
+  "/knowledge-base",
 ]);
 
 /**
@@ -79,7 +83,20 @@ const PUBLIC_PATHS = new Set([
  *   /api/webhooks/* — Wapi / Resend / etc.
  *   /api/health, /api/auth/*, /api/employees/accept-invite — auth flows
  */
-const PUBLIC_PATH_PREFIXES = ["/r/", "/lc/", "/d/", "/p/", "/lf/", "/fd/"];
+const PUBLIC_PATH_PREFIXES = [
+  "/r/",
+  "/lc/",
+  "/d/",
+  "/p/",
+  "/lf/",
+  "/fd/",
+  "/knowledge-base/",
+  // /induction/letter/* — the training confirmation letter. Unauthenticated by
+  // design so a member can forward it to a personal inbox; the 32-byte random
+  // token IS the authorisation, and the route itself enforces status=passed and
+  // a 90-day expiry. Without this it 307'd to /login, which defeats the point.
+  "/induction/letter/",
+];
 const PUBLIC_API_PREFIXES = [
   "/api/public/",
   // Public landing-page pricing feed — the marketing site polls this so an
