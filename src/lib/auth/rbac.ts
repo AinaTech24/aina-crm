@@ -121,6 +121,8 @@ export type Capability =
   | "insurance.write"
   // Compliance + DDQ + risk profile + consent + SOP
   | "compliance.view"
+  | "induction.view"
+  | "induction.manage"
   | "compliance.edit"
   | "compliance.approve"
   | "risk_profile.manage"
@@ -201,6 +203,10 @@ const MATRIX: Record<Capability, Role[]> = {
 
   // Documents
   "document.view": ["compliance", "back_office", "ops", "rm", "branch_head", "marketing"],
+  // Induction (team training). Everyone can see their OWN track; managing
+  // tracks/questions sits with compliance + branch heads (owner bypasses).
+  "induction.view": ["rm", "branch_head", "back_office", "ops", "marketing", "compliance", "team_member"],
+  "induction.manage": ["compliance", "branch_head"],
   "document.upload": ["back_office", "ops", "rm", "compliance", "team_member", "branch_head"],
   "document.delete": ["compliance"],
 

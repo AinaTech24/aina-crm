@@ -23,7 +23,7 @@ import {
   Shield,
   Megaphone,
   Image as ImageIcon,
-  UserCog,
+  UserCog, GraduationCap,
   CalendarOff,
   CalendarCheck,
   BarChart3,
@@ -62,6 +62,7 @@ import {
   Building2,
   Network,
   LifeBuoy,
+  IndianRupee,
 } from "lucide-react";
 import { eq, sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
@@ -166,6 +167,8 @@ const NAV: NavSection[] = [
         roles: ["owner", "back_office", "ops", "rm", "branch_head", "compliance"] },
       { href: "/dashboard/business-entries", label: "Business Entries", icon: Briefcase, module: "business_entries",
         roles: ["owner", "branch_head", "rm", "back_office", "ops"] },
+      { href: "/dashboard/expected-inflows", label: "Expected Inflows", icon: IndianRupee,
+        roles: ["owner", "branch_head", "rm", "back_office", "ops"] },
       { href: "/dashboard/rta-imports", label: "RTA File Imports", icon: FolderArchive, module: "transactions",
         roles: ["owner", "back_office", "ops", "compliance"] },
       { href: "/dashboard/reconciliation", label: "Reconciliation", icon: Scale, module: "transactions",
@@ -206,6 +209,8 @@ const NAV: NavSection[] = [
       { href: "/dashboard/announcements", label: "Announcements", icon: BellRing },
       { href: "/dashboard/duplicates", label: "Find Duplicates", icon: Copy, roles: ["owner", "branch_head"] },
       { href: "/dashboard/employees", label: "Employees", icon: UserCog, module: "employees", roles: ["owner", "branch_head"] },
+      // Induction is deliberately un-role-gated: it is the member's OWN training.
+      { href: "/dashboard/induction", label: "Induction", icon: GraduationCap },
       { href: "/dashboard/leave-applications", label: "Leave Applications", icon: CalendarOff },
       { href: "/dashboard/sub-distributors", label: "Sub-Distributors", icon: Network, roles: ["owner", "compliance"] },
       { href: "/dashboard/legal-registrations", label: "Legal Registrations", icon: Stamp, roles: ["owner", "compliance"] },

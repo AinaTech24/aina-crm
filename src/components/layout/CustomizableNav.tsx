@@ -32,7 +32,7 @@ import {
   UserPlus, Presentation, CalendarClock, ShieldAlert, LayoutTemplate, Library, Gauge,
   FileCheck, UserCheck, ClipboardList, Newspaper, Stamp, BellRing, Package, Folder, FolderOpen,
   LineChart, Scissors, Shuffle, Building2, TrendingDown, Network, IndianRupee,
-  LifeBuoy, MessageSquareWarning, Zap,
+  LifeBuoy, MessageSquareWarning, Zap, GraduationCap,
   type LucideIcon,
 } from "lucide-react";
 
@@ -53,7 +53,7 @@ const ICON_LIST: LucideIcon[] = [
   UserPlus, Presentation, CalendarClock, ShieldAlert, LayoutTemplate, Library, Gauge,
   FileCheck, UserCheck, ClipboardList, Newspaper, Stamp, BellRing, Package, FolderOpen,
   LineChart, Scissors, Shuffle, Building2, TrendingDown, Network, IndianRupee,
-  LifeBuoy, MessageSquareWarning, Zap,
+  LifeBuoy, MessageSquareWarning, Zap, GraduationCap,
 ];
 
 /* Keyed by each icon's lucide `displayName` (the canonical name) — which is

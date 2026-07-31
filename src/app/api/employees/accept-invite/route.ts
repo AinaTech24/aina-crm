@@ -13,9 +13,10 @@ import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
 import { eq, sql } from "drizzle-orm";
 import { z } from "zod";
-import { withSystem } from "@/db/client";
+import { withSystem, withTenant } from "@/db/client";
 import { signSession, SESSION_COOKIE, SESSION_TTL_SECONDS } from "@/lib/auth/session";
 import { ASSIGNABLE_ROLES } from "@/lib/auth/rbac";
+import { autoEnrol } from "@/lib/induction/engine";
 
 const ASSIGNABLE = new Set<string>(ASSIGNABLE_ROLES);
 
@@ -101,6 +102,18 @@ export async function POST(req: NextRequest) {
         roles: safeRoles,
       };
     });
+
+    // Auto-enrol the joiner on the induction track matching their roles.
+    // Deliberately outside the invite transaction and swallowed on failure —
+    // a training assignment must never block someone from accepting their
+    // invite and signing in. If it doesn't happen, an admin can enrol manually.
+    try {
+      await withTenant(result.tenantId, async (tx) => {
+        await autoEnrol(tx, result.tenantId, result.userId, result.roles);
+      });
+    } catch {
+      /* non-fatal — see above */
+    }
 
     const tokenJwt = await signSession({
       userId: result.userId,

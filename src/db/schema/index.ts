@@ -103,4 +103,7 @@ export * from "./financial_discovery";
 export * from "./devices";
 export * from "./user_sessions";
 export * from "./landing_packages";
+export * from "./kb_articles";
+export * from "./induction";
+export * from "./expected_inflows";
 export * from "./ai_chats";
