@@ -7,6 +7,7 @@ import { requireAny, can } from "@/lib/auth/rbac";
 import { formatDate } from "@/lib/utils";
 import { Pager } from "@/components/common/Pager";
 import { RiskProfileName, RiskProfilePdfButtons } from "@/components/risk-profile/RiskProfileName";
+import { SignedFormButton } from "@/components/risk-profile/SignedFormButton";
 import { Avatar } from "@/components/ui/Avatar";
 import { PdfRow } from "@/components/common/ClickableRow";
 
@@ -107,10 +108,11 @@ export default async function RiskProfilesPage({
     const rows = await tx.execute(sql`
       SELECT
         i.id, i.name, i.pan, i.avatar_url, i.risk_profile, i.risk_profile_signed_at, i.risk_profile_score,
-        rp.id AS profile_id, rp.total_score, rp.next_review_at, rp.signed_at AS latest_signed_at
+        rp.id AS profile_id, rp.total_score, rp.next_review_at, rp.signed_at AS latest_signed_at,
+        rp.document_url AS signed_doc_key, rp.verification_method
       FROM investors i
       LEFT JOIN LATERAL (
-        SELECT id, total_score, next_review_at, signed_at
+        SELECT id, total_score, next_review_at, signed_at, document_url, verification_method
         FROM risk_profile_responses r
         WHERE r.investor_id = i.id
         ORDER BY r.signed_at DESC NULLS LAST
@@ -269,6 +271,9 @@ export default async function RiskProfilesPage({
                         </td>
                         <td className="px-4 py-3 text-right">
                           <div className="inline-flex items-center gap-2">
+                            {r.signed_doc_key && r.profile_id && (
+                              <SignedFormButton profileId={String(r.profile_id)} />
+                            )}
                             <RiskProfilePdfButtons profileId={r.profile_id ?? null} name={r.name} />
                             <Link
                               href={`/dashboard/risk-profiles/new?investorId=${r.id}`}

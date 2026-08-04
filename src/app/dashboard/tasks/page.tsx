@@ -37,9 +37,18 @@ export default async function TasksPage({
   // Due filter — CSV multi-select: today | overdue | sla_risk
   const dueFilter = (sp.due ?? "").split(",").filter(Boolean);
   const approval = sp.approval ?? ""; // '' | 'pending' | 'mine' (awaiting sign-off)
-  // View tabs: "" (all) | "to_me" (assigned to me) | "by_me" (I assigned) | "kanban".
-  const view = sp.view ?? "";
-  const isKanban = view === "kanban";
+  // Scope and layout are independent axes, so a kanban can be scoped to "my
+  // tasks" too. They used to share `?view=`, which made kanban a fourth tab and
+  // therefore mutually exclusive with the scope tabs.
+  //   ?view=   "" (all) | "to_me" (assigned to me) | "by_me" (I assigned)
+  //   ?layout= "" (list) | "kanban"
+  // Legacy `?view=kanban` links (bookmarks, saved views) still work: they map
+  // to the all-tasks scope on the board layout.
+  const rawView = sp.view ?? "";
+  const legacyKanban = rawView === "kanban";
+  const view = legacyKanban ? "" : rawView;
+  const layout = legacyKanban || sp.layout === "kanban" ? "kanban" : "list";
+  const isKanban = layout === "kanban";
   // Sort + pagination (list only; the kanban shows a wide unpaged slice).
   // Default = newest-created first (recently added on top). Users can switch to
   // due-date or priority via the Sort dropdown.
@@ -195,7 +204,7 @@ export default async function TasksPage({
             <ListChecks className="size-6 text-brand-cyan" /> Tasks
           </h1>
           {/* View switcher — segmented tabs (list / mine / assigned-by-me / kanban) */}
-          <TaskViewSelect current={view} />
+          <TaskViewSelect current={view} layout={layout} />
         </div>
         <Link
           href="/dashboard/tasks/new"

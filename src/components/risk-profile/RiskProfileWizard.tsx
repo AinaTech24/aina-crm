@@ -11,7 +11,7 @@
 import { useMemo, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, CheckCircle2, Loader2, ShieldCheck, Download, Mail, KeyRound } from "lucide-react";
+import { ChevronLeft, ChevronRight, CheckCircle2, Loader2, ShieldCheck, Download, Mail, KeyRound, Upload } from "lucide-react";
 import { DownloadButton, OpenDocButton } from "@/components/common/SecureLinkButtons";
 
 type Option = { value: string; label: string; score: number };
@@ -35,7 +35,52 @@ export function RiskProfileWizard({
   const [err, setErr] = useState<string | null>(null);
   const [doneId, setDoneId] = useState<string | null>(null);
 
-  // ── Mandatory client email-OTP (verified on the review step, before submit) ──
+  // ── Client sign-off. Two routes, and the one chosen is recorded verbatim on
+  //    the profile (client_otp vs client_physical) — they are not equivalent
+  //    evidence, so the stored method must match what actually happened. ──
+  const [signMode, setSignMode] = useState<"otp" | "signature">("otp");
+  const [signatureKey, setSignatureKey] = useState<string | null>(null);
+  const [signatureName, setSignatureName] = useState<string | null>(null);
+  const [uploadBusy, setUploadBusy] = useState(false);
+  const [uploadErr, setUploadErr] = useState<string | null>(null);
+
+  async function uploadSignature(file: File) {
+    setUploadBusy(true);
+    setUploadErr(null);
+    try {
+      if (file.size > 10 * 1024 * 1024) throw new Error("File must be under 10 MB");
+      const presign = await fetch("/api/compliance/upload-url", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          filename: file.name,
+          contentType: file.type || "application/octet-stream",
+          kind: "kyc",
+          clientName: investor.name ?? undefined,
+          docType: "risk-profile-signed",
+        }),
+      });
+      const pj = await presign.json();
+      if (!presign.ok) throw new Error(pj?.error ?? "Could not start the upload");
+
+      const put = await fetch(pj.url, {
+        method: "PUT",
+        headers: { "content-type": file.type || "application/octet-stream" },
+        body: file,
+      });
+      if (!put.ok) throw new Error(`Upload failed (${put.status})`);
+
+      setSignatureKey(pj.key);
+      setSignatureName(file.name);
+    } catch (e: any) {
+      setSignatureKey(null);
+      setSignatureName(null);
+      setUploadErr(e?.message ?? "Upload failed");
+    } finally {
+      setUploadBusy(false);
+    }
+  }
+
   const [otpVerified, setOtpVerified] = useState(false);
   const [otpSent, setOtpSent] = useState(false);
   const [needEmail, setNeedEmail] = useState(false);
@@ -147,6 +192,9 @@ export function RiskProfileWizard({
 
   const progress = onReview ? 100 : Math.round((step / N) * 100);
   const canAdvance = q ? !!answers[q.key] : Object.keys(answers).length === N;
+  // Whichever sign-off route is selected must be satisfied before submit. The
+  // server re-checks this — the button state is convenience, not the gate.
+  const signOffReady = signMode === "signature" ? Boolean(signatureKey) : otpVerified;
 
   function pick(value: string) {
     if (!q) return;
@@ -171,6 +219,8 @@ export function RiskProfileWizard({
           answers,
           rmRemarks: remarks || undefined,
           signedByName: investor.name || undefined,
+          signOffMethod: signMode,
+          documentUrl: signMode === "signature" ? signatureKey ?? undefined : undefined,
         }),
       });
       const j = await res.json();
@@ -379,19 +429,86 @@ export function RiskProfileWizard({
               </label>
             </div>
 
-            {/* Client email OTP — verified here, at the end, before the profile can be saved */}
+            {/* Client sign-off — one of two routes must be completed before submit. */}
             <div className="card-surface p-4 space-y-3">
               <div className="flex items-center gap-2">
                 <Mail className="size-4 text-brand-cyan" />
-                <h3 className="font-semibold">Client email confirmation</h3>
-                {otpVerified && (
+                <h3 className="font-semibold">Client sign-off</h3>
+                {(otpVerified || (signMode === "signature" && signatureKey)) && (
                   <span className="ml-auto inline-flex items-center gap-1 text-xs text-emerald-600 font-medium">
-                    <CheckCircle2 className="size-4" /> Verified
+                    <CheckCircle2 className="size-4" /> Ready
                   </span>
                 )}
               </div>
 
-              {otpVerified ? (
+              {/* Method chooser */}
+              <div className="grid sm:grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSignMode("otp")}
+                  className={`text-left rounded-lg border p-3 transition ${
+                    signMode === "otp"
+                      ? "border-brand-cyan bg-brand-cyan-light/30"
+                      : "border-border hover:bg-accent"
+                  }`}
+                >
+                  <div className="text-sm font-medium flex items-center gap-1.5">
+                    <KeyRound className="size-3.5" /> Verify with OTP
+                  </div>
+                  <div className="text-[11px] text-muted-foreground mt-0.5">
+                    One-time code to the client&apos;s email, checked on the server.
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSignMode("signature")}
+                  className={`text-left rounded-lg border p-3 transition ${
+                    signMode === "signature"
+                      ? "border-brand-cyan bg-brand-cyan-light/30"
+                      : "border-border hover:bg-accent"
+                  }`}
+                >
+                  <div className="text-sm font-medium flex items-center gap-1.5">
+                    <Upload className="size-3.5" /> Upload signature
+                  </div>
+                  <div className="text-[11px] text-muted-foreground mt-0.5">
+                    Attach the physically signed form (PDF or image).
+                  </div>
+                </button>
+              </div>
+
+              {signMode === "signature" ? (
+                <div className="space-y-2">
+                  <label className="block">
+                    <div className="text-xs font-medium mb-1">Signed risk-profile form</div>
+                    <input
+                      type="file"
+                      accept="application/pdf,image/png,image/jpeg"
+                      disabled={uploadBusy}
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) void uploadSignature(f);
+                      }}
+                      className="block w-full text-xs file:mr-3 file:rounded-md file:border file:border-border file:bg-secondary file:px-3 file:py-1.5 file:text-xs"
+                    />
+                  </label>
+                  {uploadBusy && (
+                    <div className="text-xs text-muted-foreground inline-flex items-center gap-1.5">
+                      <Loader2 className="size-3.5 animate-spin" /> Uploading…
+                    </div>
+                  )}
+                  {signatureKey && (
+                    <div className="text-xs text-emerald-600 inline-flex items-center gap-1.5">
+                      <CheckCircle2 className="size-3.5" /> {signatureName} attached
+                    </div>
+                  )}
+                  {uploadErr && <div className="text-sm text-rose-600">{uploadErr}</div>}
+                  <p className="text-[11px] text-muted-foreground">
+                    Recorded as a physically-signed form. Keep the original — this is the audit
+                    evidence, and it is not the same as an OTP-verified confirmation.
+                  </p>
+                </div>
+              ) : otpVerified ? (
                 <p className="text-sm text-muted-foreground">
                   {firstName}&apos;s email is verified — you can now submit the profile.
                 </p>
@@ -465,12 +582,12 @@ export function RiskProfileWizard({
         {onReview ? (
           <button
             onClick={submit}
-            disabled={busy || !canAdvance || !otpVerified}
-            title={!otpVerified ? "Verify the client's email above to submit" : undefined}
+            disabled={busy || !canAdvance || !signOffReady}
+            title={!signOffReady ? (signMode === "signature" ? "Upload the signed form above to submit" : "Verify the client's email above to submit") : undefined}
             className="btn-primary"
           >
             {busy ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
-            {busy ? "Saving…" : otpVerified ? "Submit profile" : "Verify email to submit"}
+            {busy ? "Saving…" : signOffReady ? "Submit profile" : signMode === "signature" ? "Upload signature to submit" : "Verify email to submit"}
           </button>
         ) : (
           <button

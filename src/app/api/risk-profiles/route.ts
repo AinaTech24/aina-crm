@@ -32,6 +32,9 @@ const Body = z.object({
   answers: z.record(z.string(), z.string()), // { questionKey → answerValue }
   documentUrl: z.string().optional(),
   signedByName: z.string().optional(),
+  // How the client signed off. Defaults to otp so existing callers keep the
+  // previous (OTP-mandatory) behaviour.
+  signOffMethod: z.enum(["otp", "signature"]).default("otp"),
   rmRemarks: z.string().optional(),
 });
 
@@ -107,13 +110,38 @@ export async function POST(req: NextRequest) {
       const inv = (await tx.select().from(investors).where(eq(investors.id, body.investorId)).limit(1))[0];
       if (!inv) throw Object.assign(new Error("investor not found"), { status: 404 });
 
-      // Mandatory client authentication — a risk profile can only be saved once
-      // the client's email OTP has been verified for this investor (see
-      // /api/risk-profiles/otp/{send,verify}). The verified row is consumed below
-      // so it can't be reused for a second profile.
-      const [otp] = await tx.select().from(publicEmailOtps).where(eq(publicEmailOtps.tokenId, body.investorId));
-      if (!otp || !otp.verifiedAt) {
-        throw Object.assign(new Error("Client email is not verified — complete the email OTP step first."), { status: 403 });
+      // Mandatory client sign-off. Two accepted routes, and the stored
+      // `verificationMethod` must describe what ACTUALLY happened — a scanned
+      // signature is not OTP-verified, and labelling it `client_otp` would
+      // overclaim the strength of the evidence in a SEBI audit.
+      //
+      //   otp       → email one-time code verified server-side  → client_otp
+      //   signature → a signed form was uploaded by the RM      → client_physical
+      let verificationMethod: "client_otp" | "client_physical";
+      let otpRowId: string | null = null;
+
+      if (body.signOffMethod === "signature") {
+        if (!body.documentUrl) {
+          throw Object.assign(
+            new Error("Upload the signed risk-profile form before submitting."),
+            { status: 400 }
+          );
+        }
+        verificationMethod = "client_physical";
+      } else {
+        // The verified row is consumed below so it can't be reused for a second profile.
+        const [otp] = await tx
+          .select()
+          .from(publicEmailOtps)
+          .where(eq(publicEmailOtps.tokenId, body.investorId));
+        if (!otp || !otp.verifiedAt) {
+          throw Object.assign(
+            new Error("Client email is not verified — complete the email OTP step first."),
+            { status: 403 }
+          );
+        }
+        verificationMethod = "client_otp";
+        otpRowId = otp.id;
       }
 
       // Insert the response row — historical row is immutable; it carries the
@@ -142,13 +170,15 @@ export async function POST(req: NextRequest) {
         signedByName: body.signedByName ?? inv.name,
         nextReviewAt: nextReview.toISOString().slice(0, 10),
         rmRemarks: body.rmRemarks ?? null,
-        // Client authenticated via the email OTP verified above.
-        verificationMethod: "client_otp",
+        verificationMethod,
         createdById: session.userId,
       } as any);
 
-      // Consume the OTP so it can't be reused for another profile.
-      await tx.delete(publicEmailOtps).where(eq(publicEmailOtps.tokenId, body.investorId));
+      // Consume the OTP so it can't be reused for another profile. Only on the
+      // OTP path — the signature path never created one.
+      if (otpRowId) {
+        await tx.delete(publicEmailOtps).where(eq(publicEmailOtps.tokenId, body.investorId));
+      }
 
       await tx
         .update(investors)
