@@ -5,7 +5,7 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { ROLE_LABELS } from "@/lib/auth/rbac";
 import { formatDate, formatINR } from "@/lib/utils";
-import { FilterBar } from "@/components/common/FilterBar";
+import { CompactFilterBar } from "@/components/common/CompactFilterBar";
 import { CustomViews } from "@/components/common/CustomViews";
 import { EmployeeRowActions } from "@/components/employees/EmployeeRowActions";
 import { TeamPresence } from "@/components/employees/TeamPresence";
@@ -103,7 +103,7 @@ export default async function EmployeesPage({
         </div>
       </div>
 
-      <FilterBar
+      <CompactFilterBar
         totalCount={data.length}
         filters={[
           { type: "search", key: "q", placeholder: "Search by name, email, phone, EUIN…" },

@@ -16,7 +16,8 @@ import { requireSession } from "@/lib/auth/session";
 import { require as requireCap, can } from "@/lib/auth/rbac";
 import { formatDate, formatINR } from "@/lib/utils";
 import { RowActions } from "@/components/common/RowActions";
-import { FilterBar } from "@/components/common/FilterBar";
+import { CompactFilterBar } from "@/components/common/CompactFilterBar";
+import { CustomViews } from "@/components/common/CustomViews";
 import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
 import { Pager } from "@/components/common/Pager";
 import { Avatar } from "@/components/ui/Avatar";
@@ -132,8 +133,9 @@ export default async function FinancialPlansPage({
 
       {/* Filter and Table Container */}
       <div className="space-y-4">
-        <FilterBar
+        <CompactFilterBar
           totalCount={data.filteredTotal}
+          rightSlot={<CustomViews viewsKey="views:financial-plans" />}
           filters={[
             { type: "search", key: "q", placeholder: "Search by plan # or client name..." },
             {

@@ -13,17 +13,27 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { Search, X, ChevronDown, ChevronRight, SlidersHorizontal, Loader2, ArrowDownUp, Check } from "lucide-react";
 
+/**
+ * Accepts the full legacy `FilterDef` union so any page still on the old
+ * <FilterBar> can move to this one by swapping the import — `search` becomes the
+ * search box, `sort` becomes the icon-only sort dropdown, and select/multi/
+ * date_range become sections inside the single Filters dropdown.
+ */
 export type CompactFilter =
+  | { type: "search"; key: string; placeholder?: string }
+  | { type: "select"; key: string; label: string; options: { value: string; label: string }[]; allLabel?: string }
   | { type: "multi"; key: string; label: string; options: { value: string; label: string }[] }
+  | { type: "sort"; key: string; label: string; options: { value: string; label: string }[] }
   | { type: "date_range"; key: string; label: string };
 
 export function CompactFilterBar({
-  searchKey = "q",
-  searchPlaceholder = "Search…",
-  filters,
-  sort,
+  searchKey: searchKeyProp,
+  searchPlaceholder: searchPlaceholderProp,
+  filters: allFilters,
+  sort: sortProp,
   totalCount,
   rightSlot,
+  leftSlot,
   bare = false,
 }: {
   searchKey?: string;
@@ -33,9 +43,21 @@ export function CompactFilterBar({
   sort?: { key: string; options: { value: string; label: string }[] };
   totalCount?: number;
   rightSlot?: React.ReactNode;
+  /** Slot rendered at the START of the row (parity with the legacy FilterBar). */
+  leftSlot?: React.ReactNode;
   /** Render without the card wrapper (e.g. embedded inside a table header). */
   bare?: boolean;
 }) {
+  // Split the incoming defs: search + sort get their own controls, the rest are
+  // sections inside the Filters dropdown.
+  const searchDef = allFilters.find((f) => f.type === "search") as Extract<CompactFilter, { type: "search" }> | undefined;
+  const sortDef = allFilters.find((f) => f.type === "sort") as Extract<CompactFilter, { type: "sort" }> | undefined;
+  const filters = allFilters.filter(
+    (f) => f.type === "multi" || f.type === "select" || f.type === "date_range"
+  ) as Array<Extract<CompactFilter, { type: "multi" | "select" | "date_range" }>>;
+  const searchKey = searchKeyProp ?? searchDef?.key ?? "q";
+  const searchPlaceholder = searchPlaceholderProp ?? searchDef?.placeholder ?? "Search…";
+  const sort = sortProp ?? (sortDef ? { key: sortDef.key, options: sortDef.options } : undefined);
   const router = useRouter();
   const pathname = usePathname();
   const sp = useSearchParams();
@@ -48,17 +70,19 @@ export function CompactFilterBar({
 
   const values = useMemo(() => {
     const out: Record<string, any> = {};
-    for (const f of filters) {
+    for (const f of allFilters) {
       if (f.type === "multi") {
         const v = sp.get(f.key);
         out[f.key] = v ? v.split(",").filter(Boolean) : [];
-      } else {
+      } else if (f.type === "select") {
+        out[f.key] = sp.get(f.key) ?? "";
+      } else if (f.type === "date_range") {
         out[`${f.key}_from`] = sp.get(`${f.key}_from`) ?? "";
         out[`${f.key}_to`] = sp.get(`${f.key}_to`) ?? "";
       }
     }
     return out;
-  }, [sp, filters]);
+  }, [sp, allFilters]);
 
   useEffect(() => {
     if (!open) return;
@@ -94,6 +118,7 @@ export function CompactFilterBar({
   /** How many distinct filters are active (search excluded). */
   const activeCount = filters.reduce((n, f) => {
     if (f.type === "multi") return n + ((values[f.key] as string[]).length > 0 ? 1 : 0);
+    if (f.type === "select") return n + (values[f.key] ? 1 : 0);
     return n + (values[`${f.key}_from`] || values[`${f.key}_to`] ? 1 : 0);
   }, 0);
 
@@ -101,6 +126,7 @@ export function CompactFilterBar({
     const next: Record<string, any> = {};
     for (const f of filters) {
       if (f.type === "multi") next[f.key] = [];
+      else if (f.type === "select") next[f.key] = "";
       else {
         next[`${f.key}_from`] = "";
         next[`${f.key}_to`] = "";
@@ -110,12 +136,16 @@ export function CompactFilterBar({
   }
 
   /** Short summary of a section's active selection, shown on its collapsed row. */
-  function summaryFor(f: CompactFilter): string {
+  function summaryFor(f: (typeof filters)[number]): string {
     if (f.type === "multi") {
       const v = values[f.key] as string[];
       if (!v.length) return "";
       const labels = v.map((x) => f.options.find((o) => o.value === x)?.label ?? x);
       return labels.length <= 2 ? labels.join(", ") : `${labels.length} selected`;
+    }
+    if (f.type === "select") {
+      const v = values[f.key] as string;
+      return v ? f.options.find((o) => o.value === v)?.label ?? v : "";
     }
     const from = values[`${f.key}_from`];
     const to = values[`${f.key}_to`];
@@ -126,6 +156,7 @@ export function CompactFilterBar({
   return (
     <div className={bare ? "relative z-30 w-full" : "card-surface p-2.5 relative z-30"}>
       <div className="flex items-center gap-2 flex-wrap">
+        {leftSlot}
         {/* Search */}
         <div className="relative flex-1 min-w-[200px] max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none" />
@@ -202,6 +233,38 @@ export function CompactFilterBar({
                                       />
                                       <span className="capitalize truncate">{o.label}</span>
                                     </label>
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          ) : f.type === "select" ? (
+                            <ul className="space-y-0.5 max-h-52 overflow-y-auto scrollbar-thin">
+                              <li>
+                                <button
+                                  type="button"
+                                  onClick={() => pushParams({ [f.key]: "" })}
+                                  className={`w-full text-left flex items-center gap-2 px-2 py-1.5 text-xs rounded transition ${
+                                    !values[f.key] ? "bg-brand-cyan-light/40 text-brand-cyan-deep font-medium" : "hover:bg-secondary/60"
+                                  }`}
+                                >
+                                  {!values[f.key] ? <Check className="size-3.5 shrink-0" /> : <span className="size-3.5 shrink-0" />}
+                                  {f.allLabel ?? `All ${f.label.toLowerCase()}`}
+                                </button>
+                              </li>
+                              {f.options.map((o) => {
+                                const checked = values[f.key] === o.value;
+                                return (
+                                  <li key={o.value}>
+                                    <button
+                                      type="button"
+                                      onClick={() => pushParams({ [f.key]: checked ? "" : o.value })}
+                                      className={`w-full text-left flex items-center gap-2 px-2 py-1.5 text-xs rounded transition ${
+                                        checked ? "bg-brand-cyan-light/40 text-brand-cyan-deep font-medium" : "hover:bg-secondary/60"
+                                      }`}
+                                    >
+                                      {checked ? <Check className="size-3.5 shrink-0" /> : <span className="size-3.5 shrink-0" />}
+                                      <span className="capitalize truncate">{o.label}</span>
+                                    </button>
                                   </li>
                                 );
                               })}

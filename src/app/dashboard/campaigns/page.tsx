@@ -22,7 +22,7 @@ import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { formatDate, formatINR } from "@/lib/utils";
 import { RowActions } from "@/components/common/RowActions";
-import { FilterBar } from "@/components/common/FilterBar";
+import { CompactFilterBar } from "@/components/common/CompactFilterBar";
 import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
 import { CustomViews } from "@/components/common/CustomViews";
 import { StatusChip, type Tone } from "@/components/common/StatusChip";
@@ -219,7 +219,7 @@ export default async function CampaignsPage({
         </Link>
       </div>
 
-      <FilterBar
+      <CompactFilterBar
         totalCount={data.rows.length}
         filters={[
           { type: "search", key: "q", placeholder: "Search by campaign, theme, audience…" },

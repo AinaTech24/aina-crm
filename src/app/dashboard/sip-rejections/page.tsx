@@ -6,7 +6,7 @@ import { requireSession } from "@/lib/auth/session";
 import { formatINR } from "@/lib/utils";
 import { SipRejectionsTable } from "@/components/sip-rejections/SipRejectionsTable";
 import { NewSipRejectionButton } from "@/components/sip-rejections/NewSipRejectionButton";
-import { FilterBar } from "@/components/common/FilterBar";
+import { CompactFilterBar } from "@/components/common/CompactFilterBar";
 import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
 import { CustomViews } from "@/components/common/CustomViews";
 import { ColumnManager } from "@/components/common/ColumnManager";
@@ -274,7 +274,7 @@ export default async function SipRejectionsPage({
         </div>
       </div>
 
-      <FilterBar
+      <CompactFilterBar
         totalCount={data.rows.length}
         filters={[
           { type: "search", key: "q", placeholder: "Search by investor, scheme, AMC, reason…" },

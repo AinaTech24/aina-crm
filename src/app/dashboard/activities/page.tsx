@@ -5,7 +5,7 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { formatDate } from "@/lib/utils";
-import { FilterBar } from "@/components/common/FilterBar";
+import { CompactFilterBar } from "@/components/common/CompactFilterBar";
 import { CustomViews } from "@/components/common/CustomViews";
 import { ContactQuickActions } from "@/components/common/ContactQuickActions";
 import { LogActivityButton } from "@/components/activities/ActivityLogger";
@@ -89,7 +89,7 @@ export default async function ActivitiesPage({ searchParams }: { searchParams: P
         <Stat icon={StickyNote} label="Follow-ups due" value={s?.followups_due ?? 0} tone="amber" />
       </div>
 
-      <FilterBar
+      <CompactFilterBar
         totalCount={data.rows.length}
         filters={[
           { type: "search", key: "q", placeholder: "Search subject, notes, client…" },

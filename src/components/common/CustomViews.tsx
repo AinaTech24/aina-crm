@@ -36,7 +36,8 @@ export function CustomViews({
   /** Optional preset views the module ships with (read-only). */
   presets,
   /** Icon-only trigger (no "View:" label) — for compact toolbars. */
-  compact = false,
+  // Icon-only by default — see the matching note in ColumnManager.
+  compact = true,
 }: {
   viewsKey: string;
   presets?: Array<{ id: string; name: string; params: string }>;

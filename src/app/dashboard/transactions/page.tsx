@@ -5,7 +5,7 @@ import { withTenant } from "@/db/client";
 import { transactions, investors, users } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { formatINR, formatDate } from "@/lib/utils";
-import { FilterBar } from "@/components/common/FilterBar";
+import { CompactFilterBar } from "@/components/common/CompactFilterBar";
 import { CustomViews } from "@/components/common/CustomViews";
 import { ColumnManager } from "@/components/common/ColumnManager";
 import { buildTransactionConditions } from "@/lib/transactions/list-filters";
@@ -221,7 +221,7 @@ export default async function TransactionsPage({
         </div>
       </div>
 
-      <FilterBar
+      <CompactFilterBar
         totalCount={data.total}
         filters={[
           { type: "search", key: "q", placeholder: "Search scheme, client, or folio…" },

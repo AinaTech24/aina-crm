@@ -4,7 +4,7 @@ import { Users, TrendingUp, Heart, CheckCircle2, Clock, Sparkles, Phone } from "
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { formatINR, formatDate } from "@/lib/utils";
-import { FilterBar } from "@/components/common/FilterBar";
+import { CompactFilterBar } from "@/components/common/CompactFilterBar";
 import { CustomViews } from "@/components/common/CustomViews";
 
 export const dynamic = "force-dynamic";
@@ -163,7 +163,7 @@ export default async function ReferralsPage({
         </div>
       )}
 
-      <FilterBar
+      <CompactFilterBar
         totalCount={data.rows.length}
         filters={[
           { type: "search", key: "q", placeholder: "Search by referrer name…" },

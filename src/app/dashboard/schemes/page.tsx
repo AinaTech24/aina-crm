@@ -3,7 +3,7 @@ import { Boxes, Star, CheckCircle2, Layers } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
-import { FilterBar } from "@/components/common/FilterBar";
+import { CompactFilterBar } from "@/components/common/CompactFilterBar";
 import { CustomViews } from "@/components/common/CustomViews";
 import { SchemesCatalog } from "@/components/schemes/SchemesCatalog";
 import { SyncSchemesButton } from "@/components/schemes/SyncSchemesButton";
@@ -96,7 +96,7 @@ export default async function SchemesPage({
         <Stat icon={Layers} label="IC-evaluated" value={s.evaluated ?? 0} />
       </div>
 
-      <FilterBar
+      <CompactFilterBar
         totalCount={data.filteredTotal}
         filters={[
           { type: "search", key: "q", placeholder: "Search by scheme name or code…" },

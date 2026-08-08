@@ -7,7 +7,8 @@ import { businessEntries, users, investors } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { formatINR } from "@/lib/utils";
-import { FilterBar } from "@/components/common/FilterBar";
+import { CompactFilterBar } from "@/components/common/CompactFilterBar";
+import { CustomViews } from "@/components/common/CustomViews";
 import { BusinessEntriesTable } from "@/components/business-entries/BusinessEntriesTable";
 import { PRODUCT_TYPES, BUSINESS_ENTRY_STATUSES } from "@/db/schema/business_entries";
 
@@ -111,8 +112,9 @@ export default async function BusinessEntriesPage({
         </div>
       </div>
 
-      <FilterBar
+      <CompactFilterBar
         totalCount={rows.length}
+        rightSlot={<CustomViews viewsKey="views:business-entries" />}
         filters={[
           { type: "search", key: "q", placeholder: "Search by client or AMC…" },
           { type: "multi", key: "status", label: "Status", options: BUSINESS_ENTRY_STATUSES.map((s) => ({ value: s, label: s })) },

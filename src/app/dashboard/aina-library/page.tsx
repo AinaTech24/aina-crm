@@ -4,7 +4,7 @@ import { Sparkles, Plus } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { contentLibraryAssets } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
-import { FilterBar } from "@/components/common/FilterBar";
+import { CompactFilterBar } from "@/components/common/CompactFilterBar";
 import { CustomViews } from "@/components/common/CustomViews";
 import { can } from "@/lib/auth/rbac";
 import { LibraryGrid } from "@/components/content-library/LibraryGrid";
@@ -70,7 +70,7 @@ export default async function AinaLibraryPage({
         )}
       </div>
 
-      <FilterBar
+      <CompactFilterBar
         totalCount={rows.length}
         filters={[
           { type: "search", key: "q", placeholder: "Search assets by title or description…" },

@@ -19,7 +19,8 @@ import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { withTenant } from "@/db/client";
 import { buildCommandQueue, type ActionGroup, type ActionItem, type Severity } from "@/lib/command-center/queue";
-import { FilterBar } from "@/components/common/FilterBar";
+import { CompactFilterBar } from "@/components/common/CompactFilterBar";
+import { CustomViews } from "@/components/common/CustomViews";
 import { AutoRefresh } from "@/components/common/AutoRefresh";
 import { CommandClientPicker } from "@/components/command-center/CommandClientPicker";
 import { CommandItemActions } from "@/components/command-center/CommandItemActions";
@@ -158,8 +159,9 @@ export default async function CommandCenterPage({
         </div>
       </div>
 
-      <FilterBar
+      <CompactFilterBar
         totalCount={totalItems}
+        rightSlot={<CustomViews viewsKey="views:command-center" />}
         leftSlot={<CommandClientPicker selectedId={clientId} selectedName={clientName} />}
         filters={[
           ...(firmWide && userOptions.length

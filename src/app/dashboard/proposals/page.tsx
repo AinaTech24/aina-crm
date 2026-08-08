@@ -12,7 +12,7 @@ import {
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { formatINR } from "@/lib/utils";
-import { FilterBar } from "@/components/common/FilterBar";
+import { CompactFilterBar } from "@/components/common/CompactFilterBar";
 import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
 import { CustomViews } from "@/components/common/CustomViews";
 import { ColumnManager } from "@/components/common/ColumnManager";
@@ -147,7 +147,7 @@ export default async function ProposalsPage({
         </Link>
       </div>
 
-      <FilterBar
+      <CompactFilterBar
         totalCount={data.filteredTotal}
         filters={[
           { type: "search", key: "q", placeholder: "Search by number, title, recipient…" },

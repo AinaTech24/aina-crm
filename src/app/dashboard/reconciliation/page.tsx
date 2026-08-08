@@ -4,7 +4,8 @@ import { Scale } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { formatINR } from "@/lib/utils";
-import { FilterBar } from "@/components/common/FilterBar";
+import { CompactFilterBar } from "@/components/common/CompactFilterBar";
+import { CustomViews } from "@/components/common/CustomViews";
 import { RunReconButton } from "@/components/reconciliation/ReconActions";
 import { ReconTable } from "@/components/reconciliation/ReconTable";
 
@@ -98,8 +99,9 @@ export default async function ReconciliationPage({
         <Kpi label="Resolved" value={data.stats?.resolved ?? 0} tone="emerald" />
       </div>
 
-      <FilterBar
+      <CompactFilterBar
         totalCount={data.total}
+        rightSlot={<CustomViews viewsKey="views:reconciliation" />}
         filters={[
           {
             type: "multi",

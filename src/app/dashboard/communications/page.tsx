@@ -6,7 +6,7 @@ import { withTenant } from "@/db/client";
 import { communications, investors, leads } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
-import { FilterBar } from "@/components/common/FilterBar";
+import { CompactFilterBar } from "@/components/common/CompactFilterBar";
 import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
 import { CustomViews } from "@/components/common/CustomViews";
 import { Pager } from "@/components/common/Pager";
@@ -175,7 +175,7 @@ export default async function CommunicationsPage({
         <StatLink label="Failed" value={data.counts?.failed ?? 0} param="failed" tone="rose" />
       </div>
 
-      <FilterBar
+      <CompactFilterBar
         totalCount={data.filteredTotal}
         filters={[
           { type: "search", key: "q", placeholder: "Search recipient, subject, template…" },

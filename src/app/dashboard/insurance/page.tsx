@@ -18,7 +18,7 @@ import { requireSession } from "@/lib/auth/session";
 import { require as requireCap, can } from "@/lib/auth/rbac";
 import { formatDate, formatINR } from "@/lib/utils";
 import { RowActions } from "@/components/common/RowActions";
-import { FilterBar } from "@/components/common/FilterBar";
+import { CompactFilterBar } from "@/components/common/CompactFilterBar";
 import { CustomViews } from "@/components/common/CustomViews";
 import { Avatar } from "@/components/ui/Avatar";
 import { Pager } from "@/components/common/Pager";
@@ -220,7 +220,7 @@ export default async function InsurancePage({
 
       <StatusChips basePath="/dashboard/insurance" paramKey="status" current={sp.status ?? ""} params={sp} chips={statusChips} />
 
-      <FilterBar
+      <CompactFilterBar
         totalCount={data.filteredTotal}
         filters={[
           { type: "search", key: "q", placeholder: "Search by policy no, plan, insurer, client…" },

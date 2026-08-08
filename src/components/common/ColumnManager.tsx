@@ -68,7 +68,10 @@ export type ColumnDef = {
 export function ColumnManager({
   moduleKey,
   columns,
-  compact = false,
+  // Icon-only by default so every module's table toolbar is one consistent row
+  // of glyphs (Filters / Sort / Columns / Views). Pass compact={false} for the
+  // rare toolbar that wants the text label.
+  compact = true,
 }: {
   moduleKey: string;
   columns: ColumnDef[];

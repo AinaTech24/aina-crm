@@ -3,7 +3,7 @@ import { sql } from "drizzle-orm";
 import { Plus, CalendarOff, Clock, CheckCircle2, CalendarDays, SlidersHorizontal } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { FilterBar } from "@/components/common/FilterBar";
+import { CompactFilterBar } from "@/components/common/CompactFilterBar";
 import { CustomViews } from "@/components/common/CustomViews";
 import { LeaveTable } from "@/components/leave/LeaveTable";
 import { LeaveTimeline } from "@/components/leave/LeaveTimeline";
@@ -163,7 +163,7 @@ export default async function LeaveApplicationsPage({
         />
       ) : (
         <>
-          <FilterBar
+          <CompactFilterBar
             totalCount={data.rows ? data.rows.length : 0}
             filters={[
               { type: "search", key: "q", placeholder: "Search by employee name…" },

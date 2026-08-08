@@ -5,7 +5,8 @@ import { withTenant } from "@/db/client";
 import { goals, investors } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { requireAny, can } from "@/lib/auth/rbac";
-import { FilterBar } from "@/components/common/FilterBar";
+import { CompactFilterBar } from "@/components/common/CompactFilterBar";
+import { CustomViews } from "@/components/common/CustomViews";
 import { GoalsBulkTable } from "@/components/goals/GoalsBulkTable";
 import { Pager } from "@/components/common/Pager";
 
@@ -97,8 +98,9 @@ export default async function GoalsPage({
         </Link>
       </div>
 
-      <FilterBar
+      <CompactFilterBar
         totalCount={stats.total}
+        rightSlot={<CustomViews viewsKey="views:goals" />}
         filters={[
           {
             type: "sort",

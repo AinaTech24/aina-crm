@@ -5,7 +5,7 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { formatDate } from "@/lib/utils";
 import { ResolutionEditor } from "@/components/complaints/ResolutionEditor";
-import { FilterBar } from "@/components/common/FilterBar";
+import { CompactFilterBar } from "@/components/common/CompactFilterBar";
 import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
 import { CustomViews } from "@/components/common/CustomViews";
 import { StatusChip, type Tone } from "@/components/common/StatusChip";
@@ -168,7 +168,7 @@ export default async function ComplaintsPage({
         <Stat icon={Clock} label="Avg TAT (days)" value={data.avgResolutionDays ?? "—"} tone="emerald" />
       </div>
 
-      <FilterBar
+      <CompactFilterBar
         totalCount={data.rows.length}
         filters={[
           { type: "search", key: "q", placeholder: "Search by ticket no, subject, client…" },

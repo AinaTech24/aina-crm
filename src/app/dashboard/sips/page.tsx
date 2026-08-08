@@ -6,7 +6,7 @@ import { sips, investors, mandates, users } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap, can } from "@/lib/auth/rbac";
 import { formatINR, formatDate } from "@/lib/utils";
-import { FilterBar } from "@/components/common/FilterBar";
+import { CompactFilterBar } from "@/components/common/CompactFilterBar";
 import { dateRangeCond, dateRangeFilter } from "@/lib/filters/date-range";
 import { CustomViews } from "@/components/common/CustomViews";
 import { ColumnManager } from "@/components/common/ColumnManager";
@@ -193,7 +193,7 @@ export default async function SipsPage({
         <Stat icon={Calendar} label="Expiring (90d)" value={String(data.expiringSoon)} tone={data.expiringSoon > 0 ? "amber" : "muted"} />
       </div>
 
-      <FilterBar
+      <CompactFilterBar
         totalCount={data.filteredTotal}
         filters={[
           { type: "search", key: "q", placeholder: "Search by scheme, AMC, folio, investor…" },
