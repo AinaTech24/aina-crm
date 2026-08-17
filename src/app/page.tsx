@@ -63,35 +63,27 @@ export const metadata: Metadata = {
 const FAQS = [
   {
     q: "What is Aina CRM?",
-    a: "Aina CRM is a CRM and practice operating system designed specially for Mutual Fund Distributors. It helps manage client data, compliance readiness, review meetings, service requests, team tasks, reporting, marketing and business automation — all from one structured platform.",
+    a: "A CRM and practice operating system built only for Mutual Fund Distributors — client data, compliance, reviews, service requests, team tasks, reporting and marketing in one platform.",
   },
   {
-    q: "Is Aina CRM only for large MFD firms?",
-    a: "No. Aina CRM is useful for individual MFDs, growing firms and larger teams. It helps bring structure and scalability at every stage of growth.",
+    q: "Who is Aina CRM for?",
+    a: "Individual ARN holders, growing firms with RM or ops teams, and larger MFD practices. If you run on Excel, memory and WhatsApp today, it replaces all three.",
   },
   {
     q: "How does Aina CRM help with DDQ compliance?",
-    a: "Aina CRM helps organize DDQ files, compliance checklists, complaint registers, client consent records, risk-profile records, document folders and internal SOPs — so compliance preparation becomes systematic instead of a last-minute scramble.",
+    a: "DDQ files, checklists, complaint registers, consent and risk-profile records stay organised continuously — so an audit is a download, not a scramble.",
   },
   {
-    q: "Can Aina CRM help reduce missed follow-ups?",
-    a: "Yes. Aina CRM tracks review meetings, service requests, SIP rejections, lead follow-ups, client tasks and team responsibilities in one place, with reminders and escalations so fewer things slip.",
+    q: "Can it reduce missed follow-ups?",
+    a: "Yes. Reviews, service requests, SIP rejections and lead follow-ups sit in one tracked queue with reminders and escalations, so fewer things slip.",
   },
   {
-    q: "Does Aina CRM support marketing and lead generation?",
-    a: "Yes. Aina CRM supports content calendars, investor-education posts, WhatsApp creatives, email newsletters, landing pages, event promotions and lead-capture systems — with a compliance check on every creative.",
+    q: "Does it support marketing and lead generation?",
+    a: "Yes — content calendar, WhatsApp and email creatives, landing pages and lead capture, with a compliance check on every creative before it goes out.",
   },
   {
-    q: "Can Aina CRM help with team performance tracking?",
-    a: "Yes. Aina CRM tracks RM-wise tasks, pending activities, lead follow-ups, service requests and business reports, giving the owner clear visibility into team accountability.",
-  },
-  {
-    q: "Does Aina CRM include AI support?",
-    a: "Yes. Aina CRM includes AI-focused capabilities such as CRM query assistance, email-draft support, meeting summaries, lead qualification, campaign ideas and client-review summaries.",
-  },
-  {
-    q: "Why should MFDs use Aina CRM?",
-    a: "To reduce manual work, improve client servicing, strengthen compliance readiness, organize client data, track team performance and scale the practice with stronger systems — instead of running everything on memory, Excel and WhatsApp.",
+    q: "Does Aina CRM include AI?",
+    a: "Yes. Ask-your-data queries, email drafting, meeting summaries, lead qualification and campaign ideas — practical AI for daily practice management.",
   },
 ];
 
@@ -155,6 +147,7 @@ export default async function Home() {
             <a href="#calculators" className="hover:text-primary transition-colors">Calculators</a>
             <a href="#how-it-works" className="hover:text-primary transition-colors">How It Works</a>
             <a href="#pricing" className="hover:text-primary transition-colors">Pricing</a>
+            <Link href="/knowledge-base" className="hover:text-primary transition-colors">KAIZEN</Link>
             <a href="#faq" className="hover:text-primary transition-colors">FAQ</a>
           </nav>
           <div className="hidden md:flex items-center gap-3">
@@ -184,21 +177,17 @@ export default async function Home() {
               <span className="text-primary">more control, less manual work</span>.
             </h1>
 
-            <p className="mt-6 text-lg text-muted-foreground leading-relaxed max-w-2xl">
-              Aina CRM is a complete CRM and practice operating system for Mutual Fund Distributors —
-              manage clients, compliance, team tasks, reviews, SIP follow-ups, marketing, reports and
-              growth from one structured platform. Built for MFDs who want to scale systematically.
+            <p className="mt-6 text-lg text-muted-foreground leading-relaxed max-w-xl">
+              Clients, compliance, SIP follow-ups, reviews and reports — one structured
+              platform your whole team runs on, instead of Excel, memory and WhatsApp.
             </p>
 
-            {/* "No more" proof bullets */}
-            <ul className="mt-6 grid sm:grid-cols-2 gap-x-8 gap-y-2.5 text-sm font-medium text-foreground/85">
+            {/* "No more" proof bullets — three sharpest pains, one each */}
+            <ul className="mt-6 flex flex-col gap-2.5 text-sm font-medium text-foreground/85">
               {[
                 "No more scattered Excel & WhatsApp",
                 "No more missed reviews or follow-ups",
                 "No more last-minute DDQ stress",
-                "No more running the firm on memory",
-                "Clean client data, one source of truth",
-                "Compliance, MIS & AI in one place",
               ].map((t) => (
                 <li key={t} className="flex items-start gap-2">
                   <CheckCircle2 className="size-4 text-emerald-600 dark:text-emerald-400 mt-0.5 shrink-0" />
@@ -222,13 +211,10 @@ export default async function Home() {
                   <ShieldCheck className="size-4 text-emerald-600" /> AMFI &amp; SEBI-aware by design
                 </span>
                 <span className="inline-flex items-center gap-2">
-                  <Lock className="size-4 text-primary" /> Row-level data isolation (DPDP-ready)
+                  <Lock className="size-4 text-primary" /> DPDP-ready data isolation
                 </span>
                 <span className="inline-flex items-center gap-2">
-                  <Users2 className="size-4 text-brand-navy" /> Built alongside working ARN holders
-                </span>
-                <span className="inline-flex items-center gap-2">
-                  <Clock className="size-4 text-amber-600" /> Most firms live within a day
+                  <Clock className="size-4 text-amber-600" /> Live within a day
                 </span>
               </div>
             </div>
@@ -355,11 +341,10 @@ export default async function Home() {
           <div className="text-center max-w-2xl mx-auto">
             <span className="chip bg-brand-navy-light text-primary">Your whole practice, one system</span>
             <h2 className="mt-4 text-3xl font-extrabold tracking-tight text-foreground">
-              The practice operating system for Mutual Fund Distributors
+              Everything an MFD firm runs on
             </h2>
             <p className="mt-3 text-muted-foreground">
-              From compliance and client data to servicing, reporting, marketing and AI — Aina CRM replaces
-              the scattered Excel-and-WhatsApp setup with one structured system your whole team runs on.
+              Six pillars. One login. No more stitching tools together.
             </p>
           </div>
 
@@ -396,11 +381,11 @@ export default async function Home() {
         <Spotlight
           eyebrow="60+ financial calculators for MFDs"
           title="Win the meeting with calculators clients remember"
-          body="SIP, step-up, goal, retirement, SWP/STP, insurance-IRR vs mutual funds, capital gains with CII indexation, old-vs-new tax regime, FIRE number and more — every illustration prints as a branded PDF with the client's name, saves as a scenario, and shares to WhatsApp or email in one click."
+          body="Every illustration prints as a branded PDF with the client's name — and shares to WhatsApp in one click."
           points={[
-            "Scheme returns prefill live — illustrations grounded in real funds",
-            "Save scenarios per client and reload them at the next review",
-            "Branded PDF with your logo, ARN and the market-risk disclaimer built in",
+            "Scheme returns prefill live from real funds",
+            "Save scenarios per client, reload at the next review",
+            "Your logo, ARN and market-risk disclaimer built in",
           ]}
           accent="from-amber-500/10 to-amber-500/2"
         >
@@ -442,19 +427,19 @@ export default async function Home() {
                 icon: Upload,
                 step: "1",
                 title: "Drop your CAMS / KFintech files",
-                body: "Export clients, folios and transactions from your RTA back office and drop them in. Dynamic header-mapping reads them even when columns move — your AUM, SIP book and families appear ready-to-use.",
+                body: "Your RTA exports are the migration — AUM, SIP book and families appear ready-to-use.",
               },
               {
                 icon: Cog,
                 step: "2",
                 title: "Switch on the automations",
-                body: "Pick from 40+ ready recipes: SIP-bounce recovery, birthday wishes, review reminders, KYC document collection, mandate-expiry alerts. Every send passes the compliance gate automatically.",
+                body: "Pick from 40+ ready recipes — SIP-bounce recovery, review reminders, KYC drives. Every send passes the compliance gate.",
               },
               {
                 icon: Rocket,
                 step: "3",
                 title: "Spend your day growing AUM",
-                body: "Your morning starts with a what-to-do-next list: at-risk clients, hot leads, due reviews. Calculators, proposals and branded reports close the conversation — the back office runs itself.",
+                body: "Each morning starts with a what-to-do-next list. The back office runs itself.",
               },
             ].map((s) => (
               <div key={s.step} className="glass-card rounded-xl p-6 flex flex-col gap-3 border border-border/50 hover-glow-cyan transition-all">
@@ -480,8 +465,7 @@ export default async function Home() {
             Flat, honest pricing — your bill doesn&apos;t grow with your AUM
           </h2>
           <p className="mt-3 text-muted-foreground">
-            A one-time setup gets your firm fully live, then a flat per-user yearly fee — from ₹9,499.
-            No per-client charges. No AUM-linked fees. No surprises.
+            One-time setup, then a flat per-user yearly fee. No per-client charges. No AUM-linked fees.
           </p>
         </div>
 
@@ -543,41 +527,16 @@ export default async function Home() {
           <div className="text-center max-w-2xl mx-auto mb-14">
             <span className="chip bg-brand-navy-light text-primary">Questions MFDs ask us</span>
             <h2 className="mt-4 text-3xl font-extrabold tracking-tight text-foreground">
-              Mutual fund distributor software — FAQs
+              Frequently asked questions
             </h2>
-            <p className="mt-3 text-muted-foreground">
-              Straight answers on data import, SIP tracking, WhatsApp compliance, calculators, security and pricing.
-            </p>
           </div>
 
           <FaqAccordion items={FAQS} />
         </div>
       </section>
 
-      {/* ───────────────────── Who is it for ───────────────────── */}
-      <section className="py-16 lg:py-20 relative z-10 max-w-5xl mx-auto px-6">
-        <div className="text-center max-w-2xl mx-auto">
-          <span className="chip bg-brand-navy-light text-primary">Who it&apos;s for</span>
-          <h2 className="mt-4 text-3xl font-extrabold tracking-tight text-foreground">
-            Built for MFDs at every stage of growth
-          </h2>
-        </div>
-        <div className="mt-10 grid sm:grid-cols-2 gap-x-8 gap-y-3 text-sm font-medium text-foreground/85">
-          {[
-            "Individual Mutual Fund Distributors",
-            "Growing MFD firms with RM or ops teams",
-            "ARN holders managing large client bases",
-            "MFDs struggling with DDQ & compliance readiness",
-            "Anyone still running on Excel & WhatsApp",
-            "MFDs who want better servicing, reports & team visibility",
-          ].map((t) => (
-            <div key={t} className="flex items-start gap-2.5">
-              <CheckCircle2 className="size-4 text-emerald-600 mt-0.5 shrink-0" />
-              {t}
-            </div>
-          ))}
-        </div>
-      </section>
+      {/* "Who is it for" was a whole section repeating the hero's message —
+          folded into a single FAQ entry instead. */}
 
       {/* ───────────────────── Why MFDs choose Aina ───────────────────── */}
       <section className="py-16 lg:py-20 bg-secondary/15 border-y border-border/40 relative z-10">
@@ -634,11 +593,10 @@ export default async function Home() {
       <section className="py-20 max-w-6xl mx-auto px-6 relative z-10">
         <div className="rounded-2xl bg-primary p-8 sm:p-14 text-center relative overflow-hidden shadow-2xl">
           <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-white">
-            Ready to build a more system-driven MFD practice?
+            Ready to run a system-driven practice?
           </h2>
           <p className="mt-4 text-white/80 text-base max-w-xl mx-auto leading-relaxed">
-            Stop running your practice on memory, Excel and WhatsApp. Bring automation, compliance
-            readiness, marketing, reporting and AI into one platform — and scale systematically.
+            Stop running your firm on memory, Excel and WhatsApp — bring it all into one platform.
           </p>
           <div className="mt-8 flex flex-wrap gap-4 justify-center">
             <a href={COMMUNITY_URL} target="_blank" rel="noopener noreferrer" className="rounded-xl bg-white text-brand-navy-deep hover:bg-white/90 px-8 py-3 text-base font-bold transition-all hover:scale-[1.01] active:scale-[0.99] shadow-md inline-flex items-center gap-2">
@@ -664,9 +622,8 @@ export default async function Home() {
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src="/aina-logo.png" alt="Aina CRM" className="h-9 w-auto object-contain shrink-0" />
               <p className="text-xs text-muted-foreground mt-4 leading-relaxed max-w-xs">
-                Aina CRM is mutual fund software for distributors in India — client CRM, CAMS/KFintech
-                import, SIP &amp; AUM tracking, AMFI-compliant WhatsApp, 60+ financial calculators,
-                reports and MIS for ARN holders. Built by Aina Tech Services LLP.
+                Mutual fund software for distributors in India — CRM, CAMS/KFintech import,
+                SIP &amp; AUM tracking, compliant WhatsApp and MIS. Built by Aina Tech Services LLP.
               </p>
             </div>
             <FooterCol title="For MFDs" links={[["Feature tour", "#features"], ["Financial calculators", "#calculators"], ["How it works", "#how-it-works"], ["Pricing", "#pricing"]]} />
@@ -701,81 +658,59 @@ export default async function Home() {
 
 /* ───────────────────────── Static data ───────────────────────── */
 
+/** Six pillars, one line each. Every card copy fits in a single breath —
+ *  the detail lives in the product, not the landing page. */
 const CORE_FEATURES = [
   {
     icon: ShieldCheck,
     title: "Compliance & DDQ readiness",
-    benefit: "DDQ files, complaint register, client consent & risk records, ARN/EUIN/NISM validity, KYD docs and marketing approvals — organised continuously, not the night before an audit.",
+    benefit: "DDQ files, consents, registers and risk records stay organised all year — not assembled the night before an audit.",
     bg: "bg-emerald-500/10",
     fg: "text-emerald-600 dark:text-emerald-400",
-    impact: "Audit-ready, not last-minute",
+    impact: "Audit-ready, always",
   },
   {
     icon: Users2,
-    title: "Client data management",
-    benefit: "Clean masters with de-dup and family mapping, missing PAN / nominee / KYC reports, and AUM / SIP / goal segmentation — plus dormant, inactive-SIP and redemption-prone lists.",
+    title: "Clean client data",
+    benefit: "De-duplicated masters, family mapping and missing-KYC reports — one book your whole team trusts.",
     bg: "bg-brand-navy-light/70",
     fg: "text-primary",
-    impact: "One clean source of truth",
-  },
-  {
-    icon: GitBranch,
-    title: "CRM & business process",
-    benefit: "Leads → onboarding → KYC → mandate → SIP / lumpsum / redemption → reviews, with RM-wise tasks, branch reporting and complete client communication history.",
-    bg: "bg-brand-navy-light/70",
-    fg: "text-brand-navy",
-    impact: "Nothing slips the cracks",
+    impact: "One source of truth",
   },
   {
     icon: Zap,
-    title: "Operations automation",
-    benefit: "Daily transaction import, SIP-rejection follow-ups, mandate & renewal trackers, review and meeting reminders, WhatsApp & email automation, plus daily/weekly MIS — on autopilot.",
+    title: "Servicing on autopilot",
+    benefit: "SIP-bounce recovery, review reminders and renewal trackers run themselves — every message compliance-checked.",
     bg: "bg-amber-500/10",
     fg: "text-amber-600 dark:text-amber-400",
     impact: "Less manual chasing",
   },
   {
-    icon: MessageSquare,
-    title: "Client servicing & retention",
-    benefit: "Review calendar, portfolio & goal reviews, reactivation and redemption-prevention campaigns, KYC / nominee / bank-update drives, feedback and referral systems.",
-    bg: "bg-brand-navy-light/70",
-    fg: "text-primary",
-    impact: "Protect your AUM",
-  },
-  {
     icon: BarChart3,
     title: "Reporting & MIS",
-    benefit: "Daily SIP / lumpsum / redemption, net sales, SIP-stopped & rejected, AUM movement, RM- and branch-wise, lead-conversion and AMC / scheme-category reports — live, every day.",
+    benefit: "Daily SIP, redemption, net-sales and RM-wise reports — live, without anyone compiling Excel.",
     bg: "bg-brand-navy-light/70",
     fg: "text-brand-navy",
     impact: "Run the firm by numbers",
   },
   {
     icon: Rocket,
-    title: "Marketing & lead generation",
-    benefit: "Content calendar, investor-education posts, WhatsApp & email creatives, campaign and event promotion, landing pages and lead capture — every creative compliance-checked.",
+    title: "Marketing & lead capture",
+    benefit: "Content calendar, WhatsApp & email creatives and landing pages — consistently visible, always compliant.",
     bg: "bg-rose-500/10",
     fg: "text-rose-500",
-    impact: "Stay consistently visible",
+    impact: "Stay top of mind",
   },
   {
     icon: Brain,
     title: "AI business assistant",
-    benefit: "Ask-your-data CRM queries, email-draft and meeting-summary help, lead qualification, campaign ideas and client-review summaries — practical AI for daily practice management.",
+    benefit: "Ask your book anything, draft client emails, summarise meetings — practical AI for the daily practice.",
     bg: "bg-rose-500/10",
     fg: "text-rose-500",
     badge: "AI-powered",
     badgeBg: "bg-rose-500/15",
     badgeFg: "text-rose-700 dark:text-rose-300",
-    impact: "Work smarter, not harder",
-  },
-  {
-    icon: Lock,
-    title: "Security, SOPs & team control",
-    benefit: "Role-based access, 2FA, backups, staff-exit access removal and document permissions — plus SOPs and training so the practice no longer depends on one person.",
-    bg: "bg-emerald-500/10",
-    fg: "text-emerald-600 dark:text-emerald-400",
-    impact: "Scale beyond the owner",
+    impact: "Work smarter",
   },
 ];
 
