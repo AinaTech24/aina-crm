@@ -94,6 +94,22 @@ export const DDQ_ITEMS: DdqItem[] = [
   { key: "training_calendar", section: "V", ddqRef: "5.3 / 5.4 / 5.11", title: "Training done & training calendar (team & self)", href: "/dashboard/sops", coverage: "document" },
   { key: "subdist_agreement", section: "V", ddqRef: "5.9", title: "Sub-distributor agreement copy", href: "/dashboard/sub-distributors", coverage: "in_app", note: "If applicable" },
 
+  // ── Items added from the AMFI DDQ questionnaire itself (registers built in
+  //    migration 0195). These were asked by the DDQ but had no home in the app.
+  { key: "relationship_category", section: "II", ddqRef: "2.1c", title: "Client relationship categorisation (execution-only / incidental advice / advisory)", href: "/dashboard/compliance/registers", hrefLabel: "Registers", coverage: "in_app" },
+  { key: "no_execution_fees", section: "II", ddqRef: "2.4c", title: "No fees collected for execution services", href: "/dashboard/compliance/registers", hrefLabel: "Registers", coverage: "in_app", note: "Must remain No on the incidental-advice model" },
+  { key: "unsuitability_acks", section: "II", ddqRef: "2.4b", title: "Unsuitability communicated, acknowledged & 'execution only' confirmed", href: "/dashboard/compliance/registers", hrefLabel: "Registers", coverage: "in_app" },
+  { key: "ubo_collected", section: "IV", ddqRef: "4.11c", title: "UBO details collected (non-individual clients)", href: "/dashboard/reports/kyc-tracker", hrefLabel: "KYC tracker", coverage: "in_app" },
+  { key: "ipv_done", section: "IV", ddqRef: "4.13", title: "In-Person Verification (IPV) performed & recorded", href: "/dashboard/reports/kyc-tracker", hrefLabel: "KYC tracker", coverage: "in_app" },
+  { key: "misselling_register", section: "IV", ddqRef: "4.17 / 4.18", title: "Mis-selling register (complaints, last 3 years)", href: "/dashboard/compliance/registers", hrefLabel: "Registers", coverage: "in_app" },
+  { key: "third_party_payments", section: "IV", ddqRef: "4.20b", title: "Third-party payment monitoring & reporting to AMC", href: "/dashboard/compliance/registers", hrefLabel: "Registers", coverage: "in_app" },
+  { key: "dsc_self", section: "IV", ddqRef: "4.26a", title: "Annual Declaration of Self-Certification filed (own ARN)", href: "/dashboard/compliance/registers", hrefLabel: "Registers", coverage: "in_app" },
+  { key: "dsc_subdistributors", section: "IV", ddqRef: "4.26b", title: "Annual DSC obtained from every sub-distributor", href: "/dashboard/compliance/registers", hrefLabel: "Registers", coverage: "in_app", note: "If applicable" },
+  { key: "amfi_tagline", section: "V", ddqRef: "5.8", title: "'AMFI-registered Mutual Fund Distributor' tagline (font ≥ 12) on all communication", href: "/dashboard/settings/firm-profile", hrefLabel: "Firm profile", coverage: "in_app" },
+  { key: "social_media_disclosure", section: "V", ddqRef: "5.9", title: "Registered name + registration number disclosed on social media (SEBI Feb-2026)", href: "/dashboard/settings/firm-profile", hrefLabel: "Firm profile", coverage: "in_app" },
+  { key: "customer_litigation", section: "VI", ddqRef: "6.2", title: "Customer litigation / consumer-forum register (5 years)", href: "/dashboard/compliance/registers", hrefLabel: "Registers", coverage: "in_app", note: "If applicable" },
+  { key: "arn_suspension_warnings", section: "VI", ddqRef: "6.3", title: "ARN/EUIN suspension + warning letters register (3 years)", href: "/dashboard/compliance/registers", hrefLabel: "Registers", coverage: "in_app", note: "If applicable" },
+
   // ───────────── VI — Legal & General ─────────────
   { key: "regulatory_actions", section: "VI", ddqRef: "6.1", title: "List / notes of any regulatory actions taken (3 years)", href: null, coverage: "document", note: "If applicable" },
   { key: "annual_reports", section: "VI", ddqRef: "NA", title: "Annual reports of last 3 years (corporates)", href: null, coverage: "document", note: "If applicable" },

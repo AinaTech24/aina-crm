@@ -113,6 +113,23 @@ export const tenants = pgTable(
     dataProtectionOfficer: jsonb("dpo").$type<{ name?: string; email?: string; phone?: string }>(),
     riaRegistered: boolean("ria_registered").default(false),
     featureFlags: jsonb("feature_flags").$type<Record<string, boolean>>().default({}),
+
+    /** ── AMFI DDQ firm declarations (migration 0195) ──────────────────────
+     *  2.1c/2.5 — how the firm categorises client relationships. An MFD giving
+     *  "incidental advice" advises only incidentally to distribution (no RIA
+     *  registration, no advisory fee). */
+    relationshipModel: text("relationship_model", {
+      enum: ["execution_only", "incidental_advice", "advisory", "both"],
+    }),
+    /** 2.4c — fees charged for execution services. Must stay false for an MFD
+     *  on the incidental-advice model; charging would push it into RIA territory. */
+    chargesExecutionFees: boolean("charges_execution_fees").notNull().default(false),
+    /** 5.8 — "AMFI-registered Mutual Fund Distributor" tagline (font ≥ 12) on
+     *  every printed/electronic communication, website, app, card, signboard. */
+    amfiTaglineCompliant: boolean("amfi_tagline_compliant").notNull().default(false),
+    /** 5.9 — SEBI circular (Feb 2026): registered name + registration number
+     *  disclosed on Social Media Platforms. */
+    socialMediaDisclosureCompliant: boolean("social_media_disclosure_compliant").notNull().default(false),
     /** Days without a transaction after which a client counts as "dormant".
      *  One firm-level knob so every surface (Investors KPIs, churn report, the
      *  copilot) agrees. Default 180 (migration 0183). */

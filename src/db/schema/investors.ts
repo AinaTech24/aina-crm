@@ -147,6 +147,20 @@ export const investors = pgTable(
     fatcaStatus: text("fatca_status", { enum: ["pending", "verified", "expired"] }),
     fatcaExpiryAt: date("fatca_expiry_at"),
 
+    /** AMFI DDQ fields (migration 0195) — asked explicitly in the questionnaire.
+     *  2.1c: how this relationship is categorised. "incidental_advice" is the
+     *  MFD carve-out — advice incidental to distribution, no advisory fee. */
+    relationshipCategory: text("relationship_category", {
+      enum: ["execution_only", "incidental_advice", "advisory"],
+    }),
+    /** 4.11c — Ultimate Beneficial Owner details (non-individual clients). */
+    uboStatus: text("ubo_status", { enum: ["pending", "collected", "not_applicable"] }),
+    uboCollectedAt: date("ubo_collected_at"),
+    /** 4.13 — In-Person Verification, part of KYC diligence. */
+    ipvStatus: text("ipv_status", { enum: ["pending", "done", "not_applicable"] }),
+    ipvDate: date("ipv_date"),
+    ipvByUserId: uuid("ipv_by_user_id"),
+
     /** Nominees — legacy single fields mirror nominees[0] for back-compat. */
     nomineeName: text("nominee_name"),
     nomineeRelation: text("nominee_relation"),

@@ -251,6 +251,29 @@ export default async function CompliancePage() {
         </span>
       </Link>
 
+      {/* DDQ compliance registers — the records the questionnaire demands
+          (self-certification, incidents, unsuitability acknowledgements). */}
+      <Link
+        href="/dashboard/compliance/registers"
+        className="group flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-5 py-4 hover:bg-secondary/50 transition-colors"
+      >
+        <div className="flex items-center gap-3">
+          <div className="size-10 rounded-lg bg-secondary grid place-items-center">
+            <ClipboardCheck className="size-5 text-brand-cyan-deep" />
+          </div>
+          <div>
+            <div className="font-semibold text-sm">DDQ compliance registers</div>
+            <div className="text-xs text-muted-foreground">
+              Annual self-certification (4.26), mis-selling / third-party-payment / legal incidents
+              (4.17–4.20b, 6.x) and unsuitability acknowledgements (2.4b).
+            </div>
+          </div>
+        </div>
+        <span className="inline-flex items-center gap-1 text-sm font-semibold text-brand-cyan-deep whitespace-nowrap">
+          Open registers <ArrowRight className="size-4 group-hover:translate-x-0.5 transition-transform" />
+        </span>
+      </Link>
+
       <div className="border rounded-lg p-6 bg-gradient-to-br from-emerald-50 to-blue-50 dark:from-emerald-950/20 dark:to-blue-950/20">
         <div className="flex items-center justify-between">
           <div>
