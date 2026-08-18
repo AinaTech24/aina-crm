@@ -37,6 +37,7 @@ import { refreshNav } from "@/lib/finance/nav-feed";
 import { syncMfSchemeCatalog, enrichMfSchemes } from "@/lib/finance/mfapi";
 import { getLastRun, recordRun } from "./scheduler-state";
 import { recordDailySnapshots } from "./firm-snapshot-recorder";
+import { runDscReminder } from "./dsc-reminder";
 import { captureError } from "@/lib/observability/capture";
 
 const groups = (process.env.WORKER_GROUPS ?? "outbox,wf,seg,sched,wa_sync,mail,ops,monthly,nav,recon,market,feed,statements,zoho,rta,fpsync,briefing")
@@ -157,6 +158,13 @@ scheduleDaily("ops", "daily-ops-scanner", 6, 30, runDailyOpsScan, "DAILY_OPS_ON_
  * deploy that ships this (00:05 has already passed on any normal-hours deploy).
  */
 scheduleDaily("ops", "daily-firm-snapshot", 0, 5, recordDailySnapshots, "FIRM_SNAPSHOT_ON_BOOT");
+
+/**
+ * DDQ 4.26 — annual Declaration of Self-Certification. Checked daily at 07:00
+ * (cheap: it no-ops the moment the FY's DSC is recorded) so the reminder lands
+ * as soon as the new financial year opens and stays until the DSC is filed.
+ */
+scheduleDaily("ops", "dsc-reminder", 7, 0, runDscReminder, "DSC_REMINDER_ON_BOOT");
 
 /**
  * Monthly compliance checklist — seeds the standard SEBI-flavoured tasks

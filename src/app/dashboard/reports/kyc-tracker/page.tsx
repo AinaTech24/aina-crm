@@ -41,6 +41,10 @@ export default async function KycTrackerPage() {
         kycValidatedAt: investors.kycValidatedAt,
         ckycNumber: investors.ckycNumber,
         ckycExpiryAt: investors.ckycExpiryAt,
+        // AMFI DDQ 4.11c / 4.13 — UBO + In-Person Verification.
+        uboStatus: investors.uboStatus,
+        ipvStatus: investors.ipvStatus,
+        ipvDate: investors.ipvDate,
         kycLastUpdatedBy: investors.kycLastUpdatedBy,
         rmId: investors.rmId,
         status: investors.status,
@@ -86,7 +90,10 @@ export default async function KycTrackerPage() {
         COUNT(*) FILTER (WHERE kyc_status IN ('rejected', 'expired'))::int AS blocked,
         COUNT(*) FILTER (WHERE pan_aadhaar_link_status = 'linked')::int AS pan_aadhaar_linked,
         COUNT(*) FILTER (WHERE pan_aadhaar_link_status IS NULL OR pan_aadhaar_link_status = 'pending')::int AS pan_aadhaar_unknown,
-        COUNT(*) FILTER (WHERE pan_aadhaar_link_status = 'not_linked')::int AS pan_aadhaar_not_linked
+        COUNT(*) FILTER (WHERE pan_aadhaar_link_status = 'not_linked')::int AS pan_aadhaar_not_linked,
+        -- DDQ 4.11c / 4.13 — the questionnaire asks these explicitly.
+        COUNT(*) FILTER (WHERE ubo_status IS NULL OR ubo_status = 'pending')::int AS ubo_pending,
+        COUNT(*) FILTER (WHERE ipv_status IS NULL OR ipv_status = 'pending')::int AS ipv_pending
       FROM investors
       WHERE tenant_id = ${session.tenantId}::uuid AND status = 'active'
     `);

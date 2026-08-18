@@ -18,6 +18,7 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { requireAny, can } from "@/lib/auth/rbac";
 import { RegisterQuickAdd } from "@/components/compliance/RegisterQuickAdd";
+import { thirdPartySuspectsSql, SUSPECT_REASON_LABEL, type ThirdPartySuspect } from "@/lib/compliance/third-party-payments";
 
 export const dynamic = "force-dynamic";
 
@@ -66,6 +67,7 @@ export default async function ComplianceRegistersPage() {
         FROM unsuitability_acks u LEFT JOIN investors i ON i.id = u.investor_id
         WHERE u.tenant_id = ${session.tenantId}::uuid
         ORDER BY u.communicated_on DESC LIMIT 100`);
+      const suspects = await tx.execute(thirdPartySuspectsSql(session.tenantId));
       const firm = await tx.execute(sql`
         SELECT relationship_model, charges_execution_fees, amfi_tagline_compliant,
                social_media_disclosure_compliant, arn
@@ -76,6 +78,7 @@ export default async function ComplianceRegistersPage() {
         dsc: dsc.rows as any[],
         incidents: incidents.rows as any[],
         unsuit: unsuit.rows as any[],
+        suspects: suspects.rows as unknown as ThirdPartySuspect[],
         firm: (firm.rows[0] as any) ?? {},
         subCount: Number((subs.rows[0] as any)?.c ?? 0),
       };
@@ -193,6 +196,36 @@ export default async function ComplianceRegistersPage() {
             <StatusPill key="s" value={i.status} good={["resolved", "closed"]} />,
           ])}
         />
+      </section>
+
+      {/* Third-party payment detection — 4.20b (auto-scan) */}
+      <section className="card-surface p-4">
+        <h2 className="font-semibold text-sm flex items-center gap-1.5 mb-1">
+          <AlertTriangle className="size-4 text-amber-600" /> Third-party payment scan
+          <span className="text-[10px] text-muted-foreground font-normal">DDQ 4.20b — automatic</span>
+        </h2>
+        <p className="text-xs text-muted-foreground mb-3">
+          Active mandates whose debit account doesn&apos;t match a bank registered against the client. The DDQ requires you
+          to monitor that subscription funds come from the investor&apos;s <span className="font-medium">own</span> account.
+          Review each one — genuine third-party payments must be logged above and reported to the AMC.
+        </p>
+        {data.suspects.length === 0 ? (
+          <div className="text-sm text-emerald-700 py-4 text-center">
+            No mismatches found — every active mandate debits a bank registered to that client.
+          </div>
+        ) : (
+          <RegisterTable
+            empty=""
+            head={["Client", "Mandate", "Debit account", "Registered account(s)", "Why flagged"]}
+            rows={data.suspects.map((s) => [
+              s.investor_name ?? "—",
+              s.mandate_ref_no ?? "—",
+              s.mandate_bank ?? "— none —",
+              s.registered_banks ?? "— none on file —",
+              <span key="r" className="chip bg-amber-50 text-amber-700 text-[11px]">{SUSPECT_REASON_LABEL[s.reason] ?? s.reason}</span>,
+            ])}
+          />
+        )}
       </section>
 
       {/* Unsuitability — 2.4b */}
