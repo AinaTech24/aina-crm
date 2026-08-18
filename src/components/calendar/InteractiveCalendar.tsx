@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Avatar } from "@/components/ui/Avatar";
 import {
   Calendar as CalendarIcon,
+  CalendarClock,
   ListChecks,
   Sparkles,
   Users,
@@ -45,7 +46,7 @@ function parseLocalISODate(iso: string): Date {
 
 type Item = {
   date: string; // YYYY-MM-DD
-  kind: "task" | "follow_up" | "review" | "sip" | "campaign" | "compliance";
+  kind: "task" | "follow_up" | "meeting" | "review" | "sip" | "campaign" | "compliance";
   title: string;
   href: string;
   meta?: string;
@@ -58,7 +59,11 @@ type Item = {
 const KIND_META: Record<Item["kind"], { color: string; icon: any; label: string }> = {
   task: { color: "bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100/70 dark:bg-amber-950/50 dark:text-amber-200 dark:border-amber-900 dark:hover:bg-amber-950/70", icon: ListChecks, label: "Task" },
   follow_up: { color: "bg-blue-50 text-blue-800 border-blue-200 hover:bg-blue-100/70 dark:bg-blue-950/50 dark:text-blue-200 dark:border-blue-900 dark:hover:bg-blue-950/70", icon: Sparkles, label: "Follow-up" },
-  review: { color: "bg-violet-50 text-violet-800 border-violet-200 hover:bg-violet-100/70 dark:bg-violet-950/50 dark:text-violet-200 dark:border-violet-900 dark:hover:bg-violet-950/70", icon: Users, label: "Review" },
+  // Actually-scheduled meetings (Meetings module) — distinct from "review"
+  // below, which is only an auto-computed "due for review" reminder date and
+  // has no fixed time.
+  meeting: { color: "bg-cyan-50 text-cyan-800 border-cyan-200 hover:bg-cyan-100/70 dark:bg-cyan-950/50 dark:text-cyan-200 dark:border-cyan-900 dark:hover:bg-cyan-950/70", icon: CalendarClock, label: "Meeting" },
+  review: { color: "bg-violet-50 text-violet-800 border-violet-200 hover:bg-violet-100/70 dark:bg-violet-950/50 dark:text-violet-200 dark:border-violet-900 dark:hover:bg-violet-950/70", icon: Users, label: "Review due" },
   sip: { color: "bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100/70 dark:bg-emerald-950/50 dark:text-emerald-200 dark:border-emerald-900 dark:hover:bg-emerald-950/70", icon: Repeat, label: "SIP" },
   campaign: { color: "bg-pink-50 text-pink-800 border-pink-200 hover:bg-pink-100/70 dark:bg-pink-950/50 dark:text-pink-200 dark:border-pink-900 dark:hover:bg-pink-950/70", icon: Megaphone, label: "Campaign" },
   compliance: { color: "bg-rose-50 text-rose-800 border-rose-200 hover:bg-rose-100/70 dark:bg-rose-950/50 dark:text-rose-200 dark:border-rose-900 dark:hover:bg-rose-950/70", icon: ShieldCheck, label: "Compliance" },

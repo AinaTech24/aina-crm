@@ -675,6 +675,9 @@ async function runConvertLead(config: Record<string, unknown>, ctx: ActionContex
         address: lead.city ? ({ city: lead.city, country: "India" } as any) : null,
         segmentTag: (config?.segmentTag as any) ?? "Retail",
         investorCategory: (config?.investorCategory as any) ?? "individual",
+        // Same carryover as the manual /api/leads/[id]/convert route — see
+        // that file for why this matters.
+        referralClientName: lead.referredByName ?? null,
         rmId: lead.ownerId,
         status: "active",
         onboardedAt: new Date(),

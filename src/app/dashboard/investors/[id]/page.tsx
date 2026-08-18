@@ -37,6 +37,7 @@ import { NomineeSection } from "@/components/investors/NomineeSection";
 import { ReferralSection } from "@/components/investors/ReferralSection";
 import { CustomFieldsCard } from "@/components/common/CustomFieldsCard";
 import { RiskProfilePdfButtons } from "@/components/risk-profile/RiskProfileName";
+import { SendRiskProfileLinkButton } from "@/components/risk-profile/SendRiskProfileLinkButton";
 import { loadTenantLicense } from "@/lib/auth/license";
 import { isFieldAllowed } from "@/lib/auth/field-gate";
 import { InvestorBlueprintStageBar } from "@/components/investors/InvestorBlueprintStageBar";
@@ -51,6 +52,7 @@ import { ChurnRiskCard } from "@/components/investors/ChurnRiskCard";
 import { churnForInvestor } from "@/lib/churn/scan";
 import { TransactionLedger } from "@/components/investors/TransactionLedger";
 import { SipHealthCard, type SipHealth } from "@/components/investors/SipHealthCard";
+import { ExpectedInflowsCard } from "@/components/investors/ExpectedInflowsCard";
 import { CrossSellCard } from "@/components/investors/CrossSellCard";
 import { RelatedModulesRail } from "@/components/investors/RelatedModulesRail";
 import { InvestorDocumentsSection } from "@/components/investors/InvestorDocumentsSection";
@@ -94,6 +96,7 @@ const INVESTOR_DETAIL_SECTIONS: RelatedListDef[] = [
   { key: "sip_health", label: "SIP health" },
   { key: "transactions", label: "Transaction history" },
   { key: "cross_sell", label: "Cross-sell / holdings" },
+  { key: "expected_inflows", label: "Expected inflows" },
   { key: "documents", label: "Documents & attachments" },
   { key: "emails", label: "Emails" },
   { key: "whatsapp", label: "WhatsApp" },
@@ -109,7 +112,7 @@ const INVESTOR_DETAIL_SECTIONS: RelatedListDef[] = [
 /** Tab groups for the client-detail page — the header stays pinned above. */
 const INVESTOR_DETAIL_TABS = [
   { key: "overview", label: "Overview", sections: ["health", "recommended", "summary"] },
-  { key: "portfolio", label: "Portfolio", sections: ["valuation", "holdings", "churn", "allocation", "sip_health", "transactions", "cross_sell"] },
+  { key: "portfolio", label: "Portfolio", sections: ["valuation", "holdings", "churn", "allocation", "sip_health", "transactions", "expected_inflows", "cross_sell"] },
   { key: "profile", label: "KYC & Profile", sections: ["nominees", "referrals", "custom_fields", "master"] },
   { key: "engagement", label: "Engagement", sections: ["family", "documents", "emails", "whatsapp", "gifts", "blueprint", "related"] },
   // Rarely-opened detail — tucked behind "More" so the core tabs stay uncluttered.
@@ -686,6 +689,10 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
       {/* Cross-sell / product-holdings matrix — wallet-share opportunities.
           Shown for every client (recording what they hold elsewhere is useful
           before they've invested a rupee with us). */}
+      <RelatedListSection moduleKey="investors-detail" sectionKey="expected_inflows">
+        <ExpectedInflowsCard investorId={inv.id} />
+      </RelatedListSection>
+
       <RelatedListSection moduleKey="investors-detail" sectionKey="cross_sell">
         <CrossSellCard investorId={inv.id} initial={(inv as any).crossSell ?? null} />
       </RelatedListSection>
@@ -939,12 +946,15 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
             <h2 className="font-semibold flex items-center gap-2 text-base">
               <ShieldCheck className="size-4 text-brand-cyan" /> Risk profile history
             </h2>
-            <Link
-              href={`/dashboard/risk-profiles/new?investorId=${inv.id}`}
-              className="text-xs font-semibold text-brand-cyan hover:underline"
-            >
-              + New Assessment
-            </Link>
+            <div className="flex items-center gap-3">
+              <SendRiskProfileLinkButton investorId={inv.id} />
+              <Link
+                href={`/dashboard/risk-profiles/new?investorId=${inv.id}`}
+                className="text-xs font-semibold text-brand-cyan hover:underline"
+              >
+                + New Assessment
+              </Link>
+            </div>
           </div>
           {!data.riskHistory || data.riskHistory.length === 0 ? (
             <EmptyRow text="No risk profile history found." />

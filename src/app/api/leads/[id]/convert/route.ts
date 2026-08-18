@@ -108,6 +108,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           address: lead.city ? ({ city: lead.city, country: "India" } as any) : null,
           segmentTag: body.segmentTag,
           investorCategory: body.investorCategory,
+          // Carry the referral forward — this is the referee's own profile
+          // now, and until this fix it silently dropped who referred them
+          // (the lead recorded it, the new investor row never did).
+          referralClientName: lead.referredByName ?? null,
           rmId: body.rmId ?? lead.ownerId ?? session.userId,
           status: "active",
           onboardedAt: new Date(),

@@ -13,7 +13,7 @@ import { handleApiError } from "@/lib/api/error-handler";
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
@@ -26,6 +26,7 @@ import { NomineesArray } from "@/lib/investors/nominee";
 import { ReferralsArray } from "@/lib/investors/referral";
 import { registerNomineePanDocs } from "@/lib/investors/nominee-docs";
 import { recomputeFamilyHealthForInvestor } from "@/lib/families/health-persist";
+import { autoAdvance, resolveLeadIdForInvestor } from "@/lib/blueprints/auto-advance";
 import {
   investors,
   folios,
@@ -52,6 +53,18 @@ import {
 } from "@/db/schema";
 
 export const dynamic = "force-dynamic";
+
+/** Client-phase stages BEFORE "UCC Activated" — see the KYC route's identical
+ *  PRE_KYC_STAGES for why this guard exists (forward-only advance). */
+const PRE_UCC_STAGES = new Set([
+  "kyc_validated", "kyc_registered", "kyc_pending", "modify_kyc", "physical_kyc", "online_kyc",
+  "ucc_create",
+]);
+/** Client-phase stages BEFORE "Mandate Activated". */
+const PRE_MANDATE_STAGES = new Set([
+  "kyc_validated", "kyc_registered", "kyc_pending", "modify_kyc", "physical_kyc", "online_kyc",
+  "ucc_create", "ucc_activated", "mandate_create",
+]);
 
 const Patch = z.object({
   /** Optimistic concurrency token — the updatedAt the client loaded. If the row
@@ -328,6 +341,49 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         } as any)
         .where(and(eq(investors.id, id), eq(investors.tenantId, session.tenantId)))
         .returning();
+
+      // Advance the lead-to-client blueprint when this edit is the real-world
+      // signal for a journey milestone (UCC activated / mandate registered).
+      // Previously the onboarding tracker only moved on a manual click — a
+      // client's actual UCC/mandate data changing here never touched it, so
+      // the tracker silently fell behind the real state. Same forward-only
+      // guard pattern as /api/investors/[id]/kyc/verify: only fires from a
+      // stage strictly BEFORE the milestone, so re-saving an already-active
+      // client's record can never drag the blueprint backward.
+      const afterRow = after[0] as typeof before | undefined;
+      if (afterRow) {
+        const uccJustActivated = !before.bseUccCode && !!afterRow.bseUccCode;
+        const mandateJustActivated = before.mandateStatus !== "active" && afterRow.mandateStatus === "active";
+        const mandateJustRejected = before.mandateStatus !== "rejected" && afterRow.mandateStatus === "rejected";
+
+        if (uccJustActivated || mandateJustActivated || mandateJustRejected) {
+          try {
+            const leadId = await resolveLeadIdForInvestor(tx, id);
+            if (leadId) {
+              const cur = await tx.execute(
+                sql`SELECT current_stage_key FROM lead_blueprint_instances WHERE tenant_id = ${session.tenantId}::uuid AND lead_id = ${leadId}::uuid LIMIT 1`
+              );
+              const stage = (cur.rows[0] as any)?.current_stage_key as string | undefined;
+
+              if (uccJustActivated && stage && PRE_UCC_STAGES.has(stage)) {
+                await autoAdvance(tx, session.tenantId, leadId, "ucc.activated", {
+                  remarks: "Auto: UCC code recorded on the client.",
+                });
+              } else if (mandateJustActivated && stage && PRE_MANDATE_STAGES.has(stage)) {
+                await autoAdvance(tx, session.tenantId, leadId, "mandate.activated", {
+                  remarks: "Auto: mandate marked active on the client.",
+                });
+              } else if (mandateJustRejected && stage === "mandate_create") {
+                await autoAdvance(tx, session.tenantId, leadId, "mandate.rejected", {
+                  remarks: "Auto: mandate marked rejected on the client.",
+                });
+              }
+            }
+          } catch {
+            /* best-effort — never block the client edit on a blueprint hiccup */
+          }
+        }
+      }
 
       await tx.insert(eventsOutbox).values({
         tenantId: session.tenantId,

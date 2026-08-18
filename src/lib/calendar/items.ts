@@ -16,7 +16,7 @@
 import { sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
 
-export type CalendarKind = "task" | "follow_up" | "review" | "sip" | "campaign" | "compliance";
+export type CalendarKind = "task" | "follow_up" | "meeting" | "review" | "sip" | "campaign" | "compliance";
 
 export type CalendarItem = {
   /** Stable id (source row id, namespaced) — drives a deterministic ICS UID. */
@@ -65,11 +65,12 @@ export async function getCalendarItems(
     : sql` AND (assignee_id = ${scope.userId}::uuid OR created_by_id = ${scope.userId}::uuid)`;
   const leadScope = scope.leadsAll ? sql`` : sql` AND owner_id = ${scope.userId}::uuid`;
   const invScope = scope.investorsAll ? sql`` : sql` AND rm_id = ${scope.userId}::uuid`;
+  const meetingScope = scope.investorsAll ? sql`` : sql` AND rm.rm_id = ${scope.userId}::uuid`;
   const sipScope = scope.investorsAll ? sql`` : sql` AND i.rm_id = ${scope.userId}::uuid`;
   const nismScope = scope.investorsAll ? sql`` : sql` AND id = ${scope.userId}::uuid`;
   const kycScope = scope.investorsAll ? sql`` : sql` AND rm_id = ${scope.userId}::uuid`;
 
-  const [tasks, leads, reviews, sips, campaigns, compliance] = await Promise.all([
+  const [tasks, leads, meetings, reviews, sips, campaigns, compliance] = await Promise.all([
     tx.execute(sql`
       SELECT id, title, description, due_at, due_at::date AS d, priority
       FROM tasks
@@ -86,6 +87,23 @@ export async function getCalendarItems(
         AND next_follow_up_at::date >= ${fromIso} AND next_follow_up_at::date <= ${toIso}
         AND converted_investor_id IS NULL AND stage NOT IN ('lost')${leadScope}
       LIMIT 500
+    `),
+    // Actually-scheduled meetings (from the Meetings module / review_meetings
+    // table) — previously missing from the calendar entirely. The "review"
+    // block below is a DIFFERENT thing: investors.next_review_at is an
+    // auto-computed "due for review" date, not a real scheduled appointment.
+    tx.execute(sql`
+      SELECT rm.id, rm.meeting_type, rm.subject, rm.meeting_date,
+             rm.meeting_date::date AS d, rm.status, rm.meeting_mode,
+             rm.investor_id, rm.lead_id,
+             COALESCE(i.name, l.name) AS person_name,
+             COALESCE(i.avatar_url, l.avatar_url) AS avatar_url
+      FROM review_meetings rm
+      LEFT JOIN investors i ON i.id = rm.investor_id
+      LEFT JOIN leads l ON l.id = rm.lead_id
+      WHERE rm.meeting_date::date >= ${fromIso} AND rm.meeting_date::date <= ${toIso}
+        AND rm.status <> 'cancelled'${meetingScope}
+      ORDER BY rm.meeting_date ASC LIMIT 500
     `),
     tx.execute(sql`
       SELECT id, name, avatar_url, next_review_at::date AS d, segment_tag
@@ -143,6 +161,29 @@ export async function getCalendarItems(
       title: `Follow up: ${r.name}`, meta: r.stage, href: `/dashboard/leads/${r.id}`,
       description: `Stage: ${r.stage}`,
       subjectType: "lead", subjectId: r.id, avatarUrl: r.avatar_url ?? null, personName: r.name,
+    });
+  }
+  for (const r of meetings.rows as any[]) {
+    const subjectType: "investor" | "lead" | undefined = r.investor_id
+      ? "investor"
+      : r.lead_id
+        ? "lead"
+        : undefined;
+    const subjectId = r.investor_id ?? r.lead_id ?? undefined;
+    const typeLabel = String(r.meeting_type ?? "").replace(/_/g, " ");
+    out.push({
+      id: `meeting-${r.id}`,
+      kind: "meeting",
+      date: ymd(r.d),
+      at: iso(r.meeting_date),
+      title: r.subject || `${typeLabel} · ${r.person_name ?? "—"}`.trim(),
+      meta: `${r.status}${r.meeting_mode ? ` · ${r.meeting_mode}` : ""}`,
+      href: subjectType === "investor" ? `/dashboard/investors/${subjectId}` : `/dashboard/review-meetings/${r.id}`,
+      description: `${typeLabel} with ${r.person_name ?? "—"} · ${r.status}`,
+      subjectType,
+      subjectId,
+      avatarUrl: r.avatar_url ?? null,
+      personName: r.person_name ?? undefined,
     });
   }
   for (const r of reviews.rows as any[]) {
