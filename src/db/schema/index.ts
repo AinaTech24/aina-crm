@@ -109,3 +109,4 @@ export * from "./induction";
 export * from "./expected_inflows";
 export * from "./ai_chats";
 export * from "./ddq_registers";
+export * from "./release_notes";

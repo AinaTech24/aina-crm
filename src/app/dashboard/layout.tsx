@@ -76,6 +76,7 @@ import type { Metadata } from "next";
 import { GlobalSearch } from "@/components/layout/GlobalSearch";
 import { NotificationBell } from "@/components/layout/NotificationBell";
 import { BirthdayBell } from "@/components/layout/BirthdayBell";
+import { WhatsNewBell } from "@/components/layout/WhatsNewBell";
 import { DesktopSidebar } from "@/components/layout/DesktopSidebar";
 import { SessionRegister } from "@/components/layout/SessionRegister";
 import { CustomizableNav, type NavItemData } from "@/components/layout/CustomizableNav";
@@ -311,7 +312,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const pathname = reqHeaders.get("x-pathname") ?? "";
   const pathAllowed = isPathAllowedWhenRestricted(pathname);
 
-  const { tenant, userModules, avatarUrl, twoFaEnabled, announcementCount } = await withTenant(session.tenantId, async (tx) => {
+  const { tenant, userModules, avatarUrl, twoFaEnabled, announcementCount, whatsNewUnread } = await withTenant(session.tenantId, async (tx) => {
     const [t] = await tx.select().from(tenants).where(eq(tenants.id, session.tenantId)).limit(1);
     // Per-user sidebar module grant (Module-19). null = inherit all tenant modules.
     const [u] = await tx
@@ -335,12 +336,24 @@ export default async function DashboardLayout({ children }: { children: React.Re
           OR a.audience_roles ?| array(SELECT jsonb_array_elements_text(${rolesJson}::jsonb))
         )
     `);
+    const whatsNewRes = await tx.execute(sql`
+      SELECT count(*)::int AS n FROM release_notes rn
+       WHERE rn.published_at IS NOT NULL AND rn.published_at <= now()
+         AND NOT EXISTS (
+           SELECT 1 FROM release_note_reads r
+            WHERE r.release_note_id = rn.id
+              AND r.user_id = ${session.userId}::uuid
+              AND r.tenant_id = ${session.tenantId}::uuid)
+    `);
     return {
       tenant: t,
       userModules: (u?.enabledModules as string[] | null) ?? null,
       avatarUrl: (u?.avatarUrl as string | null) ?? null,
       twoFaEnabled: !!u?.twoFaEnabled,
       announcementCount: Number((annRes.rows[0] as any)?.n ?? 0),
+      // Published release notes this user hasn't opened yet — drives the
+      // "what's new" sparkle badge so shipped features get discovered.
+      whatsNewUnread: Number((whatsNewRes.rows[0] as any)?.n ?? 0),
     };
   });
 
@@ -592,6 +605,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
             >
               <HelpCircle className="size-4" />
             </Link>
+            <WhatsNewBell unread={whatsNewUnread} />
             <BirthdayBell />
             <span data-tour="notifications" className="inline-flex">
               <NotificationBell />
