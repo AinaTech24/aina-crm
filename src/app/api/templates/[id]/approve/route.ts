@@ -4,7 +4,7 @@ import { handleApiError } from "@/lib/api/error-handler";
  * POST /api/templates/[id]/reject   — compliance officer rejects (body: { reason })
  *
  * Once internal approval is done, WA templates wait for Meta approval (synced
- * by the wapi-template-sync worker). Email/SMS go directly to approved.
+ * by the vartify-template-sync worker). Email/SMS go directly to approved.
  */
 
 import { NextRequest, NextResponse } from "next/server";

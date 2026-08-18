@@ -1,7 +1,7 @@
 /**
  * POST /api/integrations/whatsapp/fetch-templates
  *
- * Pulls the firm's existing WhatsApp templates from their connected WAina
+ * Pulls the firm's existing WhatsApp templates from their connected Vartify
  * workspace into the CRM (visible in Message Templates + sendable). Uses the
  * TENANT's connected key, not the platform env key.
  */

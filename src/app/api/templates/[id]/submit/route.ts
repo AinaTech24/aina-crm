@@ -2,7 +2,7 @@
  * POST /api/templates/[id]/submit
  *
  * Moves a draft template into the approval pipeline.
- *   - For utility/transactional WhatsApp: auto-submit to Wapi (and Meta).
+ *   - For utility/transactional WhatsApp: auto-submit to Vartify (and Meta).
  *   - For marketing: requires a compliance officer to approve first.
  *   - For email: marks ready (no external approval needed beyond compliance).
  *
@@ -21,7 +21,7 @@ import { runComplianceChecks } from "@/lib/comms/compliance";
 import { templateBodyToText } from "@/lib/comms/tokens";
 import { getTenantIntegration } from "@/lib/comms/integrations";
 import { whatsappProviderId } from "@/lib/comms/adapters/whatsapp";
-import { wainaWhatsappAdapter } from "@/lib/comms/adapters/waina";
+import { vartifyWhatsappAdapter } from "@/lib/comms/adapters/vartify";
 import { buildMetaSubmission } from "@/lib/comms/whatsapp-template-submit";
 
 export const dynamic = "force-dynamic";
@@ -38,7 +38,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
       // Lock the draft version FOR UPDATE so two concurrent submits (double-click)
       // serialise: the first flips it to 'submitted' and the second's locked read
       // no longer matches `approvalStatus='draft'` → "no draft version", instead of
-      // both proceeding and double-submitting the template to Meta/WAina.
+      // both proceeding and double-submitting the template to Meta/Vartify.
       const ver = (await tx
         .select()
         .from(templateVersions)
@@ -81,7 +81,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
         decidedAt: new Date(),
       } as any);
 
-      // WhatsApp → create + submit to Meta via WAina. Meta is the approval
+      // WhatsApp → create + submit to Meta via Vartify. Meta is the approval
       // authority for WhatsApp templates, so we submit directly (approval 1–24h).
       if (String(tpl.channel) === "whatsapp") {
         const integ = await getTenantIntegration(tx, session.tenantId, whatsappProviderId);
@@ -89,12 +89,12 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
         const baseUrl = (integ?.config as any)?.webhookUrl as string | undefined;
         if (!integ?.isActive || !apiKey) {
           throw Object.assign(
-            new Error("Connect WhatsApp (WAina) in Settings → Integrations before submitting templates."),
+            new Error("Connect WhatsApp (Vartify) in Settings → Integrations before submitting templates."),
             { status: 400 }
           );
         }
         const sub = buildMetaSubmission(tpl as any, ver as any);
-        const result = await wainaWhatsappAdapter.submitTemplate({ apiKey, baseUrl, ...sub });
+        const result = await vartifyWhatsappAdapter.submitTemplate({ apiKey, baseUrl, ...sub });
         if (!result.ok) {
           throw Object.assign(new Error(`WhatsApp: ${result.error ?? "submission rejected"}`), { status: 400 });
         }

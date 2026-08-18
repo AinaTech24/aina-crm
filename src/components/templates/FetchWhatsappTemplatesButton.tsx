@@ -2,7 +2,7 @@
 
 /**
  * "Fetch from WhatsApp" — pulls the firm's existing Meta-approved WhatsApp
- * templates from their connected WAina workspace into Message Templates.
+ * templates from their connected Vartify workspace into Message Templates.
  */
 
 import { useState } from "react";
@@ -26,7 +26,7 @@ export function FetchWhatsappTemplatesButton() {
       }
       if (j.fetched === 0) {
         toast.info(
-          "Connected — but your WhatsApp (WAina) workspace has no templates yet. Create & approve them in the WAina console, then Fetch again.",
+          "Connected — but your WhatsApp (Vartify) workspace has no templates yet. Create & approve them in the Vartify console, then Fetch again.",
           "WhatsApp"
         );
       } else {
@@ -41,7 +41,7 @@ export function FetchWhatsappTemplatesButton() {
   }
 
   return (
-    <button type="button" onClick={fetchNow} disabled={busy} className="btn-secondary inline-flex items-center gap-1.5 disabled:opacity-50" title="Import your existing WhatsApp templates from WAina">
+    <button type="button" onClick={fetchNow} disabled={busy} className="btn-secondary inline-flex items-center gap-1.5 disabled:opacity-50" title="Import your existing WhatsApp templates from Vartify">
       {busy ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
       {busy ? "Fetching…" : "Fetch from WhatsApp"}
     </button>

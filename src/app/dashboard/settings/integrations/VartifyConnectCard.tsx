@@ -20,7 +20,7 @@ type Verify = {
   httpStatus?: number | null;
 };
 
-export default function WainaConnectCard() {
+export default function VartifyConnectCard() {
   const [status, setStatus] = useState<Status | null>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
@@ -37,7 +37,7 @@ export default function WainaConnectCard() {
   async function checkConnection() {
     setVerifying(true);
     try {
-      const res = await fetch("/api/settings/integrations/waina/verify", { cache: "no-store" });
+      const res = await fetch("/api/settings/integrations/vartify/verify", { cache: "no-store" });
       if (res.ok) setVerify((await res.json()) as Verify);
     } finally {
       setVerifying(false);
@@ -47,7 +47,7 @@ export default function WainaConnectCard() {
   async function load() {
     setLoading(true);
     try {
-      const res = await fetch("/api/settings/integrations/waina");
+      const res = await fetch("/api/settings/integrations/vartify");
       if (res.ok) {
         const data = (await res.json()) as Status;
         setStatus(data);
@@ -69,7 +69,7 @@ export default function WainaConnectCard() {
     setSaving(true);
     setMsg(null);
     try {
-      const res = await fetch("/api/settings/integrations/waina", {
+      const res = await fetch("/api/settings/integrations/vartify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -85,7 +85,7 @@ export default function WainaConnectCard() {
         setStatus(data);
         setApiKey("");
         setEditing(false);
-        setMsg({ kind: "ok", text: "WAina connected. WhatsApp sends now use this key." });
+        setMsg({ kind: "ok", text: "Vartify connected. WhatsApp sends now use this key." });
       }
     } catch {
       setMsg({ kind: "err", text: "Network error — please try again" });
@@ -95,11 +95,11 @@ export default function WainaConnectCard() {
   }
 
   async function disconnect() {
-    if (!confirm("Disconnect WAina? WhatsApp sends will stop until you add a key again.")) return;
+    if (!confirm("Disconnect Vartify? WhatsApp sends will stop until you add a key again.")) return;
     setSaving(true);
     setMsg(null);
     try {
-      const res = await fetch("/api/settings/integrations/waina", { method: "DELETE" });
+      const res = await fetch("/api/settings/integrations/vartify", { method: "DELETE" });
       if (res.ok) {
         setStatus({ connected: false });
         setEditing(true);
@@ -120,10 +120,10 @@ export default function WainaConnectCard() {
       <div className="flex items-start justify-between gap-3">
         <div>
           <h3 className="font-semibold flex items-center gap-2">
-            <MessageCircle className="size-4 text-emerald-600" /> WAina WhatsApp
+            <MessageCircle className="size-4 text-emerald-600" /> Vartify WhatsApp
           </h3>
           <p className="text-sm text-muted-foreground mt-1">
-            Connect your WAina account once. After that, every WhatsApp message just
+            Connect your Vartify account once. After that, every WhatsApp message just
             needs a template name — the CRM uses this key automatically.
           </p>
         </div>
@@ -173,7 +173,7 @@ export default function WainaConnectCard() {
               </div>
             </div>
 
-            {/* Live workspace identity — tells the firm WHICH WAina workspace this
+            {/* Live workspace identity — tells the firm WHICH Vartify workspace this
                 key belongs to (= where they must create + approve templates). */}
             <div className="rounded-md bg-muted/40 border border-border px-3 py-2 text-sm">
               <div className="flex items-center justify-between gap-2">
@@ -198,11 +198,11 @@ export default function WainaConnectCard() {
                     </div>
                   ) : (
                     <div className="text-amber-700">
-                      The key works (WAina replied{verify.httpStatus ? ` HTTP ${verify.httpStatus}` : ""}), but no
+                      The key works (Vartify replied{verify.httpStatus ? ` HTTP ${verify.httpStatus}` : ""}), but no
                       workspace name or sender number came back — this usually means the WhatsApp number isn’t set
-                      up in this WAina workspace yet, or this is a <span className="font-medium">webhook</span> key
-                      rather than an <span className="font-medium">API</span> key (generate one in WAina → API
-                      Keys). Finish setup in the WAina console, then re-check.
+                      up in this Vartify workspace yet, or this is a <span className="font-medium">webhook</span> key
+                      rather than an <span className="font-medium">API</span> key (generate one in Vartify → API
+                      Keys). Finish setup in the Vartify console, then re-check.
                     </div>
                   )}
                   {verify.workspaceName && verify.numbers && verify.numbers.length > 0 && (
@@ -212,11 +212,11 @@ export default function WainaConnectCard() {
                     </div>
                   )}
                   <p className="text-xs text-muted-foreground mt-1.5">
-                    WhatsApp templates are created &amp; approved in the WAina console — WAina’s API has no
+                    WhatsApp templates are created &amp; approved in the Vartify console — Vartify’s API has no
                     “create template” endpoint, so templates made in the CRM are <span className="font-medium">not</span>{" "}
-                    sent to Meta. Author them in WAina → wait for Meta approval → “Fetch from WhatsApp”.{" "}
+                    sent to Meta. Author them in Vartify → wait for Meta approval → “Fetch from WhatsApp”.{" "}
                     <a href="https://wapi.ainatech.in" target="_blank" rel="noopener noreferrer" className="text-brand-cyan-deep underline">
-                      Open WAina console ↗
+                      Open Vartify console ↗
                     </a>
                   </p>
                 </div>
@@ -231,7 +231,7 @@ export default function WainaConnectCard() {
           <>
             <div>
               <label className="text-xs font-medium text-muted-foreground">
-                WAina webhook key (api_key) <span className="text-red-500">*</span>
+                Vartify webhook key (api_key) <span className="text-red-500">*</span>
               </label>
               <input
                 type="password"
@@ -242,7 +242,7 @@ export default function WainaConnectCard() {
                 className="mt-1 w-full rounded-md border px-3 py-2 text-sm font-mono bg-background"
               />
               <p className="text-xs text-muted-foreground mt-1">
-                Find this in WAina → Developer / Webhooks. Stored encrypted; we never show it back.
+                Find this in Vartify → Developer / Webhooks. Stored encrypted; we never show it back.
               </p>
             </div>
 
@@ -283,7 +283,7 @@ export default function WainaConnectCard() {
                 className="text-sm px-4 py-2 rounded-md bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 flex items-center gap-2"
               >
                 {saving && <Loader2 className="size-3.5 animate-spin" />}
-                {connected ? "Update key" : "Connect WAina"}
+                {connected ? "Update key" : "Connect Vartify"}
               </button>
               {connected && (
                 <button

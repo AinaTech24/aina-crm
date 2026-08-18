@@ -1,7 +1,7 @@
 /**
- * Wapi (Aina WhatsApp) template-sync worker.
+ * Vartify template-sync worker.
  *
- * Polls the Wapi workspace's template list (GET /extension/templates) and
+ * Polls the Vartify workspace's template list (GET /whatsapp/templates) and
  * mirrors each template's Meta approval status into `whatsapp_templates`. When a
  * template that already passed internal approval (templates.status =
  * 'pending_approval') is APPROVED on Meta, we flip templates.status → 'approved'
@@ -15,13 +15,13 @@
 
 import { sql } from "drizzle-orm";
 import { withSystem } from "@/db/client";
-import { wainaWhatsappAdapter } from "@/lib/comms/adapters/waina";
+import { vartifyWhatsappAdapter } from "@/lib/comms/adapters/vartify";
 
 export async function syncAllTenants(): Promise<{ tenants: number; updated: number }> {
   let updated = 0;
 
-  // Templates come from the shared Wapi workspace (env key). Fetch once.
-  const metaTemplates = await wainaWhatsappAdapter.listTemplates();
+  // Templates come from the shared Vartify workspace (env token). Fetch once.
+  const metaTemplates = await vartifyWhatsappAdapter.listTemplates();
   if (!metaTemplates.length) return { tenants: 0, updated: 0 };
 
   const tenants = await withSystem(async (tx) => {
@@ -76,7 +76,7 @@ export async function syncAllTenants(): Promise<{ tenants: number; updated: numb
   return { tenants: tenants.length, updated };
 }
 
-export function startWapiTemplateSyncWorker(): () => void {
+export function startVartifyTemplateSyncWorker(): () => void {
   const INTERVAL = 15 * 60 * 1000;
   let running = false;
   const tick = async () => {
@@ -84,9 +84,9 @@ export function startWapiTemplateSyncWorker(): () => void {
     running = true;
     try {
       const { tenants, updated } = await syncAllTenants();
-      if (tenants || updated) console.log(`[wapi-template-sync] tenants=${tenants} promoted=${updated}`);
+      if (tenants || updated) console.log(`[vartify-template-sync] tenants=${tenants} promoted=${updated}`);
     } catch (err) {
-      console.error("[wapi-template-sync] failed:", err);
+      console.error("[vartify-template-sync] failed:", err);
     } finally {
       running = false;
     }

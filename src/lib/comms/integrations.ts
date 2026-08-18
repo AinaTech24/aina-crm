@@ -3,7 +3,7 @@ import type { Tx } from "@/db/client";
 import { tenantIntegrations } from "@/db/schema/tenant_integrations";
 import { decrypt, encrypt } from "@/lib/crypto";
 
-export type IntegrationProvider = "resend" | "msg91" | "waina" | "mailbox";
+export type IntegrationProvider = "resend" | "msg91" | "vartify" | "mailbox";
 
 export interface TenantIntegrationResolved {
   id: string;
@@ -13,9 +13,9 @@ export interface TenantIntegrationResolved {
   provider: IntegrationProvider;
   config: {
     apiKey: string;
-    /** WAina: optional override of the platform send endpoint. */
+    /** Vartify: optional override of the platform send endpoint. */
     webhookUrl?: string;
-    /** WAina: default WhatsApp language code, e.g. "en_US". */
+    /** Vartify: default WhatsApp language code, e.g. "en_US". */
     defaultLanguage?: string;
     [key: string]: any;
   };

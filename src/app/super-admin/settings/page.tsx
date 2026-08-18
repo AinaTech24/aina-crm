@@ -33,7 +33,7 @@ export default async function PlatformSettingsPage() {
   const env: Record<string, "Configured" | "Stub" | "Missing"> = {
     db: process.env.DATABASE_URL ? "Configured" : "Missing",
     redis: process.env.REDIS_URL ? "Configured" : "Missing",
-    wapi: process.env.WAINA_API_KEY && !process.env.WAINA_API_KEY.includes("xxx") ? "Configured" : "Stub",
+    vartify: process.env.VARTIFY_API_TOKEN && !process.env.VARTIFY_API_TOKEN.includes("xxx") ? "Configured" : "Stub",
     msg91: process.env.MSG91_AUTH_KEY && !process.env.MSG91_AUTH_KEY.includes("xxx") ? "Configured" : "Stub",
     anthropic: process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_API_KEY.includes("xxx") ? "Configured" : "Stub",
     s3: process.env.S3_ACCESS_KEY_ID ? "Configured" : "Stub",
@@ -64,7 +64,7 @@ export default async function PlatformSettingsPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <IntegrationRow icon={Database} label="Postgres database" status={env.db} />
           <IntegrationRow icon={Activity} label="Redis (BullMQ)" status={env.redis} />
-          <IntegrationRow icon={MessageCircle} label="Wapi (WhatsApp)" status={env.wapi} />
+          <IntegrationRow icon={MessageCircle} label="Vartify (WhatsApp)" status={env.vartify} />
           <IntegrationRow icon={MessageCircle} label="MSG91 (SMS)" status={env.msg91} />
           <Link href="/super-admin/ai" className="contents">
             <IntegrationRow
@@ -114,7 +114,7 @@ export default async function PlatformSettingsPage() {
             Force outbox replay (coming soon)
           </button>
           <button className="rounded border px-3 py-2 text-left hover:bg-accent" disabled>
-            Resync Wapi WhatsApp templates for all tenants
+            Resync Vartify WhatsApp templates for all tenants
           </button>
           <button className="rounded border px-3 py-2 text-left hover:bg-accent" disabled>
             Recompute DDQ scores

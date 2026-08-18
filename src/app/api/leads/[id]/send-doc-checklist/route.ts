@@ -4,7 +4,7 @@ import { handleApiError } from "@/lib/api/error-handler";
  *
  * One-click: mint a secure document-collection link and send it to the client by
  * BOTH email (the firm's connected mailbox / Resend — NOT the global system
- * sender) and WhatsApp (the comms pipeline → WAina). Reports the REAL per-channel
+ * sender) and WhatsApp (the comms pipeline → Vartify). Reports the REAL per-channel
  * outcome and always returns a wa.me fallback so the advisor can send from their
  * own WhatsApp when a proactive platform send can't be delivered (Meta's 24h
  * rule for non-template messages).

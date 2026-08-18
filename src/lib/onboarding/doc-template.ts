@@ -3,9 +3,9 @@
  * for document-collection requests, so the one-click "Send Doc Checklist" can
  * deliver on WhatsApp proactively (outside the 24h window — only templates can).
  *
- * Idempotent: the first call creates a draft + submits it to Meta via WAina;
+ * Idempotent: the first call creates a draft + submits it to Meta via Vartify;
  * later calls return the existing template. Once Meta approves it (the
- * wapi-template-sync worker promotes pending_approval → approved), the send path
+ * vartify-template-sync worker promotes pending_approval → approved), the send path
  * picks it up automatically. Best-effort — never throws.
  */
 
@@ -14,7 +14,7 @@ import { and, eq } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { templates, templateVersions } from "@/db/schema";
 import { buildMetaSubmission } from "@/lib/comms/whatsapp-template-submit";
-import { wainaWhatsappAdapter } from "@/lib/comms/adapters/waina";
+import { vartifyWhatsappAdapter } from "@/lib/comms/adapters/vartify";
 import { getTenantIntegration } from "@/lib/comms/integrations";
 import { whatsappProviderId } from "@/lib/comms/adapters/whatsapp";
 
@@ -70,7 +70,7 @@ export async function ensureDocCollectionTemplate(tenantId: string, userId: stri
     });
     if (!created) return { key: DOC_TEMPLATE_KEY, status: "draft" };
 
-    // 3. Submit to Meta via WAina.
+    // 3. Submit to Meta via Vartify.
     const integ = await withTenant(tenantId, async (tx) => getTenantIntegration(tx, tenantId, whatsappProviderId));
     const apiKey = (integ?.config as any)?.apiKey as string | undefined;
     const baseUrl = (integ?.config as any)?.webhookUrl as string | undefined;
@@ -80,7 +80,7 @@ export async function ensureDocCollectionTemplate(tenantId: string, userId: stri
       { key: DOC_TEMPLATE_KEY, name: "Document Collection", category: "utility", locale: "en" } as any,
       { body: DOC_BODY, variables: DOC_VARIABLES } as any
     );
-    const result = await wainaWhatsappAdapter.submitTemplate({ apiKey, baseUrl, ...sub });
+    const result = await vartifyWhatsappAdapter.submitTemplate({ apiKey, baseUrl, ...sub });
     if (result.ok) {
       await withTenant(tenantId, async (tx) => {
         await tx.update(templateVersions).set({

@@ -62,7 +62,7 @@ export interface DispatchInput {
   /** Stable dedupe key for provider-level idempotency. Unlike workflowRunStepId
    *  (regenerated on every step retry), this stays constant across retries of the
    *  same logical send (e.g. `wf:<runId>:<nodeId>`), so a retried workflow step
-   *  re-sends the SAME key and the channel provider (Resend / AiSensy / MSG91)
+   *  re-sends the SAME key and the channel provider (Resend / Vartify / MSG91)
    *  dedupes it instead of delivering twice. */
   idempotencyKey?: string;
   campaignId?: string;
@@ -130,7 +130,7 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
 
   if (input.freeformText != null && input.channel === "whatsapp") {
     // Free-form in-session reply — no template. The synthesized version carries
-    // the plain text for the adapter (buildWainaPayload sends body.text when no
+    // the plain text for the adapter (buildVartifySendBody sends body.text when no
     // template name is present). Consent + session + compliance still run below.
     version = { id: null, body: { text: input.freeformText }, variables: [] };
     rendered = { text: input.freeformText, tokens: {} };
@@ -491,10 +491,21 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
     let adapterResult: { externalId: string; status: "sent" | "queued" };
     if (input.channel === "whatsapp") {
       // Provider chosen centrally (see adapters/whatsapp.ts); credentials are
-      // per-tenant (saved once in Settings → Integrations). Aina WhatsApp only
-      // needs an api_key; the endpoint defaults to the platform URL.
+      // per-tenant (saved once in Settings → Integrations). Vartify only needs
+      // an API token; the endpoint defaults to the platform URL.
       const integration = await getTenantIntegration(tx, input.tenantId, whatsappProviderId);
+      // Name shown as the sender in the provider's inbox, so a reply lands on a
+      // person rather than "automation". Best-effort: an unattributed send
+      // (workflow / campaign) simply has no actor.
+      let sentByName: string | undefined;
+      if (input.actorUserId) {
+        const r = await tx.execute(
+          sql`SELECT name FROM users WHERE id = ${input.actorUserId}::uuid LIMIT 1`
+        );
+        sentByName = ((r.rows[0] as any)?.name as string | undefined) ?? undefined;
+      }
       adapterResult = await whatsappAdapter.send({
+        sentByName,
         tenantId: input.tenantId,
         templateVersion: version,
         tokens: rendered.tokens,

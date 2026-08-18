@@ -37,7 +37,7 @@ type TemplateInfo = {
   variables: TemplateVar[] | null;
   /** Stored media-header URL is an expiring Meta CDN URL → will 131053 on send. */
   mediaBroken?: boolean;
-  /** Meta-approved (WAina) template → deliverable anytime. CRM-authored → free-form
+  /** Meta-approved (Vartify) template → deliverable anytime. CRM-authored → free-form
    *  text, delivers only inside the 24h session window. */
   isMetaTemplate?: boolean;
 };
@@ -351,7 +351,7 @@ export function WhatsAppRelatedList({
             {selectedTpl?.mediaBroken && (
               <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
                 ⚠ This template's header image/video link has <span className="font-medium">expired</span> on Meta's
-                side (error 131053). Re-upload the sample media for this template in the WAina console, then{" "}
+                side (error 131053). Re-upload the sample media for this template in the Vartify console, then{" "}
                 <span className="font-medium">Fetch from WhatsApp</span> again — otherwise the send will fail.
               </div>
             )}

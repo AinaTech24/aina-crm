@@ -4,16 +4,9 @@ import { ChevronLeft, MessageCircle, Check } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { getTenantIntegration } from "@/lib/comms/integrations";
-import { wapiCheckConnection, type WapiPhoneNumber } from "@/lib/comms/adapters/waina";
+import { vartifyCheckConnection, type VartifyAccount } from "@/lib/comms/adapters/vartify";
 
 export const dynamic = "force-dynamic";
-
-const QUALITY_TONE: Record<string, string> = {
-  GREEN: "text-emerald-600",
-  YELLOW: "text-amber-600",
-  RED: "text-rose-600",
-  UNKNOWN: "text-muted-foreground",
-};
 
 export default async function WhatsAppSettingsPage() {
   const session = await requireSession();
@@ -25,25 +18,26 @@ export default async function WhatsAppSettingsPage() {
              COUNT(*) FILTER (WHERE meta_status = 'REJECTED')::int AS rejected
       FROM whatsapp_templates
     `);
-    // Resolve the Aina WhatsApp (Wapi) API key for a live status probe.
-    const integ = await getTenantIntegration(tx, session.tenantId, "waina").catch(() => null);
+    // Resolve the Vartify API token for a live status probe.
+    const integ = await getTenantIntegration(tx, session.tenantId, "vartify").catch(() => null);
     return {
       numbers: numbers.rows as any[],
       templates: templates.rows[0] as any,
-      apiKey: integ?.config?.apiKey ?? process.env.WAINA_API_KEY ?? null,
-      baseUrl: integ?.config?.webhookUrl ?? process.env.WAINA_BASE_URL ?? null,
+      apiKey: integ?.config?.apiKey ?? process.env.VARTIFY_API_TOKEN ?? null,
+      baseUrl: integ?.config?.webhookUrl ?? process.env.VARTIFY_BASE_URL ?? null,
     };
   });
 
-  // Best-effort live probe of the Aina WhatsApp workspace (GET /extension/status).
-  let live: { ok: boolean; workspaceName?: string; numbers: WapiPhoneNumber[] } | null = null;
+  // Best-effort live probe of the Vartify workspace (GET /me).
+  let live: { ok: boolean; account?: VartifyAccount } | null = null;
   if (data.apiKey) {
-    const r = await wapiCheckConnection(data.apiKey, data.baseUrl);
-    if (r.ok) live = { ok: true, workspaceName: r.workspaceName, numbers: r.numbers };
+    const r = await vartifyCheckConnection(data.apiKey, data.baseUrl);
+    if (r.ok) live = { ok: true, account: r.account };
   }
 
-  const liveNumbers = live?.numbers ?? [];
-  const numbersConnected = liveNumbers.length || data.numbers.length;
+  // Vartify has no sender-number endpoint, so the only numbers we can show are
+  // the ones recorded locally in `whatsapp_numbers`.
+  const numbersConnected = data.numbers.length;
   const active = !!live?.ok || numbersConnected > 0;
 
   return (
@@ -64,20 +58,16 @@ export default async function WhatsAppSettingsPage() {
           )}
           <div>
             <div className="font-medium">
-              {active ? "Aina WhatsApp is active" : "WhatsApp is delivered through Aina"}
+              {active ? "Vartify WhatsApp is connected" : "WhatsApp is not connected yet"}
             </div>
             <p className="text-sm text-muted-foreground mt-1">
               {live?.ok
-                ? `Connected to Aina WhatsApp${
-                    live.workspaceName ? ` — workspace “${live.workspaceName}”` : ""
-                  }. Your messages send through ${numbersConnected || "your"} number${
-                    numbersConnected === 1 ? "" : "s"
-                  }, no setup needed on your side.`
+                ? `Connected to Vartify${
+                    live.account?.workspaceName ? ` — workspace “${live.account.workspaceName}”` : ""
+                  }${live.account?.email ? ` (${live.account.email})` : ""}. Templates are approved by Meta inside that workspace.`
                 : active
-                ? `Your messages are delivered through Aina WhatsApp${
-                    numbersConnected > 1 ? ` across ${numbersConnected} numbers` : ""
-                  }. Nothing to configure on your side.`
-                : "Aina manages your WhatsApp Business connection end-to-end. Your number is provisioned and verified during onboarding — there's nothing to set up here."}
+                ? "Your messages are delivered through Vartify."
+                : "Save your Vartify API token under Settings → Integrations to start sending WhatsApp."}
             </p>
           </div>
         </div>
@@ -85,29 +75,9 @@ export default async function WhatsAppSettingsPage() {
 
       <div className="border rounded-lg bg-card p-5">
         <h2 className="font-semibold">Connected numbers</h2>
-        {liveNumbers.length > 0 ? (
-          <ul className="mt-3 space-y-2">
-            {liveNumbers.map((n) => (
-              <li key={n.id} className="flex items-center justify-between border rounded p-2 text-sm">
-                <span className="font-mono">{n.display_phone_number}</span>
-                <span className="text-xs flex items-center gap-2">
-                  {n.is_primary && (
-                    <span className="rounded-full bg-brand-cyan-light text-brand-cyan-deep px-2 py-0.5 font-semibold">
-                      Primary
-                    </span>
-                  )}
-                  {n.quality_rating && (
-                    <span className={`font-medium ${QUALITY_TONE[n.quality_rating] ?? "text-muted-foreground"}`}>
-                      {n.quality_rating} quality
-                    </span>
-                  )}
-                </span>
-              </li>
-            ))}
-          </ul>
-        ) : data.numbers.length === 0 ? (
+        {data.numbers.length === 0 ? (
           <p className="text-sm text-muted-foreground mt-3">
-            No WhatsApp numbers configured. Aina wires the first number for you during onboarding.
+            No WhatsApp numbers recorded here. The sending number lives in your Vartify workspace.
           </p>
         ) : (
           <ul className="mt-3 space-y-2">

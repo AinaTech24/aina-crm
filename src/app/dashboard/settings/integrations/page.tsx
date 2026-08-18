@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { ChevronLeft, Webhook, Check, AlertCircle, ExternalLink } from "lucide-react";
-import WainaConnectCard from "./WainaConnectCard";
+import VartifyConnectCard from "./VartifyConnectCard";
 import { ZohoIntegrationCard } from "@/components/integrations/ZohoIntegrationCard";
 import { FintechPrimitivesCard } from "@/components/integrations/FintechPrimitivesCard";
 import { RtaMailbackCard } from "@/components/integrations/RtaMailbackCard";
@@ -56,7 +56,7 @@ export default function IntegrationsPage() {
       </p>
 
       {/* Self-serve: the firm connects its own WhatsApp sender once. */}
-      <WainaConnectCard />
+      <VartifyConnectCard />
 
       {/* Self-serve: connect the firm's Zoho CRM (one-way record sync). */}
       <Suspense fallback={null}>

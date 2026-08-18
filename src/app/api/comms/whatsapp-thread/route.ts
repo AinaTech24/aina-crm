@@ -121,10 +121,12 @@ export async function GET(req: NextRequest) {
       const url = b.headerSampleUrl ?? b.headerMediaUrl;
       const mediaBroken =
         b.headerMediaBroken === true || (isMedia && (!url || EXPIRING_MEDIA.test(String(url))));
-      // A Meta-approved (WAina-fetched) template can be sent to anyone, anytime.
+      // A Meta-approved (Vartify-fetched) template can be sent to anyone, anytime.
       // A CRM-authored one goes as free-form text → delivers only inside the 24h
       // session window.
-      const isMetaTemplate = !!(b.wainaTemplateName || b.metaTemplateName);
+      // `wainaTemplateName` is the pre-Vartify key — still read so templates stored
+      // before the provider switch keep resolving.
+      const isMetaTemplate = !!(b.vartifyTemplateName || b.wainaTemplateName || b.metaTemplateName);
       const { body: _omit, ...rest } = t;
       return { ...rest, mediaBroken, isMetaTemplate };
     });
@@ -223,7 +225,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(result);
   } catch (err: any) {
-    // Surface the real WhatsApp/WAina failure (e.g. a provider rejection) to the
+    // Surface the real WhatsApp/Vartify failure (e.g. a provider rejection) to the
     // sender instead of a generic "internal" — these messages aren't sensitive
     // and the RM needs to see why a send didn't go out.
     const msg = String(err?.message ?? "");

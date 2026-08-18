@@ -17,7 +17,7 @@ import { startBlueprintSLAWorker } from "./blueprint-sla-worker";
 import { startScheduledCommsWorker } from "./scheduled-comms";
 import { startReportSchedulerWorker } from "./report-scheduler";
 import { startTaskReminderScannerWorker } from "./task-reminder-scanner";
-import { startWapiTemplateSyncWorker } from "./wapi-template-sync";
+import { startVartifyTemplateSyncWorker } from "./vartify-template-sync";
 import { startCampaignDispatcherWorker } from "./campaign-dispatcher";
 import { startImapPollerWorker } from "./imap-poller";
 import { startRtaInboxPollerWorker } from "./rta-inbox-poller";
@@ -122,7 +122,7 @@ if (groups.includes("sched")) {
   // triggered) + per-task reminders every 5 min.
   stops.push(startTaskReminderScannerWorker());
 }
-if (groups.includes("wa_sync")) stops.push(startWapiTemplateSyncWorker());
+if (groups.includes("wa_sync")) stops.push(startVartifyTemplateSyncWorker());
 if (groups.includes("mail")) {
   stops.push(startImapPollerWorker());
   // Direct RTA mailback auto-import: polls the catch-all inbox MFDs forward to.

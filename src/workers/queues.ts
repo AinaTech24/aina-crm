@@ -3,7 +3,7 @@
  *   - workflow.runner             — execute one step of a workflow run
  *   - outbox.poller               — internal scheduler that polls events_outbox
  *   - segment.materializer        — re-materialize dynamic segments
- *   - wapi.template_sync          — periodic sync of WhatsApp template approval status
+ *   - vartify.template_sync          — periodic sync of WhatsApp template approval status
  *   - comm.dispatch.{channel}     — channel-specific send queues (rate-limit per tenant)
  *   - master.scheduler            — cron-style triggers fire here
  *
@@ -59,7 +59,7 @@ export const Q = {
   workflowRunner: () => queue("workflow.runner"),
   outboxPoller: () => queue("outbox.poller"),
   segmentMaterializer: () => queue("segment.materializer"),
-  wapiTemplateSync: () => queue("wapi.template_sync"),
+  vartifyTemplateSync: () => queue("vartify.template_sync"),
   masterScheduler: () => queue("master.scheduler"),
   commDispatch: (channel: string, tenantId: string) => queue(`comm.dispatch.${channel}.${tenantId}`),
   campaignDispatch: (tenantId: string) => queue(`campaign.dispatch.${tenantId}`),

@@ -1,7 +1,7 @@
 /**
  * Shared WhatsApp adapter contract. The comms pipeline builds a `SendWhatsappArgs`
- * and the active provider adapter (Wapi / Aina WhatsApp) turns it into a send.
- * Kept provider-neutral so the pipeline never imports a concrete adapter.
+ * and the active provider adapter (Vartify) turns it into a send. Kept
+ * provider-neutral so the pipeline never imports a concrete adapter.
  */
 import type { TemplateVersion } from "@/db/schema";
 
@@ -20,4 +20,7 @@ export interface SendWhatsappArgs {
   defaultLanguage?: string;
   /** Stable across step retries; sent as a best-effort dedup header. */
   idempotencyKey?: string;
+  /** Human name shown as the sender in the provider's inbox (e.g. the CRM user
+   *  who clicked Send). Providers that don't model this ignore it. */
+  sentByName?: string;
 }

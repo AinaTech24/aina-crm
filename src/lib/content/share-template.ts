@@ -31,7 +31,7 @@ export async function ensureShareTemplate(tx: Tx, tenantId: string, channel: "em
             { type: "text", text: "Hi {{name}},\n\n{{custom_note}}\n\nYou can view/download the update here:\n{{asset_url}}\n\nBest regards,\n{{tenant_display_name}}" },
           ],
         }
-      : { wainaTemplateName: "share_asset", text: "Hi {{name}}, here is the asset: {{asset_title}} ({{asset_url}})." };
+      : { vartifyTemplateName: "share_asset", text: "Hi {{name}}, here is the asset: {{asset_title}} ({{asset_url}})." };
 
   const templateVariables =
     channel === "email"

@@ -1,6 +1,6 @@
 /**
  * Convert a CRM WhatsApp template (named {{module.field}} mustache tokens +
- * {header,body,footer} blocks) into the Meta-shaped fields Wapi's
+ * {header,body,footer} blocks) into the Meta-shaped fields Vartify's
  * POST /extension/templates expects ({{1}},{{2}} positional body + examples).
  */
 

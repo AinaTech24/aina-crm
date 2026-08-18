@@ -12,7 +12,7 @@ export const tenantIntegrations = pgTable(
     // mailbox (per-RM IMAP/SMTP, or a Gmail / M365 account over OAuth).
     userId: uuid("user_id"),
     provider: text("provider", {
-      enum: ["resend", "aisensy", "msg91", "waina", "mailbox", "zoho", "fintech_primitives", "rta_mailback"],
+      enum: ["resend", "vartify", "msg91", "mailbox", "zoho", "fintech_primitives", "rta_mailback"],
     }).notNull(),
     encryptedConfig: text("encrypted_config").notNull(),
     senderConfig: jsonb("sender_config").$type<{

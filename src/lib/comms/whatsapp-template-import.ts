@@ -1,14 +1,19 @@
 /**
- * Import the firm's EXISTING WhatsApp templates from their connected WAina
+ * Import the firm's EXISTING WhatsApp templates from their connected Vartify
  * workspace into the CRM. WhatsApp templates are authored + approved in the
- * WAina/Meta console (Meta requirement); here we pull them so they show up in
+ * Vartify/Meta console (Meta requirement); here we pull them so they show up in
  * Message Templates and become sendable through the comms pipeline.
  *
- * For each Meta template we upsert:
- *   - a `templates` row (key = Meta template name, channel=whatsapp) + version
- *     whose body carries the Meta name/components so the WAina adapter can send
- *     it, with status mirrored from Meta (APPROVED → approved).
+ * For each template we upsert:
+ *   - a `templates` row (key = template name, channel=whatsapp) + version whose
+ *     body carries the name/body text so the Vartify adapter can send it, with
+ *     status mirrored from Meta (APPROVED → approved).
  *   - a `whatsapp_templates` row (the Meta status registry, same as the worker).
+ *
+ * Vartify returns a FLAT template shape — { name, language, category, status,
+ * body, variable_count, header_format } — rather than Meta's nested
+ * `components` array. The readers below accept either, so a workspace that does
+ * surface components still imports correctly.
  */
 
 import { and, eq, sql } from "drizzle-orm";
@@ -17,7 +22,7 @@ import type { Tx } from "@/db/client";
 import { templates, templateVersions } from "@/db/schema";
 import { getTenantIntegration } from "./integrations";
 import { whatsappProviderId } from "./adapters/whatsapp";
-import { fetchWainaTemplatesDetailed } from "./adapters/waina";
+import { fetchVartifyTemplatesDetailed } from "./adapters/vartify";
 
 const CATEGORY_MAP: Record<string, string> = { MARKETING: "marketing", UTILITY: "utility", AUTHENTICATION: "authentication" };
 function mapCategory(c?: string): string {
@@ -30,7 +35,10 @@ function mapLocale(lang?: string): string {
   if (l.startsWith("mr")) return "mr-IN";
   return "en-IN";
 }
-function bodyText(components: any): string {
+/** Body text from Vartify's flat `body` string, or Meta's components array. */
+function bodyText(meta: any): string {
+  if (typeof meta?.body === "string" && meta.body.trim()) return meta.body;
+  const components = meta?.components;
   if (!Array.isArray(components)) return "";
   const body = components.find((c) => (c?.type ?? "").toString().toUpperCase() === "BODY");
   return (body?.text ?? body?.parameters?.text ?? "") as string;
@@ -51,13 +59,24 @@ const MEDIA_FORMATS = ["IMAGE", "VIDEO", "DOCUMENT"];
 
 /** Header type + sample media URL + whether the header carries a {{var}} + whether
  *  the stored media URL is an expiring Meta CDN URL (so the template is "broken"). */
-function headerInfo(components: any): {
+function headerInfo(meta: any): {
   format: string | null;
   sampleUrl: string | null;
   hasVar: boolean;
   mediaBroken: boolean;
 } {
-  if (!Array.isArray(components)) return { format: null, sampleUrl: null, hasVar: false, mediaBroken: false };
+  const components = meta?.components;
+  if (!Array.isArray(components)) {
+    // Vartify's flat shape: only the header FORMAT is exposed. Treat a media
+    // header with no sample URL as broken for send purposes, same as Meta's.
+    const format = (meta?.header_format ?? meta?.headerFormat ?? "").toString().toUpperCase() || null;
+    return {
+      format,
+      sampleUrl: null,
+      hasVar: false,
+      mediaBroken: !!format && MEDIA_FORMATS.includes(format),
+    };
+  }
   const h = components.find((c) => (c?.type ?? "").toString().toUpperCase() === "HEADER");
   if (!h) return { format: null, sampleUrl: null, hasVar: false, mediaBroken: false };
   const format = (h.format ?? "").toString().toUpperCase() || null;
@@ -80,29 +99,29 @@ export async function importWhatsappTemplatesForTenant(tx: Tx, tenantId: string,
   const integ = await getTenantIntegration(tx, tenantId, whatsappProviderId);
   const apiKey = (integ?.config as any)?.apiKey as string | undefined;
   if (!integ?.isActive || !apiKey) {
-    return { ok: false, fetched: 0, imported: 0, approved: 0, error: "WhatsApp isn't connected — connect WAina in Settings → Integrations first." };
+    return { ok: false, fetched: 0, imported: 0, approved: 0, error: "WhatsApp isn't connected — connect Vartify in Settings → Integrations first." };
   }
   const baseUrl = (integ?.config as any)?.webhookUrl as string | undefined;
 
-  const fetched = await fetchWainaTemplatesDetailed({ apiKey, baseUrl });
+  const fetched = await fetchVartifyTemplatesDetailed({ apiKey, baseUrl, status: "all" });
   if (!fetched.ok) {
     // A real failure (bad key, wrong base URL, permission error, network) —
     // surface it instead of silently reporting "no templates found".
-    const isPerm = /permission|forbidden|unauthor/i.test(fetched.error ?? "") || fetched.status === 403;
+    const isPerm = /permission|forbidden|unauthor|scope/i.test(fetched.error ?? "") || fetched.httpStatus === 403;
     const hint = isPerm
-      ? "Your WAina key can read the workspace but not its templates — it may be a webhook key or lack the template scope. In WAina → API Keys, generate an API key with template access and paste it via Update key."
-      : "Check the WAina API key under Settings → Integrations → WhatsApp.";
+      ? "Your Vartify token is valid but lacks the messages:write scope, which is what grants template access. In Vartify → Settings → API Tokens, create a token including messages:write and paste it via Update key."
+      : "Check the Vartify API token under Settings → Integrations → WhatsApp.";
     return {
       ok: false,
       fetched: 0,
       imported: 0,
       approved: 0,
-      error: `WhatsApp template fetch was rejected${fetched.status ? ` (${fetched.status})` : ""}: ${fetched.error}. ${hint}`,
+      error: `WhatsApp template fetch was rejected${fetched.httpStatus ? ` (${fetched.httpStatus})` : ""}: ${fetched.error}. ${hint}`,
     };
   }
   const metas = fetched.templates;
   if (!metas.length) {
-    // Genuinely empty: the key works but the WAina/Meta workspace has no templates.
+    // Genuinely empty: the token works but the Vartify/Meta workspace has no templates.
     return { ok: true, fetched: 0, imported: 0, approved: 0 };
   }
 
@@ -118,19 +137,20 @@ export async function importWhatsappTemplatesForTenant(tx: Tx, tenantId: string,
     const category = mapCategory(meta?.category);
     const metaStatus = (meta?.status ?? "PENDING").toString().toUpperCase();
     const components = meta?.components ?? [];
-    const text = bodyText(components);
+    const text = bodyText(meta);
     const tplStatus = metaStatus === "APPROVED" ? "approved" : metaStatus === "REJECTED" ? "rejected" : "pending_approval";
     const verApproval = metaStatus === "APPROVED" ? "approved_external" : metaStatus === "REJECTED" ? "rejected" : "submitted";
 
     // Body placeholders {{1}},{{2}} → editable variables in the composer + the send.
     const varKeys = extractVarKeys(text);
     const variables = varKeys.map((k) => ({ key: k, label: `Variable {{${k}}}`, required: true }));
-    const hdr = headerInfo(components);
+    const hdr = headerInfo(meta);
 
-    // Body carries the Meta name + components + header info so the WAina adapter
-    // can send via /extension/send-message (variables + optional header media).
+    // Body carries the template name + components + header info so the Vartify
+    // adapter can send via POST /messages/send (positional template_vars +
+    // optional header media).
     const body = {
-      wainaTemplateName: name,
+      vartifyTemplateName: name,
       metaTemplateName: name,
       languageCode: language,
       components,

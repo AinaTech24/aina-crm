@@ -128,7 +128,7 @@ export async function POST(
               ]
             }
           : {
-              wainaTemplateName: "share_asset",
+              vartifyTemplateName: "share_asset",
               text: "Hi {{name}}, here is the asset: {{asset_title}} ({{asset_url}})."
             };
 
@@ -148,7 +148,7 @@ export async function POST(
 
         // Run the REAL compliance checker on the static body instead of
         // self-blessing with a hardcoded 100. Email needs no Meta approval, so
-        // it can auto-approve; WhatsApp templates require Meta/AiSensy approval,
+        // it can auto-approve; WhatsApp templates require Meta/Vartify approval,
         // so we create them as pending_approval — dispatch() will then surface
         // an auditable "template_not_approved" skip rather than firing an
         // unreviewed WhatsApp template.

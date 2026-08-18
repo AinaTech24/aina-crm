@@ -53,7 +53,7 @@ export const SUBPROCESSORS: ReadonlyArray<{ name: string; purpose: string; regio
   { name: "Amazon Web Services (AWS)", purpose: "Application hosting, database & encrypted file storage", region: "Mumbai (ap-south-1), India" },
   { name: "Razorpay", purpose: "Subscription billing & payment processing", region: "India" },
   { name: "Resend", purpose: "Transactional & campaign email delivery", region: "United States / EU" },
-  { name: "AiSensy", purpose: "WhatsApp Business messaging (BSP)", region: "India" },
+  { name: "Vartify", purpose: "WhatsApp Business messaging (BSP)", region: "India" },
   { name: "MSG91", purpose: "DLT-compliant transactional SMS", region: "India" },
   { name: "Anthropic", purpose: "AI assistance (message drafting & classification)", region: "United States" },
 ] as const;

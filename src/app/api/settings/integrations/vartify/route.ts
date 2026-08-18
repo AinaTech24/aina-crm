@@ -1,7 +1,7 @@
 /**
- * WAina WhatsApp integration — per-tenant credential setup (one-time).
+ * Vartify WhatsApp integration — per-tenant credential setup (one-time).
  *
- * The MFD saves their WAina webhook (api) key ONCE here; after that every
+ * The MFD saves their Vartify webhook (api) key ONCE here; after that every
  * WhatsApp send just references a template name and the pipeline uses these
  * stored, encrypted credentials. Only an owner can manage firm-level keys.
  *
@@ -37,7 +37,7 @@ export async function GET() {
   try {
     const session = await requireSession();
     const status = await withTenant(session.tenantId, async (tx) =>
-      getTenantIntegrationStatus(tx, session.tenantId, "waina")
+      getTenantIntegrationStatus(tx, session.tenantId, "vartify")
     );
     return NextResponse.json(status);
   } catch (err) {
@@ -71,11 +71,11 @@ export async function POST(req: NextRequest) {
     if (defaultLanguage) config.defaultLanguage = defaultLanguage;
 
     await withTenant(session.tenantId, async (tx) => {
-      await upsertTenantIntegration(tx, session.tenantId, "waina", config);
+      await upsertTenantIntegration(tx, session.tenantId, "vartify", config);
     });
 
     const status = await withTenant(session.tenantId, async (tx) =>
-      getTenantIntegrationStatus(tx, session.tenantId, "waina")
+      getTenantIntegrationStatus(tx, session.tenantId, "vartify")
     );
     return NextResponse.json({ ok: true, ...status });
   } catch (err) {
@@ -90,7 +90,7 @@ export async function DELETE() {
     if (forbidden) return forbidden;
 
     await withTenant(session.tenantId, async (tx) => {
-      await disableTenantIntegration(tx, session.tenantId, "waina");
+      await disableTenantIntegration(tx, session.tenantId, "vartify");
     });
     return NextResponse.json({ ok: true, connected: false });
   } catch (err) {

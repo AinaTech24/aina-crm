@@ -30,7 +30,7 @@ const FIXED_QUEUES: Array<[string, () => any]> = [
   ["outbox.poller", () => Q.outboxPoller()],
   ["segment.materializer", () => Q.segmentMaterializer()],
   ["master.scheduler", () => Q.masterScheduler()],
-  ["wapi.template_sync", () => Q.wapiTemplateSync()],
+  ["vartify.template_sync", () => Q.vartifyTemplateSync()],
   ["rta.import", () => Q.rtaImport()],
 ];
 
