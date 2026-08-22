@@ -18,7 +18,16 @@ import { can } from "@/lib/auth/rbac";
 import { withTenant } from "@/db/client";
 import { rtaForwardAddresses } from "@/db/schema/rta_forward_addresses";
 import { rtaFileImports } from "@/db/schema/rta_imports";
-import { ensureForwardAddress, getMailbackPasswords, saveMailbackPasswords } from "@/lib/rta/mailback-config";
+import {
+  appendMailbackPassword,
+  ensureForwardAddress,
+  getMailbackPasswords,
+  getSourceAddresses,
+  listPasswordEntries,
+  removeMailbackPasswordAt,
+  saveMailbackPasswords,
+  setSourceAddresses,
+} from "@/lib/rta/mailback-config";
 import { loadRtaInboxConfig } from "@/lib/rta/inbox-config";
 
 export const dynamic = "force-dynamic";
@@ -45,6 +54,7 @@ export async function GET() {
       .limit(1);
 
     const pw = await getMailbackPasswords(tx, session.tenantId);
+    const sourceAddresses = await getSourceAddresses(tx, session.tenantId);
 
     const recent = await tx
       .select({
@@ -71,10 +81,19 @@ export async function GET() {
 
     return {
       address,
+      // The shared address every firm may use instead of their own alias — it
+      // only routes for mailboxes registered in `sourceAddresses` below.
+      sharedAddress: `rta@${inbox.domain}`,
+      sourceAddresses,
       inboundDomain: inbox.domain,
       inboxReady: inbox.configured,
-      hasCamsPassword: !!pw.camsPassword,
-      hasKfintechPassword: !!pw.kfintechPassword,
+      // Labels only — the plaintext password never leaves saveMailbackPasswords.
+      // Full list (not password-deduped) so every ARN/mailbox entry is shown.
+      camsPasswords: listPasswordEntries(pw, "cams").map((e) => ({ label: e.label })),
+      kfintechPasswords: listPasswordEntries(pw, "kfintech").map((e) => ({ label: e.label })),
+      // Kept for older clients; equivalent to camsPasswords.length > 0.
+      hasCamsPassword: !!pw.camsPassword || !!pw.camsPasswords?.length,
+      hasKfintechPassword: !!pw.kfintechPassword || !!pw.kfintechPasswords?.length,
       verifiedAt: row?.verifiedAt ?? null,
       lastReceivedAt: row?.lastReceivedAt ?? null,
       forwardingConfirmCode: row?.forwardingConfirmCode ?? null,
@@ -87,9 +106,26 @@ export async function GET() {
   return NextResponse.json(data);
 }
 
+const PasswordEntry = z.object({ label: z.string().max(60).optional(), password: z.string().max(200) });
+
 const Body = z.object({
+  // Legacy simple form — replaces the source's list with this ONE entry.
   camsPassword: z.string().max(200).optional(),
   kfintechPassword: z.string().max(200).optional(),
+  // Explicit list form — replaces the source's WHOLE list. Kept for bulk edits
+  // (e.g. a future admin tool); the settings UI itself uses append/remove below
+  // so the browser never has to round-trip a previously-saved plaintext.
+  camsPasswords: z.array(PasswordEntry).max(8).optional(),
+  kfintechPasswords: z.array(PasswordEntry).max(8).optional(),
+  // Append ONE labelled password — a firm registering a second ARN's mailback
+  // subscription adds its password here without touching what's already saved.
+  camsPasswordsAppend: z.array(PasswordEntry).max(1).optional(),
+  kfintechPasswordsAppend: z.array(PasswordEntry).max(1).optional(),
+  // Remove one saved password by its 0-based position (the order the UI shows).
+  camsPasswordsRemoveIndex: z.number().int().min(0).optional(),
+  kfintechPasswordsRemoveIndex: z.number().int().min(0).optional(),
+  /** Mailboxes this firm forwards FROM — enables the shared rta@ address. */
+  sourceAddresses: z.array(z.string().max(200)).max(10).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -101,9 +137,29 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid request." }, { status: 400 });
   }
-  await withTenant(session.tenantId, async (tx) => {
-    await saveMailbackPasswords(tx, session.tenantId, parsed.data);
+  const d = parsed.data;
+  const result = await withTenant(session.tenantId, async (tx) => {
+    await saveMailbackPasswords(tx, session.tenantId, d);
+    if (d.camsPasswordsAppend?.[0]) await appendMailbackPassword(tx, session.tenantId, "cams", d.camsPasswordsAppend[0]);
+    if (d.kfintechPasswordsAppend?.[0]) await appendMailbackPassword(tx, session.tenantId, "kfintech", d.kfintechPasswordsAppend[0]);
+    if (d.camsPasswordsRemoveIndex !== undefined) await removeMailbackPasswordAt(tx, session.tenantId, "cams", d.camsPasswordsRemoveIndex);
+    if (d.kfintechPasswordsRemoveIndex !== undefined) await removeMailbackPasswordAt(tx, session.tenantId, "kfintech", d.kfintechPasswordsRemoveIndex);
     await ensureForwardAddress(tx, session.tenantId);
+    if (d.sourceAddresses) {
+      return setSourceAddresses(tx, session.tenantId, d.sourceAddresses);
+    }
+    return null;
   });
-  return NextResponse.json({ ok: true });
+
+  // Surface collisions so the firm sees WHY an address didn't stick, rather than
+  // it silently vanishing from the list on the next load.
+  if (result?.rejected.length) {
+    return NextResponse.json({
+      ok: true,
+      sourceAddresses: result.saved,
+      rejected: result.rejected,
+      warning: `Already registered by another firm: ${result.rejected.join(", ")}. Use your own rta-<token>@ address instead.`,
+    });
+  }
+  return NextResponse.json({ ok: true, sourceAddresses: result?.saved });
 }
