@@ -11,9 +11,16 @@
  * side-by-side — WhatsApp, Email, Copy link — rather than picking one
  * automatically, so the RM always sees every option regardless of what
  * contact info happens to be on file.
+ *
+ * The popover is PORTALLED to <body> and positioned from the trigger's viewport
+ * rect. Rendered inline it would be clipped wherever an ancestor scrolls — the
+ * risk-profiles table wraps rows in `.table-scroll` (overflow: auto), which cuts
+ * off an absolutely-positioned child. Portalling keeps one component usable both
+ * in a table row and on the client detail page.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Link2, MessageCircle, Mail, Copy, Check, Loader2 } from "lucide-react";
 
 type LinkInfo = { url: string; investorName: string; phone: string | null; email: string | null };
@@ -32,12 +39,44 @@ export function SendRiskProfileLinkButton({ investorId }: { investorId: string }
   const [err, setErr] = useState<string | null>(null);
   const [info, setInfo] = useState<LinkInfo | null>(null);
   const [copied, setCopied] = useState(false);
-  const boxRef = useRef<HTMLDivElement>(null);
+  const [mounted, setMounted] = useState(false);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => setMounted(true), []);
+
+  /** Anchor the fixed-position panel under the trigger, flipped to stay on screen. */
+  useLayoutEffect(() => {
+    if (!open || !triggerRef.current) return;
+    const place = () => {
+      const t = triggerRef.current?.getBoundingClientRect();
+      if (!t) return;
+      const W = 320;
+      // Right-align to the trigger, but never past the viewport edge.
+      let left = Math.min(t.right - W, window.innerWidth - W - 8);
+      left = Math.max(8, left);
+      // Flip above when there isn't room below.
+      const belowRoom = window.innerHeight - t.bottom;
+      const top = belowRoom < 280 && t.top > 280 ? t.top - 8 - 280 : t.bottom + 8;
+      setPos({ top, left });
+    };
+    place();
+    // A scroll or resize moves the trigger — follow it rather than detach.
+    window.addEventListener("scroll", place, true);
+    window.addEventListener("resize", place);
+    return () => {
+      window.removeEventListener("scroll", place, true);
+      window.removeEventListener("resize", place);
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
     function onDown(e: MouseEvent) {
-      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false);
+      const n = e.target as Node;
+      if (panelRef.current?.contains(n) || triggerRef.current?.contains(n)) return;
+      setOpen(false);
     }
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") setOpen(false);
@@ -87,17 +126,28 @@ export function SendRiskProfileLinkButton({ investorId }: { investorId: string }
   }
 
   return (
-    <div className="relative" ref={boxRef}>
+    <>
       <button
+        ref={triggerRef}
         type="button"
-        onClick={toggle}
+        onClick={(e) => {
+          // The risk-profiles table renders this inside a clickable row; the row
+          // already ignores <button> clicks, but stop anyway so nothing upstream
+          // navigates out from under an open panel.
+          e.stopPropagation();
+          void toggle();
+        }}
         className="text-xs font-semibold text-brand-cyan hover:underline inline-flex items-center gap-1"
       >
         <Link2 className="size-3.5" /> Send link to client
       </button>
 
-      {open && (
-        <div className="absolute right-0 top-full mt-2 z-30 w-80 card-elevated bg-card p-3 space-y-2.5">
+      {mounted && open && pos && createPortal(
+        <div
+          ref={panelRef}
+          onClick={(e) => e.stopPropagation()}
+          style={{ position: "fixed", top: pos.top, left: pos.left, width: 320 }}
+          className="z-[70] card-elevated bg-card p-3 space-y-2.5">
           <div className="text-xs font-semibold text-foreground">Send risk profile link</div>
           <p className="text-[11px] text-muted-foreground leading-snug">
             The client fills the questionnaire themselves — no login needed. They confirm it with their
@@ -165,8 +215,9 @@ export function SendRiskProfileLinkButton({ investorId }: { investorId: string }
               <p className="text-[10px] text-muted-foreground">Link expires in 14 days, single client.</p>
             </>
           )}
-        </div>
+        </div>,
+        document.body
       )}
-    </div>
+    </>
   );
 }

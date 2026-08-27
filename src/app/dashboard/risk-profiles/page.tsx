@@ -8,6 +8,7 @@ import { formatDate } from "@/lib/utils";
 import { Pager } from "@/components/common/Pager";
 import { RiskProfileName, RiskProfilePdfButtons } from "@/components/risk-profile/RiskProfileName";
 import { SignedFormButton } from "@/components/risk-profile/SignedFormButton";
+import { SendRiskProfileLinkButton } from "@/components/risk-profile/SendRiskProfileLinkButton";
 import { Avatar } from "@/components/ui/Avatar";
 import { PdfRow } from "@/components/common/ClickableRow";
 
@@ -275,6 +276,7 @@ export default async function RiskProfilesPage({
                               <SignedFormButton profileId={String(r.profile_id)} />
                             )}
                             <RiskProfilePdfButtons profileId={r.profile_id ?? null} name={r.name} />
+                            <SendRiskProfileLinkButton investorId={String(r.id)} />
                             <Link
                               href={`/dashboard/risk-profiles/new?investorId=${r.id}`}
                               className="btn-accent text-xs px-3 py-1"
