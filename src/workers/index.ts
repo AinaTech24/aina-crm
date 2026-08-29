@@ -38,6 +38,7 @@ import { syncMfSchemeCatalog, enrichMfSchemes } from "@/lib/finance/mfapi";
 import { getLastRun, recordRun } from "./scheduler-state";
 import { recordDailySnapshots } from "./firm-snapshot-recorder";
 import { runDscReminder } from "./dsc-reminder";
+import { runReviewDueReminder } from "./review-due-reminder";
 import { captureError } from "@/lib/observability/capture";
 
 const groups = (process.env.WORKER_GROUPS ?? "outbox,wf,seg,sched,wa_sync,mail,ops,monthly,nav,recon,market,feed,statements,zoho,rta,fpsync,briefing")
@@ -165,6 +166,13 @@ scheduleDaily("ops", "daily-firm-snapshot", 0, 5, recordDailySnapshots, "FIRM_SN
  * as soon as the new financial year opens and stays until the DSC is filed.
  */
 scheduleDaily("ops", "dsc-reminder", 7, 0, runDscReminder, "DSC_REMINDER_ON_BOOT");
+
+/**
+ * Client review-due reminder — raises a task for each client whose review
+ * cadence falls due (7-day lead). Cadence-agnostic, so it covers the presets
+ * AND a custom "every N days" schedule such as every 100 days.
+ */
+scheduleDaily("ops", "review-due-reminder", 7, 30, runReviewDueReminder, "REVIEW_DUE_ON_BOOT");
 
 /**
  * Monthly compliance checklist — seeds the standard SEBI-flavoured tasks

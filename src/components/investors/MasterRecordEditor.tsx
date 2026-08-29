@@ -88,7 +88,11 @@ export function MasterRecordEditor({ investor, flags }: { investor: Investor; fl
     segmentTag: investor.segmentTag ?? "",
     clientCategory: investor.clientCategory ?? "",
     serviceTier: investor.serviceTier ?? "",
-    reviewFrequency: investor.reviewFrequency ?? "",
+    // A custom day cadence (reviewFrequencyDays) is shown as "days_<n>" so the
+    // one dropdown covers both presets and "every N days".
+    reviewFrequency: (investor as any).reviewFrequencyDays
+      ? `days_${(investor as any).reviewFrequencyDays}`
+      : investor.reviewFrequency ?? "",
     rmId: investor.rmId ?? "",
     kycStatus: investor.kycStatus ?? "pending",
     riskProfile: investor.riskProfile ?? "",
@@ -165,7 +169,14 @@ export function MasterRecordEditor({ investor, flags }: { investor: Investor; fl
         segmentTag: inSet(f.segmentTag, ["HNI", "Affluent", "Retail", "NRI", "Corporate"]),
         clientCategory: inSet(f.clientCategory, ["A", "B", "C", "D"]) ?? null,
         serviceTier: inSet(f.serviceTier, ["A", "B", "C"]) ?? null,
-        reviewFrequency: inSet(f.reviewFrequency, ["monthly", "quarterly", "half_yearly", "annual"]) ?? null,
+        // "days_<n>" → custom cadence; anything else → a preset. Exactly one of
+        // the two is set, so the API's computeNextReview picks the right basis.
+        reviewFrequency: /^days_\d+$/.test(f.reviewFrequency)
+          ? null
+          : inSet(f.reviewFrequency, ["monthly", "quarterly", "half_yearly", "annual"]) ?? null,
+        reviewFrequencyDays: /^days_\d+$/.test(f.reviewFrequency)
+          ? Number(f.reviewFrequency.slice(5))
+          : null,
         rmId: f.rmId || undefined,
         kycStatus: inSet(f.kycStatus, ["pending", "registered", "verified", "hold", "rejected", "expired", "re_kyc_required"]),
         riskProfile: inSet(f.riskProfile, ["conservative", "moderate", "aggressive", "very_aggressive"]),
@@ -403,7 +414,7 @@ export function MasterRecordEditor({ investor, flags }: { investor: Investor; fl
                 <Grp title="Review & lifecycle">
                   <F label="Review frequency">
                     <SelectField value={f.reviewFrequency} onChange={(e) => set("reviewFrequency", e.target.value)} className="w-full" placeholder="Auto (by service tier)">
-                      <option value="">Auto (by service tier)</option><option value="monthly">Monthly</option><option value="quarterly">Quarterly</option><option value="half_yearly">Half-yearly</option><option value="annual">Yearly</option>
+                      <option value="">Auto (by service tier)</option><option value="monthly">Monthly</option><option value="quarterly">Quarterly</option><option value="days_100">Every 100 days</option><option value="half_yearly">Half-yearly</option><option value="annual">Yearly</option>
                     </SelectField>
                   </F>
                   {flags.showStatus && (
