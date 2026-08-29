@@ -33,6 +33,7 @@ import {
 } from "@/db/schema";
 import { v4 as uuid } from "uuid";
 import { autoAdvance } from "@/lib/blueprints/auto-advance";
+import { renderTemplateText } from "@/lib/comms/tokens";
 
 export interface ActionContext {
   tenantId: string;
@@ -811,29 +812,150 @@ async function runConvertLead(config: Record<string, unknown>, ctx: ActionContex
 // In-app notification
 // ---------------------------------------------------------------------------
 
+/**
+ * Dashboard route per module — lets a notification deep-link straight to the
+ * record that fired the rule. Modules without a detail page are simply absent,
+ * and the notification then carries no link.
+ */
+const MODULE_ROUTES: Record<string, { path: string; detail: boolean }> = {
+  investors: { path: "/dashboard/investors", detail: true },
+  leads: { path: "/dashboard/leads", detail: true },
+  families: { path: "/dashboard/families", detail: true },
+  service_requests: { path: "/dashboard/service-requests", detail: true },
+  review_meetings: { path: "/dashboard/review-meetings", detail: true },
+  proposals: { path: "/dashboard/proposals", detail: true },
+  insurance: { path: "/dashboard/insurance", detail: true },
+  campaigns: { path: "/dashboard/campaigns", detail: true },
+  goals: { path: "/dashboard/goals", detail: true },
+  onboarding: { path: "/dashboard/onboarding", detail: true },
+  business_entries: { path: "/dashboard/business-entries", detail: true },
+  // No detail page — link to the list so the bell still lands somewhere useful.
+  tasks: { path: "/dashboard/tasks", detail: false },
+  transactions: { path: "/dashboard/transactions", detail: false },
+  sips: { path: "/dashboard/sips", detail: false },
+  sip_rejections: { path: "/dashboard/sip-rejections", detail: false },
+  complaints: { path: "/dashboard/complaints", detail: false },
+  risk_profiles: { path: "/dashboard/risk-profiles", detail: false },
+};
+
+/**
+ * Human label for the record that fired the rule. The client / lead name is the
+ * only thing an RM actually recognises in the bell, so we dig for it across the
+ * name-ish columns the different module tables use. Returns "" when the module
+ * genuinely has no name (then the notification just reads as before).
+ */
+function subjectDisplayName(record: Record<string, unknown>): string {
+  const pick = (k: string) => {
+    const v = record[k];
+    return typeof v === "string" && v.trim() ? v.trim() : "";
+  };
+  const direct =
+    pick("name") ||
+    pick("full_name") ||
+    pick("investor_name") ||
+    pick("client_name") ||
+    pick("lead_name") ||
+    pick("title") ||
+    pick("subject") ||
+    pick("scheme_name");
+  if (direct) return direct;
+  return [pick("first_name"), pick("last_name")].filter(Boolean).join(" ");
+}
+
 async function runCreateNotification(config: Record<string, unknown>, ctx: ActionContext): Promise<ActionResult> {
   // Audience: { users: string[], roles: string[], subjectRm: boolean }
   const aud = (config.audience as { users?: string[]; roles?: string[]; subjectRm?: boolean }) ?? {};
-  const userIds = aud.users ?? [];
+  const ids = new Set<string>();
+  for (const u of aud.users ?? []) if (u) ids.add(String(u));
 
-  // If subjectRm — pull rm_id from the record
-  if (aud.subjectRm && ctx.record.rm_id) userIds.push(String(ctx.record.rm_id));
+  // subjectRm — the record's own RM / owner / assignee, whichever the module has.
+  if (aud.subjectRm) {
+    const owner =
+      ctx.record.rm_id ?? ctx.record.owner_id ?? ctx.record.assigned_to_user_id ?? ctx.record.assignee_id;
+    if (owner) ids.add(String(owner));
+  }
 
-  if (!userIds.length) {
+  // roles audience — accepted by the config shape but never honoured before.
+  const roles = (aud.roles ?? []).filter(Boolean).map(String);
+  if (roles.length) {
+    const roleRows = await ctx.tx.execute(sql`
+      SELECT id FROM users
+       WHERE tenant_id = ${ctx.tenantId}::uuid
+         AND deleted_at IS NULL
+         AND status = 'active'
+         AND roles && ARRAY[${sql.join(roles.map((r) => sql`${r}`), sql`, `)}]::text[]
+    `);
+    for (const row of roleRows.rows as Array<{ id: string }>) ids.add(String(row.id));
+  }
+
+  // An alert nobody receives is a silent failure — the commonest cause is
+  // "notify subject's RM" on a record with no RM assigned. Fall back to the
+  // firm owners so the rule still surfaces somewhere.
+  let fellBack = false;
+  if (!ids.size) {
+    const ownerRows = await ctx.tx.execute(sql`
+      SELECT id FROM users
+       WHERE tenant_id = ${ctx.tenantId}::uuid
+         AND deleted_at IS NULL
+         AND status = 'active'
+         AND 'owner' = ANY(roles)
+       LIMIT 5
+    `);
+    for (const row of ownerRows.rows as Array<{ id: string }>) ids.add(String(row.id));
+    fellBack = ids.size > 0;
+  }
+
+  if (!ids.size) {
     return { type: "create_notification", status: "skipped", detail: "no recipients" };
   }
 
-  const rows = userIds.map((uid) => ({
+  // Merge fields — the same {{token}} vocabulary the send_* actions use, so a
+  // rule author can write "SIP rejected for {{name}}" and get the client name.
+  const name = subjectDisplayName(ctx.record);
+  const tokens: Record<string, string> = { ...scalarVars(ctx.record), ...(await enrichmentVars(ctx)) };
+  if (name) {
+    tokens.client_name = name;
+    tokens.subject_name = name;
+    if (!tokens.name) tokens.name = name;
+  }
+
+  let title = renderTemplateText(String(config.title ?? "").trim(), tokens).trim() || "Workflow rule alert";
+  const body = renderTemplateText(String(config.body ?? ""), tokens).trim();
+
+  // The bell's whole job is "who is this about". If the rule author didn't put
+  // a token anywhere, append the client name rather than leaving it anonymous.
+  if (name && !title.includes(name) && !body.includes(name)) title = `${title} — ${name}`;
+
+  const moduleKey = subjectTypeToModule(ctx.subjectType);
+  const route = moduleKey ? MODULE_ROUTES[moduleKey] : undefined;
+  const fallbackLink = route
+    ? route.detail && ctx.subjectId
+      ? `${route.path}/${ctx.subjectId}`
+      : route.path
+    : "";
+  const linkUrl = renderTemplateText(String(config.linkUrl ?? ""), tokens).trim() || fallbackLink;
+
+  const rows = [...ids].map((uid) => ({
     tenantId: ctx.tenantId,
     userId: uid,
     kind: String(config.kind ?? "workflow.rule"),
-    title: String(config.title ?? "Workflow rule alert"),
-    body: String(config.body ?? ""),
-    linkUrl: String(config.linkUrl ?? ""),
+    title,
+    body: body || null,
+    linkUrl: linkUrl || null,
     severity: (config.severity as any) ?? "info",
+    meta: {
+      source: "workflow_rule",
+      subjectType: ctx.subjectType,
+      subjectId: ctx.subjectId,
+      subjectName: name || null,
+    },
   }));
   await ctx.tx.insert(notifications).values(rows);
-  return { type: "create_notification", status: "succeeded" };
+  return {
+    type: "create_notification",
+    status: "succeeded",
+    detail: `${rows.length} recipient(s)${fellBack ? " (fell back to firm owners)" : ""}${name ? ` · ${name}` : ""}`,
+  };
 }
 
 // ---------------------------------------------------------------------------

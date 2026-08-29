@@ -177,6 +177,20 @@ const Patch = z.object({
   // handler); anniversaryDate is a plain date column (accepts YYYY-MM-DD).
   onboardedAt: z.string().nullable().optional(),
   anniversaryDate: z.string().nullable().optional(),
+  // ── Fields the client-details card shows but the edit modal couldn't reach.
+  //    Free-text (not enums) where RTA imports supply arbitrary values, so an
+  //    imported record round-trips through the editor without being mangled.
+  maritalStatus: z.string().max(40).nullable().optional(),
+  motherName: z.string().max(200).nullable().optional(),
+  birthPlace: z.string().max(120).nullable().optional(),
+  mobileRelation: z.string().max(40).nullable().optional(),
+  emailRelation: z.string().max(40).nullable().optional(),
+  modeOfHolding: z.string().max(40).nullable().optional(),
+  householdType: z.string().max(40).nullable().optional(),
+  taxStatus: z.string().max(60).nullable().optional(),
+  kraName: z.string().max(120).nullable().optional(),
+  fatcaStatus: z.enum(["pending", "verified", "expired"]).nullable().optional(),
+  fatcaExpiryAt: z.string().nullable().optional(),
 });
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

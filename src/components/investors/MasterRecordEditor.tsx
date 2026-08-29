@@ -70,12 +70,18 @@ export function MasterRecordEditor({ investor, flags }: { investor: Investor; fl
   const [f, setF] = useState({
     name: investor.name ?? "",
     nameAsPerPan: investor.nameAsPerPan ?? "",
+    maritalStatus: investor.maritalStatus ?? "",
+    motherName: investor.motherName ?? "",
+    birthPlace: investor.birthPlace ?? "",
+    aadhaarLast4: investor.aadhaarLast4 ?? "",
     dob: investor.dob ? String(investor.dob).slice(0, 10) : "",
     gender: investor.gender ?? "",
     phone: investor.phone ?? "",
     alternatePhone: investor.alternatePhone ?? "",
     whatsappPhone: investor.whatsappPhone ?? "",
     email: investor.email ?? "",
+    mobileRelation: investor.mobileRelation ?? "",
+    emailRelation: investor.emailRelation ?? "",
     line1: addr.line1 ?? "",
     city: addr.city ?? "",
     state: addr.state ?? "",
@@ -84,6 +90,8 @@ export function MasterRecordEditor({ investor, flags }: { investor: Investor; fl
     occupation: investor.occupation ?? "",
     incomeRange: investor.incomeRange ?? "",
     employerName: investor.employerName ?? "",
+    modeOfHolding: investor.modeOfHolding ?? "",
+    householdType: investor.householdType ?? "",
     investorCategory: investor.investorCategory ?? "individual",
     segmentTag: investor.segmentTag ?? "",
     clientCategory: investor.clientCategory ?? "",
@@ -96,6 +104,15 @@ export function MasterRecordEditor({ investor, flags }: { investor: Investor; fl
     rmId: investor.rmId ?? "",
     kycStatus: investor.kycStatus ?? "pending",
     riskProfile: investor.riskProfile ?? "",
+    residencyStatus: investor.residencyStatus ?? "",
+    taxStatus: investor.taxStatus ?? "",
+    panAadhaarLinkStatus: investor.panAadhaarLinkStatus ?? "",
+    ckycNumber: investor.ckycNumber ?? "",
+    ckycExpiryAt: investor.ckycExpiryAt ? String(investor.ckycExpiryAt).slice(0, 10) : "",
+    kycValidatedAt: investor.kycValidatedAt ? String(investor.kycValidatedAt).slice(0, 10) : "",
+    kraName: investor.kraName ?? "",
+    fatcaStatus: investor.fatcaStatus ?? "",
+    fatcaExpiryAt: investor.fatcaExpiryAt ? String(investor.fatcaExpiryAt).slice(0, 10) : "",
     nominees: seedNominees,
     bankAccounts: seedBanks,
     bseUccCode: investor.bseUccCode ?? "",
@@ -147,6 +164,12 @@ export function MasterRecordEditor({ investor, flags }: { investor: Investor; fl
       const payload: any = {
         name: f.name,
         nameAsPerPan: f.nameAsPerPan || null,
+        maritalStatus: f.maritalStatus || null,
+        motherName: f.motherName || null,
+        birthPlace: f.birthPlace || null,
+        // 4 digits or nothing — a half-typed value is dropped rather than
+        // failing the whole save with a schema error.
+        aadhaarLast4: f.aadhaarLast4 ? (/^\d{4}$/.test(f.aadhaarLast4) ? f.aadhaarLast4 : undefined) : null,
         dob: f.dob || null,
         gender: inSet(f.gender, ["M", "F", "O"]) ?? null,
         phone: f.phone || null,
@@ -163,6 +186,19 @@ export function MasterRecordEditor({ investor, flags }: { investor: Investor; fl
         occupation: f.occupation || null,
         incomeRange: f.incomeRange || null,
         employerName: f.employerName || null,
+        mobileRelation: f.mobileRelation || null,
+        emailRelation: f.emailRelation || null,
+        modeOfHolding: f.modeOfHolding || null,
+        householdType: f.householdType || null,
+        residencyStatus: inSet(f.residencyStatus, ["indian_resident", "nri", "oci", "pio", "foreign_national"]) ?? null,
+        taxStatus: f.taxStatus || null,
+        panAadhaarLinkStatus: inSet(f.panAadhaarLinkStatus, ["linked", "not_linked", "pending", "not_applicable"]) ?? null,
+        ckycNumber: f.ckycNumber || null,
+        ckycExpiryAt: f.ckycExpiryAt || null,
+        kycValidatedAt: f.kycValidatedAt || null,
+        kraName: f.kraName || null,
+        fatcaStatus: inSet(f.fatcaStatus, ["pending", "verified", "expired"]) ?? null,
+        fatcaExpiryAt: f.fatcaExpiryAt || null,
         // Treat the "—" placeholder (and "") as empty so the API's enum
         // validation never rejects the literal dash ("invalid body").
         investorCategory: inSet(f.investorCategory, ["individual", "huf", "corporate", "company", "trust", "nri", "minor", "other"]),
@@ -284,6 +320,12 @@ export function MasterRecordEditor({ investor, flags }: { investor: Investor; fl
                     </SelectField>
                   </F>
                   <div className="grid grid-cols-2 gap-2">
+                    <F label="Marital status"><input value={f.maritalStatus} onChange={(e) => set("maritalStatus", e.target.value)} placeholder="e.g. Married" className="input-base" /></F>
+                    <F label="Mother’s name"><input value={f.motherName} onChange={(e) => set("motherName", e.target.value)} className="input-base" /></F>
+                    <F label="Place of birth"><input value={f.birthPlace} onChange={(e) => set("birthPlace", e.target.value)} className="input-base" /></F>
+                    <F label="Aadhaar (last 4)"><input value={f.aadhaarLast4} onChange={(e) => set("aadhaarLast4", e.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="1234" inputMode="numeric" className="input-base font-mono" /></F>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
                     <F label="Client since"><DateField value={f.onboardedAt} onChange={(e) => set("onboardedAt", e.target.value)} className="w-full" /></F>
                     <F label="Anniversary"><DateField value={f.anniversaryDate} onChange={(e) => set("anniversaryDate", e.target.value)} className="w-full" /></F>
                   </div>
@@ -296,6 +338,10 @@ export function MasterRecordEditor({ investor, flags }: { investor: Investor; fl
                   {flags.showPhone && <F label="Alternate mobile"><input value={f.alternatePhone} onChange={(e) => set("alternatePhone", e.target.value)} className="input-base" /></F>}
                   {flags.showPhone && <F label="WhatsApp"><input value={f.whatsappPhone} onChange={(e) => set("whatsappPhone", e.target.value)} className="input-base" /></F>}
                   {flags.showEmail && <F label="Email"><input value={f.email} onChange={(e) => set("email", e.target.value)} className="input-base" /></F>}
+                  <div className="grid grid-cols-2 gap-2">
+                    <F label="Mobile belongs to"><input value={f.mobileRelation} onChange={(e) => set("mobileRelation", e.target.value)} placeholder="self / spouse / …" className="input-base" /></F>
+                    <F label="Email belongs to"><input value={f.emailRelation} onChange={(e) => set("emailRelation", e.target.value)} placeholder="self / spouse / …" className="input-base" /></F>
+                  </div>
                   {flags.showAddress && (
                     <>
                       <F label="Address line"><input value={f.line1} onChange={(e) => set("line1", e.target.value)} className="input-base" /></F>
@@ -332,6 +378,10 @@ export function MasterRecordEditor({ investor, flags }: { investor: Investor; fl
                       </SelectField>
                     </F>
                   )}
+                  <div className="grid grid-cols-2 gap-2">
+                    <F label="Mode of holding"><input value={f.modeOfHolding} onChange={(e) => set("modeOfHolding", e.target.value)} placeholder="single / joint / …" className="input-base" /></F>
+                    <F label="Household type"><input value={f.householdType} onChange={(e) => set("householdType", e.target.value)} placeholder="Family / Individual" className="input-base" /></F>
+                  </div>
                   {flags.showRm && (
                     <F label="Assigned RM"><RmSelector value={f.rmId || null} onChange={(id) => set("rmId", id ?? "")} placeholder="— Unassigned —" /></F>
                   )}
@@ -354,6 +404,29 @@ export function MasterRecordEditor({ investor, flags }: { investor: Investor; fl
                       </SelectField>
                     </F>
                   )}
+                  <div className="grid grid-cols-2 gap-2">
+                    <F label="Residential status">
+                      <SelectField value={f.residencyStatus} onChange={(e) => set("residencyStatus", e.target.value)} className="w-full" placeholder="Select">
+                        <option value="">Select</option>{[["indian_resident", "Indian resident"], ["nri", "NRI"], ["oci", "OCI"], ["pio", "PIO"], ["foreign_national", "Foreign national"]].map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                      </SelectField>
+                    </F>
+                    <F label="Tax status"><input value={f.taxStatus} onChange={(e) => set("taxStatus", e.target.value)} className="input-base" /></F>
+                    <F label="PAN–Aadhaar link">
+                      <SelectField value={f.panAadhaarLinkStatus} onChange={(e) => set("panAadhaarLinkStatus", e.target.value)} className="w-full" placeholder="Select">
+                        <option value="">Select</option>{[["linked", "Linked"], ["not_linked", "Not linked"], ["pending", "Pending"], ["not_applicable", "Not applicable"]].map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                      </SelectField>
+                    </F>
+                    <F label="KRA"><input value={f.kraName} onChange={(e) => set("kraName", e.target.value)} className="input-base" /></F>
+                    <F label="CKYC number"><input value={f.ckycNumber} onChange={(e) => set("ckycNumber", e.target.value)} className="input-base font-mono" /></F>
+                    <F label="CKYC expiry"><DateField value={f.ckycExpiryAt} onChange={(e) => set("ckycExpiryAt", e.target.value)} className="w-full" /></F>
+                    <F label="KYC validated on"><DateField value={f.kycValidatedAt} onChange={(e) => set("kycValidatedAt", e.target.value)} className="w-full" /></F>
+                    <F label="FATCA status">
+                      <SelectField value={f.fatcaStatus} onChange={(e) => set("fatcaStatus", e.target.value)} className="w-full" placeholder="Select">
+                        <option value="">Select</option>{["pending", "verified", "expired"].map((c) => <option key={c} value={c}>{c}</option>)}
+                      </SelectField>
+                    </F>
+                    <F label="FATCA expiry"><DateField value={f.fatcaExpiryAt} onChange={(e) => set("fatcaExpiryAt", e.target.value)} className="w-full" /></F>
+                  </div>
                   <div className="grid grid-cols-2 gap-2">
                     <F label="UCC (BSE)"><input value={f.bseUccCode} onChange={(e) => set("bseUccCode", e.target.value)} className="input-base" /></F>
                     <F label="CAN (NSE)"><input value={f.nseCanCode} onChange={(e) => set("nseCanCode", e.target.value)} className="input-base" /></F>

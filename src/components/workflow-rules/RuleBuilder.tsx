@@ -1506,13 +1506,13 @@ function ActionConfigEditor({
           <input
             value={String(c.title ?? "")}
             onChange={(e) => set({ title: e.target.value })}
-            placeholder="Notification title"
+            placeholder="Notification title — e.g. SIP rejected for {{name}}"
             className="input-base text-xs w-full"
           />
           <textarea
             value={String(c.body ?? "")}
             onChange={(e) => set({ body: e.target.value })}
-            placeholder="Notification body"
+            placeholder="Notification body — {{name}}, {{rm_name}}, or any field of the record"
             rows={2}
             className="input-base text-xs w-full"
           />
@@ -1528,6 +1528,10 @@ function ActionConfigEditor({
             />
             Notify subject's RM
           </label>
+          <p className="text-[10px] text-muted-foreground">
+            Tokens like <code>{"{{name}}"}</code> render the client/lead name. If you use none, the
+            name is appended to the title automatically, and the alert links to the record.
+          </p>
         </div>
       );
     default:
