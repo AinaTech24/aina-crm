@@ -10,21 +10,28 @@
  * (falling back to the firm's owner/compliance user). Cadence-agnostic: it reads
  * next_review_at, so it works for the presets and for any custom day count.
  *
+ * It also raises an in-app (bell) notification naming the client, so the RM is
+ * told without having to go looking at the task list. The task is raised a week
+ * ahead as prep; the notification fires on/after the due date itself — i.e. a
+ * client reviewed today with a 100-day cadence pings the RM 100 days later.
+ *
  * Idempotent — the task carries a marker keyed on the client + the review date,
- * so re-running never duplicates, and the NEXT cycle gets its own task because
- * the date changes.
+ * and the notification is keyed on the same pair in its meta, so re-running
+ * never duplicates and the NEXT cycle gets its own pair because the date moves.
  */
 
 import { sql } from "drizzle-orm";
 import { v4 as uuid } from "uuid";
 import { withSystem, withTenant } from "@/db/client";
 import { tasks } from "@/db/schema";
+import { createNotification } from "@/lib/notifications/create";
 
 /** How many days ahead of the due date to raise the task. */
 const LEAD_DAYS = 7;
 
 export async function runReviewDueReminder(): Promise<number> {
   let created = 0;
+  let notified = 0;
 
   const tenantIds = await withSystem(async (tx) => {
     const r = await tx.execute(
@@ -38,7 +45,10 @@ export async function runReviewDueReminder(): Promise<number> {
       await withTenant(tenantId, async (tx) => {
         // Clients whose review falls due within the lead window (or is overdue).
         const due = await tx.execute(sql`
-          SELECT i.id, i.name, i.rm_id, i.next_review_at::date AS due_on
+          SELECT i.id, i.name, i.rm_id,
+                 to_char(i.next_review_at, 'YYYY-MM-DD') AS due_on,
+                 to_char(i.last_review_at, 'YYYY-MM-DD') AS last_on,
+                 (i.next_review_at::date <= current_date) AS due_now
             FROM investors i
            WHERE i.tenant_id = ${tenantId}::uuid
              AND i.deleted_at IS NULL
@@ -68,6 +78,40 @@ export async function runReviewDueReminder(): Promise<number> {
              WHERE tenant_id = ${tenantId}::uuid
                AND COALESCE(remarks,'') LIKE ${`${marker}%`}
              LIMIT 1`);
+
+          // The bell alert is raised independently of the task: an existing
+          // task must not swallow the notification (and vice versa).
+          if (row.due_now) {
+            const dupe = await tx.execute(sql`
+              SELECT 1 FROM notifications
+               WHERE tenant_id = ${tenantId}::uuid
+                 AND user_id = ${assigneeId}::uuid
+                 AND kind = 'review.due'
+                 AND meta->>'investorId' = ${row.id}
+                 AND meta->>'dueOn' = ${String(row.due_on)}
+               LIMIT 1`);
+            if (!dupe.rows.length) {
+              await createNotification(tx, {
+                tenantId,
+                userId: assigneeId,
+                kind: "review.due",
+                title: `Portfolio review due — ${row.name}`,
+                body: row.last_on
+                  ? `Last reviewed on ${row.last_on}; the cadence falls due on ${row.due_on}.`
+                  : `The review cadence falls due on ${row.due_on}.`,
+                linkUrl: `/dashboard/investors/${row.id}`,
+                severity: "warning",
+                meta: {
+                  source: "review_due",
+                  investorId: row.id,
+                  investorName: row.name,
+                  dueOn: String(row.due_on),
+                },
+              });
+              notified++;
+            }
+          }
+
           if (exists.rows.length) continue;
 
           await tx.insert(tasks).values({
@@ -94,6 +138,8 @@ export async function runReviewDueReminder(): Promise<number> {
     }
   }
 
-  if (created) console.log(`[review-due] raised ${created} review task(s).`);
+  if (created || notified) {
+    console.log(`[review-due] raised ${created} review task(s), ${notified} notification(s).`);
+  }
   return created;
 }

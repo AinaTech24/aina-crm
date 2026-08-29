@@ -13,7 +13,7 @@ import { handleApiError } from "@/lib/api/error-handler";
  */
 
 import { NextRequest } from "next/server";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import * as XLSX from "xlsx";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
@@ -22,6 +22,7 @@ import { investors, users } from "@/db/schema";
 import { loadTenantLicense } from "@/lib/auth/license";
 import { isFieldAllowed } from "@/lib/auth/field-gate";
 import { buildInvestorWhere } from "@/lib/investors/list-filters";
+import { investorScopeCondition } from "@/lib/investors/access";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
@@ -39,8 +40,9 @@ export async function GET(req: NextRequest) {
   try {
     const session = await requireSession();
     // Bulk PII export is sensitive — caller must have investor visibility.
-    // (RMs still only export their assigned book; buildInvestorWhere scopes them.
-    //  Marketing & other roles with no investor capability are blocked here.)
+    // Marketing & other roles with no investor capability are blocked here; the
+    // row scope below then limits an RM to their own book. (The filter helper
+    // does NOT scope by role — it only translates the URL filters.)
     requireAny(
       session.roles,
       ["investor.bulk_export", "investor.view.all", "investor.view.assigned"],
@@ -84,7 +86,9 @@ export async function GET(req: NextRequest) {
     const rows = await withTenant(
       session.tenantId,
       async (tx) => {
-        const where = buildInvestorWhere(sp, session.userId);
+        const scope = investorScopeCondition(session);
+        const filters = buildInvestorWhere(sp, session.userId);
+        const where = scope ? and(filters as any, scope) : filters;
         const r = await tx
           .select({ inv: investors, rmName: users.name })
           .from(investors)

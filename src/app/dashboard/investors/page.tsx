@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { Plus, FileDown, LayoutGrid, List, FileUp } from "lucide-react";
-import { asc, desc, sql } from "drizzle-orm";
+import { and, asc, desc, sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { investors } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
+import { investorScopeCondition, requireInvestorView } from "@/lib/investors/access";
 import { RecomputeTiersButton } from "@/components/investors/RecomputeTiersButton";
 import { CompactFilterBar } from "@/components/common/CompactFilterBar";
 import { dateRangeFilter } from "@/lib/filters/date-range";
@@ -89,6 +90,9 @@ export default async function InvestorsPage({
   const view = sp.view === "kanban" ? "kanban" : "table";
   const userId = session.userId;
   // Only firm-wide viewers (owner / branch_head) get the "RM" book-slice filter.
+  // Client data is capability-gated: marketing / team members with no
+  // investor capability never reach the list (same rule the API enforces).
+  requireInvestorView(session);
   const canViewAll = can(session.roles, "investor.view.all", session.permissions);
 
   // Query string for the Excel export link — carries the current filters so the
@@ -132,7 +136,13 @@ export default async function InvestorsPage({
   const { rows, total, kanbanRows, rms, allIds, dupCount } = await withTenant(session.tenantId, async (tx) => {
     // Filters live in one shared helper so the page and the Excel export apply
     // identical WHERE logic. Tenant isolation is handled by RLS.
-    const where = buildInvestorWhere(sp, userId);
+    // Row scope: an RM sees only their own book, a branch head only their
+    // branch. RLS isolates by TENANT only, so without this every RM saw the
+    // whole firm’s client list (and could export it) — the JSON API scoped
+    // correctly but this page did not.
+    const scope = investorScopeCondition(session);
+    const filters = buildInvestorWhere(sp, userId);
+    const where = scope ? and(filters as any, scope) : filters;
 
     // Project only the columns the table + kanban actually read — the table
     // never needs the heavy/sensitive jsonb (kycData, nominees, crossSell,

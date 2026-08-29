@@ -16,6 +16,7 @@ import { require as requireCap, can } from "@/lib/auth/rbac";
 import { assertActiveLicense, assertModuleEnabled, assertInvestorQuota } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { buildInvestorConditions } from "@/lib/investors/list-filters";
+import { investorScopeCondition } from "@/lib/investors/access";
 import { healthFields } from "@/lib/investors/health";
 import { NomineesArray } from "@/lib/investors/nominee";
 import { ReferralsArray } from "@/lib/investors/referral";
@@ -147,13 +148,11 @@ export async function GET(req: NextRequest) {
         const conditions: any[] = buildInvestorConditions(sp, session.userId);
         // Never list records merged into another client (the retired duplicate).
         conditions.push(isNull(investors.mergedIntoId));
-        // Scope: branch heads → their whole branch; assigned-only RMs → their book.
-        const branchScoped =
-          !session.roles.includes("owner") && session.roles.includes("branch_head") && !!session.branchId;
-        if (!seesAll) {
-          if (branchScoped) conditions.push(eq(investors.branchId, session.branchId!));
-          else if (seesAssigned) conditions.push(eq(investors.rmId, session.userId));
-        }
+        // Scope: branch heads → their whole branch; assigned-only RMs → their
+        // book. Shared with the list page and the Excel export so all three
+        // return the same rows.
+        const scope = investorScopeCondition(session);
+        if (scope) conditions.push(scope);
         const where = and(...conditions);
         const rows = await tx
           .select()
