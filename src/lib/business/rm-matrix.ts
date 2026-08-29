@@ -55,7 +55,7 @@ function monthEndLabel(period: string): string {
 
 /** Per-(kind,column) sum predicate over business_entry_lines (alias `bel`). */
 const BE_COND: Record<string, SQL[]> = {
-  sip: [sql`bel.txn_type = 'sip'`, sql`bel.txn_type = 'sip_stop'`],
+  sip: [sql`bel.txn_type IN ('sip','sip_topup')`, sql`bel.txn_type = 'sip_stop'`],
   equity_lumpsum: [
     sql`bel.asset_class = 'equity' AND bel.txn_type IN ('lumpsum','additional_purchase')`,
     sql`bel.asset_class = 'equity' AND bel.txn_type = 'redemption'`,

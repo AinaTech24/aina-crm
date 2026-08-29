@@ -16,7 +16,7 @@ import { classifyAssetClass, type AssetClass, ASSET_CLASS_ORDER, ASSET_CLASS_LAB
  * (money into the target asset class); `sip_stop` is a registration event, not
  * a money movement, so it touches neither column.
  */
-const TXN_IN = new Set(["sip", "lumpsum", "additional_purchase", "switch", "stp"]);
+const TXN_IN = new Set(["sip", "sip_topup", "lumpsum", "additional_purchase", "switch", "stp"]);
 const TXN_OUT = new Set(["redemption", "swp"]);
 
 export const PRODUCT_GROUPS: Array<{ key: string; label: string; types: string[] }> = [

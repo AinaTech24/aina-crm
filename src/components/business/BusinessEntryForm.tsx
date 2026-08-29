@@ -43,32 +43,33 @@ interface ProductConfig {
 }
 const PRODUCT_CONFIG: Record<string, ProductConfig> = {
   mutual_fund: { schemeLabel: "Scheme", schemePlaceholder: "Search catalog or type a name…", catalog: true,
-    txnTypes: ["lumpsum", "additional_purchase", "sip", "sip_stop", "switch", "stp", "swp", "redemption"] },
+    txnTypes: ["lumpsum", "additional_purchase", "sip", "sip_topup", "sip_stop", "switch", "stp", "swp", "redemption", "other"] },
   // Direct Equity is bought/sold, not SIP'd/switched — show Buy/Sell, not the MF set.
   direct_equity: { schemeLabel: "Stock / scrip", schemePlaceholder: "Stock name or symbol (e.g. RELIANCE)…", catalog: false,
-    txnTypes: ["lumpsum", "additional_purchase", "redemption"],
+    txnTypes: ["lumpsum", "additional_purchase", "redemption", "other"],
     txnLabels: { lumpsum: "Buy", additional_purchase: "Buy (add-on)", redemption: "Sell" },
     defaultAssetClass: "equity" },
   pms: { schemeLabel: "Strategy", schemePlaceholder: "PMS strategy name…", catalog: false,
-    txnTypes: ["lumpsum", "additional_purchase", "redemption"], defaultAssetClass: "equity" },
+    txnTypes: ["lumpsum", "additional_purchase", "redemption", "other"], defaultAssetClass: "equity" },
   aif: { schemeLabel: "Scheme / fund", schemePlaceholder: "AIF scheme name…", catalog: false,
-    txnTypes: ["lumpsum", "additional_purchase", "redemption"], defaultAssetClass: "other" },
+    txnTypes: ["lumpsum", "additional_purchase", "redemption", "other"], defaultAssetClass: "other" },
   sif: { schemeLabel: "Strategy", schemePlaceholder: "SIF strategy name…", catalog: false,
-    txnTypes: ["lumpsum", "additional_purchase", "sip", "sip_stop", "redemption"], defaultAssetClass: "equity" },
+    txnTypes: ["lumpsum", "additional_purchase", "sip", "sip_topup", "sip_stop", "redemption", "other"], defaultAssetClass: "equity" },
   bond: { schemeLabel: "Bond / instrument", schemePlaceholder: "Bond name / ISIN…", catalog: false,
-    txnTypes: ["lumpsum", "redemption"], defaultAssetClass: "debt", lockAssetClass: true },
+    txnTypes: ["lumpsum", "redemption", "other"], defaultAssetClass: "debt", lockAssetClass: true },
   ncd: { schemeLabel: "NCD / instrument", schemePlaceholder: "NCD name / ISIN…", catalog: false,
-    txnTypes: ["lumpsum", "redemption"], defaultAssetClass: "debt", lockAssetClass: true },
+    txnTypes: ["lumpsum", "redemption", "other"], defaultAssetClass: "debt", lockAssetClass: true },
   p2p: { schemeLabel: "Platform / plan", schemePlaceholder: "P2P platform / plan…", catalog: false,
-    txnTypes: ["lumpsum", "additional_purchase", "redemption"], defaultAssetClass: "debt" },
+    txnTypes: ["lumpsum", "additional_purchase", "redemption", "other"], defaultAssetClass: "debt" },
   las: { schemeLabel: "Facility", schemePlaceholder: "Loan-against-securities facility…", catalog: false,
-    txnTypes: ["lumpsum", "redemption"], defaultAssetClass: "other" },
+    txnTypes: ["lumpsum", "redemption", "other"], defaultAssetClass: "other" },
   other: { schemeLabel: "Item", schemePlaceholder: "Product / item name…", catalog: false,
-    txnTypes: ["lumpsum", "additional_purchase", "sip", "sip_stop", "redemption"] },
+    txnTypes: ["lumpsum", "additional_purchase", "sip", "sip_topup", "sip_stop", "redemption", "other"] },
 };
 const productCfg = (pt: string): ProductConfig => PRODUCT_CONFIG[pt] ?? PRODUCT_CONFIG.mutual_fund;
 const TXN_OPTS: [string, string][] = [
-  ["lumpsum", "Lumpsum"], ["additional_purchase", "Additional Purchase"], ["sip", "SIP"], ["sip_stop", "SIP Stop"],
+  ["lumpsum", "Lumpsum"], ["additional_purchase", "Additional Purchase"], ["sip", "SIP"],
+  ["sip_topup", "SIP Top-Up"], ["sip_stop", "SIP Stop"], ["other", "Others"],
   ["switch", "Switch"], ["stp", "STP"], ["swp", "SWP"], ["redemption", "Redemption"],
 ];
 const FREQ_OPTS: [string, string][] = [

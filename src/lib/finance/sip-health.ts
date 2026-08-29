@@ -58,7 +58,7 @@ export async function loadSipHealth(tx: Tx, period: string): Promise<SipHealth> 
   const fresh = await one(tx, sql`
     SELECT COALESCE(SUM(bel.amount),0)::numeric AS amt, COUNT(*)::int AS cnt
       FROM business_entries be JOIN business_entry_lines bel ON bel.entry_id = be.id
-     WHERE bel.txn_type = 'sip' AND be.status IN ('confirmed','emailed')
+     WHERE bel.txn_type IN ('sip','sip_topup') AND be.status IN ('confirmed','emailed')
        AND be.business_date >= ${start} AND be.business_date < ${end}
   `);
 
@@ -67,14 +67,14 @@ export async function loadSipHealth(tx: Tx, period: string): Promise<SipHealth> 
     SELECT
       COALESCE(SUM(bel.amount) FILTER (WHERE NOT EXISTS (
         SELECT 1 FROM business_entries be2 JOIN business_entry_lines bel2 ON bel2.entry_id = be2.id
-         WHERE be2.investor_id = be.investor_id AND bel2.txn_type = 'sip' AND be2.business_date < ${start}
+         WHERE be2.investor_id = be.investor_id AND bel2.txn_type IN ('sip','sip_topup') AND be2.business_date < ${start}
       )), 0)::numeric AS new_amt,
       COALESCE(SUM(bel.amount) FILTER (WHERE EXISTS (
         SELECT 1 FROM business_entries be2 JOIN business_entry_lines bel2 ON bel2.entry_id = be2.id
-         WHERE be2.investor_id = be.investor_id AND bel2.txn_type = 'sip' AND be2.business_date < ${start}
+         WHERE be2.investor_id = be.investor_id AND bel2.txn_type IN ('sip','sip_topup') AND be2.business_date < ${start}
       )), 0)::numeric AS existing_amt
       FROM business_entries be JOIN business_entry_lines bel ON bel.entry_id = be.id
-     WHERE bel.txn_type = 'sip' AND be.status IN ('confirmed','emailed')
+     WHERE bel.txn_type IN ('sip','sip_topup') AND be.status IN ('confirmed','emailed')
        AND be.business_date >= ${start} AND be.business_date < ${end}
   `);
 

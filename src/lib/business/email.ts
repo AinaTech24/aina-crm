@@ -7,7 +7,7 @@
 import { emailLogoHeaderHtml } from "@/lib/comms/email-logo";
 
 const TXN_LABEL: Record<string, string> = {
-  sip: "SIP", lumpsum: "Lumpsum", additional_purchase: "Additional Purchase",
+  sip: "SIP", sip_topup: "SIP Top-Up", other: "Others", lumpsum: "Lumpsum", additional_purchase: "Additional Purchase",
   switch: "Switch", stp: "STP", swp: "SWP", redemption: "Redemption",
 };
 const PRODUCT_LABEL: Record<string, string> = {

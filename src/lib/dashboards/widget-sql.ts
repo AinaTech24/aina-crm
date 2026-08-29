@@ -34,7 +34,7 @@ const rmTask = (rmId?: string) => (rmId ? sql`AND assignee_id = ${rmId}::uuid` :
  * SWP, and zero for internal switches/STP (not fresh money). Reused by the
  * net-sales widgets so they read the Business Entries ledger, not the RTA feed.
  */
-const BE_NET = sql`CASE WHEN l.txn_type IN ('sip','lumpsum','additional_purchase') THEN l.amount::numeric WHEN l.txn_type IN ('redemption','swp') THEN -l.amount::numeric ELSE 0 END`;
+const BE_NET = sql`CASE WHEN l.txn_type IN ('sip','sip_topup','lumpsum','additional_purchase') THEN l.amount::numeric WHEN l.txn_type IN ('redemption','swp') THEN -l.amount::numeric ELSE 0 END`;
 
 export const WIDGET_SQL: Record<string, WidgetSqlDef> = {
   // ── KPIs ──────────────────────────────────────────────────────────────
@@ -55,7 +55,7 @@ export const WIDGET_SQL: Record<string, WidgetSqlDef> = {
   kpi_gross_business_mtd: {
     view: { kind: "kpi", valueKey: "value", format: "inr" },
     // Gross booked business (all purchase legs) this month, from Business Entries.
-    run: (s) => s`SELECT COALESCE(SUM(l.amount::numeric) FILTER (WHERE l.txn_type IN ('sip','lumpsum','additional_purchase','switch','stp')),0)::numeric AS value
+    run: (s) => s`SELECT COALESCE(SUM(l.amount::numeric) FILTER (WHERE l.txn_type IN ('sip','sip_topup','lumpsum','additional_purchase','switch','stp')),0)::numeric AS value
       FROM business_entry_lines l JOIN business_entries e ON e.id = l.entry_id
       WHERE e.status <> 'cancelled' AND e.business_date >= date_trunc('month', now())::date`,
   },
@@ -100,7 +100,7 @@ export const WIDGET_SQL: Record<string, WidgetSqlDef> = {
     // Business mix by product type (MF / PMS / AIF / …) — last 90 days, from
     // the Business Entries ledger.
     run: (s) => s`SELECT e.product_type AS label,
-      COALESCE(SUM(l.amount::numeric) FILTER (WHERE l.txn_type IN ('sip','lumpsum','additional_purchase','switch','stp')),0)::numeric AS value
+      COALESCE(SUM(l.amount::numeric) FILTER (WHERE l.txn_type IN ('sip','sip_topup','lumpsum','additional_purchase','switch','stp')),0)::numeric AS value
       FROM business_entry_lines l JOIN business_entries e ON e.id = l.entry_id
       WHERE e.status <> 'cancelled' AND e.business_date >= (now() - interval '90 days')::date
       GROUP BY e.product_type ORDER BY value DESC`,

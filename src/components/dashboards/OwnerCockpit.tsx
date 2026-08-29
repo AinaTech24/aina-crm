@@ -193,8 +193,8 @@ async function OwnerCockpitBody({
       // business) so it stays on sip_rejections.
       const business = await tx.execute(sql`
         SELECT
-          COUNT(*) FILTER (WHERE l.txn_type = 'sip')::int AS sip_added_count,
-          COALESCE(SUM(l.amount::numeric) FILTER (WHERE l.txn_type = 'sip'), 0)::numeric AS sip_added_amt,
+          COUNT(*) FILTER (WHERE l.txn_type IN ('sip','sip_topup'))::int AS sip_added_count,
+          COALESCE(SUM(l.amount::numeric) FILTER (WHERE l.txn_type IN ('sip','sip_topup')), 0)::numeric AS sip_added_amt,
           COUNT(*) FILTER (WHERE l.txn_type IN ('lumpsum','additional_purchase'))::int AS lumpsum_count,
           COALESCE(SUM(l.amount::numeric) FILTER (WHERE l.txn_type IN ('lumpsum','additional_purchase')), 0)::numeric AS lumpsum_amt,
           COALESCE(SUM(l.amount::numeric) FILTER (WHERE l.txn_type IN ('redemption','swp')), 0)::numeric AS redemption_amt,
@@ -227,7 +227,7 @@ async function OwnerCockpitBody({
             AND e.business_date <= ${endOfPeriodISO}::date
         )
         SELECT
-          COALESCE(SUM(amt) FILTER (WHERE mf AND txn_type = 'sip'), 0)::numeric AS new_sip,
+          COALESCE(SUM(amt) FILTER (WHERE mf AND txn_type IN ('sip','sip_topup')), 0)::numeric AS new_sip,
           COALESCE(SUM(amt) FILTER (WHERE mf AND txn_type = 'sip_stop'), 0)::numeric AS sip_stop,
           COALESCE(SUM(amt) FILTER (WHERE mf AND asset_class = 'equity' AND txn_type IN ('lumpsum','additional_purchase','switch','stp')), 0)::numeric AS eq_pur,
           COALESCE(SUM(amt) FILTER (WHERE mf AND ((txn_type IN ('redemption','swp') AND asset_class = 'equity') OR (txn_type IN ('switch','stp') AND from_asset_class = 'equity'))), 0)::numeric AS eq_red,
@@ -359,7 +359,7 @@ async function OwnerCockpitBody({
         SELECT days.d::text AS day,
           COALESCE(SUM(
             CASE
-              WHEN l.txn_type IN ('sip','lumpsum','additional_purchase') THEN l.amount::numeric
+              WHEN l.txn_type IN ('sip','sip_topup','lumpsum','additional_purchase') THEN l.amount::numeric
               WHEN l.txn_type IN ('redemption','swp') THEN -l.amount::numeric
               ELSE 0
             END

@@ -327,7 +327,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
               : sql`e.business_date >= date_trunc('month', now())`;
           const r = await tx.execute(sql`
             SELECT
-              COALESCE(SUM(l.amount::numeric) FILTER (WHERE l.txn_type = 'sip'),0)::numeric AS sip_added,
+              COALESCE(SUM(l.amount::numeric) FILTER (WHERE l.txn_type IN ('sip','sip_topup')),0)::numeric AS sip_added,
               COALESCE(SUM(l.amount::numeric) FILTER (WHERE l.txn_type IN ('lumpsum','additional_purchase')),0)::numeric AS lumpsum,
               COALESCE(SUM(l.amount::numeric) FILTER (WHERE l.txn_type IN ('redemption','swp')),0)::numeric AS redemption
             FROM business_entry_lines l JOIN business_entries e ON e.id = l.entry_id
@@ -365,7 +365,7 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [
               ) AS m
             )
             SELECT to_char(months.m, 'Mon YYYY') AS label,
-              COALESCE(SUM(l.amount::numeric) FILTER (WHERE l.txn_type = 'sip'), 0)::numeric AS sip,
+              COALESCE(SUM(l.amount::numeric) FILTER (WHERE l.txn_type IN ('sip','sip_topup')), 0)::numeric AS sip,
               COALESCE(SUM(l.amount::numeric) FILTER (WHERE l.txn_type IN ('lumpsum','additional_purchase')), 0)::numeric AS lumpsum,
               COALESCE(SUM(l.amount::numeric) FILTER (WHERE l.txn_type IN ('redemption','swp')), 0)::numeric AS redemption
             FROM months

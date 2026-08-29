@@ -46,7 +46,7 @@ export async function getBusinessSummary(
       COALESCE(SUM(l.amount), 0)::numeric AS gross,
       COUNT(DISTINCT e.id)::int AS entries,
       COUNT(DISTINCT e.investor_id)::int AS clients,
-      COALESCE(SUM(l.amount) FILTER (WHERE l.txn_type = 'sip'), 0)::numeric AS sip_amount
+      COALESCE(SUM(l.amount) FILTER (WHERE l.txn_type IN ('sip','sip_topup')), 0)::numeric AS sip_amount
     ${base}
   `)).rows[0] as any;
 

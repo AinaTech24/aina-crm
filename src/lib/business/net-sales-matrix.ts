@@ -65,7 +65,7 @@ export async function loadNetSalesMatrix(tx: Tx, productType: string, period: st
   const res = await tx.execute(sql`
     SELECT COALESCE(NULLIF(be.platform, ''), '(Unspecified)') AS platform,
       COALESCE(bel.asset_class, 'other') AS asset_class,
-      COALESCE(SUM(bel.amount) FILTER (WHERE bel.txn_type IN ('lumpsum','additional_purchase','sip','switch','stp')), 0)::numeric AS gross,
+      COALESCE(SUM(bel.amount) FILTER (WHERE bel.txn_type IN ('lumpsum','additional_purchase','sip','sip_topup','switch','stp')), 0)::numeric AS gross,
       COALESCE(SUM(bel.amount) FILTER (WHERE bel.txn_type IN ('redemption','swp')), 0)::numeric AS redemption
     FROM business_entries be
     JOIN business_entry_lines bel ON bel.entry_id = be.id
