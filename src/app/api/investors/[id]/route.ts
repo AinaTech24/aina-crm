@@ -76,8 +76,12 @@ const Patch = z.object({
   // capped; empty string clears it. (DOB is below.)
   pan: z.string().max(10).nullable().optional().or(z.literal("")),
   email: z.string().email().optional().or(z.literal("")),
-  phone: z.string().optional(),
-  whatsappPhone: z.string().optional(),
+  // Nullable: the edit modal sends `null` to CLEAR a phone (it builds
+  // `f.phone || null`), and a client with no number on file round-trips the
+  // same way. Declared non-nullable these rejected the whole payload with a
+  // bare "invalid body" — the save failed with nothing pointing at the field.
+  phone: z.string().nullable().optional(),
+  whatsappPhone: z.string().nullable().optional(),
   // Client photo — storage key (general kind) or external URL; "" clears it.
   avatarUrl: z.string().max(500).nullable().optional(),
   segmentTag: z.enum(["HNI", "Affluent", "Retail", "NRI", "Corporate"]).optional(),
@@ -161,6 +165,12 @@ const Patch = z.object({
   mandateRefNo: z.string().max(60).nullable().optional(),
   status: z.enum(["active", "dormant", "inactive", "redemption_risk", "closed", "exited"]).optional(),
   reviewFrequency: z.enum(["monthly", "quarterly", "half_yearly", "annual"]).nullable().optional(),
+  // Explicit review dates. The cadence preset auto-derives nextReviewAt, but an
+  // RM must be able to record when a review ACTUALLY happened (and override the
+  // next one) — a real review rarely lands exactly on the computed date.
+  // An explicit value always wins over the auto-computation below.
+  lastReviewAt: z.string().nullable().optional(),
+  nextReviewAt: z.string().nullable().optional(),
   // Custom review cadence in days (overrides the preset above). 1–3650 days.
   reviewFrequencyDays: z.number().int().min(1).max(3650).nullable().optional(),
   // Relationship dates — onboardedAt is a timestamp (coerced to Date in the
@@ -307,15 +317,31 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       // "Next review" reminder reflects it. Clearing both cadence fields clears
       // nextReviewAt → the client stops appearing in review-due reminders.
       const reviewPatch: Record<string, unknown> = {};
-      if (parse.data.reviewFrequency !== undefined || parse.data.reviewFrequencyDays !== undefined) {
+      // Explicit lastReviewAt (timestamp column → coerce the YYYY-MM-DD string).
+      if (parse.data.lastReviewAt !== undefined) {
+        reviewPatch.lastReviewAt = parse.data.lastReviewAt ? new Date(parse.data.lastReviewAt) : null;
+      }
+      if (parse.data.reviewFrequency !== undefined || parse.data.reviewFrequencyDays !== undefined || parse.data.lastReviewAt !== undefined) {
         const rf = parse.data.reviewFrequency !== undefined ? parse.data.reviewFrequency : ((before as any).reviewFrequency ?? null);
         const rfd = parse.data.reviewFrequencyDays !== undefined ? parse.data.reviewFrequencyDays : ((before as any).reviewFrequencyDays ?? null);
-        const base = before.lastReviewAt
-          ? new Date(before.lastReviewAt as any)
-          : (before as any).onboardedAt
-            ? new Date((before as any).onboardedAt)
-            : new Date();
+        // Recompute from the NEW last-review date when one was just supplied —
+        // otherwise logging a completed review would leave the next one derived
+        // from the stale previous date.
+        const newLast = reviewPatch.lastReviewAt as Date | null | undefined;
+        const base =
+          newLast instanceof Date
+            ? newLast
+            : before.lastReviewAt
+              ? new Date(before.lastReviewAt as any)
+              : (before as any).onboardedAt
+                ? new Date((before as any).onboardedAt)
+                : new Date();
         reviewPatch.nextReviewAt = computeNextReview(base, rf, rfd);
+      }
+      // An explicitly-set next review ALWAYS wins over the derived value above —
+      // assigned last so it overwrites whatever the cadence computed.
+      if (parse.data.nextReviewAt !== undefined) {
+        reviewPatch.nextReviewAt = parse.data.nextReviewAt ? new Date(parse.data.nextReviewAt) : null;
       }
 
       // onboardedAt is a timestamp column — coerce the YYYY-MM-DD string to a

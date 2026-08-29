@@ -46,12 +46,6 @@ export type MasterEditFlags = {
   showInflow?: boolean;
 };
 
-function fmtDate(v: any): string {
-  if (!v) return "—";
-  const d = new Date(v);
-  return isNaN(d.getTime()) ? "—" : d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
-}
-
 export function MasterRecordEditor({ investor, flags }: { investor: Investor; flags: MasterEditFlags }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -106,6 +100,8 @@ export function MasterRecordEditor({ investor, flags }: { investor: Investor; fl
     mandateStatus: investor.mandateStatus ?? "none",
     mandateRefNo: investor.mandateRefNo ?? "",
     onboardedAt: investor.onboardedAt ? String(investor.onboardedAt).slice(0, 10) : "",
+    lastReviewAt: investor.lastReviewAt ? String(investor.lastReviewAt).slice(0, 10) : "",
+    nextReviewAt: investor.nextReviewAt ? String(investor.nextReviewAt).slice(0, 10) : "",
     anniversaryDate: investor.anniversaryDate ? String(investor.anniversaryDate).slice(0, 10) : "",
     status: investor.status ?? "active",
     notes: investor.notes ?? "",
@@ -189,6 +185,10 @@ export function MasterRecordEditor({ investor, flags }: { investor: Investor; fl
         mandateStatus: inSet(f.mandateStatus, ["none", "pending", "active", "expired", "rejected", "cancelled"]),
         mandateRefNo: f.mandateRefNo || null,
         onboardedAt: f.onboardedAt || undefined,
+        // null clears the date; the API recomputes nextReviewAt from a NEW
+        // lastReviewAt unless an explicit nextReviewAt is also supplied.
+        lastReviewAt: f.lastReviewAt || null,
+        nextReviewAt: f.nextReviewAt || null,
         anniversaryDate: f.anniversaryDate || null,
         status: inSet(f.status, ["active", "dormant", "inactive", "redemption_risk", "closed", "exited"]),
         notes: f.notes,
@@ -414,9 +414,17 @@ export function MasterRecordEditor({ investor, flags }: { investor: Investor; fl
                     </F>
                   )}
                   <div className="grid grid-cols-2 gap-2">
-                    <RO label="Last review" value={fmtDate(investor.lastReviewAt)} />
-                    <RO label="Next review" value={fmtDate(investor.nextReviewAt)} />
+                    <F label="Last review">
+                      <DateField value={f.lastReviewAt} onChange={(e) => set("lastReviewAt", e.target.value)} className="w-full" />
+                    </F>
+                    <F label="Next review">
+                      <DateField value={f.nextReviewAt} onChange={(e) => set("nextReviewAt", e.target.value)} className="w-full" />
+                    </F>
                   </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    Setting a last-review date re-derives the next one from the cadence above. Set
+                    &ldquo;Next review&rdquo; explicitly to override that.
+                  </p>
                   <F label="Notes"><textarea value={f.notes} onChange={(e) => set("notes", e.target.value)} rows={3} className="input-base w-full" /></F>
                 </Grp>
               )}

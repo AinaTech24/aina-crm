@@ -5,7 +5,7 @@
  * you" / "task status changed" emitted straight from a route handler.
  *
  * Call inside an existing withTenant() transaction so it's atomic with the
- * action that triggered it. The NotificationBell (30s poll) surfaces it.
+ * action that triggered it. The NotificationBell surfaces it (90s poll, plus a refetch whenever the panel is opened).
  */
 
 import { v4 as uuid } from "uuid";

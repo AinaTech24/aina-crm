@@ -27,7 +27,14 @@ export async function GET(req: NextRequest) {
     const firmWide = can(session.roles, "dashboard.view.owner", (session as any).permissions);
 
     const rows = await withTenant(session.tenantId, async (tx) => {
-      const conditions = [eq(notifications.userId, session.userId)];
+      // archivedAt filter matters: the unreadCount query below already excludes
+      // archived rows, so without it here a dismissed notification still shows
+      // in the panel while the badge ignores it — the list and the count
+      // disagree, which reads as "notifications are broken".
+      const conditions = [
+        eq(notifications.userId, session.userId),
+        isNull(notifications.archivedAt),
+      ];
       if (unreadOnly) conditions.push(isNull(notifications.readAt));
       const list = await tx
         .select()

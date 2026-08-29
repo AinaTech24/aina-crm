@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Bell, AlertTriangle, CheckCircle2, Info, AlertOctagon, Cake } from "lucide-react";
 
@@ -28,26 +28,33 @@ export function NotificationBell() {
   const [unread, setUnread] = useState(0);
   const ref = useRef<HTMLDivElement>(null);
 
-  // Poll every 30s for unread count
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      try {
-        const res = await fetch("/api/notifications");
-        if (!res.ok) return;
-        const j = await res.json();
-        if (cancelled) return;
-        setItems(j.notifications ?? []);
-        setUnread(j.unreadCount ?? 0);
-      } catch {}
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch("/api/notifications", { cache: "no-store" });
+      if (!res.ok) return;
+      const j = await res.json();
+      setItems(j.notifications ?? []);
+      setUnread(j.unreadCount ?? 0);
+    } catch {
+      /* transient — the next poll retries */
     }
-    load();
-    const i = setInterval(load, 90_000);
-    return () => {
-      cancelled = true;
-      clearInterval(i);
-    };
   }, []);
+
+  // Background poll. 90s is fine for the badge, but it means the panel could
+  // show data up to 90s stale, so opening it refetches (below) rather than
+  // rendering whatever the last tick happened to fetch.
+  useEffect(() => {
+    void load();
+    const i = setInterval(() => void load(), 90_000);
+    return () => clearInterval(i);
+  }, [load]);
+
+  // Refetch on open — without this, doing something in the app and immediately
+  // checking the bell showed nothing until the next poll, which reads as
+  // notifications not working at all.
+  useEffect(() => {
+    if (open) void load();
+  }, [open, load]);
 
   // Click-outside to close
   useEffect(() => {
@@ -59,25 +66,36 @@ export function NotificationBell() {
   }, [open]);
 
   async function markAllRead() {
-    await fetch("/api/notifications/mark-read", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ all: true }),
-    });
-    setItems((arr) => arr.map((n) => ({ ...n, readAt: new Date().toISOString() })));
-    setUnread(0);
+    try {
+      const res = await fetch("/api/notifications/mark-read", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ all: true }),
+      });
+      if (!res.ok) return; // leave the badge alone — nothing was actually read
+      setItems((arr) => arr.map((n) => ({ ...n, readAt: new Date().toISOString() })));
+      setUnread(0);
+    } catch {
+      /* keep the current state; the next poll reconciles */
+    }
   }
 
   // Opening a notification dismisses it from the panel + marks it read on the
-  // server (best-effort — a live birthday reminder may not be a stored row).
+  // server.
   function openOne(n: Notification) {
     setItems((arr) => arr.filter((x) => x.id !== n.id));
-    if (!n.readAt && n.kind !== "birthday_today") setUnread((u) => Math.max(0, u - 1));
-    fetch("/api/notifications/mark-read", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ ids: [n.id] }),
-    }).catch(() => {});
+    const isSynthetic = n.kind === "birthday_today";
+    if (!n.readAt && !isSynthetic) setUnread((u) => Math.max(0, u - 1));
+    // The birthday reminder is computed per-request, not a stored row — its id
+    // ("birthday-today") isn't a uuid, so mark-read rejects the whole call with
+    // a 400. Skip the request rather than firing one that can only fail.
+    if (!isSynthetic) {
+      fetch("/api/notifications/mark-read", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ids: [n.id] }),
+      }).catch(() => {});
+    }
     setOpen(false);
   }
 
