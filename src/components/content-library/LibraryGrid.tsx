@@ -148,7 +148,7 @@ export function LibraryGrid({ rows }: { rows: Asset[] }) {
 
       {/* Floating Action Bar */}
       {selectedIds.length > 0 && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-background/85 backdrop-blur-md border border-brand-cyan/30 shadow-2xl rounded-full px-5 py-3 flex items-center gap-4 animate-scale-in">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-background/85 backdrop-blur-md border border-brand-cyan/30 shadow-2xl rounded-full px-5 py-3 flex items-center gap-4 animate-pop-in-centered-x">
           <div className="text-xs font-semibold text-foreground">
             Selected <span className="text-brand-cyan text-sm">{selectedIds.length}</span> assets
           </div>

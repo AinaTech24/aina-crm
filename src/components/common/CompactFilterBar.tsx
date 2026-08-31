@@ -24,7 +24,14 @@ export type CompactFilter =
   | { type: "select"; key: string; label: string; options: { value: string; label: string }[]; allLabel?: string }
   | { type: "multi"; key: string; label: string; options: { value: string; label: string }[] }
   | { type: "sort"; key: string; label: string; options: { value: string; label: string }[] }
-  | { type: "date_range"; key: string; label: string };
+  | { type: "date_range"; key: string; label: string }
+  /** A set of INDEPENDENT boolean params (?mine=1&no_rm=1…), each with its
+   *  own URL key — what a "quick filters" chip strip really is. */
+  | {
+      type: "flags";
+      label: string;
+      options: { key: string; label: string; count?: number }[];
+    };
 
 export function CompactFilterBar({
   searchKey: searchKeyProp,
@@ -53,8 +60,8 @@ export function CompactFilterBar({
   const searchDef = allFilters.find((f) => f.type === "search") as Extract<CompactFilter, { type: "search" }> | undefined;
   const sortDef = allFilters.find((f) => f.type === "sort") as Extract<CompactFilter, { type: "sort" }> | undefined;
   const filters = allFilters.filter(
-    (f) => f.type === "multi" || f.type === "select" || f.type === "date_range"
-  ) as Array<Extract<CompactFilter, { type: "multi" | "select" | "date_range" }>>;
+    (f) => f.type === "multi" || f.type === "select" || f.type === "date_range" || f.type === "flags"
+  ) as Array<Extract<CompactFilter, { type: "multi" | "select" | "date_range" | "flags" }>>;
   const searchKey = searchKeyProp ?? searchDef?.key ?? "q";
   const searchPlaceholder = searchPlaceholderProp ?? searchDef?.placeholder ?? "Search…";
   const sort = sortProp ?? (sortDef ? { key: sortDef.key, options: sortDef.options } : undefined);
@@ -79,6 +86,8 @@ export function CompactFilterBar({
       } else if (f.type === "date_range") {
         out[`${f.key}_from`] = sp.get(`${f.key}_from`) ?? "";
         out[`${f.key}_to`] = sp.get(`${f.key}_to`) ?? "";
+      } else if (f.type === "flags") {
+        for (const o of f.options) out[o.key] = sp.get(o.key) === "1";
       }
     }
     return out;
@@ -117,6 +126,7 @@ export function CompactFilterBar({
 
   /** How many distinct filters are active (search excluded). */
   const activeCount = filters.reduce((n, f) => {
+    if (f.type === "flags") return n + f.options.filter((o) => values[o.key]).length;
     if (f.type === "multi") return n + ((values[f.key] as string[]).length > 0 ? 1 : 0);
     if (f.type === "select") return n + (values[f.key] ? 1 : 0);
     return n + (values[`${f.key}_from`] || values[`${f.key}_to`] ? 1 : 0);
@@ -125,7 +135,8 @@ export function CompactFilterBar({
   function clearAll() {
     const next: Record<string, any> = {};
     for (const f of filters) {
-      if (f.type === "multi") next[f.key] = [];
+      if (f.type === "flags") for (const o of f.options) next[o.key] = "";
+      else if (f.type === "multi") next[f.key] = [];
       else if (f.type === "select") next[f.key] = "";
       else {
         next[`${f.key}_from`] = "";
@@ -137,6 +148,11 @@ export function CompactFilterBar({
 
   /** Short summary of a section's active selection, shown on its collapsed row. */
   function summaryFor(f: (typeof filters)[number]): string {
+    if (f.type === "flags") {
+      const on = f.options.filter((o) => values[o.key]);
+      if (!on.length) return "";
+      return on.length === 1 ? on[0].label : `${on.length} selected`;
+    }
     if (f.type === "multi") {
       const v = values[f.key] as string[];
       if (!v.length) return "";
@@ -194,13 +210,16 @@ export function CompactFilterBar({
             <div className="absolute right-0 top-full mt-1 z-50 w-[300px] card-elevated bg-card p-1.5">
               <div className="max-h-[60vh] overflow-y-auto scrollbar-thin">
                 {filters.map((f) => {
-                  const isOpen = openSection === f.key;
+                  // A flags section owns several URL keys, so it is identified
+                  // by its label rather than a single key.
+                  const sectionId = f.type === "flags" ? `flags:${f.label}` : f.key;
+                  const isOpen = openSection === sectionId;
                   const summary = summaryFor(f);
                   return (
-                    <div key={f.key} className="border-b border-slate-100 last:border-0">
+                    <div key={sectionId} className="border-b border-slate-100 last:border-0">
                       <button
                         type="button"
-                        onClick={() => setOpenSection(isOpen ? null : f.key)}
+                        onClick={() => setOpenSection(isOpen ? null : sectionId)}
                         className="w-full flex items-center gap-1.5 px-2 py-2 text-xs hover:bg-secondary/60 rounded"
                       >
                         {isOpen ? <ChevronDown className="size-3 opacity-60" /> : <ChevronRight className="size-3 opacity-60" />}
@@ -210,7 +229,33 @@ export function CompactFilterBar({
 
                       {isOpen && (
                         <div className="px-2 pb-2 pt-0.5">
-                          {f.type === "multi" ? (
+                          {f.type === "flags" ? (
+                            <ul className="space-y-0.5 max-h-60 overflow-y-auto scrollbar-thin">
+                              {f.options.map((o) => {
+                                const checked = !!values[o.key];
+                                return (
+                                  <li key={o.key}>
+                                    <label
+                                      className={`flex items-center gap-2 px-2 py-1.5 text-xs rounded cursor-pointer transition ${
+                                        checked ? "bg-brand-cyan-light/40 text-brand-cyan-deep font-medium" : "hover:bg-secondary/60"
+                                      }`}
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={checked}
+                                        onChange={() => pushParams({ [o.key]: checked ? "" : "1" })}
+                                        className="size-3.5 rounded border-border accent-brand-cyan"
+                                      />
+                                      <span className="truncate">{o.label}</span>
+                                      {typeof o.count === "number" && (
+                                        <span className="ml-auto tabular-nums text-[10px] text-muted-foreground">{o.count}</span>
+                                      )}
+                                    </label>
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          ) : f.type === "multi" ? (
                             <ul className="space-y-0.5 max-h-52 overflow-y-auto scrollbar-thin">
                               {f.options.length === 0 && <li className="text-[11px] text-muted-foreground px-1 py-1">No options</li>}
                               {f.options.map((o) => {

@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { sql } from "drizzle-orm";
-import { Plus, HeartHandshake, Search } from "lucide-react";
+import { Plus, HeartHandshake } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { requireAny, can } from "@/lib/auth/rbac";
 import { formatINR, formatRelative } from "@/lib/utils";
 import { RowActions } from "@/components/common/RowActions";
-import { FamilyQuickFilters } from "@/components/families/FamilyQuickFilters";
+import { familyQuickFilterOptions } from "@/components/families/FamilyQuickFilters";
+import { CompactFilterBar } from "@/components/common/CompactFilterBar";
 import { FamilySuggestionsLauncher } from "@/components/families/FamilySuggestionsLauncher";
 import { Pager } from "@/components/common/Pager";
 import { healthBandClasses, type HealthBand } from "@/lib/investors/health";
@@ -58,6 +59,9 @@ export default async function FamiliesPage({
     large: sp.large === "1",
     red_health: sp.red_health === "1",
   };
+
+  // Row counts for the quick-filter dropdown (one grouped query).
+  const quickFilterOptions = await familyQuickFilterOptions(session);
 
   const { rows, total, bandCounts } = await withTenant(session.tenantId, async (tx) => {
     // Translate quick-filter flags into HAVING / WHERE fragments. We compose
@@ -219,39 +223,17 @@ export default async function FamiliesPage({
       {/* Wealth-band tiers (Sanchay "Family Category" parity) */}
       <StatusChips basePath="/dashboard/families" paramKey="band" current={band} params={sp} chips={bandChips} />
 
-      {/* Quick-filter chips + search */}
-      <div className="card-surface p-3 space-y-3">
-        <form action="/dashboard/families" method="GET" className="flex items-center gap-2">
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
-            <input
-              name="q"
-              defaultValue={q}
-              placeholder="Search family name, member name, PAN…"
-              className="w-full pl-8 pr-3 py-1.5 text-sm rounded-md border border-border bg-background"
-            />
-          </div>
-          {Object.entries(qf).map(([k, v]) =>
-            v ? <input key={k} type="hidden" name={k} value="1" /> : null
-          )}
-          {band && <input type="hidden" name="band" value={band} />}
-          <button
-            type="submit"
-            className="btn-secondary text-xs px-3 py-1.5"
-          >
-            Search
-          </button>
-          {(q || Object.values(qf).some(Boolean)) && (
-            <Link href="/dashboard/families" className="text-xs text-muted-foreground hover:underline">
-              Clear
-            </Link>
-          )}
-        </form>
-        <FamilyQuickFilters
-          session={session}
-          active={sp as Record<string, string | undefined>}
-        />
-      </div>
+      {/* Search + filters — the same control Clients / Leads / Tasks use, so
+          the quick filters live behind the filter icon instead of a chip
+          strip that pushed the table down the page. */}
+      <CompactFilterBar
+        searchKey="q"
+        searchPlaceholder="Search family name, member name, PAN…"
+        totalCount={total}
+        filters={[
+          { type: "flags", label: "Quick filters", options: quickFilterOptions },
+        ]}
+      />
 
       <div>
         <div className="border rounded-lg bg-card overflow-hidden">
@@ -378,6 +360,7 @@ export default async function FamiliesPage({
                             itemName={name}
                             verb="Delete"
                             permanent
+                            inline
                           />
                         </td>
                       </tr>

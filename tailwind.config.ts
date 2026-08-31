@@ -32,6 +32,18 @@ const config: Config = {
           DEFAULT: "hsl(var(--destructive))",
           foreground: "hsl(var(--destructive-foreground))",
         },
+        success: {
+          DEFAULT: "hsl(var(--success))",
+          foreground: "hsl(var(--success-foreground))",
+        },
+        warning: {
+          DEFAULT: "hsl(var(--warning))",
+          foreground: "hsl(var(--warning-foreground))",
+        },
+        info: {
+          DEFAULT: "hsl(var(--info))",
+          foreground: "hsl(var(--info-foreground))",
+        },
         muted: {
           DEFAULT: "hsl(var(--muted))",
           foreground: "hsl(var(--muted-foreground))",
@@ -100,6 +112,19 @@ const config: Config = {
           from: { opacity: "0", transform: "scale(0.96)" },
           to: { opacity: "1", transform: "scale(1)" },
         },
+        // Centred overlays: the centring translate MUST be part of the
+        // animated transform. A keyframe that sets `transform` overrides the
+        // -translate-x/y-1/2 utilities for the whole animation, so the panel
+        // starts with its top-left corner at screen centre — visibly flying
+        // in from the bottom-right and snapping back on the last frame.
+        "dialog-in": {
+          from: { opacity: "0", transform: "translate(-50%, -50%) scale(0.96)" },
+          to: { opacity: "1", transform: "translate(-50%, -50%) scale(1)" },
+        },
+        "pop-in-centered-x": {
+          from: { opacity: "0", transform: "translateX(-50%) scale(0.96)" },
+          to: { opacity: "1", transform: "translateX(-50%) scale(1)" },
+        },
         "pulse-glow": {
           "0%, 100%": { boxShadow: "0 0 0 0 hsl(var(--brand-cyan) / 0.4)" },
           "50%": { boxShadow: "0 0 0 8px hsl(var(--brand-cyan) / 0)" },
@@ -117,6 +142,8 @@ const config: Config = {
         "fade-in": "fade-in 220ms ease-out",
         "slide-up": "slide-up 320ms cubic-bezier(0.22, 1, 0.36, 1)",
         "scale-in": "scale-in 180ms cubic-bezier(0.22, 1, 0.36, 1)",
+        "dialog-in": "dialog-in 180ms cubic-bezier(0.22, 1, 0.36, 1)",
+        "pop-in-centered-x": "pop-in-centered-x 180ms cubic-bezier(0.22, 1, 0.36, 1)",
         "pulse-glow": "pulse-glow 2.2s ease-in-out infinite",
         shimmer: "shimmer 2.4s linear infinite",
         float: "float 3s ease-in-out infinite",

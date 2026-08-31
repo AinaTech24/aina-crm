@@ -1,10 +1,13 @@
-import Link from "next/link";
 import { sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import type { SessionUser } from "@/lib/auth/session";
 
 /**
- * Quick-filter chip strip for the Families list page.
+ * Quick-filter OPTIONS (with live row counts) for the Families list.
+ *
+ * These used to render as a chip strip under the search box. They now feed the
+ * shared CompactFilterBar's Filters dropdown, so Families matches Clients /
+ * Leads / Tasks — one search field with a filter icon at its right edge.
  *
  * Filter keys:
  *   - mine=1            → family rm_id = session.userId
@@ -17,13 +20,9 @@ import type { SessionUser } from "@/lib/auth/session";
  *   - single=1          → only one active member
  *   - large=1           → 5+ active members
  */
-export async function FamilyQuickFilters({
-  session,
-  active,
-}: {
-  session: SessionUser;
-  active: Record<string, string | undefined>;
-}) {
+export type FamilyFilterOption = { key: string; label: string; count: number };
+
+export async function familyQuickFilterOptions(session: SessionUser): Promise<FamilyFilterOption[]> {
   const userId = session.userId;
   const counts = await withTenant(
     session.tenantId,
@@ -61,63 +60,16 @@ export async function FamilyQuickFilters({
     { userId: session.userId, branchId: session.branchId, roles: session.roles }
   );
 
-  const chips: Array<{ key: string; label: string; count: number; tone: string }> = [
-    { key: "mine", label: "My families", count: Number(counts.mine), tone: "violet" },
-    { key: "no_primary", label: "No primary", count: Number(counts.no_primary), tone: "rose" },
-    { key: "no_rm", label: "No RM", count: Number(counts.no_rm), tone: "rose" },
-    { key: "review_due", label: "Review due", count: Number(counts.review_due), tone: "amber" },
-    { key: "nominee_gap", label: "Nominee gap", count: Number(counts.nominee_gap), tone: "rose" },
-    { key: "has_minor", label: "Has minor", count: Number(counts.has_minor), tone: "violet" },
-    { key: "hni", label: "HNI", count: Number(counts.hni), tone: "violet" },
-    { key: "single", label: "Single-member", count: Number(counts.single), tone: "amber" },
-    { key: "large", label: "5+ members", count: Number(counts.large), tone: "emerald" },
-    { key: "red_health", label: "At-risk health", count: Number(counts.red_health), tone: "rose" },
+  return [
+    { key: "mine", label: "My families", count: Number(counts.mine) },
+    { key: "no_primary", label: "No primary", count: Number(counts.no_primary) },
+    { key: "no_rm", label: "No RM", count: Number(counts.no_rm) },
+    { key: "review_due", label: "Review due", count: Number(counts.review_due) },
+    { key: "nominee_gap", label: "Nominee gap", count: Number(counts.nominee_gap) },
+    { key: "has_minor", label: "Has minor", count: Number(counts.has_minor) },
+    { key: "hni", label: "HNI", count: Number(counts.hni) },
+    { key: "single", label: "Single-member", count: Number(counts.single) },
+    { key: "large", label: "5+ members", count: Number(counts.large) },
+    { key: "red_health", label: "At-risk health", count: Number(counts.red_health) },
   ];
-
-  return (
-    <div className="flex flex-wrap items-center gap-2">
-      <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mr-1">
-        Quick filters:
-      </span>
-      {chips.map((c) => {
-        const isActive = active[c.key] === "1";
-        const next = new URLSearchParams();
-        for (const [k, v] of Object.entries(active)) {
-          // Toggling a quick filter resets paging (drop any carried `page`).
-          if (v && k !== c.key && k !== "page") next.set(k, v);
-        }
-        if (!isActive) next.set(c.key, "1");
-        const href = `/dashboard/families${next.toString() ? `?${next.toString()}` : ""}`;
-        const cls = toneClass(c.tone, isActive);
-        return (
-          <Link
-            key={c.key}
-            href={href}
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs border transition-all ${cls}`}
-          >
-            <span className="font-medium">{c.label}</span>
-            <span className="tabular-nums font-bold opacity-90">{c.count}</span>
-          </Link>
-        );
-      })}
-    </div>
-  );
-}
-
-function toneClass(tone: string, active: boolean): string {
-  const base: Record<string, string> = {
-    violet: active
-      ? "bg-violet-600 text-white border-violet-600 shadow-sm"
-      : "bg-violet-50 text-violet-700 border-violet-200 hover:bg-violet-100",
-    amber: active
-      ? "bg-amber-600 text-white border-amber-600 shadow-sm"
-      : "bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100",
-    rose: active
-      ? "bg-rose-600 text-white border-rose-600 shadow-sm"
-      : "bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100",
-    emerald: active
-      ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
-      : "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100",
-  };
-  return base[tone] ?? base.violet;
 }
