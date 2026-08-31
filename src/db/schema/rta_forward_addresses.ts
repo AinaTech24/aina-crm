@@ -11,7 +11,7 @@
  * `tenant_integrations` (provider "rta_mailback") — see src/lib/rta/mailback-config.ts.
  */
 
-import { boolean, index, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { boolean, index, jsonb, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { id, tenantId, timestamps } from "./_shared";
 import { tenants } from "./tenants";
@@ -26,6 +26,12 @@ export const rtaForwardAddresses = pgTable(
     /** Unguessable local-part token (the part after "rta-"). */
     token: text("token").notNull(),
     isActive: boolean("is_active").default(true).notNull(),
+    /**
+     * Mailbox addresses this firm forwards RTA mail FROM (lower-cased). Lets mail
+     * sent to the SHARED rta@<domain> address route to this tenant when no
+     * per-firm alias matched. Secondary path — the alias always wins.
+     */
+    sourceAddresses: jsonb("source_addresses").$type<string[]>().default(sql`'[]'::jsonb`).notNull(),
     /** First time a real mailback landed here — proves forwarding is live. */
     verifiedAt: timestamp("verified_at", { withTimezone: true }),
     lastReceivedAt: timestamp("last_received_at", { withTimezone: true }),

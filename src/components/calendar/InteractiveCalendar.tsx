@@ -233,6 +233,18 @@ export function InteractiveCalendar({
         )}
       </div>
 
+      {/* Empty month → teach the first step instead of showing a bare grid. */}
+      {initialItems.length === 0 && (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-secondary/40 px-4 py-2.5 text-sm">
+          <span className="text-muted-foreground">
+            Nothing scheduled this month — reviews, follow-ups, SIP dates and birthdays all land here automatically.
+          </span>
+          <a href="/dashboard/review-meetings/new" className="btn-primary text-xs whitespace-nowrap shrink-0">
+            Schedule a review
+          </a>
+        </div>
+      )}
+
       {/* Legend Filtering Badges */}
       <div className="flex flex-wrap gap-2 text-xs">
         {Object.entries(KIND_META).map(([k, meta]) => {

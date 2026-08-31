@@ -610,12 +610,12 @@ function NavRow({
       <IconCmp className="nav-link-icon" />
       <span className="truncate">{item.label}</span>
       {item.beta ? (
-        <span className="shrink-0 rounded bg-amber-100 text-amber-700 px-1 text-[9px] font-bold uppercase leading-[1.3] tracking-wide">
+        <span className="nav-link-beta shrink-0 rounded bg-amber-100 text-amber-700 px-1 text-[9px] font-bold uppercase leading-[1.3] tracking-wide">
           Beta
         </span>
       ) : null}
       {!editing && item.badge ? (
-        <span className="ml-auto shrink-0 rounded-full bg-rose-500 px-1.5 min-w-[1.1rem] text-center text-[10px] font-semibold leading-[1.1rem] text-white">
+        <span className="nav-link-badge ml-auto shrink-0 rounded-full bg-rose-500 px-1.5 min-w-[1.1rem] text-center text-[10px] font-semibold leading-[1.1rem] text-white">
           {item.badge > 99 ? "99+" : item.badge}
         </span>
       ) : null}

@@ -26,6 +26,7 @@ import { CommandClientPicker } from "@/components/command-center/CommandClientPi
 import { CommandItemActions } from "@/components/command-center/CommandItemActions";
 import { HelpTip } from "@/components/common/HelpTip";
 import { sql } from "drizzle-orm";
+import { MyDayNav } from "@/components/layout/MyDayNav";
 
 export const dynamic = "force-dynamic";
 
@@ -142,8 +143,8 @@ export default async function CommandCenterPage({
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <Inbox className="size-6 text-brand-cyan" /> Command Center
-            <HelpTip title="Command Center">
+            <Inbox className="size-6 text-brand-cyan" /> My Day
+            <HelpTip title="My Day">
               Your single &ldquo;what needs me today&rdquo; screen — overdue tasks, today&apos;s
               meetings, SIP bounces, birthdays and follow-ups, ranked by urgency. Start your day here.
             </HelpTip>
@@ -158,6 +159,8 @@ export default async function CommandCenterPage({
           </div>
         </div>
       </div>
+
+      <MyDayNav />
 
       <CompactFilterBar
         totalCount={totalItems}
@@ -220,31 +223,29 @@ export default async function CommandCenterPage({
   );
 }
 
-const SEV_TAG: Record<Severity, { label: string; cls: string }> = {
-  now: { label: "Act now", cls: "bg-rose-100 text-rose-700" },
-  today: { label: "Today", cls: "bg-amber-100 text-amber-700" },
-  soon: { label: "This week", cls: "bg-sky-100 text-sky-700" },
+/* Severity budget: ONE chip per card ("Act now · 4"), tinted only when the
+   card actually needs attention (rose = act now, soft amber = today). Card
+   chrome stays neutral — the module colour lives in the small leading icon. */
+const SEV_CHIP: Record<Severity, { label: string; cls: string; icon: string }> = {
+  now: { label: "Act now", cls: "bg-rose-50 text-rose-700 border border-rose-200", icon: "text-rose-600" },
+  today: { label: "Today", cls: "bg-amber-50 text-amber-700 border border-amber-200", icon: "text-amber-600" },
+  soon: { label: "This week", cls: "bg-secondary text-muted-foreground border border-transparent", icon: "text-muted-foreground" },
 };
 
 function GroupCard({ group }: { group: ActionGroup }) {
   const Icon = ICONS[group.icon] ?? Inbox;
-  const tone = TONE[group.tone] ?? TONE.sky;
-  const sevTag = SEV_TAG[group.severity];
+  const sev = SEV_CHIP[group.severity] ?? SEV_CHIP.soon;
   return (
-    <div className={`card-surface overflow-hidden border ${tone.ring}`}>
-      {/* Severity accent strip — replaces the removed band section headers */}
-      <div className={`h-1 ${tone.bar}`} />
+    <div className="card-surface overflow-hidden border border-border">
+      {group.severity === "now" && <div className="h-0.5 bg-rose-500" />}
       <div className="flex items-center justify-between px-4 py-3 border-b bg-secondary/30">
         <div className="flex items-center gap-2 min-w-0">
-          <Icon className="size-4 shrink-0" />
+          <Icon className={`size-4 shrink-0 ${sev.icon}`} />
           <span className="font-semibold text-sm truncate">{group.label}</span>
         </div>
-        <div className="flex items-center gap-1.5 shrink-0">
-          {sevTag && <span className={`text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded ${sevTag.cls}`}>{sevTag.label}</span>}
-          <span className={`text-xs font-bold px-2 py-0.5 rounded-full tabular-nums ${tone.badge}`}>
-            {group.count}
-          </span>
-        </div>
+        <span className={`shrink-0 text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full tabular-nums ${sev.cls}`}>
+          {sev.label} · {group.count}
+        </span>
       </div>
       <ul className="divide-y">
         {group.items.map((it) => (
@@ -258,8 +259,13 @@ function GroupCard({ group }: { group: ActionGroup }) {
               </div>
               {typeof it.ageDays === "number" && it.ageDays > 0 && (
                 <span
-                  className={`text-[10px] font-semibold px-1.5 py-0.5 rounded tabular-nums shrink-0 ${it.ageDays > 30 ? "bg-rose-100 text-rose-700" : it.ageDays > 7 ? "bg-amber-100 text-amber-700" : "bg-secondary text-muted-foreground"
-                    }`}
+                  className={`text-[10px] tabular-nums shrink-0 ${
+                    it.ageDays > 30
+                      ? "font-semibold px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200"
+                      : it.ageDays > 7
+                        ? "font-medium text-amber-700"
+                        : "text-muted-foreground"
+                  }`}
                   title={`${it.ageDays} day(s) overdue / waiting`}
                 >
                   {it.ageDays}d

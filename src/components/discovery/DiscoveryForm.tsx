@@ -266,7 +266,7 @@ function N({ v, on }: { v: any; on: (x: string) => void }) {
 function S({ v, on, opts }: { v: any; on: (x: string) => void; opts: readonly string[] }) {
   return (
     <select className="input-base text-sm w-full" value={v ?? ""} onChange={(e) => on(e.target.value)}>
-      <option value="">—</option>
+      <option value="">Select…</option>
       {opts.map((o) => <option key={o} value={o}>{o}</option>)}
     </select>
   );

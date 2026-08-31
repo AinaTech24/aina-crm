@@ -2,24 +2,24 @@
 
 /**
  * Leads table view with row selection + bulk actions + a sortable priority
- * Score column. The server page computes each row's score (deterministic,
- * src/lib/leads/scoring.ts) and pre-sorts; this component owns selection
- * state and the bulk toolbar (reassign RM / set follow-up / change stage /
- * mark lost → POST /api/leads/bulk).
- *
- * Keeps the data-table / data-col attributes so the existing ColumnManager
- * continues to show/hide columns.
+ * Score column. Supports compact vs cozy table density and split-screen
+ * side-peek drawer for rapid lead inspections.
  */
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { Loader2, X, UserCog, CalendarClock, ArrowRightLeft, Ban, ArrowUpDown, Trash2, AlertTriangle } from "lucide-react";
+import {
+  ArrowUpDown,
+  Eye,
+} from "lucide-react";
 import { RowActions } from "@/components/common/RowActions";
-import { RmSelector } from "@/components/common/RmSelector";
 import { formatINR, formatDate } from "@/lib/utils";
 import { leadScoreBand } from "@/lib/leads/scoring";
 import { Avatar } from "@/components/ui/Avatar";
+import { TableDensityToggle, useTableDensity } from "@/components/common/TableDensityToggle";
+import { FloatingBulkBar } from "@/components/common/FloatingBulkBar";
+import { LeadSidePeek, type SidePeekLead } from "@/components/leads/LeadSidePeek";
 
 type Row = {
   id: string;
@@ -63,32 +63,16 @@ const sourceColors: Record<string, string> = {
   other: "bg-gray-50 text-gray-700 border-gray-200",
 };
 
-const STAGE_OPTIONS = [
-  ["new", "New"],
-  ["call_done", "Call Done"],
-  ["call_back_later", "Call Back Later"],
-  ["contact_in_future", "Contact in Future"],
-  ["meeting_scheduled", "Meeting Scheduled"],
-  ["meeting_pending", "Meeting Pending"],
-  ["meeting_done", "Meeting Done"],
-  ["won_lead", "Won Lead"],
-] as const;
-
 export function LeadsTable({ rows, sort, dir = "desc" }: { rows: Row[]; sort: string; dir?: "asc" | "desc" }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
+  const { density, toggleDensity, isCompact } = useTableDensity("cozy");
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [bulk, setBulk] = useState<null | "assign" | "follow_up" | "stage" | "lost" | "delete">(null);
+  const [sidePeekLead, setSidePeekLead] = useState<SidePeekLead | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-
-  // bulk value inputs
-  const [assignRm, setAssignRm] = useState<string | null>(null);
-  const [followDate, setFollowDate] = useState("");
-  const [stageVal, setStageVal] = useState<string>("call_done");
-  const [lostReason, setLostReason] = useState("");
 
   const allSelected = rows.length > 0 && selected.size === rows.length;
 
@@ -108,8 +92,6 @@ export function LeadsTable({ rows, sort, dir = "desc" }: { rows: Row[]; sort: st
     params.set("view", "table");
     if (next === "recent") params.delete("sort");
     else params.set("sort", next);
-    // Re-clicking the active column flips ascending ↔ descending; switching to
-    // a different column resets to that column's default (descending).
     if (sort === next) {
       params.set("dir", dir === "asc" ? "desc" : "asc");
     } else {
@@ -119,31 +101,30 @@ export function LeadsTable({ rows, sort, dir = "desc" }: { rows: Row[]; sort: st
     router.push(`${pathname}?${params.toString()}`);
   }
 
-  async function runBulk() {
-    if (!bulk) return;
+  async function handleBulkApply(action: string, payload: Record<string, any>) {
     const ids = [...selected];
-    let value: string | null = null;
-    if (bulk === "assign") value = assignRm;
-    if (bulk === "follow_up") {
-      if (!followDate) { setErr("Pick a follow-up date."); return; }
-      value = new Date(followDate).toISOString();
-    }
-    if (bulk === "stage") value = stageVal;
-    if (bulk === "lost") value = lostReason || null;
-
+    if (ids.length === 0) return;
     setBusy(true);
     setErr(null);
     try {
+      let value: string | null = null;
+      if (action === "assign") value = payload.rmId ?? null;
+      if (action === "stage") value = payload.stage ?? "call_done";
+
       const res = await fetch("/api/leads/bulk", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ ids, action: bulk, value }),
+        body: JSON.stringify({ ids, action, value }),
       });
       const j = await res.json();
-      if (!res.ok) { setErr(j.error ?? `Failed (${res.status})`); return; }
-      setBulk(null);
+      if (!res.ok) {
+        setErr(j.error ?? `Failed (${res.status})`);
+        return;
+      }
       setSelected(new Set());
       router.refresh();
+    } catch (e: any) {
+      setErr(e?.message ?? "Bulk action failed");
     } finally {
       setBusy(false);
     }
@@ -152,87 +133,44 @@ export function LeadsTable({ rows, sort, dir = "desc" }: { rows: Row[]; sort: st
   const sortArrow = (key: string) => (sort === key ? (dir === "asc" ? "↑" : "↓") : "");
 
   return (
-    <div className="card-surface overflow-hidden">
-      {/* Bulk toolbar */}
-      {selected.size > 0 && (
-        <div className="flex items-center gap-2 flex-wrap border-b bg-brand-cyan-light/40 px-4 py-2 text-sm">
-          <span className="font-semibold">{selected.size} selected</span>
-          <button onClick={() => setBulk("assign")} className="btn-ghost text-xs inline-flex items-center gap-1"><UserCog className="size-3.5" /> Reassign RM</button>
-          <button onClick={() => setBulk("follow_up")} className="btn-ghost text-xs inline-flex items-center gap-1"><CalendarClock className="size-3.5" /> Set follow-up</button>
-          <button onClick={() => setBulk("stage")} className="btn-ghost text-xs inline-flex items-center gap-1"><ArrowRightLeft className="size-3.5" /> Change stage</button>
-          <button onClick={() => setBulk("lost")} className="btn-ghost text-xs inline-flex items-center gap-1 text-rose-700"><Ban className="size-3.5" /> Mark lost</button>
-          <button onClick={() => setBulk("delete")} className="btn-ghost text-xs inline-flex items-center gap-1 text-rose-700"><Trash2 className="size-3.5" /> Delete</button>
-          <button onClick={() => setSelected(new Set())} className="text-xs text-muted-foreground hover:underline ml-auto">Clear</button>
+    <div className="card-surface overflow-hidden relative">
+      {/* Table Sub-header with Density Switcher */}
+      <div className="flex items-center justify-between px-4 py-2 bg-muted/20 border-b border-border text-xs">
+        <div className="flex items-center gap-2">
+          <span className="text-muted-foreground font-medium">
+            Showing <strong className="text-foreground">{rows.length}</strong> leads
+          </span>
         </div>
-      )}
-
-      {/* Bulk value popover */}
-      {bulk && (
-        <div className="border-b bg-secondary/40 px-4 py-3 flex items-center gap-3 flex-wrap text-sm">
-          {bulk === "assign" && (
-            <div className="min-w-[240px]">
-              <RmSelector value={assignRm} onChange={setAssignRm} placeholder="— Choose RM (or unassign) —" />
-            </div>
-          )}
-          {bulk === "follow_up" && (
-            <input type="date" value={followDate} onChange={(e) => setFollowDate(e.target.value)} className="input-base text-sm" />
-          )}
-          {bulk === "stage" && (
-            <select value={stageVal} onChange={(e) => setStageVal(e.target.value)} className="input-base text-sm">
-              {STAGE_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-            </select>
-          )}
-          {bulk === "lost" && (
-            <input value={lostReason} onChange={(e) => setLostReason(e.target.value)} placeholder="Lost reason (optional)" className="input-base text-sm w-72" />
-          )}
-          {bulk === "delete" && (
-            <span className="inline-flex items-center gap-1.5 text-rose-700">
-              <AlertTriangle className="size-4" />
-              Delete {selected.size} lead{selected.size > 1 ? "s" : ""}? They&apos;ll be removed from your pipeline.
-            </span>
-          )}
-          <button
-            onClick={runBulk}
-            disabled={busy}
-            className={
-              bulk === "delete"
-                ? "text-xs inline-flex items-center gap-1 px-3 py-1.5 rounded-md bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-50"
-                : "btn-primary text-xs"
-            }
-          >
-            {busy && <Loader2 className="size-3.5 animate-spin" />}
-            {bulk === "delete" ? <>Delete {selected.size}</> : <>Apply to {selected.size}</>}
-          </button>
-          <button onClick={() => { setBulk(null); setErr(null); }} className="text-xs text-muted-foreground hover:underline inline-flex items-center gap-0.5"><X className="size-3" /> Cancel</button>
-          {err && <span className="text-xs text-rose-600">{err}</span>}
+        <div className="flex items-center gap-2">
+          <TableDensityToggle density={density} onToggle={toggleDensity} />
         </div>
-      )}
+      </div>
 
       <div className="table-scroll">
-        <table className="w-full text-sm table-modern text-left" data-table="leads">
+        <table className={`w-full ${isCompact ? "text-xs" : "text-sm"} table-modern text-left`} data-table="leads">
           <thead className="text-xs text-muted-foreground border-b sticky top-0 z-10 bg-card">
             <tr>
-              <th className="px-3 py-2.5 w-8">
+              <th className={`px-3 ${isCompact ? "py-1.5" : "py-2.5"} w-8`}>
                 <input type="checkbox" checked={allSelected} onChange={toggleAll} className="size-3.5 rounded" aria-label="Select all" />
               </th>
-              <th data-col="score" className="py-2.5 font-medium">
+              <th data-col="score" className={`${isCompact ? "py-1.5" : "py-2.5"} font-medium`}>
                 <button onClick={() => setSort("score")} className="inline-flex items-center gap-1 hover:text-foreground">
                   Score <ArrowUpDown className="size-3" /> {sortArrow("score")}
                 </button>
               </th>
-              <th data-col="name" className="px-1 py-2.5 font-medium">Name</th>
-              <th data-col="stage" className="py-2.5 font-medium">Stage</th>
-              <th data-col="intendedAmount" className="py-2.5 font-medium text-right pr-6">Intended Amount</th>
-              <th data-col="source" className="py-2.5 font-medium">Source</th>
-              <th data-col="nextFollowUpAt" className="py-2.5 font-medium">Next Follow-Up</th>
-              <th data-col="lastContactAt" className="py-2.5 font-medium">Last Contacted</th>
-              <th data-col="owner" className="py-2.5 font-medium">Owner (RM)</th>
-              <th data-col="createdAt" className="py-2.5 font-medium">
+              <th data-col="name" className={`px-1 ${isCompact ? "py-1.5" : "py-2.5"} font-medium`}>Name</th>
+              <th data-col="stage" className={`${isCompact ? "py-1.5" : "py-2.5"} font-medium`}>Stage</th>
+              <th data-col="intendedAmount" className={`${isCompact ? "py-1.5" : "py-2.5"} font-medium text-right pr-6`}>Intended Amount</th>
+              <th data-col="source" className={`${isCompact ? "py-1.5" : "py-2.5"} font-medium`}>Source</th>
+              <th data-col="nextFollowUpAt" className={`${isCompact ? "py-1.5" : "py-2.5"} font-medium`}>Next Follow-Up</th>
+              <th data-col="lastContactAt" className={`${isCompact ? "py-1.5" : "py-2.5"} font-medium`}>Last Contacted</th>
+              <th data-col="owner" className={`${isCompact ? "py-1.5" : "py-2.5"} font-medium`}>Owner (RM)</th>
+              <th data-col="createdAt" className={`${isCompact ? "py-1.5" : "py-2.5"} font-medium`}>
                 <button onClick={() => setSort("recent")} className="inline-flex items-center gap-1 hover:text-foreground">
                   Created <ArrowUpDown className="size-3" /> {sortArrow("recent")}
                 </button>
               </th>
-              <th data-col="actions" className="px-4 py-2.5 text-right font-medium">Actions</th>
+              <th data-col="actions" className={`px-4 ${isCompact ? "py-1.5" : "py-2.5"} text-right font-medium`}>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -240,21 +178,30 @@ export function LeadsTable({ rows, sort, dir = "desc" }: { rows: Row[]; sort: st
               const band = leadScoreBand(l.score);
               const isSel = selected.has(l.id);
               return (
-                <tr key={l.id} className={`border-b last:border-0 hover:bg-accent/40 ${isSel ? "bg-brand-cyan-light/30" : ""}`}>
-                  <td className="px-3 py-3">
+                <tr
+                  key={l.id}
+                  onClick={(e) => {
+                    if ((e.target as HTMLElement).closest("a, button, input, select, [role='menu'], [data-no-row-nav]")) return;
+                    setSidePeekLead(l);
+                  }}
+                  className={`border-b last:border-0 hover:bg-accent/40 cursor-pointer transition-colors ${
+                    isSel ? "bg-brand-cyan-light/30" : ""
+                  }`}
+                >
+                  <td className={`px-3 ${isCompact ? "py-1.5" : "py-2.5"}`}>
                     <input type="checkbox" checked={isSel} onChange={() => toggle(l.id)} className="size-3.5 rounded" aria-label={`Select ${l.name}`} />
                   </td>
-                  <td data-col="score" className="py-3">
+                  <td data-col="score" className={`${isCompact ? "py-1.5" : "py-2.5"}`}>
                     <span className={`inline-flex items-center gap-1 chip text-xs border font-bold tabular-nums ${band.chip}`}>
                       <span className={`size-1.5 rounded-full ${band.dot}`} />
                       {l.score}
                     </span>
                   </td>
-                  <td data-col="name" className="px-1 py-3 font-medium">
+                  <td data-col="name" className={`px-1 ${isCompact ? "py-1.5" : "py-2.5"} font-medium`}>
                     <div className="flex items-center gap-2">
-                      <Avatar src={l.avatarUrl ? `/api/leads/${l.id}/avatar` : null} name={l.name} size={28} />
+                      <Avatar src={l.avatarUrl ? `/api/leads/${l.id}/avatar` : null} name={l.name} size={isCompact ? 22 : 28} />
                       <div>
-                        <Link href={`/dashboard/leads/${l.id}`} className="hover:underline text-[14px]">{l.name}</Link>
+                        <span className="hover:text-brand-navy hover:underline">{l.name}</span>
                         {(l.phone || l.email) && (
                           <div className="text-[11px] text-muted-foreground mt-0.5 space-x-2 font-mono">
                             {l.phone && <span>{l.phone}</span>}
@@ -265,27 +212,37 @@ export function LeadsTable({ rows, sort, dir = "desc" }: { rows: Row[]; sort: st
                       </div>
                     </div>
                   </td>
-                  <td data-col="stage" className="py-3">
+                  <td data-col="stage" className={`${isCompact ? "py-1.5" : "py-2.5"}`}>
                     <span className={`chip text-xs border font-medium ${toneStyles[l.stageTone] ?? "bg-muted"}`}>{l.stageLabel}</span>
                   </td>
-                  <td data-col="intendedAmount" className="py-3 text-right pr-6 tabular-nums font-semibold">
+                  <td data-col="intendedAmount" className={`${isCompact ? "py-1.5" : "py-2.5"} text-right pr-6 tabular-nums font-semibold`}>
                     {l.intendedAmount ? formatINR(l.intendedAmount) : "—"}
                   </td>
-                  <td data-col="source" className="py-3">
+                  <td data-col="source" className={`${isCompact ? "py-1.5" : "py-2.5"}`}>
                     <span className={`chip text-xs border ${sourceColors[l.source] ?? "bg-muted"}`}>{l.source.replace(/_/g, " ")}</span>
                   </td>
-                  <td data-col="nextFollowUpAt" className="py-3 text-xs text-muted-foreground tabular-nums">
+                  <td data-col="nextFollowUpAt" className={`${isCompact ? "py-1.5" : "py-2.5"} text-xs text-muted-foreground tabular-nums`}>
                     {l.nextFollowUpAt ? formatDate(l.nextFollowUpAt) : "—"}
                   </td>
-                  <td data-col="lastContactAt" className="py-3 text-xs text-muted-foreground tabular-nums">
+                  <td data-col="lastContactAt" className={`${isCompact ? "py-1.5" : "py-2.5"} text-xs text-muted-foreground tabular-nums`}>
                     {l.lastContactAt ? formatDate(l.lastContactAt) : "—"}
                   </td>
-                  <td data-col="owner" className="py-3 text-xs font-medium">{l.owner ?? "—"}</td>
-                  <td data-col="createdAt" className="py-3 text-xs text-muted-foreground tabular-nums">
+                  <td data-col="owner" className={`${isCompact ? "py-1.5" : "py-2.5"} text-xs font-medium`}>{l.owner ?? "—"}</td>
+                  <td data-col="createdAt" className={`${isCompact ? "py-1.5" : "py-2.5"} text-xs text-muted-foreground tabular-nums`}>
                     {l.createdAt ? formatDate(l.createdAt) : "—"}
                   </td>
-                  <td data-col="actions" className="px-4 py-3 text-right">
-                    <RowActions inline editHref={`/dashboard/leads/${l.id}`} deleteUrl={`/api/leads/${l.id}`} itemLabel="lead" itemName={l.name} verb="Delete" />
+                  <td data-col="actions" className={`px-4 ${isCompact ? "py-1.5" : "py-2.5"} text-right`}>
+                    <div className="flex items-center justify-end gap-1" data-no-row-nav>
+                      <button
+                        type="button"
+                        onClick={() => setSidePeekLead(l)}
+                        className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted"
+                        title="Side-Peek Snapshot"
+                      >
+                        <Eye className="size-3.5" />
+                      </button>
+                      <RowActions inline editHref={`/dashboard/leads/${l.id}`} deleteUrl={`/api/leads/${l.id}`} itemLabel="lead" itemName={l.name} verb="Delete" />
+                    </div>
                   </td>
                 </tr>
               );
@@ -293,6 +250,23 @@ export function LeadsTable({ rows, sort, dir = "desc" }: { rows: Row[]; sort: st
           </tbody>
         </table>
       </div>
+
+      {/* Floating Bulk Action Bar */}
+      <FloatingBulkBar
+        selectedCount={selected.size}
+        onClear={() => setSelected(new Set())}
+        onApplyAction={handleBulkApply}
+        busy={busy}
+        error={err}
+        showStage={true}
+        showReview={false}
+        showTier={false}
+        showSegment={false}
+        showCategory={false}
+      />
+
+      {/* Split-Screen Side-Peek Drawer */}
+      <LeadSidePeek lead={sidePeekLead} onClose={() => setSidePeekLead(null)} />
     </div>
   );
 }

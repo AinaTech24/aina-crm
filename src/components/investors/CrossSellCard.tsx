@@ -83,7 +83,7 @@ export function CrossSellCard({
               onChange={(e) => setProduct(key, e.target.value)}
               className="text-xs w-40"
             >
-              <option value="">—</option>
+              <option value="">Select…</option>
               {CROSS_SELL_STATUSES.map(([v, l]) => (
                 <option key={v} value={v}>{l}</option>
               ))}

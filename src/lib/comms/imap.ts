@@ -63,9 +63,22 @@ export interface InboundRawMessage {
   fromName?: string;
   subject?: string;
   text?: string;
+  /**
+   * HTML body. RTA mailback mails increasingly deliver the report as a DOWNLOAD
+   * LINK rather than an attachment (KFintech hides it behind a "Click Here"
+   * anchor), so the href is only recoverable from the HTML part.
+   */
+  html?: string;
   date?: Date;
   /** All addresses the mail was delivered to (To/Cc + Delivered-To/X-*-To). */
   recipients: string[];
+  /**
+   * Addresses that identify WHO forwarded this mail — the firm's own mailbox,
+   * not the RTA's. Used to route mail sent to the shared rta@<domain> address
+   * (see resolveTenantBySenders). Gmail stamps the forwarding mailbox into
+   * X-Forwarded-For; a manual forward puts it in From/Return-Path.
+   */
+  senderCandidates: string[];
   attachments: InboundAttachment[];
 }
 
@@ -80,6 +93,35 @@ const RECIPIENT_HEADER_KEYS = new Set([
   "x-envelope-to",
   "resent-to",
 ]);
+
+/**
+ * Headers that carry the identity of the mailbox that FORWARDED the mail.
+ *
+ * Gmail writes `X-Forwarded-For: <forwarding-mailbox> <destination>`; Postfix and
+ * most MTAs set Return-Path to the envelope sender. `Resent-From` covers clients
+ * that do a true resend rather than an inline forward.
+ */
+const FORWARDER_HEADER_KEYS = new Set(["x-forwarded-for", "return-path", "resent-from", "sender"]);
+
+/**
+ * Who forwarded this mail (as opposed to who originally sent it). On an
+ * auto-forwarded CAMS/KFintech mailback the `From` stays the RTA, so the firm's
+ * own address only appears in the forwarding headers — that's what makes the
+ * shared rta@<domain> address routable at all.
+ *
+ * The visible `From` is included last: on a MANUAL forward it IS the firm.
+ */
+function collectSenderCandidates(parsed: any, fromAddr?: string): string[] {
+  const out = new Set<string>();
+  for (const line of parsed?.headerLines ?? []) {
+    const key = String(line?.key ?? "").toLowerCase();
+    if (!FORWARDER_HEADER_KEYS.has(key)) continue;
+    const matches = String(line?.line ?? "").match(EMAIL_RE);
+    if (matches) for (const m of matches) out.add(m.toLowerCase());
+  }
+  if (fromAddr) out.add(fromAddr.toLowerCase().trim());
+  return [...out];
+}
 
 function collectRecipients(parsed: any, envelope: any): string[] {
   const out = new Set<string>();
@@ -157,8 +199,10 @@ export async function processUnseenMailback(
             fromName: fromAddr?.name,
             subject: parsed.subject,
             text: parsed.text,
+            html: typeof parsed.html === "string" ? parsed.html : undefined,
             date: parsed.date,
             recipients: collectRecipients(parsed, m.envelope),
+            senderCandidates: collectSenderCandidates(parsed, fromAddr?.address),
             attachments,
           });
         }
@@ -183,6 +227,66 @@ export async function processUnseenMailback(
     await client.logout().catch(() => {});
   }
   return { processed };
+}
+
+/**
+ * Delete messages from the ingest mailbox by their RFC 5322 Message-ID.
+ *
+ * Matching on Message-ID rather than a stored UID is deliberate: UIDs are only
+ * meaningful alongside the mailbox's UIDVALIDITY, and if the server ever resets
+ * it, a stale UID would point at a DIFFERENT message — i.e. we'd delete the
+ * wrong mail. Message-ID is globally unique and stable, so a miss is a harmless
+ * no-op instead of a wrong deletion.
+ *
+ * Returns the Message-IDs actually deleted, so the caller only records the ones
+ * that really went (a message already removed by hand stays unrecorded and is
+ * simply skipped next sweep).
+ */
+export async function deleteMessagesByMessageId(
+  cfg: ImapConfig,
+  messageIds: string[]
+): Promise<{ deleted: string[]; notFound: string[] }> {
+  const deleted: string[] = [];
+  const notFound: string[] = [];
+  if (!messageIds.length) return { deleted, notFound };
+
+  const client = new ImapFlow({
+    host: cfg.host,
+    port: cfg.port,
+    secure: cfg.secure,
+    auth: imapAuth(cfg),
+    logger: false,
+    socketTimeout: 60_000,
+    greetingTimeout: 10_000,
+  });
+  client.on("error", () => {});
+  await client.connect();
+  try {
+    const lock = await client.getMailboxLock("INBOX");
+    try {
+      for (const mid of messageIds) {
+        try {
+          // header search is exact-match on the Message-ID header value.
+          const uids = (await client.search({ header: { "message-id": mid } }, { uid: true })) || [];
+          if (!uids.length) {
+            notFound.push(mid);
+            continue;
+          }
+          // messageDelete sets \Deleted and expunges (or moves to Trash on
+          // servers configured that way) — either frees the INBOX quota.
+          await client.messageDelete(uids.join(","), { uid: true });
+          deleted.push(mid);
+        } catch {
+          notFound.push(mid); // treat any per-message failure as "leave it be"
+        }
+      }
+    } finally {
+      lock.release();
+    }
+  } finally {
+    await client.logout().catch(() => {});
+  }
+  return { deleted, notFound };
 }
 
 /** Connect, authenticate, and confirm the INBOX is readable. Throws on failure. */

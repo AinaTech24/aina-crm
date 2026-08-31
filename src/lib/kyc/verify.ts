@@ -71,6 +71,19 @@ export async function verifyKyc(input: KycVerifyInput): Promise<KycVerifyResult>
     }
   }
 
+  // Never return a believable stub verification in production. A missing paid
+  // provider must be visible as an operational error, not client KYC evidence.
+  if (process.env.NODE_ENV === "production" && process.env.ALLOW_DEMO_PROVIDERS !== "1") {
+    return {
+      status: "error",
+      ckycNumber: null,
+      nameAsPerPan: null,
+      panAadhaarLinked: null,
+      provider: "unconfigured",
+      message: "KYC provider is not configured for production",
+    };
+  }
+
   // ── Stub: deterministic, no network. PAN must look valid to "verify". ──
   const panOk = !!input.pan && /^[A-Z]{5}\d{4}[A-Z]$/.test(input.pan.toUpperCase());
   const status = (process.env.KYC_STUB_STATUS as KycStatus) ?? "verified";

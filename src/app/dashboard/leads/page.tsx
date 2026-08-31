@@ -18,6 +18,7 @@ import { WorkSwitcher } from "@/components/layout/WorkSwitcher";
 const PIPELINE_VIEWS = [
   { value: "/dashboard/leads", label: "Leads" },
   { value: "/dashboard/pipeline-board", label: "Pipeline Board" },
+  { value: "/dashboard/lifecycle", label: "Lifecycle" },
 ];
 import { LeadsKanban } from "@/components/leads/LeadsKanban";
 import { LeadsTable } from "@/components/leads/LeadsTable";

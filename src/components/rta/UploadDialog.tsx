@@ -31,13 +31,19 @@ type Outcome = {
   error?: string;
 };
 
-const SOURCE_LABELS: Record<RtaSource, string> = {
+/**
+ * Sources a user can pick. Excludes "fintech_primitives": that integration
+ * was removed, and the value survives in RtaSource only so historical import
+ * rows still type-check. Nothing should offer it as a choice again.
+ */
+type UploadSource = Exclude<RtaSource, "fintech_primitives">;
+
+const SOURCE_LABELS: Record<UploadSource, string> = {
   cams: "CAMS",
   kfintech: "KFintech",
   mfu: "MF Utility",
   bse_star_mf: "BSE Star MF",
   nse_nmf2: "NSE NMF II",
-  fintech_primitives: "Mailback Import",
 };
 
 /** Compact pattern(s) for the dropdown <option>, e.g. " — MFSD211_… / …R9". */
@@ -51,7 +57,7 @@ function optionSuffix(def: RtaFileTypeDef): string {
 function fileNameHint(def: RtaFileTypeDef): string {
   if (def.fileNames && Object.keys(def.fileNames).length) {
     const s = Object.entries(def.fileNames)
-      .map(([src, pat]) => `${SOURCE_LABELS[src as RtaSource]} ${pat}`)
+      .map(([src, pat]) => `${SOURCE_LABELS[src as UploadSource] ?? src} ${pat}`)
       .join(" · ");
     return def.fileNamesApprox ? `${s} — confirm on your first download` : s;
   }
@@ -271,7 +277,7 @@ export function UploadDialog({
                           : "bg-background hover:bg-secondary/70 border-border"
                         }`}
                     >
-                      {SOURCE_LABELS[s]}
+                      {SOURCE_LABELS[s as UploadSource] ?? s}
                     </button>
                   ))}
                 </div>

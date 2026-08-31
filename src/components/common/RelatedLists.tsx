@@ -260,9 +260,6 @@ export function RelatedListsManager({
       >
         <Settings2 className="size-3.5" />
         Customize page
-        <span className="text-[10px] text-muted-foreground tabular-nums">
-          {visibleCount}/{sections.length}
-        </span>
       </button>
 
       {open && (

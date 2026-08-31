@@ -3,7 +3,6 @@ import Link from "next/link";
 import { ChevronLeft, Webhook, Check, AlertCircle, ExternalLink } from "lucide-react";
 import VartifyConnectCard from "./VartifyConnectCard";
 import { ZohoIntegrationCard } from "@/components/integrations/ZohoIntegrationCard";
-import { FintechPrimitivesCard } from "@/components/integrations/FintechPrimitivesCard";
 import { RtaMailbackCard } from "@/components/integrations/RtaMailbackCard";
 import { StatusChip } from "@/components/common/StatusChip";
 
@@ -65,9 +64,6 @@ export default function IntegrationsPage() {
 
       {/* Self-serve: direct RTA mailback auto-import via email forwarding. */}
       <RtaMailbackCard />
-
-      {/* Self-serve: connect the firm's own FintechPrimitives account (transaction pull). */}
-      <FintechPrimitivesCard />
 
       <div className="grid grid-cols-1 gap-3">
         {INTEGRATIONS.map((i) => {

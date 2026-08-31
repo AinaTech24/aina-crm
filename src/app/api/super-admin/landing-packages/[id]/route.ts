@@ -12,11 +12,11 @@ import { withPlatformAdmin } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { requirePlatform } from "@/lib/auth/rbac";
 import { landingPackages } from "@/db/schema";
-import { LandingBody } from "../route";
+import { LandingPatchBody } from "@/lib/landing/schema";
 
 export const dynamic = "force-dynamic";
 
-const PatchBody = LandingBody.partial();
+const PatchBody = LandingPatchBody;
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {

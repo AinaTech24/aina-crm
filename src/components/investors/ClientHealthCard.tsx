@@ -115,9 +115,9 @@ export function ClientHealthCard({
       </div>
 
       <p className="text-[10px] text-muted-foreground mt-3 leading-relaxed border-t border-border/40 pt-3">
-        Score = 100 minus deductions for stale contact, missed reviews, KYC /
-        FATCA / nominee gaps, redemption-risk flag, and open SR breaches.
-        Tune the factor weights in <code>src/lib/investors/health.ts</code>.
+        Score starts at 100 and loses points for stale contact, missed reviews,
+        KYC / nominee gaps and overdue service requests — fix an item above to
+        recover its points.
       </p>
     </div>
   );

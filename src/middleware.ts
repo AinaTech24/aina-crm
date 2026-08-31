@@ -63,8 +63,8 @@ const PUBLIC_PATHS = new Set([
   "/privacy",
   "/refund",
   // Public Knowledge Base hub (the KAIZEN series). Individual articles are
-  // covered by the "/knowledge-base/" prefix below. The gated half of an
-  // article is withheld server-side, and /api/kb/image/* still needs a session.
+  // covered by the "/knowledge-base/" prefix below. The whole KB is public —
+  // scenario, walkthrough and screenshots — with no login anywhere.
   "/knowledge-base",
 ]);
 
@@ -80,7 +80,7 @@ const PUBLIC_PATHS = new Set([
  *   /fd/*   — public Financial Discovery ("Financial Health Check") — client
  *             fills the fact-find before the meeting via a share link
  *   /api/public/*  — submission endpoints for the above
- *   /api/webhooks/* — Wapi / Resend / etc.
+ *   /api/webhooks/* — Vartify / Resend / etc.
  *   /api/health, /api/auth/*, /api/employees/accept-invite — auth flows
  */
 const PUBLIC_PATH_PREFIXES = [
@@ -90,6 +90,7 @@ const PUBLIC_PATH_PREFIXES = [
   "/p/",
   "/lf/",
   "/fd/",
+  "/portal/",
   "/knowledge-base/",
   // /induction/letter/* — the training confirmation letter. Unauthenticated by
   // design so a member can forward it to a personal inbox; the 32-byte random
@@ -99,9 +100,14 @@ const PUBLIC_PATH_PREFIXES = [
 ];
 const PUBLIC_API_PREFIXES = [
   "/api/public/",
+  "/api/portal/",
   // Public landing-page pricing feed — the marketing site polls this so an
   // open tab reflects admin edits live. Only published, display-only copy.
   "/api/landing/",
+  // Knowledge Base screenshots — the KB is fully public, so these must render
+  // for anonymous readers. The route resolves storage keys ONLY from published
+  // articles and 302s to a short-lived presigned URL, so the bucket stays private.
+  "/api/kb/image/",
   "/api/webhooks/",
   "/api/health",
   "/api/auth/",

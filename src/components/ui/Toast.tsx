@@ -98,10 +98,10 @@ const META: Record<
   ToastType,
   { icon: any; ring: string; bg: string; text: string; iconC: string }
 > = {
-  success: { icon: CheckCircle2, ring: "border-emerald-200 dark:border-emerald-900", bg: "bg-emerald-50 dark:bg-emerald-950/80", text: "text-emerald-900 dark:text-emerald-200", iconC: "text-emerald-600 dark:text-emerald-400" },
-  error: { icon: XCircle, ring: "border-rose-200 dark:border-rose-900", bg: "bg-rose-50 dark:bg-rose-950/80", text: "text-rose-900 dark:text-rose-200", iconC: "text-rose-600 dark:text-rose-400" },
-  warning: { icon: AlertTriangle, ring: "border-amber-200 dark:border-amber-900", bg: "bg-amber-50 dark:bg-amber-950/80", text: "text-amber-900 dark:text-amber-200", iconC: "text-amber-600 dark:text-amber-400" },
-  info: { icon: Info, ring: "border-sky-200 dark:border-sky-900", bg: "bg-sky-50 dark:bg-sky-950/80", text: "text-sky-900 dark:text-sky-200", iconC: "text-sky-600 dark:text-sky-400" },
+  success: { icon: CheckCircle2, ring: "border-success/25", bg: "bg-success/10", text: "text-success-foreground", iconC: "text-success" },
+  error: { icon: XCircle, ring: "border-destructive/25", bg: "bg-destructive/10", text: "text-destructive", iconC: "text-destructive" },
+  warning: { icon: AlertTriangle, ring: "border-warning/25", bg: "bg-warning/10", text: "text-warning-foreground", iconC: "text-warning-foreground" },
+  info: { icon: Info, ring: "border-info/25", bg: "bg-info/10", text: "text-info-foreground", iconC: "text-info" },
 };
 
 function ToastCard({ item, onDismiss }: { item: ToastItem; onDismiss: (id: number) => void }) {

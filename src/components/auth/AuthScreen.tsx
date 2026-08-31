@@ -24,6 +24,21 @@ type Mode = "login" | "signup";
 
 const YEAR = new Date().getFullYear();
 
+/**
+ * Sanitise a ?next= destination. Accepts ONLY a same-origin absolute path
+ * ("/knowledge-base/x"). Rejects protocol-relative ("//host"), backslash
+ * variants ("/\host" — some browsers treat these as protocol-relative) and any
+ * absolute URL, all of which would be an open redirect.
+ */
+function safeNext(raw: string | null): string {
+  const FALLBACK = "/dashboard";
+  if (!raw) return FALLBACK;
+  const v = raw.trim();
+  if (!v.startsWith("/")) return FALLBACK;
+  if (v.startsWith("//") || v.startsWith("/\\")) return FALLBACK;
+  return v;
+}
+
 const PANEL = {
   login: {
     eyebrow: "Welcome back",
@@ -51,7 +66,10 @@ export function AuthScreen({
 }) {
   const [mode, setMode] = useState<Mode>(initialMode);
   const params = useSearchParams();
-  const next = params.get("next") ?? "/dashboard";
+  // Only ever redirect to a path on THIS origin. A bare "//evil.com" or
+  // "https://evil.com" in ?next= would otherwise be an open redirect — and we
+  // now link here from the public Knowledge Base gate, so it is reachable.
+  const next = safeNext(params.get("next"));
   const router = useRouter();
   const toast = useToast();
 

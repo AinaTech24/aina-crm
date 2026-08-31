@@ -25,12 +25,12 @@ export type StatusChip = {
 };
 
 const ACTIVE_TONE: Record<string, string> = {
-  rose: "border-rose-300 bg-rose-50 text-rose-700",
-  amber: "border-amber-300 bg-amber-50 text-amber-700",
-  emerald: "border-emerald-300 bg-emerald-50 text-emerald-700",
-  violet: "border-violet-300 bg-violet-50 text-violet-700",
-  sky: "border-sky-300 bg-sky-50 text-sky-700",
-  slate: "border-slate-300 bg-slate-100 text-slate-700",
+  rose: "border-destructive/30 bg-destructive/10 text-destructive",
+  amber: "border-warning/30 bg-warning/10 text-warning-foreground",
+  emerald: "border-success/30 bg-success/10 text-success-foreground",
+  violet: "border-primary/30 bg-primary/10 text-primary",
+  sky: "border-info/30 bg-info/10 text-info-foreground",
+  slate: "border-border bg-secondary text-secondary-foreground",
 };
 
 function buildHref(basePath: string, params: Record<string, string | undefined>, paramKey: string, value: string) {

@@ -311,7 +311,7 @@ export function PortfolioReviewWorksheet({
                       size="sm"
                       className="w-full"
                     >
-                      <option value="">—</option>
+                      <option value="">Select…</option>
                       <option value="sip">SIP</option>
                       <option value="lumpsum">Lumpsum</option>
                       <option value="mixed">Mixed</option>

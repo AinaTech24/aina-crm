@@ -143,7 +143,7 @@ export function ServiceRequestsTable({ rows }: { rows: any[] }) {
               <th data-col="priority" className="text-left py-2 font-medium">Priority</th>
               <th data-col="status" className="text-left py-2 font-medium">Status</th>
               <th data-col="expected" className="text-left py-2 font-medium">Expected</th>
-              <th data-col="tat" className="text-right py-2 font-medium">TAT (d)</th>
+              <th data-col="tat" className="text-right py-2 font-medium" title="Days since the ticket was raised">Age (days)</th>
               <th data-col="attachments" className="text-right py-2 font-medium pr-4">Att.</th>
               <th data-col="actions" className="px-4 py-2"></th>
             </tr>
@@ -152,7 +152,7 @@ export function ServiceRequestsTable({ rows }: { rows: any[] }) {
             {rows.map((sr) => {
               const isSel = selected.has(sr.id);
               return (
-                <tr key={sr.id} className={`group/row border-b last:border-0 hover:bg-secondary/40 ${isSel ? "bg-brand-cyan-light/30" : sr.breached ? "bg-rose-50/30" : ""}`}>
+                <tr key={sr.id} className={`group/row border-b last:border-0 hover:bg-secondary/40 ${isSel ? "bg-brand-cyan-light/30" : ""}`}>
                   <td className="px-3 py-3"><input type="checkbox" checked={isSel} onChange={() => toggle(sr.id)} className={`size-3.5 rounded transition-opacity ${isSel ? "opacity-100" : "opacity-0 group-hover/row:opacity-100 focus:opacity-100"}`} aria-label={`Select ${sr.ticket_no}`} /></td>
                   <td data-col="ticket" className="px-1 py-3 font-mono text-xs whitespace-nowrap">
                     <Link href={`/dashboard/service-requests/${sr.id}`} className="hover:underline text-brand-cyan-deep">{sr.ticket_no}</Link>
@@ -183,11 +183,11 @@ export function ServiceRequestsTable({ rows }: { rows: any[] }) {
                   </td>
                   <td data-col="expected" className="py-3 text-xs text-muted-foreground tabular-nums whitespace-nowrap">{sr.sla_resolution_at ? formatDate(sr.sla_resolution_at) : "—"}</td>
                   <td data-col="tat" className="py-3 text-right tabular-nums">
-                    {sr.breached ? <span className="text-rose-600 font-bold">{sr.tat_days}</span> : sr.resolved_at ? <span className="text-emerald-600 font-medium">{sr.tat_days}</span> : <span className="text-muted-foreground">{sr.tat_days}</span>}
+                    {sr.breached ? <span className="text-rose-600 font-semibold" title="Past the promised resolution date">{sr.tat_days}</span> : <span className="text-muted-foreground">{sr.tat_days}</span>}
                   </td>
                   <td data-col="attachments" className="py-3 text-right tabular-nums text-muted-foreground">{sr.attach_count > 0 ? sr.attach_count : "—"}</td>
                   <td data-col="actions" className="px-4 py-3 text-right">
-                    <RowActions inline editHref={`/dashboard/service-requests/${sr.id}`} deleteUrl={`/api/service-requests/${sr.id}`} itemLabel="ticket" itemName={sr.ticket_no} verb="Close" deleteIcon={Ban} />
+                    <RowActions editHref={`/dashboard/service-requests/${sr.id}`} deleteUrl={`/api/service-requests/${sr.id}`} itemLabel="ticket" itemName={sr.ticket_no} verb="Close" deleteIcon={Ban} />
                   </td>
                 </tr>
               );

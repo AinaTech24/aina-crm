@@ -66,64 +66,6 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // FintechPrimitives "mailback" route: instead of parsing locally, upload the
-  // reverse feed to FP, which processes it into structured transactions (with
-  // FIFO capital-gains) we pull back. Reserve the import row + enqueue the FP
-  // worker, then return early — the local-parser routing below doesn't apply.
-  if (source === "fintech_primitives") {
-    const importId = await withTenant(
-      session.tenantId,
-      async (tx) => {
-        const reserve = await tx.execute(sql`
-          INSERT INTO rta_file_imports (
-            tenant_id, source, kind, period_start, period_end,
-            file_name, file_key, status, uploaded_by
-          ) VALUES (
-            ${session.tenantId}::uuid, ${source}, ${kind},
-            ${new Date().toISOString().slice(0, 10)}::date,
-            ${new Date().toISOString().slice(0, 10)}::date,
-            ${fileName}, ${key}, 'uploaded', ${session.userId}::uuid
-          )
-          RETURNING id
-        `);
-        return (reserve.rows[0] as any).id as string;
-      },
-      { userId: session.userId, branchId: session.branchId, roles: session.roles }
-    );
-
-    await Q.fpImport().add(
-      "fp-import",
-      {
-        importId,
-        tenantId: session.tenantId,
-        key,
-        filename: fileName,
-        password: password || undefined,
-        userId: session.userId,
-        branchId: session.branchId,
-        roles: session.roles,
-      },
-      { attempts: 1, removeOnComplete: true, removeOnFail: { age: 3600 } }
-    );
-
-    await withTenant(
-      session.tenantId,
-      async (tx) => {
-        await recordAudit(tx, {
-          tenantId: session.tenantId,
-          actorUserId: session.userId,
-          action: "rta_import.upload",
-          entityType: "rta_file_import",
-          entityId: importId,
-          after: { source, kind, fileName, status: "queued" },
-          ...clientMetaFromHeaders(req.headers),
-        });
-      },
-      { userId: session.userId, branchId: session.branchId, roles: session.roles }
-    );
-
-    return NextResponse.json({ importId, status: "queued" });
-  }
 
   // Guard the most common (and silent) mis-pick: a CAMS R9 or KFintech
   // MFSD211/MFSD203 — the master / holdings exports — uploaded under a

@@ -58,7 +58,7 @@ const MAX_PASSWORD_ENTRIES = 8;
  */
 export function passwordCandidates(pw: MailbackPasswords, source: string): PasswordEntry[] {
   // Only CAMS and KFintech mailback carries a saved ZIP password today — any
-  // other RtaSource value (BSE Star, NSE NMF II, MFU, FintechPrimitives) has
+  // other RtaSource value (BSE Star, NSE NMF II, MFU) has
   // nothing to look up. Widened to `string` so callers passing the broader
   // RtaSource union (mailback classification only ever produces cams/kfintech,
   // but its TYPE is the full registry) don't need a narrowing cast.

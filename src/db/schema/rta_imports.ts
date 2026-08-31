@@ -59,11 +59,9 @@ export const RTA_SOURCES = [
   "mfu",
   "bse_star_mf",
   "nse_nmf2",
-  // FintechPrimitives (Cybrilla) reverse-feed route: instead of parsing the
-  // RTA mailback locally, the file is uploaded to FP, processed into structured
-  // transactions (with FIFO capital-gains), and pulled back. `source` is a plain
-  // text column (Drizzle enum is TS-only — no DB CHECK), so adding a value here
-  // needs no migration.
+  // LEGACY — the FintechPrimitives (Cybrilla) integration was removed. Kept in
+  // the union ONLY so historical rows still type-check and render: 67 imports
+  // carry this source. Nothing writes it any more; do not offer it as a choice.
   "fintech_primitives",
 ] as const;
 export type RtaSource = (typeof RTA_SOURCES)[number];

@@ -193,7 +193,7 @@ function ValueInput({ field, predicate, onChange }: { field: FieldDef; predicate
   if (field.type === "enum" && field.enumValues?.length) {
     return (
       <SelectField value={String(predicate.value ?? "")} onChange={(e) => set(e.target.value)} size="sm" className="shrink-0">
-        <option value="">—</option>
+        <option value="">Select…</option>
         {field.enumValues.map((v) => <option key={v} value={v}>{v}</option>)}
       </SelectField>
     );

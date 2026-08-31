@@ -19,7 +19,7 @@ const SR_COLUMNS = [
   { key: "status", label: "Status" },
   { key: "expected", label: "Expected resolution" },
   { key: "closed", label: "Closed on", defaultHidden: true },
-  { key: "tat", label: "TAT (days)" },
+  { key: "tat", label: "Age (days)" },
   { key: "remarks", label: "Remarks", defaultHidden: true },
   { key: "attachments", label: "Attachments", defaultHidden: true },
   { key: "actions", label: "Actions", required: true },
@@ -126,7 +126,7 @@ export default async function ServiceRequestsPage({
             <LifeBuoy className="size-6 text-brand-cyan" /> Service Requests
           </h1>
           <p className="text-muted-foreground text-sm">
-            13 service types incl. SEBI complaints · TAT clock per ticket · escalation on SLA breach.
+            Track every client request and complaint with a deadline — overdue tickets escalate automatically.
           </p>
         </div>
         <div className="flex items-center gap-2">

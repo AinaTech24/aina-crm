@@ -111,7 +111,7 @@ export function BlueprintStageEditor({
                   onChange={(e) => update(i, "ownerRole", e.target.value)}
                   className="input-base text-xs w-full"
                 >
-                  <option value="">—</option>
+                  <option value="">Select…</option>
                   <option value="sales">Sales / RM</option>
                   <option value="back_office">Back Office</option>
                   <option value="operations">Operations</option>

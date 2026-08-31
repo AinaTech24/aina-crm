@@ -98,18 +98,58 @@ function spreadsheetToPipeText(buf: Buffer): string {
   return lines.slice(headerIdx).join("\n");
 }
 
-/** Quote-aware split for a delimited line. */
+/**
+ * Quote-aware split for a delimited line, handling BOTH `"` and `'` quoting.
+ *
+ * CAMS mailback CSVs quote every text field with SINGLE quotes:
+ *   'FOLIOCHK','INV_NAME','ADDRESS1',…
+ *   '3409723/63','Swapan Kumar Das','S/O JITENDRA NATH DAS FLAT N-5,3RD FLOOR',…
+ *
+ * Treating `'` as ordinary text broke these files two ways: header cells kept
+ * their literal quotes so no report signature ever matched ("header did not match
+ * any known report"), and any address containing a comma was split into extra
+ * columns, shifting every field after it.
+ *
+ * A quote character only opens a field when it appears at the START of that
+ * field, so apostrophes inside names (O'Brien, D'Souza) are still just text.
+ */
 function splitDelimited(line: string, delim: string): string[] {
   if (delim !== ",") return line.split(delim);
   const out: string[] = [];
   let cur = "";
-  let q = false;
+  let quote: '"' | "'" | null = null;
+  let atFieldStart = true;
+
   for (let i = 0; i < line.length; i++) {
     const ch = line[i];
-    if (ch === '"' && line[i + 1] === '"') { cur += '"'; i++; }
-    else if (ch === '"') q = !q;
-    else if (ch === "," && !q) { out.push(cur); cur = ""; }
-    else cur += ch;
+
+    if (quote) {
+      // Doubled quote inside a quoted field is a literal quote.
+      if (ch === quote && line[i + 1] === quote) {
+        cur += quote;
+        i++;
+      } else if (ch === quote) {
+        quote = null;
+      } else {
+        cur += ch;
+      }
+      continue;
+    }
+
+    if (atFieldStart && (ch === '"' || ch === "'")) {
+      quote = ch as '"' | "'";
+      atFieldStart = false;
+      continue;
+    }
+    if (ch === ",") {
+      out.push(cur);
+      cur = "";
+      atFieldStart = true;
+      continue;
+    }
+    // Leading spaces before a quote still count as "before the field".
+    if (!(atFieldStart && ch === " ")) atFieldStart = false;
+    cur += ch;
   }
   out.push(cur);
   return out;
@@ -137,13 +177,53 @@ function normalizeDelimitedText(raw: string): string {
 }
 
 /**
+ * Refusal to decode a spreadsheet that is too large to hold in memory.
+ * Distinct type so the caller can report it as actionable config advice rather
+ * than an opaque crash.
+ */
+export class RtaFileTooLargeError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RtaFileTooLargeError";
+  }
+}
+
+/**
+ * Ceiling for SheetJS input. XLSX.read() materialises the ENTIRE workbook as an
+ * in-memory cell graph — it does not stream — so a very large spreadsheet costs
+ * multiples of its own size in RAM and pins a core for the whole parse.
+ *
+ * A real 482MB CAMS `.dbf` (inside a 28MB zip) held one core at 100% for an hour
+ * at ~3GB RSS and, because the parse is synchronous, starved the worker's event
+ * loop — freezing every other background job platform-wide. Failing fast with
+ * advice the operator can act on beats taking the platform down.
+ *
+ * CSV/text is NOT subject to this: it's read as a string and never enters SheetJS.
+ */
+export const SPREADSHEET_MAX_BYTES = Number(process.env.RTA_SPREADSHEET_MAX_BYTES ?? 150 * 1024 * 1024);
+
+/**
  * Decode an uploaded RTA file to canonical pipe-delimited text.
- * Always safe to call — falls back to UTF-8 text on any decode error.
+ * Falls back to UTF-8 text on any decode error — except an oversized
+ * spreadsheet, which THROWS (the fallback would itself build a giant string).
  */
 export function decodeRtaToText(buf: Buffer, fileName: string): string {
   const ext = (fileName.split(".").pop() ?? "").toLowerCase();
+  const isSpreadsheet = SPREADSHEET_EXT.has(ext);
+
+  // Outside the try on purpose: the catch-all below would swallow this and then
+  // allocate a multi-hundred-MB string from the same buffer.
+  if (isSpreadsheet && buf.length > SPREADSHEET_MAX_BYTES) {
+    const mb = (n: number) => `${Math.round(n / 1048576)}MB`;
+    throw new RtaFileTooLargeError(
+      `This ${ext.toUpperCase()} is ${mb(buf.length)}, over the ${mb(SPREADSHEET_MAX_BYTES)} limit for spreadsheet formats. ` +
+        `Re-request this report from the RTA with File Type = CSV — CSV imports at any size, ` +
+        `and a file this large in a binary format would stall every background job while it parsed.`
+    );
+  }
+
   try {
-    if (SPREADSHEET_EXT.has(ext)) return spreadsheetToPipeText(buf);
+    if (isSpreadsheet) return spreadsheetToPipeText(buf);
     return normalizeDelimitedText(buf.toString("utf8"));
   } catch {
     // Last-ditch: hand back raw text so the parser at least tries.

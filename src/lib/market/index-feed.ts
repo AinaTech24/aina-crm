@@ -93,7 +93,9 @@ export async function fetchIndexQuote(asOf: string): Promise<IndexQuote | null> 
     return parseIndexQuote(json, { asOf });
   }
 
-  const stub = process.env.MARKET_INDEX_STUB_CHANGE_PCT;
+  const stub = process.env.NODE_ENV === "production" && process.env.ALLOW_DEMO_PROVIDERS !== "1"
+    ? undefined
+    : process.env.MARKET_INDEX_STUB_CHANGE_PCT;
   if (stub != null && stub !== "") {
     const changePct = Number(stub);
     if (isFinite(changePct)) {

@@ -33,7 +33,7 @@ export const SIDEBAR_REGISTRY: SidebarEntry[] = [
   { group: "CRM", href: "/dashboard/investors", label: "Clients" },
   { group: "CRM", href: "/dashboard/families", label: "Family Mapping" },
   { group: "CRM", href: "/dashboard/risk-profiles", label: "Risk Profile" },
-  { group: "CRM", href: "/dashboard/discovery", label: "Financial Discovery" },
+  { group: "CRM", href: "/dashboard/discovery", label: "Client Discovery" },
   { group: "CRM", href: "/dashboard/calculators", label: "Calculators" },
   { group: "CRM", href: "/dashboard/goals", label: "Goal Planning" },
   { group: "CRM", href: "/dashboard/proposals", label: "Proposals" },

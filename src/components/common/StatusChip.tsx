@@ -16,13 +16,10 @@ export type Tone = "neutral" | "success" | "warning" | "danger" | "info" | "bran
 
 const TONE_CLS: Record<Tone, string> = {
   neutral: "bg-secondary text-muted-foreground border-border",
-  success:
-    "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/25",
-  warning:
-    "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/25",
-  danger:
-    "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-500/15 dark:text-rose-300 dark:border-rose-500/25",
-  info: "bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-500/15 dark:text-sky-300 dark:border-sky-500/25",
+  success: "bg-success/10 text-success-foreground border-success/25",
+  warning: "bg-warning/10 text-warning-foreground border-warning/25",
+  danger: "bg-destructive/10 text-destructive border-destructive/25",
+  info: "bg-info/10 text-info-foreground border-info/25",
   brand:
     "bg-brand-cyan-light text-brand-cyan-deep border-brand-cyan/20 dark:bg-brand-cyan/15 dark:text-brand-cyan",
 };

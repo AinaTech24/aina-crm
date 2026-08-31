@@ -37,6 +37,7 @@ export function RowActions({
   redirectTo,
   inline = false,
   deleteIcon: DeleteIcon = Trash2,
+  items,
 }: {
   editHref?: string;
   deleteUrl?: string;
@@ -52,6 +53,8 @@ export function RowActions({
   inline?: boolean;
   /** Icon for the destructive action in inline mode (e.g. Archive, Ban). Defaults to Trash2. */
   deleteIcon?: LucideIcon;
+  /** Extra navigation entries shown at the top of the ⋯ menu (menu mode only). */
+  items?: { label: string; href: string }[];
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -141,7 +144,18 @@ export function RowActions({
         {busy ? <Loader2 className="size-4 animate-spin" /> : <MoreHorizontal className="size-4" />}
       </button>
       {open && (
-        <div className="absolute right-0 top-full mt-1 z-10 w-44 rounded-md border bg-popover shadow-md py-1 text-sm">
+        <div className="absolute right-0 top-full mt-1 z-10 w-48 rounded-md border bg-popover shadow-md py-1 text-sm">
+          {items?.map((it) => (
+            <Link
+              key={it.href}
+              href={it.href}
+              className="flex items-center gap-2 px-3 py-1.5 hover:bg-accent"
+              onMouseDown={(e) => e.preventDefault()}
+            >
+              {it.label}
+            </Link>
+          ))}
+          {items && items.length > 0 && (editHref || deleteUrl) && <div className="my-1 border-t border-border" />}
           {editHref && (
             <Link
               href={editHref}

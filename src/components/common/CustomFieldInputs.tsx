@@ -71,7 +71,7 @@ function Field({ d, value, onChange }: { d: CustomFieldDef; value: any; onChange
     case "select":
       return (
         <select value={value ?? ""} onChange={(e) => onChange(e.target.value)} className="input-base text-sm w-full">
-          <option value="">—</option>
+          <option value="">Select…</option>
           {(d.options ?? []).map((o) => <option key={o} value={o}>{o}</option>)}
         </select>
       );

@@ -113,7 +113,7 @@ export function InlineEditField({ spec, display }: { spec: InlineEditSpec; displ
           onChange={(e) => { setVal(e.target.value); void commit(e.target.value); }}
           className="rounded border border-border bg-background px-1.5 h-7 text-sm focus:outline-none focus:ring-2 focus:ring-brand-cyan/30"
         >
-          {(spec.nullable || !(spec.options ?? []).some((o) => o.value === "")) && <option value="">—</option>}
+          {(spec.nullable || !(spec.options ?? []).some((o) => o.value === "")) && <option value="">Select…</option>}
           {spec.options?.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
       ) : (

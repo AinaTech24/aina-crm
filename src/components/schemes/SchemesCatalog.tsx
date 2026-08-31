@@ -375,11 +375,11 @@ function SchemeFormDrawer({ mode, scheme, amcs, onClose, onSaved }: { mode: "new
         <Field label="AMC"><Select value={f.amcCode} onChange={(v) => set("amcCode", v)} disabled={mode === "edit"} options={amcs.map((a) => ({ value: a.code, label: `${a.name} (${a.code})` }))} placeholder="Select AMC…" ariaLabel="AMC" /></Field>
         <Field label="Scheme code"><input value={f.schemeCode} onChange={(e) => set("schemeCode", e.target.value)} disabled={mode === "edit"} placeholder="e.g. 119551" className="input-base font-mono" /></Field>
         <div className="sm:col-span-2"><Field label="Scheme name"><input value={f.schemeName} onChange={(e) => set("schemeName", e.target.value)} className="input-base" /></Field></div>
-        <Field label="Coarse category"><Select value={f.coarseCategory} onChange={(v) => set("coarseCategory", v)} options={COARSE_OPTS} placeholder="—" ariaLabel="Coarse category" /></Field>
+        <Field label="Coarse category"><Select value={f.coarseCategory} onChange={(v) => set("coarseCategory", v)} options={COARSE_OPTS} placeholder="Select…" ariaLabel="Coarse category" /></Field>
         <Field label="Category (fine)"><input value={f.category} onChange={(e) => set("category", e.target.value)} placeholder="Equity - Large Cap" className="input-base" /></Field>
-        <Field label="Plan"><Select value={f.plan} onChange={(v) => set("plan", v)} options={PLAN_OPTS} placeholder="—" ariaLabel="Plan" /></Field>
-        <Field label="Option"><Select value={f.option} onChange={(v) => set("option", v)} options={OPTION_OPTS} placeholder="—" ariaLabel="Option" /></Field>
-        <Field label="Risk"><Select value={f.riskCategory} onChange={(v) => set("riskCategory", v)} options={RISK_OPTS} placeholder="—" ariaLabel="Risk" /></Field>
+        <Field label="Plan"><Select value={f.plan} onChange={(v) => set("plan", v)} options={PLAN_OPTS} placeholder="Select…" ariaLabel="Plan" /></Field>
+        <Field label="Option"><Select value={f.option} onChange={(v) => set("option", v)} options={OPTION_OPTS} placeholder="Select…" ariaLabel="Option" /></Field>
+        <Field label="Risk"><Select value={f.riskCategory} onChange={(v) => set("riskCategory", v)} options={RISK_OPTS} placeholder="Select…" ariaLabel="Risk" /></Field>
         <Field label="Exit load"><input value={f.exitLoad} onChange={(e) => set("exitLoad", e.target.value)} placeholder="1% if < 1yr" className="input-base" /></Field>
         <Field label="Min SIP"><input value={f.minSip} onChange={(e) => set("minSip", e.target.value)} placeholder="500" className="input-base" /></Field>
         <Field label="Min investment"><input value={f.minInvestment} onChange={(e) => set("minInvestment", e.target.value)} placeholder="5000" className="input-base" /></Field>
@@ -459,7 +459,7 @@ function EvaluationDrawer({ scheme, onClose, onSaved }: { scheme: Scheme; onClos
         <Field label="AUM (₹ Cr)"><input type="number" value={f.aumCrore} onChange={(e) => set("aumCrore", e.target.value)} className="input-base" /></Field>
         <Field label="Fund manager"><input value={f.fmName} onChange={(e) => set("fmName", e.target.value)} className="input-base" /></Field>
         <Field label="FM experience (yrs)"><input type="number" value={f.fmExperienceYears} onChange={(e) => set("fmExperienceYears", e.target.value)} className="input-base" /></Field>
-        <Field label="Scheme risk"><Select value={f.schemeRiskProfile} onChange={(v) => set("schemeRiskProfile", v)} options={SCHEME_RISK_OPTS} placeholder="—" ariaLabel="Scheme risk" /></Field>
+        <Field label="Scheme risk"><Select value={f.schemeRiskProfile} onChange={(v) => set("schemeRiskProfile", v)} options={SCHEME_RISK_OPTS} placeholder="Select…" ariaLabel="Scheme risk" /></Field>
       </div>
       <Field label="Fund objective"><textarea value={f.fundObjective} onChange={(e) => set("fundObjective", e.target.value)} rows={2} className="input-base" /></Field>
       <Field label="Portfolio composition note"><textarea value={f.portfolioCompositionNote} onChange={(e) => set("portfolioCompositionNote", e.target.value)} rows={2} className="input-base" /></Field>

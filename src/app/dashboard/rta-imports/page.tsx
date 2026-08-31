@@ -22,7 +22,7 @@ import {
   daysLate,
   cadenceLabel,
 } from "@/lib/rta/file-types";
-import { RtaUploadButton, FpSyncButton } from "./client";
+import { RtaUploadButton, RtaMailboxSyncButton } from "./client";
 import { RtaImportsTable } from "@/components/rta/RtaImportsTable";
 
 export const dynamic = "force-dynamic";
@@ -60,42 +60,49 @@ export default async function RtaImportsPage() {
         rfi.id, rfi.source, rfi.kind, rfi.period_start, rfi.period_end,
         rfi.file_name, rfi.status, rfi.rows_total, rfi.rows_imported,
         rfi.rows_skipped, rfi.rows_failed, rfi.created_at, rfi.parsed_at, rfi.remarks,
-        u.name AS uploaded_by_name
+        rfi.deleted_at, u.name AS uploaded_by_name
       FROM rta_file_imports rfi
       LEFT JOIN users u ON u.id = rfi.uploaded_by
       WHERE rfi.deleted_at IS NOT NULL
       ORDER BY rfi.deleted_at DESC
-      LIMIT 50
+      LIMIT 20
     `);
 
-    return { latest: latest.rows as any[], recent: recent.rows as any[], trashed: trashed.rows as any[] };
+    return {
+      latestByKind: new Map((latest.rows as any[]).map((r) => [r.kind, r])),
+      recent: recent.rows as any[],
+      trashed: trashed.rows as any[],
+    };
   });
 
-  const latestByKind: Record<string, any> = Object.fromEntries(
-    data.latest.map((r) => [r.kind, r])
-  );
-
-  // Build the tile model — sort by priority then by lateness (late first)
   const now = new Date();
   const tiles = RTA_FILE_TYPES.map((t) => {
-    const last = latestByKind[t.kind];
+    const last = data.latestByKind.get(t.kind);
     const lastDate = last?.period_end ? new Date(last.period_end) : null;
-    const next = nextExpectedDate(t.cadence, lastDate, now);
+    const nextExpected = nextExpectedDate(t.cadence, lastDate, now);
     const late = daysLate(t.cadence, lastDate, t.graceDays, now);
-    return { def: t, last, next, late };
-  }).sort((a, b) => {
-    // Late files first, then by priority
-    if (a.late !== b.late) return b.late - a.late;
-    return b.def.priority - a.def.priority;
+    return {
+      ...t,
+      last,
+      lastDate,
+      nextExpected,
+      late,
+    };
   });
 
-  // Summary counters. "Up to date" counts the DISPLAYED file-type tiles that have
-  // a recent, non-late import — NOT every kind ever imported. (data.latest can
-  // include kinds not shown here, e.g. redemption_report / cas_holdings, which
-  // previously inflated the count to e.g. "2/5" while only one tile was green.)
+  // Summary counters.
   const totalConfigured = RTA_FILE_TYPES.length;
   const upToDateCount = tiles.filter((t) => t.last && t.late === 0).length;
   const lateCount = tiles.filter((t) => t.late > 0).length;
+  const actionableRecent = data.recent.filter((row) => row.status !== "rejected");
+  const failedImports = actionableRecent.filter((row) => row.status === "failed").length;
+  const processedRows = actionableRecent.reduce((sum, row) => sum + Number(row.rows_total ?? 0), 0);
+  const exceptionRows = actionableRecent.reduce((sum, row) => sum + Number(row.rows_failed ?? 0) + Number(row.rows_skipped ?? 0), 0);
+  const exceptionRate = processedRows > 0 ? exceptionRows / processedRows : 0;
+  const freshnessScore = totalConfigured > 0 ? upToDateCount / totalConfigured : 0;
+  const reliabilityScore = actionableRecent.length > 0 ? 1 - failedImports / actionableRecent.length : 0;
+  const qualityScore = Math.max(0, 1 - exceptionRate);
+  const trustScore = Math.round((freshnessScore * 0.55 + reliabilityScore * 0.25 + qualityScore * 0.2) * 100);
 
   return (
     <div className="space-y-6 max-w-7xl">
@@ -105,14 +112,20 @@ export default async function RtaImportsPage() {
             <FileText className="size-6 text-brand-cyan" /> RTA file imports
           </h1>
         </div>
-        <div className="flex items-center gap-2">
-          <FpSyncButton />
+        <div className="flex items-center gap-2 flex-wrap">
+          <RtaMailboxSyncButton />
           <RtaUploadButton />
         </div>
       </div>
 
       {/* Summary strip */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <SummaryTile
+          label="Data trust score"
+          value={`${trustScore}%`}
+          sub={trustScore >= 90 ? "healthy for client reporting" : trustScore >= 70 ? "review freshness or exceptions" : "do not rely on downstream totals yet"}
+          tone={trustScore >= 90 ? "emerald" : trustScore >= 70 ? "muted" : "rose"}
+        />
         <SummaryTile
           label="File types configured"
           value={String(totalConfigured)}
@@ -131,6 +144,12 @@ export default async function RtaImportsPage() {
           sub={lateCount > 0 ? "needs your attention" : "all clear"}
           tone={lateCount > 0 ? "rose" : "emerald"}
         />
+        <SummaryTile
+          label="Row exceptions"
+          value={exceptionRows.toLocaleString("en-IN")}
+          sub={processedRows ? `${(exceptionRate * 100).toFixed(1)}% of ${processedRows.toLocaleString("en-IN")} rows` : "no rows processed yet"}
+          tone={exceptionRate > 0.05 ? "rose" : exceptionRows > 0 ? "muted" : "emerald"}
+        />
       </div>
 
       {/* Per-file-kind tiles */}
@@ -140,7 +159,7 @@ export default async function RtaImportsPage() {
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
           {tiles.map((t) => (
-            <FileKindTile key={t.def.kind} t={t} />
+            <FileKindTile key={t.kind} t={t} />
           ))}
         </div>
       </section>
@@ -152,11 +171,7 @@ export default async function RtaImportsPage() {
   );
 }
 
-function FileKindTile({
-  t,
-}: {
-  t: { def: any; last: any; next: Date | null; late: number };
-}) {
+function FileKindTile({ t }: { t: (typeof RTA_FILE_TYPES)[number] & { last: any; lastDate: Date | null; nextExpected: Date | null; late: number } }) {
   const status: "fresh" | "late" | "missing" =
     !t.last ? "missing" : t.late > 0 ? "late" : "fresh";
   const ringCls =
@@ -173,15 +188,15 @@ function FileKindTile({
           <FileText className="size-4" />
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-semibold">{t.def.label}</div>
+          <div className="text-sm font-semibold">{t.label}</div>
           <div className="text-[11px] text-muted-foreground mt-0.5 leading-snug">
-            {t.def.short}
+            {t.short}
           </div>
         </div>
       </div>
 
       <div className="mt-3 grid grid-cols-2 gap-2 text-[11px]">
-        <Field label="Cadence" value={cadenceLabel(t.def.cadence)} />
+        <Field label="Cadence" value={cadenceLabel(t.cadence)} />
         <Field
           label="Last received"
           value={t.last ? formatRelative(t.last.created_at) : "Never"}
@@ -193,7 +208,7 @@ function FileKindTile({
         />
         <Field
           label="Next expected"
-          value={t.next ? formatDate(t.next) : "Ad-hoc"}
+          value={t.nextExpected ? formatDate(t.nextExpected) : "Ad-hoc"}
           tone={status === "late" ? "rose" : "default"}
         />
       </div>
@@ -206,7 +221,7 @@ function FileKindTile({
           </span>
         </div>
       )}
-      {status === "missing" && t.def.cadence.every !== "adhoc" && (
+      {status === "missing" && t.cadence.every !== "adhoc" && (
         <div className="mt-3 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800 flex items-center gap-2">
           <Clock className="size-3.5 flex-shrink-0" />
           <span>Not yet received. Upload your first file to populate downstream data.</span>
@@ -280,11 +295,14 @@ function StatusBadge({ status }: { status: string }) {
     failed: "bg-rose-50 text-rose-700",
     parsing: "bg-blue-50 text-blue-700",
     uploaded: "bg-blue-50 text-blue-700",
-    rejected: "bg-rose-50 text-rose-700",
+    // "rejected" is the not-ours case (an archive encrypted with another
+    // platform's password). Routine and unactionable, so it reads neutral —
+    // showing it in red buried the failures that DO need attention.
+    rejected: "bg-gray-100 text-gray-600",
   };
   return (
     <span className={`text-[11px] px-2 py-0.5 rounded-full ${map[status] ?? "bg-secondary text-muted-foreground"}`}>
-      {status}
+      {status === "rejected" ? "not ours" : status}
     </span>
   );
 }

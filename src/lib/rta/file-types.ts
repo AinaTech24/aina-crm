@@ -67,7 +67,7 @@ export const RTA_FILE_TYPES: RtaFileTypeDef[] = [
     label: "Daily transaction feed",
     short: "Every purchase, redemption, switch, SIP, STP & SWP that processed yesterday.",
     long: "The T+1 reverse feed. Pipe-delimited (CAMS) or CSV (KFintech). Drives folio NAV refresh, AUM, and the SIP rejection module. Without this the dashboard numbers won't move.",
-    sources: ["cams", "kfintech", "fintech_primitives"],
+    sources: ["cams", "kfintech"],
     acronyms: ["WB feed", "Distributor feed", "T+1 file"],
     cadence: { every: "daily", businessDaysOnly: true },
     populates: ["transactions", "folios", "sips"],
@@ -83,7 +83,6 @@ export const RTA_FILE_TYPES: RtaFileTypeDef[] = [
     fileNames: {
       kfintech: "MFSD307_…",
       cams: "…R2 / …R10",
-      fintech_primitives: "Karvy MFSD201 / CAMS WBR2 / Franklin MTFP / Sundaram ER02",
     },
     fileNamesApprox: true,
   },

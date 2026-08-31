@@ -102,7 +102,7 @@ function Wizard({ investor, investorId, onClose }: { investor: Inv; investorId: 
                 <label key={k} className="block">
                   <div className="text-[11px] text-muted-foreground mb-0.5">{LABELS[k] ?? k}{(cur.required as readonly string[]).includes(k) ? " *" : ""}</div>
                   {OPTS[k] ? (
-                    <select value={f[k] ?? ""} onChange={(e) => set(k, e.target.value)} className="input-base"><option value="">—</option>{OPTS[k].map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+                    <select value={f[k] ?? ""} onChange={(e) => set(k, e.target.value)} className="input-base"><option value="">Select…</option>{OPTS[k].map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
                   ) : (
                     <input value={f[k] ?? ""} onChange={(e) => set(k, e.target.value)} className="input-base" />
                   )}

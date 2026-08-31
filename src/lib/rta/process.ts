@@ -640,12 +640,20 @@ async function processSipBook(
       const existingId = (existing.rows[0] as any)?.id;
 
       if (existingId) {
+        // `?? null` on every optional value here is load-bearing, not defensive
+        // style: drizzle OMITS an `undefined` interpolation from the template
+        // rather than binding NULL, so a SIP row with no next-installment date
+        // emitted literal `COALESCE(::date, ...)` — malformed SQL. Postgres then
+        // aborts the ENTIRE transaction, so one such row failed not only itself
+        // but every remaining row in the file and the final status write too,
+        // surfacing as an opaque "Failed query" with the real cause buried.
+        // The INSERT branch below already did this correctly; this one was missed.
         await tx.execute(sql`
           UPDATE sips
           SET amount = ${r.amount}::numeric,
-              next_installment_at = COALESCE(${r.nextInstallmentAt}::date, next_installment_at),
-              end_date = COALESCE(${r.endDate}::date, end_date),
-              mandate_id = COALESCE(${mandateId}::uuid, mandate_id),
+              next_installment_at = COALESCE(${r.nextInstallmentAt ?? null}::date, next_installment_at),
+              end_date = COALESCE(${r.endDate ?? null}::date, end_date),
+              mandate_id = COALESCE(${mandateId ?? null}::uuid, mandate_id),
               status = 'active',
               updated_at = now()
           WHERE id = ${existingId}::uuid

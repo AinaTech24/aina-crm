@@ -23,10 +23,8 @@ import { startImapPollerWorker } from "./imap-poller";
 import { startRtaInboxPollerWorker } from "./rta-inbox-poller";
 import { startZohoSyncWorker } from "./zoho-sync";
 import { startRtaImportWorker } from "./rta-import-worker";
-import { startFpImportWorker } from "./fp-import-worker";
 import { startDailyBriefingWorker } from "./daily-briefing";
 import { startWeeklyDigestWorker } from "./weekly-digest";
-import { runFpSync } from "@/lib/fp/sync";
 import { runDailyOpsScan } from "./daily-ops-scanner";
 import { runMonthlyComplianceSweep } from "./monthly-compliance-seeder";
 import { runReconciliationScan } from "./reconciliation-scanner";
@@ -42,7 +40,7 @@ import { runDscReminder } from "./dsc-reminder";
 import { runReviewDueReminder } from "./review-due-reminder";
 import { captureError } from "@/lib/observability/capture";
 
-const groups = (process.env.WORKER_GROUPS ?? "outbox,wf,seg,sched,wa_sync,mail,ops,monthly,nav,recon,market,feed,statements,zoho,rta,fpsync,briefing")
+const groups = (process.env.WORKER_GROUPS ?? "outbox,wf,seg,sched,wa_sync,mail,ops,monthly,nav,recon,market,feed,statements,zoho,rta,briefing")
   .split(",")
   .map((s) => s.trim());
 // 'sched' covers the scheduled-comms drain too (kept with the other schedulers).
@@ -134,7 +132,6 @@ if (groups.includes("zoho")) stops.push(startZohoSyncWorker());
 if (groups.includes("rta")) {
   stops.push(startRtaImportWorker());
   // FP mailback import shares the "rta" worker group (same import surface).
-  stops.push(startFpImportWorker());
 }
 // Morning briefing — 8 AM IST digest (in-app + email) per RM/owner. The worker
 // computes the IST window itself (server clock is UTC) and dedupes per day, so
@@ -352,25 +349,6 @@ scheduleDaily(
     if (r.sent > 0) console.log(`[statement-scheduler] sent ${r.sent} auto-statement(s)`);
   },
   "STATEMENTS_ON_BOOT"
-);
-
-/**
- * FintechPrimitives daily API-pull sync — fires once a day at 07:45 local
- * (after the 07:30 reconciliation scan). This is the PRIMARY FP import path:
- * it pulls folios + transactions (with capital-gains) straight from the FP API
- * and upserts them — no manual file upload. No-ops cleanly when FP isn't
- * configured (env-MVP: needs FP_* creds + FP_SYNC_TENANT_ID).
- */
-scheduleDaily(
-  "fpsync",
-  "fp-sync",
-  7,
-  45,
-  async () => {
-    const r = await runFpSync();
-    console.log("[fp-sync]", r);
-  },
-  "FP_SYNC_ON_BOOT"
 );
 
 // Last-resort safety net: a floating rejection or uncaught exception in any

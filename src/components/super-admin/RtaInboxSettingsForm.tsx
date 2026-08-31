@@ -12,6 +12,8 @@ type Status = {
   user: string | null;
   domain: string;
   hasPassword: boolean;
+  deleteAfterImport: boolean;
+  retentionDays: number;
 };
 
 export function RtaInboxSettingsForm({ initial }: { initial: Status }) {
@@ -22,10 +24,13 @@ export function RtaInboxSettingsForm({ initial }: { initial: Status }) {
   const [pass, setPass] = useState("");
   const [showPass, setShowPass] = useState(false);
   const [domain, setDomain] = useState(initial.domain);
+  const [deleteAfterImport, setDeleteAfterImport] = useState(initial.deleteAfterImport);
+  const [retentionDays, setRetentionDays] = useState(String(initial.retentionDays ?? 7));
   const [status, setStatus] = useState(initial);
 
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [revealing, setRevealing] = useState(false);
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
 
   const needsPass = !status.hasPassword && !pass.trim();
@@ -45,7 +50,16 @@ export function RtaInboxSettingsForm({ initial }: { initial: Status }) {
       const res = await fetch("/api/super-admin/rta-inbox", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ host, port: Number(port) || 993, secure, user, pass: pass || undefined, domain }),
+        body: JSON.stringify({
+          host,
+          port: Number(port) || 993,
+          secure,
+          user,
+          pass: pass || undefined,
+          domain,
+          deleteAfterImport,
+          retentionDays: Number(retentionDays) || 0,
+        }),
       });
       const data = await res.json();
       if (!res.ok) setMsg({ kind: "err", text: data.error || "Save failed." });
@@ -58,6 +72,27 @@ export function RtaInboxSettingsForm({ initial }: { initial: Status }) {
       setMsg({ kind: "err", text: e?.message || "Network error." });
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function revealSaved() {
+    setRevealing(true);
+    setMsg(null);
+    try {
+      const res = await fetch("/api/super-admin/rta-inbox?reveal=1", { cache: "no-store" });
+      const data = await res.json();
+      if (!res.ok) {
+        setMsg({ kind: "err", text: data.error || "Could not reveal the password." });
+      } else if (!data.password) {
+        setMsg({ kind: "err", text: "No saved password to show (or it could not be decrypted)." });
+      } else {
+        setPass(data.password);
+        setShowPass(true);
+      }
+    } catch (e: any) {
+      setMsg({ kind: "err", text: e?.message || "Network error." });
+    } finally {
+      setRevealing(false);
     }
   }
 
@@ -76,7 +111,7 @@ export function RtaInboxSettingsForm({ initial }: { initial: Status }) {
     }
   }
 
-  const busy = saving || testing;
+  const busy = saving || testing || revealing;
   const inputCls = "w-full rounded-md border px-3 py-2 text-sm";
 
   return (
@@ -139,6 +174,17 @@ export function RtaInboxSettingsForm({ initial }: { initial: Status }) {
               {showPass ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
             </button>
           </div>
+          {status.hasPassword && !pass && (
+            <button
+              type="button"
+              onClick={revealSaved}
+              disabled={busy}
+              className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground disabled:opacity-60"
+            >
+              {revealing ? <Loader2 className="size-3 animate-spin" /> : <Eye className="size-3" />}
+              Reveal saved password
+            </button>
+          )}
         </div>
       </div>
 
@@ -149,6 +195,42 @@ export function RtaInboxSettingsForm({ initial }: { initial: Status }) {
         <p className="text-[11px] text-muted-foreground">
           Each firm gets <code className="bg-background px-1 rounded">rta-&lt;token&gt;@{domain || "crm.ainatech.in"}</code>. A catch-all on this domain must deliver into the mailbox above.
         </p>
+      </div>
+
+      {/* Mailbox cleanup */}
+      <div className="space-y-2 border-t pt-4">
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={deleteAfterImport}
+            onChange={(e) => setDeleteAfterImport(e.target.checked)}
+            className="size-4 mt-0.5"
+          />
+          <span>
+            <span className="font-medium">Delete forwarded mail once it has been imported</span>
+            <span className="block text-[11px] text-muted-foreground mt-0.5">
+              Keeps the mailbox from filling up with daily RTA ZIPs. Safe because the attachment is already copied to S3
+              before the import runs, and the Inbound Mail log keeps the audit trail. Mail is only deleted when every
+              import it created actually <strong>finished</strong> — a failed import (wrong ZIP password) keeps its mail
+              so it can be re-run. Unroutable and errored mail is never deleted.
+            </span>
+          </span>
+        </label>
+        {deleteAfterImport && (
+          <div className="flex items-center gap-2 pl-6">
+            <label className="text-sm">Keep for</label>
+            <input
+              value={retentionDays}
+              onChange={(e) => setRetentionDays(e.target.value.replace(/\D/g, ""))}
+              className="w-20 rounded-md border px-2 py-1 text-sm"
+              inputMode="numeric"
+            />
+            <span className="text-sm">days after import</span>
+            {retentionDays === "0" && (
+              <span className="text-[11px] text-amber-700">0 = delete at the next hourly sweep — no grace period.</span>
+            )}
+          </div>
+        )}
       </div>
 
       {msg && (

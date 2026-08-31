@@ -16,7 +16,7 @@ import {
   BarChart3, Building2, Package, LifeBuoy, Settings, Users as UsersIcon,
   Activity, Image as ImageIcon, Bot, PieChart, ChevronUp, LogOut,
   Loader2, ShieldCheck, RefreshCw, Mail, SlidersHorizontal, ServerCog,
-  LayoutTemplate, Inbox,
+  LayoutTemplate, Inbox, BookOpen, MailSearch,
 } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
@@ -28,6 +28,7 @@ const NAV: NavItem[] = [
   { href: "/super-admin/tenants", label: "MFD tenants", icon: Building2 },
   { href: "/super-admin/packages", label: "Packages", icon: Package },
   { href: "/super-admin/landing-packages", label: "Landing packages", icon: LayoutTemplate },
+  { href: "/super-admin/kb-articles", label: "Knowledge Base", icon: BookOpen },
   { href: "/super-admin/subscriptions", label: "Subscriptions", icon: Activity },
   { href: "/super-admin/content-library", label: "Content Library", icon: ImageIcon },
   { href: "/super-admin/support", label: "Support tickets", icon: LifeBuoy },
@@ -35,6 +36,7 @@ const NAV: NavItem[] = [
   { href: "/super-admin/ai", label: "AI & Models", icon: Bot },
   { href: "/super-admin/email", label: "Email", icon: Mail },
   { href: "/super-admin/rta-inbox", label: "RTA Mailbox", icon: Inbox },
+  { href: "/super-admin/rta-inbound-mail", label: "Inbound Mail", icon: MailSearch },
   { href: "/super-admin/module-controls", label: "Module Controls", icon: SlidersHorizontal },
   { href: "/super-admin/aws-monitoring", label: "AWS Monitoring", icon: ServerCog },
   { href: "/super-admin/settings", label: "Platform settings", icon: Settings },

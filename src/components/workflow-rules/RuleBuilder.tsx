@@ -1013,7 +1013,7 @@ function CriteriaValueInput({ field, op, value, onChange }: { field: ModuleField
   if (field.type === "enum" && field.enumValues) {
     return (
       <SelectField className="input-base text-xs flex-1" value={value ?? ""} onChange={(e) => onChange(e.target.value)}>
-        <option value="">—</option>
+        <option value="">Select…</option>
         {field.enumValues.map((v) => (
           <option key={v} value={v}>{v}</option>
         ))}
@@ -1585,7 +1585,7 @@ function UpdateFieldEditor({
             </SelectField>
             {field?.type === "enum" && field.enumValues ? (
               <SelectField value={String(v ?? "")} onChange={(e) => update(k, k, e.target.value)} className="input-base text-xs flex-1">
-                <option value="">—</option>
+                <option value="">Select…</option>
                 {field.enumValues.map((opt) => (
                   <option key={opt} value={opt}>{opt}</option>
                 ))}

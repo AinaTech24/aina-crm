@@ -67,7 +67,7 @@ export default async function SipsPage({
   const session = await requireSession();
   // SIPs are transaction data — require the view cap (the page had no gate) and
   // scope non-managers to their own book.
-  requireCap(session.roles, "transactions.view");
+  requireCap(session.roles, "transactions.view", session.permissions);
   const seesAll = can(session.roles, "investor.view.all", session.permissions) || can(session.roles, "reports.business", session.permissions);
   const sp = await searchParams;
   const q = (sp.q ?? "").trim();
@@ -178,7 +178,7 @@ export default async function SipsPage({
             </Link>
           )}
           <Link href="/dashboard/sips/new-watch" className="btn-secondary text-sm inline-flex items-center gap-1.5">
-            <ShieldAlert className="size-4" /> New-SIP installment watch
+            <ShieldAlert className="size-4" /> SIP payment watch
           </Link>
         </div>
       </div>

@@ -42,7 +42,7 @@ export function RelatedModulesRail({ items }: { items: RelatedModuleItem[] }) {
       {/* Edge tab — always visible on the right */}
       <button
         onClick={() => setOpen(true)}
-        className="fixed right-0 top-1/3 z-30 bg-brand-cyan-deep text-white rounded-l-lg shadow-lg px-1.5 py-3 hover:bg-brand-cyan transition-colors"
+        className="fixed right-0 top-1/3 z-30 bg-card text-muted-foreground border border-r-0 border-border rounded-l-lg shadow-sm px-1.5 py-3 hover:text-foreground hover:bg-secondary transition-colors"
         style={{ writingMode: "vertical-rl" }}
         title="Related modules"
         aria-label="Related modules"

@@ -409,7 +409,7 @@ export function BusinessEntryForm({
                       <div className="lg:col-span-3">
                         <Label sm>Frequency</Label>
                         <SelectField size="sm" value={l.frequency} onChange={(e) => patchLine(i, { frequency: e.target.value })} className="w-full">
-                          <option value="">—</option>
+                          <option value="">Select…</option>
                           {FREQ_OPTS.map(([v, lab]) => <option key={v} value={v}>{lab}</option>)}
                         </SelectField>
                       </div>
@@ -439,7 +439,7 @@ export function BusinessEntryForm({
                         <div className="lg:col-span-3">
                           <Label sm>From class</Label>
                           <SelectField size="sm" value={l.fromAssetClass} onChange={(e) => patchLine(i, { fromAssetClass: e.target.value })} className="w-full">
-                            <option value="">—</option>
+                            <option value="">Select…</option>
                             {CLASS_OPTS.map(([v, lab]) => <option key={v} value={v}>{lab}</option>)}
                           </SelectField>
                         </div>
@@ -449,7 +449,7 @@ export function BusinessEntryForm({
                         <div className="lg:col-span-3">
                           <Label sm>To class</Label>
                           <SelectField size="sm" value={l.assetClass} onChange={(e) => patchLine(i, { assetClass: e.target.value })} className="w-full">
-                            <option value="">—</option>
+                            <option value="">Select…</option>
                             {CLASS_OPTS.map(([v, lab]) => <option key={v} value={v}>{lab}</option>)}
                           </SelectField>
                         </div>

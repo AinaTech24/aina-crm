@@ -543,7 +543,7 @@ function NewInsuranceForm() {
             ))}
           </Select>
           <Select label="Business type" value={d("businessType")} setValue={(v) => setD("businessType", v)}>
-            <option value="">—</option>
+            <option value="">Select…</option>
             <option value="new">New</option>
             <option value="renewal">Renewal</option>
             <option value="portability">Portability</option>
@@ -645,7 +645,7 @@ function NewInsuranceForm() {
             <Field label="Make / model" placeholder="Maruti Swift VXi" value={d("makeModel")} setValue={(v) => setD("makeModel", v)} />
             <Field label="NCB %" type="number" placeholder="20" value={d("ncbPercent")} setValue={(v) => setD("ncbPercent", v)} />
             <Select label="Cover type" value={d("coverType")} setValue={(v) => setD("coverType", v)}>
-              <option value="">—</option>
+              <option value="">Select…</option>
               <option value="comprehensive">Comprehensive</option>
               <option value="third_party">Third-party</option>
               <option value="od_only">Own-damage only</option>

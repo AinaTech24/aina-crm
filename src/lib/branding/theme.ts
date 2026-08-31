@@ -156,23 +156,35 @@ export function buildThemeVars(primaryHex: string, accentHex: string): Record<st
   const navyDeep = hslVar(p.h, navyS, clamp(navyL - 7, 8, 24));
   const navyLight = hslVar(p.h, clamp(p.s, 18, 64), 95);
 
-  // Cyan/accent family — links, active states, focus, accent buttons.
-  const accS = Math.max(a.s, 45);
-  const accL = clamp(a.l, 40, 56);
-  const cyan = hslVar(a.h, accS, accL);
-  const cyanDeep = hslVar(a.h, accS, clamp(accL - 11, 28, 48));
-  const cyanLight = hslVar(a.h, clamp(a.s, 30, 92), 94);
+  // Interactive family — links, active states, focus, accent buttons.
+  // ONE accent per tenant: derived from the PRIMARY hue (a brighter cut of it),
+  // so buttons, links, rings and the active-nav pill all agree. The secondary
+  // "accent" colour only tints decorative surfaces (--accent) — it no longer
+  // introduces a second interactive hue.
+  const accS = Math.max(p.s, 45);
+  const accL = clamp(p.l, 38, 54);
+  const cyan = hslVar(p.h, accS, accL);
+  const cyanDeep = hslVar(p.h, accS, clamp(accL - 11, 26, 46));
+  const cyanLight = hslVar(p.h, clamp(p.s, 30, 92), 95);
+  // --accent is a HOVER SURFACE (light tint) with dark text of the same hue.
+  const decorative = hslVar(a.h, clamp(a.s, 30, 92), 95);
+  const decorativeFg = hslVar(a.h, Math.max(a.s, 40), 30);
 
   return {
     "--primary": navy,
     "--ring": cyan,
-    "--accent": cyan,
+    "--accent": decorative,
+    "--accent-foreground": decorativeFg,
     "--brand-navy": navy,
     "--brand-navy-deep": navyDeep,
     "--brand-navy-light": navyLight,
     "--brand-cyan": cyan,
     "--brand-cyan-deep": cyanDeep,
     "--brand-cyan-light": cyanLight,
+    // Active-nav pill follows the tenant brand (was pinned to product red,
+    // which made branded tenants render a red pill next to brand-hue buttons).
+    "--nav-active-bg": navy,
+    "--nav-active-fg": "0 0% 100%",
   };
 }
 

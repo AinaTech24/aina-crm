@@ -84,13 +84,13 @@ export function GlobalSearch() {
   const showPanel = open && q.trim().length >= 1;
 
   return (
-    <div ref={wrapRef} className="relative min-w-[200px] max-w-md flex-1">
+    <div ref={wrapRef} className="relative min-w-0 max-w-md flex-1">
       {/* Input shell — styled like a search field, focus-within highlights it */}
       <div
         className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 shadow-sm
-                   transition-colors duration-150 focus-within:border-brand-cyan/50 focus-within:ring-2 focus-within:ring-brand-cyan/10"
+                   transition-colors duration-150 focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-primary/10"
       >
-        <Search className="size-3.5 text-brand-cyan shrink-0" />
+        <Search className="size-3.5 text-muted-foreground shrink-0" />
         <input
           ref={inputRef}
           type="search"
@@ -111,7 +111,7 @@ export function GlobalSearch() {
             if (roGuard) setRoGuard(false);
             setOpen(true);
           }}
-          placeholder="Search investors, leads, folios…"
+          placeholder="Search clients, leads, folios…"
           className="flex-1 min-w-0 bg-transparent text-sm outline-none focus:ring-0 focus-visible:ring-0 focus:shadow-none placeholder:text-muted-foreground"
           aria-label="Global search"
         />
@@ -145,7 +145,7 @@ export function GlobalSearch() {
                 <div className="p-6 text-center text-xs text-muted-foreground">No results for &ldquo;{q}&rdquo;.</div>
               ) : (
                 <div className="space-y-3">
-                  <Group icon={Users} label="Investors" items={results.investors ?? []} onPick={close}
+                  <Group icon={Users} label="Clients" items={results.investors ?? []} onPick={close}
                     href={(r) => `/dashboard/investors/${r.id}`}
                     primary={(r) => r.name}
                     secondary={(r) => `${r.pan ?? "—"} · ${r.segment_tag ?? "—"}`}

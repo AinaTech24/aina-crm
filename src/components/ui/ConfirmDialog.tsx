@@ -13,9 +13,8 @@
  * returns to the previously-focused element on close.
  */
 
-import { useEffect, useRef } from "react";
-import { createPortal } from "react-dom";
 import { AlertTriangle } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/Dialog";
 
 export function ConfirmDialog({
   open,
@@ -38,65 +37,27 @@ export function ConfirmDialog({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
-  const cancelRef = useRef<HTMLButtonElement>(null);
-  const restoreRef = useRef<HTMLElement | null>(null);
-  const busyRef = useRef(busy);
-  busyRef.current = busy;
-  const cancelCb = useRef(onCancel);
-  cancelCb.current = onCancel;
-
-  // Focus management + Escape-to-cancel while open.
-  useEffect(() => {
-    if (!open) return;
-    restoreRef.current = (document.activeElement as HTMLElement) ?? null;
-    cancelRef.current?.focus();
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !busyRef.current) {
-        e.stopPropagation();
-        cancelCb.current();
-      }
-    };
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      restoreRef.current?.focus?.();
-    };
-  }, [open]);
-
-  if (!open || typeof document === "undefined") return null;
   const danger = tone === "danger";
-  // Portal to <body> so no transformed/backdrop-filtered ancestor (e.g. the
-  // dashboard header) becomes the containing block and pins this off-centre.
-  return createPortal(
-    <div className="fixed inset-0 z-[90] flex items-center justify-center p-4 print:hidden">
-      <div
-        className="absolute inset-0 bg-black/40 backdrop-blur-[1px]"
-        onClick={busy ? undefined : onCancel}
-      />
-      <div
-        role="alertdialog"
-        aria-modal="true"
-        aria-label={title}
-        className="relative card-elevated w-full max-w-sm max-h-[85vh] overflow-y-auto p-5 animate-scale-in"
-      >
+  return (
+    <Dialog open={open} onOpenChange={(next) => { if (!next && !busy) onCancel(); }}>
+      <DialogContent role="alertdialog" className="max-w-sm" showClose={false} onEscapeKeyDown={(event) => { if (busy) event.preventDefault(); }} onPointerDownOutside={(event) => { if (busy) event.preventDefault(); }}>
         <div className="flex items-start gap-3">
           <div
-            className={`size-10 rounded-xl grid place-items-center shrink-0 ${
+            className={`size-10 rounded-lg grid place-items-center shrink-0 ${
               danger
-                ? "bg-rose-50 text-rose-600 dark:bg-rose-950/60 dark:text-rose-400"
+                ? "bg-destructive/10 text-destructive"
                 : "bg-brand-navy-light text-primary"
             }`}
           >
             <AlertTriangle className="size-5" />
           </div>
-          <div className="min-w-0">
-            <h3 className="font-semibold text-sm text-foreground">{title}</h3>
-            {message && <p className="text-sm text-muted-foreground mt-1 leading-relaxed">{message}</p>}
-          </div>
+          <DialogHeader className="min-w-0 pr-0">
+            <DialogTitle className="text-sm">{title}</DialogTitle>
+            {message && <DialogDescription className="leading-relaxed">{message}</DialogDescription>}
+          </DialogHeader>
         </div>
-        <div className="mt-5 flex justify-end gap-2">
+        <DialogFooter>
           <button
-            ref={cancelRef}
             type="button"
             onClick={onCancel}
             disabled={busy}
@@ -109,15 +70,12 @@ export function ConfirmDialog({
             onClick={onConfirm}
             disabled={busy}
             aria-live="polite"
-            className={`text-sm rounded-lg px-3.5 py-2 font-medium text-white transition-colors disabled:opacity-50 ${
-              danger ? "bg-rose-600 hover:bg-rose-700" : "bg-primary hover:opacity-90"
-            }`}
+            className={`text-sm rounded-lg px-3.5 py-2 font-medium transition-colors disabled:opacity-50 ${danger ? "bg-destructive text-destructive-foreground hover:opacity-90" : "bg-primary text-primary-foreground hover:opacity-90"}`}
           >
             {busy ? "Please wait…" : confirmLabel}
           </button>
-        </div>
-      </div>
-    </div>,
-    document.body
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

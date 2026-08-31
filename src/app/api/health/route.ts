@@ -21,6 +21,11 @@ export const dynamic = "force-dynamic";
 // 3-second hard cap so a hung DB doesn't hold up the health check
 const DB_TIMEOUT_MS = 3_000;
 
+// Inlined by Next at build time from next.config's `env` block. Read via
+// explicit property access so the replacement actually happens.
+const BUILD_SHA = process.env.BUILD_SHA ?? "";
+const BUILD_AT = process.env.BUILD_AT ?? "";
+
 export async function GET() {
   const startedAt = Date.now();
 
@@ -33,6 +38,10 @@ export async function GET() {
     return NextResponse.json(
       {
         status: "ok",
+        // Which build is actually serving. Baked in at build time (next.config)
+        // so "has my fix reached production?" is answerable without SSH-ing in.
+        build: BUILD_SHA || null,
+        builtAt: BUILD_AT || null,
         uptimeSec: Math.round(process.uptime()),
         heapUsedMb: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
         heapTotalMb: Math.round(process.memoryUsage().heapTotal / 1024 / 1024),

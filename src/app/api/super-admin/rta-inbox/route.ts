@@ -11,14 +11,21 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireSession } from "@/lib/auth/session";
 import { requirePlatform } from "@/lib/auth/rbac";
-import { getRtaInboxStatusForAdmin, saveRtaInboxConfig } from "@/lib/rta/inbox-config";
+import { getRtaInboxStatusForAdmin, revealRtaInboxPassword, saveRtaInboxConfig } from "@/lib/rta/inbox-config";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     const session = await requireSession();
     requirePlatform(session.roles, "platform.settings.manage");
+    // ?reveal=1 → return the decrypted mailbox password so the operator can read
+    // back / correct their own catch-all credential. Platform-admin only (gated
+    // above); force-dynamic keeps it out of any cache.
+    if (req.nextUrl.searchParams.get("reveal") === "1") {
+      const password = await revealRtaInboxPassword();
+      return NextResponse.json({ password: password ?? "" });
+    }
     const status = await getRtaInboxStatusForAdmin();
     return NextResponse.json({ status });
   } catch (err) {
@@ -33,6 +40,9 @@ const Body = z.object({
   user: z.string().trim().max(200).optional(),
   pass: z.string().max(400).optional(), // blank → keep existing
   domain: z.string().trim().max(200).optional(),
+  /** Mailbox cleanup: delete forwarded mail once it has been imported. */
+  deleteAfterImport: z.boolean().optional(),
+  retentionDays: z.number().int().min(0).max(365).optional(),
 });
 
 export async function POST(req: NextRequest) {

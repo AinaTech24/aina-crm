@@ -64,6 +64,8 @@ import { MasterRecordEditor } from "@/components/investors/MasterRecordEditor";
 import { InlineEditField, type InlineEditSpec } from "@/components/investors/InlineEditField";
 import { BlueprintStatusKV } from "@/components/investors/BlueprintStatusKV";
 import { ReviewCadenceEditor } from "@/components/investors/ReviewCadenceEditor";
+import { PortalAccessButton } from "@/components/investors/PortalAccessButton";
+import { RecordBusinessImpact } from "@/components/investors/RecordBusinessImpact";
 import { ClientReadinessStrip } from "@/components/investors/ClientReadinessStrip";
 import { PanReveal } from "@/components/investors/PanReveal";
 import { crossSellOpportunities } from "@/lib/investors/cross-sell";
@@ -301,15 +303,14 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
   // (parity with the lead page) so the RM sees "what to do now" without hunting
   // through tabs. All inputs are already loaded above; no extra query.
   const reviewOverdue = !!inv.nextReviewAt && new Date(inv.nextReviewAt as any).getTime() < Date.now();
+  // Setup gaps (KYC, profile completeness) are the readiness strip's job — this
+  // banner only surfaces BUSINESS nudges, so the header never stacks two setup
+  // messages on top of each other.
   const clientNext: { label: string; hint: string; href?: string; cta?: string } | null =
-    showKyc && inv.kycStatus && inv.kycStatus !== "verified"
-      ? { label: "KYC isn't verified yet", hint: "Finish onboarding to activate this client" }
-      : reviewOverdue
+    reviewOverdue
       ? { label: "Portfolio review is overdue", hint: `Was due ${formatDate(inv.nextReviewAt as any)}`, href: "/dashboard/review-meetings/new", cta: "Schedule" }
       : showSip && Number(inv.activeSipAmount ?? 0) === 0
       ? { label: "No active SIP", hint: "Propose a SIP to deepen the relationship", href: "/dashboard/proposals/new", cta: "Propose" }
-      : completeness.score < 70
-      ? { label: `Profile is ${completeness.score}% complete`, hint: "Fill the missing details for cleaner records" }
       : null;
   const isRiskProfileExpired = inv.riskProfileSignedAt
     ? new Date(inv.riskProfileSignedAt).getTime() < Date.now() - 365 * 24 * 60 * 60 * 1000
@@ -451,10 +452,13 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
                   bankName: inv.bankName, bankAccountNumberMasked: inv.bankAccountNumberMasked, bankIfsc: inv.bankIfsc,
                 }}
               />
-              <AiClientBrief investorId={inv.id} name={inv.name} phone={inv.phone} />
-              <CheckInButton subject={{ type: "investor", id: inv.id, name: inv.name, phone: inv.phone }} />
-              {/* Rare / secondary actions tucked into a single "More" menu so the bar stays calm */}
+              {/* Everything else lives under one "More" menu — ONE primary action
+                  (Log call / visit) keeps the header calm and obvious. */}
               <OverflowMenu>
+                <AiClientBrief investorId={inv.id} name={inv.name} phone={inv.phone} />
+                <PortalAccessButton investorId={inv.id} />
+                <RecordBusinessImpact investorId={inv.id} />
+                <CheckInButton subject={{ type: "investor", id: inv.id, name: inv.name, phone: inv.phone }} />
                 <ChangeLogButton entityType="investor" entityId={inv.id} />
                 <VerifyContact
                   investorId={inv.id}
@@ -658,6 +662,7 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
           {showAum && data.churn && (
             <RelatedListSection moduleKey="investors-detail" sectionKey="churn">
             <ChurnRiskCard
+              investorId={inv.id}
               result={data.churn}
               name={inv.name}
               serviceTier={inv.serviceTier}

@@ -9,33 +9,13 @@ import { handleApiError } from "@/lib/api/error-handler";
 import { NextRequest, NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { asc } from "drizzle-orm";
-import { z } from "zod";
 import { withPlatformAdmin } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { requirePlatform } from "@/lib/auth/rbac";
 import { landingPackages } from "@/db/schema";
+import { LandingBody } from "@/lib/landing/schema";
 
 export const dynamic = "force-dynamic";
-
-export const LandingBody = z.object({
-  name: z.string().min(1).max(80),
-  tagline: z.string().max(500).nullable().optional(),
-  priceLabel: z.string().max(40).nullable().optional(),
-  unitLabel: z.string().max(40).nullable().optional(),
-  setupLabel: z.string().max(40).nullable().optional(),
-  setupOriginalLabel: z.string().max(40).nullable().optional(),
-  discountBadge: z.string().max(40).nullable().optional(),
-  seatsLabel: z.string().max(80).nullable().optional(),
-  inheritsLabel: z.string().max(80).nullable().optional(),
-  features: z.array(z.string().max(200)).max(40).optional(),
-  featured: z.boolean().optional(),
-  badgeLabel: z.string().max(40).nullable().optional(),
-  isCustom: z.boolean().optional(),
-  ctaLabel: z.string().max(40).optional(),
-  ctaHref: z.string().max(200).optional(),
-  sortOrder: z.number().int().min(0).max(100000).optional(),
-  published: z.boolean().optional(),
-});
 
 export async function GET() {
   try {

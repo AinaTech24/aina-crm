@@ -117,7 +117,7 @@ export function NewSipRejectionButton() {
           <label className="block">
             <div className="text-xs font-medium mb-1">Reason</div>
             <SelectField value={form.rejectionReason} onChange={(e) => set("rejectionReason", e.target.value)} placeholder="Pick a reason…" className="w-full">
-              <option value="">—</option>
+              <option value="">Select…</option>
               {REASONS.map((r) => <option key={r} value={r}>{r}</option>)}
             </SelectField>
           </label>

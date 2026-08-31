@@ -6,6 +6,7 @@ import { can } from "@/lib/auth/rbac";
 import { InteractiveCalendar } from "@/components/calendar/InteractiveCalendar";
 import { getCalendarItems } from "@/lib/calendar/items";
 import crypto from "node:crypto";
+import { MyDayNav } from "@/components/layout/MyDayNav";
 
 export const dynamic = "force-dynamic";
 
@@ -59,6 +60,7 @@ export default async function CalendarPage({
 
   return (
     <div className="space-y-6 max-w-7xl">
+      <MyDayNav />
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">

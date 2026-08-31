@@ -1063,7 +1063,7 @@ function MFRow({ item, onPatch }: { item: MF; onPatch: (p: Partial<MF>) => void 
           onChange={(e) => onPatch({ riskRating: (e.target.value || undefined) as any })}
           className="input-base text-sm"
         >
-          <option value="">—</option>
+          <option value="">Select…</option>
           <option value="low">Low</option>
           <option value="moderate">Moderate</option>
           <option value="high">High</option>
@@ -1107,7 +1107,7 @@ function InsRow({ item, onPatch }: { item: Ins; onPatch: (p: Partial<Ins>) => vo
           onChange={(e) => onPatch({ policyType: (e.target.value || undefined) as any })}
           className="input-base text-sm"
         >
-          <option value="">—</option>
+          <option value="">Select…</option>
           <option value="term">Term</option>
           <option value="ulip">ULIP</option>
           <option value="endowment">Endowment</option>
@@ -1250,7 +1250,7 @@ function AIFRow({ item, onPatch }: { item: AIF; onPatch: (p: Partial<AIF>) => vo
           onChange={(e) => onPatch({ category: (e.target.value || undefined) as any })}
           className="input-base text-sm"
         >
-          <option value="">—</option>
+          <option value="">Select…</option>
           <option value="cat1">Cat I</option>
           <option value="cat2">Cat II</option>
           <option value="cat3">Cat III</option>

@@ -1,17 +1,11 @@
 import { handleApiError } from "@/lib/api/error-handler";
 /**
- * Wealth Story — a client-facing, Spotify-Wrapped-style recap of the client's
- * trailing 12 months of investing.
+ * Wealth Story & Client Review Pack — comprehensive client-facing recap of the
+ * client's trailing 12 months of investing, asset allocation, goals, and top holdings.
  *
  *   GET  /api/investors/[id]/wealth-story          → story JSON
  *   GET  /api/investors/[id]/wealth-story?pdf=1    → branded PDF (attachment)
  *   POST /api/investors/[id]/wealth-story          → { action: "email", to? }
- *        emails the same PDF to the client (default: investors.email) using
- *        the firm's resolved sender — same pattern as /api/calculators/share.
- *
- * Numbers are honest: "value today" is the live Σ folios.aum snapshot;
- * "you added this year" is actual recorded inflows in the window. No returns
- * are computed or implied.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -44,6 +38,8 @@ type WealthStory = {
   sipTotal: number;
   activeMonths: number;
   topHolding: { name: string; value: number } | null;
+  topHoldings: { name: string; category?: string; value: number; sharePct: number }[];
+  assetAllocation: { category: string; value: number; pct: number }[];
   holdingsCount: number;
   amcCount: number;
   goals: { name: string; targetAmount: number; progressPct: number | null }[];
@@ -107,17 +103,54 @@ async function loadStory(tx: any, tenantId: string, investorId: string): Promise
     .where(and(eq(folios.investorId, investorId), eq(folios.tenantId, tenantId)));
 
   const currentValue = folioRows.reduce((s: number, f: any) => s + num(f.aum), 0);
-  const byScheme = new Map<string, number>();
+  const byScheme = new Map<string, { value: number; category?: string }>();
   const amcs = new Set<string>();
+  const allocMap = new Map<string, number>();
+
   for (const f of folioRows) {
     if (f.amcName) amcs.add(String(f.amcName).trim().toLowerCase());
     for (const s of (f.schemes ?? []) as any[]) {
       if (!s?.schemeName) continue;
-      byScheme.set(s.schemeName, (byScheme.get(s.schemeName) ?? 0) + num(s.value));
+      const v = num(s.value ?? s.aum);
+      const cat = String(s.category ?? s.schemeCategory ?? "Equity").trim();
+      
+      const existing = byScheme.get(s.schemeName);
+      byScheme.set(s.schemeName, { value: (existing?.value ?? 0) + v, category: cat });
+      
+      const normalizedCat = /debt|liquid|money market|bond|gilt/i.test(cat)
+        ? "Debt & Fixed Income"
+        : /hybrid|balanced|arbitrage|multi asset/i.test(cat)
+        ? "Hybrid & Asset Allocator"
+        : /liquid|overnight|ultra short/i.test(cat)
+        ? "Liquid & Cash"
+        : "Equity";
+        
+      allocMap.set(normalizedCat, (allocMap.get(normalizedCat) ?? 0) + v);
     }
   }
-  let topHolding: WealthStory["topHolding"] = null;
-  for (const [name, value] of byScheme) if (value > 0 && (!topHolding || value > topHolding.value)) topHolding = { name, value };
+
+  // If no scheme-level breakdown was present, categorize by overall folio AUM
+  if (allocMap.size === 0 && currentValue > 0) {
+    allocMap.set("Equity", currentValue);
+  }
+
+  const assetAllocation = Array.from(allocMap.entries()).map(([category, val]) => ({
+    category,
+    value: val,
+    pct: currentValue > 0 ? Math.round((val / currentValue) * 100) : 0,
+  }));
+
+  const allHoldingsSorted = Array.from(byScheme.entries())
+    .map(([name, data]) => ({
+      name,
+      category: data.category,
+      value: data.value,
+      sharePct: currentValue > 0 ? Math.round((data.value / currentValue) * 100) : 0,
+    }))
+    .sort((a, b) => b.value - a.value);
+
+  const topHoldings = allHoldingsSorted.slice(0, 5);
+  const topHolding = topHoldings[0] ? { name: topHoldings[0].name, value: topHoldings[0].value } : null;
 
   const goalRows = (
     await tx.execute(sql`
@@ -139,7 +172,7 @@ async function loadStory(tx: any, tenantId: string, investorId: string): Promise
   const anchor = inv.onboardedAt ?? inv.createdAt;
   const tenureYears = anchor ? Math.max(0, Math.round(((Date.now() - new Date(anchor).getTime()) / 31557600000) * 10) / 10) : 0;
 
-  // Deterministic, honest fun-facts — never fabricated, never about returns.
+  // Deterministic, honest fun-facts
   const funFacts: string[] = [];
   if (sipInstallments >= 10) funFacts.push(`${sipInstallments} SIP installments this year — investing on autopilot. That's real discipline.`);
   if (activeMonths >= 2) funFacts.push(`You added money in ${activeMonths} of the last 12 months.`);
@@ -158,6 +191,8 @@ async function loadStory(tx: any, tenantId: string, investorId: string): Promise
     sipTotal,
     activeMonths,
     topHolding,
+    topHoldings,
+    assetAllocation,
     holdingsCount: byScheme.size,
     amcCount: amcs.size,
     goals: goalRows.map((g) => ({ name: g.name, targetAmount: num(g.target_amount), progressPct: g.progress_pct == null ? null : num(g.progress_pct) })),
@@ -173,11 +208,11 @@ function storyToBlocks(story: WealthStory): PdfBlock[] {
   blocks.push({
     type: "insight",
     text:
-      `This Wealth Story covers ${monLabel(story.period.from)} to ${monLabel(story.period.to)}. ` +
-      `"Value today" is the current portfolio value on record; "You added this year" is the money actually invested during the period — this is a recap of recorded activity, not a projection of returns.`,
+      `This Portfolio Review & Wealth Story covers ${monLabel(story.period.from)} to ${monLabel(story.period.to)}. ` +
+      `"Current Valuation" is the live portfolio value on record; "You added this year" is the actual capital invested during the period.`,
   });
 
-  blocks.push({ type: "stat", label: "Value today", value: inr(story.currentValue) });
+  blocks.push({ type: "stat", label: "Current Valuation", value: inr(story.currentValue) });
   blocks.push({ type: "stat", label: "You added this year", value: inr(story.invested) });
   blocks.push({ type: "stat", label: "You withdrew", value: inr(story.withdrawn) });
   blocks.push({ type: "stat", label: "Net added this year", value: inr(story.netInvested) });
@@ -187,31 +222,44 @@ function storyToBlocks(story: WealthStory): PdfBlock[] {
   blocks.push({ type: "stat", label: "Fund houses", value: String(story.amcCount) });
   blocks.push({ type: "stat", label: "Investing together for", value: `${story.client.tenureYears} yr${story.client.tenureYears >= 2 ? "s" : ""}` });
 
-  if (story.topHolding) {
-    blocks.push({ type: "section", text: "Your top holding" });
-    blocks.push({ type: "table", head: ["Scheme", "Value today"], rows: [[story.topHolding.name, inr(story.topHolding.value)]] });
+  if (story.assetAllocation && story.assetAllocation.length > 0) {
+    blocks.push({ type: "section", text: "Asset Allocation Breakdown" });
+    blocks.push({
+      type: "table",
+      head: ["Asset Category", "Valuation", "Portfolio Share"],
+      rows: story.assetAllocation.map((a) => [a.category, inr(a.value), `${a.pct}%`]),
+    });
+  }
+
+  if (story.topHoldings && story.topHoldings.length > 0) {
+    blocks.push({ type: "section", text: "Top Mutual Fund Holdings" });
+    blocks.push({
+      type: "table",
+      head: ["Scheme Name", "Valuation", "Weight"],
+      rows: story.topHoldings.map((h) => [h.name, inr(h.value), `${h.sharePct}%`]),
+    });
   }
 
   if (story.goals.length) {
-    blocks.push({ type: "section", text: "Goals in motion" });
+    blocks.push({ type: "section", text: "Goals in Motion" });
     blocks.push({
       type: "table",
-      head: ["Goal", "Target", "Progress"],
+      head: ["Financial Goal", "Target Amount", "Progress"],
       rows: story.goals.map((g) => [g.name, inr(g.targetAmount), g.progressPct == null ? "-" : `${Math.round(g.progressPct)}%`]),
     });
   }
 
   if (story.funFacts.length) {
-    blocks.push({ type: "section", text: "Highlights of your year" });
+    blocks.push({ type: "section", text: "Annual Milestones" });
     for (const f of story.funFacts) blocks.push({ type: "insight", text: f });
   }
 
-  blocks.push({ type: "section", text: "Important" });
+  blocks.push({ type: "section", text: "Statutory Disclaimers" });
   blocks.push({
     type: "insight",
     text:
       "Mutual fund investments are subject to market risks. Read all scheme related documents carefully. " +
-      "Past activity and current values do not indicate or guarantee future returns.",
+      "Past performance is not indicative of future returns. Calculations and valuations are based on data recorded on the platform.",
   });
   return blocks;
 }
@@ -232,13 +280,13 @@ async function buildStoryPdf(req: NextRequest, session: SessionUser, story: Weal
     firmWebsite: tenant?.website ?? null,
     clientName: story.client.name,
     clientEmail: story.client.email,
-    calcName: "Your Wealth Story",
+    calcName: "Portfolio Review & Wealth Story",
     blocks: storyToBlocks(story),
     logoBytes,
     primaryHex: tenant?.primaryColor ?? null,
     generatedAt,
   });
-  const fname = `WealthStory_${story.client.name}`.replace(/[^A-Za-z0-9_-]+/g, "_").slice(0, 60) + ".pdf";
+  const fname = `PortfolioReview_${story.client.name}`.replace(/[^A-Za-z0-9_-]+/g, "_").slice(0, 60) + ".pdf";
   return { pdf, fname };
 }
 
@@ -326,8 +374,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const html = `<div style="font-family:Arial,Helvetica,sans-serif;max-width:600px;margin:0 auto;color:#0f172a;">
       ${emailLogoHeaderHtml(tenant?.logoUrl, firmName)}
       <p>Dear ${esc(data.story.client.name || "Investor")},</p>
-      <p>Here's your <strong>year in investing</strong> with ${esc(firmName)} — your personal Wealth Story for the last 12 months, attached as a PDF. ✨</p>
-      <p>It covers what you added, your SIP discipline, your top holding and the goals you're building towards. We'd love to walk you through it on a call.</p>
+      <p>Here's your <strong>annual portfolio review & wealth recap</strong> with ${esc(firmName)} attached as a PDF report. ✨</p>
+      <p>It summarizes your asset allocation, SIP discipline, goal progress, and key mutual fund holdings.</p>
       <p style="margin-top:20px;">Warm regards,<br/><strong>${esc(firmName)}</strong></p>
       <p style="font-size:11px;color:#64748b;margin-top:20px;border-top:1px solid #e2e8f0;padding-top:10px;">Mutual fund investments are subject to market risks. Read all scheme related documents carefully.</p>
     </div>`;
@@ -337,8 +385,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         tenantId: session.tenantId,
         tokens: {},
         rendered: {
-          subject: `Your Wealth Story — a year in investing with ${firmName}`,
-          text: `Here's your year in investing with ${firmName} — your Wealth Story PDF is attached.`,
+          subject: `Portfolio Review & Wealth Report — ${firmName}`,
+          text: `Here's your annual portfolio review with ${firmName} — your report PDF is attached.`,
           tokens: {},
         },
         recipient: email,

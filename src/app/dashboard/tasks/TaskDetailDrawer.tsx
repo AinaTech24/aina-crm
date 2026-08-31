@@ -506,7 +506,7 @@ export function TaskDetailDrawer({ task, currentUserId, canManageAll = false, on
                 size="sm"
                 className="w-full"
               >
-                <option value="">—</option>
+                <option value="">Select…</option>
                 {DEPARTMENTS.map(([k, l]) => (
                   <option key={k} value={k}>{l}</option>
                 ))}

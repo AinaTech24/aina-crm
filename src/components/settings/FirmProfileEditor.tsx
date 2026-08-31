@@ -529,7 +529,7 @@ export function FirmProfileEditor({ tenant }: { tenant: Tenant }) {
               onChange={(e) => setBank("accountType", e.target.value)}
               className="input-base text-sm w-full"
             >
-              <option value="">—</option>
+              <option value="">Select…</option>
               <option value="current">Current</option>
               <option value="savings">Savings</option>
               <option value="od">Overdraft</option>

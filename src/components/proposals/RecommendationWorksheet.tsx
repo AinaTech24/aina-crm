@@ -245,7 +245,7 @@ function SipSection({ rows, updateRow, addRow, removeRow }: SectionProps) {
                       }
                       className="input-base text-xs w-full"
                     >
-                      <option value="">—</option>
+                      <option value="">Select…</option>
                       <option value="regular">Regular</option>
                       <option value="direct">Direct</option>
                     </select>
@@ -394,7 +394,7 @@ function LumpsumSection({ rows, updateRow, addRow, removeRow }: SectionProps) {
                       }
                       className="input-base text-xs w-full"
                     >
-                      <option value="">—</option>
+                      <option value="">Select…</option>
                       <option value="regular">Regular</option>
                       <option value="direct">Direct</option>
                     </select>
@@ -536,7 +536,7 @@ function SwpSection({ rows, updateRow, addRow, removeRow }: SectionProps) {
                       }
                       className="input-base text-xs w-full"
                     >
-                      <option value="">—</option>
+                      <option value="">Select…</option>
                       <option value="regular">Regular</option>
                       <option value="direct">Direct</option>
                     </select>
@@ -659,7 +659,7 @@ function StpSection({ rows, updateRow, addRow, removeRow }: SectionProps) {
                       }
                       className="input-base text-xs w-full"
                     >
-                      <option value="">—</option>
+                      <option value="">Select…</option>
                       <option value="regular">Regular</option>
                       <option value="direct">Direct</option>
                     </select>

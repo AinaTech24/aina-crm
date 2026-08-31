@@ -215,13 +215,13 @@ function NewInvestorPageInner() {
         <ChevronLeft className="size-4" /> Back to investors
       </Link>
 
-      <h1 className="text-2xl font-bold tracking-tight">Add investor</h1>
+      <h1 className="text-2xl font-bold tracking-tight">Add client</h1>
 
       {familyId && (
         <div className="rounded-md border border-blue-300 bg-blue-50 text-blue-900 px-4 py-3 text-sm flex items-center gap-2">
           <HeartHandshake className="size-4" />
           <span>
-            This investor will be added to the selected family
+            This client will be added to the selected family
             {familyRole && (
               <>
                 {" "}as <strong>{familyRole}</strong>
@@ -351,7 +351,7 @@ function NewInvestorPageInner() {
             disabled={busy}
             className="rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm font-medium disabled:opacity-50"
           >
-            {busy ? "Creating…" : "Create investor"}
+            {busy ? "Creating…" : "Create client"}
           </button>
         </div>
       </form>

@@ -32,7 +32,7 @@ const PRODUCT_OPTIONS = [
 ];
 
 const LEAD_TYPES: [string, string][] = [
-  ["", "—"],
+  ["", "Select…"],
   ["individual", "Individual"],
   ["hni", "HNI"],
   ["nri", "NRI"],
@@ -41,7 +41,7 @@ const LEAD_TYPES: [string, string][] = [
 ];
 
 const AUM_BANDS: [string, string][] = [
-  ["", "—"],
+  ["", "Select…"],
   ["under_10l", "< ₹10 L"],
   ["10l_50l", "₹10 – 50 L"],
   ["50l_2cr", "₹50 L – 2 Cr"],
@@ -76,6 +76,8 @@ export default function NewLeadPage() {
   const [customFields, setCustomFields] = useState<Record<string, any>>({});
   const [cfDefs, setCfDefs] = useState<CustomFieldDef[]>([]);
   const [busy, setBusy] = useState(false);
+  // Quick-add first: essentials only, full form behind one toggle.
+  const [showAll, setShowAll] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [duplicates, setDuplicates] = useState<DupMatch[]>([]);
   const [dupChecking, setDupChecking] = useState(false);
@@ -230,7 +232,7 @@ export default function NewLeadPage() {
       </div>
 
       <form onSubmit={submit} className="card-surface p-5 sm:p-6 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-4">
-        <div className="sm:col-span-2 flex items-center gap-3">
+        <div className={showAll ? "sm:col-span-2 flex items-center gap-3" : "hidden"}>
           <Avatar src={avatarPreview} name={form.name} size={56} />
           <div className="flex items-center gap-2">
             <label className="btn-secondary text-xs inline-flex items-center gap-1.5 cursor-pointer">
@@ -248,18 +250,19 @@ export default function NewLeadPage() {
         </div>
         <Row label="Name" value={form.name} setValue={(v) => set("name", v)} required />
         <Row
-          label="Email"
-          value={form.email}
-          setValue={(v) => set("email", v)}
-          type="email"
-        // placeholder="name@example.com"
-        />
-        <Row
           label="Phone"
           value={form.phone}
           setValue={(v) => set("phone", v)}
         // placeholder="+919XXXXXXXXX"
         />
+        <div className={showAll ? "contents" : "hidden"}>
+          <Row
+            label="Email"
+            value={form.email}
+            setValue={(v) => set("email", v)}
+            type="email"
+          />
+        </div>
 
         {/* Live duplicate warning — shown when /check-duplicate returns matches.
             Doesn't block submission; just nudges the RM to confirm or open the
@@ -305,7 +308,9 @@ export default function NewLeadPage() {
           </div>
         )}
 
-        <Row label="City" value={form.city} setValue={(v) => set("city", v)} />
+        <div className={showAll ? "contents" : "hidden"}>
+          <Row label="City" value={form.city} setValue={(v) => set("city", v)} />
+        </div>
 
         <div>
           <div className="text-xs font-medium mb-1">Source</div>
@@ -367,7 +372,7 @@ export default function NewLeadPage() {
           </div>
         )}
 
-        <div className="sm:col-span-2">
+        <div className={showAll ? "sm:col-span-2" : "hidden"}>
           <div className="text-xs font-medium mb-1">
             Sub-distributor
             <span className="ml-1 text-[10px] text-muted-foreground font-normal">
@@ -409,7 +414,34 @@ export default function NewLeadPage() {
           />
         </div>
 
-        {/* Qualification — type, products, expected value, first follow-up */}
+        {/* Essential: "call me next week" is the whole job half the time. */}
+        <div className="sm:col-span-2">
+          <div className="text-xs font-medium mb-1">Follow-up date</div>
+          <ThemeDate
+            type="datetime-local"
+            value={form.followUpDate}
+            onChange={(v) => set("followUpDate", v)}
+          />
+          <p className="text-[10px] text-muted-foreground mt-1">
+            Sets the next follow-up + creates an RM task so nobody forgets.
+          </p>
+        </div>
+
+        {/* Everything below is optional detail — hidden until asked for, so a
+            lead can be captured mid-phone-call in four fields. */}
+        <div className="sm:col-span-2">
+          <button
+            type="button"
+            onClick={() => setShowAll((v) => !v)}
+            className="w-full flex items-center justify-center gap-1.5 rounded-lg border border-dashed border-border py-2.5 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors"
+            aria-expanded={showAll}
+          >
+            {showAll ? "Hide extra details" : "Add full details — photo, email, products, amounts & more"}
+          </button>
+        </div>
+
+        {/* Qualification — type, products, expected value */}
+        <div className={showAll ? "contents" : "hidden"}>
         <div className="sm:col-span-2 grid grid-cols-2 gap-3">
           <label className="block">
             <div className="text-xs font-medium mb-1">Lead type</div>
@@ -444,19 +476,7 @@ export default function NewLeadPage() {
             value={form.expectedBusinessAmount}
             setValue={(v) => set("expectedBusinessAmount", v)}
             type="number"
-          // placeholder="e.g. 500000"
           />
-          <label className="block">
-            <div className="text-xs font-medium mb-1">Follow-up date</div>
-            <ThemeDate
-              type="datetime-local"
-              value={form.followUpDate}
-              onChange={(v) => set("followUpDate", v)}
-            />
-            <p className="text-[10px] text-muted-foreground mt-1">
-              Sets the next follow-up + creates an RM task.
-            </p>
-          </label>
         </div>
 
         <Row label="Occupation" value={form.occupation} setValue={(v) => set("occupation", v)} />
@@ -491,6 +511,7 @@ export default function NewLeadPage() {
         {/* Firm-defined custom fields (Settings → Custom fields) */}
         <div className="sm:col-span-2">
           <CustomFieldsSection entity="lead" values={customFields} onChange={setCustomFields} onDefsLoaded={setCfDefs} />
+        </div>
         </div>
 
         {err && (

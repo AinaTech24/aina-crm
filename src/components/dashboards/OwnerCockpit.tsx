@@ -1,4 +1,5 @@
 import React, { Suspense } from "react";
+import { SetupChecklist } from "./SetupChecklist";
 import Link from "next/link";
 import { sql } from "drizzle-orm";
 import { ArrowDownRight, ArrowUpRight, TrendingUp, Users, UserPlus } from "lucide-react";
@@ -97,6 +98,11 @@ export async function OwnerCockpit({
           </div>
         </div>
       </div>
+
+      {/* First-run setup checklist — data-verified steps; vanishes when done. */}
+      <Suspense fallback={null}>
+        <SetupChecklist tenantId={session.tenantId} />
+      </Suspense>
 
       <Suspense fallback={<CockpitBodySkeleton />}>
         <OwnerCockpitBody session={session} period={period} customStart={customStart} customFrom={customFrom} customTo={customTo} />

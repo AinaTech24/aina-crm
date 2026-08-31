@@ -26,15 +26,21 @@
     --muted: 200 18% 95%;
     --muted-foreground: 200 12% 44%;
 
-    --accent: 176 48% 32%;                   /* Aina teal */
-    --accent-foreground: 0 0% 100%;
+    --accent: 358 70% 96%;                   /* light brand tint — hover surface */
+    --accent-foreground: 358 60% 30%;        /* deep red text on the tint */
 
     --destructive: 4 80% 52%;                /* warmer red, distinct from brand crimson */
     --destructive-foreground: 0 0% 100%;
+    --success: 151 55% 35%;
+    --success-foreground: 151 62% 22%;
+    --warning: 37 92% 50%;
+    --warning-foreground: 31 78% 25%;
+    --info: 199 74% 45%;
+    --info-foreground: 202 72% 28%;
 
     --border: 200 20% 90%;
     --input: 200 20% 90%;
-    --ring: 176 48% 34%;                     /* teal focus ring — on-brand */
+    --ring: 358 75% 41%;                     /* Aina-red focus ring — one accent */
 
     --radius: 0.75rem;                       /* 12px base; xl utilities give 16/20px */
 
@@ -43,16 +49,16 @@
     --brand-navy: 358 75% 41%;               /* = Aina red #B71A20 */
     --brand-navy-deep: 358 78% 32%;          /* deep red */
     --brand-navy-light: 358 70% 96%;         /* red tint */
-    --brand-cyan: 176 48% 32%;               /* = Aina teal */
-    --brand-cyan-deep: 180 52% 19%;          /* deep teal #1F3D3B */
-    --brand-cyan-light: 176 38% 93%;         /* teal tint */
+    --brand-cyan: 358 75% 41%;               /* re-pointed: = Aina red (one accent) */
+    --brand-cyan-deep: 358 78% 32%;          /* deep red */
+    --brand-cyan-light: 358 70% 96%;         /* red tint */
     --brand-violet: 356 60% 55%;
-    --brand-mint: 168 55% 38%;
+    --brand-mint: 358 75% 41%;              /* re-pointed: = Aina red (one accent) */
     /* Sidebar active-item tint — theme-aware (see .nav-link-active). Soft brand
        red on light; a muted deep red on dark (brand-navy-light would be near
        white in dark, so it gets its own value below). */
-    --nav-active-bg: 358 74% 93%;
-    --nav-active-fg: 358 75% 41%;
+    --nav-active-bg: 358 75% 41%;            /* solid Aina red pill */
+    --nav-active-fg: 0 0% 100%;              /* white label + icon on the pill */
   }
 
   .dark {
@@ -68,20 +74,26 @@
     --secondary-foreground: 200 20% 96%;
     --muted: 200 22% 15%;
     --muted-foreground: 200 14% 64%;
-    --accent: 176 45% 44%;                   /* brighter teal for dark bg */
-    --accent-foreground: 0 0% 100%;
+    --accent: 358 24% 22%;                   /* dark red-tinted hover surface */
+    --accent-foreground: 0 0% 98%;
     --destructive: 4 70% 52%;
     --destructive-foreground: 0 0% 100%;
+    --success: 151 52% 47%;
+    --success-foreground: 151 70% 82%;
+    --warning: 42 88% 55%;
+    --warning-foreground: 42 90% 84%;
+    --info: 199 72% 58%;
+    --info-foreground: 199 82% 84%;
     --border: 200 22% 19%;
     --input: 200 22% 19%;
-    --ring: 176 45% 44%;
+    --ring: 358 72% 52%;
     /* brand aliases for dark mode */
     --brand-navy: 358 72% 52%;
     --brand-navy-deep: 358 74% 38%;
-    --brand-cyan: 176 45% 44%;
-    --brand-cyan-deep: 178 45% 30%;
-    --nav-active-bg: 358 45% 20%;
-    --nav-active-fg: 358 72% 52%;
+    --brand-cyan: 358 72% 52%;
+    --brand-cyan-deep: 358 74% 38%;
+    --nav-active-bg: 358 72% 52%;
+    --nav-active-fg: 0 0% 100%;
   }
 
   /* Dark sidebar — a scoped theme applied to the sidebar shell (desktop aside +
@@ -98,9 +110,9 @@
     --foreground: 220 18% 91%;
     --border: 220 14% 22%;
     --input: 220 14% 24%;
-    --ring: 176 45% 44%;
-    --nav-active-bg: 356 42% 15%;
-    --nav-active-fg: 358 85% 74%;
+    --ring: 358 72% 52%;
+    --nav-active-bg: 358 72% 52%;
+    --nav-active-fg: 0 0% 100%;
   }
 
   * {
@@ -111,7 +123,7 @@
      browser-default blue) everywhere — filter dropdowns, forms, pickers. */
   input[type="checkbox"],
   input[type="radio"] {
-    accent-color: hsl(var(--brand-cyan));
+    accent-color: hsl(var(--primary));
   }
   /* Checkboxes / radios must NEVER show the boxy native outline or the form
      field's border-ring (which made a square halo around the tick). On mouse:
@@ -122,7 +134,7 @@
   }
   input[type="checkbox"]:focus-visible,
   input[type="radio"]:focus-visible {
-    @apply outline-none ring-2 ring-brand-cyan/40 ring-offset-1 ring-offset-background rounded;
+    @apply outline-none ring-2 ring-ring/40 ring-offset-1 ring-offset-background rounded;
   }
 
   html {
@@ -135,11 +147,6 @@
     font-feature-settings: "rlig" 1, "calt" 1, "cv02" 1, "cv11" 1, "ss01" 1;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    /* Subtle mesh background — barely-there color depth on the page */
-    background-image:
-      radial-gradient(at 0% 0%, hsl(var(--brand-navy-light) / 0.6) 0px, transparent 50%),
-      radial-gradient(at 100% 0%, hsl(var(--brand-cyan-light) / 0.4) 0px, transparent 50%);
-    background-attachment: fixed;
   }
 
   /* Global themed scrollbar — replaces the OS/system scrollbar app-wide with an
@@ -218,7 +225,7 @@
   textarea:focus, select:focus,
   input:not([type="checkbox"]):not([type="radio"]):not([type="search"]):focus-visible,
   textarea:focus-visible, select:focus-visible {
-    @apply outline-none ring-2 ring-brand-cyan/25 ring-offset-0;
+    @apply outline-none ring-2 ring-ring/25 ring-offset-0;
     border-color: hsl(var(--brand-cyan) / 0.55);
   }
   /* Search inputs render inside their own styled shell (e.g. GlobalSearch) —
@@ -296,35 +303,29 @@
   .btn-primary {
     @apply inline-flex items-center justify-center gap-1.5 whitespace-nowrap
            rounded-lg px-4 py-2 text-sm font-medium
-           text-white shadow-md
+           text-white shadow-sm
            transition-all duration-150
-           hover:shadow-glow-navy hover:-translate-y-px
-           active:translate-y-0 active:shadow-md active:scale-[0.98]
+           hover:shadow-md hover:-translate-y-px
+           active:translate-y-0 active:shadow-sm active:scale-[0.98]
            disabled:opacity-50 disabled:cursor-not-allowed
            disabled:translate-y-0 disabled:shadow-none
            focus-visible:ring-2 focus-visible:ring-ring/50;
-    background-image: linear-gradient(
-      135deg,
-      hsl(var(--brand-navy-deep)) 0%,
-      hsl(var(--brand-navy)) 100%
-    );
+    background-color: hsl(var(--primary));
   }
+  .btn-primary:hover { background-color: hsl(var(--primary) / 0.9); }
 
   /* Accent — electric cyan gradient with a vivid glow on hover */
   .btn-accent {
     @apply inline-flex items-center justify-center gap-1.5 whitespace-nowrap
            rounded-lg px-4 py-2 text-sm font-semibold
-           text-white shadow-md
+           text-white shadow-sm
            transition-all duration-150
-           hover:shadow-glow-lg hover:-translate-y-px
-           active:translate-y-0 active:shadow-md active:scale-[0.98]
+           hover:shadow-md hover:-translate-y-px
+           active:translate-y-0 active:shadow-sm active:scale-[0.98]
            disabled:opacity-50 disabled:cursor-not-allowed;
-    background-image: linear-gradient(
-      135deg,
-      hsl(var(--brand-cyan-deep)) 0%,
-      hsl(var(--brand-cyan)) 100%
-    );
+    background-color: hsl(var(--primary));
   }
+  .btn-accent:hover { background-color: hsl(var(--primary) / 0.9); }
 
   /* Secondary — refined ghost-card button */
   .btn-secondary {
@@ -370,15 +371,14 @@
 
   /* Card — the workhorse. Soft elevation, subtle gradient overlay. */
   .card-surface {
-    @apply rounded-xl bg-card text-card-foreground shadow-md
-           border border-border/70
+    @apply rounded-xl bg-card text-card-foreground shadow-none
+           border border-border
            transition-shadow duration-200;
   }
 
   /* Elevated card — for hero/feature panels */
   .card-elevated {
-    @apply rounded-2xl bg-card shadow-xl border border-border/50
-           backdrop-blur-sm;
+    @apply rounded-2xl bg-card shadow-lg border border-border;
   }
 
   /* Glass panel — frosted, on-brand mesh */
@@ -537,7 +537,7 @@
   .nav-link {
     @apply relative flex items-center gap-3 rounded-lg
            px-3 py-[9px] text-[13px] font-medium
-           text-foreground/70
+           text-muted-foreground
            hover:bg-secondary hover:text-foreground
            transition-colors duration-150;
   }
@@ -558,13 +558,9 @@
   .nav-link-active:hover .nav-link-icon {
     color: hsl(var(--nav-active-fg));
   }
-  /* Clear left accent bar so the active row reads as definitively selected
-     (not just a faint tint). Hidden in the collapsed icon-rail below. */
-  .nav-link-active::before {
-    content: "";
-    @apply absolute left-0 top-1/2 -translate-y-1/2 h-[22px] w-1 rounded-r-full;
-    background-color: hsl(var(--nav-active-fg));
-  }
+  /* The active row is now a SOLID brand pill with white text, so the old left
+     accent bar is redundant (it read as a double marker). Intentionally removed
+     — see .nav-link-active above. */
 
   /* ─── Modern table polish ────────────────────────────────────────────── */
 
@@ -916,6 +912,34 @@
   transition: color 150ms ease;
 }
 
+/* Chips sitting INSIDE the solid brand pill. Without these, the amber Beta chip
+   and the rose count badge sit on brand-red and read as broken/invisible.
+   Deliberately PLAIN top-level CSS, not @layer components: a bare single-class
+   rule in that layer gets tree-shaken by Tailwind and silently never ships
+   (this repo has been bitten by exactly that — see the note above). */
+.nav-link-active .nav-link-beta {
+  background-color: rgba(255, 255, 255, 0.22);
+  color: #fff;
+}
+.nav-link-active .nav-link-badge {
+  background-color: rgba(255, 255, 255, 0.25);
+  color: #fff;
+}
+.nav-link-active button {
+  color: rgba(255, 255, 255, 0.85);
+}
+.nav-link-active button:hover {
+  color: #fff;
+}
+
+/* Collapsed icon rail: a full-width solid pill reads as a heavy block, so keep
+   the active pill a neat centred square. */
+.sidebar-collapsed .nav-link-active {
+  width: 2.5rem;
+  margin-left: auto;
+  margin-right: auto;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    Collapsed desktop sidebar (icon rail) — see DesktopSidebar.tsx.
    When the panel is in its slim resting state it carries `.sidebar-collapsed`;
@@ -945,7 +969,6 @@
   border-radius: 9999px;
   background-color: #fbbf24; /* amber-400 — matches the pinned star */
 }
-.sidebar-collapsed .nav-link-active::before { display: none; }
 .sidebar-collapsed .sidebar-section-title { display: none; }
 /* Folder-item indent + guide line would push the centred rail icons off-centre;
    strip it in the collapsed icon rail. */

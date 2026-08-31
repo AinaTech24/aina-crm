@@ -109,16 +109,12 @@ const NAV: NavSection[] = [
     items: [
       // Dashboard + My Dashboards are merged into the DashboardNavDropdown
       // rendered at the top of CustomizableNav.
-      { href: "/dashboard/command-center", label: "Command Center", icon: Inbox,
+      { href: "/dashboard/command-center", label: "My Day", icon: Inbox,
         roles: ["owner", "rm", "branch_head", "back_office", "ops", "compliance"] },
-      { href: "/dashboard/next-best-action", label: "Next Best Action", icon: Sparkles,
-        roles: ["owner", "rm", "branch_head", "back_office", "ops"] },
       { href: "/dashboard/tasks", label: "Tasks", icon: ListChecks, module: "tasks" },
       { href: "/dashboard/service-requests", label: "Service Requests", icon: LifeBuoy, module: "service_requests" },
-      { href: "/dashboard/tasks/daily", label: "Daily Tracker", icon: ClipboardCheck, module: "tasks" },
       { href: "/dashboard/review-meetings", label: "Meetings", icon: Presentation, module: "review_meetings",
         roles: ["owner", "rm", "branch_head", "back_office", "ops"] },
-      { href: "/dashboard/calendar", label: "Calendar", icon: Calendar },
       { href: "/dashboard/attendance", label: "Attendance", icon: CalendarCheck },
       { href: "/dashboard/trash", label: "Trash", icon: Trash2, roles: ["owner", "compliance"] },
       // Team Dashboard now lives inside the top "Dashboards" dropdown
@@ -143,7 +139,7 @@ const NAV: NavSection[] = [
       // Leads (1-10) and Clients (11-30). Page redirects to /dashboard/leads.
       { href: "/dashboard/risk-profiles", label: "Risk Profile", icon: Gauge, module: "risk_profile",
         roles: ["owner", "compliance", "back_office", "ops", "rm"] },
-      { href: "/dashboard/discovery", label: "Discovery & Suitability", icon: ClipboardList,
+      { href: "/dashboard/discovery", label: "Client Discovery", icon: ClipboardList,
         roles: ["owner", "rm", "branch_head", "back_office", "ops", "compliance"] },
       { href: "/dashboard/calculators", label: "Calculators", icon: Calculator },
       { href: "/dashboard/goals", label: "Goal Planning", icon: Target, module: "goal_planning",
@@ -493,8 +489,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // a single source of truth and never drifts between the two.
   const sidebarInner = (
     <>
-        {/* Brand header — flat deep-maroon on the light sidebar. */}
-        <div className="border-b border-white/10 bg-brand-navy-deep">
+        {/* Brand header — light neutral row; tenant identity carried by the logo tile only. */}
+        <div className="border-b border-border bg-card">
           <div className="sidebar-brand-row px-5 h-16 flex items-center gap-3">
             {tenant ? (
               <>
@@ -503,22 +499,22 @@ export default async function DashboardLayout({ children }: { children: React.Re
                   <img
                     src={sidebarLogo}
                     alt="logo"
-                    className="size-10 rounded-xl shadow-lg ring-2 ring-white/20 object-cover"
+                    className="size-10 rounded-xl ring-1 ring-border object-cover"
                   />
                 ) : (
                   <div
-                    className="size-10 rounded-xl bg-white/95 text-brand-navy grid place-items-center text-lg font-extrabold shadow-lg ring-2 ring-white/20"
+                    className="size-10 rounded-xl bg-secondary text-brand-navy grid place-items-center text-lg font-extrabold ring-1 ring-border"
                     style={tenant.primaryColor ? { color: tenant.primaryColor } : {}}
                   >
                     {(tenant.displayName ?? "A").charAt(0).toUpperCase()}
                   </div>
                 )}
-                <div className="sidebar-brand-text min-w-0 text-white">
-                  <div className="font-semibold tracking-tight truncate text-sm leading-tight">
+                <div className="sidebar-brand-text min-w-0">
+                  <div className="font-semibold tracking-tight truncate text-sm leading-tight text-foreground">
                     {tenant.displayName ?? "Aina CRM"}
                   </div>
-                  <div className="mt-0.5 inline-flex items-center gap-1 text-[10px] text-white/75 font-mono">
-                    <span className="size-1.5 rounded-full bg-brand-cyan shadow-[0_0_6px_hsl(var(--brand-cyan))]" />
+                  <div className="mt-0.5 inline-flex items-center gap-1 text-[10px] text-muted-foreground font-mono">
+                    <span className="size-1.5 rounded-full bg-emerald-500" />
                     <span className="truncate">{tenant.arn ?? "—"}</span>
                   </div>
                 </div>
@@ -529,7 +525,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
               <img
                 src="/aina-wordmark.png"
                 alt="Aina CRM"
-                className="h-8 w-auto rounded-md bg-white px-2.5 py-1.5 shadow-lg ring-1 ring-white/15"
+                className="h-8 w-auto"
               />
             )}
           </div>
@@ -574,7 +570,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           pinned inside this pane (not at viewport top). */}
       <main className="flex-1 h-full overflow-y-auto print:overflow-visible print:h-auto">
         {/* Topbar — glass, sticky; hidden when printing */}
-        <div className="sticky top-0 z-40 border-b border-border/60 bg-background/80 backdrop-blur-xl backdrop-saturate-150 px-6 h-16 flex items-center justify-between gap-4 print:hidden">
+        <div className="sticky top-0 z-40 border-b border-border/60 bg-background/80 backdrop-blur-xl backdrop-saturate-150 px-4 sm:px-6 h-16 flex items-center justify-between gap-2 sm:gap-4 print:hidden">
           <div className="flex items-center gap-3 min-w-0">
             {/* Mobile hamburger — opens the nav drawer (shares sidebarInner).
                 Firm name + ARN live in the sidebar header only (no duplication). */}
@@ -583,7 +579,10 @@ export default async function DashboardLayout({ children }: { children: React.Re
           <div data-tour="global-search" className="flex-1 min-w-0 flex">
             <GlobalSearch />
           </div>
-          <div className="flex items-center gap-3 text-sm">
+          <div className="flex items-center gap-2 sm:gap-3 text-sm">
+            {/* Convenience icons collapse on phones — everything stays reachable
+                (2FA via Settings, Help via pages, birthdays via My Day). */}
+            <div className="hidden sm:flex items-center gap-3">
             {/* Two-factor authentication — amber nudge when off, calm when on. */}
             <Link
               href="/dashboard/settings/security"
@@ -607,10 +606,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
             </Link>
             <WhatsNewBell unread={whatsNewUnread} />
             <BirthdayBell />
+            </div>
             <span data-tour="notifications" className="inline-flex">
               <NotificationBell />
             </span>
-            <span className="h-6 w-px bg-border mx-0.5" />
+            <span className="hidden sm:block h-6 w-px bg-border mx-0.5" />
             <ProfileMenu
               name={session.name}
               email={session.email}
@@ -627,7 +627,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
             />
           </div>
         </div>
-        <div className="dashboard-content p-6 animate-fade-in print:p-0 print:animate-none">
+        {/* pb-24 on phones keeps the floating + button clear of the last row/link. */}
+        <div className="dashboard-content p-4 pb-24 sm:p-6 sm:pb-6 animate-fade-in print:p-0 print:animate-none">
           {license.isRestricted && !pathAllowed ? (
             <RestrictedNotice license={license} />
           ) : navBlocked ? (

@@ -499,11 +499,46 @@ export function TaskList({ initialRows, currentUserId, canManageAll = false, ini
                   </span>
                 )}
 
+                {/* Due · priority · status — the facts an RM scans for. Colour
+                    only when it means something (overdue red, urgent/high tint,
+                    blocked rose); everything else stays quiet. */}
+                <div className="hidden sm:flex items-center gap-2 shrink-0">
+                  {t.dueAt && !isDone && (
+                    <span
+                      className={`inline-flex items-center gap-1 text-[11px] rounded-md px-1.5 py-0.5 border ${
+                        new Date(t.dueAt).getTime() < Date.now()
+                          ? "text-rose-700 bg-rose-50 border-rose-200 font-semibold"
+                          : "text-slate-600 bg-white border-slate-200"
+                      }`}
+                      title={new Date(t.dueAt).toLocaleString("en-IN")}
+                    >
+                      <CalendarClock className="size-3" />
+                      {formatRelative(t.dueAt)}
+                    </span>
+                  )}
+                  {(t.priority === "urgent" || t.priority === "high") && !isDone && (
+                    <span className={`text-[10px] font-semibold uppercase tracking-wide rounded px-1.5 py-0.5 ${
+                      t.priority === "urgent" ? "text-rose-700 bg-rose-50 border border-rose-200" : "text-amber-700 bg-amber-50 border border-amber-200"
+                    }`}>
+                      {t.priority}
+                    </span>
+                  )}
+                  {(t.status === "in_progress" || t.status === "blocked") && (
+                    <span className={`text-[10px] font-medium rounded px-1.5 py-0.5 border ${
+                      t.status === "blocked" ? "text-rose-700 bg-rose-50 border-rose-200" : "text-violet-700 bg-violet-50 border-violet-200"
+                    }`}>
+                      {t.status === "blocked" ? "Blocked" : "In progress"}
+                    </span>
+                  )}
+                </div>
+
                 {/* Assigned by / assigned to — two clearly-labelled columns */}
                 <div className="hidden md:flex items-center gap-5 shrink-0">
                   <div className="w-28 min-w-0">
                     <div className="text-[9px] uppercase tracking-wide text-slate-400 leading-none">Assigned by</div>
-                    <div className="text-xs text-slate-700 font-medium truncate mt-0.5">{creatorName}</div>
+                    <div className={`text-xs truncate mt-0.5 ${creatorName === "System" ? "text-slate-400 font-normal" : "text-slate-700 font-medium"}`}>
+                      {creatorName === "System" ? "Automation" : creatorName}
+                    </div>
                   </div>
                   <div className="w-28 min-w-0">
                     <div className="text-[9px] uppercase tracking-wide text-slate-400 leading-none">Assigned to</div>
@@ -522,7 +557,8 @@ export function TaskList({ initialRows, currentUserId, canManageAll = false, ini
                   >
                     <Pencil className="size-4" />
                   </button>
-                  <RowActions inline deleteUrl={`/api/tasks/${t.id}`} itemLabel="task" itemName={t.title} verb="Delete" />
+                  {/* Delete lives behind the ⋯ menu — not one accidental click away. */}
+                  <RowActions deleteUrl={`/api/tasks/${t.id}`} itemLabel="task" itemName={t.title} verb="Delete" />
                 </div>
               </li>
             );

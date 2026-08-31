@@ -20,6 +20,10 @@ type StoredInboxConfig = {
   passEnc?: string | null;
   /** The domain unique forward addresses are minted under (rta-<token>@<domain>). */
   domain?: string | null;
+  /** Delete forwarded mail from the catch-all once it has been imported. */
+  deleteAfterImport?: boolean | null;
+  /** Days to keep an imported mail before deleting it. 0 = delete on next sweep. */
+  retentionDays?: number | null;
 };
 
 export type ResolvedInboxConfig = {
@@ -31,9 +35,24 @@ export type ResolvedInboxConfig = {
   domain: string;
   configured: boolean;
   source: "db" | "env" | "none";
+  /** Cleanup: remove imported mail from the catch-all (off unless switched on). */
+  deleteAfterImport: boolean;
+  /** Grace period before an imported mail is deleted. */
+  retentionDays: number;
 };
 
 const DEFAULT_DOMAIN = "crm.ainatech.in";
+/**
+ * A week's grace by default. Long enough to notice a bad import and re-run it
+ * from the original mail; short enough that the mailbox doesn't grow unbounded.
+ */
+const DEFAULT_RETENTION_DAYS = 7;
+
+function normRetention(d: number | null | undefined): number {
+  const n = Number(d);
+  if (!Number.isFinite(n) || n < 0) return DEFAULT_RETENTION_DAYS;
+  return Math.min(Math.floor(n), 365);
+}
 const TTL_MS = 60_000;
 let _cache: { cfg: ResolvedInboxConfig; at: number } | null = null;
 
@@ -75,6 +94,8 @@ export async function loadRtaInboxConfig(force = false): Promise<ResolvedInboxCo
       domain: normDomain(stored.domain),
       configured: !!(stored.host && stored.user && pass),
       source: "db",
+      deleteAfterImport: stored.deleteAfterImport ?? false,
+      retentionDays: normRetention(stored.retentionDays),
     };
   } else {
     const host = process.env.RTA_INBOX_HOST || null;
@@ -88,6 +109,10 @@ export async function loadRtaInboxConfig(force = false): Promise<ResolvedInboxCo
       domain: normDomain(process.env.RTA_INBOX_DOMAIN),
       configured: !!(host && process.env.RTA_INBOX_USER && pass),
       source: host ? "env" : "none",
+      deleteAfterImport: process.env.RTA_INBOX_DELETE_AFTER_IMPORT === "1",
+      retentionDays: normRetention(
+        process.env.RTA_INBOX_RETENTION_DAYS ? Number(process.env.RTA_INBOX_RETENTION_DAYS) : undefined
+      ),
     };
   }
   _cache = { cfg, at: Date.now() };
@@ -110,7 +135,16 @@ export async function isInboxConfigured(): Promise<boolean> {
 
 /** Upsert the inbox config. A blank password keeps the previously-saved one. */
 export async function saveRtaInboxConfig(
-  input: { host?: string; port?: number; secure?: boolean; user?: string; pass?: string; domain?: string },
+  input: {
+    host?: string;
+    port?: number;
+    secure?: boolean;
+    user?: string;
+    pass?: string;
+    domain?: string;
+    deleteAfterImport?: boolean;
+    retentionDays?: number;
+  },
   adminUserId: string
 ): Promise<void> {
   const prev = await readStored();
@@ -125,6 +159,8 @@ export async function saveRtaInboxConfig(
     user: input.user?.trim() || prev?.user || null,
     passEnc,
     domain: normDomain(input.domain || prev?.domain),
+    deleteAfterImport: input.deleteAfterImport ?? prev?.deleteAfterImport ?? false,
+    retentionDays: normRetention(input.retentionDays ?? prev?.retentionDays),
   };
   await pool.query(
     `INSERT INTO platform_settings (key, value, updated_at, updated_by)
@@ -133,6 +169,26 @@ export async function saveRtaInboxConfig(
     [JSON.stringify(value), adminUserId]
   );
   invalidateRtaInboxConfigCache();
+}
+
+/**
+ * Return the plaintext mailbox password for the platform-admin UI's "reveal"
+ * action. Gated at the route to platform admins — this is the operator's OWN
+ * catch-all mailbox credential, which they must be able to read back to verify
+ * or correct it (a wrong password fails silently otherwise). Never logged.
+ * Returns null when nothing is saved or the ciphertext can't be decrypted
+ * (e.g. ENCRYPTION_KEY rotated); falls back to the env var when set.
+ */
+export async function revealRtaInboxPassword(): Promise<string | null> {
+  const stored = await readStored();
+  if (stored?.passEnc) {
+    try {
+      return decrypt(stored.passEnc);
+    } catch {
+      return null;
+    }
+  }
+  return process.env.RTA_INBOX_PASS || null;
 }
 
 /** Masked status for the admin UI — never returns the password. */
@@ -145,6 +201,8 @@ export async function getRtaInboxStatusForAdmin(): Promise<{
   user: string | null;
   domain: string;
   hasPassword: boolean;
+  deleteAfterImport: boolean;
+  retentionDays: number;
 }> {
   const stored = await readStored();
   const cfg = await loadRtaInboxConfig(true);
@@ -157,5 +215,7 @@ export async function getRtaInboxStatusForAdmin(): Promise<{
     user: cfg.user,
     domain: cfg.domain,
     hasPassword: !!(stored?.passEnc || process.env.RTA_INBOX_PASS),
+    deleteAfterImport: cfg.deleteAfterImport,
+    retentionDays: cfg.retentionDays,
   };
 }

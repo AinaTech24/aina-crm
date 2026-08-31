@@ -324,6 +324,14 @@ const CATALOG: CalcGroup[] = [
 const ALL_CALCS: CalcMeta[] = CATALOG.flatMap((g) => g.items);
 const CALC_META: Record<string, CalcMeta> = Object.fromEntries(ALL_CALCS.map((c) => [c.key, c]));
 
+const MEETING_PACKS: Array<{ title: string; purpose: string; keys: TabKey[] }> = [
+  { title: "First discovery", purpose: "Understand behaviour, cash flow and the first priority goal.", keys: ["quiz", "realstatement", "goalplan"] },
+  { title: "Win the SIP", purpose: "Make the wealth gap visible and agree a practical monthly start.", keys: ["fdgap", "crorepati", "sippause"] },
+  { title: "Portfolio review", purpose: "Diagnose overlap, allocation drift and hidden cost drag.", keys: ["portfoliohealth", "fundoverlap", "allocreview", "expensedrag"] },
+  { title: "Retirement confidence", purpose: "Test the target, withdrawal durability and bucket plan.", keys: ["fire", "moneylast", "buckets", "passiveincome"] },
+  { title: "Family protection", purpose: "Cover protection, education and multi-generation wealth needs.", keys: ["hlv", "childedu", "familywealth"] },
+];
+
 type CalcAssumptions = { returnPct: number; inflationPct: number; educationInflationPct: number; debtReturnPct: number };
 
 // Firm "house view" defaults, provided around the calc render so the inline
@@ -740,7 +748,25 @@ function CalcGallery({
           <div className="text-center text-sm text-muted-foreground py-12">No calculators match “{query}”.</div>
         )
       ) : (
-        CATALOG.map((g) => (
+        <>
+          <section className="space-y-2.5">
+            <div><h2 className="text-sm font-semibold">Meeting packs</h2><p className="text-xs text-muted-foreground">Start with a client conversation instead of choosing from the full catalog.</p></div>
+            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-3">
+              {MEETING_PACKS.map((pack) => (
+                <div key={pack.title} className="rounded-lg border bg-card p-4">
+                  <h3 className="font-semibold text-sm">{pack.title}</h3>
+                  <p className="mt-1 text-xs text-muted-foreground">{pack.purpose}</p>
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {pack.keys.map((key, index) => {
+                      const calc = CALC_META[key];
+                      return <button key={key} type="button" onClick={() => onPick(key)} className={index === 0 ? "btn-primary text-xs" : "btn-secondary text-xs"}>{index + 1}. {calc.name}</button>;
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+          {CATALOG.map((g) => (
           <div key={g.title} className="space-y-2.5 break-inside-avoid">
             <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
               <g.icon className="size-3.5 text-primary" /> {g.title}
@@ -750,7 +776,8 @@ function CalcGallery({
               {g.items.map((c) => <CalcCard key={c.key} c={c} onPick={onPick} />)}
             </div>
           </div>
-        ))
+          ))}
+        </>
       )}
     </div>
   );

@@ -1,18 +1,10 @@
 "use client";
 
 /**
- * CommandPalette — global Ctrl+K / ⌘K launcher.
- *
- * Three sections, one flattened keyboard-navigable list:
- *   1. Quick actions — the same create shortcuts as QuickCreateFab
- *   2. Go to — the role/license-filtered sidebar nav (passed from the layout)
- *   3. Records — live results from GET /api/search (same endpoint as GlobalSearch)
- *
- * Rendered in a portal on document.body so it floats above everything
- * (z-[140], above the drawer/toast layers). Icons arrive as lucide
- * displayName strings across the RSC boundary and are resolved via the
- * sidebar's ICONS map — unknown names fall back to a neutral dot.
+ * CommandPalette 2.0 — Global Ctrl+K / ⌘K launcher with Omni-actions,
+ * Recent records history, deep nav, and live record search.
  */
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
@@ -21,8 +13,6 @@ import {
   Loader2,
   Circle,
   Zap,
-  Compass,
-  FileSearch,
   Sparkles,
   Users,
   ListChecks,
@@ -33,6 +23,14 @@ import {
   Repeat,
   LifeBuoy,
   FolderArchive,
+  History,
+  TrendingUp,
+  Calculator,
+  ShieldCheck,
+  Building2,
+  FolderSync,
+  AlertTriangle,
+  ArrowRight,
   type LucideIcon,
 } from "lucide-react";
 import { ICONS } from "./CustomizableNav";
@@ -44,17 +42,32 @@ type PaletteNavItem = {
   defaultGroup: string;
 };
 
-/** Same create actions as QuickCreateFab — one keystroke from anywhere. */
+const RECENT_STORAGE_KEY = "aina_recent_records";
+
+type RecentRecord = {
+  id: string;
+  href: string;
+  title: string;
+  sub?: string;
+  chip?: string;
+};
+
+/** Quick create actions + common power actions. */
 const QUICK_ACTIONS: Array<{ href: string; label: string; sub: string; icon: LucideIcon }> = [
-  { href: "/dashboard/leads/new", label: "Add Lead", sub: "Someone interested in your services", icon: Sparkles },
-  { href: "/dashboard/investors/new", label: "Add Client", sub: "Existing investor (after KYC)", icon: Users },
-  { href: "/dashboard/tasks/new", label: "Add Task", sub: "Reminder for yourself or a teammate", icon: ListChecks },
-  { href: "/dashboard/review-meetings/new", label: "Schedule Meeting", sub: "Review, fresh meeting, or follow-up", icon: Calendar },
-  { href: "/dashboard/proposals/new", label: "Create Proposal", sub: "Branded PDF for a client", icon: FileSignature },
-  { href: "/dashboard/service-requests/new", label: "Log Service Request", sub: "Track a client's query / problem", icon: Phone },
+  { href: "/dashboard/leads/new", label: "Add Lead", sub: "New prospect (stages 1–10)", icon: Sparkles },
+  { href: "/dashboard/investors/new", label: "Add Client", sub: "New investor (after KYC)", icon: Users },
+  { href: "/dashboard/sips/new", label: "Register SIP", sub: "Setup new SIP installment", icon: TrendingUp },
+  { href: "/dashboard/tasks/new", label: "Add Task", sub: "Reminder for yourself or team", icon: ListChecks },
+  { href: "/dashboard/review-meetings/new", label: "Schedule Review", sub: "Client portfolio review meeting", icon: Calendar },
+  { href: "/dashboard/proposals/new", label: "Create Proposal", sub: "Branded scheme proposal PDF", icon: FileSignature },
+  { href: "/dashboard/service-requests/new", label: "Log Service Request", sub: "Track investor query / issue", icon: Phone },
+  { href: "/dashboard/calculators", label: "Practice Calculators", sub: "SIP, SWP, Lumpsum, Delay cost", icon: Calculator },
+  { href: "/dashboard/rta-imports", label: "RTA File Imports", sub: "CAMS / KFintech file ingestion", icon: FolderSync },
+  { href: "/dashboard/sips?tab=rejections", label: "View Rejected SIPs", sub: "Bounced / failed SIP recovery", icon: AlertTriangle },
+  { href: "/dashboard/compliance", label: "Compliance & DDQ", sub: "Audit readiness score & register", icon: ShieldCheck },
 ];
 
-/** Response shape of GET /api/search — same as GlobalSearch consumes. */
+/** Response shape of GET /api/search */
 type SearchResults = {
   investors?: any[];
   leads?: any[];
@@ -64,16 +77,12 @@ type SearchResults = {
   documents?: any[];
 };
 
-/** One flattened, keyboard-addressable row. */
 type Row = {
   key: string;
   href: string;
   title: string;
-  /** muted inline suffix (e.g. nav group) */
   suffix?: string;
-  /** second muted line (e.g. PAN · segment) */
   sub?: string;
-  /** small type chip (Records section) */
   chip?: string;
   icon: LucideIcon;
 };
@@ -88,17 +97,26 @@ export function CommandPalette({ navItems }: { navItems: PaletteNavItem[] }) {
   const [active, setActive] = useState(0);
   const [results, setResults] = useState<SearchResults>({});
   const [busy, setBusy] = useState(false);
+  const [recentRecords, setRecentRecords] = useState<RecentRecord[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => setMounted(true), []);
+  useEffect(() => {
+    setMounted(true);
+    try {
+      const saved = localStorage.getItem(RECENT_STORAGE_KEY);
+      if (saved) setRecentRecords(JSON.parse(saved).slice(0, 5));
+    } catch {
+      // ignore storage error
+    }
+  }, []);
 
   // Global Ctrl/⌘-K opens; Esc closes.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
-        setOpen(true);
+        setOpen((v) => !v);
       } else if (e.key === "Escape") {
         setOpen(false);
       }
@@ -107,7 +125,7 @@ export function CommandPalette({ navItems }: { navItems: PaletteNavItem[] }) {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  // Reset + focus on open; lock body scroll while the overlay is up.
+  // Reset + focus on open; lock body scroll while open.
   useEffect(() => {
     if (!open) return;
     setQ("");
@@ -115,15 +133,14 @@ export function CommandPalette({ navItems }: { navItems: PaletteNavItem[] }) {
     setActive(0);
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    // Focus after the portal paints.
-    const t = setTimeout(() => inputRef.current?.focus(), 0);
+    const t = setTimeout(() => inputRef.current?.focus(), 10);
     return () => {
       document.body.style.overflow = prev;
       clearTimeout(t);
     };
   }, [open]);
 
-  // Debounced record search (same endpoint + shape as GlobalSearch).
+  // Debounced search
   useEffect(() => {
     if (!open || q.trim().length < 2) {
       setResults({});
@@ -142,28 +159,63 @@ export function CommandPalette({ navItems }: { navItems: PaletteNavItem[] }) {
       } finally {
         if (!cancelled) setBusy(false);
       }
-    }, 250);
+    }, 200);
     return () => {
       cancelled = true;
       clearTimeout(t);
     };
   }, [q, open]);
 
+  const saveRecent = (row: Row) => {
+    if (row.key.startsWith("act:") || row.key.startsWith("nav:")) return;
+    try {
+      const rec: RecentRecord = {
+        id: row.key,
+        href: row.href,
+        title: row.title,
+        sub: row.sub,
+        chip: row.chip,
+      };
+      const updated = [rec, ...recentRecords.filter((r) => r.href !== row.href)].slice(0, 5);
+      setRecentRecords(updated);
+      localStorage.setItem(RECENT_STORAGE_KEY, JSON.stringify(updated));
+    } catch {
+      // ignore
+    }
+  };
+
   const sections = useMemo<Section[]>(() => {
     const needle = q.trim().toLowerCase();
+    const isActionOnly = needle.startsWith(">");
+    const cleanNeedle = isActionOnly ? needle.slice(1).trim() : needle;
 
     const actionRows: Row[] = QUICK_ACTIONS.filter(
-      (a) => needle === "" || a.label.toLowerCase().includes(needle)
+      (a) => cleanNeedle === "" || a.label.toLowerCase().includes(cleanNeedle) || a.sub.toLowerCase().includes(cleanNeedle)
     ).map((a) => ({ key: `act:${a.href}`, href: a.href, title: a.label, sub: a.sub, icon: a.icon }));
+
+    if (isActionOnly) {
+      return [{ id: "actions", label: "Quick Actions", icon: Zap, rows: actionRows }];
+    }
+
+    const recentRows: Row[] = (needle === "" && recentRecords.length > 0)
+      ? recentRecords.map((r) => ({
+          key: r.id,
+          href: r.href,
+          title: r.title,
+          sub: r.sub,
+          chip: r.chip,
+          icon: History,
+        }))
+      : [];
 
     const navRows: Row[] = navItems
       .filter(
         (n) =>
-          needle === "" ||
-          n.label.toLowerCase().includes(needle) ||
-          n.defaultGroup.toLowerCase().includes(needle)
+          cleanNeedle === "" ||
+          n.label.toLowerCase().includes(cleanNeedle) ||
+          n.defaultGroup.toLowerCase().includes(cleanNeedle)
       )
-      .slice(0, 8)
+      .slice(0, 6)
       .map((n) => ({
         key: `nav:${n.href}`,
         href: n.href,
@@ -174,186 +226,222 @@ export function CommandPalette({ navItems }: { navItems: PaletteNavItem[] }) {
 
     const recordRows: Row[] = [
       ...(results.investors ?? []).map((r): Row => ({
-        key: `inv:${r.id}`, href: `/dashboard/investors/${r.id}`, title: r.name,
-        sub: `${r.pan ?? "—"} · ${r.segment_tag ?? "—"}`, chip: "Client", icon: Users,
+        key: `inv:${r.id}`,
+        href: `/dashboard/investors/${r.id}`,
+        title: r.name,
+        sub: `${r.pan ?? "—"} · ${r.segment_tag ?? "—"} · AUM: ₹${r.aum ? (r.aum / 100000).toFixed(1) + "L" : "0"}`,
+        chip: "Client",
+        icon: Users,
       })),
       ...(results.leads ?? []).map((r): Row => ({
-        key: `lead:${r.id}`, href: `/dashboard/leads/${r.id}`, title: r.name,
-        sub: `${r.stage} · ${r.source}`, chip: "Lead", icon: Sparkles,
+        key: `lead:${r.id}`,
+        href: `/dashboard/leads/${r.id}`,
+        title: r.name,
+        sub: `${r.stage} · ${r.source}`,
+        chip: "Lead",
+        icon: Sparkles,
       })),
       ...(results.folios ?? []).map((r): Row => ({
         key: `folio:${r.id}`,
         href: r.investor_id ? `/dashboard/investors/${r.investor_id}` : "/dashboard/investors",
-        title: `${r.folio_number}`,
-        sub: `${r.amc_name} · ${r.investor_name ?? "—"}`, chip: "Folio", icon: FileText,
+        title: `Folio: ${r.folio_number}`,
+        sub: `${r.amc_name} · ${r.investor_name ?? "—"}`,
+        chip: "Folio",
+        icon: FileText,
       })),
       ...(results.sips ?? []).map((r): Row => ({
-        key: `sip:${r.id}`, href: "/dashboard/sips", title: r.scheme_name,
-        sub: `₹${r.amount}/mo · ${r.investor_name ?? "—"} · ${r.status}`, chip: "SIP", icon: Repeat,
+        key: `sip:${r.id}`,
+        href: "/dashboard/sips",
+        title: r.scheme_name,
+        sub: `₹${r.amount}/mo · ${r.investor_name ?? "—"}`,
+        chip: "SIP",
+        icon: Repeat,
       })),
       ...(results.serviceRequests ?? []).map((r): Row => ({
-        key: `sr:${r.id}`, href: "/dashboard/service-requests", title: r.subject,
-        sub: `${r.ticket_no} · ${r.investor_name ?? "—"} · ${r.status}`, chip: "SR", icon: LifeBuoy,
-      })),
-      ...(results.documents ?? []).map((r): Row => ({
-        key: `doc:${r.id}`, href: "/dashboard/documents", title: r.name,
-        sub: r.category, chip: "Doc", icon: FolderArchive,
+        key: `sr:${r.id}`,
+        href: "/dashboard/service-requests",
+        title: r.subject,
+        sub: `${r.ticket_no} · ${r.investor_name ?? "—"}`,
+        chip: "SR",
+        icon: LifeBuoy,
       })),
     ];
 
     const out: Section[] = [];
-    if (actionRows.length) out.push({ id: "actions", label: "Quick actions", icon: Zap, rows: actionRows });
-    if (navRows.length) out.push({ id: "goto", label: "Go to", icon: Compass, rows: navRows });
-    if (q.trim().length >= 2 && (recordRows.length || busy))
-      out.push({ id: "records", label: "Records", icon: FileSearch, rows: recordRows });
+    if (recentRows.length > 0) {
+      out.push({ id: "recent", label: "Recently Visited", icon: History, rows: recentRows });
+    }
+    if (actionRows.length > 0) {
+      out.push({ id: "actions", label: "Quick Actions", icon: Zap, rows: actionRows.slice(0, 6) });
+    }
+    if (recordRows.length > 0) {
+      out.push({ id: "records", label: "Matching Records", icon: Search, rows: recordRows });
+    }
+    if (navRows.length > 0) {
+      out.push({ id: "nav", label: "Navigation", icon: ArrowRight, rows: navRows });
+    }
     return out;
-  }, [q, navItems, results, busy]);
+  }, [q, navItems, results, recentRecords]);
 
   const flatRows = useMemo(() => sections.flatMap((s) => s.rows), [sections]);
 
-  // Clamp the active index whenever the visible list changes.
+  // Keep active index in bounds
   useEffect(() => {
-    setActive((a) => Math.min(Math.max(a, 0), Math.max(flatRows.length - 1, 0)));
-  }, [flatRows.length]);
-  useEffect(() => {
-    setActive(0);
-  }, [q]);
+    if (active >= flatRows.length) setActive(Math.max(0, flatRows.length - 1));
+  }, [flatRows.length, active]);
 
-  // Keep the active row visible while arrowing through a long list.
-  useEffect(() => {
-    const el = listRef.current?.querySelector<HTMLElement>(`[data-idx="${active}"]`);
-    el?.scrollIntoView({ block: "nearest" });
-  }, [active]);
-
-  function go(href: string) {
+  function pick(row: Row) {
+    saveRecent(row);
     setOpen(false);
-    router.push(href);
+    router.push(row.href);
   }
 
-  function onPanelKeyDown(e: React.KeyboardEvent) {
+  function onKeyDown(e: React.KeyboardEvent) {
     if (e.key === "ArrowDown") {
       e.preventDefault();
-      setActive((a) => (flatRows.length ? (a + 1) % flatRows.length : 0));
+      setActive((i) => (i + 1) % Math.max(1, flatRows.length));
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
-      setActive((a) => (flatRows.length ? (a - 1 + flatRows.length) % flatRows.length : 0));
-    } else if (e.key === "Enter") {
+      setActive((i) => (i - 1 + flatRows.length) % Math.max(1, flatRows.length));
+    } else if (e.key === "Enter" && flatRows[active]) {
       e.preventDefault();
-      const row = flatRows[active];
-      if (row) go(row.href);
+      pick(flatRows[active]);
     }
   }
 
-  if (!mounted || !open || typeof document === "undefined") return null;
+  if (!mounted || !open) return null;
 
-  let idx = -1; // running index across sections for keyboard nav
+  let flatIndex = -1;
 
-  return createPortal(
-    <div
-      className="fixed inset-0 z-[140] bg-black/40 backdrop-blur-sm animate-fade-in"
-      onMouseDown={() => setOpen(false)}
-      role="dialog"
-      aria-modal="true"
-      aria-label="Command palette"
-    >
+  const content = (
+    <div className="fixed inset-0 z-[140] flex items-start justify-center p-4 sm:p-6 md:p-20 overflow-y-auto">
+      {/* Backdrop */}
       <div
-        className="mx-auto mt-[20vh] w-full max-w-xl px-4"
-        onMouseDown={(e) => e.stopPropagation()}
-      >
-        <div
-          className="card-elevated rounded-xl bg-card border border-border shadow-2xl overflow-hidden animate-scale-in"
-          onKeyDown={onPanelKeyDown}
-        >
-          {/* Input row */}
-          <div className="flex items-center gap-2.5 px-4 py-3 border-b border-border">
-            <Search className="size-4 text-brand-cyan shrink-0" />
-            <input
-              ref={inputRef}
-              type="text"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Type a command, page, or record name…"
-              autoComplete="off"
-              autoCorrect="off"
-              autoCapitalize="off"
-              spellCheck={false}
-              data-1p-ignore
-              data-lpignore="true"
-              className="flex-1 min-w-0 bg-transparent text-sm outline-none focus:ring-0 placeholder:text-muted-foreground"
-              aria-label="Command palette search"
-            />
-            {busy && <Loader2 className="size-4 animate-spin text-brand-cyan shrink-0" />}
-          </div>
+        className="fixed inset-0 bg-slate-950/50 backdrop-blur-xs transition-opacity animate-fade-in"
+        onClick={() => setOpen(false)}
+      />
 
-          {/* Results */}
-          <div ref={listRef} className="max-h-[50vh] overflow-y-auto scrollbar-thin p-2">
-            {sections.length === 0 ? (
-              <div className="p-6 text-center text-xs text-muted-foreground">
-                No matches for &ldquo;{q}&rdquo;. Try a page name, client, lead, or folio number.
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {sections.map((section) => (
-                  <div key={section.id}>
-                    <div className="px-2 py-1.5 text-[10px] uppercase tracking-[0.1em] font-bold text-muted-foreground/80 flex items-center gap-1.5">
-                      <section.icon className="size-3 text-brand-cyan" /> {section.label}
-                      {section.id === "records" && busy && section.rows.length === 0 && (
-                        <span className="normal-case font-medium text-muted-foreground/60">searching…</span>
-                      )}
-                    </div>
-                    <ul className="space-y-0.5">
-                      {section.rows.map((row) => {
-                        idx += 1;
-                        const i = idx;
-                        const Icon = row.icon;
-                        return (
-                          <li key={row.key}>
-                            <button
-                              type="button"
-                              data-idx={i}
-                              onClick={() => go(row.href)}
-                              onMouseEnter={() => setActive(i)}
-                              className={`w-full flex items-center gap-3 px-2.5 py-2 rounded-lg text-left transition-colors duration-100 ${
-                                i === active ? "bg-brand-cyan-light/60" : ""
+      {/* Palette Container */}
+      <div className="relative w-full max-w-2xl bg-card border border-border rounded-2xl shadow-2xl overflow-hidden flex flex-col animate-scale-in text-foreground">
+        {/* Search bar */}
+        <div className="flex items-center gap-3 px-4 py-3.5 border-b border-border bg-card">
+          <Search className="size-4 text-muted-foreground shrink-0" />
+          <input
+            ref={inputRef}
+            type="text"
+            value={q}
+            onChange={(e) => {
+              setQ(e.target.value);
+              setActive(0);
+            }}
+            onKeyDown={onKeyDown}
+            placeholder="Type a command, client name, PAN, or folio (use '>' for actions)…"
+            className="w-full bg-transparent border-0 outline-hidden text-sm placeholder:text-muted-foreground focus:ring-0"
+          />
+          {busy ? (
+            <Loader2 className="size-4 animate-spin text-brand-cyan shrink-0" />
+          ) : (
+            <span className="text-[10px] uppercase font-bold text-muted-foreground px-1.5 py-0.5 rounded bg-muted">
+              ESC
+            </span>
+          )}
+        </div>
+
+        {/* Results List */}
+        <div ref={listRef} className="max-h-[60vh] overflow-y-auto p-2 space-y-3 text-xs">
+          {flatRows.length === 0 ? (
+            <div className="py-12 text-center text-muted-foreground">
+              <p className="text-sm font-medium">No results found for “{q}”</p>
+              <p className="text-xs text-muted-foreground mt-1">Try searching by PAN, Client Name, Folio, or Scheme.</p>
+            </div>
+          ) : (
+            sections.map((section) => (
+              <div key={section.id} className="space-y-1">
+                <div className="px-3 py-1 text-[11px] font-bold tracking-wider uppercase text-muted-foreground flex items-center gap-1.5">
+                  <section.icon className="size-3 text-brand-navy" />
+                  <span>{section.label}</span>
+                </div>
+                {section.rows.map((row) => {
+                  flatIndex++;
+                  const isCurrent = flatIndex === active;
+                  const Icon = row.icon;
+                  return (
+                    <button
+                      key={row.key}
+                      type="button"
+                      onClick={() => pick(row)}
+                      onMouseEnter={() => setActive(flatIndex)}
+                      className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left transition-colors ${
+                        isCurrent
+                          ? "bg-brand-navy text-white font-medium shadow-sm"
+                          : "text-foreground hover:bg-secondary/70"
+                      }`}
+                    >
+                      <span
+                        className={`size-7 rounded-lg grid place-items-center shrink-0 ${
+                          isCurrent ? "bg-white/20 text-white" : "bg-muted text-muted-foreground"
+                        }`}
+                      >
+                        <Icon className="size-3.5" />
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="truncate">{row.title}</span>
+                          {row.suffix && (
+                            <span
+                              className={`text-[10px] px-1.5 py-0.2 rounded font-normal ${
+                                isCurrent ? "bg-white/20 text-white" : "text-muted-foreground bg-muted"
                               }`}
                             >
-                              <Icon className="size-4 text-brand-cyan shrink-0" />
-                              <div className="flex-1 min-w-0">
-                                <div className="text-sm font-medium truncate">
-                                  {row.title}
-                                  {row.suffix && (
-                                    <span className="ml-1.5 text-xs font-normal text-muted-foreground">
-                                      · {row.suffix}
-                                    </span>
-                                  )}
-                                </div>
-                                {row.sub && (
-                                  <div className="text-xs text-muted-foreground truncate">{row.sub}</div>
-                                )}
-                              </div>
-                              {row.chip && (
-                                <span className="shrink-0 rounded bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
-                                  {row.chip}
-                                </span>
-                              )}
-                            </button>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </div>
-                ))}
+                              {row.suffix}
+                            </span>
+                          )}
+                          {row.chip && (
+                            <span
+                              className={`text-[10px] px-1.5 py-0.2 rounded font-semibold ml-auto shrink-0 ${
+                                isCurrent ? "bg-white/20 text-white" : "bg-brand-cyan-light text-brand-cyan-deep"
+                              }`}
+                            >
+                              {row.chip}
+                            </span>
+                          )}
+                        </div>
+                        {row.sub && (
+                          <div
+                            className={`text-[11px] truncate mt-0.5 ${
+                              isCurrent ? "text-white/80" : "text-muted-foreground"
+                            }`}
+                          >
+                            {row.sub}
+                          </div>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
-            )}
-          </div>
+            ))
+          )}
+        </div>
 
-          {/* Footer hint */}
-          <div className="px-4 py-2 border-t border-border bg-secondary/40 text-[11px] text-muted-foreground">
-            ↑↓ navigate · ↵ open · esc close
+        {/* Footer shortcuts */}
+        <div className="flex items-center justify-between px-4 py-2 bg-muted/40 border-t border-border text-[11px] text-muted-foreground">
+          <div className="flex items-center gap-3">
+            <span>
+              <kbd className="px-1 py-0.5 rounded bg-card border font-mono">↑</kbd> <kbd className="px-1 py-0.5 rounded bg-card border font-mono">↓</kbd> Navigate
+            </span>
+            <span>
+              <kbd className="px-1.5 py-0.5 rounded bg-card border font-mono">↵</kbd> Select
+            </span>
+            <span>
+              <kbd className="px-1.5 py-0.5 rounded bg-card border font-mono">&gt;</kbd> Actions
+            </span>
           </div>
+          <span>Aina Growth OS</span>
         </div>
       </div>
-    </div>,
-    document.body
+    </div>
   );
+
+  return createPortal(content, document.body);
 }

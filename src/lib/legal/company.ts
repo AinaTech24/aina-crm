@@ -11,31 +11,35 @@
  *  you rely on it commercially.
  * ─────────────────────────────────────────────────────────────────────────
  */
+function configured(name: string, fallback: string): string {
+  return process.env[name]?.trim() || fallback;
+}
+
 export const LEGAL = {
   /** Product / brand name shown to users. */
-  brand: "Aina",
+  brand: configured("LEGAL_BRAND_NAME", "Aina"),
   /** Registered legal entity that operates the platform. */
-  legalEntity: "AinaTech", // TODO: e.g. "AinaTech Technologies Private Limited"
+  legalEntity: configured("LEGAL_ENTITY_NAME", "AinaTech"),
   /** Registered office address (single line is fine). */
-  address: "India", // TODO: full registered office address
+  address: configured("LEGAL_REGISTERED_ADDRESS", "India"),
   /** Public support / contact email. */
-  email: "support@ainatech.in", // TODO
+  email: configured("LEGAL_SUPPORT_EMAIL", "support@ainatech.in"),
   /** Support / grievance phone (optional — leave "" to hide). */
-  phone: "", // TODO
+  phone: configured("LEGAL_SUPPORT_PHONE", ""),
   /** GST registration number — printed on invoices. */
-  gstin: "", // TODO
+  gstin: configured("LEGAL_GSTIN", ""),
   /** CIN, if a company. */
-  cin: "", // TODO
+  cin: configured("LEGAL_CIN", ""),
   /**
    * Grievance Officer — naming one is required under India's DPDP Act 2023
    * and the IT (Intermediary Guidelines) Rules. Use a real, monitored inbox.
    */
-  grievanceOfficer: "Grievance Officer", // TODO: a named individual
-  grievanceEmail: "grievance@ainatech.in", // TODO
+  grievanceOfficer: configured("LEGAL_GRIEVANCE_OFFICER", "Grievance Officer"),
+  grievanceEmail: configured("LEGAL_GRIEVANCE_EMAIL", "grievance@ainatech.in"),
   /** Governing-law city for dispute jurisdiction. */
-  jurisdiction: "Mumbai, Maharashtra, India", // TODO
+  jurisdiction: configured("LEGAL_JURISDICTION", "Mumbai, Maharashtra, India"),
   /** Canonical product URL. */
-  url: "https://crm.ainatech.in",
+  url: configured("LEGAL_PRODUCT_URL", "https://crm.ainatech.in"),
   /**
    * Shown as "Last updated" on each legal page. This is intentionally a fixed
    * string (not the render date): a legal document's effective date should
@@ -43,6 +47,18 @@ export const LEGAL = {
    */
   lastUpdated: "14 June 2026",
 } as const;
+
+export function commercialLegalReadiness() {
+  const checks = [
+    { key: "entity", label: "Registered legal entity", ok: LEGAL.legalEntity !== "AinaTech" },
+    { key: "address", label: "Registered office address", ok: LEGAL.address !== "India" && LEGAL.address.length >= 12 },
+    { key: "support", label: "Support contact", ok: !!LEGAL.email && !!LEGAL.phone },
+    { key: "gstin", label: "GSTIN", ok: /^[0-9A-Z]{15}$/.test(LEGAL.gstin) },
+    { key: "grievance", label: "Named grievance officer", ok: LEGAL.grievanceOfficer !== "Grievance Officer" && !!LEGAL.grievanceEmail },
+    { key: "jurisdiction", label: "Reviewed dispute jurisdiction", ok: !!LEGAL.jurisdiction },
+  ];
+  return { ready: checks.every((check) => check.ok), checks };
+}
 
 /**
  * Third-party sub-processors the platform relies on. Disclosed in the Privacy

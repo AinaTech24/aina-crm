@@ -23,9 +23,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         .from(investors)
         .where(and(eq(investors.id, id), eq(investors.tenantId, session.tenantId)))
         .limit(1);
-      if (!inv) {
-        throw new Error("Investor not found");
-      }
+      // A missing client is a 404, not a server error.
+      if (!inv) return null;
 
       const rows = await tx
         .select({
@@ -48,6 +47,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       return rows;
     });
 
+    if (data === null) return NextResponse.json({ error: "Client not found" }, { status: 404 });
     return NextResponse.json(data);
   } catch (err: any) {
     return handleApiError(err);
@@ -66,7 +66,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const session = await requireSession();
     // Sending an outbound message to a client is a client-facing action —
     // gate it to roles that can act on a client (RM/ops/back-office/etc).
-    requireCap(session.roles, "investor.note.add");
+    requireCap(session.roles, "investor.note.add", session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
     const { id } = await params;
 
@@ -76,15 +76,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
     const { channel, templateKey, variables } = parsed.data;
 
-    const result = await withTenant(session.tenantId, async (tx) => {
+    // Bad input is the caller's problem, not a server fault — resolve first and
+    // map to a real status code instead of throwing into a generic 500.
+    const outcome = await withTenant(session.tenantId, async (tx) => {
       const [inv] = await tx
         .select()
         .from(investors)
         .where(and(eq(investors.id, id), eq(investors.tenantId, session.tenantId)))
         .limit(1);
-      if (!inv) {
-        throw new Error("Investor not found");
-      }
+      if (!inv) return { error: "Client not found", status: 404 } as const;
 
       let recipient = "";
       if (channel === "email") {
@@ -96,7 +96,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       }
 
       if (!recipient) {
-        throw new Error(`Recipient details missing for channel: ${channel}`);
+        return {
+          error: `This client has no ${channel === "email" ? "email address" : "phone number"} on file.`,
+          status: 400,
+        } as const;
       }
 
       const [tmpl] = await tx
@@ -112,10 +115,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         .limit(1);
 
       if (!tmpl) {
-        throw new Error(`Template '${templateKey}' not found for channel: ${channel}`);
+        return { error: `No approved ${channel} template '${templateKey}'.`, status: 404 } as const;
       }
 
-      const dispatchResult = await dispatch(tx, {
+      const sent = await dispatch(tx, {
         tenantId: session.tenantId,
         channel,
         templateKey,
@@ -125,8 +128,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         investorId: id,
       });
 
-      return dispatchResult;
+      return { sent } as const;
     });
+
+    if ("error" in outcome) {
+      return NextResponse.json({ error: outcome.error }, { status: outcome.status });
+    }
+    const result = outcome.sent;
 
     return NextResponse.json(result);
   } catch (err: any) {

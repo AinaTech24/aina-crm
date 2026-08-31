@@ -19,6 +19,9 @@ import { handleApiError } from "@/lib/api/error-handler";
  */
 
 import { NextResponse } from "next/server";
+import { eq } from "drizzle-orm";
+import { withTenant } from "@/db/client";
+import { users } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { ALL_CAPABILITIES, can, primaryRoleLabel, ROLE_LABELS } from "@/lib/auth/rbac";
 import { loadTenantLicense } from "@/lib/auth/license";
@@ -36,12 +39,23 @@ export async function GET() {
     const capabilities = ALL_CAPABILITIES.filter((cap) => can(roles, cap, permissions));
 
     const license = await loadTenantLicense(session.tenantId, roles);
+    // Cheap single-column lookup — the JWT session doesn't carry the (mutable)
+    // avatar, and this endpoint is the one every screen's header avatar reads.
+    const avatarUrl = await withTenant(
+      session.tenantId,
+      async (tx) => {
+        const [u] = await tx.select({ avatarUrl: users.avatarUrl }).from(users).where(eq(users.id, session.userId)).limit(1);
+        return u?.avatarUrl ?? null;
+      },
+      { userId: session.userId, branchId: session.branchId, roles: session.roles }
+    );
 
     return NextResponse.json({
       user: {
         id: session.userId,
         name: session.name,
         email: session.email,
+        avatarUrl,
         roles,
         roleLabel: primaryRoleLabel(roles),
         branchId: session.branchId ?? null,

@@ -110,3 +110,5 @@ export * from "./expected_inflows";
 export * from "./ai_chats";
 export * from "./ddq_registers";
 export * from "./release_notes";
+export * from "./investor_portal";
+export * from "./business_impacts";

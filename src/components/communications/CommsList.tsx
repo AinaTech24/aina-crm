@@ -99,8 +99,20 @@ export function CommsList({ rows }: { rows: CommRow[] }) {
 
   if (rows.length === 0) {
     return (
-      <div className="p-12 text-center text-sm text-muted-foreground">
-        No communications match. Sends from workflows, campaigns, and Compose appear here.
+      <div className="p-12 text-center">
+        <div className="mx-auto size-12 rounded-full bg-secondary flex items-center justify-center mb-3">
+          <MessageSquare className="size-6 text-muted-foreground" />
+        </div>
+        <div className="text-sm font-semibold text-foreground">No messages yet</div>
+        <p className="text-xs text-muted-foreground mt-1 max-w-sm mx-auto leading-relaxed">
+          Send your first WhatsApp or email — every message from Compose, workflows
+          and campaigns lands here with its delivery status.
+        </p>
+        <div className="mt-4">
+          <Link href="/dashboard/communications/compose" className="btn-primary text-sm inline-flex">
+            Compose a message
+          </Link>
+        </div>
       </div>
     );
   }

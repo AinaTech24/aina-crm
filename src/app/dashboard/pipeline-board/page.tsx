@@ -14,6 +14,7 @@ export const dynamic = "force-dynamic";
 const PIPELINE_VIEWS = [
   { value: "/dashboard/leads", label: "Leads" },
   { value: "/dashboard/pipeline-board", label: "Pipeline Board" },
+  { value: "/dashboard/lifecycle", label: "Lifecycle" },
 ];
 
 const AMT = (col: string) => sql.raw(`NULLIF(regexp_replace(COALESCE(${col},''),'[^0-9.]','','g'),'')::numeric`);

@@ -26,11 +26,13 @@ const CHANNEL_ICON = {
  */
 export function ChurnRiskCard({
   result,
+  investorId,
   name,
   serviceTier,
   currentValueInr,
 }: {
   result: ChurnResult;
+  investorId: string;
   name: string;
   serviceTier?: string | null;
   currentValueInr?: number | null;
@@ -48,6 +50,7 @@ export function ChurnRiskCard({
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
+          investorId,
           name,
           score: result.score,
           band: result.band,

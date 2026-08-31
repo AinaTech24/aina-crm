@@ -332,5 +332,9 @@ export const liveBseStar: BseStarAdapter = {
  * Defaults to stub.
  */
 export function getBseStarAdapter(): BseStarAdapter {
-  return process.env.BSE_STAR_MODE === "live" ? liveBseStar : stubBseStar;
+  if (process.env.BSE_STAR_MODE === "live") return liveBseStar;
+  if (process.env.NODE_ENV === "production" && process.env.ALLOW_DEMO_PROVIDERS !== "1") {
+    throw new Error("BSE Star MF is not configured for live production order routing");
+  }
+  return stubBseStar;
 }

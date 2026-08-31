@@ -12,6 +12,9 @@ export const tenantIntegrations = pgTable(
     // mailbox (per-RM IMAP/SMTP, or a Gmail / M365 account over OAuth).
     userId: uuid("user_id"),
     provider: text("provider", {
+      // "fintech_primitives" is LEGACY — that integration was removed. It stays
+      // in the union only so the one surviving stored row still type-checks;
+      // no code reads or writes it any more.
       enum: ["resend", "vartify", "msg91", "mailbox", "zoho", "fintech_primitives", "rta_mailback"],
     }).notNull(),
     encryptedConfig: text("encrypted_config").notNull(),

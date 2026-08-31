@@ -105,11 +105,10 @@ export function RmSelector({
   }, [cacheKey, role]);
 
   if (rows == null) {
+    // Skeleton, not text — a quiet shimmer instead of "Loading…" flashing in a form.
     return (
-      <div
-        className={`input-base flex items-center gap-2 text-muted-foreground ${className}`}
-      >
-        <Loader2 className="size-3.5 animate-spin" /> Loading team…
+      <div className={`input-base flex items-center ${className}`} aria-busy="true" aria-label="Loading team">
+        <div className="h-3.5 w-28 rounded bg-secondary animate-pulse" />
       </div>
     );
   }
