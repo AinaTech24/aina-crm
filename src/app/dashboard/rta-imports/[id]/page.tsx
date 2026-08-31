@@ -152,9 +152,21 @@ export default async function RtaImportDetailPage({
           )}
         </div>
         {errors.length === 0 ? (
-          <div className="card-surface p-8 text-center text-sm text-emerald-700">
-            All rows imported cleanly ✓
-          </div>
+          // An empty error list does NOT mean success. A file that was never
+          // opened (wrong ZIP password → 'rejected') or that the parser could
+          // not read ('failed') records no per-row errors, and this panel used
+          // to greet both with "All rows imported cleanly ✓" — directly
+          // contradicting the red status badge at the top of the same page.
+          row.status === "rejected" || row.status === "failed" ? (
+            <div className="card-surface p-8 text-center text-sm text-muted-foreground">
+              No rows were processed — the file was never read, so there is
+              nothing to report here. See the status note above for the reason.
+            </div>
+          ) : (
+            <div className="card-surface p-8 text-center text-sm text-emerald-700">
+              All rows imported cleanly ✓
+            </div>
+          )
         ) : (
           <div className="card-surface overflow-hidden">
             <div className="table-scroll">

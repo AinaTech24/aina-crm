@@ -235,7 +235,14 @@ async function importAlreadyFinished(job: {
         // point of keeping files on failure (see the `finally` block below):
         // re-queueing after a password fix deleted the archive instead of
         // importing it. A failed/rejected row must always be reprocessable.
-        return st === "completed" || st === "partial";
+        //
+        // 'partial' is reprocessable too, and for the same reason: its skipped
+        // rows are waiting on a folio master that may since have arrived. That
+        // is safe because the row writes upsert, so a repeat is idempotent, and
+        // because importSucceeded() no longer purges partial files — the object
+        // is still there to re-read. Only 'completed' short-circuits, which is
+        // the stalled-job case this guard was written for: that file IS gone.
+        return st === "completed";
       },
       { userId: job.userId, branchId: job.branchId ?? undefined, roles: job.roles ?? [] }
     );
@@ -416,7 +423,14 @@ async function importSucceeded(job: { importId?: string }): Promise<boolean> {
         SELECT status FROM rta_file_imports WHERE id = ${job.importId}::uuid LIMIT 1
       `);
       const status = (r.rows[0] as any)?.status as string | undefined;
-      return status === "completed" || status === "partial";
+      // 'partial' deliberately does NOT purge. A partial import is one where
+      // some rows were skipped for a reason that resolves later — nearly always
+      // "folio not in client master", because the transaction feed arrived
+      // before the folio master. Once the master imports, re-running the feed
+      // picks those rows up. Purging on 'partial' threw the file away and made
+      // the skipped rows permanently unrecoverable: one KFintech feed for VSN
+      // Financial Services dropped 198 rows across 11 folios that way.
+      return status === "completed";
     });
   } catch {
     // If we can't tell, keep the file. Retaining a stale object is cheap;
