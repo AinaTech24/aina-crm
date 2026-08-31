@@ -11,7 +11,7 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { require as requireCap, requireAny } from "@/lib/auth/rbac";
+import { require as requireCap, requireAny, can } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { leads, investors } from "@/db/schema";
 import { loadEditableLead } from "@/lib/leads/access";
@@ -37,7 +37,9 @@ export async function PATCH(req: NextRequest) {
     const { entity, recordId, values } = parse.data;
 
     if (entity === "lead") requireAny(session.roles, ["lead.edit.all", "lead.edit.assigned"], session.permissions);
-    else requireCap(session.roles, "investor.edit.all", session.permissions);
+    // Mirrors the lead branch: an assigned-only RM may edit THEIR client's
+    // custom fields. Ownership is enforced on the row itself below.
+    else requireAny(session.roles, ["investor.edit.all", "investor.edit.assigned"], session.permissions);
 
     const result = await withTenant(session.tenantId, async (tx) => {
       // Sanitize against the firm's definitions for this entity.
@@ -49,8 +51,23 @@ export async function PATCH(req: NextRequest) {
         await loadEditableLead(tx, session, recordId);
         await tx.update(leads).set({ customFields: clean, updatedAt: new Date() } as any).where(eq(leads.id, recordId));
       } else {
-        const [inv] = await tx.select({ id: investors.id }).from(investors).where(eq(investors.id, recordId)).limit(1);
+        const [inv] = await tx
+          .select({ id: investors.id, rmId: investors.rmId, branchId: investors.branchId })
+          .from(investors)
+          .where(eq(investors.id, recordId))
+          .limit(1);
         if (!inv) throw Object.assign(new Error("client not found"), { status: 404 });
+        if (!can(session.roles, "investor.edit.all", session.permissions)) {
+          const branchScoped =
+            !session.roles.includes("owner") && session.roles.includes("branch_head") && !!session.branchId;
+          if (branchScoped) {
+            if (inv.branchId !== session.branchId) {
+              throw Object.assign(new Error("forbidden: client is in another branch"), { status: 403 });
+            }
+          } else if (inv.rmId !== session.userId) {
+            throw Object.assign(new Error("forbidden: client is not assigned to you"), { status: 403 });
+          }
+        }
         await tx.update(investors).set({ customFields: clean, updatedAt: new Date() } as any).where(eq(investors.id, recordId));
       }
       return clean;

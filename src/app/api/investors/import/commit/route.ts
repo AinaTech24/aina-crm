@@ -31,7 +31,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { require as requireCap } from "@/lib/auth/rbac";
+import { require as requireCap, requireAny, can } from "@/lib/auth/rbac";
 import { assertActiveLicense, loadTenantLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { healthFields } from "@/lib/investors/health";
@@ -76,7 +76,10 @@ function normKey(matchBy: string, raw: string): string {
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "investor.edit.all", session.permissions);
+    // Same rule as the single-client create: an RM may import into their own
+    // book. Updates to someone else's client are refused per row below.
+    requireAny(session.roles, ["investor.edit.all", "investor.edit.assigned"], session.permissions);
+    const editsAll = can(session.roles, "investor.edit.all", session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
 
     const parse = Body.safeParse(await req.json().catch(() => ({})));
@@ -152,16 +155,16 @@ export async function POST(req: NextRequest) {
       // For update/both/skip we need to look existing clients up by the chosen
       // key. Load the lightweight identity columns (+ address & custom fields,
       // for the merge) once and index them in memory rather than querying per row.
-      const keyToExisting = new Map<string, { id: string; address: any; customFields: any; riskProfile: string | null }>();
+      const keyToExisting = new Map<string, { id: string; rmId: string | null; address: any; customFields: any; riskProfile: string | null }>();
       if (matchBy !== "none") {
         const existing = await tx.execute(
-          sql`SELECT id, pan, email, phone, address, custom_fields, risk_profile FROM investors WHERE tenant_id = ${session.tenantId}::uuid`
+          sql`SELECT id, rm_id, pan, email, phone, address, custom_fields, risk_profile FROM investors WHERE tenant_id = ${session.tenantId}::uuid`
         );
         for (const e of existing.rows as any[]) {
           const src =
             matchBy === "clientId" ? e.id : matchBy === "pan" ? e.pan : matchBy === "phone" ? e.phone : e.email;
           const k = normKey(matchBy, String(src ?? ""));
-          if (k && !keyToExisting.has(k)) keyToExisting.set(k, { id: e.id, address: e.address ?? {}, customFields: e.custom_fields ?? {}, riskProfile: e.risk_profile ?? null });
+          if (k && !keyToExisting.has(k)) keyToExisting.set(k, { id: e.id, rmId: e.rm_id ?? null, address: e.address ?? {}, customFields: e.custom_fields ?? {}, riskProfile: e.risk_profile ?? null });
         }
       }
 
@@ -208,6 +211,10 @@ export async function POST(req: NextRequest) {
             skipped++;
             continue;
           }
+          if (!editsAll && existing.rmId !== session.userId) {
+            errors.push({ rowIndex: i, error: "This client is assigned to another RM — you can only update your own clients." });
+            continue;
+          }
           try {
             await tx.transaction(async (sp) => {
               const set = buildUpdateSet(row, reverse, dontUpdateEmpty, existing.address, rowCustomFields(row), existing.customFields, reverse.rmId ? resolveRm(pick(row, reverse.rmId)) : undefined);
@@ -227,6 +234,10 @@ export async function POST(req: NextRequest) {
         }
 
         if (mode === "both" && existing) {
+          if (!editsAll && existing.rmId !== session.userId) {
+            errors.push({ rowIndex: i, error: "This client is assigned to another RM — you can only update your own clients." });
+            continue;
+          }
           try {
             await tx.transaction(async (sp) => {
               const set = buildUpdateSet(row, reverse, dontUpdateEmpty, existing.address, rowCustomFields(row), existing.customFields, reverse.rmId ? resolveRm(pick(row, reverse.rmId)) : undefined);
@@ -393,7 +404,7 @@ export async function POST(req: NextRequest) {
           // Record this row's key so a later duplicate row in the same file is
           // skipped (add mode) or updated rather than re-inserted (both mode).
           if (matchBy !== "none" && key && !keyToExisting.has(key)) {
-            keyToExisting.set(key, { id: newId, address: core.address, customFields: cleanCf, riskProfile: rowRisk });
+            keyToExisting.set(key, { id: newId, rmId: session.userId, address: core.address, customFields: cleanCf, riskProfile: rowRisk });
           }
         } catch (err: any) {
           errors.push({ rowIndex: i, error: String(err.message ?? "insert failed"), pan, name });

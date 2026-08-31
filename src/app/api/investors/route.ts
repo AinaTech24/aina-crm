@@ -12,7 +12,7 @@ import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { require as requireCap, can } from "@/lib/auth/rbac";
+import { require as requireCap, requireAny, can } from "@/lib/auth/rbac";
 import { assertActiveLicense, assertModuleEnabled, assertInvestorQuota } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { buildInvestorConditions } from "@/lib/investors/list-filters";
@@ -181,7 +181,11 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "investor.edit.all", session.permissions);
+    // An RM creates clients into their OWN book — requiring investor.edit.all
+    // (back_office / ops only) blocked every RM and team member from adding a
+    // client at all. Assigned-only callers are pinned to themselves below.
+    requireAny(session.roles, ["investor.edit.all", "investor.edit.assigned"], session.permissions);
+    const canAssignAnyRm = can(session.roles, "investor.edit.all", session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
     // Plan client-count gate — enforce the maxInvestors the package advertises.
     await assertInvestorQuota(session.tenantId, session.roles, 1);
@@ -223,7 +227,9 @@ export async function POST(req: NextRequest) {
           nomineeName: body.nominees?.[0]?.name || null,
           nomineeRelation: body.nominees?.[0]?.relation || null,
           nomineeDob: body.nominees?.[0]?.dob || null,
-          rmId: body.rmId ?? session.userId,
+          // Assigned-only callers may only create into their own book, so a
+        // supplied rmId is ignored for them.
+        rmId: (canAssignAnyRm ? body.rmId : undefined) ?? session.userId,
           familyId: body.familyId ?? null,
           address: body.address,
           notes: body.notes,

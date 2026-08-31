@@ -17,7 +17,7 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { require as requireCap, can } from "@/lib/auth/rbac";
+import { require as requireCap, requireAny, can } from "@/lib/auth/rbac";
 import { cleanUccCodes } from "@/lib/investors/ucc";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { healthFields } from "@/lib/investors/health";
@@ -266,7 +266,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const { id } = await params;
   try {
     const session = await requireSession();
-    requireCap(session.roles, "investor.edit.all", session.permissions);
+    requireAny(session.roles, ["investor.edit.all", "investor.edit.assigned"], session.permissions);
+    const editsAll = can(session.roles, "investor.edit.all", session.permissions);
     const parse = Patch.safeParse(await req.json().catch(() => ({})));
     if (!parse.success)
       return NextResponse.json({ error: "invalid body", issues: parse.error.issues }, { status: 400 });
@@ -274,6 +275,22 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const result = await withTenant(session.tenantId, async (tx) => {
       const before = (await tx.select().from(investors).where(and(eq(investors.id, id), eq(investors.tenantId, session.tenantId))).limit(1))[0];
       if (!before) return null;
+
+      // Row scope. PATCH used to require investor.edit.all, a firm-wide
+      // capability, so it never needed a per-row check. Now that an
+      // assigned-only RM can edit, the check has to exist or widening the
+      // capability would let any RM edit any client in the firm.
+      if (!editsAll) {
+        const branchScoped =
+          !session.roles.includes("owner") && session.roles.includes("branch_head") && !!session.branchId;
+        if (branchScoped) {
+          if (before.branchId !== session.branchId) {
+            throw Object.assign(new Error("forbidden: client is in another branch"), { status: 403 });
+          }
+        } else if (before.rmId !== session.userId) {
+          throw Object.assign(new Error("forbidden: client is not assigned to you"), { status: 403 });
+        }
+      }
 
       // Optimistic concurrency: reject if the record moved under the editor.
       // 1s tolerance absorbs sub-second clock/serialisation drift.
