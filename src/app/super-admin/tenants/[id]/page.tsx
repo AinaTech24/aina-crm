@@ -9,6 +9,7 @@ import { formatDate, formatRelative, formatINR } from "@/lib/utils";
 import { TenantActions } from "@/components/super-admin/TenantActions";
 import { TenantAdminPanel } from "@/components/super-admin/TenantAdminPanel";
 import { TenantAccessControl } from "@/components/super-admin/TenantAccessControl";
+import { TenantDataScope } from "@/components/super-admin/TenantDataScope";
 import { tenantAccessibleNavKeys } from "@/config/nav-access";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -125,6 +126,11 @@ export default async function TenantDetailPage({ params }: { params: Promise<{ i
             <p className="text-sm text-muted-foreground mt-3">No subscription on file.</p>
           )}
         </div>
+
+        <TenantDataScope
+          tenantId={id}
+          initialRestricted={!!(data.tenant as any).restrictUserDataScope}
+        />
 
         <div className="border rounded-lg bg-card p-5">
           <h2 className="font-semibold">Activity timeline</h2>

@@ -86,7 +86,7 @@ export async function GET(req: NextRequest) {
     const rows = await withTenant(
       session.tenantId,
       async (tx) => {
-        const scope = investorScopeCondition(session);
+        const scope = await investorScopeCondition(tx, session);
         const filters = buildInvestorWhere(sp, session.userId);
         const where = scope ? and(filters as any, scope) : filters;
         const r = await tx

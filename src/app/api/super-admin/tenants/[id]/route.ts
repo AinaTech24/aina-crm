@@ -36,6 +36,9 @@ const Patch = z.object({
   // Subscription — package + billing cycle.
   packageKey: z.string().trim().min(1).optional(),
   billingCycle: z.enum(["monthly", "yearly", "custom"]).optional(),
+  // Data wall: when true, users only see the clients their role entitles them
+  // to (RM = own book). Default false = firm-wide, as every tenant has had.
+  restrictUserDataScope: z.boolean().optional(),
 });
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -55,6 +58,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       const set: Record<string, unknown> = { updatedAt: new Date() };
       if (d.email !== undefined) set.email = d.email.trim().toLowerCase() || null;
       if (d.displayName !== undefined) set.displayName = d.displayName;
+      if (d.restrictUserDataScope !== undefined) set.restrictUserDataScope = d.restrictUserDataScope;
       if (d.legalName !== undefined) set.legalName = d.legalName;
       if (d.arn !== undefined) {
         const arn = d.arn.trim() || null;

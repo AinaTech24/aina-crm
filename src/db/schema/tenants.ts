@@ -114,6 +114,14 @@ export const tenants = pgTable(
     riaRegistered: boolean("ria_registered").default(false),
     featureFlags: jsonb("feature_flags").$type<Record<string, boolean>>().default({}),
 
+    /**
+     * Restrict users to the data their role entitles them to (RM = only the
+     * clients assigned to them). Default false = the firm-wide behaviour every
+     * tenant has had until now, so turning the wall on is a deliberate choice
+     * per firm. Read by lib/investors/access.ts.
+     */
+    restrictUserDataScope: boolean("restrict_user_data_scope").notNull().default(false),
+
     /** ── AMFI DDQ firm declarations (migration 0195) ──────────────────────
      *  2.1c/2.5 — how the firm categorises client relationships. An MFD giving
      *  "incidental advice" advises only incidentally to distribution (no RIA

@@ -140,7 +140,7 @@ export default async function InvestorsPage({
     // branch. RLS isolates by TENANT only, so without this every RM saw the
     // whole firm’s client list (and could export it) — the JSON API scoped
     // correctly but this page did not.
-    const scope = investorScopeCondition(session);
+    const scope = await investorScopeCondition(tx, session);
     const filters = buildInvestorWhere(sp, userId);
     const where = scope ? and(filters as any, scope) : filters;
 
@@ -301,11 +301,11 @@ export default async function InvestorsPage({
 
   return (
     <div className="space-y-6 max-w-7xl">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Investors</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Clients</h1>
         </div>
-        <div className="flex gap-2 items-center">
+        <div className="flex gap-2 items-center flex-wrap">
           {/* View toggle — Table vs Kanban. Mirrors the leads page pattern.
               `view=kanban` query param drives the server-side query (loads
               blueprint stages too) and which component renders below. */}
@@ -329,17 +329,17 @@ export default async function InvestorsPage({
               <LayoutGrid className="size-3.5" /> Kanban
             </Link>
           </div>
-          <RecomputeTiersButton />
+          <span className="hidden sm:block"><RecomputeTiersButton /></span>
           <DownloadButton
             url={`/api/investors/export${exportQs ? `?${exportQs}` : ""}`}
-            className="rounded-md border px-3 py-1.5 text-sm flex items-center gap-1.5 hover:bg-accent"
+            className="hidden sm:flex rounded-md border px-3 py-1.5 text-sm items-center gap-1.5 hover:bg-accent"
             title="Download the current (filtered) book as an Excel file"
           >
             <FileUp className="size-4" /> Export
           </DownloadButton>
           <Link
             href="/dashboard/investors/import"
-            className="rounded-md border px-3 py-1.5 text-sm flex items-center gap-1.5"
+            className="hidden sm:flex rounded-md border px-3 py-1.5 text-sm items-center gap-1.5"
           >
             <FileDown className="size-4" /> Import
           </Link>
@@ -347,7 +347,7 @@ export default async function InvestorsPage({
             href="/dashboard/investors/new"
             className="rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-sm font-medium flex items-center gap-1.5"
           >
-            <Plus className="size-4" /> Add investor
+            <Plus className="size-4" /> Add client
           </Link>
         </div>
       </div>

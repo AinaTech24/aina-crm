@@ -151,7 +151,7 @@ export async function GET(req: NextRequest) {
         // Scope: branch heads → their whole branch; assigned-only RMs → their
         // book. Shared with the list page and the Excel export so all three
         // return the same rows.
-        const scope = investorScopeCondition(session);
+        const scope = await investorScopeCondition(tx, session);
         if (scope) conditions.push(scope);
         const where = and(...conditions);
         const rows = await tx
