@@ -356,9 +356,20 @@ export async function runRtaImportJob(job: RtaImportJob): Promise<void> {
               : "partial"
             : "completed";
 
+        // "completed · 0 rows" reads exactly like a silent failure, and it sent
+        // us hunting for a parser bug that did not exist. A registrar quite
+        // legitimately returns a report with only a header row — KFintech's
+        // MFSD313 SIP register does it whenever no SIP was registered in the
+        // period. Say so, so the next person doesn't have to re-derive it.
+        const emptyNote =
+          outcome.rowsTotal === 0
+            ? "The registrar returned an empty report — a header row and no data. Nothing to import; this is not an error."
+            : null;
+
         await tx.execute(sql`
           UPDATE rta_file_imports
           SET status = ${status}, parsed_at = now(), file_checksum = ${checksum},
+              remarks = COALESCE(${emptyNote}, remarks),
               period_start = ${isoDateOrToday(outcome.periodStart)}::date,
               period_end = ${isoDateOrToday(outcome.periodEnd)}::date,
               rows_total = ${outcome.rowsTotal},
