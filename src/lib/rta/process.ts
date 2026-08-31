@@ -68,6 +68,22 @@ async function resolveInvestorId(
 }
 
 /**
+ * A PAN we are willing to key a new investor on: the exact SEBI/IT format
+ * AAAAA9999A. Deliberately strict — a provisional client created from a
+ * malformed value could never be matched by the folio master later, which is
+ * exactly the duplicate this guard exists to prevent.
+ */
+function isLikelyPan(pan?: string): boolean {
+  return !!pan && /^[A-Z]{5}[0-9]{4}[A-Z]$/i.test(pan.trim());
+}
+
+/** Registrar names arrive padded, upper-cased and sometimes NUL-laden. */
+function sanitizeName(name?: string): string | null {
+  const s = (name ?? "").replace(/[\x00-\x1F]/g, " ").replace(/\s+/g, " ").trim();
+  return s.length >= 2 ? s.slice(0, 160) : null;
+}
+
+/**
  * Bulk-resolve every investor referenced by a feed in TWO queries (by PAN, by
  * existing folio) instead of 1–2 queries per row. Returns lookup maps the row
  * loop consults in memory — the key fix for the per-row N+1 that made large
@@ -165,6 +181,8 @@ async function processTransactionFeed(
   let imported = 0;
   let skipped = 0;
   let failed = 0;
+  /** Clients stood up from the feed because their folio master hasn't arrived. */
+  let createdInvestors = 0;
   let minDate = "9999-12-31";
   let maxDate = "0000-01-01";
   // Newest processed order_date per investor → bump last_transaction_at so
@@ -194,7 +212,41 @@ async function processTransactionFeed(
     if (r.orderDate > maxDate) maxDate = r.orderDate;
 
     // Resolve from the pre-built maps (no per-row query). PAN first, then folio.
-    const investorId = resolveFast(r.pan, r.folioNumber);
+    let investorId = resolveFast(r.pan, r.folioNumber);
+
+    // Not in the book yet. If the row carries a valid PAN we can stand the
+    // client up from the feed itself rather than dropping the transaction:
+    // the feed gives us PAN + name, and investors are PAN-deduped, so when the
+    // folio master finally lands it UPDATES this row instead of duplicating it.
+    //
+    // Without a PAN we must still skip. A PAN-less provisional row would be
+    // keyed on nothing the master can match, so the master would create a
+    // SECOND client for the same person — worse than losing the row.
+    //
+    // VSN Financial Services: one KFintech feed skipped 1,849 rows this way,
+    // 1,617 of which carried a PAN and are recoverable here.
+    if (!investorId && isLikelyPan(r.pan)) {
+      const created = await tx.execute(sql`
+        INSERT INTO investors (tenant_id, pan, name, investor_category, kyc_status)
+        VALUES (
+          ${args.tenantId}::uuid, ${r.pan.toUpperCase()},
+          ${sanitizeName(r.investorName) ?? `PAN ${r.pan.toUpperCase()}`},
+          'individual', 'pending'
+        )
+        ON CONFLICT (tenant_id, pan) WHERE dedup_pan AND pan IS NOT NULL
+        DO UPDATE SET updated_at = now()
+        RETURNING id
+      `);
+      investorId = (created.rows[0] as any)?.id ?? null;
+      if (investorId) {
+        // Feed the maps so the other rows for this client resolve without a
+        // second insert — these feeds carry many rows per folio.
+        panMap.set(r.pan.toUpperCase(), investorId);
+        folioMap.set(r.folioNumber, investorId);
+        createdInvestors++;
+      }
+    }
+
     if (!investorId) {
       skipped++;
       errors.push({ row: i + 1, reason: `Folio ${r.folioNumber}${r.pan ? ` / PAN ${r.pan}` : ""} not in client master — import the Investor/Folio Master first` });

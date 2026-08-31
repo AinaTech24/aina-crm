@@ -26,6 +26,9 @@ export type CanonicalTransaction = {
   externalRef: string;
   pan: string;
   folioNumber: string;
+  /** First holder's name, when the feed carries it. Used to name an investor
+   *  created from the feed itself when the folio master has not arrived. */
+  investorName?: string;
   amcCode: string;
   schemeCode: string;
   schemeName: string;
@@ -126,6 +129,9 @@ export const HEADER_ALIASES: Record<string, string[]> = {
   amcCode: ["AMC", "AMC_CODE", "AMCCOD", "AMC_NAME", "AMC NAME", "FMIM_CODE", "AMC_CD", "FUND", "FUND CODE", "TD_FUND"],
   folioNumber: ["FOLIO", "FOLIO_NO", "FOLIO_NUM", "FOLIONO", "FOLIO NO", "FOLIO NUM", "FOLIONUM", "FOL_NO", "FOLIO NUMBER", "ACCOUNT NUMBER", "ACCOUNT NO", "FOLIOCHK", "ACNO", "TD_ACNO"],
   pan: ["PAN", "INV_PAN", "PAN_NO", "PAN NO", "PAN_NUM", "PAN NUM", "INVPAN", "PAN_NUMBER", "PAN NUMBER", "PAN1"],
+  // KFintech dBASE calls it INVNAME; CAMS feeds vary. Needed so a transaction
+  // that arrives before its folio master can still name the investor.
+  investorName: ["INVNAME", "INV_NAME", "INVESTOR NAME", "INVESTOR_NAME", "FIRST HOLDER", "FIRST_HOLDER", "HOLDER NAME", "HOLDER_NAME", "INVESTORNAME", "BENEFICIARY NAME"],
   schemeCode: ["SCH_CODE", "SCHEME_CODE", "SCHEME CODE", "PRODUCT_CODE", "PRODUCT CODE", "SCHCOD", "PRODCODE", "SCH_CD", "PRODUCT", "SCHEME", "FMCODE"],
   schemeName: ["SCH_NAME", "SCHEME_NAME", "SCHEME NAME", "PRODUCT_NAME", "PRODUCT NAME", "SCHNAME", "PRODNAME", "FUND DESCRIPTION", "FUND_DESCRIPTION", "SCHEME", "FUNDDESC"],
   type: ["TR_TYPE", "TXN_TYPE", "TRANS_TYPE", "TRTYPE", "TXNTYPE", "TRANSTYPE", "TYPE", "TRANSACTION TYPE", "TRANSACTION HEAD", "TRANSACTION_HEAD", "TRXN_TYPE", "TD_TRTYPE"],
@@ -228,6 +234,7 @@ export function parseReverseFeed(text: string, refPrefix = "feed"): CanonicalTra
       externalRef: val("externalRef") || `${refPrefix}_${i}`,
       pan,
       folioNumber,
+      investorName: val("investorName") || undefined,
       amcCode: val("amcCode"),
       schemeCode: val("schemeCode"),
       schemeName: val("schemeName"),

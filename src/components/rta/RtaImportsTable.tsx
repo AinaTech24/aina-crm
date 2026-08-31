@@ -10,7 +10,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Loader2, Trash2, RotateCcw } from "lucide-react";
+import { Loader2, Trash2, RotateCcw, RefreshCw } from "lucide-react";
 import { RTA_FILE_TYPE_BY_KIND } from "@/lib/rta/file-types";
 import { formatRelative, formatDate } from "@/lib/utils";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -48,12 +48,53 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+/**
+ * A row is worth re-importing when the file is still stored AND something was
+ * left on the table: rows skipped (a transaction feed that outran its folio
+ * master), a hard failure, or an archive that no saved password opened at the
+ * time. A completed import purges its own file, so there is nothing to re-read.
+ */
+function canReimport(r: Row): boolean {
+  if (r.status === "completed" || r.status === "uploaded" || r.status === "parsing") return false;
+  return (
+    (r.rows_skipped ?? 0) > 0 ||
+    (r.rows_failed ?? 0) > 0 ||
+    r.status === "failed" ||
+    r.status === "rejected" ||
+    r.status === "partial"
+  );
+}
+
+function reimportHint(r: Row): string {
+  if (r.status === "rejected") return "Re-import — retries with every password saved since";
+  if ((r.rows_skipped ?? 0) > 0) return `Re-import — retries the ${r.rows_skipped} skipped row(s)`;
+  return "Re-import this file";
+}
+
 export function RtaImportsTable({ recent, trashed }: { recent: Row[]; trashed: Row[] }) {
   const router = useRouter();
   const [tab, setTab] = useState<"recent" | "trash">("recent");
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [purgeIds, setPurgeIds] = useState<string[] | null>(null); // non-null = confirm open
+  const [reimporting, setReimporting] = useState<string | null>(null);
+  const [reimportMsg, setReimportMsg] = useState<string | null>(null);
+
+  async function reimport(id: string) {
+    setReimporting(id);
+    setReimportMsg(null);
+    try {
+      const res = await fetch(`/api/rta-imports/${id}/reimport`, { method: "POST" });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) { setReimportMsg(j.error ?? "Could not re-import this file"); return; }
+      // The worker picks it up within a second or two; the in-flight poller
+      // above then refreshes until it reaches a terminal state.
+      setReimportMsg("Re-import queued — this row will update shortly.");
+      router.refresh();
+    } finally {
+      setReimporting(null);
+    }
+  }
 
   // Live-refresh while any recent import is still in flight (uploaded/parsing) —
   // an auto-imported file lands as 'uploaded', then the worker parses it a few
@@ -119,6 +160,12 @@ export function RtaImportsTable({ recent, trashed }: { recent: Row[]; trashed: R
             <Trash2 className="size-3.5" /> Trash{trashed.length ? ` (${trashed.length})` : ""}
           </button>
         </div>
+
+        {reimportMsg && (
+          <div className="text-[11px] text-muted-foreground border rounded-md px-2.5 py-1.5 bg-secondary/40">
+            {reimportMsg}
+          </div>
+        )}
 
         {sel.size > 0 && (
           <div className="flex items-center gap-2 text-xs">
@@ -202,9 +249,24 @@ export function RtaImportsTable({ recent, trashed }: { recent: Row[]; trashed: R
                     <td className="py-2.5 text-xs text-muted-foreground">{r.uploaded_by_name ?? "—"}</td>
                     <td className="py-2.5 pr-4 text-right">
                       {tab === "recent" ? (
-                        <button onClick={() => bulk("trash", [r.id])} disabled={busy} className="text-muted-foreground hover:text-rose-600 p-1" title="Move to trash" aria-label="Move to trash">
-                          <Trash2 className="size-3.5" />
-                        </button>
+                        <>
+                          {canReimport(r) && (
+                            <button
+                              onClick={() => reimport(r.id)}
+                              disabled={busy || reimporting === r.id}
+                              className="text-muted-foreground hover:text-brand-cyan p-1 disabled:opacity-50"
+                              title={reimportHint(r)}
+                              aria-label="Re-import this file"
+                            >
+                              {reimporting === r.id
+                                ? <Loader2 className="size-3.5 animate-spin" />
+                                : <RefreshCw className="size-3.5" />}
+                            </button>
+                          )}
+                          <button onClick={() => bulk("trash", [r.id])} disabled={busy} className="text-muted-foreground hover:text-rose-600 p-1" title="Move to trash" aria-label="Move to trash">
+                            <Trash2 className="size-3.5" />
+                          </button>
+                        </>
                       ) : (
                         <button onClick={() => bulk("restore", [r.id])} disabled={busy} className="text-muted-foreground hover:text-emerald-600 p-1" title="Recover" aria-label="Recover">
                           <RotateCcw className="size-3.5" />
