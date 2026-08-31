@@ -118,6 +118,9 @@ export async function runReviewDueReminder(): Promise<number> {
             id: uuid(),
             tenantId,
             subjectType: "investor",
+            // NOT NULL with no DB default — omitting it is what made every
+            // insert fail (23502) and roll the whole tenant batch back.
+            type: "review_meeting",
             subjectId: row.id,
             relatedInvestorId: row.id,
             assigneeId,
@@ -134,7 +137,14 @@ export async function runReviewDueReminder(): Promise<number> {
         }
       });
     } catch (err) {
-      console.error(`[review-due] tenant ${tenantId} failed:`, (err as Error)?.message);
+      // Drizzle wraps the driver error, and its own message is just the SQL +
+      // params — the actual reason (constraint, RLS, type) lives on .cause.
+      // Without this a real failure reads as an unexplained query dump.
+      const e = err as any;
+      const cause = e?.cause?.message ?? e?.detail ?? "";
+      console.error(
+        `[review-due] tenant ${tenantId} failed: ${e?.cause?.code ?? e?.code ?? ""} ${cause || e?.message}`.trim()
+      );
     }
   }
 
