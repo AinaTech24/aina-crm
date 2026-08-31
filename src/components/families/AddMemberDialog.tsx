@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { UserPlus, X, Search, Loader2, Check } from "lucide-react";
+import { ThemeSelect } from "@/components/ui/ThemeSelect";
 
 type Investor = {
   id: string;
@@ -141,15 +142,11 @@ export function AddMemberDialog({ familyId, familyName }: { familyId: string; fa
               <div className="flex-1 overflow-y-auto p-5 space-y-3">
                 <label className="block">
                   <div className="text-xs font-medium mb-1">Relationship to family</div>
-                  <select
+                  <ThemeSelect
                     value={familyRole}
-                    onChange={(e) => setFamilyRole(e.target.value)}
-                    className="w-full border rounded-md px-3 py-2 text-sm bg-background"
-                  >
-                    {RELATIONSHIPS.map((r) => (
-                      <option key={r.key} value={r.key}>{r.label}</option>
-                    ))}
-                  </select>
+                    onChange={setFamilyRole}
+                    options={RELATIONSHIPS.map((r) => [r.key, r.label] as [string, string])}
+                  />
                 </label>
 
                 <label className="block">
@@ -202,15 +199,11 @@ export function AddMemberDialog({ familyId, familyName }: { familyId: string; fa
               <div className="flex-1 overflow-y-auto p-5 space-y-3">
                 <label className="block">
                   <div className="text-xs font-medium mb-1">Relationship to family</div>
-                  <select
+                  <ThemeSelect
                     value={familyRole}
-                    onChange={(e) => setFamilyRole(e.target.value)}
-                    className="w-full border rounded-md px-3 py-2 text-sm bg-background"
-                  >
-                    {RELATIONSHIPS.map((r) => (
-                      <option key={r.key} value={r.key}>{r.label}</option>
-                    ))}
-                  </select>
+                    onChange={setFamilyRole}
+                    options={RELATIONSHIPS.map((r) => [r.key, r.label] as [string, string])}
+                  />
                 </label>
                 <p className="text-sm text-muted-foreground">
                   Continue to the new investor form — we'll pre-fill the family attachment for you.

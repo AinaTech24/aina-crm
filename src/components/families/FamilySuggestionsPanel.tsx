@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Sparkles, Loader2, Check, UserPlus, Link as LinkIcon, HeartHandshake } from "lucide-react";
+import { Loader2, Check, UserPlus, Link as LinkIcon, HeartHandshake } from "lucide-react";
 import { formatINR } from "@/lib/utils";
 import { useToast } from "@/components/ui/Toast";
+import { ThemeSelect } from "@/components/ui/ThemeSelect";
 
 type Suggestion = {
   type: "add_to_family" | "create_family";
@@ -41,7 +42,13 @@ const RELATIONSHIPS = [
   { key: "other", label: "Other" },
 ];
 
-export function FamilySuggestionsPanel() {
+/**
+ * Renders the pairing list only — no card chrome or header. It lives inside
+ * FamilySuggestionsLauncher's dialog, which supplies the title and the frame.
+ * `onCountChange` keeps the launcher's badge in step as suggestions are
+ * consumed, so the count never disagrees with the list behind it.
+ */
+export function FamilySuggestionsPanel({ onCountChange }: { onCountChange?: (n: number) => void } = {}) {
   const router = useRouter();
   const toast = useToast();
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
@@ -52,6 +59,12 @@ export function FamilySuggestionsPanel() {
   useEffect(() => {
     fetchSuggestions();
   }, []);
+
+  // Report upward on every change, so a link/create that removes a row also
+  // decrements the badge — not just the initial load.
+  useEffect(() => {
+    if (!loading) onCountChange?.(suggestions.length);
+  }, [suggestions.length, loading, onCountChange]);
 
   async function fetchSuggestions() {
     try {
@@ -144,7 +157,7 @@ export function FamilySuggestionsPanel() {
 
   if (loading) {
     return (
-      <div className="border rounded-lg bg-card p-6 flex flex-col items-center justify-center gap-2">
+      <div className="p-10 flex flex-col items-center justify-center gap-2">
         <Loader2 className="size-5 animate-spin text-muted-foreground" />
         <span className="text-xs text-muted-foreground">Scanning pairing opportunities...</span>
       </div>
@@ -153,7 +166,7 @@ export function FamilySuggestionsPanel() {
 
   if (suggestions.length === 0) {
     return (
-      <div className="border rounded-lg bg-card p-6 text-center">
+      <div className="p-10 text-center">
         <HeartHandshake className="size-6 text-muted-foreground/40 mx-auto mb-2" />
         <h3 className="text-xs font-semibold text-muted-foreground">No pending pairings</h3>
         <p className="text-[11px] text-muted-foreground mt-1">
@@ -164,18 +177,8 @@ export function FamilySuggestionsPanel() {
   }
 
   return (
-    <div className="border rounded-lg bg-card overflow-hidden">
-      <div className="border-b px-4 py-3 bg-muted/20 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Sparkles className="size-4 text-violet-500 fill-violet-100" />
-          <h2 className="font-semibold text-sm">AI Pairing Suggestions</h2>
-        </div>
-        <span className="text-xs px-2 py-0.5 rounded-full bg-violet-50 text-violet-700 font-medium">
-          {suggestions.length} matches
-        </span>
-      </div>
-
-      <div className="divide-y max-h-[500px] overflow-y-auto">
+    <div className="border rounded-lg overflow-hidden">
+      <div className="divide-y max-h-[62vh] overflow-y-auto">
         {suggestions.map((s) => {
           const isBusy = busyId === s.investor.id;
           return (
@@ -206,19 +209,13 @@ export function FamilySuggestionsPanel() {
                 <div className="flex flex-col gap-2 pt-1">
                   <div className="flex items-center gap-1.5">
                     <span className="text-xs text-muted-foreground whitespace-nowrap">As:</span>
-                    <select
+                    <ThemeSelect
                       value={roles[s.investor.id] || "spouse"}
-                      onChange={(e) =>
-                        setRoles((prev) => ({ ...prev, [s.investor.id]: e.target.value }))
-                      }
-                      className="text-xs border rounded px-2 py-1 bg-background flex-1 min-w-0"
-                    >
-                      {RELATIONSHIPS.map((r) => (
-                        <option key={r.key} value={r.key}>
-                          {r.label}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={(v) => setRoles((prev) => ({ ...prev, [s.investor.id]: v }))}
+                      options={RELATIONSHIPS.map((r) => [r.key, r.label] as [string, string])}
+                      wrapperClassName="flex-1 min-w-0"
+                      className="text-xs py-1"
+                    />
                   </div>
                   <button
                     disabled={isBusy}
@@ -242,19 +239,13 @@ export function FamilySuggestionsPanel() {
                             <span className="font-semibold">{p.name}</span>
                             <span className="text-muted-foreground font-mono text-[10px] ml-1.5">({p.pan})</span>
                           </div>
-                          <select
+                          <ThemeSelect
                             value={roles[p.id] || "spouse"}
-                            onChange={(e) =>
-                              setRoles((prev) => ({ ...prev, [p.id]: e.target.value }))
-                            }
-                            className="text-[10px] border rounded px-1.5 py-0.5 bg-background flex-shrink-0"
-                          >
-                            {RELATIONSHIPS.map((r) => (
-                              <option key={r.key} value={r.key}>
-                                {r.label}
-                              </option>
-                            ))}
-                          </select>
+                            onChange={(v) => setRoles((prev) => ({ ...prev, [p.id]: v }))}
+                            options={RELATIONSHIPS.map((r) => [r.key, r.label] as [string, string])}
+                            wrapperClassName="flex-shrink-0"
+                            className="text-[10px] py-0.5 pr-7"
+                          />
                         </li>
                       ))}
                     </ul>

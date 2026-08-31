@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Loader2, Send, X, MessageSquare, Mail, Sparkles } from "lucide-react";
+import { ThemeSelect } from "@/components/ui/ThemeSelect";
 
 type TemplateInfo = {
   id: string;
@@ -182,18 +183,14 @@ export function EngageNextGenButton({
                     <span className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
                       Choose Campaign Template
                     </span>
-                    <select
-                      value={selectedKey}
-                      onChange={(e) => setSelectedKey(e.target.value)}
-                      className="w-full border rounded-md px-3 py-2 text-sm bg-background text-foreground"
-                    >
+                    <ThemeSelect value={selectedKey} onChange={setSelectedKey}>
                       <option value="">— Select an approved template —</option>
                       {channelTemplates.map((t) => (
                         <option key={t.key} value={t.key}>
                           {t.name} ({t.key})
                         </option>
                       ))}
-                    </select>
+                    </ThemeSelect>
                   </label>
                   {selectedTemplate && selectedTemplate.description && (
                     <p className="text-[11px] text-muted-foreground mt-1.5 font-normal">

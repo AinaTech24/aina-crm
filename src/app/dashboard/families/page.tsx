@@ -7,7 +7,7 @@ import { requireAny, can } from "@/lib/auth/rbac";
 import { formatINR, formatRelative } from "@/lib/utils";
 import { RowActions } from "@/components/common/RowActions";
 import { FamilyQuickFilters } from "@/components/families/FamilyQuickFilters";
-import { FamilySuggestionsPanel } from "@/components/families/FamilySuggestionsPanel";
+import { FamilySuggestionsLauncher } from "@/components/families/FamilySuggestionsLauncher";
 import { Pager } from "@/components/common/Pager";
 import { healthBandClasses, type HealthBand } from "@/lib/investors/health";
 import { StatusChips, type StatusChip } from "@/components/common/StatusChips";
@@ -200,6 +200,7 @@ export default async function FamiliesPage({
           <h1 className="text-2xl font-bold tracking-tight">Family mapping</h1>
         </div>
         <div className="flex gap-2">
+          <FamilySuggestionsLauncher />
           <Link
             href="/dashboard/families/at-risk"
             className="rounded-md border border-amber-300 bg-amber-50 text-amber-900 px-3 py-1.5 text-sm font-medium flex items-center gap-1.5 hover:bg-amber-100"
@@ -252,8 +253,8 @@ export default async function FamiliesPage({
         />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-        <div className="lg:col-span-2 border rounded-lg bg-card overflow-hidden">
+      <div>
+        <div className="border rounded-lg bg-card overflow-hidden">
           {rows.length === 0 ? (
             <div className="p-12 text-center text-sm text-muted-foreground">
               <HeartHandshake className="size-8 mx-auto text-muted-foreground/50" />
@@ -391,9 +392,6 @@ export default async function FamiliesPage({
               <Pager page={page} totalPages={Math.ceil(total / PAGE_SIZE)} total={total} pageSize={PAGE_SIZE} />
             </div>
           )}
-        </div>
-        <div className="space-y-6">
-          <FamilySuggestionsPanel />
         </div>
       </div>
     </div>
