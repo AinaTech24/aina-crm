@@ -29,6 +29,8 @@ import {
   setSourceAddresses,
 } from "@/lib/rta/mailback-config";
 import { loadRtaInboxConfig } from "@/lib/rta/inbox-config";
+import { enqueueRejectedRescan } from "@/workers/rta-import-worker";
+import type { RtaSource } from "@/db/schema/rta_imports";
 
 export const dynamic = "force-dynamic";
 
@@ -138,6 +140,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid request." }, { status: 400 });
   }
   const d = parsed.data;
+  // Which registrars had their password list touched? Archives we previously
+  // gave up on are kept in storage, so a newly-saved password can recover the
+  // whole backlog — but only if something re-tries them (see runRejectedRescanJob).
+  const touched: RtaSource[] = [];
+  if (d.camsPassword !== undefined || d.camsPasswords || d.camsPasswordsAppend?.length) touched.push("cams");
+  if (d.kfintechPassword !== undefined || d.kfintechPasswords || d.kfintechPasswordsAppend?.length) touched.push("kfintech");
+
   const result = await withTenant(session.tenantId, async (tx) => {
     await saveMailbackPasswords(tx, session.tenantId, d);
     if (d.camsPasswordsAppend?.[0]) await appendMailbackPassword(tx, session.tenantId, "cams", d.camsPasswordsAppend[0]);
@@ -151,14 +160,34 @@ export async function POST(req: NextRequest) {
     return null;
   });
 
+  // Fire-and-forget: the rescan itself runs on the worker (it re-reads every
+  // kept archive from storage), so a slow backlog never blocks saving a password.
+  for (const src of touched) {
+    await enqueueRejectedRescan(session.tenantId, src).catch((err) =>
+      console.error("[rta-mailback] rescan enqueue failed", src, err)
+    );
+  }
+
   // Surface collisions so the firm sees WHY an address didn't stick, rather than
   // it silently vanishing from the list on the next load.
-  if (result?.rejected.length) {
+  if (result?.blocked.length || result?.rejected.length) {
+    const parts: string[] = [];
+    if (result.blocked.length) {
+      parts.push(
+        `Not allowed: ${result.blocked.join(", ")}. That is a registrar or no-reply address — it appears on every firm's mailback, so it cannot identify yours. Register the mailbox you forward FROM (your own inbox).`
+      );
+    }
+    if (result.rejected.length) {
+      parts.push(
+        `Already registered by another firm: ${result.rejected.join(", ")}. Use your own rta-<token>@ address instead.`
+      );
+    }
     return NextResponse.json({
       ok: true,
       sourceAddresses: result.saved,
       rejected: result.rejected,
-      warning: `Already registered by another firm: ${result.rejected.join(", ")}. Use your own rta-<token>@ address instead.`,
+      blocked: result.blocked,
+      warning: parts.join(" "),
     });
   }
   return NextResponse.json({ ok: true, sourceAddresses: result?.saved });

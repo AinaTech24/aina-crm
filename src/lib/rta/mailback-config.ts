@@ -532,18 +532,47 @@ async function attachPendingConfirmations(
  * registration gives a clear error, instead of silently producing mail that can
  * never route (resolveTenantBySenders would see it as ambiguous forever).
  */
+/**
+ * Mailboxes that must NEVER be accepted as a firm's identity.
+ *
+ * Under the shared rta@ address the sending mailbox is the only thing that says
+ * whose mail this is. These addresses appear as the sender/recipient on EVERY
+ * firm's mailback — they belong to the registrars, to no-reply infrastructure,
+ * or to this platform itself. Registering one would make that firm match every
+ * other firm's forwarded mail, silently importing another firm's client book.
+ *
+ * The duplicate-mailbox guard below cannot catch this: the address is claimed
+ * only once, so it looks perfectly legitimate.
+ */
+function isNeverASource(addr: string): boolean {
+  const [local = "", domain = ""] = addr.toLowerCase().split("@");
+  if (/^(donotreply|do-not-reply|noreply|no-reply|no_reply|mailer-daemon|postmaster|distributorcare|admin|support)$/.test(local)) {
+    return true;
+  }
+  // Registrar domains, and this platform's own inbound domain.
+  if (/(^|\.)(camsonline\.com|camsonline\.co\.in|kfintech\.com|kfintech\.co\.in|karvy\.com|crm\.ainatech\.in)$/.test(domain)) {
+    return true;
+  }
+  return false;
+}
+
 export async function setSourceAddresses(
   tx: Tx,
   tenantId: string,
   addresses: string[]
-): Promise<{ saved: string[]; rejected: string[]; confirmationsAttached: number }> {
-  const clean = [
+): Promise<{ saved: string[]; rejected: string[]; blocked: string[]; confirmationsAttached: number }> {
+  const all = [
     ...new Set(
       addresses
         .map((a) => a.toLowerCase().trim())
         .filter((a) => /^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(a))
     ),
   ].slice(0, 10);
+
+  // Drop registrar / no-reply addresses BEFORE the duplicate check — they are
+  // invalid regardless of who else has (or hasn't) claimed them.
+  const blocked = all.filter(isNeverASource);
+  const clean = all.filter((a) => !blocked.includes(a));
 
   const rejected: string[] = [];
   if (clean.length) {
@@ -606,7 +635,7 @@ export async function setSourceAddresses(
   // is, so the code/link appears on this firm's own card instead of only in the
   // platform admin log.
   const confirmationsAttached = await attachPendingConfirmations(tx, tenantId, saved);
-  return { saved, rejected, confirmationsAttached };
+  return { saved, rejected, blocked, confirmationsAttached };
 }
 
 /** Stamp a successful receipt — proves the forwarding rule is live end-to-end. */
