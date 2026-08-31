@@ -34,7 +34,7 @@ const Body = z.object({
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "service_request.manage");
+    requireCap(session.roles, "service_request.manage", session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
     const parsed = Body.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) return NextResponse.json({ error: "invalid body", issues: parsed.error.issues }, { status: 400 });

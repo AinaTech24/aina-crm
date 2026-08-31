@@ -170,8 +170,8 @@ async function nextProposalNumber(tx: any, tenantId: string) {
 export async function GET() {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "proposal.view");
-    const seesAll = can(session.roles, "investor.view.all") || can(session.roles, "compliance.view");
+    requireCap(session.roles, "proposal.view", session.permissions);
+    const seesAll = can(session.roles, "investor.view.all", session.permissions) || can(session.roles, "compliance.view", session.permissions);
 
     const rows = await withTenant(session.tenantId, async (tx) => {
       if (seesAll) {
@@ -189,7 +189,7 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "proposal.write");
+    requireCap(session.roles, "proposal.write", session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
 
     const parse = CreateBody.safeParse(await req.json().catch(() => ({})));

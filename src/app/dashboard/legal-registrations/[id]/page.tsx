@@ -17,7 +17,7 @@ export default async function LegalRegistrationDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const session = await requireSession();
-  requireCap(session.roles, "compliance.edit");
+  requireCap(session.roles, "compliance.edit", session.permissions);
   const { id } = await params;
 
   const row = await withTenant(session.tenantId, async (tx) => {

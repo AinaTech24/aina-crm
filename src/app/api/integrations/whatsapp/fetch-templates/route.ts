@@ -18,7 +18,7 @@ export const dynamic = "force-dynamic";
 export async function POST() {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "template.edit");
+    requireCap(session.roles, "template.edit", session.permissions);
     const result = await withTenant(session.tenantId, async (tx) =>
       importWhatsappTemplatesForTenant(tx, session.tenantId, session.userId)
     );

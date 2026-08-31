@@ -115,7 +115,7 @@ async function nextPlanNumber(tx: any, tenantId: string) {
 export async function GET() {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "financial_plan.view");
+    requireCap(session.roles, "financial_plan.view", session.permissions);
     // Financial plans hold the most sensitive client data (income, assets,
     // liabilities). Managers see all; everyone else only the plans they
     // prepared — financial_plan.view alone would otherwise let any holder
@@ -155,7 +155,7 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "financial_plan.manage");
+    requireCap(session.roles, "financial_plan.manage", session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
 
     const body = await req.json().catch(() => ({}));

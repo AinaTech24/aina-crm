@@ -34,7 +34,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { id: assetId } = await params;
   try {
     const session = await requireSession();
-    requireCap(session.roles, "communication.send");
+    requireCap(session.roles, "communication.send", session.permissions);
     const body = await req.json().catch(() => ({}));
     const channel = body?.channel === "email" ? "email" : "whatsapp";
     const recipientName: string | undefined = body?.recipientName;

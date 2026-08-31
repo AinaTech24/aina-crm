@@ -48,7 +48,7 @@ const BulkBody = z.object({
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "compliance.edit");
+    requireCap(session.roles, "compliance.edit", session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
     const parse = SingleBody.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) {
@@ -114,7 +114,7 @@ export async function POST(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "compliance.edit");
+    requireCap(session.roles, "compliance.edit", session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
     const parse = BulkBody.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) {

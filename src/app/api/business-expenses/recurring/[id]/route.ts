@@ -30,7 +30,7 @@ const PatchBody = z.object({
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "finances.view");
+    requireCap(session.roles, "finances.view", session.permissions);
     const { id } = await params;
     const parsed = PatchBody.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
@@ -64,7 +64,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "finances.view");
+    requireCap(session.roles, "finances.view", session.permissions);
     const { id } = await params;
     await withTenant(session.tenantId, (tx) =>
       tx.delete(recurringExpenses).where(and(eq(recurringExpenses.id, id), eq(recurringExpenses.tenantId, session.tenantId)))

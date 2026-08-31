@@ -24,7 +24,7 @@ type InvestorRow = {
 export async function GET(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "investor.view.all");
+    requireCap(session.roles, "investor.view.all", session.permissions);
 
     const suggestions = await withTenant(session.tenantId, async (tx) => {
       // 1. Fetch all investors for the tenant

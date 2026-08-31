@@ -31,7 +31,7 @@ const Body = z.object({ force: z.boolean().optional().default(false) });
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "compliance.edit");
+    requireCap(session.roles, "compliance.edit", session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
     const { force } = Body.parse(await req.json().catch(() => ({})));
     const meta = clientMetaFromHeaders(req.headers);

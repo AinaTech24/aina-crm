@@ -75,7 +75,7 @@ const CreateBody = z.object({
 export async function GET() {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "campaign.send");
+    requireCap(session.roles, "campaign.send", session.permissions);
     const rows = await withTenant(session.tenantId, async (tx) => {
       return tx
         .select()
@@ -92,7 +92,7 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "campaign.send");
+    requireCap(session.roles, "campaign.send", session.permissions);
     const parse = CreateBody.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) return NextResponse.json({ error: "invalid body", issues: parse.error.issues }, { status: 400 });
     const body = parse.data;

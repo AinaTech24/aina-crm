@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 export default async function NewRulePage() {
   const session = await requireSession();
-  if (!can(session.roles, "workflow.edit")) redirect("/dashboard/workflows/rules");
+  if (!can(session.roles, "workflow.edit", session.permissions)) redirect("/dashboard/workflows/rules");
 
   return (
     <RuleBuilder

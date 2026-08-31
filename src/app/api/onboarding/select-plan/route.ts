@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
     // Owner-grade — defense-in-depth alongside the pending-status guard below.
-    requireCap(session.roles, "settings.billing");
+    requireCap(session.roles, "settings.billing", session.permissions);
     const parse = Body.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) return NextResponse.json({ error: "invalid body" }, { status: 400 });
     const { packageId } = parse.data;

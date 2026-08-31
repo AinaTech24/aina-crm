@@ -72,7 +72,7 @@ const CreateBody = z.object({
 export async function GET() {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "insurance.view");
+    requireCap(session.roles, "insurance.view", session.permissions);
     // Policies carry nominee PII + commission. Managers see all; everyone else
     // only their own book — policies for a client they manage OR that they sold
     // (insurance.view alone otherwise exposes every advisor's commission).
@@ -92,7 +92,7 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "insurance.write");
+    requireCap(session.roles, "insurance.write", session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
     const parse = CreateBody.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) {

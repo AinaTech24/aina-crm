@@ -23,7 +23,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireSession();
-  requireCap(session.roles, "workflow.edit");
+  requireCap(session.roles, "workflow.edit", session.permissions);
   const { id } = await params;
   const meta = clientMetaFromHeaders(req.headers);
 
@@ -103,7 +103,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireSession();
-  requireCap(session.roles, "workflow.edit");
+  requireCap(session.roles, "workflow.edit", session.permissions);
   const { id } = await params;
   const meta = clientMetaFromHeaders(req.headers);
 

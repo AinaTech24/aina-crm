@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireSession();
-  requireCap(session.roles, "workflow.edit");
+  requireCap(session.roles, "workflow.edit", session.permissions);
   const { id } = await params;
   const body = await req.json().catch(() => ({} as any));
   const action = String(body.action ?? "lock"); // "lock" | "unlock"

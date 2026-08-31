@@ -33,7 +33,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     const { id } = await params;
     if (!id || !UUID_RE.test(id)) return NextResponse.json({ error: "not found" }, { status: 404 });
     const session = await requireSession();
-    if (!can(session.roles, "investor.view.all") && !can(session.roles, "investor.view.assigned")) {
+    if (!can(session.roles, "investor.view.all", session.permissions) && !can(session.roles, "investor.view.assigned", session.permissions)) {
       return NextResponse.json({ error: "forbidden: missing view capability" }, { status: 403 });
     }
 

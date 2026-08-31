@@ -55,7 +55,7 @@ const ClaimBody = z.object({
 export async function GET() {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "insurance.view");
+    requireCap(session.roles, "insurance.view", session.permissions);
     // Claims carry proposer PII + settled amounts. Managers see all; everyone
     // else only claims for a client they manage OR that they own (rmId).
     const seesAll =
@@ -98,7 +98,7 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "insurance.write");
+    requireCap(session.roles, "insurance.write", session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
     const parse = ClaimBody.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) return NextResponse.json({ error: "invalid body", issues: parse.error.issues }, { status: 400 });

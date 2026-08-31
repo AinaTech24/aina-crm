@@ -31,7 +31,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { id: familyId } = await params;
   try {
     const session = await requireSession();
-    requireCap(session.roles, "investor.edit.all");
+    requireCap(session.roles, "investor.edit.all", session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
 
     const parse = AddBody.safeParse(await req.json().catch(() => ({})));
@@ -101,7 +101,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
   try {
     const session = await requireSession();
-    requireCap(session.roles, "investor.edit.all");
+    requireCap(session.roles, "investor.edit.all", session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
 
     const clientMeta = clientMetaFromHeaders(req.headers);

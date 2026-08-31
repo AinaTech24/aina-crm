@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 
 export default async function NewProductOfferingPage() {
   const session = await requireSession();
-  requireCap(session.roles, "compliance.edit");
+  requireCap(session.roles, "compliance.edit", session.permissions);
 
   // Catalogs the form picker needs: active users + active registrations.
   const { team, registrations } = await withTenant(session.tenantId, async (tx) => {

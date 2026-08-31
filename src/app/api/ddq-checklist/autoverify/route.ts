@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "compliance.edit");
+    requireCap(session.roles, "compliance.edit", session.permissions);
     const meta = clientMetaFromHeaders(req.headers);
 
     const updatedItems = await withTenant(session.tenantId, async (tx) => {

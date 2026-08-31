@@ -64,7 +64,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
   try {
     const session = await requireSession();
-    requireCap(session.roles, "reports.manage");
+    requireCap(session.roles, "reports.manage", session.permissions);
     const row = await withTenant(session.tenantId, async (tx) =>
       (await tx.select().from(savedReports).where(and(eq(savedReports.id, id), eq(savedReports.tenantId, session.tenantId))).limit(1))[0]
     );
@@ -79,7 +79,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const { id } = await params;
   try {
     const session = await requireSession();
-    requireCap(session.roles, "reports.manage");
+    requireCap(session.roles, "reports.manage", session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
     const parse = UpdateBody.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) return NextResponse.json({ error: "invalid body", issues: parse.error.issues }, { status: 400 });
@@ -149,7 +149,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const { id } = await params;
   try {
     const session = await requireSession();
-    requireCap(session.roles, "reports.manage");
+    requireCap(session.roles, "reports.manage", session.permissions);
     const clientMeta = clientMetaFromHeaders(req.headers);
     const ok = await withTenant(session.tenantId, async (tx) => {
       const before = (await tx.select().from(savedReports).where(and(eq(savedReports.id, id), eq(savedReports.tenantId, session.tenantId))).limit(1))[0];

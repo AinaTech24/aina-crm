@@ -51,7 +51,7 @@ const OPEN = OPEN_CLAIM_STATUSES as readonly string[];
 export default async function ClaimDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const session = await requireSession();
-  requireCap(session.roles, "insurance.view");
+  requireCap(session.roles, "insurance.view", session.permissions);
 
   const data = await withTenant(session.tenantId, async (tx) => {
     const c = (

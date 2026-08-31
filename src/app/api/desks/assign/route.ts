@@ -21,7 +21,7 @@ const Body = z.object({
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "settings.desks");
+    requireCap(session.roles, "settings.desks", session.permissions);
     const parsed = Body.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
       return NextResponse.json({ error: "invalid input", issues: parsed.error.issues }, { status: 400 });

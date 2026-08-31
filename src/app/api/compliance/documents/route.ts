@@ -58,7 +58,7 @@ export async function GET() {
     // The compliance vault holds DDQ, audit reports, complaints, empanelment
     // and RIA docs — restrict reads to the compliance + back-office team
     // (owner wins via can()). Previously any authenticated session could list it.
-    requireAny(session.roles, ["compliance.view", "kyc.manage"]);
+    requireAny(session.roles, ["compliance.view", "kyc.manage"], session.permissions);
     const rows = await withTenant(session.tenantId, async (tx) => {
       return tx
         .select()
@@ -75,7 +75,7 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "document.upload");
+    requireCap(session.roles, "document.upload", session.permissions);
     const parse = CreateBody.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) return NextResponse.json({ error: "invalid body", issues: parse.error.issues }, { status: 400 });
     const body = parse.data;
@@ -108,7 +108,7 @@ export async function POST(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "compliance.edit"); // gated by compliance settings management
+    requireCap(session.roles, "compliance.edit", session.permissions); // gated by compliance settings management
 
     const id = new URL(req.url).searchParams.get("id");
     if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });

@@ -43,7 +43,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const session = await requireSession();
-  requireCap(session.roles, "transactions.execute");
+  requireCap(session.roles, "transactions.execute", session.permissions);
   const purge = req.nextUrl.searchParams.get("purge") === "1";
 
   const ok = await withTenant(session.tenantId, async (tx) => {

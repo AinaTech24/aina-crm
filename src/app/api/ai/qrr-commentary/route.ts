@@ -31,7 +31,7 @@ const Body = z.object({
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireAny(session.roles, ["investor.view.all", "investor.view.assigned"]);
+    requireAny(session.roles, ["investor.view.all", "investor.view.assigned"], session.permissions);
     const parse = Body.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) {
       return NextResponse.json(

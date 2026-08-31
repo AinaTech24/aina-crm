@@ -49,7 +49,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ typ
   const { type } = await params;
   try {
     const session = await requireSession();
-    requireCap(session.roles, "settings.masters");
+    requireCap(session.roles, "settings.masters", session.permissions);
     const parse = Body.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) return NextResponse.json({ error: "invalid body", issues: parse.error.issues }, { status: 400 });
 
@@ -84,7 +84,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ty
   if (!key) return NextResponse.json({ error: "key query param required" }, { status: 400 });
   try {
     const session = await requireSession();
-    requireCap(session.roles, "settings.masters");
+    requireCap(session.roles, "settings.masters", session.permissions);
     const body = await req.json().catch(() => ({}));
     await withTenant(session.tenantId, async (tx) => {
       await tx
@@ -118,7 +118,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ t
   if (!key) return NextResponse.json({ error: "key query param required" }, { status: 400 });
   try {
     const session = await requireSession();
-    requireCap(session.roles, "settings.masters");
+    requireCap(session.roles, "settings.masters", session.permissions);
     await withTenant(session.tenantId, async (tx) => {
       // System defaults: deactivate. Custom values: hard delete.
       const scope = and(

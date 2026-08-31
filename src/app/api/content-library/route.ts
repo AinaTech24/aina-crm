@@ -98,7 +98,7 @@ export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
     const platformAdmin = isPlatformAdmin(session.roles);
-    const canUpload = platformAdmin || can(session.roles, "template.edit");
+    const canUpload = platformAdmin || can(session.roles, "template.edit", session.permissions);
     if (!canUpload) {
       return NextResponse.json({ error: "forbidden — insufficient capabilities" }, { status: 403 });
     }

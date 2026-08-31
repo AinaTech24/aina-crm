@@ -33,7 +33,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const session = await requireSession();
-  requireCap(session.roles, "workflow.edit");
+  requireCap(session.roles, "workflow.edit", session.permissions);
 
   let body: unknown;
   try {

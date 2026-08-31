@@ -88,7 +88,7 @@ const pick = (row: Record<string, any>, h: string | undefined) => (h && row[h] !
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "insurance.write");
+    requireCap(session.roles, "insurance.write", session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
     const parse = Body.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) return NextResponse.json({ error: "invalid body" }, { status: 400 });

@@ -31,7 +31,7 @@ const Body = z.object({
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "communication.send");
+    requireCap(session.roles, "communication.send", session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
 
     const parsed = Body.safeParse(await req.json().catch(() => ({})));

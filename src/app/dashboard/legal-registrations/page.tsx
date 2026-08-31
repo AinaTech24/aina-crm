@@ -44,7 +44,7 @@ export default async function LegalRegistrationsPage({
   searchParams: Promise<{ status?: string; authority?: string }>;
 }) {
   const session = await requireSession();
-  requireCap(session.roles, "compliance.edit");
+  requireCap(session.roles, "compliance.edit", session.permissions);
   await assertActiveLicense(session.tenantId, session.roles);
   const sp = await searchParams;
   const statusFilter = sp.status ?? "active";

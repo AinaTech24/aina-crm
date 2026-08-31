@@ -191,7 +191,7 @@ const PostBody = z.discriminatedUnion("mode", [
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "communication.send");
+    requireCap(session.roles, "communication.send", session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
 
     const raw = await req.json().catch(() => ({}));

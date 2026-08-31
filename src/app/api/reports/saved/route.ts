@@ -66,7 +66,7 @@ const ReportBody = z.object({
 export async function GET() {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "reports.manage");
+    requireCap(session.roles, "reports.manage", session.permissions);
     const rows = await withTenant(session.tenantId, async (tx) =>
       tx
         .select()
@@ -98,7 +98,7 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "reports.manage");
+    requireCap(session.roles, "reports.manage", session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
 
     const parse = ReportBody.safeParse(await req.json().catch(() => ({})));

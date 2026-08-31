@@ -77,7 +77,7 @@ const PostBody = z.object({
 export async function GET(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "compliance.edit");
+    requireCap(session.roles, "compliance.edit", session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
 
     const sp = req.nextUrl.searchParams;
@@ -114,7 +114,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "compliance.edit");
+    requireCap(session.roles, "compliance.edit", session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
     const parse = PostBody.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) {

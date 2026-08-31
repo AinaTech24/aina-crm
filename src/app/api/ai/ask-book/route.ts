@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
     // Same gating as /api/segments/preview — this runs COUNT(*) + a sample
     // over tenant data, so it must not be an open enumeration endpoint for
     // any logged-in user.
-    requireCap(session.roles, "segments.manage");
+    requireCap(session.roles, "segments.manage", session.permissions);
 
     const parse = Body.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) return NextResponse.json({ error: "invalid body" }, { status: 400 });

@@ -25,7 +25,7 @@ const OVERLAP_WINDOW_DAYS = 14;
 export async function GET(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "campaign.send");
+    requireCap(session.roles, "campaign.send", session.permissions);
     const url = new URL(req.url);
     const segmentId = url.searchParams.get("segmentId") ?? "";
     const channel = (url.searchParams.get("channel") ?? "").toLowerCase();

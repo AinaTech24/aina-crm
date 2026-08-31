@@ -60,7 +60,7 @@ export async function GET(
 ) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "investor.view.all");
+    requireCap(session.roles, "investor.view.all", session.permissions);
     const { id } = await params;
     const result = await withTenant(session.tenantId, async (tx) => {
       const [proposal] = await tx
@@ -93,7 +93,7 @@ export async function PUT(
 ) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "investor.edit.all");
+    requireCap(session.roles, "investor.edit.all", session.permissions);
     const { id } = await params;
     const parse = PutBody.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) {

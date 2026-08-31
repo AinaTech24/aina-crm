@@ -40,7 +40,7 @@ export default async function ArnEuinTrackerPage({
 }) {
   const session = await requireSession();
   // Owner / compliance only — this is sensitive licensing data.
-  requireCap(session.roles, "compliance.edit");
+  requireCap(session.roles, "compliance.edit", session.permissions);
   await assertActiveLicense(session.tenantId, session.roles);
   const sp = await searchParams;
   const within = sp.within ? Math.max(0, parseInt(sp.within, 10) || 0) : null;

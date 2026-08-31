@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 export default async function InsuranceImportPage() {
   const session = await requireSession();
-  requireCap(session.roles, "insurance.write");
+  requireCap(session.roles, "insurance.write", session.permissions);
   return (
     <ImportWizard
       entityLabel="policies"

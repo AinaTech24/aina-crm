@@ -93,7 +93,7 @@ export default async function CampaignsPage({
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const session = await requireSession();
-  requireCap(session.roles, "campaign.send");
+  requireCap(session.roles, "campaign.send", session.permissions);
   const sp = await searchParams;
   const q = (sp.q ?? "").trim();
   const kindFilter = (sp.kind ?? "").split(",").filter(Boolean);

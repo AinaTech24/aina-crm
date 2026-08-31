@@ -19,7 +19,7 @@ export default async function InsuranceCommissionPage() {
   // Commission is advisor/firm economics — the page had NO gate and showed the
   // WHOLE firm's earnings to any role. Require the view capability and scope
   // non-managers to their own book.
-  requireCap(session.roles, "insurance.view");
+  requireCap(session.roles, "insurance.view", session.permissions);
   const seesAll = can(session.roles, "investor.view.all", session.permissions) || can(session.roles, "compliance.view", session.permissions);
   const canWrite = can(session.roles, "insurance.write", session.permissions);
 

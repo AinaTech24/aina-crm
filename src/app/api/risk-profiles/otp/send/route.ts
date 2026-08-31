@@ -45,7 +45,7 @@ const Body = z.object({
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "risk_profile.manage");
+    requireCap(session.roles, "risk_profile.manage", session.permissions);
     const limited = enforce(req, "risk-profile-otp-send", { limit: 30, windowSec: 60 * 60 });
     if (limited) return limited;
 

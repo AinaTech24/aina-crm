@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 
 export default async function NewLegalRegistrationPage() {
   const session = await requireSession();
-  requireCap(session.roles, "compliance.edit");
+  requireCap(session.roles, "compliance.edit", session.permissions);
 
   // Seed "Registered in name of" with the tenant display name so the
   // common case is one click.

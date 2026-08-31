@@ -28,7 +28,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
   try {
     const session = await requireSession();
-    requireCap(session.roles, "transactions.execute");
+    requireCap(session.roles, "transactions.execute", session.permissions);
 
     const result = await withTenant(
       session.tenantId,

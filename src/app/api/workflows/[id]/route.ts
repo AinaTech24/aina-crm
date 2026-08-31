@@ -62,7 +62,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const { id } = await params;
   try {
     const session = await requireSession();
-    requireCap(session.roles, "workflow.edit");
+    requireCap(session.roles, "workflow.edit", session.permissions);
     const parse = Patch.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) return NextResponse.json({ error: "invalid body" }, { status: 400 });
 
@@ -90,7 +90,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   const { id } = await params;
   try {
     const session = await requireSession();
-    requireCap(session.roles, "workflow.edit");
+    requireCap(session.roles, "workflow.edit", session.permissions);
     await withTenant(session.tenantId, async (tx) => {
       await tx
         .update(workflows)

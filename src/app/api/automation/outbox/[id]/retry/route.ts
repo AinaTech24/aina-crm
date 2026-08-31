@@ -22,7 +22,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
   try {
     const session = await requireSession();
-    requireCap(session.roles, "workflow.edit");
+    requireCap(session.roles, "workflow.edit", session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
     if (!/^\d+$/.test(id)) return NextResponse.json({ error: "invalid id" }, { status: 400 });
     const meta = clientMetaFromHeaders(req.headers);

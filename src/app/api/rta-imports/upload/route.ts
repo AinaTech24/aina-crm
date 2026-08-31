@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
   const session = await requireSession();
   // Only ops / back-office / owner / compliance can ingest RTA files
   // (anyone who can execute transactions can also ingest the daily feed).
-  requireCap(session.roles, "transactions.execute");
+  requireCap(session.roles, "transactions.execute", session.permissions);
   await assertActiveLicense(session.tenantId, session.roles);
 
   const parsed = BodySchema.safeParse(await req.json().catch(() => ({})));

@@ -49,7 +49,7 @@ export default async function ProgressPage({
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const session = await requireSession();
-  requireCap(session.roles, "finances.view");
+  requireCap(session.roles, "finances.view", session.permissions);
   const sp = await searchParams;
   const fy = sp.fy && /^\d{4}-\d{2}$/.test(sp.fy) ? sp.fy : currentFyLabel();
   const sy = fyStartYear(fy);

@@ -66,7 +66,7 @@ export default async function TemplateDetailPage({
   if (!data) notFound();
   const { tpl, ver, allVersions } = data;
 
-  const hasApproveRole = can(session.roles, "template.approve");
+  const hasApproveRole = can(session.roles, "template.approve", session.permissions);
   const Icon = channelIcons[tpl.channel as keyof typeof channelIcons] ?? MessageSquare;
 
   return (

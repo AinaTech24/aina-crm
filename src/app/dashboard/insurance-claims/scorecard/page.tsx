@@ -17,7 +17,7 @@ const AGING_TONE = [
 
 export default async function ClaimsScorecardPage() {
   const session = await requireSession();
-  requireCap(session.roles, "insurance.view");
+  requireCap(session.roles, "insurance.view", session.permissions);
 
   const { aging, scorecard } = await withTenant(session.tenantId, async (tx) => {
     const [aging, scorecard] = await Promise.all([

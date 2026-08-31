@@ -266,7 +266,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const { id } = await params;
   try {
     const session = await requireSession();
-    requireCap(session.roles, "investor.edit.all");
+    requireCap(session.roles, "investor.edit.all", session.permissions);
     const parse = Patch.safeParse(await req.json().catch(() => ({})));
     if (!parse.success)
       return NextResponse.json({ error: "invalid body", issues: parse.error.issues }, { status: 400 });
@@ -473,7 +473,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     const session = await requireSession();
     // Permanent erasure is far more dangerous than an edit — gate on the narrow
     // delete capability (owner / compliance), not the broad edit.all.
-    requireCap(session.roles, "investor.delete");
+    requireCap(session.roles, "investor.delete", session.permissions);
     // Default delete = soft-delete into the Trash bin (recoverable until the
     // retention window elapses). `?purge=1` (Trash → "Delete permanently") does
     // the irreversible hard delete + cascade.

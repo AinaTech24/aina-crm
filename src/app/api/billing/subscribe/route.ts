@@ -37,7 +37,7 @@ const YEARLY_TOTAL_COUNT = 10;
 export async function POST(_req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "settings.billing");
+    requireCap(session.roles, "settings.billing", session.permissions);
 
     if (!(await razorpayConfigured())) {
       return NextResponse.json(

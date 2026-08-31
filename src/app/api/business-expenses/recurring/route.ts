@@ -41,7 +41,7 @@ const Body = z.discriminatedUnion("op", [CreateBody, PostMonthBody]);
 export async function GET() {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "finances.view");
+    requireCap(session.roles, "finances.view", session.permissions);
     const rows = await withTenant(session.tenantId, (tx) =>
       tx.select().from(recurringExpenses).where(eq(recurringExpenses.tenantId, session.tenantId)).orderBy(desc(recurringExpenses.createdAt))
     );
@@ -54,7 +54,7 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "finances.view");
+    requireCap(session.roles, "finances.view", session.permissions);
     const parsed = Body.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
       return NextResponse.json({ error: "invalid body", issues: parsed.error.issues }, { status: 400 });

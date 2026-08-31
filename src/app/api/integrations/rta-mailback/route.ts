@@ -34,7 +34,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   const session = await requireSession();
-  if (!can(session.roles, "transactions.execute")) {
+  if (!can(session.roles, "transactions.execute", session.permissions)) {
     return NextResponse.json({ error: "You need RTA import access (owner or back-office) to configure this." }, { status: 403 });
   }
 
@@ -130,7 +130,7 @@ const Body = z.object({
 
 export async function POST(req: NextRequest) {
   const session = await requireSession();
-  if (!can(session.roles, "transactions.execute")) {
+  if (!can(session.roles, "transactions.execute", session.permissions)) {
     return NextResponse.json({ error: "You need RTA import access (owner or back-office) to configure this." }, { status: 403 });
   }
   const parsed = Body.safeParse(await req.json().catch(() => ({})));

@@ -39,7 +39,7 @@ const KIND_TO_LEAD_STAGE: Record<string, string> = {
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "lead.edit.assigned");
+    requireCap(session.roles, "lead.edit.assigned", session.permissions);
 
     const parsed = Body.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {

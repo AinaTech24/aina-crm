@@ -20,7 +20,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   const { id } = await params;
   try {
     const session = await requireSession();
-    requireCap(session.roles, "campaign.send");
+    requireCap(session.roles, "campaign.send", session.permissions);
     const roi = await withTenant(session.tenantId, async (tx) => recomputeCampaignRoi(tx, session.tenantId, id));
     return NextResponse.json({ ok: true, ...roi });
   } catch (err: any) {

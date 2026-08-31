@@ -54,7 +54,7 @@ const COARSE_TONE: Record<string, string> = {
 
 export default async function ShortlistedSchemesPage() {
   const session = await requireSession();
-  requireCap(session.roles, "compliance.edit");
+  requireCap(session.roles, "compliance.edit", session.permissions);
   await assertActiveLicense(session.tenantId, session.roles);
 
   const data = await withTenant(session.tenantId, async (tx) => {

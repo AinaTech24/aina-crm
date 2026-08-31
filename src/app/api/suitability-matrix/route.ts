@@ -40,7 +40,7 @@ const PutBody = z.object({
 export async function GET() {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "compliance.edit");
+    requireCap(session.roles, "compliance.edit", session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
     const rows = await withTenant(session.tenantId, async (tx) => {
       return tx
@@ -57,7 +57,7 @@ export async function GET() {
 export async function PUT(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "compliance.edit");
+    requireCap(session.roles, "compliance.edit", session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
     const parse = PutBody.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) {

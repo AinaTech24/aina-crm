@@ -35,7 +35,7 @@ const ALLOWED = {
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "insurance.write");
+    requireCap(session.roles, "insurance.write", session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
 
     let form: FormData;

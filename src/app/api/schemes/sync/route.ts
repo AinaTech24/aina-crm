@@ -27,7 +27,7 @@ export const maxDuration = 300;
 export async function POST() {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "compliance.edit");
+    requireCap(session.roles, "compliance.edit", session.permissions);
 
     // 0. Is the shared AMFI universe present AND carrying the scheme-type/category
     //    metadata? A catalog seeded before that metadata existed has rows but no

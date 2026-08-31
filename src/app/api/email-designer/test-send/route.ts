@@ -46,7 +46,7 @@ function resolveSubject(subject: string): string {
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "template.edit");
+    requireCap(session.roles, "template.edit", session.permissions);
     const { body, to } = await req.json().catch(() => ({ body: null }));
     if (!body) return NextResponse.json({ error: "missing body" }, { status: 400 });
 

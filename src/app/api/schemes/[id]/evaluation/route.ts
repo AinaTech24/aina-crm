@@ -44,7 +44,7 @@ export async function PUT(
 ) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "compliance.edit");
+    requireCap(session.roles, "compliance.edit", session.permissions);
     const { id } = await params;
     const parse = EvalBody.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) {

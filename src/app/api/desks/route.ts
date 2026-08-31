@@ -18,7 +18,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "settings.desks");
+    requireCap(session.roles, "settings.desks", session.permissions);
     const data = await withTenant(session.tenantId, async (tx) => loadDeskBoard(tx));
     return NextResponse.json(data);
   } catch (err) {
@@ -35,7 +35,7 @@ const CreateBody = z.object({
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "settings.desks");
+    requireCap(session.roles, "settings.desks", session.permissions);
     const parsed = CreateBody.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
       return NextResponse.json({ error: "invalid input", issues: parsed.error.issues }, { status: 400 });

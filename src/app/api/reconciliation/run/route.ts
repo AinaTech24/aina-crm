@@ -17,7 +17,7 @@ export const dynamic = "force-dynamic";
 export async function POST(_req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "transactions.execute");
+    requireCap(session.roles, "transactions.execute", session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
     const result = await withTenant(
       session.tenantId,

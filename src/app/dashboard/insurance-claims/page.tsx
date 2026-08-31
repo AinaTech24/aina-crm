@@ -33,7 +33,7 @@ const PAGE_SIZE = 50;
 
 export default async function ClaimsPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const session = await requireSession();
-  requireCap(session.roles, "insurance.view");
+  requireCap(session.roles, "insurance.view", session.permissions);
   const sp = await searchParams;
   const status = sp.status && (CLAIM_STATUSES as readonly string[]).includes(sp.status) ? sp.status : "";
   // Claim-MODE filter (cashless / reimbursement / grievance) — a separate axis

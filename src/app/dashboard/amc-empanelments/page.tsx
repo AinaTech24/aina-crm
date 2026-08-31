@@ -33,7 +33,7 @@ export default async function AmcEmpanelmentsListPage({
   // Viewing the empanelment list is operational data — owner + compliance +
   // ops/back-office (settings.masters) can read it. Creating/editing stays
   // gated on compliance.edit at the action + API level.
-  requireAny(session.roles, ["compliance.view", "compliance.edit", "settings.masters"]);
+  requireAny(session.roles, ["compliance.view", "compliance.edit", "settings.masters"], session.permissions);
   await assertActiveLicense(session.tenantId, session.roles);
   const sp = await searchParams;
   const statusFilter = sp.status ?? "empanelled";

@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireSession();
-  requireCap(session.roles, "workflow.edit");
+  requireCap(session.roles, "workflow.edit", session.permissions);
   const { id } = await params;
 
   const row = await withTenant(session.tenantId, async (tx) => {

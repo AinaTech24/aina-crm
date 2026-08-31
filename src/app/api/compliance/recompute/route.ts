@@ -17,7 +17,7 @@ const DEDUP_WINDOW_MIN = 5;
 export async function POST(_req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "compliance.edit");
+    requireCap(session.roles, "compliance.edit", session.permissions);
 
     const result = await withTenant(session.tenantId, async (tx) => {
       // Dedup: if a score was computed very recently, return it as-is.

@@ -26,7 +26,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
   try {
     const session = await requireSession();
-    requireCap(session.roles, "workflow.edit");
+    requireCap(session.roles, "workflow.edit", session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
     // Validate the id shape so a malformed value returns a clean 400 rather than
     // a 500 on the uuid cast (parity with the outbox-retry route's bigint guard).

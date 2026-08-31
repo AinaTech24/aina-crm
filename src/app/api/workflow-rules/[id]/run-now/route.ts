@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "workflow.edit");
+    requireCap(session.roles, "workflow.edit", session.permissions);
     const { id } = await params;
     const body = await req.json().catch(() => ({}));
     const subjectId = String(body?.subjectId ?? "");

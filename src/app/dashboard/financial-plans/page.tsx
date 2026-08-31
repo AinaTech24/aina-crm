@@ -42,7 +42,7 @@ export default async function FinancialPlansPage({
   // require the view capability and scope non-managers to plans they prepared
   // (the page had NO gate and showed firm-wide net-worth/surplus KPIs to any
   // role).
-  requireCap(session.roles, "financial_plan.view");
+  requireCap(session.roles, "financial_plan.view", session.permissions);
   const seesAll = can(session.roles, "investor.view.all", session.permissions) || can(session.roles, "compliance.view", session.permissions);
   const sp = await searchParams;
   const q = (sp.q ?? "").trim();

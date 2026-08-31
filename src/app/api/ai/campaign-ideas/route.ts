@@ -33,7 +33,7 @@ const Body = z.union([
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "campaign.send");
+    requireCap(session.roles, "campaign.send", session.permissions);
     const parse = Body.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) {
       return NextResponse.json(

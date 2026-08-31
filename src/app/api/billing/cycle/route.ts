@@ -25,7 +25,7 @@ const Body = z.object({ cycle: z.enum(["monthly", "yearly"]) });
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "settings.billing");
+    requireCap(session.roles, "settings.billing", session.permissions);
 
     const parsed = Body.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {

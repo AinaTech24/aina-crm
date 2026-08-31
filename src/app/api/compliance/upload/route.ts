@@ -31,7 +31,7 @@ const KINDS = new Set(["compliance", "kyc", "marketing", "general"]);
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "document.upload");
+    requireCap(session.roles, "document.upload", session.permissions);
 
     const form = await req.formData().catch(() => null);
     if (!form) return NextResponse.json({ error: "expected multipart/form-data" }, { status: 400 });

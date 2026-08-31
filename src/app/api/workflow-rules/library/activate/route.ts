@@ -39,7 +39,7 @@ function referencedTemplateKeys(input: any): string[] {
 
 export async function POST(req: NextRequest) {
   const session = await requireSession();
-  requireCap(session.roles, "workflow.edit");
+  requireCap(session.roles, "workflow.edit", session.permissions);
 
   const body = await req.json().catch(() => ({}));
   const key = String((body as { key?: string }).key ?? "");

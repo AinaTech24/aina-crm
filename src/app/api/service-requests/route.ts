@@ -97,7 +97,7 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "service_request.manage");
+    requireCap(session.roles, "service_request.manage", session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
     const parse = CreateBody.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) return NextResponse.json({ error: "invalid body", issues: parse.error.issues }, { status: 400 });

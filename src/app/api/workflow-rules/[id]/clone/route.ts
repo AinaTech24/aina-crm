@@ -23,7 +23,7 @@ function cloneName(name: string): string {
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "workflow.edit");
+    requireCap(session.roles, "workflow.edit", session.permissions);
     const { id } = await params;
     const meta = clientMetaFromHeaders(req.headers);
 

@@ -22,7 +22,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const { id } = await params;
   try {
     const session = await requireSession();
-    requireCap(session.roles, "proposal.view");
+    requireCap(session.roles, "proposal.view", session.permissions);
     // Managers (full client view / compliance) see any proposal; everyone else
     // only the proposals they prepared — mirrors the collection GET. Otherwise
     // any role could pull any client's proposal PDF (recommendations, amounts).

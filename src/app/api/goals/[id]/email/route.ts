@@ -29,7 +29,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const session = await requireSession();
     // Emailing a client is a managed action — gate it (this route was open to
     // ANY logged-in user) and, for non-managers, scope to the goal's own RM.
-    requireCap(session.roles, "goal.manage");
+    requireCap(session.roles, "goal.manage", session.permissions);
     const canViewAll = can(session.roles, "investor.view.all", session.permissions);
     const meta = clientMetaFromHeaders(req.headers);
 

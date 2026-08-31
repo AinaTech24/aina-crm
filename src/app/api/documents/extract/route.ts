@@ -48,7 +48,7 @@ function toIso(raw: string): string | null {
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "document.upload");
+    requireCap(session.roles, "document.upload", session.permissions);
 
     const form = await req.formData().catch(() => null);
     const file = form?.get("file");

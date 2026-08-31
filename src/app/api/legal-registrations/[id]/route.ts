@@ -79,7 +79,7 @@ export async function GET(
 ) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "compliance.edit");
+    requireCap(session.roles, "compliance.edit", session.permissions);
     const { id } = await params;
     const row = await withTenant(session.tenantId, async (tx) => {
       const [r] = await tx
@@ -102,7 +102,7 @@ export async function PATCH(
 ) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "compliance.edit");
+    requireCap(session.roles, "compliance.edit", session.permissions);
     const { id } = await params;
     const parse = PatchBody.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) {
@@ -158,7 +158,7 @@ export async function DELETE(
 ) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "compliance.edit");
+    requireCap(session.roles, "compliance.edit", session.permissions);
     const { id } = await params;
     const meta = clientMetaFromHeaders(req.headers);
 

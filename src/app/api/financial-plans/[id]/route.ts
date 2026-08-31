@@ -94,7 +94,7 @@ export async function GET(
   try {
     const { id } = await params;
     const session = await requireSession();
-    requireCap(session.roles, "financial_plan.view");
+    requireCap(session.roles, "financial_plan.view", session.permissions);
     const seesAll = can(session.roles, "investor.view.all", session.permissions) || can(session.roles, "compliance.view", session.permissions);
 
     const row = await withTenant(session.tenantId, async (tx) => {
@@ -144,7 +144,7 @@ export async function PATCH(
   try {
     const { id } = await params;
     const session = await requireSession();
-    requireCap(session.roles, "financial_plan.manage");
+    requireCap(session.roles, "financial_plan.manage", session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
     const seesAll = can(session.roles, "investor.view.all", session.permissions) || can(session.roles, "compliance.view", session.permissions);
 
@@ -234,7 +234,7 @@ export async function DELETE(
   try {
     const { id } = await params;
     const session = await requireSession();
-    requireCap(session.roles, "financial_plan.manage");
+    requireCap(session.roles, "financial_plan.manage", session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
     const seesAll = can(session.roles, "investor.view.all", session.permissions) || can(session.roles, "compliance.view", session.permissions);
     const clientMeta = clientMetaFromHeaders(req.headers);

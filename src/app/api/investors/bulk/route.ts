@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
     // Bulk reassign/retier/segment the book is a privileged mutation — gate it
     // exactly like the single-investor PATCH (investor.edit.all) instead of
     // letting any authenticated session through.
-    requireCap(session.roles, "investor.edit.all");
+    requireCap(session.roles, "investor.edit.all", session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
     const parsed = Body.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
     // Permanent bulk erasure (up to 1000 clients + cascaded data) is far more
     // dangerous than a re-tag — gate it on the narrow delete capability, not the
     // broad edit.all this route otherwise runs on.
-    if (action === "delete") requireCap(session.roles, "investor.delete");
+    if (action === "delete") requireCap(session.roles, "investor.delete", session.permissions);
     const meta = clientMetaFromHeaders(req.headers);
 
     const patch: Record<string, any> = { updatedAt: new Date() };

@@ -24,7 +24,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const { id } = await params;
   try {
     const session = await requireSession();
-    requireCap(session.roles, "reports.manage");
+    requireCap(session.roles, "reports.manage", session.permissions);
     const format = (new URL(req.url).searchParams.get("format") ?? "xlsx").toLowerCase() === "csv" ? "csv" : "xlsx";
 
     const data = await withTenant(session.tenantId, async (tx) => {

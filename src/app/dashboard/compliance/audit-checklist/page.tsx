@@ -17,7 +17,7 @@ export const dynamic = "force-dynamic";
 
 export default async function AuditChecklistPage() {
   const session = await requireSession();
-  requireCap(session.roles, "compliance.edit");
+  requireCap(session.roles, "compliance.edit", session.permissions);
 
   const rows = await withTenant(session.tenantId, async (tx) => {
     return tx

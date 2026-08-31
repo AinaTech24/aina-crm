@@ -36,7 +36,7 @@ const Body = z.object({
 export async function GET() {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "insurance.view");
+    requireCap(session.roles, "insurance.view", session.permissions);
     const seesAll =
       can(session.roles, "investor.view.all", session.permissions) || can(session.roles, "compliance.view", session.permissions);
     const rows = await withTenant(session.tenantId, async (tx) => {
@@ -61,7 +61,7 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "insurance.write");
+    requireCap(session.roles, "insurance.write", session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
     const parse = Body.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) return NextResponse.json({ error: "invalid body", issues: parse.error.issues }, { status: 400 });

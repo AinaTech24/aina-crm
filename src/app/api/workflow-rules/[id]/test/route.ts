@@ -44,7 +44,7 @@ async function loadRule(tx: any, tenantId: string, id: string) {
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "workflow.edit");
+    requireCap(session.roles, "workflow.edit", session.permissions);
     const { id } = await params;
 
     const out = await withTenant(session.tenantId, async (tx) => {
@@ -77,7 +77,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "workflow.edit");
+    requireCap(session.roles, "workflow.edit", session.permissions);
     const { id } = await params;
     const body = await req.json().catch(() => ({}));
     const subjectId = String(body?.subjectId ?? "");

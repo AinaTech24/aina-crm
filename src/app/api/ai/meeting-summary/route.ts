@@ -27,7 +27,7 @@ const Body = z.object({
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "review_meeting.manage.all");
+    requireCap(session.roles, "review_meeting.manage.all", session.permissions);
     const parse = Body.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) {
       return NextResponse.json(

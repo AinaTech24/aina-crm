@@ -29,7 +29,7 @@ export const dynamic = "force-dynamic";
 export default async function CampaignDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const session = await requireSession();
-  requireCap(session.roles, "campaign.send");
+  requireCap(session.roles, "campaign.send", session.permissions);
   const data = await withTenant(session.tenantId, async (tx) => {
     const c = (await tx.select().from(campaigns).where(and(eq(campaigns.id, id), eq(campaigns.tenantId, session.tenantId))).limit(1))[0];
     if (!c) return null;

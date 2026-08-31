@@ -112,8 +112,8 @@ export async function GET(req: NextRequest) {
     // the data by hitting the API directly (the sidebar already hides it).
     await assertModuleEnabled(session.tenantId, "client_master", session.roles);
     // Block roles with no investor visibility (e.g. marketing per spec § 3)
-    const seesAll = can(session.roles, "investor.view.all");
-    const seesAssigned = can(session.roles, "investor.view.assigned");
+    const seesAll = can(session.roles, "investor.view.all", session.permissions);
+    const seesAssigned = can(session.roles, "investor.view.assigned", session.permissions);
     if (!seesAll && !seesAssigned) {
       return NextResponse.json({ error: "forbidden: missing investor.view" }, { status: 403 });
     }
@@ -181,7 +181,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "investor.edit.all");
+    requireCap(session.roles, "investor.edit.all", session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
     // Plan client-count gate — enforce the maxInvestors the package advertises.
     await assertInvestorQuota(session.tenantId, session.roles, 1);

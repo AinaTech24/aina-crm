@@ -36,7 +36,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
   try {
     const session = await requireSession();
-    requireCap(session.roles, "lead.edit.assigned");
+    requireCap(session.roles, "lead.edit.assigned", session.permissions);
 
     const body = await req.json().catch(() => ({}));
     const clientType = (["individual", "huf", "nri", "minor", "company", "trust"].includes(body?.clientType)

@@ -19,7 +19,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   const { id } = await params;
   try {
     const session = await requireSession();
-    requireCap(session.roles, "investor.delete");
+    requireCap(session.roles, "investor.delete", session.permissions);
 
     const outcome = await withTenant(session.tenantId, async (tx) => {
       const restored = await tx

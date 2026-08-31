@@ -19,7 +19,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
   try {
     const session = await requireSession();
-    requireCap(session.roles, "template.approve");
+    requireCap(session.roles, "template.approve", session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
 
     const bodyParse = RejectBody.safeParse(await req.json().catch(() => ({})));

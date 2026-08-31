@@ -17,7 +17,7 @@ export const dynamic = "force-dynamic";
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "finances.view");
+    requireCap(session.roles, "finances.view", session.permissions);
     const { id } = await params;
     const meta = clientMetaFromHeaders(req.headers);
 

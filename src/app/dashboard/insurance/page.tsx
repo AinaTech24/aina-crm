@@ -80,7 +80,7 @@ export default async function InsurancePage({
   // Policies carry nominee PII, client PAN, premium + commission — require the
   // view capability (the page had NO gate) and scope non-managers to their own
   // book (a client they manage OR a policy they sold).
-  requireCap(session.roles, "insurance.view");
+  requireCap(session.roles, "insurance.view", session.permissions);
   const seesAll = can(session.roles, "investor.view.all", session.permissions) || can(session.roles, "compliance.view", session.permissions);
   const sp = await searchParams;
   const q = (sp.q ?? "").trim();

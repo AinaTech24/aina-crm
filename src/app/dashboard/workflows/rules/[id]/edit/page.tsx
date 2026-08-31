@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 
 export default async function EditRulePage({ params }: { params: Promise<{ id: string }> }) {
   const session = await requireSession();
-  if (!can(session.roles, "workflow.edit")) redirect("/dashboard/workflows/rules");
+  if (!can(session.roles, "workflow.edit", session.permissions)) redirect("/dashboard/workflows/rules");
   const { id } = await params;
 
   const rule = await withTenant(session.tenantId, async (tx) => {

@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
     const session = await requireSession();
     // Preview runs COUNT(*) + sample over tenant data — gate it like segment
     // creation so it isn't an open enumeration endpoint for any logged-in user.
-    requireCap(session.roles, "segments.manage");
+    requireCap(session.roles, "segments.manage", session.permissions);
     const body = await req.json().catch(() => ({}));
 
     const subject: string = body.subject ?? "investor";

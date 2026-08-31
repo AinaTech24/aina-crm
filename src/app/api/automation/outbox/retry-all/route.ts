@@ -20,7 +20,7 @@ export const dynamic = "force-dynamic";
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "workflow.edit");
+    requireCap(session.roles, "workflow.edit", session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
     const meta = clientMetaFromHeaders(req.headers);
 

@@ -24,7 +24,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { id: recipeKey } = await params;
   try {
     const session = await requireSession();
-    requireCap(session.roles, "workflow.edit");
+    requireCap(session.roles, "workflow.edit", session.permissions);
     const recipe = ALL_RECIPES.find((r) => r.key === recipeKey);
     if (!recipe) return NextResponse.json({ error: "recipe not found" }, { status: 404 });
 

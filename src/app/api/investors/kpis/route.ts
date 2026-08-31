@@ -20,7 +20,7 @@ export async function GET() {
   try {
     const session = await requireSession();
     await assertModuleEnabled(session.tenantId, "client_master", session.roles);
-    if (!can(session.roles, "investor.view.all") && !can(session.roles, "investor.view.assigned")) {
+    if (!can(session.roles, "investor.view.all", session.permissions) && !can(session.roles, "investor.view.assigned", session.permissions)) {
       return NextResponse.json({ error: "forbidden: missing investor.view" }, { status: 403 });
     }
 

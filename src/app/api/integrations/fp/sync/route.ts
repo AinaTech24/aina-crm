@@ -22,7 +22,7 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   const session = await requireSession();
-  requireCap(session.roles, "transactions.execute");
+  requireCap(session.roles, "transactions.execute", session.permissions);
   await assertActiveLicense(session.tenantId, session.roles);
 
   // Fail fast if THIS firm hasn't configured FP (their own creds, or env fallback).

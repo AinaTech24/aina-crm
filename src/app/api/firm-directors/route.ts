@@ -70,7 +70,7 @@ const PostBody = z.object({
 export async function GET(_req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "compliance.edit");
+    requireCap(session.roles, "compliance.edit", session.permissions);
     const rows = await withTenant(session.tenantId, async (tx) => {
       return tx
         .select()
@@ -87,7 +87,7 @@ export async function GET(_req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "compliance.edit");
+    requireCap(session.roles, "compliance.edit", session.permissions);
     const parse = PostBody.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) {
       return NextResponse.json(

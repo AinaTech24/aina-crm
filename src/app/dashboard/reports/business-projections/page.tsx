@@ -29,7 +29,7 @@ const FREQ_TO_MONTHLY: Record<string, number> = {
 
 export default async function BusinessProjectionsPage() {
   const session = await requireSession();
-  requireCap(session.roles, "reports.commission");
+  requireCap(session.roles, "reports.commission", session.permissions);
 
   const live = await withTenant(
     session.tenantId,

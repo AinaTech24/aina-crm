@@ -198,7 +198,10 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "investor.edit.all");
+    // A household is grouped by whoever services it: an RM builds families out
+    // of their own book, so investor.edit.assigned is enough. Requiring
+    // .edit.all here blocked every RM and team member from creating one.
+    requireAny(session.roles, ["investor.edit.all", "investor.edit.assigned"], session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
 
     const parse = Body.safeParse(await req.json().catch(() => ({})));

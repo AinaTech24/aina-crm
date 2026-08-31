@@ -29,7 +29,7 @@ export async function POST(
   const { id: assetId } = await params;
   try {
     const session = await requireSession();
-    requireCap(session.roles, "communication.send");
+    requireCap(session.roles, "communication.send", session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
     const clientMeta = clientMetaFromHeaders(req.headers);
     const body = await req.json().catch(() => ({}));

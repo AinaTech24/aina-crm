@@ -37,7 +37,7 @@ export async function PATCH(req: NextRequest) {
     const { entity, recordId, values } = parse.data;
 
     if (entity === "lead") requireAny(session.roles, ["lead.edit.all", "lead.edit.assigned"], session.permissions);
-    else requireCap(session.roles, "investor.edit.all");
+    else requireCap(session.roles, "investor.edit.all", session.permissions);
 
     const result = await withTenant(session.tenantId, async (tx) => {
       // Sanitize against the firm's definitions for this entity.

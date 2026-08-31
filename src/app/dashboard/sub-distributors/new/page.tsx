@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 export default async function NewSubDistributorPage() {
   const session = await requireSession();
-  requireCap(session.roles, "compliance.edit");
+  requireCap(session.roles, "compliance.edit", session.permissions);
 
   return (
     <div className="space-y-5 max-w-3xl">

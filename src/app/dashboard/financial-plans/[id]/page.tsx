@@ -40,7 +40,7 @@ export default async function FinancialPlanDetailPage({
 }) {
   const { id } = await params;
   const session = await requireSession();
-  requireCap(session.roles, "financial_plan.view");
+  requireCap(session.roles, "financial_plan.view", session.permissions);
   const seesAll = can(session.roles, "investor.view.all", session.permissions) || can(session.roles, "compliance.view", session.permissions);
 
   const data = await withTenant(session.tenantId, async (tx) => {

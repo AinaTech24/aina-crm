@@ -22,7 +22,7 @@ export default async function AinaLibraryPage({
   const categoryFilter = (sp.category ?? "").split(",").filter(Boolean);
   const typeFilter = (sp.type ?? "").split(",").filter(Boolean);
 
-  const canUpload = can(session.roles, "template.edit");
+  const canUpload = can(session.roles, "template.edit", session.permissions);
 
   // Platform-shared assets (tenant_id IS NULL) PLUS this tenant's own uploads.
   // Run in tenant context: the bespoke RLS policy on content_library_assets

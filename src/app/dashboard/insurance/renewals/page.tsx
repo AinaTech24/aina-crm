@@ -24,7 +24,7 @@ const BUCKET_LABEL: Record<Bucket, string> = { overdue: "Overdue (in grace)", th
 
 export default async function RenewalsPage({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const session = await requireSession();
-  requireCap(session.roles, "insurance.view");
+  requireCap(session.roles, "insurance.view", session.permissions);
   const seesAll = can(session.roles, "investor.view.all", session.permissions) || can(session.roles, "compliance.view", session.permissions);
   // Marking a policy renewed is a write — gate it honestly (was `… || true`,
   // which made everyone a "manager").

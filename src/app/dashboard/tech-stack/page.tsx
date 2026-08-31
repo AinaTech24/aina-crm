@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic";
 
 export default async function TechStackPage() {
   const session = await requireSession();
-  requireCap(session.roles, "reports.commission");
+  requireCap(session.roles, "reports.commission", session.permissions);
 
   const rows = await withTenant(session.tenantId, async (tx) => {
     return tx
