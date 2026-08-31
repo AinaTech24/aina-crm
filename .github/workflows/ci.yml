@@ -1,8 +1,11 @@
 name: CI
 
+# Run on EVERY branch, not just main/master. Day-to-day work happens on feature
+# branches (feat/…) and this repo rarely opens PRs, so the old filter meant CI
+# effectively never ran: the checks below — typecheck, RBAC gating, migration
+# numbering, RLS coverage — only fired on branches nobody pushes to.
 on:
   push:
-    branches: [main, master]
   pull_request:
 
 jobs:
