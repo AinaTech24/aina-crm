@@ -7,7 +7,11 @@ import { UserPlus, X, Search, Loader2, Check } from "lucide-react";
 type Investor = {
   id: string;
   name: string;
-  pan: string;
+  // PAN is genuinely optional — RTA mailback imports create folio-keyed
+  // investors before a PAN is known (15 of VSN Financial Services' 86 clients
+  // have none). Typing it as `string` let the search below call .toLowerCase()
+  // on null, which threw and took the whole page down.
+  pan?: string | null;
   segmentTag?: string | null;
   familyId?: string | null;
 };
@@ -52,8 +56,8 @@ export function AddMemberDialog({ familyId, familyName }: { familyId: string; fa
       if (i.familyId === familyId) return false;
       if (!q) return true;
       return (
-        i.name.toLowerCase().includes(q) ||
-        i.pan.toLowerCase().includes(q)
+        (i.name ?? "").toLowerCase().includes(q) ||
+        (i.pan ?? "").toLowerCase().includes(q)
       );
     });
   }, [investors, search, familyId]);
@@ -181,7 +185,7 @@ export function AddMemberDialog({ familyId, familyName }: { familyId: string; fa
                           <div>
                             <div className="font-medium">{i.name}</div>
                             <div className="text-xs text-muted-foreground font-mono">
-                              {i.pan} {i.segmentTag && <span>· {i.segmentTag}</span>}
+                              {i.pan ?? "PAN not set"} {i.segmentTag && <span>· {i.segmentTag}</span>}
                               {i.familyId && <span className="ml-1 text-amber-600">· already in another family</span>}
                             </div>
                           </div>

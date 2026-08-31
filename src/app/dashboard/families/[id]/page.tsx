@@ -18,6 +18,7 @@ import { FamilyTreeVisualizer } from "@/components/families/FamilyTreeVisualizer
 import { RecordProvenance } from "@/components/common/RecordProvenance";
 import { DownloadButton } from "@/components/common/SecureLinkButtons";
 import { CalendarPlus } from "lucide-react";
+import { SuccessionReadiness } from "@/components/families/SuccessionReadiness";
 
 export const dynamic = "force-dynamic";
 
@@ -190,7 +191,7 @@ export default async function FamilyDetailPage({ params }: { params: Promise<{ i
           icon={Users}
           label="Primary client"
           value={data.primary?.name ?? "Not set"}
-          sub={data.primary ? `PAN ${data.primary.pan}` : "Link a head investor"}
+          sub={data.primary ? (data.primary.pan ? `PAN ${data.primary.pan}` : "PAN not set") : "Link a head investor"}
           tone={!data.primary ? "warn" : undefined}
         />
         <InfoCard
@@ -217,6 +218,8 @@ export default async function FamilyDetailPage({ params }: { params: Promise<{ i
           tone={nomineePct < 100 ? "warn" : undefined}
         />
       </div>
+
+      <SuccessionReadiness members={data.members} primaryInvestorId={data.family.primaryInvestorId} />
 
       {/* Members */}
       <div className="border rounded-lg bg-card">
@@ -269,7 +272,7 @@ export default async function FamilyDetailPage({ params }: { params: Promise<{ i
                     <td className="py-3 text-xs">
                       {m.familyRole ? ROLE_LABELS[m.familyRole] ?? m.familyRole : "—"}
                     </td>
-                    <td className="py-3 text-xs font-mono text-muted-foreground">{m.pan}</td>
+                    <td className="py-3 text-xs font-mono text-muted-foreground">{m.pan ?? "—"}</td>
                     <td className="py-3 text-xs">{m.segmentTag ?? "—"}</td>
                     <td className="py-3 text-right tabular-nums">{formatINR(Number(m.aum ?? 0))}</td>
                     <td className="py-3 text-right tabular-nums text-muted-foreground">
