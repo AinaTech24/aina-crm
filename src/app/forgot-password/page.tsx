@@ -1,87 +1,36 @@
-"use client";
+import { headers } from "next/headers";
+import { AuthPanelLayout } from "@/components/auth/AuthPanelLayout";
+import { ForgotPasswordForm } from "@/components/auth/ForgotPasswordForm";
+import { resolveLoginBrandingByHost } from "@/lib/tenant/host";
 
-import { useState } from "react";
-import Link from "next/link";
+// Same host-based white-label resolution as /login — a firm on its own domain
+// kept seeing the Aina wordmark the moment it clicked "Forgot?", which broke the
+// illusion mid-flow.
+export const dynamic = "force-dynamic";
 
-export default function ForgotPasswordPage() {
-  const [email, setEmail] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [done, setDone] = useState(false);
-  const [devLink, setDevLink] = useState<string | null>(null);
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    try {
-      const res = await fetch("/api/auth/forgot", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email }),
-      });
-      const j = await res.json();
-      setDone(true);
-      if (j.devResetUrl) setDevLink(j.devResetUrl);
-    } finally {
-      setBusy(false);
-    }
-  }
+export default async function ForgotPasswordPage() {
+  const h = await headers();
+  const host = h.get("x-forwarded-host") ?? h.get("host");
+  const branding = await resolveLoginBrandingByHost(host).catch(() => null);
 
   return (
-    <main className="min-h-screen grid place-items-center px-4">
-      <div className="w-full max-w-sm">
-        <Link href="/" className="inline-flex items-center mb-8">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/aina-wordmark.png" alt="Aina CRM" className="h-7 w-auto" />
-        </Link>
-        <h1 className="text-2xl font-bold tracking-tight">Forgot password</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          We'll email a reset link to your work address. The link is good for 1 hour.
-        </p>
-
-        {!done ? (
-          <form onSubmit={submit} className="mt-6 space-y-3">
-            <div>
-              <label className="text-xs font-medium block mb-1">Email</label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                autoComplete="email"
-                className="w-full border rounded-md px-3 py-2 text-sm bg-background"
-              />
-            </div>
-            <button
-              disabled={busy}
-              className="w-full rounded-md bg-primary text-primary-foreground px-3 py-2 text-sm font-medium disabled:opacity-50"
-            >
-              {busy ? "Sending…" : "Send reset link"}
-            </button>
-          </form>
-        ) : (
-          <div className="mt-6 border rounded-md p-4 bg-emerald-50 border-emerald-300 text-sm text-emerald-900">
-            If an account exists for <strong>{email}</strong>, a reset link is on the way. Check your inbox.
-            {devLink && (
-              <>
-                <hr className="my-3 border-emerald-200" />
-                <div className="text-xs text-emerald-800">
-                  <strong>Dev mode:</strong> use this link directly:
-                </div>
-                <Link
-                  href={devLink}
-                  className="block mt-1 text-xs font-mono break-all text-emerald-800 underline"
-                >
-                  {devLink}
-                </Link>
-              </>
-            )}
-          </div>
-        )}
-
-        <p className="mt-4 text-xs text-muted-foreground">
-          <Link href="/login" className="hover:underline">Back to sign in</Link>
-        </p>
-      </div>
-    </main>
+    <>
+      {branding?.themeCss ? <style dangerouslySetInnerHTML={{ __html: branding.themeCss }} /> : null}
+      <AuthPanelLayout
+        eyebrow="Account recovery"
+        title="Locked out? You'll be back in a minute."
+        sub="We'll email a single-use link to your work address. It expires in an hour, so nobody can dig it out of an old inbox later."
+        points={[
+          "One-time link, valid for 1 hour",
+          "Sent only to your registered work email",
+          "Your data stays exactly as you left it",
+          "Need help? Ask your firm admin",
+        ]}
+        brandLogoUrl={branding?.logoUrl ?? null}
+        brandName={branding?.name ?? null}
+      >
+        <ForgotPasswordForm />
+      </AuthPanelLayout>
+    </>
   );
 }

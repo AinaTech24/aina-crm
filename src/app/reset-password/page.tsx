@@ -1,99 +1,70 @@
-"use client";
-
-import { Suspense, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { headers } from "next/headers";
 import Link from "next/link";
+import { TriangleAlert } from "lucide-react";
+import { AuthPanelLayout } from "@/components/auth/AuthPanelLayout";
+import { ResetPasswordForm } from "@/components/auth/ResetPasswordForm";
+import { resolveLoginBrandingByHost } from "@/lib/tenant/host";
 
-function ResetPasswordInner() {
-  const router = useRouter();
-  const params = useSearchParams();
-  const token = params.get("token") ?? "";
-  const [password, setPassword] = useState("");
-  const [confirm, setConfirm] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+// The token arrives in the query string, so this page is per-request anyway.
+// Reading it server-side removes the useSearchParams/Suspense dance the old
+// version needed and lets the missing-token case render without a flash.
+export const dynamic = "force-dynamic";
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setErr(null);
-    if (password !== confirm) {
-      setErr("Passwords don't match");
-      return;
-    }
-    setBusy(true);
-    try {
-      const res = await fetch("/api/auth/reset", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ token, password }),
-      });
-      const j = await res.json();
-      if (!res.ok) {
-        setErr(j.error ?? "Reset failed");
-        return;
-      }
-      router.push("/dashboard");
-    } finally {
-      setBusy(false);
-    }
-  }
+export default async function ResetPasswordPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ token?: string }>;
+}) {
+  const { token } = await searchParams;
+  const h = await headers();
+  const host = h.get("x-forwarded-host") ?? h.get("host");
+  const branding = await resolveLoginBrandingByHost(host).catch(() => null);
+
+  const shell = (children: React.ReactNode) => (
+    <>
+      {branding?.themeCss ? <style dangerouslySetInnerHTML={{ __html: branding.themeCss }} /> : null}
+      <AuthPanelLayout
+        eyebrow="Account recovery"
+        title="Choose a new password."
+        sub="Pick something you don't use anywhere else. We'll sign you straight back in once it's saved."
+        points={[
+          "At least 8 characters",
+          "Signs you in immediately",
+          "Other sessions stay as they are",
+          "The reset link can't be reused",
+        ]}
+        brandLogoUrl={branding?.logoUrl ?? null}
+        brandName={branding?.name ?? null}
+      >
+        {children}
+      </AuthPanelLayout>
+    </>
+  );
 
   if (!token) {
-    return (
-      <main className="min-h-screen grid place-items-center">
-        <div className="max-w-sm text-center">
-          <h1 className="text-xl font-bold">Invalid link</h1>
-          <p className="text-sm text-muted-foreground mt-2">No reset token provided.</p>
-          <Link href="/login" className="text-sm text-primary hover:underline mt-4 inline-block">Back to sign in</Link>
+    return shell(
+      <>
+        <div className="size-12 rounded-2xl bg-amber-50 border border-amber-200 grid place-items-center">
+          <TriangleAlert className="size-6 text-amber-600" />
         </div>
-      </main>
+        <h1 className="mt-5 text-[1.9rem] font-extrabold tracking-tight text-foreground leading-tight">
+          Link looks incomplete
+        </h1>
+        <p className="text-muted-foreground mt-2 text-sm">
+          This page needs the reset token from your email. Some mail apps trim long links — try
+          opening it from the email again, or request a fresh one.
+        </p>
+        <Link href="/forgot-password" className="btn-primary w-full mt-6">
+          Request a new link
+        </Link>
+        <p className="mt-4 text-center">
+          <Link href="/login" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+            Back to sign in
+          </Link>
+        </p>
+      </>
     );
   }
 
-  return (
-    <main className="min-h-screen grid place-items-center px-4">
-      <div className="w-full max-w-sm">
-        <h1 className="text-2xl font-bold tracking-tight">Reset your password</h1>
-        <form onSubmit={submit} className="mt-6 space-y-3">
-          <div>
-            <label className="text-xs font-medium block mb-1">New password (8+)</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              autoComplete="new-password"
-              className="w-full border rounded-md px-3 py-2 text-sm bg-background"
-            />
-          </div>
-          <div>
-            <label className="text-xs font-medium block mb-1">Confirm</label>
-            <input
-              type="password"
-              value={confirm}
-              onChange={(e) => setConfirm(e.target.value)}
-              required
-              autoComplete="new-password"
-              className="w-full border rounded-md px-3 py-2 text-sm bg-background"
-            />
-          </div>
-          {err && <div className="text-sm text-rose-600">{err}</div>}
-          <button
-            disabled={busy || password.length < 8}
-            className="w-full rounded-md bg-primary text-primary-foreground px-3 py-2 text-sm font-medium disabled:opacity-50"
-          >
-            {busy ? "Resetting…" : "Set new password"}
-          </button>
-        </form>
-      </div>
-    </main>
-  );
-}
-
-export default function ResetPasswordPage() {
-  return (
-    <Suspense fallback={null}>
-      <ResetPasswordInner />
-    </Suspense>
-  );
+  return shell(<ResetPasswordForm token={token} />);
 }
