@@ -40,7 +40,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   try {
     const session = await requireSession();
     // Require an investor-view capability (this GET was open to any role).
-    requireAny(session.roles, ["investor.view.all", "investor.view.assigned"], session.permissions);
+    requireAny(session.roles, ["family.view", "investor.view.all", "investor.view.assigned"], session.permissions);
     const row = await withTenant(session.tenantId, async (tx) =>
       (await tx.select().from(families).where(and(eq(families.id, id), eq(families.tenantId, session.tenantId))).limit(1))[0] ?? null
     );
@@ -58,7 +58,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     // Same rule as create — the RM who services the household may edit it.
     // (DELETE below stays at .edit.all: removing a household touches every
     // client linked to it.)
-    requireAny(session.roles, ["investor.edit.all", "investor.edit.assigned"], session.permissions);
+    requireAny(session.roles, ["family.manage", "investor.edit.all", "investor.edit.assigned"], session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
 
     const parse = Patch.safeParse(await req.json().catch(() => ({})));
@@ -142,7 +142,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const { id } = await params;
   try {
     const session = await requireSession();
-    requireCap(session.roles, "investor.edit.all", session.permissions);
+    requireAny(session.roles, ["family.delete", "investor.edit.all"], session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
 
     const clientMeta = clientMetaFromHeaders(req.headers);

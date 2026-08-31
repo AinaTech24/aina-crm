@@ -69,6 +69,11 @@ export type Capability =
   | "investor.bulk_export"
   | "investor.delete"
   | "investor.note.add"
+  // Households (family mapping). Separate from investor.* so an owner can let
+  // a team member group clients into households without granting client edits.
+  | "family.view"
+  | "family.manage"
+  | "family.delete"
   // Leads
   | "lead.view.all"
   | "lead.view.assigned"
@@ -170,6 +175,11 @@ const MATRIX: Record<Capability, Role[]> = {
   // get it — they soft-close instead.
   "investor.delete": ["compliance"],
   "investor.note.add": ["rm", "back_office", "ops", "branch_head", "compliance"],
+  // Households: an RM groups their OWN book into families, so they manage.
+  // Deleting unlinks every client in the household, so it stays narrower.
+  "family.view": ["rm", "back_office", "ops", "branch_head", "compliance"],
+  "family.manage": ["rm", "back_office", "ops", "branch_head"],
+  "family.delete": ["back_office", "ops"],
 
   // Leads — marketing + owner own pipeline; RM works assigned.
   "lead.view.all": ["marketing", "branch_head", "compliance"],

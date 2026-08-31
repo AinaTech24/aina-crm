@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { handleApiError } from "@/lib/api/error-handler";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { require as requireCap } from "@/lib/auth/rbac";
+import { require as requireCap, requireAny } from "@/lib/auth/rbac";
 import { investors, families } from "@/db/schema";
 import { eq, isNull } from "drizzle-orm";
 
@@ -24,7 +24,7 @@ type InvestorRow = {
 export async function GET(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireCap(session.roles, "investor.view.all", session.permissions);
+    requireAny(session.roles, ["family.view", "investor.view.all", "investor.view.assigned"], session.permissions);
 
     const suggestions = await withTenant(session.tenantId, async (tx) => {
       // 1. Fetch all investors for the tenant

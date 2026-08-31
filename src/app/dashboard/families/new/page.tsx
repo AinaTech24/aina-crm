@@ -50,9 +50,25 @@ export default function NewFamilyPage() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const j = await res.json();
+      const j = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setErr(j.error ?? "Create failed");
+        // A raw "forbidden: missing family.manage" tells the user nothing they
+        // can act on — name the setting an owner has to switch on, and where.
+        if (res.status === 403) {
+          setErr(
+            "You don’t have permission to create households. Ask your firm admin to enable “Create & edit households” for you under Team → your profile → Customize Access Permissions."
+          );
+        } else if (res.status === 401) {
+          setErr("Your session has expired. Please sign in again.");
+        } else if (Array.isArray(j?.issues) && j.issues.length) {
+          const fields = j.issues
+            .map((i: any) => (Array.isArray(i?.path) ? i.path.join(".") : ""))
+            .filter(Boolean)
+            .join(", ");
+          setErr(fields ? `Please check: ${fields}` : (j.error ?? "Create failed"));
+        } else {
+          setErr(j.error ?? `Create failed (HTTP ${res.status})`);
+        }
         return;
       }
       router.push("/dashboard/families");

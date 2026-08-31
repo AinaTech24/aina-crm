@@ -21,7 +21,7 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await requireSession();
-    requireAny(session.roles, ["investor.view.all", "investor.view.assigned"], session.permissions);
+    requireAny(session.roles, ["family.view", "investor.view.all", "investor.view.assigned"], session.permissions);
     const canViewAll = can(session.roles, "investor.view.all", session.permissions);
     const { id } = await params;
     const download = req.nextUrl.searchParams.get("download") === "1";

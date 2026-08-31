@@ -21,7 +21,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
   try {
     const session = await requireSession();
-    requireAny(session.roles, ["investor.view.all", "investor.view.assigned"], session.permissions);
+    requireAny(session.roles, ["family.view", "investor.view.all", "investor.view.assigned"], session.permissions);
     const canViewAll = can(session.roles, "investor.view.all", session.permissions);
 
     const data = await withTenant(

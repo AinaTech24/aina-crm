@@ -14,7 +14,7 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { require as requireCap } from "@/lib/auth/rbac";
+import { require as requireCap, requireAny } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { investors, families, eventsOutbox } from "@/db/schema";
@@ -31,7 +31,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { id: familyId } = await params;
   try {
     const session = await requireSession();
-    requireCap(session.roles, "investor.edit.all", session.permissions);
+    requireAny(session.roles, ["family.manage", "investor.edit.all", "investor.edit.assigned"], session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
 
     const parse = AddBody.safeParse(await req.json().catch(() => ({})));
@@ -101,7 +101,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
   try {
     const session = await requireSession();
-    requireCap(session.roles, "investor.edit.all", session.permissions);
+    requireAny(session.roles, ["family.manage", "investor.edit.all", "investor.edit.assigned"], session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
 
     const clientMeta = clientMetaFromHeaders(req.headers);

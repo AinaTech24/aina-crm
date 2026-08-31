@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
     const session = await requireSession();
     // Households carry client PII (member names, PAN via search, AUM rollup).
     // Require an investor-view capability and scope non-managers to their own.
-    requireAny(session.roles, ["investor.view.all", "investor.view.assigned"], session.permissions);
+    requireAny(session.roles, ["family.view", "investor.view.all", "investor.view.assigned"], session.permissions);
     const canViewAll = can(session.roles, "investor.view.all", session.permissions);
 
     const url = req.nextUrl;
@@ -201,7 +201,7 @@ export async function POST(req: NextRequest) {
     // A household is grouped by whoever services it: an RM builds families out
     // of their own book, so investor.edit.assigned is enough. Requiring
     // .edit.all here blocked every RM and team member from creating one.
-    requireAny(session.roles, ["investor.edit.all", "investor.edit.assigned"], session.permissions);
+    requireAny(session.roles, ["family.manage", "investor.edit.all", "investor.edit.assigned"], session.permissions);
     await assertActiveLicense(session.tenantId, session.roles);
 
     const parse = Body.safeParse(await req.json().catch(() => ({})));

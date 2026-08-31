@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { can, type Capability } from "@/lib/auth/rbac";
 import { NAV_ACCESS_GROUPS } from "@/config/nav-access";
+import { CAPABILITY_GROUPS } from "@/lib/auth/capability-catalog";
 import { formatINR, formatDate } from "@/lib/utils";
 import { SelectField } from "@/components/ui/SelectField";
 import { DateField } from "@/components/ui/DateField";
@@ -57,87 +58,11 @@ const STATUSES = [
   { value: "offboarded", label: "Offboarded" },
 ];
 
-const ALL_CAPABILITIES = [
-  {
-    group: "Clients & Leads",
-    items: [
-      { key: "investor.view.all", label: "View All Clients" },
-      { key: "investor.view.assigned", label: "View Assigned Clients Only" },
-      { key: "investor.edit.all", label: "Edit All Clients" },
-      { key: "investor.edit.assigned", label: "Edit Assigned Clients Only" },
-      { key: "investor.bulk_export", label: "Bulk Export Clients" },
-      { key: "investor.note.add", label: "Add Client Notes" },
-      { key: "lead.view.all", label: "View All Leads" },
-      { key: "lead.view.assigned", label: "View Assigned Leads Only" },
-      { key: "lead.edit.all", label: "Edit All Leads" },
-      { key: "lead.edit.assigned", label: "Edit Assigned Leads Only" },
-    ]
-  },
-  {
-    group: "Transactions & Operations",
-    items: [
-      { key: "transactions.view", label: "View Transactions" },
-      { key: "transactions.execute", label: "Execute Transactions" },
-      { key: "onboarding.manage", label: "Manage Onboarding" },
-      { key: "kyc.manage", label: "Manage KYC Status" },
-      { key: "review_meeting.manage.all", label: "Manage All Review Meetings" },
-      { key: "review_meeting.manage.assigned", label: "Manage Assigned Review Meetings" },
-      { key: "task.view.all", label: "View All Tasks" },
-      { key: "task.view.assigned", label: "View Assigned Tasks Only" },
-      { key: "task.edit.all", label: "Edit All Tasks" },
-      { key: "task.edit.assigned", label: "Edit Assigned Tasks Only" },
-      { key: "service_request.view.all", label: "View All Service Requests" },
-      { key: "service_request.view.assigned", label: "View Assigned Service Requests" },
-      { key: "service_request.manage", label: "Manage Service Requests" },
-      { key: "complaint.manage", label: "Manage Complaints" },
-    ]
-  },
-  {
-    group: "Workflows & Marketing",
-    items: [
-      { key: "workflow.view", label: "View Workflow Rules" },
-      { key: "workflow.edit", label: "Edit Workflow Rules" },
-      { key: "workflow.publish", label: "Publish Workflow Rules" },
-      { key: "segments.view", label: "View Segments & Filters" },
-      { key: "segments.manage", label: "Manage Segments & Filters" },
-      { key: "template.view", label: "View Comms Templates" },
-      { key: "template.edit", label: "Edit Comms Templates" },
-      { key: "template.approve", label: "Approve Comms Templates" },
-      { key: "campaign.send", label: "Send Marketing Campaigns" },
-      { key: "consent.manage", label: "Manage Client Consents" },
-      { key: "sop.manage", label: "Manage SOP Library" },
-    ]
-  },
-  {
-    group: "Compliance & Settings",
-    items: [
-      { key: "compliance.view", label: "View DDQ Compliance Status" },
-      { key: "compliance.edit", label: "Edit DDQ Compliance Info" },
-      { key: "compliance.approve", label: "Approve DDQ Compliance Items" },
-      { key: "risk_profile.manage", label: "Manage Risk Profiles" },
-      { key: "document.view", label: "View Documents" },
-      { key: "document.upload", label: "Upload Documents" },
-      { key: "document.delete", label: "Delete Documents" },
-      { key: "settings.users", label: "Manage Users & Roles Settings" },
-      { key: "settings.billing", label: "Manage Subscription & Billing" },
-      { key: "settings.masters", label: "Manage Master Lists" },
-      { key: "settings.security", label: "Manage Cybersecurity Settings" },
-    ]
-  },
-  {
-    group: "Dashboards & Reports",
-    items: [
-      { key: "dashboard.view.owner", label: "Owner Cockpit Dashboard" },
-      { key: "dashboard.view.compliance", label: "Compliance Summary Dashboard" },
-      { key: "dashboard.view.marketing", label: "Marketing Dashboard" },
-      { key: "dashboard.view.ops", label: "Operations Dashboard" },
-      { key: "dashboard.view.rm", label: "Relationship Manager Dashboard" },
-      { key: "reports.business", label: "Access Business MIS Reports" },
-      { key: "reports.team", label: "Access Team Performance Reports" },
-      { key: "reports.commission", label: "Access Commission Reconciliation Reports" },
-    ]
-  }
-];
+// Grantable capabilities come from the shared catalog, which is exhaustive by
+// type (Record<Capability, …>). The list that used to live here drifted: 15
+// real capabilities were enforced by the API but missing from these
+// checkboxes, so no owner could ever grant them.
+const ALL_CAPABILITIES = CAPABILITY_GROUPS;
 
 export type EmployeeFormValues = {
   id: string;
@@ -380,6 +305,7 @@ export function EmployeeEditForm({
     setBusy(true);
     setError(null);
     setSaved(false);
+    setSaved(false);
     try {
       const r = await fetch(`/api/employees/${employee.id}`, {
         method: "PATCH",
@@ -415,7 +341,18 @@ export function EmployeeEditForm({
         }),
       });
       const data = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(data?.error ?? `HTTP ${r.status}`);
+      if (!r.ok) {
+        // Zod issues name the offending field; without them a failed save
+        // reads as a bare "invalid input" with nothing to act on.
+        const fields = Array.isArray(data?.issues)
+          ? data.issues
+              .map((i: any) => (Array.isArray(i?.path) ? i.path.join(".") : ""))
+              .filter(Boolean)
+              .join(", ")
+          : "";
+        const base = data?.error ?? `Save failed (HTTP ${r.status})`;
+        throw new Error(fields ? `${base} — check: ${fields}` : base);
+      }
       setSaved(true);
       router.refresh();
     } catch (err: any) {
@@ -624,7 +561,12 @@ export function EmployeeEditForm({
                               checked={isChecked}
                               onChange={() => togglePermission(item.key)}
                             />
-                            <span>{item.label}</span>
+                            <span className="min-w-0">
+                              {item.label}
+                              {item.hint && (
+                                <span className="block text-[10px] text-muted-foreground">{item.hint}</span>
+                              )}
+                            </span>
                           </label>
                         );
                       })}
@@ -758,7 +700,7 @@ export function EmployeeEditForm({
                 size="sm"
                 className="w-full"
               >
-                <option value="">—</option>
+                <option value="">Select…</option>
                 {DEPARTMENTS.map((d) => (
                   <option key={d.value} value={d.value}>{d.label}</option>
                 ))}
