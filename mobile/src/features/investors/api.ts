@@ -129,6 +129,23 @@ export function useInvestorFull(id?: string) {
   });
 }
 
+/**
+ * Record a client's communication consent (POST /api/comms/consent).
+ *
+ * This is the RM asserting a real-world opt-in the client gave them verbally or
+ * in writing — and it's what the comms pipeline checks before every send, so a
+ * client with no consent silently gets `skipped_*` instead of a message. The
+ * person who can capture it is the one sitting in front of the client.
+ */
+export function useSetConsent(investorId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { channel: "whatsapp" | "email" | "sms" | "call"; scope: "transactional" | "marketing" | "all"; status: "granted" | "revoked" }) =>
+      api.post("/api/comms/consent", { investorId, ...v }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["investor-full", investorId] }),
+  });
+}
+
 export function useVerifyContact(id: string) {
   const qc = useQueryClient();
   return useMutation({
@@ -157,21 +174,29 @@ export function useSendStatement(id: string) {
   });
 }
 
-export function useInvestorTemplates(id: string, enabled: boolean) {
+/** Template sends work for a client or a prospect — same shape, different route. */
+export type CommSubject = "investor" | "lead";
+const dispatchPath = (subject: CommSubject, id: string) =>
+  subject === "lead" ? `/api/leads/${id}/dispatch` : `/api/investors/${id}/dispatch`;
+
+export function useInvestorTemplates(id: string, enabled: boolean, subject: CommSubject = "investor") {
   return useQuery({
-    queryKey: ["investor-templates", id],
+    queryKey: ["comm-templates", subject, id],
     enabled,
-    queryFn: () => api.get<any>(`/api/investors/${id}/dispatch`),
+    queryFn: () => api.get<any>(dispatchPath(subject, id)),
     staleTime: 60_000,
   });
 }
 
-export function useDispatchComm(id: string) {
+export function useDispatchComm(id: string, subject: CommSubject = "investor") {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (v: { channel: string; templateKey: string; variables?: Record<string, string> }) =>
-      api.post(`/api/investors/${id}/dispatch`, v),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["investor-full", id] }),
+      api.post(dispatchPath(subject, id), v),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [subject === "lead" ? "lead-full" : "investor-full", id] });
+      qc.invalidateQueries({ queryKey: ["activity-timeline"] });
+    },
   });
 }
 

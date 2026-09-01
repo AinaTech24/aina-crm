@@ -30,6 +30,7 @@ export const MENU: MenuGroup[] = [
     title: "Overview",
     items: [
       { key: "daily", label: "Daily Plan", icon: "sun", route: "/m/daily" },
+      { key: "attendance", label: "Attendance", icon: "clock", route: "/m/attendance" },
       { key: "review", label: "Monthly Review", icon: "clipboard", route: "/m/review" },
       { key: "business", label: "Business", icon: "bar-chart-2", route: "/m/business", anyCap: ["dashboard.view.owner", "reports.business", "reports.manage"] },
     ],

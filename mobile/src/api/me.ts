@@ -30,6 +30,7 @@ export interface Me {
     id: string;
     name: string;
     email: string;
+    avatarUrl: string | null;
     roles: string[];
     roleLabel: string;
     branchId: string | null;

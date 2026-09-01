@@ -22,8 +22,11 @@ const LAN_IP = "192.168.29.125";
  * Flip to `true` ONLY when testing against your local `npm run dev` server
  * (requires the server running + firewall open + your user in the local DB).
  * Default `false` → production, so you log in with your real credentials.
+ *
+ * NOTE: `false` means this build talks to the LIVE system — real clients, real
+ * money, real sends. Anything you do in the app is done for real.
  */
-const USE_LOCAL_DEV_SERVER = true;
+const USE_LOCAL_DEV_SERVER = false;
 
 // On the browser web preview, the "device" IS this machine, so localhost:3000
 // is reachable and correct; on a physical phone we must use the LAN IP.

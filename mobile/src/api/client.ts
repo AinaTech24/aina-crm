@@ -31,6 +31,17 @@ export class ApiError extends Error {
 
 const DEFAULT_TIMEOUT = 20_000;
 
+/**
+ * Server asset paths (avatars, tenant logos) are stored RELATIVE
+ * ("/api/upload-local/…") because the web app resolves them against its own
+ * origin. React Native has no origin — a relative uri in <Image> silently
+ * loads nothing — so every native render site must absolutize first.
+ */
+export function absUrl(path?: string | null): string | null {
+  if (!path) return null;
+  return /^https?:\/\//i.test(path) ? path : `${API_BASE_URL}${path.startsWith("/") ? "" : "/"}${path}`;
+}
+
 interface RequestOptions {
   method?: "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
   body?: unknown;

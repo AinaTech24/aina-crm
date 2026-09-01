@@ -1,21 +1,26 @@
 /**
- * Authenticated shell. A Drawer ("sidebar") is the parent navigator: its default
- * area is the bottom-tab group, and every other module opens from the drawer
- * (rendered by CustomDrawer, capability-gated). Guards against a lost session.
+ * Authenticated shell. A native STACK is the parent navigator: its base screen
+ * is the drawer+tabs group, and every module screen (/m/*, search,
+ * notifications) PUSHES on top with the platform transition + iOS swipe-back —
+ * the drawer never swallows push animations (it used to own every screen, which
+ * made all navigation snap with no motion). Guards against a lost session.
  */
 
 import React from "react";
-import { Redirect } from "expo-router";
-import { Drawer } from "expo-router/drawer";
-import type { DrawerContentComponentProps } from "@react-navigation/drawer";
+import { Redirect, Stack } from "expo-router";
 import { useSession } from "../../src/state/session";
-import { CustomDrawer } from "../../src/navigation/CustomDrawer";
 import { useApplyTenantBrand } from "../../src/features/settings/api";
 import { CallLogPrompt } from "../../src/features/activities/CallLogPrompt";
 import { OfflineBanner } from "../../src/components/ui/OfflineBanner";
 import { useRecentlyViewed } from "../../src/state/recentlyViewed";
 import { configurePushHandler, registerForPush } from "../../src/lib/push";
 import { useOfflineQueue, watchConnectivityAndFlush } from "../../src/lib/offlineQueue";
+import { usePrefs } from "../../src/state/prefs";
+import { palette } from "../../src/theme/tokens";
+
+// Deep links into /m/* land with the drawer+tabs group as the back anchor, so
+// the first back press goes Home instead of exiting the app.
+export const unstable_settings = { initialRouteName: "(drawer)" };
 
 export default function AppLayout() {
   const status = useSession((s) => s.status);
@@ -38,24 +43,21 @@ export default function AppLayout() {
     useOfflineQueue.getState().hydrate().then(() => useOfflineQueue.getState().flush());
     return watchConnectivityAndFlush();
   }, [status]);
+  // Device preferences (e.g. auto-log calls) must be loaded before the first
+  // call returns, or the very first call would use the default instead.
+  React.useEffect(() => { usePrefs.getState().hydrate(); }, []);
   if (status !== "authed") return <Redirect href="/login" />;
 
   return (
     <>
-      <Drawer
-        drawerContent={(props: DrawerContentComponentProps) => <CustomDrawer {...props} />}
+      <Stack
         screenOptions={{
           headerShown: false,
-          // Always a slide-out overlay (never the permanent web sidebar) so the
-          // mobile layout is consistent across widths.
-          drawerType: "front",
-          // Transparent container: CustomDrawer paints its own white panel INSIDE
-          // the safe area, leaving the status-bar / gesture-bar strips showing the
-          // system scrim (not the sidebar's white).
-          drawerStyle: { width: 320, backgroundColor: "transparent" },
-          swipeEdgeWidth: 40,
+          contentStyle: { backgroundColor: palette.surfaceAlt },
         }}
-      />
+      >
+        <Stack.Screen name="(drawer)" />
+      </Stack>
       {/* Semi-automatic call logging — prompts to log a call on return to the app. */}
       <CallLogPrompt />
       <OfflineBanner />

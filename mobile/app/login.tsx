@@ -26,7 +26,7 @@ export default function Login() {
 
   const finish = async (token: string) => {
     await signIn(token);
-    router.replace("/(app)/(tabs)/home");
+    router.replace("/(app)/(drawer)/(tabs)/home");
   };
 
 

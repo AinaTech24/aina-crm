@@ -8,13 +8,13 @@ import React from "react";
 import { View, Pressable, StyleSheet } from "react-native";
 import { useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
-import { Screen } from "../../../src/components/ui/Screen";
-import { Card } from "../../../src/components/ui/Card";
-import { Text } from "../../../src/components/ui/Text";
-import { Button } from "../../../src/components/ui/Button";
-import { useSession } from "../../../src/state/session";
-import { confirmDelete } from "../../../src/lib/confirm";
-import { palette, spacing, radius } from "../../../src/theme/tokens";
+import { Screen } from "../../../../src/components/ui/Screen";
+import { Card } from "../../../../src/components/ui/Card";
+import { Text } from "../../../../src/components/ui/Text";
+import { Button } from "../../../../src/components/ui/Button";
+import { useSession } from "../../../../src/state/session";
+import { confirmDelete } from "../../../../src/lib/confirm";
+import { palette, spacing, radius } from "../../../../src/theme/tokens";
 
 type FeatherName = React.ComponentProps<typeof Feather>["name"];
 type Section = { icon: FeatherName; title: string; desc: string; route: string };
@@ -22,6 +22,7 @@ type Section = { icon: FeatherName; title: string; desc: string; route: string }
 // Same sections/order/copy as the web settings hub.
 const SECTIONS: Section[] = [
   // My profile + Organisation profile live in the drawer's profile menu now.
+  { icon: "smartphone", title: "App preferences", desc: "Auto-log calls, and how this device behaves for you.", route: "/m/settings-preferences" },
   { icon: "droplet", title: "Appearance & theme", desc: "Re-skin the CRM to your brand — colours, font & density, and your white-label URL.", route: "/m/settings-appearance" },
   { icon: "shield", title: "Risk profile questionnaire", desc: "Customise questions, scoring, and risk-category bands for your firm.", route: "/m/settings-risk-profile" },
   { icon: "bell", title: "Notification templates", desc: "Edit the 18 lead-journey templates — welcome, referral, meeting, proposal, docs, portal.", route: "/m/settings-notification-templates" },

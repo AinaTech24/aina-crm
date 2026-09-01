@@ -15,15 +15,23 @@ import { DateField } from "../../../components/form/DateField";
 import { EmptyState } from "../../../components/states";
 import { titleCase } from "../../../lib/format";
 import { palette, radius, spacing, fontWeight } from "../../../theme/tokens";
-import { useInvestorTemplates, useDispatchComm } from "../api";
+import { useInvestorTemplates, useDispatchComm, type CommSubject } from "../api";
 
 interface TVar { key: string; type: string; required?: boolean }
 interface Template { id: string; key: string; channel: string; name: string; description?: string; category?: string; variables?: TVar[] }
 const chIcon = (c: string) => (c === "whatsapp" ? "message-circle" : c === "email" ? "mail" : "message-square");
 
-export function QuickCommsSheet({ id, visible, onClose }: { id: string; visible: boolean; onClose: () => void }) {
-  const { data, isLoading } = useInvestorTemplates(id, visible);
-  const dispatch = useDispatchComm(id);
+export function QuickCommsSheet({
+  id, visible, onClose, subject = "investor",
+}: {
+  id: string;
+  visible: boolean;
+  onClose: () => void;
+  /** Prospects get template sends too — the route differs, the UI doesn't. */
+  subject?: CommSubject;
+}) {
+  const { data, isLoading } = useInvestorTemplates(id, visible, subject);
+  const dispatch = useDispatchComm(id, subject);
   const [selected, setSelected] = useState<Template | null>(null);
   const [vars, setVars] = useState<Record<string, any>>({});
 

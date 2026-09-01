@@ -6,7 +6,7 @@
  */
 
 import React from "react";
-import { View, ScrollView, StyleSheet } from "react-native";
+import { View, Image, ScrollView, StyleSheet } from "react-native";
 import { useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { ScreenHeader } from "../../components/ui/ScreenHeader";
@@ -16,6 +16,7 @@ import { Button } from "../../components/ui/Button";
 import { StatusPill } from "../../components/ui/StatusPill";
 import { LoadingState, ErrorState } from "../../components/states";
 import { useMe, hasCap } from "../../api/me";
+import { absUrl } from "../../api/client";
 import { useTenant } from "../settings/api";
 import { useBrand } from "../../theme/brand";
 import { titleCase, initials } from "../../lib/format";
@@ -43,9 +44,13 @@ export function FirmProfile() {
         {/* Hero */}
         <Card>
           <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
-            <View style={[styles.logo, { backgroundColor: brand }]}>
-              <Text style={{ color: palette.white, fontWeight: fontWeight.bold as any, fontSize: 20 }}>{initials(name) || "F"}</Text>
-            </View>
+            {absUrl(t.logoUrl) ? (
+              <Image source={{ uri: absUrl(t.logoUrl)! }} style={styles.logo} resizeMode="cover" />
+            ) : (
+              <View style={[styles.logo, { backgroundColor: brand }]}>
+                <Text style={{ color: palette.white, fontWeight: fontWeight.bold as any, fontSize: 20 }}>{initials(name) || "F"}</Text>
+              </View>
+            )}
             <View style={{ flex: 1 }}>
               <Text variant="title" numberOfLines={2}>{name}</Text>
               <View style={{ flexDirection: "row", gap: spacing.sm, marginTop: 4, flexWrap: "wrap" }}>

@@ -3,24 +3,29 @@
     "name": "Aina CRM",
     "slug": "growth-os-mobile",
     "scheme": "growthos",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "in.ainatech.growthos"
+      "bundleIdentifier": "in.ainatech.growthos",
+      "buildNumber": "2"
     },
     "android": {
       "package": "in.ainatech.growthos",
+      "versionCode": 2,
       "permissions": [
         "android.permission.CAMERA",
-        "android.permission.RECORD_AUDIO"
+        "android.permission.RECORD_AUDIO",
+        "android.permission.USE_BIOMETRIC",
+        "android.permission.USE_FINGERPRINT",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
       ],
       "adaptiveIcon": {
         "backgroundColor": "#FFFFFF",
         "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false
@@ -49,7 +54,23 @@
         }
       ],
       "expo-router",
-      "@react-native-community/datetimepicker"
-    ]
+      "@react-native-community/datetimepicker",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Aina CRM records where a client visit or attendance punch happened, so your firm has an accurate field record.",
+          "locationWhenInUsePermission": "Aina CRM records where a client visit or attendance punch happened, so your firm has an accurate field record.",
+          "isIosBackgroundLocationEnabled": false,
+          "isAndroidBackgroundLocationEnabled": false
+        }
+      ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "6f496da1-7cc7-4891-9fb7-ca03a97dd8f0"
+      }
+    },
+    "owner": "ainatech-services-llp"
   }
 }

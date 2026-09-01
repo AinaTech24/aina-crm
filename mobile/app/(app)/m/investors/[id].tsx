@@ -34,6 +34,8 @@ import { investorStatusBadge, kycBadge } from "../../../../src/lib/status";
 import { palette, radius, spacing, fontWeight } from "../../../../src/theme/tokens";
 import { startCall } from "../../../../src/features/activities/callAndLog";
 import { openWhatsApp } from "../../../../src/features/activities/whatsapp";
+import { SendFormSheet } from "../../../../src/features/client-forms/SendFormSheet";
+import { AssignOpsSheet } from "../../../../src/features/tasks/AssignOpsSheet";
 import { useRecentlyViewed } from "../../../../src/state/recentlyViewed";
 import { useBrand } from "../../../../src/theme/brand";
 
@@ -62,6 +64,8 @@ export default function InvestorDetail() {
   const [aiOpen, setAiOpen] = useState(false);
   const [commsOpen, setCommsOpen] = useState(false);
   const [onboardOpen, setOnboardOpen] = useState(false);
+  const [formOpen, setFormOpen] = useState(false);
+  const [opsOpen, setOpsOpen] = useState(false);
 
   useEffect(() => {
     const inv = (d as any)?.investor;
@@ -178,6 +182,8 @@ export default function InvestorDetail() {
         <Button label="Edit client" variant="secondary" full icon={<Feather name="edit-2" size={15} color={palette.ink} />} onPress={() => { setActions(false); router.push(`/m/investors/new?editId=${id}` as any); }} style={{ marginBottom: spacing.sm }} />
         <Button label="AI client brief" variant="secondary" full icon={<Feather name="zap" size={15} color={palette.ink} />} onPress={() => { setActions(false); setAiOpen(true); }} style={{ marginBottom: spacing.sm }} />
         <Button label="Quick comms" variant="secondary" full icon={<Feather name="send" size={15} color={palette.ink} />} onPress={() => { setActions(false); setCommsOpen(true); }} style={{ marginBottom: spacing.sm }} />
+        <Button label="Send a form" variant="secondary" full icon={<Feather name="file-text" size={15} color={palette.ink} />} onPress={() => { setActions(false); setFormOpen(true); }} style={{ marginBottom: spacing.sm }} />
+        <Button label="Assign to team" variant="secondary" full icon={<Feather name="users" size={15} color={palette.ink} />} onPress={() => { setActions(false); setOpsOpen(true); }} style={{ marginBottom: spacing.sm }} />
         <Button label="Onboarding wizard" variant="secondary" full icon={<Feather name="check-square" size={15} color={palette.ink} />} onPress={() => { setActions(false); setOnboardOpen(true); }} style={{ marginBottom: spacing.sm }} />
         <Button label="Email statement" variant="secondary" full loading={statement.isPending} icon={<Feather name="file-text" size={15} color={palette.ink} />} onPress={() => sendStatement("email")} style={{ marginBottom: spacing.sm }} />
         <Button label="WhatsApp statement" variant="secondary" full loading={statement.isPending} icon={<Feather name="message-circle" size={15} color={palette.ink} />} onPress={() => sendStatement("whatsapp")} style={{ marginBottom: spacing.sm }} />
@@ -187,6 +193,8 @@ export default function InvestorDetail() {
       <AiBriefSheet id={id!} visible={aiOpen} onClose={() => setAiOpen(false)} phone={phone} />
       <QuickCommsSheet id={id!} visible={commsOpen} onClose={() => setCommsOpen(false)} />
       <OnboardingWizardSheet id={id!} visible={onboardOpen} onClose={() => setOnboardOpen(false)} investor={i} />
+      <SendFormSheet visible={formOpen} onClose={() => setFormOpen(false)} subjectType="investor" subjectId={id!} name={i.name} />
+      <AssignOpsSheet visible={opsOpen} onClose={() => setOpsOpen(false)} subjectType="investor" subjectId={id!} subjectName={i.name} />
     </View>
   );
 }

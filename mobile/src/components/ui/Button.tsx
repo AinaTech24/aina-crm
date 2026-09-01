@@ -36,14 +36,16 @@ const VARIANTS: Record<Variant, { bg: string; fg: string; border: string }> = {
 };
 
 function useButtonBits(size: Size, variant: Variant) {
-  const { brand, brandDark } = useBrand();
+  // Buttons are the app's "accent" surface (matches the Appearance screen's
+  // Primary=chrome vs Accent=highlights split) — chrome (header/tabs/avatars)
+  // stays on `brand` elsewhere.
+  const { accent, accentDark } = useBrand();
   const height = size === "lg" ? 54 : size === "sm" ? 38 : TOUCH_MIN;
-  // Brand-tinted variants read the live tenant colour; semantic ones stay fixed.
   const v =
     variant === "primary"
-      ? { bg: brand, fg: palette.white, border: brand }
+      ? { bg: accent, fg: palette.white, border: accent }
       : variant === "ghost"
-      ? { bg: "transparent", fg: brandDark, border: "transparent" }
+      ? { bg: "transparent", fg: accentDark, border: "transparent" }
       : VARIANTS[variant];
   return { height, v };
 }

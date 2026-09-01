@@ -6,7 +6,7 @@
  */
 
 import React, { useState } from "react";
-import { View, Pressable, StyleSheet } from "react-native";
+import { View, Image, Pressable, StyleSheet } from "react-native";
 import { useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { palette, spacing, radius, fontWeight } from "../theme/tokens";
@@ -14,6 +14,7 @@ import { useBrand } from "../theme/brand";
 import { Text } from "./ui/Text";
 import { BottomSheet } from "./ui/BottomSheet";
 import { useMe } from "../api/me";
+import { absUrl } from "../api/client";
 import { useSession } from "../state/session";
 import { confirmDelete } from "../lib/confirm";
 import { initials } from "../lib/format";
@@ -40,21 +41,31 @@ export function HeaderProfileButton() {
     confirmDelete({ title: "Sign out?", message: "You'll need to log in again.", confirmLabel: "Sign out" }, () => signOut());
   };
 
+  const photo = absUrl(me?.user.avatarUrl);
+
   return (
     <>
       <Pressable onPress={() => setOpen(true)} hitSlop={8} style={styles.btn}>
-        <View style={[styles.avatar, { backgroundColor: brand }]}>
-          <Text style={{ color: palette.white, fontWeight: fontWeight.bold as any, fontSize: 13 }}>
-            {initials(me?.user.name) || "?"}
-          </Text>
-        </View>
+        {photo ? (
+          <Image source={{ uri: photo }} style={styles.avatar} />
+        ) : (
+          <View style={[styles.avatar, { backgroundColor: brand }]}>
+            <Text style={{ color: palette.white, fontWeight: fontWeight.bold as any, fontSize: 13 }}>
+              {initials(me?.user.name) || "?"}
+            </Text>
+          </View>
+        )}
       </Pressable>
 
       <BottomSheet visible={open} onClose={() => setOpen(false)} title={me?.user.name ?? "Profile"}>
         <View style={styles.identity}>
-          <View style={[styles.bigAvatar, { backgroundColor: brand }]}>
-            <Text style={{ color: palette.white, fontWeight: fontWeight.bold as any, fontSize: 18 }}>{initials(me?.user.name) || "?"}</Text>
-          </View>
+          {photo ? (
+            <Image source={{ uri: photo }} style={styles.bigAvatar} />
+          ) : (
+            <View style={[styles.bigAvatar, { backgroundColor: brand }]}>
+              <Text style={{ color: palette.white, fontWeight: fontWeight.bold as any, fontSize: 18 }}>{initials(me?.user.name) || "?"}</Text>
+            </View>
+          )}
           <View style={{ flex: 1 }}>
             <Text variant="subtitle" numberOfLines={1}>{me?.user.name ?? "—"}</Text>
             <Text variant="caption" tone="muted" numberOfLines={1}>{me?.user.email}</Text>

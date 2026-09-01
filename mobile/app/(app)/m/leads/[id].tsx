@@ -24,6 +24,9 @@ import { useLeadFull, useUpdateLeadStage, useLogActivity, useConvertLead, useDel
 import { confirmDelete } from "../../../../src/lib/confirm";
 import { startCall } from "../../../../src/features/activities/callAndLog";
 import { openWhatsApp } from "../../../../src/features/activities/whatsapp";
+import { QuickCommsSheet } from "../../../../src/features/investors/detail/QuickCommsSheet";
+import { SendFormSheet } from "../../../../src/features/client-forms/SendFormSheet";
+import { AssignOpsSheet } from "../../../../src/features/tasks/AssignOpsSheet";
 import { useRecentlyViewed } from "../../../../src/state/recentlyViewed";
 import { inr, initials, fmtDate, titleCase, timeAgo } from "../../../../src/lib/format";
 import { palette, radius, spacing, fontWeight } from "../../../../src/theme/tokens";
@@ -48,6 +51,9 @@ export default function LeadDetail() {
   const del = useDeleteLead();
   const [tab, setTab] = useState<Tab>("overview");
   const [actions, setActions] = useState(false);
+  const [formOpen, setFormOpen] = useState(false);
+  const [opsOpen, setOpsOpen] = useState(false);
+  const [commsOpen, setCommsOpen] = useState(false);
   const [stageOpen, setStageOpen] = useState(false);
   const [activityOpen, setActivityOpen] = useState(false);
   const [convertOpen, setConvertOpen] = useState(false);
@@ -147,9 +153,16 @@ export default function LeadDetail() {
       <BottomSheet visible={actions} onClose={() => setActions(false)} title={l.name}>
         {!converted && <Button label="Change stage" variant="secondary" full icon={<Feather name="git-branch" size={15} color={palette.ink} />} onPress={() => { setActions(false); setStageOpen(true); }} style={{ marginBottom: spacing.sm }} />}
         <Button label="Log activity" variant="secondary" full icon={<Feather name="edit-3" size={15} color={palette.ink} />} onPress={() => { setActions(false); setActivityOpen(true); }} style={{ marginBottom: spacing.sm }} />
+        <Button label="Quick comms" variant="secondary" full icon={<Feather name="send" size={15} color={palette.ink} />} onPress={() => { setActions(false); setCommsOpen(true); }} style={{ marginBottom: spacing.sm }} />
+        <Button label="Send a form" variant="secondary" full icon={<Feather name="file-text" size={15} color={palette.ink} />} onPress={() => { setActions(false); setFormOpen(true); }} style={{ marginBottom: spacing.sm }} />
+        <Button label="Assign to team" variant="secondary" full icon={<Feather name="users" size={15} color={palette.ink} />} onPress={() => { setActions(false); setOpsOpen(true); }} style={{ marginBottom: spacing.sm }} />
         <Button label="Edit lead" variant="secondary" full icon={<Feather name="edit-2" size={15} color={palette.ink} />} onPress={() => { setActions(false); router.push(`/m/leads/new?editId=${id}` as any); }} style={{ marginBottom: spacing.sm }} />
         <Button label="Delete lead" variant="danger" full loading={del.isPending} icon={<Feather name="trash-2" size={15} color="#fff" />} onPress={doDelete} />
       </BottomSheet>
+
+      <QuickCommsSheet id={id!} visible={commsOpen} onClose={() => setCommsOpen(false)} subject="lead" />
+      <SendFormSheet visible={formOpen} onClose={() => setFormOpen(false)} subjectType="lead" subjectId={id!} name={l.name} />
+      <AssignOpsSheet visible={opsOpen} onClose={() => setOpsOpen(false)} subjectType="lead" subjectId={id!} subjectName={l.name} />
 
       {/* Stage picker */}
       <BottomSheet visible={stageOpen} onClose={() => setStageOpen(false)} title="Change stage">

@@ -19,6 +19,7 @@ import { ScreenHeader } from "../../../../src/components/ui/ScreenHeader";
 import { BottomSheet } from "../../../../src/components/ui/BottomSheet";
 import { TextField } from "../../../../src/components/ui/TextField";
 import { useSips, useDefendSip, bucketSips, sumAmount, isAtRisk, failureCount, type Sip } from "../../../../src/features/sips/api";
+import { AssignOpsSheet } from "../../../../src/features/tasks/AssignOpsSheet";
 import { toast } from "../../../../src/lib/toast";
 import { inr, fmtDate, titleCase } from "../../../../src/lib/format";
 import { spacing, palette, radius, fontWeight } from "../../../../src/theme/tokens";
@@ -37,6 +38,7 @@ export default function SipTracker() {
   const { data, isLoading, isRefetching, refetch } = useSips();
   const [tab, setTab] = React.useState<Bucket>("atRisk");
   const [sheet, setSheet] = React.useState<Sip | null>(null);
+  const [opsFor, setOpsFor] = React.useState<Sip | null>(null);
 
   const b = bucketSips(data);
   const rows = b[tab];
@@ -88,7 +90,23 @@ export default function SipTracker() {
           renderItem={({ item }) => <SipRow s={item} onPress={() => setSheet(item)} />}
         />
       )}
-      <SipSheet sip={sheet} onClose={() => setSheet(null)} onOpenClient={(id) => { setSheet(null); router.push(`/m/investors/${id}` as any); }} />
+      <SipSheet
+        sip={sheet}
+        onClose={() => setSheet(null)}
+        onOpenClient={(id) => { setSheet(null); router.push(`/m/investors/${id}` as any); }}
+        onAssignOps={(s) => { setSheet(null); setOpsFor(s); }}
+      />
+      {/* Ops handoff, pre-filled with the bounce reason so nobody re-diagnoses it. */}
+      {opsFor?.investorId ? (
+        <AssignOpsSheet
+          visible={!!opsFor}
+          onClose={() => setOpsFor(null)}
+          subjectType="investor"
+          subjectId={opsFor.investorId}
+          subjectName={opsFor.investorName}
+          defaultTitle={`Fix bounced SIP — ${opsFor.lastFailureReason ?? opsFor.schemeName ?? "mandate"}`}
+        />
+      ) : null}
     </View>
   );
 }
@@ -123,7 +141,7 @@ function SipRow({ s, onPress }: { s: Sip; onPress: () => void }) {
   );
 }
 
-function SipSheet({ sip, onClose, onOpenClient }: { sip: Sip | null; onClose: () => void; onOpenClient: (investorId: string) => void }) {
+function SipSheet({ sip, onClose, onOpenClient, onAssignOps }: { sip: Sip | null; onClose: () => void; onOpenClient: (investorId: string) => void; onAssignOps: (s: Sip) => void }) {
   const defend = useDefendSip();
   const [note, setNote] = React.useState("");
   React.useEffect(() => { if (sip) setNote(""); }, [sip]);
@@ -168,6 +186,14 @@ function SipSheet({ sip, onClose, onOpenClient }: { sip: Sip | null; onClose: ()
             Raises a high-priority follow-up task for this client's RM.
           </Text>
         </>
+      ) : null}
+
+      {/* A bounced mandate is usually ops work, not advice — hand it over from here. */}
+      {sip.investorId ? (
+        <Pressable style={[styles.btn, { backgroundColor: palette.violet, marginTop: spacing.md }]} onPress={() => onAssignOps(sip)}>
+          <Feather name="users" size={16} color={palette.white} />
+          <Text style={styles.btnTxt}>Assign to team</Text>
+        </Pressable>
       ) : null}
 
       {sip.investorId ? (

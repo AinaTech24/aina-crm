@@ -13,22 +13,23 @@ import { useRouter } from "expo-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import Animated, { FadeInUp } from "react-native-reanimated";
 import { Feather } from "@expo/vector-icons";
-import { Screen } from "../../../src/components/ui/Screen";
-import { Card } from "../../../src/components/ui/Card";
-import { Text } from "../../../src/components/ui/Text";
-import { StatusPill } from "../../../src/components/ui/StatusPill";
-import { Skeleton } from "../../../src/components/ui/Skeleton";
-import { useMe } from "../../../src/api/me";
-import { api } from "../../../src/api/client";
-import { useDashboardHome, useMyDay, useMyPerformance, isoDay, type Kpi, type DayMeeting, type DayFollowup, type DayTask, type Touchpoint, type AgendaDay, type MyPerformance, type PerfKpi } from "../../../src/features/dashboard/api";
-import { useCommandCenter, toneColor, featherIcon, toMobileRoute, type CommandGroup, type CommandItem } from "../../../src/features/command-center/api";
-import { useRecentlyViewed } from "../../../src/state/recentlyViewed";
-import { startCall } from "../../../src/features/activities/callAndLog";
-import { openWhatsApp } from "../../../src/features/activities/whatsapp";
-import { toast } from "../../../src/lib/toast";
-import { inr, initials, titleCase } from "../../../src/lib/format";
-import { spacing, palette, radius, fontWeight } from "../../../src/theme/tokens";
-import { toneColors, type Tone } from "../../../src/theme";
+import { Screen } from "../../../../src/components/ui/Screen";
+import { Card } from "../../../../src/components/ui/Card";
+import { Text } from "../../../../src/components/ui/Text";
+import { StatusPill } from "../../../../src/components/ui/StatusPill";
+import { Skeleton } from "../../../../src/components/ui/Skeleton";
+import { useMe } from "../../../../src/api/me";
+import { api } from "../../../../src/api/client";
+import { useDashboardHome, useMyDay, useMyPerformance, isoDay, type Kpi, type DayMeeting, type DayFollowup, type DayTask, type Touchpoint, type AgendaDay, type MyPerformance, type PerfKpi } from "../../../../src/features/dashboard/api";
+import { useCommandCenter, toneColor, featherIcon, toMobileRoute, type CommandGroup, type CommandItem } from "../../../../src/features/command-center/api";
+import { useRecentlyViewed } from "../../../../src/state/recentlyViewed";
+import { startCall } from "../../../../src/features/activities/callAndLog";
+import { openWhatsApp } from "../../../../src/features/activities/whatsapp";
+import { useAttendance, findDay, isoDay as attIsoDay } from "../../../../src/features/attendance/api";
+import { toast } from "../../../../src/lib/toast";
+import { inr, initials, titleCase } from "../../../../src/lib/format";
+import { spacing, palette, radius, fontWeight } from "../../../../src/theme/tokens";
+import { toneColors, type Tone } from "../../../../src/theme";
 
 const LICENSE_TONE: Record<string, Tone> = {
   active: "success", trial: "info", past_due: "warning", suspended: "danger", expired: "danger", pending: "warning", cancelled: "danger", no_subscription: "neutral",
@@ -72,6 +73,8 @@ export default function Home() {
   const day = useMyDay(selected);
   const perf = useMyPerformance();
   const cc = useCommandCenter();
+  const attendance = useAttendance();
+  const todayAttendance = findDay(attendance.data, me.data?.user.id, attIsoDay(new Date()));
   const isToday = selected === today;
 
   // "Act now" = the money-at-risk band (bounced SIPs, rejected mandates,
@@ -97,7 +100,13 @@ export default function Home() {
   const recent = useRecentlyViewed((s) => s.items);
 
   const md = day.data;
-  const planEmpty = md && md.meetings.length === 0 && md.followups.length === 0 && md.tasks.length === 0;
+  // "Today" also sweeps in the whole overdue backlog (by design — see my-day's
+  // API docstring), which can be dozens of tasks and floods this card. Home
+  // only wants what's actually due ON this day; overdue items already surface
+  // via "Needs you now" / the Tasks tab, so drop them here to keep this short.
+  // (Non-today days are already day-scoped server-side — nothing to filter.)
+  const todaysTasks = React.useMemo(() => (isToday ? (md?.tasks ?? []).filter((t) => !t.overdue) : md?.tasks ?? []), [md, isToday]);
+  const planEmpty = md && md.meetings.length === 0 && md.followups.length === 0 && todaysTasks.length === 0;
 
   return (
     <Screen scroll padded onRefresh={refetch} refreshing={me.isRefetching || dash.isRefetching || day.isRefetching} contentStyle={{ paddingTop: spacing.lg, paddingBottom: spacing["3xl"] }}>
@@ -125,6 +134,19 @@ export default function Home() {
         </View>
         <Feather name="chevron-right" size={18} color={palette.faint} />
       </Pressable>
+
+      {/* Clock-in nudge — only while the day is still unstarted, so it disappears
+          the moment it stops being useful rather than nagging all day. */}
+      {attendance.data && !todayAttendance?.clock_in_at ? (
+        <Pressable style={styles.clockBanner} onPress={() => router.push("/m/attendance" as any)}>
+          <View style={styles.clockIcon}><Feather name="log-in" size={18} color={toneColors("success").fg} /></View>
+          <View style={{ flex: 1 }}>
+            <Text variant="body" style={{ fontWeight: fontWeight.semibold as any }}>You haven't clocked in</Text>
+            <Text variant="caption" tone="muted">Start your day</Text>
+          </View>
+          <Feather name="chevron-right" size={18} color={palette.faint} />
+        </Pressable>
+      ) : null}
 
       {/* Quick actions */}
       <View style={styles.quickRow}>
@@ -217,9 +239,11 @@ export default function Home() {
               {md!.followups.map((f) => <FollowupRow key={f.id} f={f} onOpen={() => router.push(`/m/leads/${f.id}` as any)} />)}
             </PlanGroup>
           ) : null}
-          {(md?.tasks.length ?? 0) > 0 ? (
-            <PlanGroup title={`Tasks due (${md!.tasks.length})`}>
-              {md!.tasks.map((t) => <TaskRow key={t.id} t={t} busy={complete.isPending} onDone={() => complete.mutate(t.id)} onOpen={() => router.push(`/m/tasks/${t.id}` as any)} />)}
+          {todaysTasks.length > 0 ? (
+            <PlanGroup title={`Tasks due today (${todaysTasks.length})`}>
+              <ScrollView style={styles.tasksScroll} nestedScrollEnabled showsVerticalScrollIndicator={todaysTasks.length > 4}>
+                {todaysTasks.map((t) => <TaskRow key={t.id} t={t} busy={complete.isPending} onDone={() => complete.mutate(t.id)} onOpen={() => router.push(`/m/tasks/${t.id}` as any)} />)}
+              </ScrollView>
             </PlanGroup>
           ) : null}
         </>
@@ -495,6 +519,8 @@ function PlanGroup({ title, children }: { title: string; children: React.ReactNo
 const styles = StyleSheet.create({
   planBanner: { flexDirection: "row", alignItems: "center", gap: spacing.md, marginTop: spacing.lg, backgroundColor: palette.brandLight, borderRadius: radius.md, padding: spacing.md },
   planIcon: { width: 38, height: 38, borderRadius: radius.pill, backgroundColor: palette.surface, alignItems: "center", justifyContent: "center" },
+  clockBanner: { flexDirection: "row", alignItems: "center", gap: spacing.md, marginTop: spacing.sm, backgroundColor: palette.successBg, borderRadius: radius.md, padding: spacing.md },
+  clockIcon: { width: 38, height: 38, borderRadius: radius.pill, backgroundColor: palette.surface, alignItems: "center", justifyContent: "center" },
   quickRow: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.lg },
   quickAction: { flex: 1, alignItems: "center", gap: 6, backgroundColor: palette.surface, borderWidth: 1, borderColor: palette.line, borderRadius: radius.md, paddingVertical: spacing.md },
   quickIcon: { width: 38, height: 38, borderRadius: radius.pill, backgroundColor: palette.brandLight, alignItems: "center", justifyContent: "center" },
@@ -522,6 +548,9 @@ const styles = StyleSheet.create({
   attnChip: { flexDirection: "row", alignItems: "center", gap: 4, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: 6 },
   roundIcon: { width: 36, height: 36, borderRadius: radius.pill, alignItems: "center", justifyContent: "center" },
   groupTitle: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.xs },
+  // Caps the day's task list to ~4 rows before it scrolls internally, so a big
+  // backlog can't push the rest of Home (numbers, touchpoints) off-screen.
+  tasksScroll: { maxHeight: 260 },
   planRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.md, paddingHorizontal: spacing.lg, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: palette.lineSoft },
   row: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.md, paddingHorizontal: spacing.lg },
   divider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: palette.line },

@@ -9,6 +9,6 @@ import { useSession } from "../src/state/session";
 
 export default function Index() {
   const status = useSession((s) => s.status);
-  if (status === "authed") return <Redirect href="/(app)/(tabs)/home" />;
+  if (status === "authed") return <Redirect href="/(app)/(drawer)/(tabs)/home" />;
   return <Redirect href="/login" />;
 }

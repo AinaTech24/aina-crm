@@ -6,7 +6,7 @@
  */
 
 import React from "react";
-import { View, StyleSheet } from "react-native";
+import { View, Pressable, Alert, StyleSheet } from "react-native";
 import { Text } from "../../../components/ui/Text";
 import { Feather } from "@expo/vector-icons";
 import { palette, radius, spacing, fontWeight } from "../../../theme/tokens";
@@ -15,6 +15,8 @@ import { Section, FieldRow, Badge, Empty } from "./primitives";
 import { DocumentsSection } from "./DocumentsSection";
 import { GiftsSection } from "./GiftsSection";
 import { BlueprintBar } from "./BlueprintBar";
+import { useSetConsent } from "../api";
+import { toast } from "../../../lib/toast";
 
 const CHANNELS = ["whatsapp", "email", "sms"] as const;
 const SCOPES = ["transactional", "marketing"] as const;
@@ -35,6 +37,41 @@ export function EngagementTab({ d, id }: { d: any; id: string }) {
     const granted = c.status === "granted" || c.granted === true || c.grantedAt != null;
     (consentMap[ch] ??= {})[sc] = granted;
   }
+
+  const setConsent = useSetConsent(id);
+  const clientName = d.investor?.name ?? "this client";
+
+  /**
+   * Recording consent is a compliance assertion on the RM's part, not a UI
+   * toggle — so it always confirms, and the wording says plainly what is being
+   * asserted and who it's about.
+   */
+  const toggleConsent = (channel: string, scope: string, currentlyGranted: boolean) => {
+    const chLabel = titleCase(channel);
+    const scLabel = scope === "marketing" ? "marketing" : "transactional";
+    const next = currentlyGranted ? "revoked" : "granted";
+    Alert.alert(
+      currentlyGranted ? `Revoke ${chLabel} consent?` : `Record ${chLabel} consent?`,
+      currentlyGranted
+        ? `${clientName} no longer wants ${scLabel} messages on ${chLabel}. Sends will be blocked.`
+        : `Confirm ${clientName} has agreed to receive ${scLabel} messages on ${chLabel}. This is recorded as your assertion and is audited.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: currentlyGranted ? "Revoke" : "Confirm",
+          style: currentlyGranted ? "destructive" : "default",
+          onPress: () =>
+            setConsent.mutate(
+              { channel: channel as any, scope: scope as any, status: next as any },
+              {
+                onSuccess: () => toast.success(currentlyGranted ? `${chLabel} consent revoked` : `${chLabel} consent recorded`),
+                onError: (e: any) => toast.error(e?.body?.error || "Couldn't save consent"),
+              }
+            ),
+        },
+      ]
+    );
+  };
 
   return (
     <View>
@@ -124,7 +161,8 @@ export function EngagementTab({ d, id }: { d: any; id: string }) {
         ))}
       </Section>
 
-      {/* Consent matrix */}
+      {/* Consent matrix — tappable. Without consent the pipeline silently skips
+          every send, and the RM with the client is the only one who can fix that. */}
       <Section title="Consent" icon="shield">
         <View style={styles.consentHead}>
           <Text variant="caption" tone="muted" style={{ flex: 1 }} />
@@ -133,13 +171,30 @@ export function EngagementTab({ d, id }: { d: any; id: string }) {
         {CHANNELS.map((ch) => (
           <View key={ch} style={styles.consentRow}>
             <Text variant="caption" style={{ flex: 1, fontWeight: fontWeight.medium as any }}>{titleCase(ch)}</Text>
-            {SCOPES.map((sc) => (
-              <View key={sc} style={styles.consentCell}>
-                {consentMap[ch]?.[sc] ? <Feather name="check" size={14} color={palette.success} /> : <Text tone="faint">—</Text>}
-              </View>
-            ))}
+            {SCOPES.map((sc) => {
+              const granted = !!consentMap[ch]?.[sc];
+              return (
+                <Pressable
+                  key={sc}
+                  style={styles.consentCell}
+                  onPress={() => toggleConsent(ch, sc, granted)}
+                  disabled={setConsent.isPending}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${titleCase(ch)} ${sc} consent, ${granted ? "granted" : "not granted"}. Tap to change.`}
+                >
+                  {granted ? (
+                    <Feather name="check-circle" size={16} color={palette.success} />
+                  ) : (
+                    <Feather name="plus-circle" size={16} color={palette.faint} />
+                  )}
+                </Pressable>
+              );
+            })}
           </View>
         ))}
+        <Text variant="caption" tone="faint" style={{ marginTop: spacing.sm }}>
+          Tap to record what the client agreed to. Messages are blocked without it.
+        </Text>
       </Section>
 
       {/* Communications */}

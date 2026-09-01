@@ -21,6 +21,7 @@ import { FirmProfile } from "../../../../src/features/firm/FirmProfile";
 import { ProfileSettings } from "../../../../src/features/settings/ProfileSettings";
 import { SecuritySettings } from "../../../../src/features/settings/SecuritySettings";
 import { AppearanceSettings } from "../../../../src/features/settings/AppearanceSettings";
+import { PreferencesSettings } from "../../../../src/features/settings/PreferencesSettings";
 import { OrganisationSettings } from "../../../../src/features/settings/OrganisationSettings";
 import { CustomFieldsSettings } from "../../../../src/features/settings/CustomFieldsSettings";
 import { OnboardingFieldsSettings } from "../../../../src/features/settings/OnboardingFieldsSettings";
@@ -50,6 +51,7 @@ export default function GenericModuleList() {
   if (module === "settings-profile") return <ProfileSettings />;
   if (module === "settings-security") return <SecuritySettings />;
   if (module === "settings-appearance") return <AppearanceSettings />;
+  if (module === "settings-preferences") return <PreferencesSettings />;
   if (module === "settings-organisation") return <OrganisationSettings />;
   if (module === "settings-custom-fields") return <CustomFieldsSettings />;
   if (module === "settings-onboarding-fields") return <OnboardingFieldsSettings />;

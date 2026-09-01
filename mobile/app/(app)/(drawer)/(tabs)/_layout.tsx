@@ -4,15 +4,16 @@
  * a field rep's most-used action, so it rides every tab rather than a screen.
  */
 
-import React from "react";
+import React, { useState } from "react";
 import { View, Pressable, Text, StyleSheet } from "react-native";
 import { Tabs, useRouter } from "expo-router";
 import { DrawerToggleButton } from "@react-navigation/drawer";
 import { Feather } from "@expo/vector-icons";
-import { palette, spacing, fontWeight, TOUCH_MIN } from "../../../src/theme/tokens";
-import { useBrand } from "../../../src/theme/brand";
-import { HeaderProfileButton } from "../../../src/components/HeaderProfileButton";
-import { useNotifications, isUnread } from "../../../src/features/notifications/api";
+import { palette, spacing, fontWeight, TOUCH_MIN } from "../../../../src/theme/tokens";
+import { useBrand } from "../../../../src/theme/brand";
+import { HeaderProfileButton } from "../../../../src/components/HeaderProfileButton";
+import { NotificationsSheet } from "../../../../src/features/notifications/NotificationsSheet";
+import { useNotifications, isUnread } from "../../../../src/features/notifications/api";
 
 /** expo-router's built-in toggle handles opening the parent drawer (no
  *  @react-navigation/* dependency, which SDK 56 disallows alongside the router). */
@@ -29,6 +30,7 @@ function HeaderActions() {
   const router = useRouter();
   const { data } = useNotifications();
   const unread = (data?.notifications ?? []).filter(isUnread).length;
+  const [notifOpen, setNotifOpen] = useState(false);
   return (
     <View style={{ flexDirection: "row", alignItems: "center" }}>
       <Pressable
@@ -41,7 +43,7 @@ function HeaderActions() {
         <Feather name="search" size={20} color={palette.ink} />
       </Pressable>
       <Pressable
-        onPress={() => router.push("/notifications" as any)}
+        onPress={() => setNotifOpen(true)}
         hitSlop={8}
         accessibilityRole="button"
         accessibilityLabel={unread ? `Notifications, ${unread} unread` : "Notifications"}
@@ -55,6 +57,7 @@ function HeaderActions() {
         ) : null}
       </Pressable>
       <HeaderProfileButton />
+      <NotificationsSheet visible={notifOpen} onClose={() => setNotifOpen(false)} />
     </View>
   );
 }
@@ -69,6 +72,9 @@ export default function TabsLayout() {
   return (
     <Tabs
       screenOptions={{
+        // Cross-fade+shift between tabs instead of an instant snap — the same
+        // "the app actually moves" polish the stack push gives module screens.
+        animation: "shift",
         tabBarActiveTintColor: brand,
         tabBarInactiveTintColor: palette.faint,
         tabBarStyle: { borderTopColor: palette.line, height: 60, paddingBottom: 8, paddingTop: 6 },

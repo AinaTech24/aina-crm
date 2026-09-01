@@ -27,21 +27,31 @@ function lighten(hex: string, amt: number) {
 }
 
 interface BrandState {
+  /** Primary (chrome) — header, tab bar, avatars/logos, identity surfaces. */
   brand: string;
   brandDark: string;
   brandLight: string;
-  setBrand: (hex?: string | null) => void;
+  /** Accent (highlights) — buttons, CTAs. Falls back to primary when unset,
+   *  same as before this existed, so an untouched tenant sees no change. */
+  accent: string;
+  accentDark: string;
+  accentLight: string;
+  setBrand: (primaryHex?: string | null, accentHex?: string | null) => void;
 }
 
 export const useBrand = create<BrandState>((set) => ({
   brand: palette.brand,
   brandDark: palette.brandDark,
   brandLight: palette.brandLight,
-  setBrand: (hex) => {
-    if (!hexToRgb(hex)) {
-      set({ brand: palette.brand, brandDark: palette.brandDark, brandLight: palette.brandLight });
-      return;
-    }
-    set({ brand: hex!, brandDark: darken(hex!, 0.18), brandLight: lighten(hex!, 0.9) });
+  accent: palette.brand,
+  accentDark: palette.brandDark,
+  accentLight: palette.brandLight,
+  setBrand: (primaryHex, accentHex) => {
+    const p = hexToRgb(primaryHex) ? primaryHex! : palette.brand;
+    const a = hexToRgb(accentHex) ? accentHex! : p;
+    set({
+      brand: p, brandDark: darken(p, 0.18), brandLight: lighten(p, 0.9),
+      accent: a, accentDark: darken(a, 0.18), accentLight: lighten(a, 0.9),
+    });
   },
 }));

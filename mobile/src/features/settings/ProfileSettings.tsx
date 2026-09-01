@@ -5,8 +5,9 @@
  */
 
 import React, { useState } from "react";
-import { View, ScrollView, RefreshControl, StyleSheet } from "react-native";
+import { View, Image, Pressable, ScrollView, RefreshControl, StyleSheet } from "react-native";
 import { useRouter } from "expo-router";
+import * as ImagePicker from "expo-image-picker";
 import { Feather } from "@expo/vector-icons";
 import { ScreenHeader } from "../../components/ui/ScreenHeader";
 import { Card } from "../../components/ui/Card";
@@ -16,6 +17,8 @@ import { TextField } from "../../components/ui/TextField";
 import { StatusPill } from "../../components/ui/StatusPill";
 import { LoadingState, ErrorState } from "../../components/states";
 import { useSession } from "../../state/session";
+import { api, absUrl } from "../../api/client";
+import { toast } from "../../lib/toast";
 import { confirmDelete } from "../../lib/confirm";
 import { inr, timeAgo, titleCase } from "../../lib/format";
 import { palette, radius, spacing, fontSize, fontWeight } from "../../theme/tokens";
@@ -37,6 +40,33 @@ export function ProfileSettings() {
   const [newPw, setNewPw] = useState("");
   const [confirmPw, setConfirmPw] = useState("");
   const [pwMsg, setPwMsg] = useState<string | null>(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+
+  // Pick from the photo library → vault upload (public "general" class, same as
+  // the web avatar flow) → save the served asset path on the profile.
+  const changePhoto = async () => {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) return toast.error("Allow photo access to set a picture.");
+    const r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.8, allowsEditing: true, aspect: [1, 1] });
+    if (r.canceled || !r.assets?.length) return;
+    const a = r.assets[0];
+    const mime = a.mimeType ?? "image/jpeg";
+    const ext = mime.split("/")[1] ?? "jpg";
+    setUploadingPhoto(true);
+    try {
+      const form = new FormData();
+      form.append("file", { uri: a.uri, name: `avatar.${ext}`, type: mime } as any);
+      form.append("kind", "general");
+      form.append("docType", "avatar");
+      const up = await api.upload<{ key: string }>("/api/compliance/upload", form);
+      await updateProfile.mutateAsync({ avatarUrl: `/api/upload-local/${up.key}` });
+      toast.success("Photo updated");
+    } catch (e: any) {
+      toast.error(e?.message ?? "Could not upload the photo.");
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
 
   if (isLoading) return <View style={styles.screen}><ScreenHeader title="My profile" /><LoadingState label="Loading profile…" /></View>;
   if (isError || !data) return <View style={styles.screen}><ScreenHeader title="My profile" /><ErrorState onRetry={refetch} /></View>;
@@ -76,11 +106,20 @@ export function ProfileSettings() {
         refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={palette.brand} />}
         showsVerticalScrollIndicator={false}
       >
-        {/* Identity */}
+        {/* Identity — tap the avatar to change the photo */}
         <Card style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
-          <View style={styles.avatar}>
-            <Text style={{ color: palette.white, fontWeight: fontWeight.bold as any, fontSize: 20 }}>{(u.name || "?").slice(0, 1).toUpperCase()}</Text>
-          </View>
+          <Pressable onPress={changePhoto} disabled={uploadingPhoto} accessibilityRole="button" accessibilityLabel="Change profile photo">
+            {absUrl(u.avatarUrl) ? (
+              <Image source={{ uri: absUrl(u.avatarUrl)! }} style={styles.avatar} />
+            ) : (
+              <View style={styles.avatar}>
+                <Text style={{ color: palette.white, fontWeight: fontWeight.bold as any, fontSize: 20 }}>{(u.name || "?").slice(0, 1).toUpperCase()}</Text>
+              </View>
+            )}
+            <View style={styles.camBadge}>
+              <Feather name={uploadingPhoto ? "loader" : "camera"} size={11} color={palette.white} />
+            </View>
+          </Pressable>
           <View style={{ flex: 1 }}>
             <Text variant="subtitle">{u.name}</Text>
             <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: 2 }}>
@@ -189,6 +228,7 @@ function Row({ label, value, last }: { label: string; value: string; last?: bool
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: palette.surfaceAlt },
   avatar: { width: 52, height: 52, borderRadius: radius.pill, backgroundColor: palette.brand, alignItems: "center", justifyContent: "center" },
+  camBadge: { position: "absolute", right: -2, bottom: -2, width: 20, height: 20, borderRadius: 10, backgroundColor: palette.ink, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: palette.surface },
   section: { fontSize: fontSize.xs, fontWeight: fontWeight.bold as any, letterSpacing: 0.6, color: palette.muted, marginTop: spacing.xl, marginBottom: spacing.sm },
   row: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: spacing.lg },
   actRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.md, paddingHorizontal: spacing.lg },

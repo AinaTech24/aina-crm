@@ -1,8 +1,18 @@
 /**
- * CallLogPrompt — the "Log this call?" sheet that appears when the user returns
- * to the app after placing a call from within it. Mounted once at the app shell.
- * Pre-fills the subject; the RM just picks the outcome, (optionally) duration, and
- * types/dictates what was discussed → POST /api/activities.
+ * CallLogPrompt — turns a call placed from inside the app into a logged activity.
+ * Mounted once at the app shell.
+ *
+ * Two modes, driven by the `autoLogCalls` device preference:
+ *   OFF (default) — shows the "Log this call?" sheet: pick outcome, duration and
+ *                   what was discussed.
+ *   ON            — logs immediately on return, with duration ≈ time away, so a
+ *                   busy RM never loses a call to a dismissed prompt. Notes can
+ *                   be added later from the call's detail screen.
+ *
+ * What this can and can't know: we detect calls PLACED FROM THE APP (we armed
+ * the intent) and infer duration from time-away. We cannot read the OS call log
+ * — real connect/duration and calls dialled outside the app need READ_CALL_LOG
+ * and a development build (Android only; iOS never allows it).
  */
 
 import React, { useEffect, useRef, useState } from "react";
@@ -14,6 +24,7 @@ import { Button } from "../../components/ui/Button";
 import { TextField } from "../../components/ui/TextField";
 import { SelectField } from "../../components/ui/SelectField";
 import { useCallIntent } from "../../state/callIntent";
+import { usePrefs } from "../../state/prefs";
 import { useLogActivity, ACTIVITY_OUTCOMES } from "./api";
 import { toast } from "../../lib/toast";
 import { palette, spacing, radius } from "../../theme/tokens";
@@ -21,6 +32,12 @@ import { palette, spacing, radius } from "../../theme/tokens";
 // Below this, the "call" was almost certainly cancelled before connecting —
 // don't nag. Above it, prompt to log.
 const MIN_CALL_MS = 5000;
+
+const fmtDur = (secs: number) => {
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  return m > 0 ? `${m}m ${s}s` : `${s}s`;
+};
 
 export function CallLogPrompt() {
   const pending = useCallIntent((s) => s.pending);
@@ -40,12 +57,37 @@ export function CallLogPrompt() {
       if (next === "active" && /inactive|background/.test(prev)) {
         const p = useCallIntent.getState().pending;
         if (!p) return;
-        if (Date.now() - p.armedAt >= MIN_CALL_MS) setShow(true);
-        else clear(); // too quick — treat as cancelled
+        const elapsedMs = Date.now() - p.armedAt;
+        if (elapsedMs < MIN_CALL_MS) return clear(); // too quick — treat as cancelled
+
+        if (usePrefs.getState().autoLogCalls) {
+          // Auto mode: log it now. Time away includes dialling and ringing, so
+          // it's an approximation — but a recorded approximate call beats a
+          // dismissed prompt and no record at all.
+          const secs = Math.round(elapsedMs / 1000);
+          log.mutate(
+            {
+              subjectType: p.subjectType,
+              subjectId: p.subjectId,
+              kind: "call",
+              direction: "outbound",
+              subject: `Call with ${p.name}`,
+              status: usePrefs.getState().autoLogOutcome || "answered",
+              durationSec: secs,
+            },
+            {
+              onSuccess: () => toast.success(`Call with ${p.name} logged · ${fmtDur(secs)}`),
+              onError: () => toast.error(`Couldn't log the call with ${p.name}`),
+            }
+          );
+          clear();
+          return;
+        }
+        setShow(true);
       }
     });
     return () => sub.remove();
-  }, [clear]);
+  }, [clear, log]);
 
   useEffect(() => {
     if (show) { setOutcome("answered"); setDurationMin(""); setNotes(""); setErr(null); }

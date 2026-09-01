@@ -81,7 +81,7 @@ export function useApplyTenantBrand() {
   useEffect(() => {
     if (!data) return;
     const t = data.tenant ?? data;
-    useBrand.getState().setBrand(t?.primaryColor || t?.secondaryColor || null);
+    useBrand.getState().setBrand(t?.primaryColor || null, t?.secondaryColor || null);
   }, [data]);
 }
 export function useSaveTheme() {
