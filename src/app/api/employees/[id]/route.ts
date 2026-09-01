@@ -205,6 +205,24 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       if (body.permissions !== undefined) patch.permissions = body.permissions;
       if (body.enabledModules !== undefined) patch.enabledModules = body.enabledModules;
       if (body.customLeaveEntitlements !== undefined) patch.customLeaveEntitlements = body.customLeaveEntitlements;
+      // Access lives in the signed session token, so a permission / role /
+      // sidebar change is invisible to whoever is already logged in until they
+      // sign in again. An owner ticking boxes and seeing nothing happen is
+      // exactly the bug this endpoint is used to fix, so an access change now
+      // ends that user's sessions and they pick up the new grants on next
+      // sign-in. Compared field-by-field so an idempotent PATCH is a no-op.
+      const sameList = (a: unknown, b: unknown) =>
+        JSON.stringify(Array.isArray(a) ? [...a].sort() : a ?? null) ===
+        JSON.stringify(Array.isArray(b) ? [...b].sort() : b ?? null);
+      const accessChanged =
+        (body.permissions !== undefined && !sameList(body.permissions, (existing as any).permissions)) ||
+        (body.roles !== undefined && !sameList(body.roles, (existing as any).roles)) ||
+        (body.enabledModules !== undefined && !sameList(body.enabledModules, (existing as any).enabledModules));
+      // users.sessions_invalid_after is the revocation epoch the token check
+      // actually reads — revoking the user_sessions rows alone only tidies the
+      // device list and would leave the old token working.
+      if (accessChanged) patch.sessionsInvalidAfter = new Date();
+
       const deactivating =
         body.status !== undefined &&
         (body.status === "suspended" || body.status === "offboarded") &&
@@ -235,7 +253,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
       // Revoke recorded device sessions so a suspended/offboarded user drops off
       // their "devices" list and is kicked immediately.
-      if (deactivating) {
+      if (deactivating || accessChanged) {
         await tx.execute(
           sql`UPDATE user_sessions SET revoked_at = now(), updated_at = now() WHERE user_id = ${id}::uuid AND revoked_at IS NULL`
         );

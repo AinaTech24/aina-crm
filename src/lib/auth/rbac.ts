@@ -382,16 +382,25 @@ export function can(userRoles: string[] | undefined, cap: Capability, userPermis
   if (!userRoles?.length) return false;
   if (userRoles.includes("owner")) return true; // owner always wins
 
+  // A NON-EMPTY custom permission list is an ALLOW-LIST: it defines exactly
+  // what this user may do. That is what “Customize access permissions” in the
+  // employee form promises — ticking grants, UNTICKING TAKES AWAY. Treating it
+  // as merely additive (the previous behaviour) made every untick a no-op,
+  // because the role still granted the capability underneath.
+  //
+  // Empty or absent means “inherit the role defaults”, and that distinction is
+  // load-bearing: sessions issued before this change carry permissions: [] for
+  // every non-customised user, so treating [] as an allow-list would have
+  // locked out everyone holding an existing token. The form fills the list from
+  // the role’s defaults the moment Customize is ticked, so a real list is
+  // always complete rather than a single stray grant.
+  if (userPermissions && userPermissions.length > 0) {
+    return userPermissions.includes(cap);
+  }
+
   // Role-matrix grant.
   const allowed = MATRIX[cap] ?? [];
   if (userRoles.some((r) => allowed.includes(r as Role))) return true;
-
-  // Custom permissions AUGMENT the role matrix — they are additive grants, not
-  // a replacement allow-list. (The old code REPLACED: giving a back-office user
-  // one extra custom permission silently stripped every capability their role
-  // already had. That was a privilege-loss bug, not a feature.) To RESTRICT a
-  // user below their role, change their role — don't rely on this list.
-  if (userPermissions?.includes(cap)) return true;
 
   return false;
 }
