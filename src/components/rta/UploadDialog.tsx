@@ -320,8 +320,18 @@ export function UploadDialog({
                   ) : (
                     <>
                       <div className="mt-3 text-sm font-medium">Click to browse or drag a file here</div>
+                      {/* There is no upload cap: the browser PUTs straight to S3
+                          on a presigned URL, so the app server never buffers the
+                          file. The old "Max 25 MB" was never enforced anywhere —
+                          it just made people split files that would have imported
+                          whole. The one real limit is on BINARY spreadsheets,
+                          which SheetJS must hold in memory to parse. */}
                       <div className="text-xs text-muted-foreground mt-0.5">
-                        CSV, TXT, XLS, or password-protected ZIP. Max 25 MB.
+                        CSV, TXT, XLS, or password-protected ZIP — <strong>any size</strong>.
+                      </div>
+                      <div className="text-[11px] text-muted-foreground/80 mt-0.5">
+                        Very large .xls/.xlsx/.dbf files are the one exception — ask the
+                        registrar for CSV, which imports at any size.
                       </div>
                     </>
                   )}
