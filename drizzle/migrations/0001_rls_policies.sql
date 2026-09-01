@@ -94,7 +94,9 @@ DECLARE
     'workflow_rule_executions',
     'workflow_rule_scheduled_jobs',
     'tenant_integrations',
-    'ignored_duplicates'
+    'ignored_duplicates',
+    'investor_portal_access',
+    'business_impacts'
   ];
 BEGIN
   FOREACH t IN ARRAY tenant_tables
