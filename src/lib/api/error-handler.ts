@@ -32,8 +32,23 @@ export async function handleApiError(err: unknown): Promise<NextResponse> {
   const originalMessage = err instanceof Error ? err.message : String(err);
   const stack = err instanceof Error ? err.stack : undefined;
 
+  // Drizzle wraps driver errors: its own message is just the SQL + params, and
+  // the REASON (pg code, constraint, detail) sits on .cause. Logging only the
+  // wrapper turns a precise database error into an unreadable query dump — it
+  // cost real debugging time on the review-due worker and the tenant purge, so
+  // unwrap it here for every route at once.
+  const cause = (err as { cause?: unknown })?.cause as
+    | { code?: string; message?: string; detail?: string; constraint?: string; table?: string }
+    | undefined;
+  const causeLine = cause
+    ? ` cause=${cause.code ?? "?"} "${cause.message ?? ""}"` +
+      (cause.constraint ? ` constraint=${cause.constraint}` : "") +
+      (cause.table ? ` table=${cause.table}` : "") +
+      (cause.detail ? ` detail="${cause.detail}"` : "")
+    : "";
+
   // Log on the server console with the unique reference ID
-  console.error(`[API Error ${errorId}] status=${status} message="${originalMessage}"`, stack ?? err);
+  console.error(`[API Error ${errorId}] status=${status} message="${originalMessage}"${causeLine}`, stack ?? err);
 
   // User-facing HTTP errors (4xx) are safe to return, but we mask obvious database keywords.
   if (status >= 400 && status < 500) {

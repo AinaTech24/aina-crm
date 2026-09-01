@@ -35,6 +35,12 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
           { status: 400 }
         );
       }
+      // A purge sweeps ~160 tables. The pool default (30s) is sized for user
+      // requests, and a busy database made this admin action time out — which
+      // surfaced as a bare "internal". Give it room, but cap how long it will
+      // sit behind someone else's lock so it fails fast and clearly instead.
+      await tx.execute(sql`SET LOCAL statement_timeout = '180s'`);
+      await tx.execute(sql`SET LOCAL lock_timeout = '20s'`);
       await tx.execute(sql`SELECT platform_purge_tenant(${tenantId}::uuid)`);
       return { ok: true };
     });
