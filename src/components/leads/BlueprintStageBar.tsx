@@ -414,6 +414,7 @@ export function BlueprintStageBar({
             <ForwardPicker
               allStages={allStages}
               currentKey={current.key}
+              allowedActions={current.allowedActions}
               busy={advancing}
               onAdvance={advance}
             />
@@ -474,11 +475,13 @@ export function BlueprintStageBar({
 function ForwardPicker({
   allStages,
   currentKey,
+  allowedActions,
   busy,
   onAdvance,
 }: {
   allStages: Stage[];
   currentKey: string;
+  allowedActions: string[];
   busy: boolean;
   onAdvance: (key: string, remarks?: string) => void;
 }) {
@@ -486,10 +489,13 @@ function ForwardPicker({
   const [target, setTarget] = useState("");
   const [remarks, setRemarks] = useState("");
 
-  const currentIdx = allStages.findIndex((s) => s.key === currentKey);
-  // Only show forward stages (you can't undo with this control — use the
-  // explicit transition routes for that).
-  const candidates = allStages.slice(currentIdx + 1, currentIdx + 4);
+  // Offer exactly the stages the blueprint allows from here. This used to take
+  // the next three stages BY ARRAY ORDER, which listed moves the engine has no
+  // transition for — picking one always failed with
+  // “No transition defined from …” (e.g. Mandate Activated → Mandate
+  // Rejected). allowedActions mirrors the transition graph for every stage, so
+  // filtering by it means the picker can only offer moves that will succeed.
+  const candidates = allStages.filter((s) => allowedActions.includes(s.key));
   if (!candidates.length) return null;
 
   return (

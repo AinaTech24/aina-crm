@@ -49,6 +49,10 @@ const Body = z.object({
   subjectId: z.string().uuid(),
   kind: z.enum(KINDS),
   channel: z.enum(["whatsapp", "email", "both"]).default("both"),
+  /** Reuse a link the caller already minted (the docs panel mints one that
+   *  carries the chosen client type + checklist). Minting a second token here
+   *  would send a DIFFERENT link than the one shown on screen. */
+  url: z.string().url().optional(),
 });
 
 /** Per-form copy + the template-matching hint for the WhatsApp picker. */
@@ -133,16 +137,23 @@ export async function POST(req: NextRequest) {
     }
 
     // 1. Mint the login-free link.
-    const token = await createShareToken({
-      tenantId: session.tenantId,
-      kind: kind as ShareTokenKind,
-      subjectType,
-      subjectId,
-      expiresInDays: form.expiresInDays,
-      createdBy: session.userId,
-    });
-    const url = (token as any).url as string;
-    const tokenId = String((token as any).token ?? "").slice(0, 8);
+    let url: string;
+    let tokenId: string;
+    if (parsed.data.url) {
+      url = parsed.data.url;
+      tokenId = url.split("/").pop()?.slice(0, 8) ?? "reuse";
+    } else {
+      const token = await createShareToken({
+        tenantId: session.tenantId,
+        kind: kind as ShareTokenKind,
+        subjectType,
+        subjectId,
+        expiresInDays: form.expiresInDays,
+        createdBy: session.userId,
+      });
+      url = (token as any).url as string;
+      tokenId = String((token as any).token ?? "").slice(0, 8);
+    }
     const waText = `Hi ${name}, ${form.blurb}\n\n${url}`;
 
     // 2. Email through the firm's own sender.

@@ -9,6 +9,7 @@
  */
 
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { Sparkles, X, Loader2, MessageCircle, Copy, Lightbulb, ListChecks, AlertTriangle } from "lucide-react";
 
 type Brief = { summary: string; talkingPoints: string[]; recommendedActions: string[]; suggestedOpener: string; watchouts: string[] };
@@ -43,7 +44,7 @@ export function AiClientBrief({ investorId, name, phone }: { investorId: string;
       <button onClick={load} className="btn-secondary text-xs inline-flex items-center gap-1" title="AI pre-call brief">
         <Sparkles className="size-3.5 text-brand-cyan" /> AI Brief
       </button>
-      {open && (
+      {open && typeof document !== "undefined" && createPortal(
         <div className="fixed inset-0 z-50 bg-black/40 flex justify-end" onClick={() => setOpen(false)}>
           <div onClick={(e) => e.stopPropagation()} className="w-full max-w-lg h-full bg-card border-l shadow-2xl flex flex-col">
             <div className="px-5 py-3 border-b flex items-center justify-between">
@@ -86,7 +87,8 @@ export function AiClientBrief({ investorId, name, phone }: { investorId: string;
               ) : null}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );

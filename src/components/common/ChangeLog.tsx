@@ -8,6 +8,7 @@
  */
 
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { History, X, Loader2, User, Cpu, Workflow, Webhook } from "lucide-react";
 
 type Entry = {
@@ -75,7 +76,7 @@ export function ChangeLogButton({ entityType, entityId, variant = "secondary" }:
       <button onClick={load} className={`${variant === "ghost" ? "btn-ghost" : "btn-secondary"} text-xs inline-flex items-center gap-1`} title="View change history">
         <History className="size-3.5" /> History
       </button>
-      {open && (
+      {open && typeof document !== "undefined" && createPortal(
         <div className="fixed inset-0 z-50 bg-black/40 flex justify-end" onClick={() => setOpen(false)}>
           <div onClick={(e) => e.stopPropagation()} className="w-full max-w-md h-full bg-card border-l shadow-2xl flex flex-col">
             <div className="px-5 py-3 border-b flex items-center justify-between">
@@ -119,7 +120,8 @@ export function ChangeLogButton({ entityType, entityId, variant = "secondary" }:
               )}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );

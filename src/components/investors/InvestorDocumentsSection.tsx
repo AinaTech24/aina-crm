@@ -250,20 +250,44 @@ export function InvestorDocumentsSection({ investorId, investorName, investorPho
     setTimeout(() => setCopied(false), 1500);
   }
 
-  const reqWaUrl =
-    reqLink && investorPhone
-      ? `https://wa.me/${investorPhone.replace(/[^\d]/g, "")}?text=${encodeURIComponent(
-          `Hi ${investorName ?? "there"}, please upload your KYC documents to complete your account setup — secure, single-use link:\n\n${reqLink.url}\n\nYou'll need: PAN, Aadhar, photo, recent bank statement, cancelled cheque.`
-        )}`
-      : null;
-  const reqMailUrl =
-    reqLink && investorEmail
-      ? `mailto:${investorEmail}?subject=${encodeURIComponent(
-          "Documents needed for your investment account"
-        )}&body=${encodeURIComponent(
-          `Hi ${investorName ?? ""},\n\nTo complete your account setup, please upload the following documents using this secure link:\n\n${reqLink.url}\n\nRequired: PAN card, Aadhar card, passport-size photo, recent bank statement, cancelled cheque.\n\nThe link is single-use and expires soon.\n\nRegards`
-        )}`
-      : null;
+  // The link is SENT from the server through the comms pipeline (approved
+  // WhatsApp template, branded email) — not by handing the RM a wa.me or
+  // mailto: URL that leaves the CRM and logs nothing.
+  const [sending, setSending] = useState<"whatsapp" | "email" | null>(null);
+  const [sendMsg, setSendMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  async function sendLink(channel: "whatsapp" | "email") {
+    if (!reqLink) return;
+    setSending(channel);
+    setSendMsg(null);
+    try {
+      const r = await fetch("/api/client-forms/send", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          subjectType: "investor",
+          subjectId: investorId,
+          kind: "document_collection",
+          channel,
+          url: reqLink.url,
+        }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        setSendMsg({ ok: false, text: j?.error ?? `Could not send (HTTP ${r.status})` });
+        return;
+      }
+      setSendMsg({
+        ok: !!j.ok,
+        text: [j.summary, j.templateNote].filter(Boolean).join(" · ") || (j.ok ? "Sent" : "Not sent"),
+      });
+    } catch (e: any) {
+      setSendMsg({ ok: false, text: e?.message ?? "Network error" });
+    } finally {
+      setSending(null);
+    }
+  }
+
 
   const clientDocs = docs.filter((d) => d.clientUploaded);
   const teamDocs = docs.filter((d) => !d.clientUploaded);
@@ -416,23 +440,52 @@ export function InvestorDocumentsSection({ investorId, investorName, investorPho
                 </button>
               </div>
               <div className="flex flex-wrap gap-2 text-xs">
-                {reqWaUrl && (
-                  <a href={reqWaUrl} target="_blank" rel="noreferrer" className="btn-secondary text-xs">
-                    Send via WhatsApp <ExternalLink className="size-3" />
-                  </a>
+                {investorPhone && (
+                  <button
+                    type="button"
+                    onClick={() => sendLink("whatsapp")}
+                    disabled={sending !== null}
+                    className="btn-secondary text-xs disabled:opacity-50"
+                  >
+                    {sending === "whatsapp" ? (
+                      <><Loader2 className="size-3 animate-spin" /> Sending…</>
+                    ) : (
+                      <>Send via WhatsApp</>
+                    )}
+                  </button>
                 )}
-                {reqMailUrl && (
-                  <a href={reqMailUrl} className="btn-secondary text-xs">
-                    Send via Email <ExternalLink className="size-3" />
-                  </a>
+                {investorEmail && (
+                  <button
+                    type="button"
+                    onClick={() => sendLink("email")}
+                    disabled={sending !== null}
+                    className="btn-secondary text-xs disabled:opacity-50"
+                  >
+                    {sending === "email" ? (
+                      <><Loader2 className="size-3 animate-spin" /> Sending…</>
+                    ) : (
+                      <>Send via Email</>
+                    )}
+                  </button>
                 )}
                 <a href={reqLink.url} target="_blank" rel="noreferrer" className="btn-ghost text-xs">
                   Preview <ExternalLink className="size-3" />
                 </a>
-                <button onClick={() => setReqLink(null)} className="btn-ghost text-xs">
+                <button onClick={() => { setReqLink(null); setSendMsg(null); }} className="btn-ghost text-xs">
                   New link
                 </button>
               </div>
+              {sendMsg && (
+                <div
+                  className={`mt-2 rounded-md border px-2.5 py-1.5 text-[11px] ${
+                    sendMsg.ok
+                      ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                      : "border-amber-200 bg-amber-50 text-amber-800"
+                  }`}
+                >
+                  {sendMsg.text}
+                </div>
+              )}
             </div>
           )}
         </div>

@@ -11,6 +11,7 @@
  */
 
 import { useState, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Loader2, X, Plus, MapPin, Phone, Save } from "lucide-react";
 import { SelectField } from "@/components/ui/SelectField";
@@ -69,7 +70,11 @@ function LogActivityDrawer({ subject: fixed, onClose }: { subject?: Subject; onC
     } finally { setBusy(false); }
   }
 
-  return (
+  // Portaled to <body>: this drawer is opened from inside the header's More
+  // menu, and rendering it in that subtree meant the menu's own styles and
+  // lifecycle governed a full-screen overlay.
+  if (typeof document === "undefined") return null;
+  return createPortal(
     <div className="fixed inset-0 z-50 bg-black/40 flex justify-end" onClick={onClose}>
       <div onClick={(e) => e.stopPropagation()} className="w-full max-w-lg h-full bg-card border-l border-border shadow-2xl flex flex-col">
         <div className="px-5 py-3 border-b flex items-center justify-between">
@@ -122,7 +127,8 @@ function LogActivityDrawer({ subject: fixed, onClose }: { subject?: Subject; onC
           <button onClick={save} disabled={busy} className="btn-primary text-xs inline-flex items-center gap-1">{busy ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />} Save</button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

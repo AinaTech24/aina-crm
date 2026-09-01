@@ -33,15 +33,21 @@ export function OverflowMenu({ children, label = "More" }: { children: React.Rea
       >
         <MoreHorizontal className="size-4" /> {label}
       </button>
-      {open && (
-        <div
-          className="absolute right-0 z-30 mt-1 min-w-[12rem] rounded-lg border bg-popover p-1.5 shadow-lg flex flex-col gap-1 [&_button]:w-full [&_a]:w-full [&_button]:justify-start [&_a]:justify-start"
-          role="menu"
-          onClickCapture={() => setTimeout(() => setOpen(false), 0)}
-        >
-          {children}
-        </div>
-      )}
+      {/* The panel is always mounted and hidden with CSS when closed.
+          Unmounting it tore down whichever child had just been clicked —
+          every item here opens its own drawer or popover, and they were
+          being destroyed in the same tick they opened. For the same reason
+          there is no click-to-close: closing is outside-click / Escape, and
+          the drawers portal to <body> so they survive it. */}
+      <div
+        className={`absolute right-0 z-30 mt-1 min-w-[12rem] rounded-lg border bg-popover p-1.5 shadow-lg flex-col gap-1 [&_button]:w-full [&_a]:w-full [&_button]:justify-start [&_a]:justify-start ${
+          open ? "flex" : "hidden"
+        }`}
+        role="menu"
+        aria-hidden={!open}
+      >
+        {children}
+      </div>
     </div>
   );
 }
