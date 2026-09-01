@@ -288,11 +288,9 @@ are both responsive, or 503 if the DB is unreachable. Used by
 
 ## What's deferred / not yet wired
 
-- **Authentication** — NextAuth dependencies are in `package.json` but session integration is incomplete. The middleware that injects `tenant_id` into `withTenant` calls needs to read from the session.
-- **BSE Star MF + NSE NMF II** — transaction execution
-- **CAMS/KFintech reverse feed parser** — daily reconciliation
+- **NSE NMF II** — transaction execution adapter. BSE Star has a live-capable adapter and production demo-mode guard.
 - **Razorpay billing**
-- **Investor mobile app** (React Native)
+- **Standalone credentialed investor mobile app**. The current Expo app is the field-team CRM; investors use expiring portal links.
 - **Video session suite**
 - **AI assistant Tier 2 RAG** (per-tenant vector index)
 

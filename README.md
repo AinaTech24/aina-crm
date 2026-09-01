@@ -8,23 +8,26 @@ This repository implements the design in `../MFD_Platform_Design_Blueprint.md`, 
 
 | Layer | Status | Where |
 |---|---|---|
-| Multi-tenant Postgres schema (24 tables) | ✅ | [src/db/schema/](src/db/schema/) |
+| Multi-tenant Postgres domain schema (100+ tenant-aware tables) | ✅ | [src/db/schema/](src/db/schema/) |
 | Postgres Row-Level Security | ✅ | [drizzle/migrations/0001_rls_policies.sql](drizzle/migrations/0001_rls_policies.sql) |
 | Filter/Segment AST + SQL compiler + JS predicate | ✅ | [src/lib/filter/](src/lib/filter/) |
 | Workflow engine (DAG, versioning, retries, pause/resume) | ✅ | [src/lib/workflow/](src/lib/workflow/) |
 | 17 action handlers (WA / email / SMS / task / branch / loop / wait / AI compose / …) | ✅ | [src/lib/workflow/actions/](src/lib/workflow/actions/) |
 | Unified comms pipeline with consent + compliance gate | ✅ | [src/lib/comms/pipeline.ts](src/lib/comms/pipeline.ts) |
 | 11 compliance checkers (AMFI, SEBI May 2026, DPDP, DLT, WA session) | ✅ | [src/lib/comms/compliance.ts](src/lib/comms/compliance.ts) |
-| Channel adapters: AiSensy, Resend, MSG91 | ✅ | [src/lib/comms/adapters/](src/lib/comms/adapters/) |
+| Channel adapters: Vartify WhatsApp, Resend, MSG91 | ✅ | [src/lib/comms/adapters/](src/lib/comms/adapters/) |
 | Email template renderer (React Email + auto-footer) | ✅ | [src/lib/comms/email_renderer.tsx](src/lib/comms/email_renderer.tsx) |
 | Worker process (outbox, runner, scheduler, segment materializer, WA template sync) | ✅ | [src/workers/](src/workers/) |
 | 24 pre-built MFD automation recipes | ✅ | [src/lib/recipes/](src/lib/recipes/) |
 | Next.js dashboard (workflows, segments, templates, comms, compliance, investors, tasks) | ✅ | [src/app/dashboard/](src/app/dashboard/) |
 | Webhook routes: AiSensy + Resend | ✅ | [src/app/api/webhooks/](src/app/api/webhooks/) |
-| Authentication (Auth.js) | ⏳ scaffold | wiring required |
-| BSE Star MF / NSE NMF II integrations | ⏳ deferred | Phase 1 |
-| CAMS / KFintech reverse feed parser | ⏳ deferred | Phase 1 |
-| Investor mobile app (React Native) | ⏳ deferred | Phase 2 |
+| Signed web/mobile sessions, device revocation and TOTP 2FA | ✅ | [src/lib/auth/](src/lib/auth/) |
+| BSE Star MF adapter | ✅ live-capable | credentials required; demo mode fails closed in production |
+| NSE NMF II adapter | ⏳ unavailable | do not promise NSE execution yet |
+| CAMS / KFintech mailback, parsing, import and reconciliation | ✅ | [src/lib/rta/](src/lib/rta/) |
+| Field-team mobile app (Expo / React Native) | ✅ | [mobile/](mobile/) |
+| Expiring investor portal links | ✅ | [src/app/portal/](src/app/portal/) |
+| Product readiness and production stub guard | ✅ | [src/app/dashboard/settings/readiness/](src/app/dashboard/settings/readiness/) |
 | Video session suite | ⏳ deferred | Phase 2 |
 | AI assistant Tier 2 RAG | ⏳ deferred | Phase 3 |
 
@@ -32,7 +35,7 @@ This repository implements the design in `../MFD_Platform_Design_Blueprint.md`, 
 
 A modular monolith on **Next.js 15 + TypeScript + Postgres + Redis + BullMQ**. Tenant isolation is enforced at the database via **Row-Level Security** — every query carries `app.tenant_id` set by middleware, and RLS policies reject cross-tenant access even if app code has a bug. The web app handles UI + short request/response work; a separate **worker process** (`npm run worker`) runs the outbox poller, workflow runner, segment materializer, master scheduler, and AiSensy template sync. Every domain mutation writes to an outbox table in the same transaction; the poller fans events out to subscribed workflows. Workflows are DAGs of typed nodes (trigger / send_* / create_task / branch / delay / wait_for_event / loop / end), versioned and replayable. Every outbound send passes through the **compliance pipeline** before dispatch — no exceptions.
 
-See [CLAUDE.md](CLAUDE.md) for the developer-facing deep dive.
+See [AGENTS.md](AGENTS.md) for the developer-facing deep dive.
 
 ## Quick start
 
@@ -52,9 +55,9 @@ cp .env.example .env
 #   - DATABASE_URL          (Postgres connection string)
 #   - REDIS_URL             (Redis connection string)
 #   - NEXTAUTH_SECRET       (any random 32-byte string)
-#   - AISENSY_API_KEY       (your AiSensy account)
+#   - VARTIFY_API_TOKEN     (platform WhatsApp fallback; tenants can self-connect)
 #   - RESEND_API_KEY        (your Resend account)
-#   - ANTHROPIC_API_KEY     (for AI compose action)
+#   - GEMINI_API_KEY or ANTHROPIC_API_KEY (AI features)
 
 # 3. Push schema and run RLS migration
 npm run db:push
@@ -71,6 +74,8 @@ npm run worker
 ```
 
 The dashboard is at `/dashboard` — workflows, segments, templates, communications, compliance.
+
+For an investor presentation, seed the demo tenant and follow [docs/investor-demo-runbook.md](docs/investor-demo-runbook.md). Before any commercial launch, `/dashboard/settings/readiness` must show no critical blockers.
 
 ### Worker process
 

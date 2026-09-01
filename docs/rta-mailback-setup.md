@@ -16,11 +16,12 @@ It reuses the existing `rta.import` pipeline end-to-end (unzip → decode → au
 CAMS/KFintech ──daily──▶ MFD's inbox
                               │  one-time auto-forward rule (set by the MFD)
                               ▼
-        rta-<token>@crm.ainatech.in         ← unique per firm
+   rta-<token>@crm.ainatech.in   OR   rta@crm.ainatech.in
+     (unique per firm — primary)      (shared — needs a registered sender)
                               │  catch-all delivers into the single rta@ mailbox
                               ▼
    rta-inbox-poller (worker, every ~120s)
-     • resolve tenant from the recipient address (rta_forward_addresses)
+     • resolve tenant: (a) recipient alias, else (b) registered sender mailbox
      • capture any Gmail/Outlook forwarding-confirmation code (for the UI)
      • classify each attachment by report-code + sender → (source, kind)
      • push attachment to S3, enqueue the EXISTING rta.import job
@@ -33,8 +34,35 @@ CAMS/KFintech ──daily──▶ MFD's inbox
 - **Client** deduped by **PAN**; **folios** by **(amc_code, folio_number)** — a client
   with many folios (incl. CAMS + KFintech) keeps them all.
 - **Idempotent**: whole-file dedupe by sha256; re-forwarding the same file is a no-op.
-- **Never lost**: unroutable mail → `rta_inbound_quarantine`; unrecognised attachment →
-  skipped + logged; wrong password → import row marked `failed` with a clear reason.
+- **Never lost**: every message is logged to `rta_inbound_messages` and visible at
+  **Aina Admin → Inbound Mail** (routed or not); unrecognised attachment → skipped +
+  logged; wrong password → import row marked `failed` with a clear reason.
+
+---
+
+## Addressing: two ways in
+
+| | Per-firm alias (primary) | Shared address |
+|---|---|---|
+| Address | `rta-<token>@crm.ainatech.in` | `rta@crm.ainatech.in` |
+| Routes on | the recipient address | the mailbox the firm forwards **from** |
+| Setup | none — it just works | firm must register its sending mailbox first |
+| Strength | unguessable token | a `From` header is spoofable |
+
+The alias is **tried first and always wins**; sender matching is only consulted when
+no alias matched, so a spoofed sender can never override a real alias. A mailbox
+registered by **two** firms resolves to *nothing* (quarantined) rather than a guess —
+misrouting a book into the wrong tenant is far worse than a message needing a human.
+
+Firms register their sending mailbox on the **RTA Mailback** card
+(Settings → Integrations). Collisions are rejected at registration with a clear error.
+
+### The Gmail/Outlook confirmation code
+Gmail emails a verification code to whichever address you enter. That mail lands in
+our catch-all, and the poller **auto-captures the code** — it appears as a blue banner
+on the firm's RTA Mailback card (and in Aina Admin → Inbound Mail, outcome
+*Forwarding confirm*) within ~2 minutes. Paste it back into Gmail once. This step
+exists for BOTH addressing options — it's Gmail's, not ours.
 
 ---
 
@@ -107,9 +135,12 @@ server. Confirm `[rta-inbox] mailback poller started` in the worker logs.
 
 | Symptom | Where | Cause / fix |
 |---|---|---|
+| **Anything** — start here | **Aina Admin → Inbound Mail** | Every polled message with its outcome, body snippet, and per-attachment verdict. |
 | Nothing imports | worker logs `[rta-inbox]` | Env not set, catch-all not confirmed, or MX wrong. |
 | Import `failed` — "Could not open the zip" | RTA Imports screen | Wrong/missing CAMS or KFintech password — re-enter on the card. |
-| Mail arrives but no import | `rta_inbound_quarantine` table | Address didn't match a firm (typo / rotated token), or no recognised attachment. |
+| Outcome **Unroutable** | Inbound Mail | Address didn't match a firm (typo / rotated token) AND the sending mailbox isn't registered. |
+| Outcome **No RTA file** | Inbound Mail → expand row | Reached the right firm, but no attachment carried a known report code — add the pattern to the classifier. |
+| Outcome **Already imported** | Inbound Mail | Safe no-op — the same file was already in flight. |
 | A file type isn't picked up | classifier | Filename report-code not recognised → quarantined, not mis-imported. Add the pattern to `src/lib/rta/classify-mailback.ts`. |
 
 ### Key files
