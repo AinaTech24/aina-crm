@@ -72,6 +72,12 @@ export type Capability =
   // Households (family mapping). Separate from investor.* so an owner can let
   // a team member group clients into households without granting client edits.
   | "family.view"
+  | "family.create"
+  | "family.edit"
+  // LEGACY: superseded by family.create + family.edit. Still honoured because
+  // a non-empty permission list is an ALLOW-LIST — dropping it would silently
+  // revoke households from every user who already has it granted. Hidden from
+  // the picker (see capability-catalog.ts) so nobody grants it fresh.
   | "family.manage"
   | "family.delete"
   // Leads
@@ -178,6 +184,8 @@ const MATRIX: Record<Capability, Role[]> = {
   // Households: an RM groups their OWN book into families, so they manage.
   // Deleting unlinks every client in the household, so it stays narrower.
   "family.view": ["rm", "back_office", "ops", "branch_head", "compliance"],
+  "family.create": ["rm", "back_office", "ops", "branch_head"],
+  "family.edit": ["rm", "back_office", "ops", "branch_head"],
   "family.manage": ["rm", "back_office", "ops", "branch_head"],
   "family.delete": ["back_office", "ops"],
 

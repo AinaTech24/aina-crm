@@ -38,6 +38,13 @@ export type CapabilityMeta = {
   label: string;
   /** Shown as helper text where the plain label could be misread. */
   hint?: string;
+  /**
+   * Superseded by finer-grained capabilities but still enforced, because a
+   * non-empty permission list is an allow-list: removing the key outright
+   * would revoke access from everyone who already holds it. Kept out of the
+   * picker so it cannot be granted afresh, while existing grants keep working.
+   */
+  legacy?: true;
 };
 
 /**
@@ -54,7 +61,9 @@ export const CAPABILITY_CATALOG: Record<Capability, CapabilityMeta> = {
   "investor.delete": { group: "Clients & Households", label: "Delete clients permanently", hint: "Irreversible — erases the client's history" },
   "investor.note.add": { group: "Clients & Households", label: "Add client notes" },
   "family.view": { group: "Clients & Households", label: "View households" },
-  "family.manage": { group: "Clients & Households", label: "Create & edit households" },
+  "family.create": { group: "Clients & Households", label: "Create households" },
+  "family.edit": { group: "Clients & Households", label: "Edit households", hint: "Rename, set the primary client, add and remove members" },
+  "family.manage": { group: "Clients & Households", label: "Create & edit households (legacy)", legacy: true },
   "family.delete": { group: "Clients & Households", label: "Delete households", hint: "Unlinks every client in the household" },
 
   // ── Leads ───────────────────────────────────────────────────────────────
@@ -149,7 +158,8 @@ export type CapabilityGroupView = {
  */
 export const CAPABILITY_GROUPS: CapabilityGroupView[] = CAPABILITY_GROUP_ORDER.map((group) => ({
   group,
-  items: ALL_CAPABILITIES.filter((c) => CAPABILITY_CATALOG[c]?.group === group).map((key) => ({
+  // Legacy capabilities stay enforceable but are never offered as a new grant.
+  items: ALL_CAPABILITIES.filter((c) => CAPABILITY_CATALOG[c]?.group === group && !CAPABILITY_CATALOG[c]?.legacy).map((key) => ({
     key,
     label: CAPABILITY_CATALOG[key].label,
     hint: CAPABILITY_CATALOG[key].hint,

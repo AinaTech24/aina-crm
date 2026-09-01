@@ -52,11 +52,11 @@ export default function NewFamilyPage() {
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) {
-        // A raw "forbidden: missing family.manage" tells the user nothing they
+        // A raw "forbidden: missing family.create" tells the user nothing they
         // can act on — name the setting an owner has to switch on, and where.
         if (res.status === 403) {
           setErr(
-            "You don’t have permission to create households. Ask your firm admin to enable “Create & edit households” for you under Team → your profile → Customize Access Permissions."
+            "You don’t have permission to create households. Ask your firm admin to enable “Create households” for you under Team → your profile → Customize Access Permissions."
           );
         } else if (res.status === 401) {
           setErr("Your session has expired. Please sign in again.");
