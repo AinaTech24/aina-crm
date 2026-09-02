@@ -81,15 +81,19 @@ jobs:
 
       # The box holds a plain source tree (NOT a git checkout), so we ship the
       # tree rather than pulling on the far side.
+      # The tarball MUST land inside the workspace. appleboy/scp-action runs in a
+      # Docker container that only mounts /github/workspace, so a file written to
+      # the runner's /tmp is invisible to it — the action then tars nothing and
+      # fails with "tar: empty archive" (run 33658352122).
       - name: Package the tree
         run: |
-          tar czf /tmp/app.tgz \
+          tar czf app.tgz \
             --exclude='node_modules' --exclude='.next' --exclude='.git' \
             src public drizzle scripts \
             package.json package-lock.json next.config.ts tsconfig.json \
             drizzle.config.ts postcss.config.js tailwind.config.ts \
             vitest.config.ts
-          ls -lh /tmp/app.tgz
+          ls -lh app.tgz
 
       - name: Copy to the box
         uses: appleboy/scp-action@v0.1.7
@@ -98,9 +102,11 @@ jobs:
           username: ${{ secrets.DEPLOY_SSH_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: ${{ secrets.DEPLOY_SSH_PORT || 22 }}
-          source: /tmp/app.tgz
+          source: app.tgz
           target: /tmp
-          strip_components: 1
+          # source is a bare filename with no directory components, so stripping
+          # one would strip the file itself.
+          strip_components: 0
 
       - name: Deploy (blue-green) and wait for the result
         uses: appleboy/ssh-action@v1.2.0
