@@ -19,7 +19,9 @@ name: Deploy to AWS (EC2)
 
 on:
   push:
-    branches: [deploy/aws]
+    # main is the deploy branch: merging to main ships. deploy/aws is kept for
+    # pinning a deploy to a specific commit without moving main.
+    branches: [main, deploy/aws]
   workflow_dispatch:
 
 concurrency:
@@ -30,7 +32,29 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Fail fast BEFORE shipping. The box runs the same typecheck, but only after a
+  # ~20-minute Docker build — and because next.config sets
+  # typescript.ignoreBuildErrors, `next build` happily succeeds on broken types,
+  # so this is the check that actually catches them. Two minutes here beats
+  # twenty on the box, and with auto-deploy nobody is watching the run.
+  #
+  # Deliberately typecheck ONLY. The other CI guards (RBAC, migration numbering,
+  # colour + as-any ratchets) live in ci.yml and are currently red on main;
+  # gating deploys on a style ratchet would block shipping a hotfix.
+  verify:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npx tsc --noEmit
+
   deploy:
+    needs: verify
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
