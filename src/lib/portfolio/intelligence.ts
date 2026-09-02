@@ -71,11 +71,17 @@ export async function getPortfolioIntel(
   `)).rows[0] as any;
   const totalAum = Number(totals?.total ?? 0);
 
+  // NO LIMIT here, deliberately. `byAmc.length` is what the "AMCs" KPI reports,
+  // so a `LIMIT 12` silently capped the headline count at 12 for every firm that
+  // holds more (VSN showed "12 AMCs" because the query stopped counting, not
+  // because the book had 12). The group is bounded by the distinct AMC names in
+  // the tenant's folios — a few dozen at most — so returning all of them is cheap
+  // and keeps the KPI, the panel and the CSV export in agreement.
   const amc = (await tx.execute(sql`
     SELECT f.amc_name AS label, COALESCE(SUM(f.aum::numeric),0)::numeric AS value
     FROM folios f JOIN investors i ON i.id = f.investor_id
     WHERE f.tenant_id = ${opts.tenantId}::uuid ${scope}
-    GROUP BY f.amc_name ORDER BY value DESC LIMIT 12
+    GROUP BY f.amc_name ORDER BY value DESC
   `)).rows as any[];
 
   // Asset class + coverage + direct-plan, all from the scheme-level jsonb.

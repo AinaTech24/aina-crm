@@ -101,8 +101,11 @@ export default async function PortfolioIntelligencePage({ searchParams }: { sear
             </Panel>
 
             <Panel title="AMC concentration" icon={Building2}>
-              <div className="space-y-2.5">
-                {intel.byAmc.slice(0, 8).map((a, i) => (
+              {/* Every AMC in the book, not a top-8 slice — the "AMCs" KPI counts
+                  this same list, so truncating here made the two disagree. Long
+                  books scroll inside the panel instead of dropping rows. */}
+              <div className={`space-y-2.5${intel.byAmc.length > 10 ? " max-h-[26rem] overflow-y-auto pr-1" : ""}`}>
+                {intel.byAmc.map((a, i) => (
                   <PortfolioDrillBar key={a.label} by="amc" label={a.label} pct={a.pct} value={a.value} color={a.pct >= 30 ? "bg-rose-500" : a.pct >= 20 ? "bg-amber-500" : "bg-brand-cyan"} rank={i + 1} mine={mine} />
                 ))}
               </div>
