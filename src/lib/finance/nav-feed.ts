@@ -24,8 +24,13 @@
 import { sql } from "drizzle-orm";
 import { withSystem } from "@/db/client";
 
+/**
+ * AMFI moved the feed to portal.amfiindia.com in Aug 2026; the old www host now
+ * answers 302. Point at the canonical host directly rather than relying on the
+ * redirect surviving.
+ */
 export const AMFI_NAVALL_URL =
-  process.env.AMFI_NAVALL_URL ?? "https://www.amfiindia.com/spages/NAVAll.txt";
+  process.env.AMFI_NAVALL_URL ?? "https://portal.amfiindia.com/spages/NAVAll.txt";
 
 export type NavRecord = {
   schemeCode: string;
@@ -57,6 +62,27 @@ export function parseAmfiDate(s: string): string | null {
   return `${m[3]}-${mon}-${day}`;
 }
 
+/** Where the fields sit on a data row. Legacy AMFI layout is the default. */
+type ColumnMap = { nav: number; date: number; plan: number | null; option: number | null };
+
+const LEGACY_COLUMNS: ColumnMap = { nav: 4, date: 5, plan: null, option: null };
+
+/**
+ * Bind columns by header name. Returns null when the row isn't a recognisable
+ * header, so the caller keeps whatever mapping it already had.
+ */
+function headerIndices(cols: string[]): ColumnMap | null {
+  const norm = cols.map((c) => c.trim().toLowerCase());
+  const find = (re: RegExp) => {
+    const i = norm.findIndex((c) => re.test(c));
+    return i === -1 ? null : i;
+  };
+  const nav = find(/net asset value|^nav$/);
+  const date = find(/^date$/);
+  if (nav == null || date == null) return null;
+  return { nav, date, plan: find(/^plan$/), option: find(/^option$/) };
+}
+
 /**
  * Parse the raw NAVAll.txt body into NavRecords. Pure + synchronous so it's
  * unit-testable without a network call.
@@ -66,6 +92,7 @@ export function parseNavAll(body: string): NavRecord[] {
   let currentAmc: string | null = null;
   let currentType: string | null = null;
   let currentCategory: string | null = null;
+  let col: ColumnMap = LEGACY_COLUMNS;
   const lines = body.split(/\r?\n/);
 
   for (const line of lines) {
@@ -96,16 +123,27 @@ export function parseNavAll(body: string): NavRecord[] {
     }
 
     const cols = trimmed.split(";");
-    // Expect: code; isinGrowth; isinReinvest; name; nav; date
     if (cols.length < 6) continue;
-    const schemeCode = cols[0].trim();
-    if (!/^\d+$/.test(schemeCode)) continue; // skip the header row + junk
 
-    const navRaw = cols[4].trim();
-    const nav = Number(navRaw);
+    // The header row names the columns. AMFI changed the layout in Aug 2026 —
+    // "Plan" and "Option" were inserted before the NAV, shifting nav/date from
+    // index 4/5 to 6/7. A positional parser silently produced ZERO records for
+    // 15 days (Number("Direct Plan") is NaN, so every row was skipped) and the
+    // whole platform valued portfolios at stale NAVs. So bind the columns by
+    // header name and only fall back to the legacy positions when there is no
+    // header to read.
+    if (!/^\d+$/.test(cols[0].trim())) {
+      const idx = headerIndices(cols);
+      if (idx) col = idx;
+      continue; // header row itself carries no data
+    }
+
+    const schemeCode = cols[0].trim();
+
+    const nav = Number(cols[col.nav]?.trim());
     if (!isFinite(nav) || nav <= 0) continue; // "N.A." or suspended schemes
 
-    const navDate = parseAmfiDate(cols[5]);
+    const navDate = parseAmfiDate(cols[col.date] ?? "");
     if (!navDate) continue;
 
     out.push({
@@ -114,7 +152,10 @@ export function parseNavAll(body: string): NavRecord[] {
       // ISIN) so folio matching on scheme_nav.isin doesn't regress.
       isin: cols[1].trim() || cols[2].trim() || null,
       isinReinvest: cols[2].trim() || null,
-      schemeName: cols[3].trim(),
+      schemeName: [cols[3], col.plan != null ? cols[col.plan] : "", col.option != null ? cols[col.option] : ""]
+        .map((s) => (s ?? "").trim())
+        .filter(Boolean)
+        .join(" - "),
       amcName: currentAmc,
       schemeType: currentType,
       schemeCategory: currentCategory,
@@ -177,7 +218,23 @@ export async function upsertNavs(records: NavRecord[]): Promise<number> {
   return written;
 }
 
-/** Full pipeline: fetch → parse → upsert. Returns a summary. */
+/**
+ * Minimum plausible scheme count in a healthy AMFI feed. The real feed carries
+ * ~14k schemes; anything under this means the upstream format moved or the
+ * download was truncated, NOT that India lost its mutual funds.
+ */
+export const NAV_FEED_MIN_RECORDS = Number(process.env.NAV_FEED_MIN_RECORDS ?? 1000);
+
+/**
+ * Full pipeline: fetch → parse → upsert. Returns a summary.
+ *
+ * THROWS when the parse yields implausibly few records. This is deliberate: in
+ * Aug 2026 AMFI inserted two columns, the positional parser produced zero rows,
+ * `upsertNavs([])` wrote nothing and returned 0, and the daily job logged a
+ * cheerful "upserted 0 schemes" for 15 days while every tenant's AUM silently
+ * froze at stale prices. A pipeline that writes nothing must fail loudly, not
+ * succeed quietly — the caller's error path is what surfaces it.
+ */
 export async function refreshNav(): Promise<{
   fetched: number;
   written: number;
@@ -185,6 +242,15 @@ export async function refreshNav(): Promise<{
 }> {
   const body = await fetchNavAll();
   const records = parseNavAll(body);
+
+  if (records.length < NAV_FEED_MIN_RECORDS) {
+    const header = body.split(/\r?\n/).find((l) => l.includes(";"))?.slice(0, 200) ?? "(no delimited line)";
+    throw new Error(
+      `AMFI feed parsed only ${records.length} records (expected >= ${NAV_FEED_MIN_RECORDS}). ` +
+        `The upstream layout has probably changed — scheme_nav was NOT updated. First delimited line: ${header}`
+    );
+  }
+
   const written = await upsertNavs(records);
   // Most-common nav date across the feed (sanity field for logs).
   const navDate = records.length ? records[records.length - 1].navDate : null;
