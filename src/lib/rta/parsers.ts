@@ -1,4 +1,5 @@
 import { buildHeaderIndexMap } from "../integrations/cams-feed-parser";
+import { parseCsv } from "./csv";
 
 /**
  * Parsers for RTA file types beyond the daily transaction feed.
@@ -510,28 +511,18 @@ function resolveHeader(
   return { start: 0, indexMap: fallback };
 }
 
+/**
+ * Split one delimited line into fields.
+ *
+ * The comma case delegates to the shared RFC-4180 reader, which treats both `"`
+ * and `'` as quotes — CAMS's "CSVWH" mailback wraps every text field in SINGLE
+ * quotes, and the hand-rolled splitter this replaced only knew double quotes, so
+ * every value arrived with its apostrophes attached (`'AJNPB9093L'`) and matched
+ * nothing downstream. Same defect the transaction feed carried; fixed in both so
+ * a single-quoted SIP register / brokerage / AUM statement parses too.
+ */
 function splitLine(line: string, delim: string): string[] {
-  if (delim === ",") {
-    const out: string[] = [];
-    let cur = "";
-    let inQuote = false;
-    for (let i = 0; i < line.length; i++) {
-      const ch = line[i];
-      if (ch === '"' && line[i + 1] === '"') {
-        cur += '"';
-        i++;
-      } else if (ch === '"') {
-        inQuote = !inQuote;
-      } else if (ch === "," && !inQuote) {
-        out.push(cur);
-        cur = "";
-      } else {
-        cur += ch;
-      }
-    }
-    out.push(cur);
-    return out;
-  }
+  if (delim === ",") return parseCsv(line)[0] ?? [];
   return line.split(delim);
 }
 

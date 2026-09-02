@@ -21,6 +21,7 @@
  */
 
 import { z } from "zod";
+import { parseCsv } from "@/lib/rta/csv";
 
 export type CanonicalTransaction = {
   externalRef: string;
@@ -212,6 +213,24 @@ export function parseReverseFeed(text: string, refPrefix = "feed"): CanonicalTra
   }
   const maxIdx = Math.max(0, ...Object.values(indexMap));
 
+  // Decide D/M vs M/D ONCE for the whole file (see detectDateOrder). Bounded to
+  // the first slice of data rows so a 100k-row feed doesn't pay for a second
+  // full split — a handful of rows with a day > 12 settles it, and a file that
+  // never disambiguates keeps the D/M/Y default either way.
+  const dateIdx = indexMap.orderDate;
+  let dateOrder: DateOrder = "dmy";
+  if (dateIdx !== undefined) {
+    const samples: string[] = [];
+    for (let i = dataStart; i < lines.length && samples.length < 5000; i++) {
+      const line = lines[i];
+      if (!line || !line.trim()) continue;
+      const cols = split(line);
+      const v = cols[dateIdx];
+      if (v) samples.push(v.trim());
+    }
+    dateOrder = detectDateOrder(samples);
+  }
+
   for (let i = dataStart; i < lines.length; i++) {
     const line = lines[i];
     if (!line || !line.trim()) continue;
@@ -243,7 +262,7 @@ export function parseReverseFeed(text: string, refPrefix = "feed"): CanonicalTra
       amount: Math.abs(parseFloat(val("amount").replace(/[, ]/g, "")) || 0),
       units: parseFloat(val("units").replace(/[, ]/g, "")) || 0,
       nav: parseFloat(val("nav").replace(/[, ]/g, "")) || 0,
-      orderDate: normalizeDate(val("orderDate")),
+      orderDate: normalizeDate(val("orderDate"), dateOrder),
       status: normaliseFeedStatus(val("status")),
       reasonCode: val("reasonCode") || undefined,
     });
@@ -266,7 +285,37 @@ const MONTHS: Record<string, string> = {
   JUL: "07", AUG: "08", SEP: "09", OCT: "10", NOV: "11", DEC: "12",
 };
 
-function normalizeDate(d: string | undefined): string {
+/**
+ * Which way round a file writes numeric dates.
+ *
+ * Indian RTA feeds are D/M/Y by default, but CAMS's "CSVWH" mailback emits
+ * US-style M/D/Y — and the two are indistinguishable row by row whenever both
+ * components are <= 12. Deciding per ROW (the old behaviour) got the
+ * unambiguous rows right and silently shifted the ambiguous ones by months: a
+ * real WBR2 sample parsed 112/232 rows correctly and misdated the other 120.
+ * A file is written one way throughout, so decide ONCE from the whole column and
+ * apply it uniformly.
+ */
+export type DateOrder = "dmy" | "mdy";
+
+/**
+ * Infer the date order from a file's date column. A component > 12 can only be
+ * a day, so it pins the layout; if nothing in the sample disambiguates we keep
+ * the Indian D/M/Y default. Bounded — a few hundred rows settle it in practice.
+ */
+export function detectDateOrder(samples: Iterable<string | undefined>): DateOrder {
+  let dayFirst = 0;
+  let monthFirst = 0;
+  for (const raw of samples) {
+    const m = (raw ?? "").trim().match(/^(\d{1,2})[-/](\d{1,2})[-/]\d{4}/);
+    if (!m) continue;
+    if (+m[1] > 12) dayFirst++;
+    if (+m[2] > 12) monthFirst++;
+  }
+  return monthFirst > dayFirst ? "mdy" : "dmy";
+}
+
+function normalizeDate(d: string | undefined, order: DateOrder = "dmy"): string {
   if (!d) return new Date().toISOString().slice(0, 10);
   const s = d.trim();
   // ISO (decoder already emits this for spreadsheet date cells).
@@ -277,13 +326,16 @@ function normalizeDate(d: string | undefined): string {
   if (ymd && +ymd[2] >= 1 && +ymd[2] <= 12 && +ymd[3] >= 1 && +ymd[3] <= 31) {
     return `${ymd[1]}-${ymd[2]}-${ymd[3]}`;
   }
-  // DD-MM-YYYY or DD/MM/YYYY (with optional time after). Indian RTA feeds are
-  // DD/MM by default, but guard against MM/DD: if the 2nd field is >12 it can't
-  // be a month, so the file is MM/DD and we swap.
+  // DD-MM-YYYY / DD/MM/YYYY, or MM/DD/YYYY when `order` says so (with optional
+  // time after). The file-level `order` decides; the per-row guard below only
+  // salvages a row that contradicts it (an impossible month can only be a day),
+  // so one malformed row can't drag the rest of the file with it.
   const dmy = s.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})/);
   if (dmy) {
-    let day = parseInt(dmy[1], 10);
-    let mon = parseInt(dmy[2], 10);
+    const a = parseInt(dmy[1], 10);
+    const b = parseInt(dmy[2], 10);
+    let day = order === "mdy" ? b : a;
+    let mon = order === "mdy" ? a : b;
     if (mon > 12 && day <= 12) [day, mon] = [mon, day];
     return `${dmy[3]}-${String(mon).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
   }
@@ -296,24 +348,25 @@ function normalizeDate(d: string | undefined): string {
   return s;
 }
 
+/**
+ * Split one comma-delimited feed line into fields.
+ *
+ * Delegates to the shared RFC-4180 reader, which treats BOTH `"` and `'` as
+ * quote characters. CAMS's "CSVWH" mailback format wraps every text field in
+ * SINGLE quotes:
+ *   'AMC_CODE','FOLIO_NO','PRODCODE','SCHEME',…
+ *   'H','5904386/12','H02','HDFC Flexi Cap Fund - Regular Plan - Growth',…
+ * The local splitter this replaced only understood double quotes, so every
+ * value kept its apostrophes: pan `'AJNPB9093L'` matched no investor, and
+ * order_date `'6/10/2011  12:00:00 AM'` failed its `::date` cast — which aborts
+ * the surrounding Postgres transaction and takes the whole import down with it.
+ * The header still mapped correctly (header normalisation strips
+ * non-alphanumerics), so the file looked like it parsed while every row was
+ * unusable — the worst failure shape to diagnose from the outside.
+ *
+ * `parseCsv` opens a quote only at field start, so an apostrophe inside an
+ * unquoted name (O'Brien) stays literal.
+ */
 function parseCsvRow(line: string): string[] {
-  const out: string[] = [];
-  let cur = "";
-  let inQuote = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (ch === '"' && line[i + 1] === '"') {
-      cur += '"';
-      i++;
-    } else if (ch === '"') {
-      inQuote = !inQuote;
-    } else if (ch === "," && !inQuote) {
-      out.push(cur);
-      cur = "";
-    } else {
-      cur += ch;
-    }
-  }
-  out.push(cur);
-  return out;
+  return parseCsv(line)[0] ?? [];
 }
