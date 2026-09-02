@@ -7,6 +7,7 @@ import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { RTA_FILE_KINDS, RTA_SOURCES } from "@/db/schema/rta_imports";
+import { getMailbackPasswords, passwordCandidates } from "@/lib/rta/mailback-config";
 import { Q } from "@/workers/queues";
 
 /**
@@ -128,6 +129,32 @@ export async function POST(req: NextRequest) {
   const RICH_KINDS = new Set(["folio_master_dump", "cas_holdings"]);
   const useRich = RICH_KINDS.has(kind) && (source === "cams" || source === "kfintech");
 
+  // Fall back to the firm's SAVED mailback passwords when the dialog's one
+  // doesn't open the archive. A firm with several ARNs holds several passwords
+  // per registrar, and the person uploading rarely knows which subscription a
+  // given file came from — so a manual upload used to fail with "not our file"
+  // on an archive the platform could already open, purely because the wrong one
+  // of the firm's own passwords was typed. Auto-import, re-import and the
+  // rejected-rescan have always tried them all; this is the last path that
+  // didn't. Every saved secret is offered regardless of the label it sits under
+  // (labels name mailboxes for humans, they do not route) and regardless of the
+  // selected registrar, mirroring the re-import route — a mis-picked source
+  // shouldn't cost the user the import. The typed password is kept and tried
+  // too; unzip attempts are cheap and stop at the first that opens.
+  const savedPasswords = await withTenant(
+    session.tenantId,
+    async (tx) => {
+      const cfg = await getMailbackPasswords(tx, session.tenantId);
+      return [
+        ...new Set([
+          ...passwordCandidates(cfg, source).map((e) => e.password),
+          ...passwordCandidates(cfg, source === "cams" ? "kfintech" : "cams").map((e) => e.password),
+        ]),
+      ];
+    },
+    { userId: session.userId, branchId: session.branchId, roles: session.roles }
+  ).catch(() => [] as string[]);
+
   await Q.rtaImport().add(
     useRich ? "rich-import" : "import",
     useRich
@@ -138,6 +165,7 @@ export async function POST(req: NextRequest) {
           key,
           filename: fileName,
           password: password || undefined,
+          passwords: savedPasswords,
           rta: source,
           reportType: "",
           dryRun: false,
@@ -154,6 +182,7 @@ export async function POST(req: NextRequest) {
           key,
           filename: fileName,
           password: password || undefined,
+          passwords: savedPasswords,
           userId: session.userId,
           branchId: session.branchId,
           roles: session.roles,
