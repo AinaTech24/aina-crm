@@ -4,7 +4,7 @@ import { v4 as uuid } from "uuid";
 import { and, eq } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { requireAny } from "@/lib/auth/rbac";
+import { require as requireCap } from "@/lib/auth/rbac";
 import { sipRejections, investors, tasks, eventsOutbox } from "@/db/schema";
 
 export const dynamic = "force-dynamic";
@@ -21,11 +21,7 @@ export const dynamic = "force-dynamic";
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await requireSession();
-    requireAny(
-      session.roles,
-      ["transactions.manage", "rm", "branch_head", "ops", "owner", "compliance"],
-      session.permissions
-    );
+    requireCap(session.roles, "transactions.execute", session.permissions);
 
     const { id } = await params;
 

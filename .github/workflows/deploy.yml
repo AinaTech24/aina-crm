@@ -64,7 +64,7 @@ jobs:
             src public drizzle scripts \
             package.json package-lock.json next.config.ts tsconfig.json \
             drizzle.config.ts postcss.config.js tailwind.config.ts \
-            next-env.d.ts vitest.config.ts
+            vitest.config.ts
           ls -lh /tmp/app.tgz
 
       - name: Copy to the box

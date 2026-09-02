@@ -56,7 +56,6 @@ export type RtaImportJob = {
   roles: string[];
 };
 
-const MAX_BYTES = 60 * 1024 * 1024;
 
 async function markFailed(
   job: RtaImportJob,
@@ -279,10 +278,14 @@ export async function runRtaImportJob(job: RtaImportJob): Promise<void> {
     await markFailed(job, "empty upload — no file received");
     return;
   }
-  if (buf.length > MAX_BYTES) {
-    await markFailed(job, "file too large (max 60 MB)");
-    return;
-  }
+  // NO blanket size cap. A CAMS/KFintech master is legitimately hundreds of MB
+  // and CSV/TXT never enters SheetJS — it is read as a string and streamed into
+  // the parsers, so its cost is linear and bounded. The ONLY format that needs a
+  // ceiling is a spreadsheet (.xls/.xlsx/.xlsb/.xlsm/.dbf), because XLSX.read()
+  // materialises the entire workbook as an in-memory cell graph; that guard
+  // lives in decodeRtaToText (SPREADSHEET_MAX_BYTES, tunable via
+  // RTA_SPREADSHEET_MAX_BYTES) and is applied AFTER unzip, to the real payload
+  // rather than to the compressed archive.
 
   // Checksum the ORIGINAL bytes so re-uploading the identical file dedupes.
   const checksum = createHash("sha256").update(buf).digest("hex");
