@@ -21,6 +21,9 @@ export const dynamic = "force-dynamic";
 // Expected cadence (hours) per job — used to compute "overdue".
 const MAX_AGE_HOURS: Record<string, number> = {
   "daily-ops-scanner": 26,
+  // Ingestion liveness. 1h, not 26h: the poller ticks every 2 minutes, so an
+  // hour of silence already means mail is not being collected.
+  "rta-inbox-poller": 1,
   "nav-refresh": 26,
   "reconciliation-scanner": 26,
   "statement-scheduler": 26,
@@ -58,18 +61,25 @@ export async function GET(req: NextRequest) {
     const jobs = rows.map((r) => {
       const maxAge = MAX_AGE_HOURS[r.job_name];
       const overdue = maxAge != null && (r.age_hours == null || Number(r.age_hours) > maxAge);
+      // A tracked job that RAN and FAILED is unhealthy even though it is not
+      // overdue: recordRun stamps last_run_at on the failure path too, so a job
+      // that throws every single day looks perfectly fresh. Only judge the
+      // status of jobs we actually track a cadence for — untracked jobs report
+      // their status for the UI but must not turn the probe red on their own.
+      const failing = maxAge != null && r.last_run_status === "error";
       return {
         job: r.job_name,
         lastRunAt: r.last_run_at,
         status: r.last_run_status,
         ageHours: r.age_hours != null ? Math.round(Number(r.age_hours) * 10) / 10 : null,
         overdue,
+        failing,
       };
     });
 
     // Any tracked fixed-time job missing entirely is itself a problem.
     const missing = Object.keys(MAX_AGE_HOURS).filter((j) => !rows.some((r) => r.job_name === j));
-    const healthy = jobs.every((j) => !j.overdue) && missing.length === 0;
+    const healthy = jobs.every((j) => !j.overdue && !j.failing) && missing.length === 0;
 
     return NextResponse.json({ healthy, jobs, missing }, { status: healthy ? 200 : 503 });
   } catch (err: any) {

@@ -22,6 +22,7 @@
 import { createHash } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { withSystem, withTenant } from "@/db/client";
+import { recordRun } from "./scheduler-state";
 import {
   processUnseenMailback,
   deleteMessagesByMessageId,
@@ -592,6 +593,12 @@ export function startRtaInboxPollerWorker() {
   const tick = async () => {
     if (running) return;
     running = true;
+    // Heartbeat: without this, an expired IMAP credential, an unstarted `mail`
+    // worker group or a full mailbox produces ZERO signal — ingestion simply
+    // stops and /api/health/workers stays green. Every exit path below records
+    // an outcome so the probe can go red.
+    let outcome: "ok" | "error" = "ok";
+    let detail = "";
     try {
       const rc = await loadRtaInboxConfig();
       if (!rc.configured) {
@@ -599,12 +606,14 @@ export function startRtaInboxPollerWorker() {
           console.log("[rta-inbox] inbox not configured (Aina Admin → RTA Mailbox, or RTA_INBOX_* env) — poller idle");
           warnedIdle = true;
         }
+        detail = "not configured";
         return;
       }
       warnedIdle = false;
       const cfg: ImapConfig = { host: rc.host!, port: rc.port, secure: rc.secure, user: rc.user!, pass: rc.pass! };
       const { processed } = await processUnseenMailback(cfg, handleMessage);
       if (processed) console.log(`[rta-inbox] processed ${processed} message(s) (domain=${rc.domain})`);
+      detail = `processed ${processed}`;
 
       if (rc.deleteAfterImport && Date.now() - lastSweep > SWEEP_INTERVAL_MS) {
         lastSweep = Date.now();
@@ -616,9 +625,13 @@ export function startRtaInboxPollerWorker() {
         }
       }
     } catch (e) {
-      console.error(`[rta-inbox] poll failed: ${describeMailError(e, "imap")} (raw: ${(e as Error).message})`);
+      outcome = "error";
+      detail = describeMailError(e, "imap");
+      console.error(`[rta-inbox] poll failed: ${detail} (raw: ${(e as Error).message})`);
     } finally {
       running = false;
+      // Never let a heartbeat write break the poll loop.
+      await recordRun("rta-inbox-poller", outcome, detail.slice(0, 300)).catch(() => {});
     }
   };
 

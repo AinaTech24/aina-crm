@@ -20,13 +20,37 @@ export function isCamsFile(header: string[]): boolean {
   return SIGNATURE.every((h) => have.has(h));
 }
 
-/** Excel serial (e.g. "46188") or "DD/MM/YYYY" → ISO yyyy-mm-dd. */
+/**
+ * Excel serial (e.g. "46188"), bare "YYYYMMDD", or "DD/MM/YYYY" → ISO yyyy-mm-dd.
+ *
+ * The bare-YYYYMMDD branch is not optional. CAMS ships dates of birth as plain
+ * 8-digit numbers in some exports; without this they fell through to the Excel
+ * branch, where 19850612 days past 1899 lands in the year 56249 and
+ * `toISOString()` returns "+056249-02-11...". That went straight into
+ * `investors.dob` (a `date` column), Postgres rejected it, and the WHOLE tenant
+ * transaction aborted — a 5,000-folio master lost to one cell.
+ *
+ * The serial branch is bounded to a plausible window for the same reason: a
+ * value outside it is not a date we can trust, and returning null loses one
+ * field instead of the entire file.
+ */
+const EXCEL_SERIAL_MAX = 60000; // ~year 2064
 function camsDate(s?: string): string | null {
   const v = (s ?? "").trim();
   if (!v) return null;
   if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(v)) return dmyToIso(v);
+
+  // Bare YYYYMMDD, e.g. "19850612". Must be tested BEFORE the serial branch.
+  const ymd = v.match(/^(\d{4})(\d{2})(\d{2})$/);
+  if (ymd) {
+    const [, y, m, d] = ymd;
+    const yr = Number(y), mo = Number(m), dy = Number(d);
+    if (yr < 1900 || yr > 2100 || mo < 1 || mo > 12 || dy < 1 || dy > 31) return null;
+    return `${y}-${m}-${d}`;
+  }
+
   const n = Number(v);
-  if (Number.isFinite(n) && n > 0) {
+  if (Number.isFinite(n) && n > 0 && n <= EXCEL_SERIAL_MAX) {
     // Excel epoch 1899-12-30 (covers the 1900 leap-year bug for n >= 60).
     const d = new Date(Math.round(n) * 86400000 + Date.UTC(1899, 11, 30));
     return isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);

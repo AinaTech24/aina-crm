@@ -372,7 +372,18 @@ export async function runRtaImportJob(job: RtaImportJob): Promise<void> {
         await tx.execute(sql`
           UPDATE rta_file_imports
           SET status = ${status}, parsed_at = now(), file_checksum = ${checksum},
-              remarks = COALESCE(${emptyNote}, remarks),
+              -- Clear a stale FAILURE remark when the file later imports fine.
+              -- A row that was 'rejected' ("Not this firm's file — the archive is
+              -- encrypted with a different password") and is now 'completed' kept
+              -- that text forever, so Recent Uploads showed a rejection message on
+              -- a healthy row: 1,146 files across production read that way.
+              -- status on the right-hand side is the PRE-update value, so this
+              -- only fires on a genuine failure-to-success transition and leaves
+              -- provenance notes ("Auto-imported from forwarded email …") intact.
+              remarks = COALESCE(
+                ${emptyNote},
+                CASE WHEN status IN ('rejected', 'failed') THEN NULL ELSE remarks END
+              ),
               period_start = ${isoDateOrToday(outcome.periodStart)}::date,
               period_end = ${isoDateOrToday(outcome.periodEnd)}::date,
               rows_total = ${outcome.rowsTotal},
@@ -449,6 +460,41 @@ async function importSucceeded(job: { importId?: string }): Promise<boolean> {
   } catch {
     // If we can't tell, keep the file. Retaining a stale object is cheap;
     // deleting one that's still needed is not recoverable.
+    return false;
+  }
+}
+
+/**
+ * True when no OTHER import row still needs this S3 object.
+ *
+ * The same registrar mail forwarded from several mailboxes creates several
+ * `rta_file_imports` rows pointing at ONE object. Purging on the first success
+ * deleted the file while its siblings were still queued, so they failed with
+ * "The specified key does not exist" and were recorded as real failures —
+ * turning a harmless duplicate into a fake error and, worse, into an
+ * unrecoverable one once the mail aged out of the registrar's link window.
+ *
+ * A sibling that has already reached a terminal state doesn't count: `completed`
+ * is done with the bytes, and `rejected`/`failed` keep the object only so a
+ * credential fix can retry — but that retry re-reads from S3, so the object must
+ * survive for them too. Hence: keep the object while ANY other live row points
+ * at it, terminal or not, and let the retention sweep reclaim it later.
+ */
+async function isLastLiveClaimOnObject(key: string, selfImportId?: string): Promise<boolean> {
+  try {
+    return await withSystem(async (tx) => {
+      const r = await tx.execute(sql`
+        SELECT count(*)::int AS n
+        FROM rta_file_imports
+        WHERE file_key = ${key}
+          AND deleted_at IS NULL
+          AND id <> ${selfImportId ?? "00000000-0000-0000-0000-000000000000"}::uuid
+      `);
+      return Number((r.rows[0] as any)?.n ?? 0) === 0;
+    });
+  } catch {
+    // Can't tell — keep the object. Retaining a stale object is cheap; deleting
+    // one another row still needs is not recoverable.
     return false;
   }
 }
@@ -866,8 +912,16 @@ export function startRtaImportWorker() {
         //
         // Status is re-read rather than inferred from "didn't throw", because the
         // import records its own failure in the row and returns normally.
+        //
+        // ...and only once no OTHER live import row still points at the same
+        // object. One registrar mail forwarded from several mailboxes produces
+        // several rows sharing one file_key; the first to finish used to delete
+        // the object out from under its siblings, which then failed with "The
+        // specified key does not exist" and were recorded as genuine failures.
         if (localKey && (await importSucceeded(job.data as any))) {
-          await deleteObject(localKey).catch(() => {});
+          if (await isLastLiveClaimOnObject(localKey, (job.data as any)?.importId)) {
+            await deleteObject(localKey).catch(() => {});
+          }
         }
       }
     },
