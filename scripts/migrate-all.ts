@@ -67,7 +67,7 @@ async function main() {
   // the shared client at the master URL BEFORE importing it (it reads the
   // connection string at module load).
   if (process.env.DATABASE_URL) process.env.APP_DATABASE_URL = process.env.DATABASE_URL;
-  const { withSystem } = await import("../src/db/client");
+  const { withSystem, pool } = await import("../src/db/client");
 
   const files = readdirSync(MIGRATIONS_DIR)
     .filter((f) => f.endsWith(".sql"))
@@ -151,20 +151,46 @@ async function main() {
     const text = readFileSync(join(MIGRATIONS_DIR, f), "utf8");
     const cs = checksum(text);
     process.stdout.write(`[migrate] applying ${f} … `);
+    // Run the file on a RAW pg client, not through drizzle.
+    //
+    // drizzle's execute() goes down node-postgres' EXTENDED query protocol,
+    // and that protocol permits exactly one statement per message — so a file
+    // with two statements fails, whatever they are. Verified: even
+    // "CREATE TABLE a (id int); CREATE TABLE b (id int);" is rejected. Every
+    // migration here is multi-statement, which is why this runner has never
+    // been able to apply one and why CI's "Migrate · RLS coverage" job has
+    // never gone green. It went unnoticed because production's history was
+    // adopted with --baseline (recorded, never executed).
+    //
+    // client.query(string) uses the SIMPLE protocol, which is what psql uses
+    // and what multi-statement SQL requires. Errors also arrive intact instead
+    // of being truncated into drizzle's "Failed query: …" wrapper.
+    const client = await pool.connect();
     try {
-      await withSystem(async (tx) => {
-        await tx.execute(sql.raw(text));
-        await tx.execute(sql`
-          INSERT INTO _applied_migrations (filename, checksum)
-          VALUES (${f}, ${cs})
-          ON CONFLICT (filename) DO UPDATE SET checksum = EXCLUDED.checksum, applied_at = now()
-        `);
-      });
+      await client.query("BEGIN");
+      // Mirror withSystem(): the platform-admin branch of every RLS policy.
+      await client.query("SELECT set_config('app.is_platform_admin', 'true', true)");
+      await client.query(text);
+      await client.query(
+        `INSERT INTO _applied_migrations (filename, checksum)
+         VALUES ($1, $2)
+         ON CONFLICT (filename) DO UPDATE SET checksum = EXCLUDED.checksum, applied_at = now()`,
+        [f, cs]
+      );
+      await client.query("COMMIT");
       console.log("ok");
     } catch (err: any) {
+      await client.query("ROLLBACK").catch(() => {});
       console.log("FAILED");
-      console.error(err?.message ?? err);
+      // Postgres reports the position; surface it so the failing statement is
+      // findable rather than guessed at.
+      console.error(`  ${err?.message ?? err}`);
+      if (err?.position) console.error(`  at character ${err.position}`);
+      if (err?.detail) console.error(`  detail: ${err.detail}`);
+      if (err?.hint) console.error(`  hint: ${err.hint}`);
       process.exit(1);
+    } finally {
+      client.release();
     }
   }
   console.log(`[migrate] done — applied ${pending.length} migration(s).`);
