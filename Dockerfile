@@ -41,17 +41,26 @@ ENV DATABASE_URL=postgresql://build:build@127.0.0.1:5432/build \
 # `next build` and OOMs ("Ineffective mark-compacts near heap limit"). Scoped to
 # the build stage only — the runtime stage is a separate FROM.
 ENV NODE_OPTIONS=--max-old-space-size=4096
-# Persist Next's compilation cache ACROSS builds. `COPY . .` gives every build a
-# fresh, empty .next/, so each deploy recompiled the whole app from cold — 9m53s
-# of a 13m19s deploy on this 2-vCPU box. A BuildKit cache mount keeps
-# .next/cache on the builder between runs, so an incremental deploy only
-# recompiles what changed.
+# DO NOT reintroduce a BuildKit cache mount here without reading this first.
 #
-# It is a CACHE, not state: BuildKit may evict it at any time and the build then
-# simply runs cold again, exactly as it does today. Nothing in the image depends
-# on it — the mount is not part of the layer, so the output is byte-identical
-# whether the cache hit or missed.
-RUN --mount=type=cache,target=/app/.next/cache,sharing=locked npm run build
+# This line was briefly:
+#   RUN --mount=type=cache,target=/app/.next/cache,sharing=locked npm run build
+# to keep Next's compilation cache across builds (the build is ~10 min of a
+# ~13 min deploy on this 2-vCPU box, because `COPY . .` gives every build an
+# empty .next/).
+#
+# It broke deploys. `sharing=locked` serialises concurrent builds on the cache
+# and waits WITHOUT A TIMEOUT, so as soon as two deploys overlapped the second
+# build blocked indefinitely, never wrote DEPLOY_DONE_EXIT, and the workflow
+# died on its 40-minute command_timeout. Deploys went 16m/success to
+# 43m/54m/57m/failure the moment it landed, and stayed broken until it was
+# reverted.
+#
+# If this is worth revisiting: use `sharing=shared` (concurrent readers, no
+# blocking) or drop `sharing=` entirely, and only after confirming the box's
+# docker actually runs BuildKit — the legacy builder rejects `RUN --mount`
+# outright. Faster deploys are not worth unreliable ones.
+RUN npm run build
 
 # ---- runtime: lean image that runs either role -------------------------------
 FROM node:20-bookworm-slim AS runtime
