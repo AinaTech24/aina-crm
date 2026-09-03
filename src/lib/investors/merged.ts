@@ -20,6 +20,10 @@ import type { Tx } from "@/db/client";
 export type MergeSource = "manual" | "system" | "import";
 
 export type MergedClient = {
+  /** investor_merges row — null for merges performed before that log existed,
+   *  which therefore cannot be undone (nothing recorded what moved). */
+  mergeId: string | null;
+  reversible: boolean;
   loserId: string;
   loserName: string;
   loserPan: string | null;
@@ -61,7 +65,9 @@ export async function loadMergedClients(
     : sql``;
 
   const rows = (await tx.execute(sql`
-    SELECT l.id            AS loser_id,
+    SELECT m.id            AS merge_id,
+           COALESCE(m.reversible, false) AS reversible,
+           l.id            AS loser_id,
            l.name          AS loser_name,
            l.pan           AS loser_pan,
            l.email         AS loser_email,
@@ -77,6 +83,7 @@ export async function loadMergedClients(
       FROM investors l
       JOIN investors s ON s.id = l.merged_into_id
       LEFT JOIN users u ON u.id = l.merged_by_id
+      LEFT JOIN investor_merges m ON m.loser_id = l.id AND m.reversed_at IS NULL
      WHERE l.merged_into_id IS NOT NULL
        AND l.deleted_at IS NULL${sourceFilter}${search}
      ORDER BY l.merged_at DESC NULLS LAST
@@ -84,6 +91,8 @@ export async function loadMergedClients(
   `)).rows as any[];
 
   return rows.map((r) => ({
+    mergeId: r.merge_id ? String(r.merge_id) : null,
+    reversible: !!r.reversible && !!r.merge_id,
     loserId: String(r.loser_id),
     loserName: r.loser_name ?? "—",
     loserPan: r.loser_pan ?? null,

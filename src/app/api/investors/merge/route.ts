@@ -28,6 +28,9 @@ const isManager = (roles: string[]) => roles.some((r) => ["owner", "branch_head"
 
 // investor_id on these participates in a uniqueness / one-per-investor rule, or
 // is consent/PII that shouldn't silently move; leave on the (inactive) loser.
+/** Above this many moved rows we log counts only — see the un-merge note. */
+const MOVED_ID_CAP = 20_000;
+
 const DENYLIST = new Set(["investors", "consents", "communications", "campaigns", "risk_profiles", "onboarding"]);
 
 const Body = z.object({
@@ -54,11 +57,22 @@ export async function POST(req: NextRequest) {
       session.tenantId,
       async (tx) => {
         const both = await tx.execute(sql`
-          SELECT id, name, merged_into_id FROM investors
-          WHERE tenant_id = ${session.tenantId}::uuid AND id IN (${survivorId}::uuid, ${loserId}::uuid)
+          SELECT id, name, merged_into_id, status,
+                 COALESCE(aum::numeric, 0) AS aum,
+                 COALESCE(active_sip_amount::numeric, 0) AS sip
+            FROM investors
+           WHERE tenant_id = ${session.tenantId}::uuid AND id IN (${survivorId}::uuid, ${loserId}::uuid)
         `);
         if (both.rows.length !== 2) return { error: "one or both clients not found" as const };
         if (both.rows.some((r: any) => r.merged_into_id)) return { error: "a selected record is already merged" as const };
+        // Snapshot the loser as it stands. Its aum / sip are zeroed below (they
+        // would double-count once its folios move), so without this an un-merge
+        // could only restore the record at 0 — technically un-merged, visibly
+        // wrong until the next nightly recompute.
+        const loserRow = (both.rows as any[]).find((r) => String(r.id) === loserId);
+        const loserAum = Number(loserRow?.aum ?? 0);
+        const loserSip = Number(loserRow?.sip ?? 0);
+        const loserStatus = loserRow?.status ?? null;
 
         // Tables that carry a tenant_id — used to scope the reassignment for
         // defense-in-depth (the loser UUID is already tenant-unique, but a
@@ -76,8 +90,29 @@ export async function POST(req: NextRequest) {
           SELECT table_name FROM information_schema.columns
           WHERE table_schema = 'public' AND column_name = 'investor_id'
         `);
+        // Which child tables have their own `id`. `RETURNING id` on a table
+        // without one raises, and the per-table SAVEPOINT below would swallow it
+        // as a "skip" — silently leaving those rows on the loser when they used
+        // to move. So ask first, and fall back to a plain UPDATE (count only,
+        // not individually reversible) where there is no id to return.
+        const idCols = await tx.execute(sql`
+          SELECT table_name FROM information_schema.columns
+          WHERE table_schema = 'public' AND column_name = 'id'
+        `);
+        const hasId = new Set((idCols.rows as Array<{ table_name: string }>).map((r) => r.table_name));
+
         let reassigned = 0;
         const skipped: string[] = [];
+        // What moved, so the merge can be undone exactly. After the update the
+        // loser's rows are indistinguishable from the survivor's own, so an
+        // un-merge that GUESSED which to send back would move the wrong
+        // holdings — recording ids at the moment they move is the only honest
+        // way to offer a reversal.
+        const moved: Record<string, string[]> = {};
+        const movedCounts: Record<string, number> = {};
+        let movedIdTotal = 0;
+        let reversible = true;
+
         for (const row of cols.rows as Array<{ table_name: string }>) {
           const tbl = row.table_name;
           if (DENYLIST.has(tbl)) continue;
@@ -86,10 +121,29 @@ export async function POST(req: NextRequest) {
           // inactive loser) instead of aborting the entire merge.
           await tx.execute(sql`SAVEPOINT merge_child`);
           try {
+            const canReturn = hasId.has(tbl);
             const r = await tx.execute(
-              sql`UPDATE ${sql.raw(`"${tbl}"`)} SET investor_id = ${survivorId}::uuid WHERE investor_id = ${loserId}::uuid${tf(tbl)}`
+              canReturn
+                ? sql`UPDATE ${sql.raw(`"${tbl}"`)} SET investor_id = ${survivorId}::uuid WHERE investor_id = ${loserId}::uuid${tf(tbl)} RETURNING id`
+                : sql`UPDATE ${sql.raw(`"${tbl}"`)} SET investor_id = ${survivorId}::uuid WHERE investor_id = ${loserId}::uuid${tf(tbl)}`
             );
-            reassigned += (r as any).rowCount ?? 0;
+            const ids = canReturn ? (r.rows as Array<{ id: string }>).map((x) => String(x.id)) : [];
+            const n = canReturn ? ids.length : ((r as any).rowCount ?? 0);
+            reassigned += n;
+            if (!canReturn && n > 0) reversible = false;
+            if (n > 0) {
+              movedCounts[tbl] = n;
+              // Past the cap we keep counts only and mark the merge
+              // irreversible. A 50k-transaction client would otherwise put a
+              // megabyte of ids in one jsonb row, and an undo that half-works is
+              // worse than one that says plainly it cannot.
+              if (movedIdTotal + ids.length <= MOVED_ID_CAP) {
+                moved[tbl] = ids;
+                movedIdTotal += ids.length;
+              } else {
+                reversible = false;
+              }
+            }
             await tx.execute(sql`RELEASE SAVEPOINT merge_child`);
           } catch {
             await tx.execute(sql`ROLLBACK TO SAVEPOINT merge_child`);
@@ -136,6 +190,20 @@ export async function POST(req: NextRequest) {
                  merge_reason = ${mergeReason},
                  aum = 0, active_sip_amount = 0, updated_at = now()
            WHERE id = ${loserId}::uuid
+        `);
+
+        // Log the merge with everything needed to undo it.
+        await tx.execute(sql`
+          INSERT INTO investor_merges (
+            tenant_id, survivor_id, loser_id, merged_by_id, source, reason,
+            loser_aum, loser_sip_amount, loser_status,
+            moved, moved_counts, reversible
+          ) VALUES (
+            ${session.tenantId}::uuid, ${survivorId}::uuid, ${loserId}::uuid,
+            ${session.userId}::uuid, 'manual', ${mergeReason},
+            ${loserAum}, ${loserSip}, ${loserStatus},
+            ${JSON.stringify(moved)}::jsonb, ${JSON.stringify(movedCounts)}::jsonb, ${reversible}
+          )
         `);
 
         // The survivor just absorbed the loser's folios / transactions / SIPs —

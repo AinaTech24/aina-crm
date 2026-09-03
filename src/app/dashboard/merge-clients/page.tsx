@@ -20,6 +20,7 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { loadMergeCounts, loadMergedClients, type MergeSource } from "@/lib/investors/merged";
+import { MergePicker, UnmergeButton } from "@/components/investors/MergePicker";
 
 export const dynamic = "force-dynamic";
 
@@ -106,6 +107,8 @@ export default async function MergeClientsPage({
         </form>
       </div>
 
+      {canMerge && <MergePicker />}
+
       {counts.system > 0 && tab !== "manual" && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">
           <strong>{counts.system}</strong> client{counts.system === 1 ? " was" : "s were"} merged automatically during an
@@ -140,6 +143,7 @@ export default async function MergeClientsPage({
                   <th className="text-left py-2.5 px-4 font-medium">By</th>
                   <th className="text-right py-2.5 px-4 font-medium">Survivor AUM</th>
                   <th className="text-right py-2.5 px-4 font-medium">When</th>
+                  <th className="text-right py-2.5 px-4 font-medium"></th>
                 </tr>
               </thead>
               <tbody>
@@ -171,6 +175,15 @@ export default async function MergeClientsPage({
                     <td className="py-2.5 px-4 text-right tabular-nums">{inr(r.survivorAum)}</td>
                     <td className="py-2.5 px-4 text-right text-xs text-muted-foreground whitespace-nowrap">
                       {fmtDate(r.mergedAt)}
+                    </td>
+                    <td className="py-2.5 px-4 text-right whitespace-nowrap">
+                      {canMerge && r.mergeId ? (
+                        <UnmergeButton mergeId={r.mergeId} reversible={r.reversible} />
+                      ) : (
+                        <span className="text-[11px] text-muted-foreground" title="Merged before the merge log existed — nothing recorded what moved, so it cannot be undone automatically.">
+                          —
+                        </span>
+                      )}
                     </td>
                   </tr>
                 ))}
