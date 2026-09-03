@@ -216,7 +216,7 @@ export function CompactFilterBar({
                   const isOpen = openSection === sectionId;
                   const summary = summaryFor(f);
                   return (
-                    <div key={sectionId} className="border-b border-slate-100 last:border-0">
+                    <div key={sectionId} className="border-b border-border last:border-0">
                       <button
                         type="button"
                         onClick={() => setOpenSection(isOpen ? null : sectionId)}
@@ -323,7 +323,7 @@ export function CompactFilterBar({
                                 className="input-base h-7 text-[11px] flex-1"
                                 aria-label={`${f.label} from`}
                               />
-                              <span className="text-slate-400 text-xs">→</span>
+                              <span className="text-muted-foreground text-xs">→</span>
                               <input
                                 type="date"
                                 value={values[`${f.key}_to`]}
@@ -341,8 +341,8 @@ export function CompactFilterBar({
               </div>
 
               {activeCount > 0 && (
-                <div className="border-t border-slate-100 pt-1.5 mt-1">
-                  <button onClick={clearAll} className="w-full text-xs text-rose-600 hover:bg-rose-50 rounded py-1.5 font-medium">
+                <div className="border-t border-border pt-1.5 mt-1">
+                  <button onClick={clearAll} className="w-full text-xs text-destructive hover:bg-destructive/10 rounded py-1.5 font-medium">
                     Clear all filters
                   </button>
                 </div>
@@ -391,7 +391,7 @@ export function CompactFilterBar({
         )}
 
         {activeCount > 0 && (
-          <button onClick={clearAll} className="btn-ghost text-xs text-muted-foreground hover:text-rose-600">
+          <button onClick={clearAll} className="btn-ghost text-xs text-muted-foreground hover:text-destructive">
             <X className="size-3" /> Clear
           </button>
         )}

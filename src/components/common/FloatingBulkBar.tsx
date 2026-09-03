@@ -169,7 +169,7 @@ export function FloatingBulkBar({
           <button
             type="button"
             onClick={() => setActiveModal("delete")}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-100 dark:bg-rose-950/40 dark:text-rose-300 transition-colors"
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg bg-destructive/10 text-destructive hover:bg-destructive/15 dark:bg-rose-950/40 dark:text-rose-300 transition-colors"
             title="Delete selected"
           >
             <Trash2 className="size-3.5" />
@@ -402,7 +402,7 @@ export function FloatingBulkBar({
 
           {activeModal === "delete" && (
             <div className="space-y-3">
-              <p className="text-rose-600 font-medium">
+              <p className="text-destructive font-medium">
                 Are you sure you want to delete {selectedCount} selected records?
               </p>
               <p className="text-muted-foreground">They will be moved to the Trash bin and can be restored by an Owner.</p>
@@ -426,7 +426,7 @@ export function FloatingBulkBar({
             </div>
           )}
 
-          {error && <p className="mt-2 text-xs text-rose-600">{error}</p>}
+          {error && <p className="mt-2 text-xs text-destructive">{error}</p>}
         </div>
       )}
     </div>

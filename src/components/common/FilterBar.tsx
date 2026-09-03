@@ -186,7 +186,7 @@ export function FilterBar({
         {activeCount > 0 && (
           <button
             onClick={clearAll}
-            className="btn-ghost text-xs text-muted-foreground hover:text-rose-600"
+            className="btn-ghost text-xs text-muted-foreground hover:text-destructive"
           >
             <X className="size-3" /> Clear ({activeCount})
           </button>

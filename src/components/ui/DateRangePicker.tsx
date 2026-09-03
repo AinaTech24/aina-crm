@@ -99,7 +99,7 @@ export function DateRangePicker({
         <button
           type="button"
           onClick={() => onChange("", "")}
-          className="text-muted-foreground hover:text-rose-600 ml-0.5"
+          className="text-muted-foreground hover:text-destructive ml-0.5"
           aria-label="Clear date range"
         >
           <X className="size-3" />

@@ -26,8 +26,10 @@ const ROOTS = ["src/components/ui", "src/components/common", "src/components/lay
 const PALETTE =
   /\b(?:bg|text|border|ring)-(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose|white|black)(?:-\d{2,3})?(?:\/\d{1,3})?\b/g;
 
-/** Count grandfathered as of 2026-06-11. Ratchet DOWN as files migrate. */
-const BASELINE = 115;
+/** Count grandfathered as of 2026-06-11, ratcheted 115 -> 94 on 2026-09-03 when
+ *  the shared layers moved their rose/slate literals onto the destructive,
+ *  border, muted and muted-foreground tokens. Ratchet DOWN as files migrate. */
+const BASELINE = 94;
 
 function* walk(dir) {
   for (const e of readdirSync(dir)) {

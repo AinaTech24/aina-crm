@@ -300,7 +300,7 @@ function ViewItem({
       {onDelete && (
         <button
           onClick={onDelete}
-          className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-rose-600"
+          className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive"
           title="Delete view"
         >
           <Trash2 className="size-3" />

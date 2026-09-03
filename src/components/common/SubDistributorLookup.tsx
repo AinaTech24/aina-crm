@@ -80,7 +80,7 @@ export function SubDistributorLookup({
               setQ("");
               setOpen(true);
             }}
-            className="text-violet-600 hover:text-rose-600"
+            className="text-violet-600 hover:text-destructive"
             title="Clear"
           >
             <X className="size-3" />
@@ -123,7 +123,7 @@ export function SubDistributorLookup({
                 setOpen(false);
                 setQ("");
               }}
-              className="w-full text-left px-3 py-2 hover:bg-slate-50 border-b last:border-b-0"
+              className="w-full text-left px-3 py-2 hover:bg-muted border-b last:border-b-0"
             >
               <div className="text-sm font-medium">{r.name}</div>
               <div className="text-[10px] text-muted-foreground flex items-center gap-2">

@@ -19,7 +19,7 @@ const SEVERITY = {
   info: { icon: Info, color: "text-blue-600" },
   success: { icon: CheckCircle2, color: "text-emerald-600" },
   warning: { icon: AlertTriangle, color: "text-amber-600" },
-  critical: { icon: AlertOctagon, color: "text-rose-600" },
+  critical: { icon: AlertOctagon, color: "text-destructive" },
 } as const;
 
 export function NotificationBell() {

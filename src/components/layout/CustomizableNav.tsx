@@ -502,7 +502,7 @@ export function CustomizableNav({
                         <button type="button" onClick={() => moveGroup(g.id, 1)} disabled={layout[layout.length - 1]?.id === g.id} className="text-muted-foreground hover:text-foreground disabled:opacity-25" title="Move group down">
                           <ChevronDown className="size-3" />
                         </button>
-                        <button type="button" onClick={() => deleteGroup(g.id)} className="text-muted-foreground hover:text-rose-600" title="Delete group (items move to the first group)">
+                        <button type="button" onClick={() => deleteGroup(g.id)} className="text-muted-foreground hover:text-destructive" title="Delete group (items move to the first group)">
                           <X className="size-3" />
                         </button>
                       </>

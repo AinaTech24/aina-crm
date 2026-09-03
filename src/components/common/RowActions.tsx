@@ -111,7 +111,7 @@ export function RowActions({
             type="button"
             onClick={() => setConfirmOpen(true)}
             disabled={busy}
-            className="rounded-md p-1.5 text-rose-600 hover:bg-rose-50 disabled:opacity-50"
+            className="rounded-md p-1.5 text-destructive hover:bg-destructive/10 disabled:opacity-50"
             aria-label={`${verb} ${itemLabel}`}
             title={verb}
           >
@@ -174,7 +174,7 @@ export function RowActions({
                 setConfirmOpen(true);
               }}
               disabled={busy}
-              className="w-full text-left flex items-center gap-2 px-3 py-1.5 hover:bg-rose-50 text-rose-700 disabled:opacity-50"
+              className="w-full text-left flex items-center gap-2 px-3 py-1.5 hover:bg-destructive/10 text-destructive disabled:opacity-50"
             >
               <Trash2 className="size-3.5" /> {verb}
             </button>

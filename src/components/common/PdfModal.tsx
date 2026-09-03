@@ -66,7 +66,7 @@ export function PdfModal({
             <button onClick={onClose} className="p-1.5 rounded hover:bg-accent" aria-label="Close"><X className="size-4" /></button>
           </div>
         </div>
-        <div className="relative flex-1 overflow-auto scrollbar-none bg-neutral-200/50 dark:bg-neutral-900/50">
+        <div className="relative flex-1 overflow-auto scrollbar-none bg-muted">
           {/* Loading state — the PDF is generated server-side, so show feedback
               until the iframe fires onLoad instead of a blank/janky pane. */}
           {!loaded && (

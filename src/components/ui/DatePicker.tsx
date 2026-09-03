@@ -216,7 +216,7 @@ export function DatePicker({
             </div>
             <div className="flex items-center justify-between mt-2 pt-2 border-t border-border">
               {clearable ? (
-                <button type="button" onClick={() => { onChange(""); setOpen(false); }} className="text-xs text-muted-foreground hover:text-rose-600">
+                <button type="button" onClick={() => { onChange(""); setOpen(false); }} className="text-xs text-muted-foreground hover:text-destructive">
                   Clear
                 </button>
               ) : <span />}
