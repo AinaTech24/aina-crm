@@ -42,26 +42,34 @@ export function AddMemberDialog({ familyId, familyName }: { familyId: string; fa
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  // Search server-side. This used to pull the first 200 clients ONCE and
+  // filter them in the browser — which quietly hid everyone else: firms on
+  // this platform hold thousands of clients (10,341 at the largest), and the
+  // API caps a page at 200, so a client outside that first page reported
+  // “No investors match” however you spelled the name. Debounced so typing
+  // doesn't fire a request per keystroke.
+  const [loading, setLoading] = useState(false);
   useEffect(() => {
     if (!open) return;
-    fetch("/api/investors?limit=200")
-      .then((r) => r.json())
-      .then((j) => setInvestors(j.rows ?? []))
-      .catch(() => {});
-  }, [open]);
+    let cancelled = false;
+    const q = search.trim();
+    setLoading(true);
+    const t = setTimeout(() => {
+      const url = `/api/investors?limit=50${q ? `&q=${encodeURIComponent(q)}` : ""}`;
+      fetch(url)
+        .then((r) => r.json())
+        .then((j) => { if (!cancelled) setInvestors(j.rows ?? []); })
+        .catch(() => { if (!cancelled) setInvestors([]); })
+        .finally(() => { if (!cancelled) setLoading(false); });
+    }, q ? 250 : 0);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [open, search]);
 
-  const filtered = useMemo(() => {
-    const q = search.toLowerCase().trim();
-    return investors.filter((i) => {
-      // Hide investors already in this family
-      if (i.familyId === familyId) return false;
-      if (!q) return true;
-      return (
-        (i.name ?? "").toLowerCase().includes(q) ||
-        (i.pan ?? "").toLowerCase().includes(q)
-      );
-    });
-  }, [investors, search, familyId]);
+  // Only the already-in-this-family exclusion is left to do client-side.
+  const filtered = useMemo(
+    () => investors.filter((i) => i.familyId !== familyId),
+    [investors, familyId]
+  );
 
   async function linkInvestor() {
     if (!selected) return;
@@ -156,18 +164,25 @@ export function AddMemberDialog({ familyId, familyName }: { familyId: string; fa
                     <input
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
-                      placeholder="Search by name or PAN…"
+                      placeholder="Search by name, PAN or phone…"
                       className="w-full pl-8 pr-3 py-2 text-sm border rounded-md bg-background"
                     />
                   </div>
+                  <p className="mt-1 text-[10px] text-muted-foreground">
+                    Searches every client in your firm. Showing the closest 50 matches.
+                  </p>
                 </label>
 
                 <div className="border rounded-md max-h-64 overflow-y-auto">
-                  {filtered.length === 0 ? (
+                  {loading ? (
+                    <div className="p-6 text-center text-xs text-muted-foreground flex items-center justify-center gap-2">
+                      <Loader2 className="size-3.5 animate-spin" /> Searching…
+                    </div>
+                  ) : filtered.length === 0 ? (
                     <div className="p-6 text-center text-xs text-muted-foreground">
                       {search
-                        ? "No investors match. Try a different search."
-                        : "No unassigned investors available. Add a new one instead."}
+                        ? "No client matches that name or PAN."
+                        : "No clients yet. Add a new one instead."}
                     </div>
                   ) : (
                     <ul className="divide-y">

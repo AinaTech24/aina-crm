@@ -6,6 +6,7 @@ import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { RmSelector } from "@/components/common/RmSelector";
 import { SelectField } from "@/components/ui/SelectField";
+import { InvestorLookup } from "@/components/common/InvestorLookup";
 
 const TYPES = [
   { key: "nominee_update", label: "Nominee update" },
@@ -50,7 +51,6 @@ export default function NewServiceRequestPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const initialType = searchParams.get("type") === "complaint" ? "complaint" : "kyc_update";
-  const [investors, setInvestors] = useState<any[]>([]);
   const [form, setForm] = useState({
     investorId: "",
     type: initialType,
@@ -64,15 +64,10 @@ export default function NewServiceRequestPage() {
     scoresRefNo: "",
     assignedToUserId: "",
   });
+  const [investorName, setInvestorName] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetch("/api/investors?limit=200")
-      .then((r) => r.json())
-      .then((j) => setInvestors(j.rows ?? []))
-      .catch(() => {});
-  }, []);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -120,12 +115,16 @@ export default function NewServiceRequestPage() {
       <form onSubmit={submit} className="border rounded-lg bg-card p-5 space-y-3">
         <label className="block">
           <div className="text-xs font-medium mb-1">Investor</div>
-          <SelectField value={form.investorId} onChange={(e) => setForm({ ...form, investorId: e.target.value })} className="w-full" searchable>
-            <option value="">Select investor (or leave blank for general)…</option>
-            {investors.map((i: any) => (
-              <option key={i.id} value={i.id}>{i.name} · {i.pan}</option>
-            ))}
-          </SelectField>
+          {/* Was a <select> of the first 200 clients — unusable at this scale
+              (the largest firm here has 10,341). InvestorLookup searches the
+              whole book server-side. */}
+          <InvestorLookup
+            value={form.investorId || null}
+            displayName={investorName}
+            onSelect={(id, name) => { setForm((f) => ({ ...f, investorId: id })); setInvestorName(name); }}
+            onClear={() => { setForm((f) => ({ ...f, investorId: "" })); setInvestorName(null); }}
+            placeholder="Search a client by name, PAN or phone — or leave blank for a general request"
+          />
         </label>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <label className="block">
