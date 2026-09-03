@@ -17,7 +17,7 @@ import { useRouter } from "next/navigation";
 import { X, Upload, CheckCircle2, AlertCircle, Loader2, Download } from "lucide-react";
 import { RTA_FILE_TYPES, cadenceLabel, type RtaFileTypeDef } from "@/lib/rta/file-types";
 import { RTA_SOURCES, type RtaSource } from "@/db/schema/rta_imports";
-import { SelectField } from "@/components/ui/SelectField";
+import { Select } from "@/components/ui/Select";
 
 type Outcome = {
   importId?: string;
@@ -45,13 +45,6 @@ const SOURCE_LABELS: Record<UploadSource, string> = {
   bse_star_mf: "BSE Star MF",
   nse_nmf2: "NSE NMF II",
 };
-
-/** Compact pattern(s) for the dropdown <option>, e.g. " — MFSD211_… / …R9". */
-function optionSuffix(def: RtaFileTypeDef): string {
-  const pats = def.fileNames ? Object.values(def.fileNames) : [];
-  if (!pats.length) return "";
-  return ` — ${pats.join(" / ")}${def.fileNamesApprox ? " (approx)" : ""}`;
-}
 
 /** Per-registrar file-name hint for the detail box, e.g. "KFintech MFSD211_…". */
 function fileNameHint(def: RtaFileTypeDef): string {
@@ -236,19 +229,23 @@ export function UploadDialog({
                 <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
                   1. Which file are you uploading?
                 </label>
-                <SelectField
+                {/* A native <select> clipped each option to the control's width,
+                    so the registrar file names — the whole point of the list —
+                    read as "MFSD2xx (broke…". Options now carry the file names on
+                    a second, wrapping line so the full name is visible while
+                    choosing, not only after. */}
+                <Select
                   value={kind}
-                  onChange={(e) => setKind(e.target.value)}
+                  onChange={setKind}
                   className="w-full"
-                  aria-label="RTA file type"
-                >
-                  {RTA_FILE_TYPES.map((t) => (
-                    <option key={t.kind} value={t.kind}>
-                      {t.label}
-                      {optionSuffix(t)}
-                    </option>
-                  ))}
-                </SelectField>
+                  ariaLabel="RTA file type"
+                  menuMaxWidth={620}
+                  options={RTA_FILE_TYPES.map((t) => ({
+                    value: t.kind,
+                    label: t.label,
+                    hint: fileNameHint(t),
+                  }))}
+                />
                 {def && (
                   <div className="mt-2 text-xs text-muted-foreground leading-relaxed bg-secondary/40 rounded-lg p-3 border border-border/60">
                     <div className="font-semibold text-foreground">{def.short}</div>

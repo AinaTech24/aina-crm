@@ -16,7 +16,19 @@ import { ChevronDown, Check } from "lucide-react";
 // opening). Falls back to useEffect during SSR to avoid the layout-effect warning.
 const useIsoLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
-export type SelectOption = { value: string; label: string; disabled?: boolean };
+export type SelectOption = {
+  value: string;
+  label: string;
+  disabled?: boolean;
+  /**
+   * Optional second line, shown under the label inside the MENU only (the
+   * trigger keeps showing just the label). Use it for the detail that makes an
+   * option pickable — e.g. the registrar file names an RTA report arrives under.
+   * A hint switches that row from single-line-truncated to wrapping, so long
+   * text is shown in full rather than clipped to "…".
+   */
+  hint?: string;
+};
 
 export function Select({
   value,
@@ -32,6 +44,7 @@ export function Select({
   searchable = false,
   searchPlaceholder = "Search…",
   leadingIcon,
+  menuMaxWidth = 320,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -48,6 +61,13 @@ export function Select({
   searchPlaceholder?: string;
   /** Optional icon rendered *inside* the trigger, before the label (e.g. a sort glyph). */
   leadingIcon?: React.ReactNode;
+  /**
+   * Widest the menu may grow, in px (default 320). Raise it when options carry
+   * `hint` text that only reads properly at width — the default cap exists to
+   * stop a wide trigger sprawling the popup across the page, which is the wrong
+   * trade-off for a menu whose whole job is showing full file names.
+   */
+  menuMaxWidth?: number;
 }) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
@@ -78,13 +98,14 @@ export function Select({
     // class). Without this, a very wide trigger forces minWidth past max-width
     // (min-width wins in CSS) and the popup sprawls across the page, overlapping
     // the sidebar / side rails.
-    const maxMenuW = Math.min(320, Math.round(window.innerWidth * 0.9));
+    const maxMenuW = Math.min(menuMaxWidth, Math.round(window.innerWidth * 0.9));
     const style: React.CSSProperties = {
       position: "fixed",
       // Above modals/drawers (which sit at z-[100]) so a Select used inside a
       // modal opens in front of it, not hidden behind it.
       zIndex: 200,
       minWidth: Math.min(Math.round(rect.width), maxMenuW),
+      maxWidth: maxMenuW,
     };
     if (alignRight) style.right = Math.round(Math.max(8, window.innerWidth - rect.right));
     else style.left = Math.round(rect.left);
@@ -203,7 +224,7 @@ export function Select({
           role="listbox"
           data-floating-popup
           style={menuStyle}
-          className={`w-max max-w-[min(20rem,90vw)] max-h-72 overflow-y-auto scrollbar-none card-elevated bg-card p-1 animate-scale-in ${flipUp ? "origin-bottom" : "origin-top"} ${menuClassName}`}
+          className={`w-max max-h-72 overflow-y-auto scrollbar-none card-elevated bg-card p-1 animate-scale-in ${flipUp ? "origin-bottom" : "origin-top"} ${menuClassName}`}
         >
           {searchable && (
             <li className="sticky -top-1 bg-card px-1 pt-1 pb-1.5 -mx-1 -mt-1 mb-1 border-b border-border z-10">
@@ -245,12 +266,19 @@ export function Select({
                   disabled={o.disabled}
                   onMouseEnter={() => setActive(i)}
                   onClick={() => commit(i)}
-                  className={`w-full flex items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-left text-xs transition
+                  className={`w-full flex ${o.hint ? "items-start" : "items-center"} justify-between gap-2 rounded-md px-2.5 py-1.5 text-left text-xs transition
                     ${i === active ? "bg-brand-cyan-light/60 text-brand-cyan-deep" : "text-foreground/80 hover:bg-secondary"}
                     ${isSel ? "font-semibold" : ""}
                     disabled:opacity-40 disabled:cursor-not-allowed`}
                 >
-                  <span className="truncate">{o.label}</span>
+                  {o.hint ? (
+                    <span className="min-w-0 flex-1">
+                      <span className="block font-medium break-words">{o.label}</span>
+                      <span className="block text-[11px] text-muted-foreground break-words">{o.hint}</span>
+                    </span>
+                  ) : (
+                    <span className="truncate">{o.label}</span>
+                  )}
                   {isSel && <Check className="size-3.5 shrink-0 text-brand-cyan" />}
                 </button>
               </li>
