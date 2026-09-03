@@ -12,6 +12,7 @@ import { resolvePeriodRange, type Period } from "@/lib/dashboard/period";
 import { getDashboardThresholds } from "@/lib/dashboard/thresholds";
 import { Sparkline } from "./Sparkline";
 import { FirmPulseStrip } from "./FirmPulseStrip";
+import { FirmChartsSection, FirmChartsSkeleton } from "./FirmChartsSection";
 import { loadFirmPulse, loadActivityTiles, type ActivityRange } from "@/lib/dashboard/firm-pulse";
 import { loadTenantLicense } from "@/lib/auth/license";
 import { isDashboardWidgetVisible } from "@/config/dashboard-widgets";
@@ -114,6 +115,13 @@ export async function OwnerCockpit({
           below never delays the numbers people open this page for. */}
       <Suspense fallback={<FirmPulseSkeleton />}>
         <FirmPulse tenantId={session.tenantId} session={session} days={activityDays} />
+      </Suspense>
+
+      {/* Analytics band — AUM breakup / client mix / compliance gaps, then SIP
+          business and monthly flows. Separate boundary again: five aggregate
+          queries shouldn't hold up the pulse strip above them. */}
+      <Suspense fallback={<FirmChartsSkeleton />}>
+        <FirmChartsSection session={session} />
       </Suspense>
 
       <Suspense fallback={<CockpitBodySkeleton />}>

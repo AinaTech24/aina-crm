@@ -43,7 +43,7 @@ export type PortfolioIntel = {
  * mis-bucketed by a stray "equity"/"banking" token.
  */
 const CLASS_TEXT = `(COALESCE(NULLIF(s->>'category',''),'') || ' ' || COALESCE(s->>'schemeName',''))`;
-const CLASS_CASE = `CASE
+export const CLASS_CASE = `CASE
   WHEN ${CLASS_TEXT} ILIKE ANY (ARRAY['%liquid%','%overnight%','%money market%','%ultra short%','%ultra-short%']) THEN 'Liquid'
   WHEN ${CLASS_TEXT} ILIKE ANY (ARRAY['%debt%','%bond%','%gilt%','%g-sec%','%gsec%','%duration%','%income%','%credit risk%','% psu%','%banking & psu%','%banking and psu%','%floating%','%target maturity%','%fmp%','%fixed maturity%']) THEN 'Debt'
   WHEN ${CLASS_TEXT} ILIKE ANY (ARRAY['%hybrid%','%balanced%','%advantage%','%multi asset%','%multi-asset%','%arbitrage%','%equity savings%','%asset alloc%','%retirement%','%children%']) THEN 'Hybrid'
