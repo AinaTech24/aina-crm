@@ -103,28 +103,70 @@ export async function recomputeCombinedAum(
       WHERE investor_id IS NOT NULL
       GROUP BY investor_id
     ),
-    folio_scheme_codes AS (
-      -- Scheme codes already represented in an investor's folios — used to skip
-      -- the same scheme in the transaction ledger (no double count).
-      SELECT DISTINCT f.investor_id, (s->>'schemeCode') AS scheme_code
+    -- AMFI NAV keyed by NORMALISED SCHEME NAME, not by code.
+    --
+    -- scheme_nav is keyed on the AMFI numeric code ("145826"); registrar feeds
+    -- carry the registrar's own product code ("101MFGP", "K123", "FTI001").
+    -- Those are different key spaces, so the code join finds nothing: measured
+    -- platform-wide, 0 of 926 distinct transaction scheme codes matched
+    -- scheme_nav, which meant the ENTIRE transaction ledger — 213,869 rows —
+    -- was worth exactly zero to AUM. resolveSchemeIdentity() rewrites the code
+    -- to the AMFI one, but it runs only on the folio import path, never on the
+    -- transaction path.
+    --
+    -- Matching on the normalised name recovers what it can without a schema
+    -- change or a re-import. Measured effect: VSN Financial Services
+    -- Rs 375.92 Cr -> Rs 416.83 Cr, 346 clients gaining a valuation.
+    nav_by_name AS (
+      SELECT btrim(regexp_replace(lower(scheme_name), '[^a-z0-9]+', ' ', 'g')) AS nkey,
+             MAX(nav) AS nav
+      FROM scheme_nav
+      WHERE nav IS NOT NULL
+      GROUP BY 1
+    ),
+    folio_scheme_names AS (
+      -- Schemes already valued in an investor's folios — used to skip the same
+      -- scheme in the transaction ledger (no double count).
+      --
+      -- Keyed on the normalised NAME, deliberately, because that is the key the
+      -- transaction layer below now prices on. Suppressing by code while pricing
+      -- by name would let one holding be counted twice: the folio leg carries an
+      -- AMFI code and the transaction row the registrar's, so the codes would
+      -- never match and both layers would add.
+      --
+      -- Only legs that actually carry a valuation suppress. A leg with no units
+      -- and no value is a REGISTRATION, not a holding — a folio master registers
+      -- the folio, and a transaction feed creates the folio row before any
+      -- valuation report has arrived. Letting those suppress would mean
+      -- importing a feed could LOWER a client's AUM.
+      SELECT DISTINCT f.investor_id,
+             btrim(regexp_replace(lower(s->>'schemeName'), '[^a-z0-9]+', ' ', 'g')) AS nkey
       FROM folios f
       CROSS JOIN LATERAL jsonb_array_elements(COALESCE(f.schemes, '[]'::jsonb)) AS s
       WHERE f.investor_id IS NOT NULL
-        AND (s->>'schemeCode') IS NOT NULL AND (s->>'schemeCode') <> ''
+        AND NULLIF(s->>'schemeName', '') IS NOT NULL
+        AND (
+          ((s->>'units') ~ '^-?[0-9.]+$' AND (s->>'units')::numeric > 0.0005)
+          OR ((s->>'value') ~ '^-?[0-9.]+$' AND (s->>'value')::numeric > 0)
+        )
     ),
     txn_holding AS (
       SELECT t.investor_id,
-             COALESCE(t.scheme_code, t.scheme_name, 'unknown') AS skey,
+             btrim(regexp_replace(lower(COALESCE(t.scheme_name, t.scheme_code, '')), '[^a-z0-9]+', ' ', 'g')) AS nkey,
              SUM(CASE WHEN t.direction = 'inflow' THEN t.units ELSE -t.units END) AS net_units,
-             MAX(n.nav) AS nav
+             -- Prefer an exact AMFI code match; fall back to the name.
+             MAX(COALESCE(n.nav, nb.nav)) AS nav
       FROM transactions t
       LEFT JOIN scheme_nav n ON n.scheme_code = t.scheme_code
+      LEFT JOIN nav_by_name nb
+        ON nb.nkey = btrim(regexp_replace(lower(COALESCE(t.scheme_name, '')), '[^a-z0-9]+', ' ', 'g'))
       WHERE t.status IN ('processed', 'successful')
         AND t.order_date IS NOT NULL
-      GROUP BY t.investor_id, COALESCE(t.scheme_code, t.scheme_name, 'unknown')
+      GROUP BY t.investor_id,
+               btrim(regexp_replace(lower(COALESCE(t.scheme_name, t.scheme_code, '')), '[^a-z0-9]+', ' ', 'g'))
     ),
     txn_uncovered AS (
-      -- Layer: transaction value ONLY for schemes the folios don't cover.
+      -- Layer: transaction value ONLY for schemes the folios don't already value.
       SELECT th.investor_id,
              COALESCE(
                SUM(th.net_units * th.nav) FILTER (WHERE th.nav IS NOT NULL AND th.net_units > 0.0005),
@@ -132,8 +174,8 @@ export async function recomputeCombinedAum(
              ) AS txn_value
       FROM txn_holding th
       WHERE NOT EXISTS (
-        SELECT 1 FROM folio_scheme_codes fsc
-        WHERE fsc.investor_id = th.investor_id AND fsc.scheme_code = th.skey
+        SELECT 1 FROM folio_scheme_names fsc
+        WHERE fsc.investor_id = th.investor_id AND fsc.nkey = th.nkey
       )
       GROUP BY th.investor_id
     ),
@@ -151,6 +193,32 @@ export async function recomputeCombinedAum(
       FROM combined
      WHERE combined.investor_id = i.id
        AND i.aum IS DISTINCT FROM ROUND(combined.total::numeric, 2)
+       -- The never-zero contract this function's docstring already promises.
+       -- folio_holdings selects COALESCE(SUM(aum),0) for every investor holding
+       -- ANY folio row, so a client whose folios are all registration-only used
+       -- to be written down to 0.00 — indistinguishable in every downstream
+       -- report from a client who genuinely holds nothing. Only write a zero
+       -- when we can actually SEE that the book is empty: some valuation basis
+       -- exists and it sums to nothing. With no basis at all, leave the last
+       -- known figure alone.
+       AND (
+         combined.total > 0
+         OR EXISTS (
+           SELECT 1 FROM folios f2
+           CROSS JOIN LATERAL jsonb_array_elements(COALESCE(f2.schemes, '[]'::jsonb)) AS s2
+           WHERE f2.investor_id = i.id
+             AND (
+               ((s2->>'units') ~ '^-?[0-9.]+$' AND (s2->>'units')::numeric > 0.0005)
+               OR ((s2->>'value') ~ '^-?[0-9.]+$' AND (s2->>'value')::numeric > 0)
+             )
+         )
+         OR EXISTS (
+           SELECT 1 FROM transactions t2
+           WHERE t2.investor_id = i.id
+             AND t2.status IN ('processed', 'successful')
+             AND t2.order_date IS NOT NULL
+         )
+       )
     RETURNING i.id
   `);
   const updated = (res.rows as any[]).length;
