@@ -83,6 +83,48 @@ export function classifyTransactionType(
   return "lumpsum";
 }
 
+/**
+ * Which way the money moved.
+ *
+ * `classifyTransactionType` deliberately collapses both legs of a switch into
+ * one type — TICOB (switch IN) and TOCOB (switch OUT) are both "switch", and
+ * likewise for STP. Deriving direction from that collapsed type therefore made
+ * EVERY switch and STP an inflow, so money leaving a scheme was counted as new
+ * money entering the book. Measured on VSN Financial Services: 1,666 switch
+ * rows, every one of them an inflow, none an outflow — Rs 39.56 Cr of movement
+ * booked as fresh investment, which is why Total Investment sat above AUM.
+ *
+ * So read the raw registrar code, which still distinguishes the legs, and fall
+ * back to the collapsed type only when it says nothing either way.
+ */
+export function directionFor(
+  ourType: CanonicalTransaction["type"],
+  typeRaw: string,
+  descRaw = "",
+  subRaw = ""
+): "inflow" | "outflow" {
+  const blob = `${(typeRaw ?? "").toUpperCase()} ${(descRaw ?? "").toUpperCase()} ${(subRaw ?? "").toUpperCase()}`;
+
+  // Explicit out-leg markers. TOCOB = "transfer out of common order book";
+  // SWO / "SWITCH OUT" / "STP OUT" are the plain-language equivalents.
+  if (/\bTOCOB\b|\bSWO\b|SWITCH[\s_-]*OUT|STP[\s_-]*OUT|TRANSFER[\s_-]*OUT|\bOUT\b/.test(blob)) return "outflow";
+  // Explicit in-leg markers.
+  if (/\bTICOB\b|\bSWI\b|SWITCH[\s_-]*IN|STP[\s_-]*IN|TRANSFER[\s_-]*IN|\bIN\b/.test(blob)) return "inflow";
+
+  // Unambiguous by type alone.
+  if (ourType === "redemption" || ourType === "swp" || ourType === "dividend_payout") return "outflow";
+
+  // A switch or STP leg we cannot identify keeps the historical reading. Not
+  // because it is right — it is a coin flip — but because `direction` also
+  // drives unit netting in valuation (inflow adds units, outflow subtracts), so
+  // flipping it on a guess would move holdings as well as the investment total,
+  // in a direction nothing here has verified. The money-in figure is corrected
+  // where it is actually computed instead: loadFirmPulse() excludes switches and
+  // STPs from Total Investment outright, since neither is ever new money
+  // whichever leg it is.
+  return "inflow";
+}
+
 /** Detect the delimiter of a decoded feed line (decoder emits pipe). */
 export function detectDelimiter(line: string): "|" | "\t" | "," {
   const pipes = (line.match(/\|/g) ?? []).length;
@@ -240,10 +282,7 @@ export function parseReverseFeed(text: string, refPrefix = "feed"): CanonicalTra
       indexMap[field] === undefined ? "" : (cols[indexMap[field]] ?? "").trim();
 
     const ourType = classifyTransactionType(val("type"), val("typeDesc"), val("typeSub"));
-    const direction: "inflow" | "outflow" =
-      ourType === "redemption" || ourType === "swp" || ourType === "dividend_payout"
-        ? "outflow"
-        : "inflow";
+    const direction = directionFor(ourType, val("type"), val("typeDesc"), val("typeSub"));
 
     const folioNumber = val("folioNumber");
     const pan = val("pan");

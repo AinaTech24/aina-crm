@@ -71,10 +71,23 @@ export async function loadFirmPulse(tx: Tx): Promise<PulseMetric[]> {
   // completed ledger. Deliberately NOT "sum of purchases": a book that has
   // redeemed half of what it bought has not invested the gross figure, and the
   // gap between this and AUM is the gain the card exists to make visible.
+  //
+  // Switches and STPs are excluded. Both move money BETWEEN schemes — neither is
+  // new money into the book, whichever leg a given row is. They were being
+  // counted because the feed parser collapses a switch-in and a switch-out into
+  // one "switch" type and then read direction off that, making every leg an
+  // inflow: on VSN Financial Services, 1,666 switch rows, all inflow, none
+  // outflow, Rs 39.56 Cr booked as fresh investment. That is what pushed Total
+  // Investment above Total AUM and showed the book at an unrealised LOSS.
+  //
+  // Dropping them is right even once the legs are told apart, because a matched
+  // pair nets to zero anyway — and it does not depend on the registrar spelling
+  // the leg out, which several of them do not.
   const invested = (await tx.execute(sql`
     SELECT COALESCE(SUM(CASE WHEN direction = 'inflow' THEN amount::numeric ELSE -amount::numeric END), 0) AS v
       FROM transactions
      WHERE status IN ('processed', 'successful') AND amount IS NOT NULL
+       AND type NOT IN ('switch', 'stp')
   `)).rows[0] as any;
 
   // 30 days of history in one pass; the sparkline reads it oldest → newest.
