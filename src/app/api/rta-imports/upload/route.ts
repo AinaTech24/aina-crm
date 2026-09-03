@@ -9,6 +9,7 @@ import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { RTA_FILE_KINDS, RTA_SOURCES } from "@/db/schema/rta_imports";
 import { getMailbackPasswords, passwordCandidates } from "@/lib/rta/mailback-config";
 import { Q } from "@/workers/queues";
+import { RTA_FILE_TYPE_BY_KIND } from "@/lib/rta/file-types";
 
 /**
  * POST /api/rta-imports/upload
@@ -83,11 +84,13 @@ export async function POST(req: NextRequest) {
       : /mfsd\s*211/i.test(fileName)
         ? "KFintech MFSD211 (folio master)"
         : "CAMS R9 (combined master + holdings)";
+    const selected = RTA_FILE_TYPE_BY_KIND[kind]?.label ?? kind.replace(/_/g, " ");
     return NextResponse.json(
       {
         error:
-          `This file looks like a ${fileLabel} file, but you selected "${kind.replace(/_/g, " ")}". ` +
-          `It holds your full client + folio register, so choose the file type "Folio master dump" and upload it again — that loads your clients, folios and holdings.`,
+          `This is a ${fileLabel} file, but you picked "${selected}". ` +
+          `Choose "Folio master dump" instead and upload it again — that one loads your clients, folios and holdings. ` +
+          `Nothing was imported, so no data has changed.`,
       },
       { status: 400 }
     );

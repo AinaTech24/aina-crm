@@ -130,21 +130,27 @@ export const RTA_FILE_TYPES: RtaFileTypeDef[] = [
     populates: ["aum_snapshots"],
     graceDays: 3,
     priority: 85,
-    fileNames: { kfintech: "MFSD203_…" },
+    // No KFintech file name here on purpose. This used to advertise "MFSD203_…",
+    // which sent people straight into a dead end: MFSD203 is the holdings /
+    // valuation export, the upload guard rejects it for any kind other than
+    // folio_master_dump / cas_holdings, and classify-mailback routes it to
+    // cas_holdings. So the dropdown said "Monthly AUM statement — MFSD203_…"
+    // and then the upload failed with "you selected monthly aum statement".
+    // MFSD203 is listed on Folio master dump below, which is where it belongs.
   },
   // ───────────────────────────────────────────────── Quarterly ──
   {
     kind: "folio_master_dump",
     label: "Folio master dump",
-    short: "Full investor + folio register refresh.",
-    long: "Quarterly reconciliation file with every folio, holder, nominee and bank mandate on record. Used to detect investor data drift.",
+    short: "Full investor + folio register refresh — and holdings, when the file carries them.",
+    long: "Every folio, holder, nominee and bank mandate on record. KFintech ships this as MFSD211 (register only) or MFSD203 (register PLUS units/NAV/value); CAMS ships R9, which carries both. All three route to the same importer, which creates clients and folios and loads any holdings present — so pick this for any of them.",
     sources: ["cams", "kfintech"],
     acronyms: ["FOL-MST"],
     cadence: { every: "quarterly" },
     populates: ["folios", "investors"],
     graceDays: 7,
     priority: 40,
-    fileNames: { kfintech: "MFSD211_…", cams: "…R9" },
+    fileNames: { kfintech: "MFSD211_… / MFSD203_…", cams: "…R9" },
   },
 ];
 
