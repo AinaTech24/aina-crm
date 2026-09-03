@@ -253,6 +253,30 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
       ((await tx.execute(sql`SELECT count(*)::int AS c FROM leads WHERE referred_by_investor_id = ${id}`)).rows[0] as any)?.c ?? 0
     );
 
+    // The actual leads this client referred — not just the count. The Referrals
+    // card used to render ONLY the hand-typed `investors.referrals` jsonb, so a
+    // client who had genuinely referred people still read "No referrals recorded
+    // for this client yet". Worse, a referral that CONVERTED disappeared from the
+    // referrer's page entirely, which is exactly the one you most want to see.
+    // LEFT JOIN the converted client so a converted referral keeps showing, now
+    // pointing at the client record it became.
+    const referredLeadRows = (await tx.execute(sql`
+      SELECT l.id, l.name, l.stage, l.created_at, l.converted_at,
+             l.converted_investor_id,
+             ci.name AS converted_name,
+             ci.aum::numeric AS converted_aum
+        FROM leads l
+        LEFT JOIN investors ci ON ci.id = l.converted_investor_id AND ci.deleted_at IS NULL
+       WHERE l.referred_by_investor_id = ${id}
+       ORDER BY l.created_at DESC
+       LIMIT 50
+    `)).rows as Array<{
+      id: string; name: string | null; stage: string | null;
+      created_at: string | null; converted_at: string | null;
+      converted_investor_id: string | null;
+      converted_name: string | null; converted_aum: string | null;
+    }>;
+
     // PII access log (DPDP)
     await tx.insert(auditLog).values({
       tenantId: session.tenantId,
@@ -284,6 +308,16 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
       riskHistory: riskHistoryRows,
       insuranceCount,
       referralCount,
+      referredLeads: referredLeadRows.map((r) => ({
+        id: String(r.id),
+        name: r.name ?? "Unnamed lead",
+        stage: r.stage ?? null,
+        createdAt: r.created_at ? String(r.created_at) : null,
+        convertedAt: r.converted_at ? String(r.converted_at) : null,
+        convertedInvestorId: r.converted_investor_id ? String(r.converted_investor_id) : null,
+        convertedName: r.converted_name ?? null,
+        convertedAum: r.converted_aum != null ? Number(r.converted_aum) : null,
+      })),
       recentTransactions: recentTxRows,
       txCount: txCountRow,
       sipHealth,
@@ -573,7 +607,11 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
 
       {/* Referrals — dedicated, editable section (multi-referral) */}
       <RelatedListSection moduleKey="investors-detail" sectionKey="referrals">
-        <ReferralSection investorId={inv.id} referrals={((inv.referrals as any[]) ?? []) as any} />
+        <ReferralSection
+          investorId={inv.id}
+          referrals={((inv.referrals as any[]) ?? []) as any}
+          referredLeads={data.referredLeads}
+        />
       </RelatedListSection>
 
       {/* MFD-defined custom fields — KYC & Profile tab only (renders only if the
