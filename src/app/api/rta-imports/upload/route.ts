@@ -82,17 +82,19 @@ export async function POST(req: NextRequest) {
   // holdings); CAMS WBR9/R9 and WBR4 (master + balances) and WBR22 (AUM by
   // scheme by investor). Previously only R9/211/203 were caught, so the same
   // mis-pick still slipped through on the other four codes.
+  // WBR22 is deliberately NOT here. It has no PAN column, so the rich engine
+  // discards every row; classify-mailback routes it to monthly_aum_statement,
+  // which groups by folio. Listing it as a "master" would force the upload into
+  // the one engine that cannot read it.
   const looksLikeMaster =
-    /(?:wbr\s*_?)?r(?:9|4|22)(?=\.|_|-|$)/i.test(fileName) ||
+    /(?:wbr\s*_?)?r(?:9|4)(?=\.|_|-|$)/i.test(fileName) ||
     /mfsd\s*_?(?:211|311|203|310)/i.test(fileName);
   if (looksLikeMaster && kind !== "folio_master_dump" && kind !== "cas_holdings") {
     const fileLabel = /mfsd\s*_?(?:203|310)/i.test(fileName)
       ? "KFintech MFSD203/310 (folio register + holdings)"
       : /mfsd\s*_?(?:211|311)/i.test(fileName)
         ? "KFintech MFSD211/311 (folio master)"
-        : /r22(?=\.|_|-|$)/i.test(fileName)
-          ? "CAMS WBR22 (AUM by scheme by investor)"
-          : "CAMS WBR9/WBR4 (master + holdings)";
+        : "CAMS WBR9/WBR4 (master + holdings)";
     const selected = RTA_FILE_TYPE_BY_KIND[kind]?.label ?? kind.replace(/_/g, " ");
     return NextResponse.json(
       {

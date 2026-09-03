@@ -119,6 +119,32 @@ jobs:
           script: |
             set -euo pipefail
             APP_DIR="${{ secrets.DEPLOY_APP_DIR || '/home/ec2-user/app' }}"
+
+            # ── Serialise deploys on the BOX, not just in GitHub ──────────────
+            # concurrency: cancel-in-progress:false queues runs, but it cannot
+            # protect this: run-deploy.sh is started with `nohup … &` so it
+            # OUTLIVES this step. Once the step stops polling (or the run is
+            # cancelled, or the SSH session drops) GitHub considers the run over
+            # and releases the queue slot while the build is still going on the
+            # box. A second deploy then extracts its tarball over $APP_DIR while
+            # the first is mid-build.
+            #
+            # That is not hypothetical — on 3 Sep two runs 53s apart did exactly
+            # this: the later tarball landed, then the earlier run's extraction
+            # overwrote it, and the image was built from a tree that was missing
+            # a commit git said was merged.
+            #
+            # fd 9 is deliberate: the detached run-deploy.sh INHERITS it, so the
+            # lock is held until the build itself exits, not merely until this
+            # shell does.
+            exec 9>"$HOME/.deploy.lock"
+            if ! flock -w 1800 9; then
+              echo "another deploy has held the lock for 30 minutes — refusing to overwrite $APP_DIR"
+              echo "holder:"; fuser -v "$HOME/.deploy.lock" 2>&1 || true
+              exit 1
+            fi
+            echo "=== deploy lock acquired $(date -u) ==="
+
             cd "$APP_DIR"
 
             # A tarball only ADDS files. Anything deleted in git must be deleted

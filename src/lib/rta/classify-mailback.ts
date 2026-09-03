@@ -110,8 +110,22 @@ function detectKind(haystack: string, codesOnly: boolean): { kind: RtaFileKind; 
   //  KFintech MFSD203 = holdings / valuation (MFSD310 = same, subscription mode).
   //  CAMS WBR22 = "AuM on a specific date by Scheme by Investor" — same shape
   //  (per-investor per-scheme units/value), observed in production 2026-08-04.
-  if (/mfsd\s*_?(203|310)/.test(n) || new RegExp(`(?:wbr\\s*_?22|r22)${V}`).test(n)) {
-    return { kind: "cas_holdings", label: "Holdings / AUM by investor (KFintech MFSD203/310, CAMS WBR22)" };
+  if (/mfsd\s*_?(203|310)/.test(n)) {
+    return { kind: "cas_holdings", label: "Holdings / AUM by investor (KFintech MFSD203/310)" };
+  }
+  //  CAMS WBR22 = "AuM on a specific date by Scheme by Investor". It carries
+  //  the same facts as MFSD203 (folio · scheme · units · NAV · closing value)
+  //  but its layout is BROK_DLR_CODE/PRODUCT/FOLIO/UNITS/NAV/CLOSING_ASSETS and
+  //  — critically — it has NO PAN COLUMN.
+  //
+  //  It used to be routed to cas_holdings alongside MFSD203, which sends it to
+  //  the rich engine. That engine resolves investors by PAN and counts a
+  //  PAN-less row as skippedNoPan, so every row of a WBR22 was discarded: a
+  //  real file carrying Rs 354 Cr imported nothing. The AUM-statement path is
+  //  the right one — it groups by folio and resolveInvestorId() already falls
+  //  back to the folio when the PAN is absent, which is exactly this shape.
+  if (new RegExp(`(?:wbr\\s*_?22|r22)${V}`).test(n)) {
+    return { kind: "monthly_aum_statement", label: "AUM by scheme by investor (CAMS WBR22)" };
   }
 
   //  SIP register — CAMS WBR49 ("SIP/STP procured for the period"),

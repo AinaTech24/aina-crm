@@ -164,9 +164,9 @@ export const RTA_FILE_TYPES: RtaFileTypeDef[] = [
   },
   {
     kind: "monthly_aum_statement",
-    label: "Monthly AUM statement",
-    short: "End-of-month AUM snapshot per AMC and per investor.",
-    long: "Used to compute monthly trail commission and to reconcile AUM displayed on the Owner Cockpit. Comes from CAMS by the 5th, KFintech by the 7th.",
+    label: "AUM / holdings by investor",
+    short: "Units, NAV and closing value per folio per scheme — the file that sets your AUM.",
+    long: "CAMS ships this as WBR22 (\"AuM on a specific date by Scheme by Investor\"). It carries folio, scheme, units, NAV and closing value, and unlike the folio master it needs no PAN — clients are matched on their folio. Use it when clients show as registered but their AUM reads zero: that means the register arrived and the valuation did not.",
     sources: ["cams", "kfintech"],
     acronyms: ["AUM-MTH"],
     cadence: { every: "monthly", dayOfMonth: 7 },
@@ -180,7 +180,7 @@ export const RTA_FILE_TYPES: RtaFileTypeDef[] = [
     // "Monthly AUM statement — MFSD203_…" and the upload then failed with
     // "you selected monthly aum statement". MFSD203 now sits on Folio master
     // dump, which is the importer that actually loads it.
-    fileNames: { cams: "name contains AUM", kfintech: "name contains AUM" },
+    fileNames: { cams: "WBR22 / R22", kfintech: "name contains AUM" },
     fileNamesApprox: true,
   },
   // ───────────────────────────────────────────────── Quarterly ──
@@ -197,7 +197,7 @@ export const RTA_FILE_TYPES: RtaFileTypeDef[] = [
     priority: 40,
     fileNames: {
       kfintech: "MFSD211 / MFSD311 / MFSD203 / MFSD310",
-      cams: "WBR9 / R9 / WBR4 / WBR22",
+      cams: "WBR9 / R9 / WBR4",
     },
   },
 ];
