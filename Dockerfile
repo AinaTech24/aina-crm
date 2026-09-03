@@ -41,7 +41,17 @@ ENV DATABASE_URL=postgresql://build:build@127.0.0.1:5432/build \
 # `next build` and OOMs ("Ineffective mark-compacts near heap limit"). Scoped to
 # the build stage only — the runtime stage is a separate FROM.
 ENV NODE_OPTIONS=--max-old-space-size=4096
-RUN npm run build
+# Persist Next's compilation cache ACROSS builds. `COPY . .` gives every build a
+# fresh, empty .next/, so each deploy recompiled the whole app from cold — 9m53s
+# of a 13m19s deploy on this 2-vCPU box. A BuildKit cache mount keeps
+# .next/cache on the builder between runs, so an incremental deploy only
+# recompiles what changed.
+#
+# It is a CACHE, not state: BuildKit may evict it at any time and the build then
+# simply runs cold again, exactly as it does today. Nothing in the image depends
+# on it — the mount is not part of the layer, so the output is byte-identical
+# whether the cache hit or missed.
+RUN --mount=type=cache,target=/app/.next/cache,sharing=locked npm run build
 
 # ---- runtime: lean image that runs either role -------------------------------
 FROM node:20-bookworm-slim AS runtime

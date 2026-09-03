@@ -163,8 +163,11 @@ jobs:
             done
 
             # Run detached: the SSH session must not own a 20-minute build.
+            # SKIP_TYPECHECK: the Typecheck job above already ran `tsc --noEmit`
+            # on this exact tree and gates this job, so the box repeating it just
+            # spends 2m30s of 2-vCPU time re-proving a green result.
             rm -f ~/deploy-current.log
-            nohup bash ~/run-deploy.sh > ~/deploy-current.log 2>&1 &
+            SKIP_TYPECHECK=1 nohup bash ~/run-deploy.sh > ~/deploy-current.log 2>&1 &
 
             # Poll for the terminal marker the script writes.
             for _ in $(seq 1 240); do

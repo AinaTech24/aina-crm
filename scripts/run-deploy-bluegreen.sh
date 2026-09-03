@@ -36,9 +36,20 @@ RC=$?; [ $RC -ne 0 ] && { echo "DEPLOY_DONE_EXIT=$RC (build failed — old colou
 # never triggers a schema change and the old colour keeps serving.
 # --incremental false: with incremental on, tsc tries to write tsconfig.tsbuildinfo
 # into /app, which the unprivileged runtime user can't do (EACCES → false failure).
-echo "=== typecheck $(date) ==="
-$COMPOSE run --rm migrate npx tsc --noEmit --incremental false
-RC=$?; [ $RC -ne 0 ] && { echo "DEPLOY_DONE_EXIT=$RC (type errors — old colour still serving)"; exit $RC; }
+# Typecheck. SKIP_TYPECHECK=1 is set by the GitHub deploy workflow, which runs
+# `npx tsc --noEmit` on a fast runner as a SEPARATE JOB that gates this one — on
+# the identical tree, before the tarball is even packed. Repeating it here cost
+# 2m30s of every deploy (19% of the wall time) to re-prove what already passed,
+# on the slowest hardware in the chain.
+#
+# It still runs by default, so invoking this script by hand keeps the safety net.
+if [ "${SKIP_TYPECHECK:-0}" = "1" ]; then
+  echo "=== typecheck skipped (already gated by CI) $(date) ==="
+else
+  echo "=== typecheck $(date) ==="
+  $COMPOSE run --rm migrate npx tsc --noEmit --incremental false
+  RC=$?; [ $RC -ne 0 ] && { echo "DEPLOY_DONE_EXIT=$RC (type errors — old colour still serving)"; exit $RC; }
+fi
 
 echo "=== migrate $(date) ==="
 $COMPOSE run --rm migrate
