@@ -21,12 +21,27 @@ const DIR = path.join(process.cwd(), "drizzle", "migrations");
 // The 0131–0161 block was collisions that predate the checker's baseline and
 // only surfaced once those migrations were tracked in git; every pair touches
 // unrelated tables, so their fresh-DB apply order is immaterial.
+// "0001" is deliberately NOT here any more. It was the one collision whose apply
+// order actually mattered: 0001_rls_policies.sql sorts before 0001_sleepy_joseph.sql
+// ("r" < "s"), so on a FRESH database RLS was applied to tables the schema
+// migration had not created yet and `npm run migrate:all` died on the first file.
+// That is why CI's "Migrate · RLS coverage" job could never build a database from
+// scratch. Renamed to 0001a_rls_policies.sql so it sorts after the schema, which
+// is what its own header always said it required. Safe to re-run on an existing
+// database: every policy is DROP POLICY IF EXISTS before CREATE POLICY, the
+// functions are CREATE OR REPLACE, and all 59 tables in its array were verified
+// present in production before the rename.
 const BASELINE = new Set([
-  "0001", "0036", "0037", "0040", "0045", "0047", "0051", "0052", "0053",
+  "0036", "0037", "0040", "0045", "0047", "0051", "0052", "0053",
   "0054", "0055", "0056", "0057", "0058", "0060", "0061", "0062", "0063",
   "0072", "0073", "0074",
   "0131", "0137", "0144", "0145", "0147", "0148", "0149", "0150", "0151",
   "0160", "0161",
+  // 0195_ddq_compliance_registers + 0195_product_coherence. Both are already
+  // applied in production, so renumbering either would re-run it against a live
+  // database. They touch unrelated tables, so their fresh-DB apply order is
+  // immaterial — same rationale as the 0131–0161 block above.
+  "0195",
 ]);
 
 const files = fs.readdirSync(DIR).filter((f) => /^\d+_.*\.sql$/.test(f));
