@@ -33,6 +33,10 @@ const DENYLIST = new Set(["investors", "consents", "communications", "campaigns"
 const Body = z.object({
   survivorId: z.string().uuid(),
   loserId: z.string().uuid(),
+  /** Why these two are the same person — the matched key ("PAN", "Mobile") from
+   *  the suggestion list, or an operator's note. Recorded on the loser so the
+   *  merged-clients audit can explain each row instead of just listing it. */
+  reason: z.string().max(300).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -42,6 +46,7 @@ export async function POST(req: NextRequest) {
     const parse = Body.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) return NextResponse.json({ error: "invalid body", issues: parse.error.issues }, { status: 400 });
     const { survivorId, loserId } = parse.data;
+    const mergeReason = parse.data.reason?.trim() || null;
     if (survivorId === loserId) return NextResponse.json({ error: "survivor and loser must differ" }, { status: 400 });
     const meta = clientMetaFromHeaders(req.headers);
 
@@ -110,10 +115,27 @@ export async function POST(req: NextRequest) {
           WHERE s.id = ${survivorId}::uuid AND l.id = ${loserId}::uuid
         `);
 
-        // Retire the loser.
+        // Retire the loser — and ZERO its cached headline figures.
+        //
+        // The loser's folios, transactions and SIPs have just been repointed to
+        // the survivor, so its own aum / active_sip_amount are now double-counting
+        // the same money. Nothing else clears them: `recomputeCombinedAum` has a
+        // deliberate never-zero rule (an investor with no folio and no
+        // transaction basis is left untouched rather than wiped), and a merged
+        // loser is exactly that shape — so a stale figure here survives every
+        // nightly recompute, permanently.
+        //
+        // It leaks wherever a query filters on deleted_at alone: the main
+        // dashboard's AUM does (api/dashboard/home), while the client KPIs, the
+        // AI snapshot and the firm snapshot all also filter status/merged_into_id
+        // and were unaffected. Zeroing at the source fixes every reader at once.
         await tx.execute(sql`
-          UPDATE investors SET status = 'inactive', merged_into_id = ${survivorId}::uuid, merged_at = now(), updated_at = now()
-          WHERE id = ${loserId}::uuid
+          UPDATE investors
+             SET status = 'inactive', merged_into_id = ${survivorId}::uuid, merged_at = now(),
+                 merged_by_id = ${session.userId}::uuid, merge_source = 'manual',
+                 merge_reason = ${mergeReason},
+                 aum = 0, active_sip_amount = 0, updated_at = now()
+           WHERE id = ${loserId}::uuid
         `);
 
         // The survivor just absorbed the loser's folios / transactions / SIPs —

@@ -103,6 +103,7 @@ export const NAV_ACCESS_GROUPS: NavAccessGroup[] = [
       { key: "/dashboard/sops", label: "SOP Library" },
       { key: "/dashboard/announcements", label: "Announcements" },
       { key: "/dashboard/duplicates", label: "Find Duplicates" },
+      { key: "/dashboard/merge-clients", label: "Merged Clients" },
       { key: "/dashboard/employees", label: "Employees / Team", module: "employees" },
       { key: "/dashboard/leave-applications", label: "Leave Applications" },
       { key: "/dashboard/sub-distributors", label: "Sub-Distributors" },

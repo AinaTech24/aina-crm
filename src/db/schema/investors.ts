@@ -278,6 +278,14 @@ export const investors = pgTable(
      */
     mergedIntoId: uuid("merged_into_id"),
     mergedAt: timestamp("merged_at", { withTimezone: true }),
+    /** Who performed the merge — NULL when the system did it unattended. */
+    mergedById: uuid("merged_by_id"),
+    /** 'manual' | 'system' | 'import'. A system merge happened with nobody
+     *  looking, which is exactly the set an MFD wants to audit after a bulk
+     *  RTA import — hence a separate view, not just a flag. */
+    mergeSource: text("merge_source"),
+    /** Why: the matched key ("PAN", "Mobile") or an operator's note. */
+    mergeReason: text("merge_reason"),
 
     /**
      * Soft-delete (Trash bin). When a client is deleted it's stamped here
