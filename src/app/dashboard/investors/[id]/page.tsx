@@ -404,6 +404,12 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
           >
             📄 Quarterly Review Report
           </Link>
+          <Link
+            href={`/dashboard/investors/${inv.id}/statement`}
+            className="text-xs rounded-md border px-2.5 py-1 hover:bg-accent"
+          >
+            🧾 Account Statement
+          </Link>
         </div>
       </div>
 
