@@ -919,6 +919,9 @@ async function processAumStatement(
   let imported = 0;
   let skipped = 0;
   let failed = 0;
+  /** Folios this report was the first to reveal — surfaced in the summary so a
+   *  valuation-led import is visible rather than looking like a plain refresh. */
+  let createdFolios = 0;
 
   // Group rows by folio number
   const aumRowsGrouped = new Map<string, CanonicalAumRow[]>();
@@ -967,15 +970,41 @@ async function processAumStatement(
       continue;
     }
 
-    // Find folio
-    const folio = await tx.execute(sql`
+    // Find the folio — and CREATE it when this report is the first thing to
+    // mention it. A valuation report legitimately arrives before any master:
+    // CAMS WBR22 is pulled per-ARN on demand, while the folio master is a
+    // separate subscription that may not cover the same ARNs. Refusing to
+    // create the folio meant the holding was dropped even though we had the
+    // folio number, the scheme, the units and the value in hand — 268 rows of
+    // one real file, after the client-resolution gap above was already fixed.
+    //
+    // The transaction feed has always done this (processTransactionFeed inserts
+    // the folio ON CONFLICT before writing the transaction); this path just
+    // never did. amc_code is unknown here — WBR22 carries a PRODUCT code per
+    // scheme, not a folio-level AMC — so it is left blank for a later master to
+    // fill in, and the ON CONFLICT target below matches the same
+    // (tenant, amc_code, folio_number) key the rest of the importer uses.
+    let folio = await tx.execute(sql`
       SELECT id, schemes FROM folios
       WHERE tenant_id = ${args.tenantId}::uuid AND folio_number = ${folioNum} LIMIT 1
     `);
+    if (!folio.rows[0]) {
+      const rtaEnum = args.source === "cams" || args.source === "kfintech" ? args.source : "other";
+      await tx.execute(sql`
+        INSERT INTO folios (tenant_id, investor_id, folio_number, amc_code, amc_name, rta, schemes)
+        VALUES (${args.tenantId}::uuid, ${investorId}::uuid, ${folioNum}, '', '', ${rtaEnum}, '[]'::jsonb)
+        ON CONFLICT (tenant_id, amc_code, folio_number) DO UPDATE SET updated_at = now()
+      `);
+      folio = await tx.execute(sql`
+        SELECT id, schemes FROM folios
+        WHERE tenant_id = ${args.tenantId}::uuid AND folio_number = ${folioNum} LIMIT 1
+      `);
+      if (folio.rows[0]) createdFolios++;
+    }
     const folioId = (folio.rows[0] as any)?.id;
     if (!folioId) {
       skipped += fRows.length;
-      errors.push({ row: rows.indexOf(firstRow) + 1, reason: `Folio ${folioNum} not found` });
+      errors.push({ row: rows.indexOf(firstRow) + 1, reason: `Folio ${folioNum} could not be created` });
       continue;
     }
 
@@ -1058,6 +1087,12 @@ async function processAumStatement(
       failed += fRows.length;
       errors.push({ row: rows.indexOf(firstRow) + 1, reason: e.message ?? "AUM import failed" });
     }
+  }
+
+  if (createdFolios > 0) {
+    // Not an error — recorded so a valuation-led import is visible as such,
+    // rather than reading like a plain refresh of folios we already had.
+    errors.push({ row: 0, reason: `${createdFolios} folio(s) were first seen in this report and created from it` });
   }
 
   try {
