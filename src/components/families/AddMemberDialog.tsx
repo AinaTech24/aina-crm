@@ -49,6 +49,8 @@ export function AddMemberDialog({ familyId, familyName }: { familyId: string; fa
   // “No investors match” however you spelled the name. Debounced so typing
   // doesn't fire a request per keystroke.
   const [loading, setLoading] = useState(false);
+  /** Set when the SEARCH itself failed — distinct from a search that found nothing. */
+  const [searchErr, setSearchErr] = useState<string | null>(null);
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
@@ -57,9 +59,25 @@ export function AddMemberDialog({ familyId, familyName }: { familyId: string; fa
     const t = setTimeout(() => {
       const url = `/api/investors?limit=50${q ? `&q=${encodeURIComponent(q)}` : ""}`;
       fetch(url)
-        .then((r) => r.json())
-        .then((j) => { if (!cancelled) setInvestors(j.rows ?? []); })
-        .catch(() => { if (!cancelled) setInvestors([]); })
+        .then(async (r) => {
+          const j = await r.json().catch(() => ({}));
+          // A failed request used to land in `.then` and set an EMPTY list, so a
+          // 403 (module gate, missing investor.view) or a 500 rendered as "no
+          // client matches that name" — telling the user their search term was
+          // wrong when the search never ran. Keep the two apart.
+          if (!r.ok) throw new Error(j?.error ?? `Search failed (${r.status})`);
+          return j;
+        })
+        .then((j) => {
+          if (cancelled) return;
+          setInvestors(j.rows ?? []);
+          setSearchErr(null);
+        })
+        .catch((e) => {
+          if (cancelled) return;
+          setInvestors([]);
+          setSearchErr(e?.message ?? "Could not search clients.");
+        })
         .finally(() => { if (!cancelled) setLoading(false); });
     }, q ? 250 : 0);
     return () => { cancelled = true; clearTimeout(t); };
@@ -178,10 +196,17 @@ export function AddMemberDialog({ familyId, familyName }: { familyId: string; fa
                     <div className="p-6 text-center text-xs text-muted-foreground flex items-center justify-center gap-2">
                       <Loader2 className="size-3.5 animate-spin" /> Searching…
                     </div>
+                  ) : searchErr ? (
+                    <div className="p-6 text-center text-xs text-rose-600">
+                      {searchErr}
+                      <div className="mt-1 text-muted-foreground">
+                        This is a problem with the search, not with what you typed.
+                      </div>
+                    </div>
                   ) : filtered.length === 0 ? (
                     <div className="p-6 text-center text-xs text-muted-foreground">
                       {search
-                        ? "No client matches that name or PAN."
+                        ? "No client matches that name, PAN, mobile or email."
                         : "No clients yet. Add a new one instead."}
                     </div>
                   ) : (

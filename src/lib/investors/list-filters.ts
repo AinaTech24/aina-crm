@@ -60,13 +60,27 @@ export function buildInvestorConditions(
   };
 
   if (q) {
-    conditions.push(
-      or(
-        ilike(investors.name, `%${q}%`),
-        ilike(investors.pan, `%${q.toUpperCase()}%`),
-        ilike(investors.phone ?? sql`''`, `%${q}%`)
-      )!
-    );
+    // Match each WORD independently, ANDed together, rather than the whole
+    // string as one contiguous substring. Registrar names carry middle names and
+    // initials the person searching does not type: "adesh manocha" never matched
+    // "ADESH KUMAR MANOCHA", because `%adesh manocha%` requires the two to be
+    // adjacent. Per-token AND finds it, and for a single word the behaviour is
+    // unchanged.
+    //
+    // Email is included because a family member is often identified by the
+    // shared household address when the name is spelled differently on the folio.
+    const tokens = q.split(/\s+/).filter(Boolean).slice(0, 6);
+    for (const tok of tokens) {
+      const like = `%${tok}%`;
+      conditions.push(
+        or(
+          ilike(investors.name, like),
+          ilike(investors.pan, `%${tok.toUpperCase()}%`),
+          ilike(investors.phone, like),
+          ilike(investors.email, like)
+        )!
+      );
+    }
   }
   // NB: use inArray (not `= ANY(${jsArray})`) — Drizzle expands a JS array
   // passed to sql`` into a `($1,$2,…)` tuple, which is invalid for ANY().
