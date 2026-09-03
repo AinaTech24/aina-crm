@@ -29,6 +29,7 @@ import { getDefaultBoard } from "@/lib/dashboards/service";
 import { DashboardView } from "@/components/dashboards/custom/DashboardView";
 import { DashboardPageSkeleton } from "@/components/dashboards/DashboardSkeletons";
 import type { PlacedWidget } from "@/lib/dashboards/widgets";
+import { ACTIVITY_RANGES, type ActivityRange } from "@/lib/dashboard/firm-pulse";
 
 export const dynamic = "force-dynamic";
 
@@ -52,6 +53,12 @@ export default async function DashboardPage({
   const dateFrom = (sp.date_from ?? "").slice(0, 10);
   const dateTo = (sp.date_to ?? "").slice(0, 10);
   const rmParam = (sp.rm ?? "").trim();
+  // Activity-tile window (?act=3|7|10|15|30). Kept in the URL rather than in
+  // component state so the choice survives a refresh and can be shared.
+  const actRaw = Number(sp.act);
+  const activityDays: ActivityRange = (ACTIVITY_RANGES as readonly number[]).includes(actRaw)
+    ? (actRaw as ActivityRange)
+    : 7;
 
   // ── Custom default board ─────────────────────────────────────────────────
   // If the user has set one of their "My Dashboards" as default, render it here
@@ -118,7 +125,7 @@ export default async function DashboardPage({
     dash = selected ? (
       <RmDashboard session={session} targetUserId={selected.id} targetName={selected.name} from={dateFrom} to={dateTo} />
     ) : (
-      <OwnerCockpit session={session} period={period} customStart={pstart} customFrom={pfrom} customTo={pto} />
+      <OwnerCockpit session={session} period={period} customStart={pstart} customFrom={pfrom} customTo={pto} activityDays={activityDays} />
     );
     if (!selected) {
       headerControls = <DashboardHeaderBar period={period} currentLabel={periodLabel} variant="light" />;

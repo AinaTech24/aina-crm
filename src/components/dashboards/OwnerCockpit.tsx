@@ -11,6 +11,8 @@ import { SipPersistencyTile } from "./SipPersistencyTile";
 import { resolvePeriodRange, type Period } from "@/lib/dashboard/period";
 import { getDashboardThresholds } from "@/lib/dashboard/thresholds";
 import { Sparkline } from "./Sparkline";
+import { FirmPulseStrip } from "./FirmPulseStrip";
+import { loadFirmPulse, loadActivityTiles, type ActivityRange } from "@/lib/dashboard/firm-pulse";
 import { loadTenantLicense } from "@/lib/auth/license";
 import { isDashboardWidgetVisible } from "@/config/dashboard-widgets";
 
@@ -65,12 +67,15 @@ export async function OwnerCockpit({
   customStart,
   customFrom,
   customTo,
+  activityDays = 7,
 }: {
   session: SessionUser;
   period?: Period;
   customStart?: string;
   customFrom?: string;
   customTo?: string;
+  /** Window for the activity tiles (the ?act= chips). */
+  activityDays?: ActivityRange;
 }) {
   const now = new Date();
   const today = now.toLocaleDateString("en-IN", {
@@ -104,9 +109,49 @@ export async function OwnerCockpit({
         <SetupChecklist tenantId={session.tenantId} />
       </Suspense>
 
+      {/* Firm pulse — headline AUM / investment / SIP book + what moved in the
+          last N days. Its own Suspense boundary so the heavier cockpit body
+          below never delays the numbers people open this page for. */}
+      <Suspense fallback={<FirmPulseSkeleton />}>
+        <FirmPulse tenantId={session.tenantId} session={session} days={activityDays} />
+      </Suspense>
+
       <Suspense fallback={<CockpitBodySkeleton />}>
         <OwnerCockpitBody session={session} period={period} customStart={customStart} customFrom={customFrom} customTo={customTo} />
       </Suspense>
+    </div>
+  );
+}
+
+async function FirmPulse({
+  tenantId,
+  session,
+  days,
+}: {
+  tenantId: string;
+  session: SessionUser;
+  days: ActivityRange;
+}) {
+  const { metrics, tiles } = await withTenant(
+    tenantId,
+    async (tx) => ({
+      metrics: await loadFirmPulse(tx),
+      tiles: await loadActivityTiles(tx, days),
+    }),
+    { userId: session.userId, branchId: session.branchId, roles: session.roles }
+  );
+  return <FirmPulseStrip metrics={metrics} tiles={tiles} range={days} />;
+}
+
+function FirmPulseSkeleton() {
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div key={i} className="h-[9.5rem] rounded-xl bg-card border border-border/50 animate-pulse" />
+        ))}
+      </div>
+      <div className="h-48 rounded-xl bg-card border border-border/50 animate-pulse" />
     </div>
   );
 }
