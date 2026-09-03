@@ -411,13 +411,31 @@ export function CompactFilterBar({
 function SearchInput({ initial, placeholder, onSubmit }: { initial: string; placeholder: string; onSubmit: (v: string) => void }) {
   const [v, setV] = useState(initial);
   const dirty = useRef(false);
+  /** The last value we pushed into the URL. Anything else arriving in `initial`
+   *  is an EXTERNAL change (back button, a filter link, a reset) — this is what
+   *  tells the two apart. */
+  const submitted = useRef(initial);
+
+  // Only adopt an external change. The previous version ran `setV(initial)` on
+  // every change of `initial`, including the echo of our OWN push — which
+  // arrives one server round-trip after the keystroke that caused it. Anything
+  // typed during that round-trip was overwritten by the older value: on a heavy
+  // list (Families aggregates member counts, AUM and health across the book)
+  // the navigation is slow enough that a normal typing speed loses characters
+  // mid-word, which reads as the box "changing what you type by itself".
   useEffect(() => {
+    if (initial === submitted.current) return;
+    submitted.current = initial;
     setV(initial);
     dirty.current = false;
   }, [initial]);
+
   useEffect(() => {
-    if (!dirty.current || v === initial) return;
-    const t = setTimeout(() => onSubmit(v), 300);
+    if (!dirty.current || v === submitted.current) return;
+    const t = setTimeout(() => {
+      submitted.current = v;
+      onSubmit(v);
+    }, 300);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [v]);

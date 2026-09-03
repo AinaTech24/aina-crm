@@ -225,6 +225,19 @@ export async function POST(req: NextRequest) {
           .limit(1);
         if (!u) return "bad_rm" as const;
       }
+      // Same check for the head: it must be a live client in THIS firm, and it
+      // must not already belong to another household. Silently moving someone
+      // between families would strip them from a rollup nobody was looking at.
+      if (parse.data.primaryInvestorId) {
+        const head = (await tx.execute(sql`
+          SELECT id, family_id FROM investors
+           WHERE id = ${parse.data.primaryInvestorId}::uuid
+             AND tenant_id = ${session.tenantId}::uuid
+             AND deleted_at IS NULL
+        `)).rows[0] as any;
+        if (!head) return "bad_head" as const;
+        if (head.family_id) return "head_in_family" as const;
+      }
       await tx.insert(families).values({
         id,
         tenantId: session.tenantId,
@@ -251,6 +264,22 @@ export async function POST(req: NextRequest) {
         ),
       } as any);
 
+      // Setting families.primary_investor_id alone left the head as a POINTER
+      // and not a member: investors.family_id is what the member list, the AUM
+      // rollup and family health all read, so the household would have shown
+      // "0 members" and zero AUM while naming someone as its head.
+      if (parse.data.primaryInvestorId) {
+        await tx.execute(sql`
+          UPDATE investors
+             SET family_id = ${id}::uuid,
+                 family_role = COALESCE(family_role, 'head'),
+                 updated_at = now()
+           WHERE id = ${parse.data.primaryInvestorId}::uuid
+             AND tenant_id = ${session.tenantId}::uuid
+             AND family_id IS NULL
+        `);
+      }
+
       await recordAudit(tx, {
         tenantId: session.tenantId,
         actorUserId: session.userId,
@@ -266,6 +295,13 @@ export async function POST(req: NextRequest) {
       return "ok" as const;
     });
     if (outcome === "bad_rm") return NextResponse.json({ error: "selected RM is not a user in this firm" }, { status: 400 });
+    if (outcome === "bad_head") return NextResponse.json({ error: "the selected head is not a client in this firm" }, { status: 400 });
+    if (outcome === "head_in_family") {
+      return NextResponse.json(
+        { error: "That client already belongs to another household. Remove them from it first, or pick a different head." },
+        { status: 409 }
+      );
+    }
     return NextResponse.json({ id }, { status: 201 });
   } catch (err: any) {
     return handleApiError(err);

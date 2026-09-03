@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { FamilyHeadPicker, familyNameFromHead, type HeadCandidate } from "@/components/families/FamilyHeadPicker";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
@@ -24,6 +25,16 @@ export default function NewFamilyPage() {
   });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [head, setHead] = useState<HeadCandidate | null>(null);
+  /** True once the user edits the name themselves — after that we never
+   *  overwrite it, so a household named by organisation ("Sharma Trust") is not
+   *  dragged back to "<person> Family" when the head is picked or changed. */
+  const [nameTouched, setNameTouched] = useState(false);
+
+  function pickHead(c: HeadCandidate | null) {
+    setHead(c);
+    if (c && !nameTouched) set("headName", familyNameFromHead(c.name));
+  }
 
   function set<K extends keyof typeof form>(k: K, v: (typeof form)[K]) {
     setForm((s) => ({ ...s, [k]: v }));
@@ -39,6 +50,9 @@ export default function NewFamilyPage() {
     setErr(null);
     try {
       const payload: any = { headName: form.headName, notes: form.notes || undefined };
+      // Link the head so the household starts attached to a real client instead
+      // of being a name with members bolted on later.
+      if (head) payload.primaryInvestorId = head.id;
       if (form.familyCode) payload.familyCode = form.familyCode;
       if (form.familyCategory) payload.familyCategory = form.familyCategory;
       if (form.rmId) payload.rmId = form.rmId;
@@ -84,6 +98,16 @@ export default function NewFamilyPage() {
       </Link>
       <h1 className="text-2xl font-bold tracking-tight">New family</h1>
       <form onSubmit={submit} className="border rounded-lg bg-card p-5 space-y-4">
+        {/* Head of family first: picking it fills the name below, so the common
+            case is one search and a Create click. Optional — a household can
+            still be named up front and populated later. */}
+        <div>
+          <div className="text-xs font-medium mb-1">
+            Head of family <span className="text-muted-foreground font-normal">· optional, fills the name below</span>
+          </div>
+          <FamilyHeadPicker value={head} onPick={pickHead} />
+        </div>
+
         {/* Identity */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <label className="block">
@@ -92,7 +116,7 @@ export default function NewFamilyPage() {
             </div>
             <input
               value={form.headName}
-              onChange={(e) => set("headName", e.target.value)}
+              onChange={(e) => { setNameTouched(true); set("headName", e.target.value); }}
               required
               // placeholder="e.g. Patel Family"
               className="w-full border rounded-md px-3 py-2 text-sm bg-background"
