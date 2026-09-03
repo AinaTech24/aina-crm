@@ -42,6 +42,7 @@ const REPORTS: { group: string; items: ReportItem[] }[] = [
       { key: "sip_expiring", label: "SIP Expiring Soon", icon: "Calendar", desc: "SIPs about to end — renew in time" },
       { key: "sip_topup_opportunity", label: "SIP Top-Up Opportunity", icon: "TrendingUp", desc: "Clients who can raise their SIP" },
       { key: "sip_health", label: "SIP Health & Efforts", icon: "TrendingUp", href: "/dashboard/reports/sip-health", desc: "Bounce trends and recovery efforts" },
+      { key: "sip_expiry", label: "SIP Expiry", icon: "CalendarClock", href: "/dashboard/reports/sip-expiry", desc: "SIPs reaching the end of their term, with lifetime progress" },
       { key: "rm_sip_book", label: "RM-wise SIP Book", icon: "Users", desc: "Each RM's SIP book size" },
       { key: "sip_book_size", label: "SIP Book Size (branch-wise)", icon: "BarChart3", href: "/dashboard/reports/metric/sip-book", desc: "SIP book totals by branch" },
       { key: "sip_rejected", label: "SIP Rejected", icon: "AlertTriangle", desc: "SIPs that bounced and need recovery" },

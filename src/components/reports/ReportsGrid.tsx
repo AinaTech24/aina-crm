@@ -18,12 +18,11 @@ import {
   BarChart3, TrendingUp, TrendingDown, Users, Filter, AlertTriangle, FileText,
   Calendar, Briefcase, Shield, ShieldCheck, Clock, CheckCircle2, ListChecks,
   Megaphone, X, RotateCcw, Search, ChevronRight, type LucideIcon,
-  Star,
-} from "lucide-react";
+  Star, CalendarClock} from "lucide-react";
 
 const ICONS: Record<string, LucideIcon> = {
   BarChart3, TrendingUp, TrendingDown, Users, Filter, AlertTriangle, FileText,
-  Calendar, Briefcase, Shield, ShieldCheck, Clock, CheckCircle2, ListChecks, Megaphone,
+  Calendar, CalendarClock, Briefcase, Shield, ShieldCheck, Clock, CheckCircle2, ListChecks, Megaphone,
 };
 
 type Item = { key: string; label: string; iconName: string; href: string; desc?: string };

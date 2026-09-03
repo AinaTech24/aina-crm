@@ -53,6 +53,7 @@ import { recomputeAllHealth } from "@/lib/investors/health-persist";
 import { recomputeAllFamilyHealth } from "@/lib/families/health-persist";
 import { recomputeAllGoals } from "@/lib/goal-planning/recompute";
 import { recomputeCombinedAum, revalueAllFolios } from "@/lib/finance/aum-persist";
+import { completeExpiredSips } from "@/lib/finance/sip-lifecycle";
 import { eventsOutbox, investors, folios, suitabilityMatrixEntries } from "@/db/schema";
 
 interface ScanResult {
@@ -95,6 +96,8 @@ interface ScanResult {
   policyLapsed: number;
   /** `sip.expiring` events emitted (one per investor at a milestone). */
   sipExpiring: number;
+  /** SIPs closed because their end_date passed (plus grace). */
+  sipsCompleted: number;
   /** `mandate.expiring` events emitted (one per investor at a milestone). */
   mandateExpiring: number;
   /** Service requests escalated this run (resolution OR response SLA breach). */
@@ -163,6 +166,7 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
     premiumDue: 0,
     policyLapsed: 0,
     sipExpiring: 0,
+    sipsCompleted: 0,
     mandateExpiring: 0,
     srEscalated: 0,
     attendanceSeeded: 0,
@@ -866,6 +870,14 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
         `);
       }
 
+      // ── Close SIPs whose term has ended ───────────────────────────────
+      // Nothing else ever did this: the only other write to sips.status sets
+      // 'active', so a SIP stayed active forever past its end_date and the SIP
+      // book only ever ratcheted up. Runs BEFORE the active_sip_amount refresh
+      // below so the same pass also removes the closed ones from the cached
+      // total, instead of leaving it a day stale.
+      result.sipsCompleted = await completeExpiredSips(tx);
+
       // ── Refresh investors.active_sip_amount ───────────────────────────
       // This cached column was never recomputed, so the client list's
       // "Monthly SIP", the SIP health card, family suggestions etc. all read
@@ -1298,6 +1310,7 @@ export async function runDailyOpsScan(): Promise<{
     premiumDue: 0,
     policyLapsed: 0,
     sipExpiring: 0,
+    sipsCompleted: 0,
     mandateExpiring: 0,
     srEscalated: 0,
     attendanceSeeded: 0,
