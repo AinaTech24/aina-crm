@@ -636,32 +636,64 @@ async function processSipBook(
 
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
-    if (!r.pan || !r.folioNumber || !r.schemeCode) {
+    // The folio + scheme are what actually key a SIP. PAN is NOT required:
+    // KFintech leaves the PAN column blank on a real minority of rows (minor
+    // folios, older registrations), and every one of those was being dropped
+    // — silently, because this branch recorded no reason. Measured on one VSN
+    // batch: 213 of 5,699 rows, all with a valid folio and scheme, all with an
+    // empty PAN, and an empty `errors` array to explain it.
+    if (!r.folioNumber || !r.schemeCode) {
       skipped++;
+      errors.push({
+        row: i + 1,
+        reason: `row carries no ${!r.folioNumber ? "folio number" : "scheme"} — a SIP cannot be keyed without it`,
+      });
       continue;
     }
 
-    const investor = await tx.execute(sql`
-      SELECT id, rm_id FROM investors WHERE tenant_id = ${args.tenantId}::uuid AND pan = ${r.pan.toUpperCase()} LIMIT 1
-    `);
-    const investorId = (investor.rows[0] as any)?.id;
-    const rmId = (investor.rows[0] as any)?.rm_id;
-    if (!investorId) {
-      skipped++;
-      errors.push({ row: i + 1, reason: `PAN ${r.pan} not in client master` });
-      continue;
-    }
-
-    // Resolve folio
+    // Resolve the folio FIRST: it carries the investor link, so it can identify
+    // the client even when the registrar omitted the PAN.
     const folio = await tx.execute(sql`
-      SELECT id, amc_name FROM folios
+      SELECT id, amc_name, investor_id FROM folios
       WHERE tenant_id = ${args.tenantId}::uuid AND folio_number = ${r.folioNumber} LIMIT 1
     `);
     const folioId = (folio.rows[0] as any)?.id;
     const amcName = (folio.rows[0] as any)?.amc_name || "Unknown AMC";
+    const folioInvestorId = (folio.rows[0] as any)?.investor_id ?? null;
     if (!folioId) {
       skipped++;
-      errors.push({ row: i + 1, reason: `Folio ${r.folioNumber} not found` });
+      errors.push({ row: i + 1, reason: `Folio ${r.folioNumber} not found — import the folio master first` });
+      continue;
+    }
+
+    // PAN wins when the registrar supplies one (it is the platform's dedup key);
+    // otherwise fall back to whoever owns the folio.
+    let investorId: string | null = null;
+    let rmId: string | null = null;
+    if (r.pan) {
+      const byPan = await tx.execute(sql`
+        SELECT id, rm_id FROM investors
+        WHERE tenant_id = ${args.tenantId}::uuid AND pan = ${r.pan.toUpperCase()} LIMIT 1
+      `);
+      investorId = (byPan.rows[0] as any)?.id ?? null;
+      rmId = (byPan.rows[0] as any)?.rm_id ?? null;
+    }
+    if (!investorId && folioInvestorId) {
+      const byFolio = await tx.execute(sql`
+        SELECT id, rm_id FROM investors
+        WHERE tenant_id = ${args.tenantId}::uuid AND id = ${folioInvestorId}::uuid LIMIT 1
+      `);
+      investorId = (byFolio.rows[0] as any)?.id ?? null;
+      rmId = (byFolio.rows[0] as any)?.rm_id ?? null;
+    }
+    if (!investorId) {
+      skipped++;
+      errors.push({
+        row: i + 1,
+        reason: r.pan
+          ? `PAN ${r.pan} not in client master, and folio ${r.folioNumber} is not linked to a client`
+          : `row has no PAN and folio ${r.folioNumber} is not linked to a client`,
+      });
       continue;
     }
 
