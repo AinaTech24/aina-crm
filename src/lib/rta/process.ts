@@ -952,24 +952,60 @@ async function processAumStatement(
         value?: number;
       }>;
 
-      const schemesMap = new Map<string, typeof existingSchemes[number]>();
-      for (const s of existingSchemes) {
-        if (s.schemeCode) schemesMap.set(s.schemeCode, s);
-      }
+      // Match an incoming holding to an existing leg by CODE **or by scheme
+      // NAME**. The same holding is routinely already present under a different
+      // code: the rich importer rewrites schemeCode to the AMFI code via
+      // resolveSchemeIdentity, while this report carries the registrar's own
+      // product code. Keying the merge on code alone stored it twice, with
+      // identical units and identical value —
+      //
+      //   folio 1000073825   Y1035  = 16,206,449 / 890,757.88
+      //                      150347 = 16,206,449 / 890,757.88
+      //
+      // Measured on VSN Financial Services: 3,632 duplicated legs worth
+      // Rs 158.49 Cr, which is why firm AUM read Rs 779 Cr against an actual
+      // Rs 640 Cr. Double-counted AUM is worse than missing AUM: it looks right.
+      const normName = (s?: string) => (s ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+      const merged = existingSchemes.map((s) => ({ ...s }));
+      const byCode = new Map<string, number>();
+      const byName = new Map<string, number>();
+      merged.forEach((s, idx) => {
+        if (s.schemeCode) byCode.set(s.schemeCode, idx);
+        const n = normName(s.schemeName);
+        if (n && !byName.has(n)) byName.set(n, idx);
+      });
 
       for (const r of fRows) {
         if (!r.schemeCode) continue;
-        const current = schemesMap.get(r.schemeCode);
-        schemesMap.set(r.schemeCode, {
-          schemeCode: r.schemeCode,
-          schemeName: r.schemeName || current?.schemeName || "",
-          units: r.units,
-          nav: r.nav || current?.nav,
-          value: r.aumValue || (r.nav ? Math.round(r.units * r.nav * 100) / 100 : current?.value),
-        });
+        const n = normName(r.schemeName);
+        const at = byCode.get(r.schemeCode) ?? (n ? byName.get(n) : undefined);
+        const value = r.aumValue || (r.nav ? Math.round(r.units * r.nav * 100) / 100 : undefined);
+        if (at != null) {
+          const cur = merged[at];
+          merged[at] = {
+            ...cur,
+            // Keep the EXISTING code. When it is the resolved AMFI code that is
+            // what live-NAV revaluation joins on; overwriting it with the
+            // registrar's product code would silently un-price the holding.
+            schemeName: cur.schemeName || r.schemeName || "",
+            units: r.units,
+            nav: r.nav ?? cur.nav,
+            value: value ?? cur.value,
+          };
+        } else {
+          const idx = merged.push({
+            schemeCode: r.schemeCode,
+            schemeName: r.schemeName || "",
+            units: r.units,
+            nav: r.nav,
+            value,
+          }) - 1;
+          byCode.set(r.schemeCode, idx);
+          if (n && !byName.has(n)) byName.set(n, idx);
+        }
       }
 
-      const mergedSchemes = Array.from(schemesMap.values());
+      const mergedSchemes = merged;
       const roundedAum = mergedSchemes.reduce((acc, s) => acc + (s.value ?? 0), 0);
 
       await tx.execute(sql`
