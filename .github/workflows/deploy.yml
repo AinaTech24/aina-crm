@@ -126,7 +126,12 @@ jobs:
             # drop paths that are no longer in the tarball.
             tar tzf /tmp/app.tgz | sed 's#/$##' | sort -u > /tmp/shipped.txt
             tar xzf /tmp/app.tgz -C "$APP_DIR"
-            find src scripts -type f 2>/dev/null | sort -u > /tmp/onbox.txt
+            # drizzle/ MUST be pruned too. It was omitted, so a renamed or deleted
+            # migration was never removed from the box: renaming
+            # 0001_rls_policies.sql -> 0001a_rls_policies.sql left BOTH on disk,
+            # recreating the duplicate-0001 collision in production only, and the
+            # migrate runner then applied the RLS migration twice.
+            find src scripts drizzle -type f 2>/dev/null | sort -u > /tmp/onbox.txt
             comm -13 /tmp/shipped.txt /tmp/onbox.txt | while read -r stale; do
               [ -n "$stale" ] && rm -f "$stale" && echo "removed stale: $stale"
             done
