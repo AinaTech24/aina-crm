@@ -84,6 +84,41 @@ function sanitizeName(name?: string): string | null {
 }
 
 /**
+ * Registrars pack a minor and their guardian into ONE name field:
+ * "KAVYAAN GOEL REP BY GAURAV GOEL". Stored verbatim that becomes a client
+ * literally called that — and because the guardian's name rides along, the SAME
+ * minor spells differently across folios, defeating name-based dedup.
+ */
+export function splitRepresentedBy(raw?: string): { name: string | null; guardian: string | null; isMinor: boolean } {
+  const s = sanitizeName(raw);
+  if (!s) return { name: null, guardian: null, isMinor: false };
+  const m = s.match(/^(.*?)\s+(?:REP(?:RESENTED)?\b\.?\s*BY|C\s*\/\s*O|GUARDIAN\s*[:\-]?)\s+(.+)$/i);
+  if (!m) return { name: s, guardian: null, isMinor: false };
+  const name = sanitizeName(m[1]);
+  const guardian = sanitizeName(m[2]);
+  // Only treat it as a split when BOTH halves survive; "REP BY" with nothing
+  // before it is a malformed row, not a minor.
+  return name && guardian ? { name, guardian, isMinor: true } : { name: s, guardian: null, isMinor: false };
+}
+
+/**
+ * Deterministic key for a client we can see but have no PAN for.
+ *
+ * Mirrors the rich importer's `NOPAN:N<slug>` (src/lib/rta/import.ts) ON
+ * PURPOSE: keyed the same way, a PAN-less client stood up from a feed and one
+ * stood up from a folio master converge on one row instead of two.
+ *
+ * The folio is only the fallback. Keying on it directly — as the first cut of
+ * this did — gives one client PER FOLIO, so a person holding three folios
+ * became three clients ("KAVYAAN GOEL REP BY GAURAV GOEL" x3 in the client
+ * list). The name is the identity; the folio is just where the money sits.
+ */
+function nopanKeyFor(name: string | null, folioNumber: string): string {
+  const slug = (name ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  return slug ? `NOPAN:N${slug}` : `NOPAN:FOLIO:${folioNumber}`;
+}
+
+/**
  * Bulk-resolve every investor referenced by a feed in TWO queries (by PAN, by
  * existing folio) instead of 1–2 queries per row. Returns lookup maps the row
  * loop consults in memory — the key fix for the per-row N+1 that made large
@@ -268,12 +303,13 @@ async function processTransactionFeed(
     // worse: on VSN Financial Services these skips ran to ~104-232 rows per
     // feed, every one of them real money against a real folio.
     if (!investorId && r.folioNumber) {
+      const who = splitRepresentedBy(r.investorName);
       const created = await tx.execute(sql`
-        INSERT INTO investors (tenant_id, pan, rta_nopan_key, name, investor_category, kyc_status)
+        INSERT INTO investors (tenant_id, pan, rta_nopan_key, name, investor_category, is_minor, kyc_status)
         VALUES (
-          ${args.tenantId}::uuid, NULL, ${`NOPAN:FOLIO:${r.folioNumber}`},
-          ${sanitizeName(r.investorName) ?? `Folio ${r.folioNumber}`},
-          'individual', 'pending'
+          ${args.tenantId}::uuid, NULL, ${nopanKeyFor(who.name, r.folioNumber)},
+          ${who.name ?? `Folio ${r.folioNumber}`},
+          ${who.isMinor ? "minor" : "individual"}, ${who.isMinor}, 'pending'
         )
         ON CONFLICT (tenant_id, rta_nopan_key) WHERE rta_nopan_key IS NOT NULL
         DO UPDATE SET updated_at = now()
@@ -910,12 +946,13 @@ async function processAumStatement(
     // rta_nopan_key) so the holding lands; a later master with a real PAN
     // creates the PAN-keyed client and the folio upsert re-points to it.
     if (!investorId && folioNum) {
+      const who = splitRepresentedBy(firstRow.investorName);
       const created = await tx.execute(sql`
-        INSERT INTO investors (tenant_id, pan, rta_nopan_key, name, investor_category, kyc_status)
+        INSERT INTO investors (tenant_id, pan, rta_nopan_key, name, investor_category, is_minor, kyc_status)
         VALUES (
-          ${args.tenantId}::uuid, NULL, ${`NOPAN:FOLIO:${folioNum}`},
-          ${sanitizeName(firstRow.investorName) ?? `Folio ${folioNum}`},
-          'individual', 'pending'
+          ${args.tenantId}::uuid, NULL, ${nopanKeyFor(who.name, folioNum)},
+          ${who.name ?? `Folio ${folioNum}`},
+          ${who.isMinor ? "minor" : "individual"}, ${who.isMinor}, 'pending'
         )
         ON CONFLICT (tenant_id, rta_nopan_key) WHERE rta_nopan_key IS NOT NULL
         DO UPDATE SET updated_at = now()
