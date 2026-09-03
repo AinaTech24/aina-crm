@@ -78,6 +78,9 @@ export type CanonicalMandateRow = {
 
 export type CanonicalAumRow = {
   pan: string;
+  /** First holder's name when the report carries it (CAMS WBR22 has INV_NAME
+   *  but no PAN) — used to name a client stood up from this file alone. */
+  investorName?: string;
   folioNumber: string;
   schemeCode: string;
   schemeName: string;
@@ -153,6 +156,7 @@ const DEFAULT_FOLIO_MST_MAP = {
 
 const FOLIO_MST_ALIASES: Record<string, string[]> = {
   pan: ["PAN", "INV_PAN", "PAN_NO", "PAN NO", "PAN_NUM", "PAN NUM", "INVPAN", "PAN_NUMBER", "PAN NUMBER"],
+  investorName: ["INV_NAME", "INVNAME", "INVESTOR_NAME", "INVESTOR NAME", "INV NAME", "NAME", "HOLDER_NAME", "FIRST_HOLDER"],
   folioNumber: ["FOLIO", "FOLIO_NO", "FOLIO_NUM", "FOLIONO", "FOLIO NO", "FOLIO NUM", "FOLIONUM", "FOL_NO", "FOLIOCHK", "ACCOUNT NUMBER", "ACCOUNT NO"],
   amcCode: ["AMC", "AMC_CODE", "AMCCOD", "AMC_CD", "FUND", "FUND CODE"],
   amcName: ["AMC_NAME", "AMC NAME", "FMIM_CODE", "MUTUAL_FUND", "AMC_DESC"],
@@ -226,6 +230,7 @@ const DEFAULT_AUM_STATEMENT_MAP = {
 
 const AUM_STATEMENT_ALIASES: Record<string, string[]> = {
   pan: ["PAN", "INV_PAN", "PAN_NO", "PAN NO", "PAN_NUM", "PAN NUM", "INVPAN", "PAN_NUMBER", "PAN NUMBER"],
+  investorName: ["INV_NAME", "INVNAME", "INVESTOR_NAME", "INVESTOR NAME", "INV NAME", "NAME", "HOLDER_NAME", "FIRST_HOLDER"],
   folioNumber: ["FOLIO", "FOLIO_NO", "FOLIO_NUM", "FOLIONO", "FOLIO NO", "FOLIO NUM", "FOLIONUM", "FOL_NO", "ACCOUNT NUMBER", "SCHEME_FOLIO_NUMBER"],
   schemeCode: ["SCH_CODE", "SCHEME_CODE", "SCHEME CODE", "PRODUCT_CODE", "PRODUCT CODE", "SCHCOD", "PRODCODE", "SCH_CD", "PRODUCT"],
   schemeName: ["SCH_NAME", "SCHEME_NAME", "SCHEME NAME", "PRODUCT_NAME", "PRODUCT NAME", "SCHNAME", "PRODNAME", "FUND DESCRIPTION"],
@@ -465,6 +470,7 @@ export function parseAumStatement(
 
     out.push({
       pan: val("pan"),
+      investorName: val("investorName") || undefined,
       folioNumber: val("folioNumber"),
       schemeCode: val("schemeCode"),
       schemeName: val("schemeName"),

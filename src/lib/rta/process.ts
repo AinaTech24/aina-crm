@@ -900,10 +900,33 @@ async function processAumStatement(
 
   for (const [folioNum, fRows] of aumRowsGrouped) {
     const firstRow = fRows[0];
-    const investorId = await resolveInvestorId(tx, args.tenantId, { pan: firstRow.pan, folioNumber: folioNum });
+    let investorId = await resolveInvestorId(tx, args.tenantId, { pan: firstRow.pan, folioNumber: folioNum });
+
+    // Same gap the transaction feed had: the folio is not in the book yet and
+    // this report cannot supply a PAN to match on. CAMS WBR22 has NO PAN COLUMN
+    // AT ALL, so on a book whose master is incomplete every such folio was
+    // dropped — 270 rows of one real file, each carrying units and a closing
+    // value. Stand the client up keyed on the folio (migration 0151's
+    // rta_nopan_key) so the holding lands; a later master with a real PAN
+    // creates the PAN-keyed client and the folio upsert re-points to it.
+    if (!investorId && folioNum) {
+      const created = await tx.execute(sql`
+        INSERT INTO investors (tenant_id, pan, rta_nopan_key, name, investor_category, kyc_status)
+        VALUES (
+          ${args.tenantId}::uuid, NULL, ${`NOPAN:FOLIO:${folioNum}`},
+          ${sanitizeName(firstRow.investorName) ?? `Folio ${folioNum}`},
+          'individual', 'pending'
+        )
+        ON CONFLICT (tenant_id, rta_nopan_key) WHERE rta_nopan_key IS NOT NULL
+        DO UPDATE SET updated_at = now()
+        RETURNING id
+      `);
+      investorId = (created.rows[0] as any)?.id ?? null;
+    }
+
     if (!investorId) {
       skipped += fRows.length;
-      errors.push({ row: rows.indexOf(firstRow) + 1, reason: `Folio ${folioNum} not in client master — import the Investor/Folio Master first` });
+      errors.push({ row: rows.indexOf(firstRow) + 1, reason: `Folio ${folioNum} could not be attached to a client` });
       continue;
     }
 
