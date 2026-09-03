@@ -44,6 +44,13 @@ const SKIP_FILES = new Set([
   "transactions/import/parse/route.ts",
   // Invite acceptance — the invite token is the credential, no session yet
   "employees/accept-invite/route.ts",
+  // Investor portal service requests — there is no session to hold a capability:
+  // the portal link IS the credential. resolvePortalAccess() matches the hashed
+  // token, and requires revoked_at IS NULL AND expires_at > now(); the handler
+  // then requires the "service_requests" scope, writes only inside
+  // withTenant(access.tenantId) against access.investorId, and caps the investor
+  // at 5 open requests. Same rationale as the "public/" prefix above.
+  "portal/[token]/service-requests/route.ts",
   // Notifications mark-read — user can only touch their own (scoped to session.userId)
   "notifications/mark-read/route.ts",
   // Support tickets — any logged-in user can raise an internal support ticket
