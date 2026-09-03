@@ -41,6 +41,7 @@ export type RtaFileTypeDef = {
     | "commission_rows"
     | "aum_snapshots"
     | "corporate_actions"
+    | "mandates"
   >;
   /** Grace window before we mark a tenant "late" on this file. */
   graceDays: number;
@@ -81,10 +82,9 @@ export const RTA_FILE_TYPES: RtaFileTypeDef[] = [
     // MFSD201, CAMS WBR2, Franklin MTFP, Sundaram ER02) — it processes them into
     // structured transactions with FIFO capital-gains the local parser can't.
     fileNames: {
-      kfintech: "MFSD307_…",
-      cams: "…R2 / …R10",
+      kfintech: "MFSD307 / MFSD201",
+      cams: "WBR2 / R2 / R10",
     },
-    fileNamesApprox: true,
   },
   {
     kind: "sip_rejection_report",
@@ -100,6 +100,36 @@ export const RTA_FILE_TYPES: RtaFileTypeDef[] = [
     sampleFiles: {
       cams: "/sample-rta/cams_sip_rejection_report.txt",
     },
+    fileNames: { kfintech: "name contains SIP + reject/bounce", cams: "name contains SIP + reject/bounce" },
+    fileNamesApprox: true,
+  },
+  {
+    kind: "redemption_report",
+    label: "Redemption report",
+    short: "Daily redemptions, for liquidity tracking.",
+    long: "Same shape as the transaction feed and read by the same engine — use this only when the registrar sends redemptions as their own file. If your redemptions already arrive inside the daily feed, upload that instead; loading both is safe (rows de-duplicate) but pointless.",
+    sources: ["cams", "kfintech"],
+    acronyms: ["RED-DLY"],
+    cadence: { every: "daily", businessDaysOnly: true },
+    populates: ["transactions"],
+    graceDays: 1,
+    priority: 92,
+    fileNames: { kfintech: "name contains redemption", cams: "name contains redemption" },
+    fileNamesApprox: true,
+  },
+  {
+    kind: "nach_mandate_status",
+    label: "NACH mandate status",
+    short: "Mandate registrations, rejections and cancellations.",
+    long: "The bank-mandate register: UMRN, status, amount cap and dates. Tells you which SIPs can actually be debited — a cancelled mandate is the usual reason a healthy-looking SIP stops collecting.",
+    sources: ["cams", "kfintech"],
+    acronyms: ["UMRN", "NACH-STS"],
+    cadence: { every: "monthly", dayOfMonth: 7 },
+    populates: ["mandates"],
+    graceDays: 3,
+    priority: 80,
+    fileNames: { kfintech: "name contains mandate / UMRN", cams: "name contains mandate / UMRN" },
+    fileNamesApprox: true,
   },
   // ─────────────────────────────────────────────────── Monthly ──
   {
@@ -120,6 +150,19 @@ export const RTA_FILE_TYPES: RtaFileTypeDef[] = [
     fileNamesApprox: true,
   },
   {
+    kind: "monthly_sip_book",
+    label: "SIP register (active SIPs)",
+    short: "Every live SIP: investor, scheme, instalment, dates.",
+    long: "The register of SIPs currently registered — not the instalments themselves. This is the only file that can reconcile the SIP Book figure, because a transaction feed shows instalments that were collected, not which SIPs are still active. KFintech ships it as MFSD230 / MFSD243 / MFSD313; CAMS as WBR49.",
+    sources: ["cams", "kfintech"],
+    acronyms: ["SIP-BOOK", "SIP register"],
+    cadence: { every: "monthly", dayOfMonth: 7 },
+    populates: ["sips"],
+    graceDays: 3,
+    priority: 88,
+    fileNames: { kfintech: "MFSD230 / MFSD243 / MFSD313", cams: "WBR49 / R49" },
+  },
+  {
     kind: "monthly_aum_statement",
     label: "Monthly AUM statement",
     short: "End-of-month AUM snapshot per AMC and per investor.",
@@ -130,18 +173,20 @@ export const RTA_FILE_TYPES: RtaFileTypeDef[] = [
     populates: ["aum_snapshots"],
     graceDays: 3,
     priority: 85,
-    // No KFintech file name here on purpose. This used to advertise "MFSD203_…",
-    // which sent people straight into a dead end: MFSD203 is the holdings /
-    // valuation export, the upload guard rejects it for any kind other than
-    // folio_master_dump / cas_holdings, and classify-mailback routes it to
-    // cas_holdings. So the dropdown said "Monthly AUM statement — MFSD203_…"
-    // and then the upload failed with "you selected monthly aum statement".
-    // MFSD203 is listed on Folio master dump below, which is where it belongs.
+    // NOT MFSD203. That used to be advertised here and sent people straight into
+    // a dead end: MFSD203 is the holdings/valuation export, the upload guard
+    // rejects it for any kind but folio_master_dump / cas_holdings, and
+    // classify-mailback routes it to cas_holdings. The dropdown read
+    // "Monthly AUM statement — MFSD203_…" and the upload then failed with
+    // "you selected monthly aum statement". MFSD203 now sits on Folio master
+    // dump, which is the importer that actually loads it.
+    fileNames: { cams: "name contains AUM", kfintech: "name contains AUM" },
+    fileNamesApprox: true,
   },
   // ───────────────────────────────────────────────── Quarterly ──
   {
     kind: "folio_master_dump",
-    label: "Folio master dump",
+    label: "Folio master / holdings",
     short: "Full investor + folio register refresh — and holdings, when the file carries them.",
     long: "Every folio, holder, nominee and bank mandate on record. KFintech ships this as MFSD211 (register only) or MFSD203 (register PLUS units/NAV/value); CAMS ships R9, which carries both. All three route to the same importer, which creates clients and folios and loads any holdings present — so pick this for any of them.",
     sources: ["cams", "kfintech"],
@@ -150,7 +195,10 @@ export const RTA_FILE_TYPES: RtaFileTypeDef[] = [
     populates: ["folios", "investors"],
     graceDays: 7,
     priority: 40,
-    fileNames: { kfintech: "MFSD211_… / MFSD203_…", cams: "…R9" },
+    fileNames: {
+      kfintech: "MFSD211 / MFSD311 / MFSD203 / MFSD310",
+      cams: "WBR9 / R9 / WBR4 / WBR22",
+    },
   },
 ];
 

@@ -77,13 +77,22 @@ export async function POST(req: NextRequest) {
   // (or "CAS holdings"), which routes to the rich engine that creates the
   // client book. Detect by the registrar's report code in the file name and
   // fail fast with an actionable message instead of importing garbage.
-  const looksLikeMaster = /r9(?=\.|_|-|$)/i.test(fileName) || /mfsd\s*(?:211|203)/i.test(fileName);
+  // Same code set classify-mailback.ts routes to the rich engine, kept in step
+  // with it: KFintech MFSD211/311 (register) and MFSD203/310 (register +
+  // holdings); CAMS WBR9/R9 and WBR4 (master + balances) and WBR22 (AUM by
+  // scheme by investor). Previously only R9/211/203 were caught, so the same
+  // mis-pick still slipped through on the other four codes.
+  const looksLikeMaster =
+    /(?:wbr\s*_?)?r(?:9|4|22)(?=\.|_|-|$)/i.test(fileName) ||
+    /mfsd\s*_?(?:211|311|203|310)/i.test(fileName);
   if (looksLikeMaster && kind !== "folio_master_dump" && kind !== "cas_holdings") {
-    const fileLabel = /mfsd\s*203/i.test(fileName)
-      ? "KFintech MFSD203 (holdings/valuation)"
-      : /mfsd\s*211/i.test(fileName)
-        ? "KFintech MFSD211 (folio master)"
-        : "CAMS R9 (combined master + holdings)";
+    const fileLabel = /mfsd\s*_?(?:203|310)/i.test(fileName)
+      ? "KFintech MFSD203/310 (folio register + holdings)"
+      : /mfsd\s*_?(?:211|311)/i.test(fileName)
+        ? "KFintech MFSD211/311 (folio master)"
+        : /r22(?=\.|_|-|$)/i.test(fileName)
+          ? "CAMS WBR22 (AUM by scheme by investor)"
+          : "CAMS WBR9/WBR4 (master + holdings)";
     const selected = RTA_FILE_TYPE_BY_KIND[kind]?.label ?? kind.replace(/_/g, " ");
     return NextResponse.json(
       {
