@@ -205,7 +205,13 @@ async function processTransactionFeed(
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
     if (!r.folioNumber) {
+      // Record the reason. A bare counter left "partial · 162 skip" with an
+      // empty errors array, which is unactionable — the same silence that hid
+      // the SIP-register PAN gap.
       skipped++;
+      if (errors.length < 25) {
+        errors.push({ row: i + 1, reason: "row carries no folio number — a transaction cannot be attached without one" });
+      }
       continue;
     }
     if (r.orderDate < minDate) minDate = r.orderDate;
@@ -247,9 +253,42 @@ async function processTransactionFeed(
       }
     }
 
+    // Still nothing, so the row has no usable PAN AND its folio is not in the
+    // book. Stand the client up keyed on the FOLIO rather than dropping the
+    // transaction.
+    //
+    // The older reasoning here was that a PAN-less provisional row "is keyed on
+    // nothing the master can match". That is not true: migration 0151 added
+    // investors.rta_nopan_key with a unique index precisely so a PAN-less client
+    // can be deduped deterministically, and the folio number is a stronger
+    // natural key than the mobile/email/name the rich importer settles for. Its
+    // real cost is narrower — if the master later arrives WITH a PAN it creates
+    // a PAN-keyed client and the folio upsert re-points to it, leaving this
+    // provisional row orphaned and mergeable. Losing the transaction outright is
+    // worse: on VSN Financial Services these skips ran to ~104-232 rows per
+    // feed, every one of them real money against a real folio.
+    if (!investorId && r.folioNumber) {
+      const created = await tx.execute(sql`
+        INSERT INTO investors (tenant_id, pan, rta_nopan_key, name, investor_category, kyc_status)
+        VALUES (
+          ${args.tenantId}::uuid, NULL, ${`NOPAN:FOLIO:${r.folioNumber}`},
+          ${sanitizeName(r.investorName) ?? `Folio ${r.folioNumber}`},
+          'individual', 'pending'
+        )
+        ON CONFLICT (tenant_id, rta_nopan_key) WHERE rta_nopan_key IS NOT NULL
+        DO UPDATE SET updated_at = now()
+        RETURNING id
+      `);
+      investorId = (created.rows[0] as any)?.id ?? null;
+      if (investorId) {
+        folioMap.set(r.folioNumber, investorId);
+        createdInvestors++;
+      }
+    }
+
     if (!investorId) {
       skipped++;
-      errors.push({ row: i + 1, reason: `Folio ${r.folioNumber}${r.pan ? ` / PAN ${r.pan}` : ""} not in client master — import the Investor/Folio Master first` });
+      errors.push({ row: i + 1, reason: `Folio ${r.folioNumber}${r.pan ? ` / PAN ${r.pan}` : ""} could not be attached to a client` });
       continue;
     }
 
