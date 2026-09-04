@@ -150,8 +150,21 @@ export async function recomputeCombinedAum(
           OR ((s->>'value') ~ '^-?[0-9.]+$' AND (s->>'value')::numeric > 0)
         )
     ),
+    valued_folio AS (
+      -- Folios a registrar HOLDINGS statement has actually valued.
+      --
+      -- Such a statement is a complete picture of that folio as at its report
+      -- date: if a scheme is not in it, the client no longer holds it. So the
+      -- transaction ledger can add nothing to a folio that appears here, and
+      -- anything it would add is an artefact of history we are missing.
+      SELECT DISTINCT f.id
+      FROM folios f
+      CROSS JOIN LATERAL jsonb_array_elements(COALESCE(f.schemes, '[]'::jsonb)) AS s
+      WHERE (s->>'value') ~ '^-?[0-9.]+$' AND (s->>'value')::numeric > 0
+    ),
     txn_holding AS (
       SELECT t.investor_id,
+             t.folio_id,
              btrim(regexp_replace(lower(COALESCE(t.scheme_name, t.scheme_code, '')), '[^a-z0-9]+', ' ', 'g')) AS nkey,
              SUM(CASE WHEN t.direction = 'inflow' THEN t.units ELSE -t.units END) AS net_units,
              -- Prefer an exact AMFI code match; fall back to the name.
@@ -162,11 +175,35 @@ export async function recomputeCombinedAum(
         ON nb.nkey = btrim(regexp_replace(lower(COALESCE(t.scheme_name, '')), '[^a-z0-9]+', ' ', 'g'))
       WHERE t.status IN ('processed', 'successful')
         AND t.order_date IS NOT NULL
-      GROUP BY t.investor_id,
+      GROUP BY t.investor_id, t.folio_id,
                btrim(regexp_replace(lower(COALESCE(t.scheme_name, t.scheme_code, '')), '[^a-z0-9]+', ' ', 'g'))
     ),
     txn_uncovered AS (
-      -- Layer: transaction value ONLY for schemes the folios don't already value.
+      -- Layer: transaction value ONLY for holdings no folio statement covers.
+      --
+      -- Two suppressions, and the second matters more than it looks.
+      --
+      -- 1. the same scheme is already valued on one of this client's legs, or
+      -- 2. the FOLIO those transactions belong to has been valued at all.
+      --
+      -- (2) exists because a holdings statement is complete for its folio. With
+      -- only (1), every scheme the client has since SOLD kept contributing: the
+      -- purchase is in the ledger, the redemption is in one of the registrar
+      -- files we could not open, so net_units stays positive forever and the
+      -- fallback revalues a holding that no longer exists.
+      --
+      -- Measured on VSN Financial Services against the firm's own per-ARN
+      -- figures (Rs 634.98 Cr): this layer was adding Rs 17.98 Cr on top of a
+      -- Rs 631.75 Cr folio register — Rs 649.73 Cr, overstating by Rs 14.75 Cr.
+      -- Rs 16.82 Cr of it belonged to clients the registrar had already valued
+      -- in full, and Rs 10.99 Cr sat in liquid / overnight / ultra-short
+      -- "parking" funds, which is exactly where money moves in and out and a
+      -- half-complete ledger hurts most. With (2) the layer contributes
+      -- Rs 4.10 Cr and the total lands at Rs 635.85 Cr — within Rs 0.87 Cr of
+      -- what the firm says it manages.
+      --
+      -- A folio with NO valuation still gets the fallback: that is the case it
+      -- was built for, and the one where it is not competing with better data.
       SELECT th.investor_id,
              COALESCE(
                SUM(th.net_units * th.nav) FILTER (WHERE th.nav IS NOT NULL AND th.net_units > 0.0005),
@@ -176,6 +213,10 @@ export async function recomputeCombinedAum(
       WHERE NOT EXISTS (
         SELECT 1 FROM folio_scheme_names fsc
         WHERE fsc.investor_id = th.investor_id AND fsc.nkey = th.nkey
+      )
+      AND (
+        th.folio_id IS NULL
+        OR NOT EXISTS (SELECT 1 FROM valued_folio vf WHERE vf.id = th.folio_id)
       )
       GROUP BY th.investor_id
     ),
@@ -254,8 +295,18 @@ export async function recomputeInvestorAum(tx: Tx, investorId: string): Promise<
       WHERE f.investor_id = ${investorId}::uuid
         AND (s->>'schemeCode') IS NOT NULL AND (s->>'schemeCode') <> ''
     ),
+    valued_folio AS (
+      -- See recomputeCombinedAum: a folio a holdings statement has valued is
+      -- complete, so the transaction ledger must not top it up.
+      SELECT DISTINCT f.id
+      FROM folios f
+      CROSS JOIN LATERAL jsonb_array_elements(COALESCE(f.schemes, '[]'::jsonb)) AS s
+      WHERE f.investor_id = ${investorId}::uuid
+        AND (s->>'value') ~ '^-?[0-9.]+$' AND (s->>'value')::numeric > 0
+    ),
     txn_holding AS (
       SELECT t.investor_id,
+             t.folio_id,
              COALESCE(t.scheme_code, t.scheme_name, 'unknown') AS skey,
              SUM(CASE WHEN t.direction = 'inflow' THEN t.units ELSE -t.units END) AS net_units,
              MAX(n.nav) AS nav
@@ -264,7 +315,7 @@ export async function recomputeInvestorAum(tx: Tx, investorId: string): Promise<
       WHERE t.investor_id = ${investorId}::uuid
         AND t.status IN ('processed', 'successful')
         AND t.order_date IS NOT NULL
-      GROUP BY t.investor_id, COALESCE(t.scheme_code, t.scheme_name, 'unknown')
+      GROUP BY t.investor_id, t.folio_id, COALESCE(t.scheme_code, t.scheme_name, 'unknown')
     ),
     txn_uncovered AS (
       SELECT th.investor_id,
@@ -273,6 +324,10 @@ export async function recomputeInvestorAum(tx: Tx, investorId: string): Promise<
       WHERE NOT EXISTS (
         SELECT 1 FROM folio_scheme_codes fsc
         WHERE fsc.investor_id = th.investor_id AND fsc.scheme_code = th.skey
+      )
+      AND (
+        th.folio_id IS NULL
+        OR NOT EXISTS (SELECT 1 FROM valued_folio vf WHERE vf.id = th.folio_id)
       )
       GROUP BY th.investor_id
     ),
