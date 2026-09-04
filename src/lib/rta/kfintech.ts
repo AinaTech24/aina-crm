@@ -100,7 +100,13 @@ export function parseKfintechFolioMaster(rows: string[][]): {
   const H: Record<string, number> = {};
   header.forEach((h, i) => (H[h.toLowerCase()] = i));
   const warnings: string[] = [];
-  const col = (name: string) => (name.toLowerCase() in H ? H[name.toLowerCase()] : -1);
+  // Accepts alternatives: the same field is named differently across report
+  // codes (the broker ARN is "Broker Code" on the master and "Agent Code" on
+  // MFSD203), and a single-name lookup silently returned -1 for the others.
+  const col = (...names: string[]) => {
+    for (const n of names) if (n.toLowerCase() in H) return H[n.toLowerCase()];
+    return -1;
+  };
 
   const C = {
     productCode: col("Product Code"),
@@ -125,7 +131,7 @@ export function parseKfintechFolioMaster(rows: string[][]): {
     bankName: col("Bank Name"),
     accType: col("Account Type"),
     ifsc: col("IFSC Code"),
-    broker: col("Broker Code"),
+    broker: col("Broker Code", "Agent Code", "ARN", "Broker", "Agent"),
     reportDate: col("Report Date"),
     pan: col("PAN Number"),
     mobile: col("Mobile Number"),
@@ -295,7 +301,13 @@ export function parseKfintechHoldings(rows: string[][]): {
   const header = rows[0].map((h) => h.trim());
   const H: Record<string, number> = {};
   header.forEach((h, i) => (H[h.toLowerCase()] = i));
-  const col = (name: string) => (name.toLowerCase() in H ? H[name.toLowerCase()] : -1);
+  // Accepts alternatives: the same field is named differently across report
+  // codes (the broker ARN is "Broker Code" on the master and "Agent Code" on
+  // MFSD203), and a single-name lookup silently returned -1 for the others.
+  const col = (...names: string[]) => {
+    for (const n of names) if (n.toLowerCase() in H) return H[n.toLowerCase()];
+    return -1;
+  };
 
   const C = {
     productCode: col("Product Code"),
@@ -304,7 +316,7 @@ export function parseKfintechHoldings(rows: string[][]): {
     fundDesc: col("Fund Description"),
     balance: col("Balance"),
     txnDate: col("Transaction Date"),
-    broker: col("Broker Code"),
+    broker: col("Broker Code", "Agent Code", "ARN", "Broker", "Agent"),
     name: col("Investor Name"),
     addr1: col("Address #1"),
     addr2: col("Address #2"),
