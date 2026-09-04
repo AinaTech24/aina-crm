@@ -1016,6 +1016,9 @@ async function processAumStatement(
         units?: number;
         nav?: number;
         value?: number;
+        /** ARN whose slice of the holding this leg is. Absent on legs written
+         *  before per-ARN slicing existed. */
+        arn?: string;
       }>;
 
       // Match an incoming holding to an existing leg by CODE **or by scheme
@@ -1031,20 +1034,44 @@ async function processAumStatement(
       // Measured on VSN Financial Services: 3,632 duplicated legs worth
       // Rs 158.49 Cr, which is why firm AUM read Rs 779 Cr against an actual
       // Rs 640 Cr. Double-counted AUM is worse than missing AUM: it looks right.
+      // The match is also keyed on ARN. A firm holding several ARNs gets one
+      // statement per broker code, and a client who bought the same scheme in
+      // the same folio through two of them has their units SPLIT across the two
+      // files — complementary halves, not restatements. Keying on scheme alone
+      // let the second statement overwrite the first, so the folio kept only
+      // whichever ARN imported last:
+      //
+      //   folio 18069442/27  ICICI Large & Mid Cap
+      //     ARN-114688  11,284.153 units   Rs 1,17,72,983
+      //     ARN-90577    7,289.173 units   Rs   76,04,940
+      //   stored: Rs 76,04,940 — the ARN-90577 slice alone.
+      //
+      // Measured on VSN Financial Services: 731 holdings under-valued by
+      // Rs 32.93 Cr against the registrars' own statements.
+      //
+      // A leg with NO arn matches ANY incoming arn deliberately: legs written
+      // before this change carry none, and treating them as a separate slice
+      // would add the incoming one alongside and DOUBLE COUNT. Replacing them
+      // instead lets the register converge as each ARN's statement lands,
+      // without ever overstating on the way there.
       const normName = (s?: string) => (s ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
       const merged = existingSchemes.map((s) => ({ ...s }));
-      const byCode = new Map<string, number>();
-      const byName = new Map<string, number>();
-      merged.forEach((s, idx) => {
-        if (s.schemeCode) byCode.set(s.schemeCode, idx);
-        const n = normName(s.schemeName);
-        if (n && !byName.has(n)) byName.set(n, idx);
-      });
+      const slotFor = (code: string, name: string, arn?: string): number | undefined => {
+        const n = normName(name);
+        let fallback: number | undefined;
+        for (let idx = 0; idx < merged.length; idx++) {
+          const s = merged[idx];
+          const sameScheme = (s.schemeCode && s.schemeCode === code) || (n && normName(s.schemeName) === n);
+          if (!sameScheme) continue;
+          if (s.arn === arn) return idx;          // same ARN's slice — restate it
+          if (s.arn == null && fallback == null) fallback = idx; // legacy leg — absorb it
+        }
+        return fallback;
+      };
 
       for (const r of fRows) {
         if (!r.schemeCode) continue;
-        const n = normName(r.schemeName);
-        const at = byCode.get(r.schemeCode) ?? (n ? byName.get(n) : undefined);
+        const at = slotFor(r.schemeCode, r.schemeName, r.arn);
         const value = r.aumValue || (r.nav ? Math.round(r.units * r.nav * 100) / 100 : undefined);
         if (at != null) {
           const cur = merged[at];
@@ -1057,17 +1084,17 @@ async function processAumStatement(
             units: r.units,
             nav: r.nav ?? cur.nav,
             value: value ?? cur.value,
+            arn: r.arn ?? cur.arn,
           };
         } else {
-          const idx = merged.push({
+          merged.push({
             schemeCode: r.schemeCode,
             schemeName: r.schemeName || "",
             units: r.units,
             nav: r.nav,
             value,
-          }) - 1;
-          byCode.set(r.schemeCode, idx);
-          if (n && !byName.has(n)) byName.set(n, idx);
+            arn: r.arn,
+          });
         }
       }
 

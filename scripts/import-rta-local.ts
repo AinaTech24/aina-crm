@@ -16,7 +16,8 @@
  * Options
  *   --file <path>       the .zip / .csv / .txt / .xls to import        (required)
  *   --tenant <q>        tenant UUID, or a substring of the firm name   (required)
- *   --password <pw>     ZIP password (repeatable; each is tried in turn)
+ *   --password <pw>     ZIP password (repeatable; each is tried in turn).
+ *                       RTA_ZIP_PASSWORDS=a,b works too and keeps them out of `ps`.
  *   --kind <kind>       force the feed kind (daily_transaction_feed, …).
  *                       Ignored for master/holdings files, which self-detect.
  *   --source <src>      cams | kfintech — inferred from the file when omitted
@@ -57,7 +58,15 @@ const KIND = arg("kind") as RtaFileKind | undefined;
 const SOURCE_ARG = arg("source") as RtaSource | undefined;
 const ASSIGN_RM = arg("assign-rm") ?? null;
 const COMMIT = process.argv.includes("--commit");
-const PASSWORDS = argAll("password");
+/**
+ * ZIP passwords, from --password (repeatable) and/or RTA_ZIP_PASSWORDS
+ * (comma-separated). Prefer the env var on a shared host: anything passed as an
+ * argv is visible to every user in `ps`, and these open a firm's whole book.
+ */
+const PASSWORDS = [
+  ...argAll("password"),
+  ...(process.env.RTA_ZIP_PASSWORDS ?? "").split(",").map((s) => s.trim()).filter(Boolean),
+];
 
 const inr = (n: number) =>
   n >= 1e7 ? `₹${(n / 1e7).toFixed(2)} Cr` : n >= 1e5 ? `₹${(n / 1e5).toFixed(2)} L` : `₹${Math.round(n).toLocaleString("en-IN")}`;

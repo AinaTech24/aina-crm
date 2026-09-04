@@ -87,6 +87,13 @@ export type CanonicalAumRow = {
   units: number;
   nav?: number;
   aumValue: number;
+  /**
+   * ARN this row's slice was transacted under (BROK_DLR_CODE on CAMS WBR22,
+   * Agent Code on KFintech). A firm with several ARNs gets one statement per
+   * broker code, and one folio's holding in a scheme can be split across them —
+   * so the merge has to key on it, or the second statement overwrites the first.
+   */
+  arn?: string;
 };
 
 // ── Default mapping layouts & aliases ───────────────────────────────────
@@ -237,6 +244,7 @@ const AUM_STATEMENT_ALIASES: Record<string, string[]> = {
   units: ["UNITS", "UNIT", "QTY", "QUANTITY", "NO_OF_UNITS", "NO OF UNITS", "UNIT_BAL", "BALANCE_UNITS", "CURRENT_UNITS", "CLOS_BAL"],
   nav: ["NAV", "RATE", "NAV_RATE", "PRICE"],
   aumValue: ["AUM", "VALUE", "VALUATION", "AMOUNT", "CURR_VAL", "CURRENT_VALUE", "AUM_VALUE", "CLOSING_ASSETS", "CLOSING ASSETS", "RUPEE_BAL", "MARKET_VALUE"],
+  arn: ["BROK_DLR_CODE", "BROK DLR CODE", "BROKER_CODE", "BROKER CODE", "AGENT_CODE", "AGENT CODE", "ARN", "ARN_CODE", "DISTRIBUTOR_CODE", "BROKER"],
 };
 
 // ── SIP rejection report ────────────────────────────────────────────────
@@ -477,6 +485,9 @@ export function parseAumStatement(
       units: parseFloat(val("units") ?? "0") || 0,
       nav: parseFloat(val("nav") ?? "0") || undefined,
       aumValue: parseFloat(val("aumValue") ?? "0") || 0,
+      // Absent from statements that don't name the broker — the merge treats a
+      // missing ARN as "unknown slice" rather than inventing one.
+      arn: val("arn") || undefined,
     });
   }
   return out;
