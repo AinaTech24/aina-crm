@@ -427,14 +427,48 @@ export async function importRtaFolios(
 
   // Holdings is authoritative for valuations; the master must NOT wipe schemes a
   // prior holdings import wrote (only set them when the folio has none yet).
+  //
+  // A holdings file MERGES its legs in — it must never replace the array. These
+  // reports are scoped per subscription, so one file routinely covers a SUBSET
+  // of a folio's schemes. `schemes = excluded.schemes` deleted every scheme the
+  // incoming file happened not to mention.
+  //
+  // On VSN Financial Services, two MFSD203 files auto-imported at 23:22 on
+  // 3 Sep and did exactly that across 943 folios — one went from 27 legs to 2,
+  // another 9 to 1 — wiping Rs 83.64 Cr of holdings from 1,184 folios. The AUM
+  // statement path was fixed for this in an earlier commit; cas_holdings still
+  // ran through here.
+  //
+  // Match an existing leg by scheme code OR by normalised scheme name: the rich
+  // importer rewrites schemeCode to the AMFI code via resolveSchemeIdentity, so
+  // the same holding legitimately appears under two different codes and a
+  // code-only match would leave a duplicate behind.
+  const mergedSchemes = sql`(
+    SELECT COALESCE(jsonb_agg(keep), '[]'::jsonb)
+      FROM jsonb_array_elements(COALESCE(${foliosTable.schemes}, '[]'::jsonb)) AS keep
+     WHERE NOT EXISTS (
+       SELECT 1 FROM jsonb_array_elements(COALESCE(excluded.schemes, '[]'::jsonb)) AS incoming
+        WHERE (incoming->>'schemeCode') = (keep->>'schemeCode')
+           OR lower(regexp_replace(COALESCE(incoming->>'schemeName',''), '[^a-zA-Z0-9]+', '', 'g'))
+            = lower(regexp_replace(COALESCE(keep->>'schemeName',''),     '[^a-zA-Z0-9]+', '', 'g'))
+     )
+  ) || COALESCE(excluded.schemes, '[]'::jsonb)`;
+
   const folioSet =
     kind !== "master"
       ? {
           investorId: sql`excluded.investor_id`,
           amcName: sql`excluded.amc_name`,
           rta: sql`excluded.rta`,
-          schemes: sql`excluded.schemes`,
-          aum: sql`excluded.aum`,
+          schemes: mergedSchemes,
+          // Re-total from the MERGED array — `excluded.aum` only covers the legs
+          // in this file, so keeping it would under-report every folio the file
+          // only partly covers.
+          aum: sql`(
+            SELECT COALESCE(SUM((leg->>'value')::numeric), 0)
+              FROM jsonb_array_elements(${mergedSchemes}) AS leg
+             WHERE (leg->>'value') ~ '^-?[0-9.]+$'
+          )`,
           updatedAt: sql`now()`,
         }
       : {
