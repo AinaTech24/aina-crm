@@ -870,13 +870,26 @@ export async function scanTenant(tenantId: string): Promise<ScanResult> {
         `);
       }
 
-      // ── Close SIPs whose term has ended ───────────────────────────────
+      // ── Close SIPs whose term has ended AND that stopped collecting ───
       // Nothing else ever did this: the only other write to sips.status sets
       // 'active', so a SIP stayed active forever past its end_date and the SIP
       // book only ever ratcheted up. Runs BEFORE the active_sip_amount refresh
       // below so the same pass also removes the closed ones from the cached
       // total, instead of leaving it a day stale.
-      result.sipsCompleted = await completeExpiredSips(tx);
+      //
+      // Log what was deliberately left open. This pass moves a headline number
+      // the firm watches; when it once closed on end_date alone it took a
+      // quarter off one firm's SIP book overnight with nothing in any log to
+      // explain it. Whatever it skips should be visible without a DB query.
+      const sipExpiry = await completeExpiredSips(tx);
+      result.sipsCompleted = sipExpiry.closed;
+      if (sipExpiry.closed || sipExpiry.keptRenewed || sipExpiry.keptUnknown) {
+        console.log(
+          `[daily-ops] SIP expiry: closed ${sipExpiry.closed}; ` +
+            `kept ${sipExpiry.keptRenewed} past end_date but still collecting (renewed); ` +
+            `kept ${sipExpiry.keptUnknown} past end_date with no instalment history`
+        );
+      }
 
       // ── Refresh investors.active_sip_amount ───────────────────────────
       // This cached column was never recomputed, so the client list's

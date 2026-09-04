@@ -141,32 +141,103 @@ export async function loadSipExpiry(tx: Tx, withinDays = 90): Promise<SipExpiryR
   });
 }
 
+/** What one expiry pass did. `closed` is the only figure that moves the book. */
+export type SipExpiryOutcome = {
+  /** Term over AND the instalments genuinely stopped — closed. */
+  closed: number;
+  /** Term over on paper, but instalments are STILL arriving. Left active. */
+  keptRenewed: number;
+  /** Term over, but we hold no instalment history for the folio, so cessation
+   *  cannot be established either way. Left active. */
+  keptUnknown: number;
+};
+
 /**
- * End SIPs whose term has run out.
+ * End SIPs whose term has run out AND that have actually stopped collecting.
  *
- * Nothing else does this. The only existing write to `sips.status` sets
- * 'active', so a SIP stays active forever past its end date and every SIP
- * figure that reads `status = 'active'` — the SIP book on the dashboard, the
- * client's "Monthly SIP", family SIP totals, trail forecasts — drifts upward
+ * Nothing else does this. The only other write to `sips.status` sets 'active',
+ * so a SIP stays active forever past its end date and every SIP figure that
+ * reads `status = 'active'` — the SIP book on the dashboard, the client's
+ * "Monthly SIP", family SIP totals, trail forecasts — drifts upward
  * permanently.
  *
- * A grace window matters: the last instalment is often collected a few days
- * after the nominal end date, and closing the SIP the morning after would make
- * that instalment arrive against a completed SIP. Seven days is enough for the
- * registrar's settlement to land.
+ * `end_date` ALONE IS NOT EVIDENCE THAT A SIP ENDED. It records the term the
+ * investor originally registered for, and in India that term is routinely
+ * extended or renewed at the AMC without a fresh registration row — so the
+ * registrar keeps collecting while our `end_date` stays at the original value.
+ * A perpetual SIP often carries an arbitrary far-past or placeholder date too.
  *
- * Returns how many were closed; the caller refreshes active_sip_amount.
+ * Closing on the date alone therefore deletes live SIPs from the book. It did:
+ * the first run of this pass closed 775 SIPs worth ₹1.59 Cr/month for one firm,
+ * and 137 of them (₹0.36 Cr) had collected an instalment within the previous
+ * 45 days — including a ₹2.35 Lakh/month SIP whose `end_date` said 2021 and
+ * whose last instalment was three weeks earlier. The firm watched its SIP book
+ * fall by a quarter overnight.
+ *
+ * So a SIP is closed only on POSITIVE evidence that it stopped:
+ *   1. its term is over (past `end_date`, plus a grace window — the final
+ *      instalment often settles a few days late, and closing the morning after
+ *      would land it against a completed SIP), AND
+ *   2. we actually hold instalment history for that folio, AND
+ *   3. nothing has been collected on it for `quietDays`.
+ *
+ * When (2) fails we cannot tell a finished SIP from one whose transaction feed
+ * we never received — and this platform routinely holds only part of a firm's
+ * feed — so the SIP stays active and is counted in `keptUnknown`. Overstating a
+ * book slightly, visibly, beats silently erasing live SIPs from it.
+ *
+ * The caller refreshes `active_sip_amount` afterwards.
  */
-export async function completeExpiredSips(tx: Tx, graceDays = 7): Promise<number> {
+export async function completeExpiredSips(
+  tx: Tx,
+  graceDays = 7,
+  quietDays = 120
+): Promise<SipExpiryOutcome> {
+  const grace = sql.raw(String(Math.max(0, graceDays)));
+  const quiet = sql.raw(String(Math.max(0, quietDays)));
+
+  // Last instalment per folio, computed once. RLS scopes it to the tenant, the
+  // same way the UPDATE below is scoped.
+  const lastInstalment = sql`
+    SELECT folio_id, max(order_date) AS last_sip
+      FROM transactions
+     WHERE type = 'sip' AND folio_id IS NOT NULL
+     GROUP BY folio_id`;
+
+  const expired = sql`
+    s.status = 'active'
+    AND s.end_date IS NOT NULL
+    AND s.end_date < current_date - ${grace} * interval '1 day'`;
+
   const res = await tx.execute(sql`
-    UPDATE sips
+    WITH life AS (${lastInstalment})
+    UPDATE sips s
        SET status = 'completed', updated_at = now()
-     WHERE status = 'active'
-       AND end_date IS NOT NULL
-       AND end_date < current_date - ${sql.raw(String(Math.max(0, graceDays)))} * interval '1 day'
-    RETURNING id
+      FROM life l
+     WHERE ${expired}
+       -- INNER join on purpose: a folio with no instalment history never
+       -- matches, so "we have no data" can never close a SIP.
+       AND l.folio_id = s.folio_id
+       AND l.last_sip < current_date - ${quiet} * interval '1 day'
+    RETURNING s.id
   `);
-  return (res.rows as any[]).length;
+
+  // What we deliberately left alone, so the caller can say so out loud rather
+  // than let the book move without explanation.
+  const kept = (await tx.execute(sql`
+    WITH life AS (${lastInstalment})
+    SELECT
+      count(*) FILTER (WHERE l.folio_id IS NOT NULL)::int AS kept_renewed,
+      count(*) FILTER (WHERE l.folio_id IS NULL)::int     AS kept_unknown
+      FROM sips s LEFT JOIN life l ON l.folio_id = s.folio_id
+     WHERE ${expired}
+  `)).rows[0] as any;
+
+  return {
+    closed: (res.rows as any[]).length,
+    keptRenewed: num(kept?.kept_renewed),
+    keptUnknown: num(kept?.kept_unknown),
+  };
 }
 
 /** Headline counts for the worklist header. */
