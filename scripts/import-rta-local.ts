@@ -86,10 +86,15 @@ async function main() {
   //      near-impossible to unpick afterwards. Refuse on an ambiguous match.
   const tenants = await withSystem(async (tx) => {
     const isUuid = /^[0-9a-f-]{36}$/i.test(TENANT_Q);
+    // The firm's name lives in display_name / legal_name — there is no `name`
+    // column, and asking for one made this script fail on every invocation.
     const res = await tx.execute(
       isUuid
-        ? sql`SELECT id, name, arn FROM tenants WHERE id = ${TENANT_Q}::uuid`
-        : sql`SELECT id, name, arn FROM tenants WHERE name ILIKE ${"%" + TENANT_Q + "%"} ORDER BY created_at LIMIT 10`
+        ? sql`SELECT id, COALESCE(display_name, legal_name) AS name, arn FROM tenants WHERE id = ${TENANT_Q}::uuid`
+        : sql`SELECT id, COALESCE(display_name, legal_name) AS name, arn
+                FROM tenants
+               WHERE display_name ILIKE ${"%" + TENANT_Q + "%"} OR legal_name ILIKE ${"%" + TENANT_Q + "%"}
+               ORDER BY created_at LIMIT 10`
     );
     return res.rows as Array<{ id: string; name: string; arn: string | null }>;
   });
