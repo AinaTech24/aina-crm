@@ -24,6 +24,18 @@ export type RtaScheme = {
   units?: number;
   nav?: number;
   value?: number;
+  /**
+   * The ARN this SLICE of the holding was transacted under (the registrar's
+   * BROK_DLR_CODE / Agent Code on the row).
+   *
+   * A firm with several ARNs gets one mailback file per broker code, and a
+   * client who bought the same scheme in the same folio through two of those
+   * ARNs has their units split across the two files — complementary halves,
+   * not duplicates. The leg therefore has to remember which ARN it came from,
+   * or the second file's slice looks like a restatement of the first and
+   * overwrites it. See the merge in import.ts.
+   */
+  arn?: string;
 };
 
 export type RtaNominee = {

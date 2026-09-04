@@ -28,6 +28,10 @@ export const folios = pgTable(
       units?: number;
       nav?: number;
       value?: number;
+      /** ARN this slice was transacted under. A folio's holding in one scheme
+       *  can be split across several of the firm's own ARNs, arriving as one
+       *  leg per ARN; the folio's true holding is their sum. */
+      arn?: string;
     }>>(),
     /** Extra folio attributes captured on import (holding mode, status, bank,
      *  nominee, invested/current value, XIRR, units, SIP flag …) without needing

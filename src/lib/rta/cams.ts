@@ -220,10 +220,15 @@ export function parseCamsFile(rows: string[][]): {
     const product = get(C.product);
     const units = num(get(C.closBal));
     const value = num(get(C.rupeeBal));
+    const rowArn = get(C.broker) || undefined;
     if (product) {
       // A folio can list the same product across multiple rows (lots) — merge
       // them so AUM reconciles to the registrar's total to the paisa.
-      const existing = rec.schemes.find((s) => s.schemeCode === product);
+      //
+      // Lots merge only WITHIN one ARN. The same folio+scheme under a second
+      // broker code is a different slice of the holding, not another lot of the
+      // same one, and collapsing the two would hide which ARN earns on it.
+      const existing = rec.schemes.find((s) => s.schemeCode === product && s.arn === rowArn);
       if (existing) {
         existing.units = (existing.units ?? 0) + units || undefined;
         existing.value = (existing.value ?? 0) + value || undefined;
@@ -236,6 +241,7 @@ export function parseCamsFile(rows: string[][]): {
           units: units || undefined,
           nav: units > 0 && value > 0 ? +(value / units).toFixed(4) : undefined,
           value: value || undefined,
+          arn: rowArn,
         });
       }
       rec.aum = (rec.aum ?? 0) + value;

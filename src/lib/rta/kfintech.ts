@@ -369,13 +369,18 @@ export function parseKfintechHoldings(rows: string[][]): {
 
     const productCode = get(C.productCode);
     const value = num(get(C.aum));
-    if (productCode && !rec.schemes.some((s) => s.schemeCode === productCode)) {
+    const rowArn = get(C.broker) || undefined;
+    // Keyed on (scheme, ARN): the same folio+scheme under a second broker code
+    // is a different slice of the holding, and skipping it as a duplicate drops
+    // that ARN's units from the folio entirely.
+    if (productCode && !rec.schemes.some((s) => s.schemeCode === productCode && s.arn === rowArn)) {
       rec.schemes.push({
         schemeCode: productCode,
         schemeName: get(C.fundDesc),
         units: num(get(C.balance)) || undefined,
         nav: num(get(C.nav)) || undefined,
         value: value || undefined,
+        arn: rowArn,
       });
       rec.aum = (rec.aum ?? 0) + value;
     }

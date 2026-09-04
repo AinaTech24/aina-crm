@@ -405,7 +405,11 @@ export async function importRtaFolios(
     const fk = `${r.amcCode}::${r.folioNumber}`;
     const existing = folioByKey.get(fk);
     if (!existing) folioByKey.set(fk, { r: { ...r, schemes: [...r.schemes] }, clientKey });
-    else for (const s of r.schemes) if (!existing.r.schemes.some((x) => x.schemeCode === s.schemeCode)) existing.r.schemes.push(s);
+    // Keyed on (scheme, ARN) — see the mergedSchemes note below. Two records for
+    // one folio can legitimately carry the same scheme under different broker
+    // codes, and dropping the second as a duplicate loses that ARN's units.
+    else for (const s of r.schemes)
+      if (!existing.r.schemes.some((x) => x.schemeCode === s.schemeCode && x.arn === s.arn)) existing.r.schemes.push(s);
   }
 
   const folioValues = [...folioByKey.values()]
@@ -443,14 +447,39 @@ export async function importRtaFolios(
   // importer rewrites schemeCode to the AMFI code via resolveSchemeIdentity, so
   // the same holding legitimately appears under two different codes and a
   // code-only match would leave a duplicate behind.
+  //
+  // AND BY ARN. A firm holding several ARNs gets one mailback file per broker
+  // code, and a client who bought the same scheme in the same folio through two
+  // of them has their units SPLIT across the two files — complementary halves,
+  // not restatements. Matching on scheme alone made the second file's slice
+  // overwrite the first, so the folio kept whichever ARN imported last and the
+  // rest of the holding vanished.
+  //
+  // Measured on VSN Financial Services: 731 holdings under-valued by Rs 32.93 Cr
+  // against the registrars' own statements. One example — folio 18069442/27,
+  // ICICI Large & Mid Cap: ARN-114688 holds 11,284.153 units and ARN-90577
+  // holds 7,289.173, so the folio owns 18,573.326 units worth Rs 1.94 Cr. The
+  // CRM stored Rs 76.05 lakh, the ARN-90577 slice on its own.
+  //
+  // A leg with a NULL arn matches ANY incoming arn on purpose: legs written
+  // before this change carry no ARN, and treating them as a distinct slice
+  // would ADD the incoming one alongside and double count. They are replaced
+  // instead, so the register converges on correct slices as each ARN's file
+  // re-imports, and never overstates on the way there.
   const mergedSchemes = sql`(
     SELECT COALESCE(jsonb_agg(keep), '[]'::jsonb)
       FROM jsonb_array_elements(COALESCE(${foliosTable.schemes}, '[]'::jsonb)) AS keep
      WHERE NOT EXISTS (
        SELECT 1 FROM jsonb_array_elements(COALESCE(excluded.schemes, '[]'::jsonb)) AS incoming
-        WHERE (incoming->>'schemeCode') = (keep->>'schemeCode')
-           OR lower(regexp_replace(COALESCE(incoming->>'schemeName',''), '[^a-zA-Z0-9]+', '', 'g'))
-            = lower(regexp_replace(COALESCE(keep->>'schemeName',''),     '[^a-zA-Z0-9]+', '', 'g'))
+        WHERE (
+                (incoming->>'schemeCode') = (keep->>'schemeCode')
+             OR lower(regexp_replace(COALESCE(incoming->>'schemeName',''), '[^a-zA-Z0-9]+', '', 'g'))
+              = lower(regexp_replace(COALESCE(keep->>'schemeName',''),     '[^a-zA-Z0-9]+', '', 'g'))
+              )
+          AND (
+                (keep->>'arn') IS NULL
+             OR (keep->>'arn') IS NOT DISTINCT FROM (incoming->>'arn')
+              )
      )
   ) || COALESCE(excluded.schemes, '[]'::jsonb)`;
 
