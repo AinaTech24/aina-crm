@@ -101,11 +101,28 @@ export function parseKfintechFolioMaster(rows: string[][]): {
   header.forEach((h, i) => (H[h.toLowerCase()] = i));
   const warnings: string[] = [];
   // Accepts alternatives: the same field is named differently across report
-  // codes (the broker ARN is "Broker Code" on the master and "Agent Code" on
-  // MFSD203), and a single-name lookup silently returned -1 for the others.
+  // codes, and a single-name lookup silently returned -1 for the others.
   const col = (...names: string[]) => {
     for (const n of names) if (n.toLowerCase() in H) return H[n.toLowerCase()];
     return -1;
+  };
+  /**
+   * Like col(), but skips a column that EXISTS AND IS EMPTY in favour of a
+   * later alias that actually carries data.
+   *
+   * MFSD203 ships BOTH "Agent Code" (the ARN) and "Broker Code" (blank on
+   * every row); MFSD211 ships only "Broker Code", carrying the ARN. Picking
+   * the first NAME that exists therefore reads the empty column on holdings
+   * files, and every leg imported with no ARN -- which is exactly how the
+   * per-ARN slice merge came to work for CAMS and do nothing for KFintech.
+   */
+  const colWithData = (...names: string[]) => {
+    const idxs = names
+      .map((n) => (n.toLowerCase() in H ? H[n.toLowerCase()] : -1))
+      .filter((i) => i >= 0);
+    const probe = Math.min(rows.length, 60);
+    for (const i of idxs) for (let r = 1; r < probe; r++) if ((rows[r]?.[i] ?? "").trim()) return i;
+    return idxs.length ? idxs[0] : -1;
   };
 
   const C = {
@@ -131,7 +148,7 @@ export function parseKfintechFolioMaster(rows: string[][]): {
     bankName: col("Bank Name"),
     accType: col("Account Type"),
     ifsc: col("IFSC Code"),
-    broker: col("Broker Code", "Agent Code", "ARN", "Broker", "Agent"),
+    broker: colWithData("Broker Code", "Agent Code", "ARN", "Broker", "Agent"),
     reportDate: col("Report Date"),
     pan: col("PAN Number"),
     mobile: col("Mobile Number"),
@@ -302,11 +319,28 @@ export function parseKfintechHoldings(rows: string[][]): {
   const H: Record<string, number> = {};
   header.forEach((h, i) => (H[h.toLowerCase()] = i));
   // Accepts alternatives: the same field is named differently across report
-  // codes (the broker ARN is "Broker Code" on the master and "Agent Code" on
-  // MFSD203), and a single-name lookup silently returned -1 for the others.
+  // codes, and a single-name lookup silently returned -1 for the others.
   const col = (...names: string[]) => {
     for (const n of names) if (n.toLowerCase() in H) return H[n.toLowerCase()];
     return -1;
+  };
+  /**
+   * Like col(), but skips a column that EXISTS AND IS EMPTY in favour of a
+   * later alias that actually carries data.
+   *
+   * MFSD203 ships BOTH "Agent Code" (the ARN) and "Broker Code" (blank on
+   * every row); MFSD211 ships only "Broker Code", carrying the ARN. Picking
+   * the first NAME that exists therefore reads the empty column on holdings
+   * files, and every leg imported with no ARN -- which is exactly how the
+   * per-ARN slice merge came to work for CAMS and do nothing for KFintech.
+   */
+  const colWithData = (...names: string[]) => {
+    const idxs = names
+      .map((n) => (n.toLowerCase() in H ? H[n.toLowerCase()] : -1))
+      .filter((i) => i >= 0);
+    const probe = Math.min(rows.length, 60);
+    for (const i of idxs) for (let r = 1; r < probe; r++) if ((rows[r]?.[i] ?? "").trim()) return i;
+    return idxs.length ? idxs[0] : -1;
   };
 
   const C = {
@@ -316,7 +350,7 @@ export function parseKfintechHoldings(rows: string[][]): {
     fundDesc: col("Fund Description"),
     balance: col("Balance"),
     txnDate: col("Transaction Date"),
-    broker: col("Broker Code", "Agent Code", "ARN", "Broker", "Agent"),
+    broker: colWithData("Broker Code", "Agent Code", "ARN", "Broker", "Agent"),
     name: col("Investor Name"),
     addr1: col("Address #1"),
     addr2: col("Address #2"),
