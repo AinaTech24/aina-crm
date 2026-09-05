@@ -9,6 +9,7 @@ import { RowActions } from "@/components/common/RowActions";
 import { familyQuickFilterOptions } from "@/components/families/FamilyQuickFilters";
 import { CompactFilterBar } from "@/components/common/CompactFilterBar";
 import { FamilySuggestionsLauncher } from "@/components/families/FamilySuggestionsLauncher";
+import { FamilyToolsGrid } from "@/components/families/FamilyToolsGrid";
 import { Pager } from "@/components/common/Pager";
 import { healthBandClasses, type HealthBand } from "@/lib/investors/health";
 import { StatusChips, type StatusChip } from "@/components/common/StatusChips";
@@ -219,6 +220,10 @@ export default async function FamiliesPage({
           </Link>
         </div>
       </div>
+
+      {/* Every household tool in one place, with the counts that say which one
+          is worth opening. */}
+      <FamilyToolsGrid session={session} />
 
       {/* Wealth-band tiers (Sanchay "Family Category" parity) */}
       <StatusChips basePath="/dashboard/families" paramKey="band" current={band} params={sp} chips={bandChips} />

@@ -45,6 +45,8 @@ export function buildInvestorConditions(
   const gaps = csv(sp.gaps);
   const qf = {
     mine: sp.mine === "1",
+    // Clients not linked to any household — the Family Mapping work queue.
+    unmapped: sp.unmapped === "1",
     tier_a: sp.tier_a === "1",
     hni: sp.hni === "1",
     reviews_due: sp.reviews_due === "1",
@@ -98,6 +100,7 @@ export function buildInvestorConditions(
   }
 
   if (qf.mine) conditions.push(sql`${investors.rmId} = ${userId}`);
+  if (qf.unmapped) conditions.push(sql`${investors.familyId} IS NULL`);
   if (qf.tier_a) conditions.push(sql`${investors.serviceTier} = 'A'`);
   if (qf.hni) conditions.push(sql`${investors.segmentTag} = 'HNI'`);
   if (qf.reviews_due) {
