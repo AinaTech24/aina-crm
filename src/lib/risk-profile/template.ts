@@ -34,6 +34,19 @@ export const QuestionSchema = z.object({
   options: z.array(QuestionOptionSchema).min(2).max(10),
 });
 
+/**
+ * Indicative asset allocation for a band, in whole percent. Optional: the risk
+ * profile PDF falls back to a preset matched on the band id (or the band's
+ * position on the firm's ladder) when a firm hasn't filled these in.
+ */
+export const BandAllocationSchema = z.object({
+  equity: z.number().int().min(0).max(100).optional(),
+  debt: z.number().int().min(0).max(100).optional(),
+  cash: z.number().int().min(0).max(100).optional(),
+  commodities: z.number().int().min(0).max(100).optional(),
+  alternatives: z.number().int().min(0).max(100).optional(),
+});
+
 export const BandSchema = z.object({
   id: z.string().min(1).max(40),
   label: z.string().min(1).max(60),
@@ -41,6 +54,7 @@ export const BandSchema = z.object({
   maxScore: z.number().int(),
   color: z.string().max(20).optional(),
   description: z.string().max(500).optional(),
+  allocation: BandAllocationSchema.optional(),
 });
 
 export const RiskTemplateSchema = z.object({
@@ -56,6 +70,7 @@ export const RiskTemplateSchema = z.object({
 export type RiskTemplate = z.infer<typeof RiskTemplateSchema>;
 export type RiskTemplateQuestion = z.infer<typeof QuestionSchema>;
 export type RiskTemplateBand = z.infer<typeof BandSchema>;
+export type RiskTemplateBandAllocation = z.infer<typeof BandAllocationSchema>;
 
 // ---------------------------------------------------------------------------
 // Default template — used when a tenant hasn't customised yet.

@@ -33,7 +33,17 @@ import { v4 as uuid } from "uuid";
 
 type Option = { value: string; label: string; score: number };
 type Question = { key: string; label: string; helperText?: string; type: "single"; options: Option[] };
-type Band = { id: string; label: string; minScore: number; maxScore: number; color?: string; description?: string };
+type BandAllocation = { equity?: number; debt?: number; cash?: number; commodities?: number; alternatives?: number };
+type Band = { id: string; label: string; minScore: number; maxScore: number; color?: string; description?: string; allocation?: BandAllocation };
+
+/** Order matters — it is the order the risk-profile PDF draws the bar in. */
+const ALLOCATION_FIELDS: Array<{ key: keyof BandAllocation; label: string }> = [
+  { key: "equity", label: "Equity" },
+  { key: "debt", label: "Debt" },
+  { key: "cash", label: "Cash" },
+  { key: "commodities", label: "Commodities" },
+  { key: "alternatives", label: "Alt" },
+];
 type Template = {
   name: string;
   description: string;
@@ -518,6 +528,52 @@ export function RiskTemplateEditor({
                 />
               </div>
             ))}
+          </div>
+        </details>
+
+        {/* Indicative asset allocation per band — printed on the client's risk
+            profile PDF. Left blank, the PDF falls back to a preset for the band. */}
+        <details className="mt-2">
+          <summary className="text-xs text-muted-foreground cursor-pointer">Edit indicative asset allocation (shown on the client PDF) →</summary>
+          <div className="mt-2 space-y-2">
+            <p className="text-[11px] text-muted-foreground">
+              Whole percentages, ideally summing to 100. Leave a band empty to let the report use a sensible default for that risk level.
+            </p>
+            {t.bands.map((b, bi) => {
+              const alloc = b.allocation ?? {};
+              const sum = ALLOCATION_FIELDS.reduce((s2, f) => s2 + (Number(alloc[f.key]) || 0), 0);
+              return (
+                <div key={bi} className="card-surface p-2 flex items-center gap-2">
+                  <span className="chip text-[10px] shrink-0" style={{ background: `${b.color ?? "#0ea5e9"}22`, color: b.color ?? "#0e2557" }}>
+                    {b.label}
+                  </span>
+                  <div className="flex-1 grid grid-cols-5 gap-2">
+                    {ALLOCATION_FIELDS.map((f) => (
+                      <Field key={f.key} label={`${f.label} %`}>
+                        <input
+                          type="number"
+                          min={0}
+                          max={100}
+                          value={alloc[f.key] ?? ""}
+                          onChange={(e) => {
+                            const raw = e.target.value;
+                            const next = { ...alloc } as BandAllocation;
+                            if (raw === "") delete next[f.key];
+                            else next[f.key] = Math.max(0, Math.min(100, Number(raw)));
+                            const empty = ALLOCATION_FIELDS.every((x) => next[x.key] == null);
+                            updateBand(bi, { allocation: empty ? undefined : next });
+                          }}
+                          className="input-base text-xs w-full tabular-nums"
+                        />
+                      </Field>
+                    ))}
+                  </div>
+                  <span className={`text-[11px] tabular-nums w-14 text-right ${sum === 0 || sum === 100 ? "text-muted-foreground" : "text-amber-600"}`}>
+                    {sum === 0 ? "auto" : `${sum}%`}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         </details>
 

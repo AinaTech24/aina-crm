@@ -55,23 +55,31 @@ export async function GET(req: NextRequest) {
       // investor_id polymorphically (works for a lead too).
       let name: string | null = "Client";
       let pan: string | null = null;
+      let address: any = null;
+      let email: string | null = null;
+      let phone: string | null = null;
       if (tk.subjectType === "investor") {
         const s = (await tx.execute(
-          sql`SELECT name, pan FROM investors WHERE id = ${tk.subjectId}::uuid LIMIT 1`
+          sql`SELECT name, pan, address, email, phone FROM investors WHERE id = ${tk.subjectId}::uuid LIMIT 1`
         )).rows[0] as any;
         name = s?.name ?? "Client";
         pan = s?.pan ?? null;
+        address = s?.address ?? null;
+        email = s?.email ?? null;
+        phone = s?.phone ?? null;
       } else {
         const s = (await tx.execute(
-          sql`SELECT name FROM leads WHERE id = ${tk.subjectId}::uuid LIMIT 1`
+          sql`SELECT name, email, phone FROM leads WHERE id = ${tk.subjectId}::uuid LIMIT 1`
         )).rows[0] as any;
         name = s?.name ?? "Client";
+        email = s?.email ?? null;
+        phone = s?.phone ?? null;
       }
 
       const t = (
         await tx.execute(sql`
           SELECT display_name, legal_name, arn, principal_euin, gst_number,
-                 primary_color, secondary_color, logo_url, phone, email, website
+                 primary_color, secondary_color, logo_url, phone, email, website, address
           FROM tenants WHERE id = ${tk.tenantId}::uuid LIMIT 1
         `)
       ).rows[0] as any;
@@ -94,8 +102,11 @@ export async function GET(req: NextRequest) {
           age: row.age != null ? Number(row.age) : null,
           verificationMethod: row.verification_method ?? null,
           responses: Array.isArray(row.responses) ? row.responses : [],
+          bands: tpl?.bands ?? null,
+          questions: tpl?.questions ?? null,
+          templateDescription: tpl?.description ?? null,
         },
-        investor: { name, pan },
+        investor: { name, pan, address, email, phone },
         brand: {
           displayName: t?.display_name,
           legalName: t?.legal_name,
@@ -108,6 +119,7 @@ export async function GET(req: NextRequest) {
           phone: t?.phone,
           email: t?.email,
           website: t?.website,
+          address: t?.address ?? null,
         },
         generatedAt: new Date().toISOString(),
         refId: row.id ?? null,

@@ -38,7 +38,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         SELECT
           r.final_category, r.total_score, r.responses, r.profile_date, r.age,
           r.signed_at, r.signed_by_name, r.next_review_at, r.verification_method,
-          i.name AS investor_name, i.pan AS investor_pan
+          i.name AS investor_name, i.pan AS investor_pan,
+          i.address AS investor_address, i.email AS investor_email, i.phone AS investor_phone
         FROM risk_profile_responses r
         LEFT JOIN investors i ON i.id = r.investor_id
         WHERE r.id = ${id}::uuid AND r.tenant_id = ${session.tenantId}::uuid
@@ -51,7 +52,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       const t = (
         await tx.execute(sql`
           SELECT display_name, legal_name, arn, principal_euin, gst_number,
-                 primary_color, secondary_color, logo_url, phone, email, website
+                 primary_color, secondary_color, logo_url, phone, email, website, address
           FROM tenants WHERE id = ${session.tenantId}::uuid LIMIT 1
         `)
       ).rows[0] as any;
@@ -74,8 +75,19 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
           age: row.age != null ? Number(row.age) : null,
           verificationMethod: row.verification_method ?? null,
           responses: Array.isArray(row.responses) ? row.responses : [],
+          // The template drives the band ladder, the asset-allocation section and
+          // the "every option, chosen one highlighted" questionnaire.
+          bands: tpl?.bands ?? null,
+          questions: tpl?.questions ?? null,
+          templateDescription: tpl?.description ?? null,
         },
-        investor: { name: row.investor_name ?? "Client", pan: row.investor_pan ?? null },
+        investor: {
+          name: row.investor_name ?? "Client",
+          pan: row.investor_pan ?? null,
+          address: row.investor_address ?? null,
+          email: row.investor_email ?? null,
+          phone: row.investor_phone ?? null,
+        },
         brand: {
           displayName: t?.display_name,
           legalName: t?.legal_name,
@@ -88,6 +100,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
           phone: t?.phone,
           email: t?.email,
           website: t?.website,
+          address: t?.address ?? null,
         },
         generatedAt: new Date().toISOString(),
         refId: id,
