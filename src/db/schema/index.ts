@@ -112,3 +112,4 @@ export * from "./ddq_registers";
 export * from "./release_notes";
 export * from "./investor_portal";
 export * from "./business_impacts";
+export * from "./family_master";

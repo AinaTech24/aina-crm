@@ -16,7 +16,7 @@ import { Loader2, Plus, Search, Users, X } from "lucide-react";
 
 type Family = { id: string; family_name: string | null; head_name: string | null; member_count?: number };
 
-const RELATIONSHIPS: [string, string][] = [
+const FALLBACK_RELATIONSHIPS: [string, string][] = [
   ["spouse", "Spouse"],
   ["son", "Son"],
   ["daughter", "Daughter"],
@@ -117,6 +117,20 @@ function LinkToFamilyDialog({
   const [loading, setLoading] = useState(false);
   const [picked, setPicked] = useState<Family | null>(null);
   const [role, setRole] = useState("spouse");
+  const [relationships, setRelationships] = useState<[string, string][]>(FALLBACK_RELATIONSHIPS);
+
+  // Firm-configured relationship master — same source as the family page.
+  useEffect(() => {
+    let dead = false;
+    fetch("/api/families/relationship-types")
+      .then((r) => r.json())
+      .then((j) => {
+        if (dead || !Array.isArray(j?.types) || !j.types.length) return;
+        setRelationships(j.types.map((t: any) => [t.key, t.label] as [string, string]));
+      })
+      .catch(() => {});
+    return () => { dead = true; };
+  }, []);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -183,7 +197,7 @@ function LinkToFamilyDialog({
         <label className="block mt-4">
           <div className="text-xs font-medium mb-1">Relationship to the household</div>
           <select value={role} onChange={(e) => setRole(e.target.value)} className="input-base text-sm w-full">
-            {RELATIONSHIPS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+            {relationships.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
           </select>
         </label>
 

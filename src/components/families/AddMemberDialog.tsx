@@ -17,13 +17,15 @@ type Investor = {
   familyId?: string | null;
 };
 
-const RELATIONSHIPS = [
+// Shipped fallback: shown until the firm's own list loads. A firm that has
+// never customised gets exactly these back from the API anyway.
+const FALLBACK_RELATIONSHIPS = [
   { key: "self", label: "Self / Head" },
   { key: "spouse", label: "Spouse" },
-  { key: "father", label: "Father" },
-  { key: "mother", label: "Mother" },
   { key: "son", label: "Son" },
   { key: "daughter", label: "Daughter" },
+  { key: "father", label: "Father" },
+  { key: "mother", label: "Mother" },
   { key: "sibling", label: "Sibling" },
   { key: "huf_karta", label: "HUF Karta" },
   { key: "huf_coparcener", label: "HUF Co-parcener" },
@@ -37,6 +39,7 @@ export function AddMemberDialog({ familyId, familyName }: { familyId: string; fa
   const [tab, setTab] = useState<"link" | "new">("link");
   const [investors, setInvestors] = useState<Investor[]>([]);
   const [search, setSearch] = useState("");
+  const [relationships, setRelationships] = useState(FALLBACK_RELATIONSHIPS);
   const [selected, setSelected] = useState<Investor | null>(null);
   const [familyRole, setFamilyRole] = useState("spouse");
   const [busy, setBusy] = useState(false);
@@ -51,6 +54,17 @@ export function AddMemberDialog({ familyId, familyName }: { familyId: string; fa
   const [loading, setLoading] = useState(false);
   /** Set when the SEARCH itself failed — distinct from a search that found nothing. */
   const [searchErr, setSearchErr] = useState<string | null>(null);
+  // Relationship options come from the firm's master (Family settings).
+  useEffect(() => {
+    if (!open) return;
+    let dead = false;
+    fetch("/api/families/relationship-types")
+      .then((r) => r.json())
+      .then((j) => { if (!dead && Array.isArray(j?.types) && j.types.length) setRelationships(j.types); })
+      .catch(() => {});
+    return () => { dead = true; };
+  }, [open]);
+
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
@@ -171,7 +185,7 @@ export function AddMemberDialog({ familyId, familyName }: { familyId: string; fa
                   <ThemeSelect
                     value={familyRole}
                     onChange={setFamilyRole}
-                    options={RELATIONSHIPS.map((r) => [r.key, r.label] as [string, string])}
+                    options={relationships.map((r) => [r.key, r.label] as [string, string])}
                   />
                 </label>
 
@@ -242,7 +256,7 @@ export function AddMemberDialog({ familyId, familyName }: { familyId: string; fa
                   <ThemeSelect
                     value={familyRole}
                     onChange={setFamilyRole}
-                    options={RELATIONSHIPS.map((r) => [r.key, r.label] as [string, string])}
+                    options={relationships.map((r) => [r.key, r.label] as [string, string])}
                   />
                 </label>
                 <p className="text-sm text-muted-foreground">

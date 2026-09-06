@@ -18,6 +18,7 @@ import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 import { families, users } from "@/db/schema";
 import { familyHealthFields } from "@/lib/families/health";
 import { computeFamilyNextReview } from "@/lib/families/cadence";
+import { applyFamilyNamePattern, loadFamilySettings } from "@/lib/families/master";
 import { WEALTH_BANDS, bandBounds, type WealthBand } from "@/lib/families/wealth-band";
 
 const PAGE_SIZE = 50;
@@ -209,10 +210,28 @@ export async function POST(req: NextRequest) {
 
     const id = uuid();
     const clientMeta = clientMetaFromHeaders(req.headers);
+
+    // Firm-level household defaults (Family settings). An explicit value in
+    // the request always wins; the defaults only fill what was left blank.
+    const defaults = await withTenant(
+      session.tenantId,
+      (tx) => loadFamilySettings(tx, session.tenantId),
+      { userId: session.userId, branchId: session.branchId, roles: session.roles }
+    );
+    if (defaults.requirePrimaryMember && !parse.data.primaryInvestorId) {
+      return NextResponse.json(
+        { error: "Your firm requires a primary member for every household — pick the head first." },
+        { status: 400 }
+      );
+    }
+    const reviewFrequency = parse.data.reviewFrequency ?? defaults.defaultReviewFrequency ?? null;
+    const familyName =
+      parse.data.familyName ?? applyFamilyNamePattern(defaults.familyNamePattern, parse.data.headName);
+
     // Auto-derive the next household review from the cadence + first meeting.
     const nextReviewAt = computeFamilyNextReview(
       parse.data.firstMeetingDate ?? null,
-      parse.data.reviewFrequency ?? null
+      reviewFrequency
     );
     const outcome = await withTenant(session.tenantId, async (tx) => {
       // An explicit RM must be a user in THIS firm — otherwise the household
@@ -243,13 +262,13 @@ export async function POST(req: NextRequest) {
         tenantId: session.tenantId,
         branchId: session.branchId,
         headName: parse.data.headName,
-        familyName: parse.data.familyName ?? parse.data.headName,
+        familyName,
         primaryInvestorId: parse.data.primaryInvestorId ?? null,
         rmId: parse.data.rmId ?? session.userId,
         notes: parse.data.notes,
         familyCode: parse.data.familyCode ?? null,
         familyCategory: parse.data.familyCategory ?? null,
-        reviewFrequency: parse.data.reviewFrequency ?? null,
+        reviewFrequency,
         firstMeetingDate: parse.data.firstMeetingDate ?? null,
         nextReviewAt: nextReviewAt ?? null,
         // Initial health (no members yet ⇒ reflects the setup backlog).

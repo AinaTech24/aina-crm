@@ -4,10 +4,10 @@ import {
   ArrowRight,
   GitMerge,
   HeartHandshake,
-  Sparkles,
   UserPlus,
   Users2,
   ShieldAlert,
+  Settings2,
 } from "lucide-react";
 import { withTenant } from "@/db/client";
 import type { SessionUser } from "@/lib/auth/session";
@@ -87,6 +87,14 @@ export async function FamilyToolsGrid({ session }: { session: SessionUser }) {
       icon: GitMerge,
       title: "Merge duplicates",
       desc: "Combine households created twice",
+      badge: null,
+      tone: "plain" as const,
+    },
+    {
+      href: "/dashboard/families/settings",
+      icon: Settings2,
+      title: "Family settings",
+      desc: "Relationship types and defaults for new households",
       badge: null,
       tone: "plain" as const,
     },

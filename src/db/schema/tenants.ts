@@ -122,6 +122,9 @@ export const tenants = pgTable(
      */
     restrictUserDataScope: boolean("restrict_user_data_scope").notNull().default(false),
 
+    /** Household defaults — see FamilySettings in schema/family_master.ts. */
+    familySettings: jsonb("family_settings").$type<Record<string, unknown>>().notNull().default({}),
+
     /** ── AMFI DDQ firm declarations (migration 0195) ──────────────────────
      *  2.1c/2.5 — how the firm categorises client relationships. An MFD giving
      *  "incidental advice" advises only incidentally to distribution (no RIA
