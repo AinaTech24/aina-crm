@@ -35,7 +35,7 @@ export const LTCG_EXEMPTION = 125_000;
 export const LTCG_RATE = 0.125;
 
 /** Equity-taxed if the category/name looks like equity / ELSS / aggressive hybrid. */
-function isEquityTaxed(category?: string | null, name?: string | null): boolean {
+export function isEquityTaxed(category?: string | null, name?: string | null): boolean {
   const s = `${category ?? ""} ${name ?? ""}`.toLowerCase();
   if (/debt|liquid|overnight|money.?market|gilt|bond|ultra.?short|low.?duration|banking.?psu|corporate.?bond/.test(s)) {
     return false;

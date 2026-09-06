@@ -109,6 +109,15 @@ const REPORTS: { group: string; items: ReportItem[] }[] = [
     ]
   },
   {
+    group: "Taxation", items: [
+      { key: "tax_realised", label: "Realised Capital Gain", icon: "TrendingUp", href: "/dashboard/reports/tax/realised-capital-gains", desc: "STCG / LTCG booked this FY, per client (FIFO)" },
+      { key: "tax_notional", label: "Notional Capital Gain", icon: "BarChart3", href: "/dashboard/reports/tax/notional-capital-gains", desc: "Unrealised gains at today's NAV, per client" },
+      { key: "tax_dividend", label: "Dividend / IDCW Report", icon: "FileText", href: "/dashboard/reports/tax/dividend-report", desc: "Payouts and reinvestments received this FY" },
+      { key: "tax_fy_wise", label: "Financial Year Wise Report", icon: "Calendar", href: "/dashboard/reports/tax/fy-wise", desc: "Inflows, redemptions and gains per FY, per client" },
+      { key: "tax_package", label: "Tax Package (per-client PDF)", icon: "FileText", href: "/dashboard/reports/tax/tax-package", desc: "One PDF per client: gains, IDCW and holdings for ITR" },
+    ]
+  },
+  {
     group: "Complaint Register (SEBI)", items: [
       { key: "open_complaints", label: "Open Complaints", icon: "AlertTriangle", desc: "Complaints still open (SEBI register)" },
       { key: "resolved_complaints", label: "Resolved Complaints", icon: "CheckCircle2", desc: "Complaints closed, with resolution time" },

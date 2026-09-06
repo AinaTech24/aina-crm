@@ -204,7 +204,7 @@ const NAV: NavSection[] = [
       { href: "/dashboard/documents", label: "Documents", icon: FolderOpen, module: "documents" },
       { href: "/dashboard/sops", label: "SOP Library", icon: ScrollText, roles: ["owner", "compliance"] },
       { href: "/dashboard/announcements", label: "Announcements", icon: BellRing },
-      { href: "/dashboard/duplicates", label: "Find Duplicates", icon: Copy, roles: ["owner", "branch_head"] },
+      { href: "/dashboard/merge-clients", label: "Merge Clients", icon: Copy, roles: ["owner", "branch_head"] },
       { href: "/dashboard/employees", label: "Employees", icon: UserCog, module: "employees", roles: ["owner", "branch_head"] },
       // Induction is deliberately un-role-gated: it is the member's OWN training.
       { href: "/dashboard/induction", label: "Induction", icon: GraduationCap },

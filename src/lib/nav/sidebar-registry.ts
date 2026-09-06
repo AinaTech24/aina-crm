@@ -69,6 +69,7 @@ export const SIDEBAR_REGISTRY: SidebarEntry[] = [
   { group: "Compliance & Team", href: "/dashboard/sops", label: "SOP Library" },
   { group: "Compliance & Team", href: "/dashboard/announcements", label: "Announcements" },
   { group: "Compliance & Team", href: "/dashboard/duplicates", label: "Find Duplicates" },
+  { group: "Compliance & Team", href: "/dashboard/merge-clients", label: "Merge Clients" },
   { group: "Compliance & Team", href: "/dashboard/employees", label: "Employees" },
   { group: "Compliance & Team", href: "/dashboard/induction", label: "Induction" },
   { group: "Compliance & Team", href: "/dashboard/leave-applications", label: "Leave Applications" },

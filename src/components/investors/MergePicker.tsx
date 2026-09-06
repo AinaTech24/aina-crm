@@ -258,7 +258,7 @@ export function MergePicker() {
 }
 
 /** Undo button for a logged merge. */
-export function UnmergeButton({ mergeId, reversible }: { mergeId: string; reversible: boolean }) {
+export function UnmergeButton({ mergeId, reversible, label = "Undo" }: { mergeId: string; reversible: boolean; label?: string }) {
   const router = useRouter();
   const toast = useToast();
   const [busy, setBusy] = useState(false);
@@ -308,8 +308,8 @@ export function UnmergeButton({ mergeId, reversible }: { mergeId: string; revers
       </button>
     </span>
   ) : (
-    <button onClick={() => setConfirming(true)} className="text-[11px] text-brand-cyan hover:underline">
-      Undo
+    <button onClick={() => setConfirming(true)} className="text-[11px] text-primary hover:underline">
+      {label}
     </button>
   );
 }

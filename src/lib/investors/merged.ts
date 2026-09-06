@@ -137,6 +137,10 @@ export type MergeCandidate = {
   email: string | null;
   phone: string | null;
   city: string | null;
+  /** Exchange UCC when the firm has one — the human-readable "Client ID". */
+  ucc: string | null;
+  /** "line1, city" for the summary table's Address column. */
+  address: string | null;
   aum: number;
   status: string | null;
   folios: number;
@@ -159,6 +163,8 @@ export async function searchMergeCandidates(tx: Tx, q: string, limit = 25): Prom
     SELECT i.id, i.name, i.pan, i.email, i.phone, i.status,
            COALESCE(i.aum::numeric, 0) AS aum,
            i.address->>'city' AS city,
+           i.address->>'line1' AS line1,
+           i.bse_ucc_code AS ucc,
            (SELECT count(*) FROM folios f WHERE f.investor_id = i.id)::int AS folios
       FROM investors i
      WHERE i.deleted_at IS NULL
@@ -178,6 +184,8 @@ export async function searchMergeCandidates(tx: Tx, q: string, limit = 25): Prom
     email: r.email ?? null,
     phone: r.phone ?? null,
     city: r.city ?? null,
+    ucc: r.ucc ?? null,
+    address: [r.line1, r.city].filter(Boolean).join(", ") || null,
     aum: num(r.aum),
     status: r.status ?? null,
     folios: num(r.folios),
