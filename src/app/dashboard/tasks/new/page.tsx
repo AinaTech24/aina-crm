@@ -18,6 +18,8 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   ChevronLeft,
+  ChevronDown,
+  SlidersHorizontal,
   ListChecks,
   Save,
   Loader2,
@@ -114,6 +116,10 @@ export default function NewTaskPage() {
   const [templateId, setTemplateId] = useState("");
   const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
   const [titleTouched, setTitleTouched] = useState(false);
+  // "More options" is closed by default, but never hides something that is
+  // already set — a template or an earlier edit that touched an advanced
+  // field keeps the section open so the user can see what will be saved.
+  const [moreOpen, setMoreOpen] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -232,8 +238,45 @@ export default function NewTaskPage() {
     }
   }
 
+  const advancedTouched =
+    !!form.description.trim() ||
+    !!form.department ||
+    form.type !== "follow_up" ||
+    form.reminder !== "none" ||
+    form.requiresApproval ||
+    !!form.estimateMinutes ||
+    form.tags.length > 0 ||
+    !!form.recurrence ||
+    !!form.relatedLeadId ||
+    !!form.relatedServiceRequestId ||
+    !!form.relatedMeetingId ||
+    checklist.length > 0;
+  const showMore = moreOpen || advancedTouched;
+
+  const DUE_CHIPS: [string, number][] = [
+    ["Today", 0],
+    ["Tomorrow", 1],
+    ["3 days", 3],
+    ["1 week", 7],
+  ];
+  const PRIORITIES: [string, string, string][] = [
+    ["low", "Low", "data-[on=true]:bg-slate-600 data-[on=true]:text-white"],
+    ["normal", "Normal", "data-[on=true]:bg-primary data-[on=true]:text-primary-foreground"],
+    ["high", "High", "data-[on=true]:bg-amber-500 data-[on=true]:text-white"],
+    ["urgent", "Urgent", "data-[on=true]:bg-rose-600 data-[on=true]:text-white"],
+  ];
+
   return (
-    <div className="space-y-4 max-w-4xl mx-auto">
+    <div
+      className="space-y-4 max-w-3xl mx-auto"
+      onKeyDown={(e) => {
+        // Ctrl/Cmd+Enter saves from anywhere in the form.
+        if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && !busy && form.title.trim()) {
+          e.preventDefault();
+          void save();
+        }
+      }}
+    >
       <Link
         href="/dashboard/tasks"
         className="text-sm text-muted-foreground hover:underline hover:text-foreground flex items-center gap-1"
@@ -241,89 +284,51 @@ export default function NewTaskPage() {
         <ChevronLeft className="size-4" /> Back to tasks
       </Link>
 
-      <div>
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="page-title">
           <ListChecks className="size-6 text-brand-cyan" /> New task
         </h1>
+        {templates.length > 0 && (
+          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+            <LayoutTemplate className="size-3.5 text-brand-cyan" />
+            <SelectField
+              value={templateId}
+              onChange={(e) => applyTemplate(e.target.value)}
+              className="w-56"
+            >
+              <option value="">Start from a template…</option>
+              {templates.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </SelectField>
+          </label>
+        )}
       </div>
 
-      {/* Start from a template */}
-      {templates.length > 0 && (
-        <div className="card-surface p-5 space-y-3">
-          <div className="flex items-center gap-2">
-            <div className="h-4 w-1 rounded-full brand-bar" />
-            <h2 className="section-title flex items-center gap-1.5">
-              <LayoutTemplate className="size-4 text-brand-cyan" /> Start from a template
-            </h2>
-          </div>
-          <SelectField
-            value={templateId}
-            onChange={(e) => applyTemplate(e.target.value)}
-            className="w-full sm:max-w-sm"
-          >
-            <option value="">— blank task —</option>
-            {templates.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-          </SelectField>
-          <p className="text-[11px] text-muted-foreground">
-            Switching template replaces the sub-task list.
-          </p>
-        </div>
-      )}
-
-      {/* Title + description */}
-      <div className="card-surface p-5 space-y-3">
-        <div className="flex items-center gap-2">
-          <div className="h-4 w-1 rounded-full brand-bar" />
-          <h2 className="section-title">1. What</h2>
-        </div>
+      {/* ── The three facts that make a task: what, for whom, by when. ── */}
+      <div className="card-surface p-5 space-y-4">
         <label className="block">
           <div className="text-xs font-medium mb-1">
-            Title <span className="text-rose-600">*</span>
+            What needs doing <span className="text-rose-600">*</span>
           </div>
           <input
             value={form.title}
+            autoFocus
             onChange={(e) => {
               setTitleTouched(true);
               set("title", e.target.value);
             }}
-            // placeholder="Call client to share quarterly review"
-            className="input-base"
+            placeholder="e.g. Call Ramesh about the SIP top-up"
+            className="input-base text-base py-2.5"
           />
         </label>
-        <label className="block">
-          <div className="text-xs font-medium mb-1">Description</div>
-          <textarea
-            value={form.description}
-            onChange={(e) => set("description", e.target.value)}
-            rows={3}
-            // placeholder="What needs to happen — context, supporting links, etc."
-            className="input-base"
-          />
-        </label>
-        <label className="block">
-          <div className="text-xs font-medium mb-1">Remarks (live notes — appended over time)</div>
-          <textarea
-            value={form.remarks}
-            onChange={(e) => set("remarks", e.target.value)}
-            rows={2}
-            className="input-base text-xs"
-          />
-        </label>
-      </div>
 
-      {/* Related entities */}
-      <div className="card-surface p-5 space-y-3">
-        <div className="flex items-center gap-2">
-          <div className="h-4 w-1 rounded-full brand-bar" />
-          <h2 className="section-title">2. Related to (any combination)</h2>
-        </div>
-
-        <div>
-          <div className="text-xs font-medium mb-1">Related client</div>
+        <div className="block">
+          <div className="text-xs font-medium mb-1">
+            For client <span className="ml-1 text-[10px] text-muted-foreground font-normal">· optional</span>
+          </div>
           <InvestorLookup
             value={form.relatedInvestorId || null}
             displayName={form.relatedInvestorName || null}
@@ -333,345 +338,393 @@ export default function NewTaskPage() {
             onClear={() =>
               setForm((s) => ({ ...s, relatedInvestorId: "", relatedInvestorName: "" }))
             }
-            placeholder="Search clients…"
+            placeholder="Search clients by name, PAN or phone…"
           />
         </div>
 
-        <RelatedSearch
-          label="Related lead"
-          icon={Sparkles}
-          placeholder="Search leads by name…"
-          pickedId={form.relatedLeadId}
-          pickedLabel={form.relatedLeadName}
-          searchFn={async (q) => {
-            const r = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
-            const j = await r.json();
-            return (j.leads ?? []).map((l: any) => ({
-              id: l.id,
-              label: l.name,
-              sub: `${l.stage ?? "—"} · ${l.source ?? "—"}`,
-            }));
-          }}
-          onPick={(id, label) =>
-            setForm((s) => ({ ...s, relatedLeadId: id, relatedLeadName: label }))
-          }
-          onClear={() => setForm((s) => ({ ...s, relatedLeadId: "", relatedLeadName: "" }))}
-        />
-
-        <RelatedSearch
-          label="Related service request"
-          icon={LifeBuoy}
-          placeholder="Search SR by ticket no. or subject…"
-          pickedId={form.relatedServiceRequestId}
-          pickedLabel={form.relatedServiceRequestLabel}
-          searchFn={async (q) => {
-            const r = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
-            const j = await r.json();
-            return (j.serviceRequests ?? []).map((sr: any) => ({
-              id: sr.id,
-              label: sr.ticket_no ?? sr.id,
-              sub: `${sr.subject ?? "—"} · ${sr.status ?? "—"}`,
-            }));
-          }}
-          onPick={(id, label) =>
-            setForm((s) => ({
-              ...s,
-              relatedServiceRequestId: id,
-              relatedServiceRequestLabel: label,
-            }))
-          }
-          onClear={() =>
-            setForm((s) => ({
-              ...s,
-              relatedServiceRequestId: "",
-              relatedServiceRequestLabel: "",
-            }))
-          }
-        />
-
-        <MeetingPicker
-          pickedId={form.relatedMeetingId}
-          pickedLabel={form.relatedMeetingLabel}
-          onPick={(id, label) =>
-            setForm((s) => ({ ...s, relatedMeetingId: id, relatedMeetingLabel: label }))
-          }
-          onClear={() =>
-            setForm((s) => ({ ...s, relatedMeetingId: "", relatedMeetingLabel: "" }))
-          }
-        />
-      </div>
-
-      {/* Type + dept + priority + due */}
-      <div className="card-surface p-5 space-y-3">
-        <div className="flex items-center gap-2">
-          <div className="h-4 w-1 rounded-full brand-bar" />
-          <h2 className="section-title">3. Routing + schedule</h2>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          <label className="block">
-            <div className="text-xs font-medium mb-1">Type</div>
-            <SelectField
-              value={form.type}
-              onChange={(e) => set("type", e.target.value)}
-              className="w-full"
-            >
-              <option value="follow_up">Follow-up</option>
-              <option value="review_meeting">Review meeting</option>
-              <option value="collect_document">Collect document</option>
-              <option value="kyc_renewal">KYC renewal</option>
-              <option value="mandate_renewal">Mandate renewal</option>
-              <option value="custom">Custom</option>
-            </SelectField>
-            {form.type === "custom" && (
-              <input
-                value={form.customType}
-                onChange={(e) => set("customType", e.target.value)}
-                placeholder="Custom type name (e.g. Portfolio rebalance)"
-                autoFocus
-                className="mt-2 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:border-brand-cyan focus:ring-2 focus:ring-brand-cyan/15"
-              />
-            )}
-          </label>
-          <label className="block">
-            <div className="text-xs font-medium mb-1">Department</div>
-            <SelectField
-              value={form.department}
-              onChange={(e) => set("department", e.target.value)}
-              className="w-full"
-            >
-              <option value="">Select</option>
-              {DEPARTMENTS.map(([k, l]) => (
-                <option key={k} value={k}>
-                  {l}
-                </option>
-              ))}
-            </SelectField>
-          </label>
-          <label className="block">
-            <div className="text-xs font-medium mb-1">Priority</div>
-            <SelectField
-              value={form.priority}
-              onChange={(e) => set("priority", e.target.value)}
-              className="w-full"
-            >
-              <option value="low">Low</option>
-              <option value="normal">Normal</option>
-              <option value="high">High</option>
-              <option value="urgent">Urgent</option>
-            </SelectField>
-          </label>
-          <label className="block">
-            <div className="text-xs font-medium mb-1">Due date</div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="block">
+            <div className="text-xs font-medium mb-1">Due</div>
             <DateField
               value={form.dueDate}
               onChange={(e) => set("dueDate", e.target.value)}
               className="w-full"
             />
-          </label>
-          <label className="block sm:col-span-2">
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              {DUE_CHIPS.map(([label, days]) => {
+                const v = defaultDueDate(days);
+                const on = form.dueDate === v;
+                return (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() => set("dueDate", v)}
+                    className={`rounded-full border px-2 py-0.5 text-[11px] transition ${
+                      on ? "bg-brand-cyan-light/50 border-brand-cyan/40 text-brand-cyan-deep font-medium" : "bg-card hover:bg-secondary"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <label className="block">
             <div className="text-xs font-medium mb-1">
-              Assign to
-              <span className="ml-1 text-[10px] text-muted-foreground font-normal">
-                · defaults to you
-              </span>
+              Assign to <span className="ml-1 text-[10px] text-muted-foreground font-normal">· leave blank for yourself</span>
             </div>
             <RmSelector
               value={form.assigneeId || null}
               onChange={(id) => set("assigneeId", id ?? "")}
-              placeholder="Assign to myself"
+              placeholder="Me"
             />
           </label>
         </div>
 
-        {/* Recurrence (Sanchay "Enable Recurring" parity) */}
-        <div className="rounded-lg border border-border bg-secondary/30 p-3">
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={!!form.recurrence}
-              onChange={(e) => set("recurrence", e.target.checked ? "monthly" : "")}
-              className="size-3.5 rounded"
-            />
-            <span className="text-xs font-medium">Repeat this task (recurring)</span>
-          </label>
-          {form.recurrence && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+        <div className="block">
+          <div className="text-xs font-medium mb-1">Priority</div>
+          <div className="inline-flex rounded-lg border border-border bg-card p-0.5 gap-0.5" role="radiogroup" aria-label="Priority">
+            {PRIORITIES.map(([value, label, onCls]) => (
+              <button
+                key={value}
+                type="button"
+                role="radio"
+                aria-checked={form.priority === value}
+                data-on={form.priority === value}
+                onClick={() => set("priority", value)}
+                className={`rounded-md px-3 py-1 text-xs font-medium transition hover:bg-secondary ${onCls}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Everything else, behind one disclosure. ── */}
+      <div className="card-surface">
+        <button
+          type="button"
+          onClick={() => setMoreOpen((v) => !v)}
+          aria-expanded={showMore}
+          className="w-full flex items-center justify-between gap-3 px-5 py-3 text-sm hover:bg-secondary/40 rounded-lg"
+        >
+          <span className="flex items-center gap-2 font-medium">
+            <SlidersHorizontal className="size-4 text-brand-cyan" /> More options
+            <span className="text-[11px] text-muted-foreground font-normal">
+              · description, type, reminder, repeat, links, sub-tasks
+            </span>
+          </span>
+          <ChevronDown className={`size-4 text-muted-foreground transition-transform ${showMore ? "rotate-180" : ""}`} />
+        </button>
+
+        {showMore && (
+          <div className="px-5 pb-5 space-y-5 border-t border-border pt-4">
+            <label className="block">
+              <div className="text-xs font-medium mb-1">Description</div>
+              <textarea
+                value={form.description}
+                onChange={(e) => set("description", e.target.value)}
+                rows={3}
+                placeholder="Context, what good looks like, links…"
+                className="input-base"
+              />
+            </label>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <label className="block">
-                <div className="text-xs font-medium mb-1">Frequency</div>
+                <div className="text-xs font-medium mb-1">Type</div>
                 <SelectField
-                  value={form.recurrence}
-                  onChange={(e) => set("recurrence", e.target.value)}
+                  value={form.type}
+                  onChange={(e) => set("type", e.target.value)}
                   className="w-full"
                 >
-                  <option value="daily">Daily</option>
-                  <option value="weekly">Weekly</option>
-                  <option value="monthly">Monthly</option>
-                  <option value="quarterly">Quarterly</option>
-                  <option value="yearly">Yearly</option>
+                  <option value="follow_up">Follow-up</option>
+                  <option value="review_meeting">Review meeting</option>
+                  <option value="collect_document">Collect document</option>
+                  <option value="kyc_renewal">KYC renewal</option>
+                  <option value="mandate_renewal">Mandate renewal</option>
+                  <option value="custom">Custom…</option>
+                </SelectField>
+                {form.type === "custom" && (
+                  <input
+                    value={form.customType}
+                    onChange={(e) => set("customType", e.target.value)}
+                    placeholder="Custom type name (e.g. Portfolio rebalance)"
+                    autoFocus
+                    className="mt-2 input-base"
+                  />
+                )}
+              </label>
+              <label className="block">
+                <div className="text-xs font-medium mb-1">Department</div>
+                <SelectField
+                  value={form.department}
+                  onChange={(e) => set("department", e.target.value)}
+                  className="w-full"
+                >
+                  <option value="">Not set</option>
+                  {DEPARTMENTS.map(([k, l]) => (
+                    <option key={k} value={k}>
+                      {l}
+                    </option>
+                  ))}
+                </SelectField>
+              </label>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <label className="block">
+                <div className="text-xs font-medium mb-1 flex items-center gap-1">
+                  <Bell className="size-3.5 text-brand-cyan" /> Reminder
+                </div>
+                <SelectField
+                  value={form.reminder}
+                  onChange={(e) => set("reminder", e.target.value)}
+                  className="w-full"
+                  disabled={!form.dueDate}
+                >
+                  <option value="none">None</option>
+                  <option value="at_due">At due time</option>
+                  <option value="1h">1 hour before</option>
+                  <option value="3h">3 hours before</option>
+                  <option value="1d">1 day before</option>
+                  <option value="2d">2 days before</option>
+                  <option value="1w">1 week before</option>
                 </SelectField>
               </label>
               <label className="block">
-                <div className="text-xs font-medium mb-1">Repeat until (optional)</div>
-                <DateField
-                  value={form.recurrenceUntil}
-                  onChange={(e) => set("recurrenceUntil", e.target.value)}
-                  className="w-full"
+                <div className="text-xs font-medium mb-1 flex items-center gap-1">
+                  <Timer className="size-3.5 text-brand-cyan" /> Estimate <span className="text-[10px] text-muted-foreground font-normal">· minutes</span>
+                </div>
+                <input
+                  type="number"
+                  min={0}
+                  value={form.estimateMinutes}
+                  onChange={(e) => set("estimateMinutes", e.target.value)}
+                  placeholder="e.g. 30"
+                  className="input-base"
                 />
               </label>
-              <p className="sm:col-span-2 text-[11px] text-muted-foreground">
-                When you complete this task, the next occurrence is created automatically with its due
-                date advanced — perfect for monthly SIP reviews, quarterly client reviews, or annual KYC/FATCA renewals.
-              </p>
-            </div>
-          )}
-        </div>
-
-        {/* Reminder + approval */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <label className="block">
-            <div className="text-xs font-medium mb-1 flex items-center gap-1">
-              <Bell className="size-3.5 text-brand-cyan" /> Reminder <span className="text-[10px] text-muted-foreground font-normal">· pings the assignee</span>
-            </div>
-            <SelectField
-              value={form.reminder}
-              onChange={(e) => set("reminder", e.target.value)}
-              className="w-full"
-              disabled={!form.dueDate}
-            >
-              <option value="none">No reminder</option>
-              <option value="at_due">At due time</option>
-              <option value="1h">1 hour before due</option>
-              <option value="3h">3 hours before due</option>
-              <option value="1d">1 day before due</option>
-              <option value="2d">2 days before due</option>
-              <option value="1w">1 week before due</option>
-            </SelectField>
-          </label>
-          <label className="flex items-start gap-2 sm:pt-6 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={form.requiresApproval}
-              onChange={(e) => set("requiresApproval", e.target.checked)}
-              className="size-3.5 rounded mt-0.5"
-            />
-            <span className="text-xs">
-              <span className="font-medium flex items-center gap-1"><ShieldCheck className="size-3.5 text-brand-cyan" /> Require my approval</span>
-              <span className="block text-[10px] text-muted-foreground mt-0.5">
-                The assignee submits for sign-off instead of completing it directly.
-              </span>
-            </span>
-          </label>
-
-          <label className="block">
-            <div className="text-xs font-medium mb-1 flex items-center gap-1">
-              <Timer className="size-3.5 text-brand-cyan" /> Estimate <span className="text-[10px] text-muted-foreground font-normal">· minutes</span>
-            </div>
-            <input
-              type="number"
-              min={0}
-              value={form.estimateMinutes}
-              onChange={(e) => set("estimateMinutes", e.target.value)}
-              placeholder="e.g. 30"
-              className="input-base"
-            />
-          </label>
-
-          <div className="block">
-            <div className="text-xs font-medium mb-1 flex items-center gap-1">
-              <TagIcon className="size-3.5 text-brand-cyan" /> Tags
-            </div>
-            <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-border bg-background px-2 py-1.5 min-h-[38px]">
-              {form.tags.map((tg) => (
-                <span key={tg} className="chip text-[10px] bg-slate-100 text-slate-600 border border-slate-200 inline-flex items-center gap-1">
-                  {tg}
-                  <button type="button" onClick={() => set("tags", form.tags.filter((x) => x !== tg))} className="hover:text-rose-600" aria-label={`Remove ${tg}`}>
-                    <X className="size-2.5" />
-                  </button>
+              <label className="flex items-start gap-2 sm:pt-6 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.requiresApproval}
+                  onChange={(e) => set("requiresApproval", e.target.checked)}
+                  className="size-3.5 rounded mt-0.5"
+                />
+                <span className="text-xs">
+                  <span className="font-medium flex items-center gap-1"><ShieldCheck className="size-3.5 text-brand-cyan" /> Needs my approval</span>
+                  <span className="block text-[10px] text-muted-foreground mt-0.5">
+                    Assignee submits for sign-off instead of closing it.
+                  </span>
                 </span>
-              ))}
-              <input
-                value={tagInput}
-                onChange={(e) => setTagInput(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter" || e.key === ",") { e.preventDefault(); addTag(tagInput); } }}
-                onBlur={() => tagInput.trim() && addTag(tagInput)}
-                placeholder="Add tag…"
-                className="flex-1 min-w-[80px] bg-transparent text-xs focus:outline-none"
+              </label>
+            </div>
+
+            <div className="block">
+              <div className="text-xs font-medium mb-1 flex items-center gap-1">
+                <TagIcon className="size-3.5 text-brand-cyan" /> Tags
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-border bg-background px-2 py-1.5 min-h-[38px]">
+                {form.tags.map((tg) => (
+                  <span key={tg} className="chip text-[10px] bg-slate-100 text-slate-600 border border-slate-200 inline-flex items-center gap-1">
+                    {tg}
+                    <button type="button" onClick={() => set("tags", form.tags.filter((x) => x !== tg))} className="hover:text-rose-600" aria-label={`Remove ${tg}`}>
+                      <X className="size-2.5" />
+                    </button>
+                  </span>
+                ))}
+                <input
+                  value={tagInput}
+                  onChange={(e) => setTagInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === ",") { e.preventDefault(); addTag(tagInput); } }}
+                  onBlur={() => tagInput.trim() && addTag(tagInput)}
+                  placeholder="Add tag…"
+                  className="flex-1 min-w-[80px] bg-transparent text-xs focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-border bg-secondary/30 p-3">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={!!form.recurrence}
+                  onChange={(e) => set("recurrence", e.target.checked ? "monthly" : "")}
+                  className="size-3.5 rounded"
+                />
+                <span className="text-xs font-medium">Repeat this task</span>
+                <span className="text-[10px] text-muted-foreground">· the next one is created when this is completed</span>
+              </label>
+              {form.recurrence && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+                  <label className="block">
+                    <div className="text-xs font-medium mb-1">Every</div>
+                    <SelectField
+                      value={form.recurrence}
+                      onChange={(e) => set("recurrence", e.target.value)}
+                      className="w-full"
+                    >
+                      <option value="daily">Day</option>
+                      <option value="weekly">Week</option>
+                      <option value="monthly">Month</option>
+                      <option value="quarterly">Quarter</option>
+                      <option value="yearly">Year</option>
+                    </SelectField>
+                  </label>
+                  <label className="block">
+                    <div className="text-xs font-medium mb-1">Until <span className="text-[10px] text-muted-foreground font-normal">· optional</span></div>
+                    <DateField
+                      value={form.recurrenceUntil}
+                      onChange={(e) => set("recurrenceUntil", e.target.value)}
+                      className="w-full"
+                    />
+                  </label>
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-3">
+              <div className="text-xs font-medium">Also link to</div>
+              <RelatedSearch
+                label="Lead"
+                icon={Sparkles}
+                placeholder="Search leads by name…"
+                pickedId={form.relatedLeadId}
+                pickedLabel={form.relatedLeadName}
+                searchFn={async (q) => {
+                  const r = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+                  const j = await r.json();
+                  return (j.leads ?? []).map((l: any) => ({
+                    id: l.id,
+                    label: l.name,
+                    sub: `${l.stage ?? "—"} · ${l.source ?? "—"}`,
+                  }));
+                }}
+                onPick={(id, label) =>
+                  setForm((s) => ({ ...s, relatedLeadId: id, relatedLeadName: label }))
+                }
+                onClear={() => setForm((s) => ({ ...s, relatedLeadId: "", relatedLeadName: "" }))}
+              />
+              <RelatedSearch
+                label="Service request"
+                icon={LifeBuoy}
+                placeholder="Search SR by ticket no. or subject…"
+                pickedId={form.relatedServiceRequestId}
+                pickedLabel={form.relatedServiceRequestLabel}
+                searchFn={async (q) => {
+                  const r = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+                  const j = await r.json();
+                  return (j.serviceRequests ?? []).map((sr: any) => ({
+                    id: sr.id,
+                    label: sr.ticket_no ?? sr.id,
+                    sub: `${sr.subject ?? "—"} · ${sr.status ?? "—"}`,
+                  }));
+                }}
+                onPick={(id, label) =>
+                  setForm((s) => ({
+                    ...s,
+                    relatedServiceRequestId: id,
+                    relatedServiceRequestLabel: label,
+                  }))
+                }
+                onClear={() =>
+                  setForm((s) => ({
+                    ...s,
+                    relatedServiceRequestId: "",
+                    relatedServiceRequestLabel: "",
+                  }))
+                }
+              />
+              <MeetingPicker
+                pickedId={form.relatedMeetingId}
+                pickedLabel={form.relatedMeetingLabel}
+                onPick={(id, label) =>
+                  setForm((s) => ({ ...s, relatedMeetingId: id, relatedMeetingLabel: label }))
+                }
+                onClear={() =>
+                  setForm((s) => ({ ...s, relatedMeetingId: "", relatedMeetingLabel: "" }))
+                }
               />
             </div>
-          </div>
-        </div>
 
-        {/* Sub-tasks (checklist — stored in meta.checklist, editable in the task drawer) */}
-        {checklist.length > 0 || templateId ? (
-          <div className="rounded-lg border border-border bg-secondary/30 p-3 space-y-2">
-            <div className="flex items-center gap-2">
-              <ListChecks className="size-3.5 text-brand-cyan" />
-              <span className="text-xs font-medium">Sub-tasks</span>
-              <span className="inline-flex items-center rounded-full bg-brand-cyan-light/60 text-brand-cyan-deep text-[10px] font-medium px-2 py-0.5">
-                {checklist.length} sub-task{checklist.length === 1 ? "" : "s"}
-              </span>
-            </div>
-            {checklist.map((c, i) => (
-              <div key={c.id} className="flex items-center gap-2">
-                <input
-                  value={c.text}
-                  onChange={(e) =>
-                    setChecklist((list) =>
-                      list.map((x, j) => (j === i ? { ...x, text: e.target.value } : x))
-                    )
-                  }
-                  placeholder="Sub-task…"
-                  className="input-base flex-1"
-                />
+            {checklist.length > 0 ? (
+              <div className="rounded-lg border border-border bg-secondary/30 p-3 space-y-2">
+                <div className="flex items-center gap-2">
+                  <ListChecks className="size-3.5 text-brand-cyan" />
+                  <span className="text-xs font-medium">Sub-tasks</span>
+                  <span className="inline-flex items-center rounded-full bg-brand-cyan-light/60 text-brand-cyan-deep text-[10px] font-medium px-2 py-0.5">
+                    {checklist.length}
+                  </span>
+                </div>
+                {checklist.map((c, i) => (
+                  <div key={c.id} className="flex items-center gap-2">
+                    <input
+                      value={c.text}
+                      onChange={(e) =>
+                        setChecklist((list) =>
+                          list.map((x, j) => (j === i ? { ...x, text: e.target.value } : x))
+                        )
+                      }
+                      placeholder="Sub-task…"
+                      className="input-base flex-1"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setChecklist((list) => list.filter((_, j) => j !== i))}
+                      className="btn-icon"
+                      title="Remove sub-task"
+                    >
+                      <X className="size-3.5" />
+                    </button>
+                  </div>
+                ))}
                 <button
                   type="button"
-                  onClick={() => setChecklist((list) => list.filter((_, j) => j !== i))}
-                  className="btn-icon"
-                  title="Remove sub-task"
+                  onClick={() =>
+                    setChecklist((list) => [
+                      ...list,
+                      { id: crypto.randomUUID(), text: "", done: false },
+                    ])
+                  }
+                  className="btn-secondary text-xs"
                 >
-                  <X className="size-3.5" />
+                  <Plus className="size-3.5" /> Add sub-task
                 </button>
               </div>
-            ))}
-            <button
-              type="button"
-              onClick={() =>
-                setChecklist((list) => [
-                  ...list,
-                  { id: crypto.randomUUID(), text: "", done: false },
-                ])
-              }
-              className="btn-secondary text-xs"
-            >
-              <Plus className="size-3.5" /> Add sub-task
-            </button>
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() =>
-              setChecklist([{ id: crypto.randomUUID(), text: "", done: false }])
-            }
-            className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
-          >
-            <Plus className="size-3.5" /> Add sub-tasks
-          </button>
-        )}
-
-        {err && (
-          <div className="rounded-lg border border-destructive/30 bg-destructive/5 text-destructive text-sm px-3 py-2">
-            {err}
+            ) : (
+              <button
+                type="button"
+                onClick={() =>
+                  setChecklist([{ id: crypto.randomUUID(), text: "", done: false }])
+                }
+                className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+              >
+                <Plus className="size-3.5" /> Add sub-tasks
+              </button>
+            )}
           </div>
         )}
+      </div>
 
-        <div className="flex flex-wrap justify-end gap-2 pt-2 border-t border-border">
+      {err && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 text-destructive text-sm px-3 py-2">
+          {err}
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="text-[11px] text-muted-foreground hidden sm:inline">Ctrl + Enter to save</span>
+        <div className="flex gap-2 ml-auto">
           <Link href="/dashboard/tasks" className="btn-secondary">
             Cancel
           </Link>
           <button
             type="button"
             onClick={save}
-            disabled={busy || !form.title}
+            disabled={busy || !form.title.trim()}
             className="btn-primary"
           >
             {busy ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
