@@ -70,8 +70,10 @@ export type RiskProfilePdfData = {
   bands?: RiskPdfBand[] | null;
   /** The firm's template questions — lets the report list every option. */
   questions?: RiskPdfQuestion[] | null;
-  /** Optional template description — printed as the cover tagline. */
+  /** Optional template description (admin-facing; not printed). */
   templateDescription?: string | null;
+  /** Client's uploaded signature / signed form, when it is a PNG or JPEG. */
+  signatureImage?: { bytes: Uint8Array; mime: string } | null;
 };
 
 export type RiskProfileInvestor = {
@@ -292,39 +294,59 @@ export async function renderRiskProfilePdf(args: RenderRiskProfileArgs): Promise
   }
   y -= 22;
 
-  // Title + tagline
+  // Purpose — why this document exists, in client-facing compliance terms.
   page.drawRectangle({ x: MARGIN, y, width: CONTENT_W, height: 1, color: LINE });
-  y -= 30;
-  page.drawText("Risk Profile Report", { x: MARGIN, y, size: 20, font: bold, color: INK });
-  y -= 18;
-  const tagline =
-    (profile.templateDescription ?? "").trim() ||
-    "Understanding your comfort with investment risk, so recommendations fit your goals, horizon and temperament.";
-  for (const ln of wrap(ascii(tagline), helv, 10, CONTENT_W).slice(0, 2)) {
-    page.drawText(ln, { x: MARGIN, y, size: 10, font: helv, color: MUTED });
+  y -= 26;
+  page.drawText("PURPOSE OF THIS REPORT", { x: MARGIN, y, size: 8, font: bold, color: primary });
+  y -= 15;
+  const purpose =
+    `This report records the outcome of the risk-profiling questionnaire completed by the client and the resulting ` +
+    `risk category. ${firm} uses it to assess the suitability of mutual fund schemes before making recommendations, ` +
+    `in line with the product-suitability obligations of an AMFI-registered distributor. It should be reviewed at ` +
+    `least annually and whenever the client's financial circumstances, goals or investment horizon change.`;
+  for (const ln of wrap(ascii(purpose), helv, 9.5, CONTENT_W).slice(0, 5)) {
+    page.drawText(ln, { x: MARGIN, y, size: 9.5, font: helv, color: SLATE });
     y -= 13;
   }
+  y -= 18;
 
-  // Prepared on / for / by
-  y = Math.min(y - 30, 430);
-  page.drawText("PREPARED ON", { x: LEFT_X, y, size: 7.5, font: bold, color: MUTED });
-  page.drawText(ascii(fmtDateLong(profile.profileDate ?? ctx.generatedAt)), {
-    x: LEFT_X + 80,
-    y,
-    size: 9.5,
-    font: bold,
-    color: INK,
+  // Key facts — four stacked label/value cells in one strip.
+  const facts: Array<[string, string]> = [
+    ["PREPARED ON", fmtDateLong(profile.profileDate ?? ctx.generatedAt)],
+    ["SIGNED ON", profile.signedAt ? fmtDate(profile.signedAt) : "Pending"],
+    ["VERIFICATION", profile.verificationMethod ? verificationLabel(profile.verificationMethod) : "Not recorded"],
+    ["REVIEW DUE", profile.nextReviewAt ? fmtDate(profile.nextReviewAt) : "Not set"],
+  ];
+  const cellH = 44;
+  const cellW = CONTENT_W / facts.length;
+  page.drawRectangle({
+    x: MARGIN,
+    y: y - cellH,
+    width: CONTENT_W,
+    height: cellH,
+    color: PAPER,
+    borderColor: LINE,
+    borderWidth: 1,
   });
-  y -= 26;
+  facts.forEach(([label, value], i) => {
+    const cx = MARGIN + i * cellW;
+    if (i > 0) page.drawRectangle({ x: cx, y: y - cellH + 7, width: 0.8, height: cellH - 14, color: LINE });
+    page.drawText(label, { x: cx + 12, y: y - 15, size: 7, font: bold, color: MUTED });
+    const v = ascii(value);
+    const vs = fitSize(v, bold, cellW - 24, 10.5, 8);
+    page.drawText(v, { x: cx + 12, y: y - 31, size: vs, font: bold, color: INK });
+  });
+  y -= cellH + 30;
 
   const blockTop = y;
   // Prepared for — client
   let ly = blockTop;
   page.drawText("PREPARED FOR", { x: LEFT_X, y: ly, size: 7.5, font: bold, color: MUTED });
   ly -= 16;
-  for (const ln of wrap(ascii(clientName), bold, 12.5, COL_W).slice(0, 2)) {
-    page.drawText(ln, { x: LEFT_X, y: ly, size: 12.5, font: bold, color: INK });
-    ly -= 15;
+  const clientSize = fitSize(ascii(clientName), bold, COL_W, 12.5, 10);
+  for (const ln of wrap(ascii(clientName), bold, clientSize, COL_W).slice(0, 2)) {
+    page.drawText(ln, { x: LEFT_X, y: ly, size: clientSize, font: bold, color: INK });
+    ly -= clientSize + 3;
   }
   const idBits = [investor.pan ? `PAN ${investor.pan}` : null, profile.age != null ? `Age ${profile.age}` : null]
     .filter(Boolean)
@@ -352,9 +374,10 @@ export async function renderRiskProfilePdf(args: RenderRiskProfileArgs): Promise
   let ry = blockTop;
   page.drawText("PREPARED BY", { x: RIGHT_X, y: ry, size: 7.5, font: bold, color: MUTED });
   ry -= 16;
-  for (const ln of wrap(ascii(firm), bold, 12.5, COL_W).slice(0, 2)) {
-    page.drawText(ln, { x: RIGHT_X, y: ry, size: 12.5, font: bold, color: INK });
-    ry -= 15;
+  const firmSize = fitSize(ascii(firm), bold, COL_W, 12.5, 10);
+  for (const ln of wrap(ascii(firm), bold, firmSize, COL_W).slice(0, 2)) {
+    page.drawText(ln, { x: RIGHT_X, y: ry, size: firmSize, font: bold, color: INK });
+    ry -= firmSize + 3;
   }
   page.drawText("AMFI-Registered Mutual Fund Distributor", { x: RIGHT_X, y: ry, size: 9, font: helv, color: primary });
   ry -= 13;
@@ -391,32 +414,11 @@ export async function renderRiskProfilePdf(args: RenderRiskProfileArgs): Promise
     ry -= 11;
   }
 
-  // Validity strip above the footer
-  const stripH = 34;
-  const stripY = FOOTER_TOP + 30;
-  page.drawRectangle({
-    x: MARGIN,
-    y: stripY,
-    width: CONTENT_W,
-    height: stripH,
-    color: PAPER,
-    borderColor: LINE,
-    borderWidth: 1,
-  });
-  const validBits = [
-    profile.nextReviewAt ? `Review due ${fmtDate(profile.nextReviewAt)}` : null,
-    profile.signedAt
-      ? `Signed ${fmtDate(profile.signedAt)}${profile.signedByName ? ` by ${profile.signedByName}` : ""}`
-      : "Awaiting client sign-off",
-    profile.verificationMethod ? `Verified via ${verificationLabel(profile.verificationMethod)}` : null,
-  ].filter(Boolean) as string[];
-  page.drawText(ascii(validBits.join("     -     ")), {
-    x: MARGIN + 14,
-    y: stripY + 13,
-    size: 8.5,
-    font: helv,
-    color: SLATE,
-  });
+  // Confidentiality line above the footer.
+  page.drawText(
+    ascii(`Confidential - prepared solely for ${clientName}. Not to be circulated to or relied upon by any other person.`),
+    { x: MARGIN, y: FOOTER_TOP + 34, size: 7.5, font: helv, color: MUTED }
+  );
   drawFooter(page, ctx);
 
   // Shared page-break guard for every flowing section below.
@@ -604,7 +606,7 @@ export async function renderRiskProfilePdf(args: RenderRiskProfileArgs): Promise
 
   const optSize = 9.5;
   const optLineH = 12;
-  const optPad = 7;
+  const optPad = 6;
   let idx = 1;
   for (const r of items) {
     const tq = r.key ? byKey.get(r.key) : undefined;
@@ -628,7 +630,7 @@ export async function renderRiskProfilePdf(args: RenderRiskProfileArgs): Promise
     page.drawText(num, { x: MARGIN + 8 - bold.widthOfTextAtSize(num, 7.5) / 2, y: y + 0.5, size: 7.5, font: bold, color: WHITE });
     for (const ln of qLines) {
       page.drawText(ln, { x: MARGIN + 24, y, size: 10, font: bold, color: INK });
-      y -= 14;
+      y -= 12;
     }
     y -= 2;
 
@@ -673,16 +675,32 @@ export async function renderRiskProfilePdf(args: RenderRiskProfileArgs): Promise
       y -= rowH;
     });
 
-    y -= 8;
+    y -= 6;
     page.drawRectangle({ x: MARGIN, y, width: CONTENT_W, height: 0.6, color: LINE });
-    y -= 14;
+    y -= 12;
     idx++;
   }
 
   // ═══════════════════════ 4. DECLARATION ═══════════════════════════════
+  let sigImg: PDFImage | null = null;
+  if (profile.signatureImage?.bytes?.length) {
+    try {
+      sigImg = /png/i.test(profile.signatureImage.mime)
+        ? await doc.embedPng(profile.signatureImage.bytes)
+        : await doc.embedJpg(profile.signatureImage.bytes);
+    } catch {
+      sigImg = null;
+    }
+  }
   const declLines = wrap(ascii(DECLARATION), helv, 9, CONTENT_W - 24);
-  ensure(30 + declLines.length * 12 + 90);
-  y -= 4;
+  const disclosure = ascii(
+    `Disclosure: ${firm} is an AMFI-registered mutual fund distributor${arnNo ? ` (ARN-${arnNo})` : ""} and receives ` +
+      `distribution commission from asset management companies for the schemes it distributes. This report records the ` +
+      `client's risk appetite for product-suitability purposes and does not constitute investment advice.`
+  );
+  const discLines = wrap(disclosure, helv, 7.5, CONTENT_W);
+  const sigImgH = sigImg ? 48 : 0;
+  ensure(16 + declLines.length * 12 + 16 + 20 + discLines.length * 10 + 26 + 28 + sigImgH);
   sectionTitle(page, ctx, y, "DECLARATION");
   y -= 20;
   page.drawRectangle({
@@ -699,9 +717,20 @@ export async function renderRiskProfilePdf(args: RenderRiskProfileArgs): Promise
     page.drawText(ln, { x: MARGIN + 12, y: dy, size: 9, font: helv, color: SLATE });
     dy -= 12;
   }
-  y = dy - 44;
+  y = dy - 20;
+  for (const ln of discLines) {
+    page.drawText(ln, { x: MARGIN, y, size: 7.5, font: helv, color: MUTED });
+    y -= 10;
+  }
+  y -= 26 + sigImgH;
 
-  // Signature row — client (left) and firm (right)
+  // Signature row — client (left, with the uploaded signature when we have one) and firm (right)
+  if (sigImg) {
+    const maxW = COL_W - 24;
+    const maxH = 44;
+    const k = Math.min(maxW / sigImg.width, maxH / sigImg.height);
+    page.drawImage(sigImg, { x: LEFT_X + 6, y: y + 6, width: sigImg.width * k, height: sigImg.height * k });
+  }
   page.drawRectangle({ x: LEFT_X, y, width: COL_W, height: 0.8, color: SLATE });
   page.drawRectangle({ x: RIGHT_X, y, width: COL_W, height: 0.8, color: SLATE });
   y -= 12;
@@ -712,7 +741,7 @@ export async function renderRiskProfilePdf(args: RenderRiskProfileArgs): Promise
     ? `Signed ${fmtDateTime(profile.signedAt)}${profile.verificationMethod ? `  -  ${verificationLabel(profile.verificationMethod)}` : ""}`
     : "Client signature pending";
   page.drawText(ascii(sigMeta), { x: LEFT_X, y, size: 8, font: helv, color: MUTED });
-  page.drawText("Authorised representative", { x: RIGHT_X, y, size: 8, font: helv, color: MUTED });
+  page.drawText("Authorised Signatory", { x: RIGHT_X, y, size: 8, font: helv, color: MUTED });
 
   drawFooter(page, ctx);
   drawPageNumbers(doc, helv, W, 8);
@@ -769,10 +798,7 @@ function drawHeader(page: PDFPage, ctx: Ctx, full: boolean): number {
     logo,
     firmName: brand.legalName ?? brand.displayName,
     title: "RISK PROFILE REPORT",
-    subtitles: [
-      `Prepared on ${fmtDate(ctx.preparedOn)}`,
-      ctx.refId ? `Ref ${String(ctx.refId).slice(0, 8).toUpperCase()}` : null,
-    ],
+    subtitles: [ctx.refId ? `Ref ${String(ctx.refId).slice(0, 8).toUpperCase()}` : null],
     arn: brand.arn,
     primary,
     secondary,
@@ -836,6 +862,16 @@ function addressLines(a?: PostalAddress | null): string[] {
 
 function verificationLabel(method: string): string {
   const m = method.toLowerCase();
+  switch (m) {
+    case "client_otp":
+      return "Email OTP verified";
+    case "client_physical":
+      return "Signed form uploaded";
+    case "client_link":
+      return "Secure link (self-submitted)";
+    case "rm_entry":
+      return "Recorded by RM";
+  }
   if (m.includes("otp") && m.includes("email")) return "Email OTP";
   if (m.includes("otp")) return "OTP";
   if (m.includes("signature") || m.includes("upload")) return "Uploaded signature";
@@ -896,6 +932,12 @@ function fmtDateTime(iso: string): string {
 }
 function titleCase(s: string): string {
   return s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+/** Largest font size (stepping down by 0.5 to `min`) at which `text` fits in `maxW`. */
+function fitSize(text: string, font: PDFFont, maxW: number, start: number, min: number): number {
+  let s = start;
+  while (s > min && font.widthOfTextAtSize(text, s) > maxW) s -= 0.5;
+  return s;
 }
 function wrap(text: string, font: PDFFont, size: number, maxWidth: number): string[] {
   const words = (text || "").split(/\s+/).filter(Boolean);

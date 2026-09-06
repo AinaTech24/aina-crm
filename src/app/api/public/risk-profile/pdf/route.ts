@@ -14,6 +14,7 @@ import { withSystem, withTenant } from "@/db/client";
 import { shareTokens } from "@/db/schema";
 import { renderRiskProfilePdf } from "@/lib/risk-profile/risk-profile-pdf";
 import { loadActiveTemplate } from "@/lib/risk-profile/template";
+import { loadSignatureImage } from "@/lib/risk-profile/signature-image";
 import { enforce } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
@@ -42,7 +43,7 @@ export async function GET(req: NextRequest) {
     const built = await withTenant(tk.tenantId, async (tx) => {
       const r = await tx.execute(sql`
         SELECT id, final_category, total_score, responses, profile_date, age,
-               signed_at, signed_by_name, next_review_at, verification_method
+               signed_at, signed_by_name, next_review_at, verification_method, document_url
         FROM risk_profile_responses
         WHERE investor_id = ${tk.subjectId}::uuid AND tenant_id = ${tk.tenantId}::uuid
         ORDER BY signed_at DESC NULLS LAST
@@ -101,6 +102,7 @@ export async function GET(req: NextRequest) {
           nextReviewAt: row.next_review_at ?? null,
           age: row.age != null ? Number(row.age) : null,
           verificationMethod: row.verification_method ?? null,
+          signatureImage: await loadSignatureImage(row.document_url),
           responses: Array.isArray(row.responses) ? row.responses : [],
           bands: tpl?.bands ?? null,
           questions: tpl?.questions ?? null,

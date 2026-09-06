@@ -12,6 +12,7 @@ import { requireSession } from "@/lib/auth/session";
 import { requireAny, can } from "@/lib/auth/rbac";
 import { renderRiskProfilePdf } from "@/lib/risk-profile/risk-profile-pdf";
 import { loadActiveTemplate } from "@/lib/risk-profile/template";
+import { loadSignatureImage } from "@/lib/risk-profile/signature-image";
 
 export const dynamic = "force-dynamic";
 
@@ -37,7 +38,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       const r = await tx.execute(sql`
         SELECT
           r.final_category, r.total_score, r.responses, r.profile_date, r.age,
-          r.signed_at, r.signed_by_name, r.next_review_at, r.verification_method,
+          r.signed_at, r.signed_by_name, r.next_review_at, r.verification_method, r.document_url,
           i.name AS investor_name, i.pan AS investor_pan,
           i.address AS investor_address, i.email AS investor_email, i.phone AS investor_phone
         FROM risk_profile_responses r
@@ -74,6 +75,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
           nextReviewAt: row.next_review_at ?? null,
           age: row.age != null ? Number(row.age) : null,
           verificationMethod: row.verification_method ?? null,
+          signatureImage: await loadSignatureImage(row.document_url),
           responses: Array.isArray(row.responses) ? row.responses : [],
           // The template drives the band ladder, the asset-allocation section and
           // the "every option, chosen one highlighted" questionnaire.
