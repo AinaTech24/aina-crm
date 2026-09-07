@@ -476,9 +476,31 @@ export async function importRtaFolios(
              OR lower(regexp_replace(COALESCE(incoming->>'schemeName',''), '[^a-zA-Z0-9]+', '', 'g'))
               = lower(regexp_replace(COALESCE(keep->>'schemeName',''),     '[^a-zA-Z0-9]+', '', 'g'))
               )
+          -- A MISSING arn is a WILDCARD ON BOTH SIDES, and both directions
+          -- matter:
+          --   stored none, incoming one -> a leg written before per-ARN
+          --      slicing; replace it, do not add a second copy.
+          --   stored one, incoming none -> a report whose layout carries no
+          --      broker column (some CAMS WBR9 and KFintech MFSD310/311
+          --      variants). Replace too: a restatement, not a new slice.
+          --   both present and different -> genuinely two ARNs' halves of one
+          --      holding; keep both. That is the point of slicing.
+          --
+          -- Handling only the first direction was a real bug. Between 5 and
+          -- 7 Sep, master and MFSD310 imports with no broker column appended
+          -- arn-less copies beside the ARN'd legs they restated: 721
+          -- folio+scheme pairs stored twice, the book Rs 37.27 Cr too high.
+          --   folio 1000012686 Y1035 99,995 units ARN-114688 Rs 18,24,708.76
+          --   folio 1000012686 Y1035 99,995 units (no arn)   Rs 18,22,008.90
+          --
+          -- Collapsing a split onto one arn-less leg loses which ARN earns on
+          -- it until the next ARN'd statement restores it. That is the right
+          -- way to be wrong: an understated split is recoverable, a double
+          -- count looks correct.
           AND (
                 (keep->>'arn') IS NULL
-             OR (keep->>'arn') IS NOT DISTINCT FROM (incoming->>'arn')
+             OR (incoming->>'arn') IS NULL
+             OR (keep->>'arn') = (incoming->>'arn')
               )
      )
   ) || COALESCE(excluded.schemes, '[]'::jsonb)`;

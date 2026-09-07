@@ -1056,6 +1056,12 @@ async function processAumStatement(
       // without ever overstating on the way there.
       const normName = (s?: string) => (s ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
       const merged = existingSchemes.map((s) => ({ ...s }));
+      // A missing ARN is a wildcard on BOTH sides. Stored-none/incoming-one is
+      // a leg written before slicing existed; stored-one/incoming-none is a
+      // report whose layout has no broker column restating the same holding.
+      // Either way it is the same holding and must REPLACE, not sit alongside —
+      // handling only the first direction let arn-less restatements pile up as
+      // second copies (721 folio+scheme pairs, Rs 37.27 Cr, 5-7 Sep).
       const slotFor = (code: string, name: string, arn?: string): number | undefined => {
         const n = normName(name);
         let fallback: number | undefined;
@@ -1063,8 +1069,8 @@ async function processAumStatement(
           const s = merged[idx];
           const sameScheme = (s.schemeCode && s.schemeCode === code) || (n && normName(s.schemeName) === n);
           if (!sameScheme) continue;
-          if (s.arn === arn) return idx;          // same ARN's slice — restate it
-          if (s.arn == null && fallback == null) fallback = idx; // legacy leg — absorb it
+          if (s.arn === arn) return idx;                    // same ARN's slice — restate it
+          if ((s.arn == null || arn == null) && fallback == null) fallback = idx; // wildcard either way
         }
         return fallback;
       };
