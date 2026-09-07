@@ -65,7 +65,7 @@ export async function PATCH(req: NextRequest) {
         const merged = { ...((current?.s as Record<string, unknown>) ?? {}), ...parse.data };
         await tx
           .update(tenants)
-          .set({ familySettings: merged as any, updatedAt: new Date() } as any)
+          .set({ familySettings: merged, updatedAt: new Date() })
           .where(eq(tenants.id, session.tenantId));
         return loadFamilySettings(tx, session.tenantId);
       },

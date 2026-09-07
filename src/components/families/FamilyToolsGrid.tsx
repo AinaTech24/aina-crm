@@ -37,10 +37,12 @@ export async function FamilyToolsGrid({ session }: { session: SessionUser }) {
       const f = await tx.execute(sql`
         SELECT COUNT(*)::int AS c FROM families WHERE tenant_id = ${session.tenantId}::uuid
       `);
+      const counts = r.rows[0] as { unmapped?: number; mapped?: number } | undefined;
+      const fam = f.rows[0] as { c?: number } | undefined;
       return {
-        unmapped: Number((r.rows[0] as any)?.unmapped ?? 0),
-        mapped: Number((r.rows[0] as any)?.mapped ?? 0),
-        families: Number((f.rows[0] as any)?.c ?? 0),
+        unmapped: Number(counts?.unmapped ?? 0),
+        mapped: Number(counts?.mapped ?? 0),
+        families: Number(fam?.c ?? 0),
       };
     },
     { userId: session.userId, branchId: session.branchId, roles: session.roles }

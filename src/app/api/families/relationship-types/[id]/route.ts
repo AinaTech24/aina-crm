@@ -40,14 +40,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       session.tenantId,
       async (tx) => {
         await materializeRelationshipDefaults(tx, session.tenantId);
-        const patch: Record<string, unknown> = { updatedAt: new Date() };
+        const patch: Partial<typeof familyRelationshipTypes.$inferInsert> = { updatedAt: new Date() };
         if (parse.data.label !== undefined) patch.label = parse.data.label;
         if (parse.data.sortOrder !== undefined) patch.sortOrder = parse.data.sortOrder;
         if (parse.data.isActive !== undefined) patch.isActive = parse.data.isActive;
 
         const [row] = await tx
           .update(familyRelationshipTypes)
-          .set(patch as any)
+          .set(patch)
           .where(and(eq(familyRelationshipTypes.id, id), eq(familyRelationshipTypes.tenantId, session.tenantId)))
           .returning();
         return row ?? null;
@@ -74,7 +74,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
         await materializeRelationshipDefaults(tx, session.tenantId);
         const [row] = await tx
           .update(familyRelationshipTypes)
-          .set({ isActive: false, updatedAt: new Date() } as any)
+          .set({ isActive: false, updatedAt: new Date() })
           .where(and(eq(familyRelationshipTypes.id, id), eq(familyRelationshipTypes.tenantId, session.tenantId)))
           .returning();
         return row ?? null;

@@ -51,7 +51,7 @@ export default async function UnmappedClientsPage({
       // `unmapped` is a quick-filter on the shared builder, so this page can't
       // drift from how Clients filters and searches.
       const filters = buildInvestorWhere({ ...sp, unmapped: "1" }, session.userId);
-      const where = scope ? and(filters as any, scope) : filters;
+      const where = scope ? and(filters, scope) : filters;
 
       const r = await tx
         .select({
@@ -65,7 +65,7 @@ export default async function UnmappedClientsPage({
         })
         .from(investors)
         .leftJoin(users, sql`${users.id} = ${investors.rmId}`)
-        .where(where as any)
+        .where(where)
         .orderBy(desc(investors.aum))
         .limit(PAGE_SIZE)
         .offset((page - 1) * PAGE_SIZE);
@@ -73,7 +73,7 @@ export default async function UnmappedClientsPage({
       const c = await tx
         .select({ c: sql<number>`count(*)::int` })
         .from(investors)
-        .where(where as any);
+        .where(where);
 
       // How many ARE mapped — the coverage number that makes the queue mean
       // something rather than being a bare list.
@@ -86,7 +86,7 @@ export default async function UnmappedClientsPage({
       return {
         rows: r,
         total: Number(c[0]?.c ?? 0),
-        mappedCount: Number((m.rows[0] as any)?.c ?? 0),
+        mappedCount: Number((m.rows[0] as { c?: number } | undefined)?.c ?? 0),
       };
     },
     { userId: session.userId, branchId: session.branchId, roles: session.roles }
