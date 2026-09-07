@@ -43,13 +43,13 @@ export async function GET(req: NextRequest) {
       if (q) {
         const like = `%${q}%`;
         where.push(
-          sql`(m.subject ILIKE ${like} OR m.from_address ILIKE ${like} OR m.to_address ILIKE ${like} OR t.name ILIKE ${like})`
+          sql`(m.subject ILIKE ${like} OR m.from_address ILIKE ${like} OR m.to_address ILIKE ${like} OR COALESCE(t.display_name, t.legal_name) ILIKE ${like})`
         );
       }
       const whereSql = sql.join(where, sql` AND `);
 
       const rows = await tx.execute(sql`
-        SELECT m.id, m.tenant_id, t.name AS tenant_name,
+        SELECT m.id, m.tenant_id, COALESCE(t.display_name, t.legal_name) AS tenant_name,
                m.message_id, m.from_address, m.from_name, m.to_address,
                m.subject, m.body_snippet, m.received_at, m.created_at,
                m.outcome, m.reason,
