@@ -6,9 +6,10 @@
  *
  * Needs a migrated Postgres: set TEST_DATABASE_URL (CI sets it after
  * migrate:all). Skipped otherwise so the suite stays green on a laptop.
- * NOTE: when the connection uses the privileged/superuser role, RLS policies
- * are FORCEd (FORCE ROW LEVEL SECURITY in the migrations), so isolation is
- * still exercised.
+ * TEST_DATABASE_URL must be a NON-superuser role (CI provisions `mfd_app` via
+ * scripts/provision-app-role.mjs after migrating). A Postgres superuser bypasses
+ * Row-Level Security regardless of FORCE ROW LEVEL SECURITY — FORCE only binds
+ * the table owner — so on the superuser every assertion here fails.
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";

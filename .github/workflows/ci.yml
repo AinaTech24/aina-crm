@@ -58,7 +58,13 @@ jobs:
       # Activates the DB-backed vitest suites (RLS isolation, share-token claim)
       # which skipIf(!TEST_DATABASE_URL) — previously dead in CI because no job
       # set this while also having a database.
-      TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/mfd
+      #
+      # This URL is the NON-superuser `mfd_app` role (provisioned below, after
+      # migrate). Postgres superusers bypass Row-Level Security no matter what
+      # FORCE says, so the RLS-isolation suite is only meaningful — and only
+      # passes — on this role. DATABASE_URL stays the superuser for DDL.
+      TEST_DATABASE_URL: postgres://mfd_app:ci-app-role@localhost:5432/mfd
+      APP_DB_PASSWORD: ci-app-role
       ALLOW_SYSTEM_TX: "1"
     steps:
       - uses: actions/checkout@v4
@@ -71,5 +77,7 @@ jobs:
         run: npm run migrate:all
       - name: RLS coverage guard (every tenant table has a policy)
         run: npm run check:rls
+      - name: Provision the non-superuser app role (RLS is only enforced for it)
+        run: node scripts/provision-app-role.mjs
       - name: DB-backed unit tests (RLS isolation · share-token · webhook sigs)
         run: npx vitest run

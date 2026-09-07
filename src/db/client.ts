@@ -9,7 +9,11 @@ import * as schema from "./schema";
 // DATABASE_URL, which is also what migrations/seed/scripts use (they need DDL,
 // so they run as the privileged role). Setting APP_DATABASE_URL is opt-in:
 // nothing changes until it's provided.
-const connectionString = process.env.APP_DATABASE_URL ?? process.env.DATABASE_URL;
+// `||` not `??`: an EMPTY APP_DATABASE_URL means "not provided". The DB-backed
+// tests set it to "" to force the pool onto DATABASE_URL; with `??` that empty
+// string was taken as the connection string and the pool threw
+// "DATABASE_URL is not set" in CI.
+const connectionString = process.env.APP_DATABASE_URL || process.env.DATABASE_URL;
 if (!connectionString) {
   throw new Error("DATABASE_URL is not set");
 }
