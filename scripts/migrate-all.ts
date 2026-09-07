@@ -112,6 +112,40 @@ async function main() {
     );
   }
 
+  // Bootstrap gate. A file whose header carries
+  //     -- migrate:skip-if-table-exists <table>
+  // recreates schema that existing databases got from `drizzle-kit push`
+  // (0000_base_schema.sql → tenants, 0044a_financial_plans.sql → financial_plans).
+  // Where that table already exists (production, every dev DB) record the file
+  // as applied WITHOUT executing it — the SQL is guarded anyway, but a later
+  // migration may have dropped a constraint it would otherwise re-add. Only an
+  // empty database actually runs it.
+  for (const f of [...pending]) {
+    const text = readFileSync(join(MIGRATIONS_DIR, f), "utf8");
+    const m = text.slice(0, 2000).match(/^--\s*migrate:skip-if-table-exists\s+([a-z_][a-z0-9_]*)\s*$/m);
+    if (!m) continue;
+    const table = m[1];
+    const exists = await withSystem(async (tx) => {
+      const r = await tx.execute(sql`SELECT to_regclass(${"public." + table}) IS NOT NULL AS ok`);
+      return Boolean((r.rows[0] as { ok?: boolean } | undefined)?.ok);
+    });
+    if (!exists) continue;
+    if (!DRY) {
+      const cs = checksum(text);
+      await withSystem(async (tx) => {
+        await tx.execute(sql`
+          INSERT INTO _applied_migrations (filename, checksum)
+          VALUES (${f}, ${cs})
+          ON CONFLICT (filename) DO NOTHING
+        `);
+      });
+    }
+    console.log(
+      `[migrate] ${f}: ${table} already exists — ${DRY ? "would be" : ""} recorded as applied without executing.`
+    );
+    pending.splice(pending.indexOf(f), 1);
+  }
+
   if (pending.length === 0) {
     console.log("[migrate] up to date — nothing to apply.");
     process.exit(0);

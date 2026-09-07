@@ -223,6 +223,37 @@ The recipe will appear at `/dashboard/workflows/recipes/<key>`.
 3. In the table's migration, add `ENABLE` + `FORCE ROW LEVEL SECURITY` and a `tenant_isolation` policy (copy a recent migration; `npm run check:rls` fails CI otherwise). Do NOT rely on the stale `tenant_tables` array in `0001`.
 4. Run `npm run db:generate` then `npm run db:migrate`.
 
+### Fresh databases and the migration chain
+
+`npm run migrate:all` builds a complete schema from an EMPTY database — CI's
+"Migrate · RLS coverage" job depends on it (migrate → `check:rls` → DB-backed
+vitest). That only became true on 2026-09-07; before that the chain was
+missing what early databases had received from `drizzle-kit push`:
+
+- `0000_base_schema.sql` — the 59 original tables, reconstructed from
+  `meta/0000_snapshot.json` (the 0000 SQL was never committed).
+- `0044a_financial_plans.sql` — the one table no migration ever created.
+- `0151a_push_only_columns.sql` — three push-only columns
+  (`subscriptions.modules_override`, `subscriptions.allowed_fields`,
+  `users.permissions`).
+
+A file whose header carries `-- migrate:skip-if-table-exists <table>` is
+recorded as applied WITHOUT executing wherever that table already exists
+(production, every dev DB), so those bootstrap files only run on an empty
+database. Rules that follow from this:
+
+- **Never rely on `drizzle-kit push` to ship schema.** Every table and column
+  in `src/db/schema` must be created by a migration, or a fresh database
+  silently lacks it. `scratch/`-style parity check: `drizzle-kit pull` the fresh
+  DB and diff against `generateDrizzleJson(schema)` — no `CREATE TABLE` /
+  `ADD COLUMN` may appear.
+- **A migration may only reference objects that exist at its point in the
+  chain.** `0001a_rls_policies.sql` skips tables that don't exist yet for this
+  reason; prefer `IF NOT EXISTS` / `to_regclass()` guards over reordering
+  applied history.
+- Lettered suffixes (`0044a`) slot a file between two applied numbers without
+  renumbering history; `check-migration-dups` accepts them.
+
 ### Add a new queryable field on investors
 1. Append a `FieldDef` to `investorCatalog.fields` in `src/lib/filter/catalog.ts`.
 2. The filter builder, segment compiler, and AI assistant pick it up automatically.

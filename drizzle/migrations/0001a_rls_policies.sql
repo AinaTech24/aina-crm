@@ -101,6 +101,14 @@ DECLARE
 BEGIN
   FOREACH t IN ARRAY tenant_tables
   LOOP
+    -- Four names in this list (tenant_integrations, ignored_duplicates,
+    -- investor_portal_access, business_impacts) were appended after their own
+    -- migrations (0060 / 0072 / 0195) shipped, so on a FRESH database they do
+    -- not exist yet when this file runs. Those migrations — and the dynamic
+    -- backfill in 0030 — apply their policies; skip here instead of failing.
+    IF to_regclass(format('public.%I', t)) IS NULL THEN
+      CONTINUE;
+    END IF;
     EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY;', t);
     EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY;', t);
     EXECUTE format(
