@@ -37,8 +37,17 @@ export async function applyRiskCategory(opts: {
   currentCategory?: string | null;
   createdById?: string | null;
   signedByName?: string | null;
+  /** Assigned WITHOUT the client's answers (e.g. in bulk from age) — flagged on
+   *  both the history row and the investor, and cleared when the client
+   *  submits the questionnaire. See migration 0207. */
+  provisional?: boolean;
+  /** How the category was derived when provisional — e.g. "age_band". */
+  basis?: string | null;
+  /** Overrides the default rm_remarks line on the history row. */
+  remarks?: string | null;
 }): Promise<void> {
   const { tx, tenantId, investorId, category, currentCategory, createdById, signedByName } = opts;
+  const provisional = !!opts.provisional;
   if (currentCategory && currentCategory === category) return; // unchanged — nothing to do
 
   const now = new Date();
@@ -52,7 +61,9 @@ export async function applyRiskCategory(opts: {
     nextReviewAt: nextReview.toISOString().slice(0, 10),
     verificationMethod: "rm_entry",
     signedByName: signedByName ?? null,
-    rmRemarks: "Category set directly (no questionnaire).",
+    rmRemarks: opts.remarks ?? "Category set directly (no questionnaire).",
+    provisional,
+    basis: opts.basis ?? null,
     createdById: createdById ?? null,
   } as any);
 
@@ -63,6 +74,7 @@ export async function applyRiskCategory(opts: {
       riskProfileScore: SCORE_BY_CATEGORY[category],
       riskProfileSignedAt: now,
       riskProfileVersion: sql`COALESCE(${investors.riskProfileVersion}, 0) + 1`,
+      riskProfileProvisional: provisional,
       updatedAt: now,
     } as any)
     .where(and(eq(investors.id, investorId), eq(investors.tenantId, tenantId)));

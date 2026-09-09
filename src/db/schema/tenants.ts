@@ -125,6 +125,10 @@ export const tenants = pgTable(
     /** Household defaults — see FamilySettings in schema/family_master.ts. */
     familySettings: jsonb("family_settings").$type<Record<string, unknown>>().notNull().default({}),
 
+    /** Age → risk-category bands for bulk provisional profiling. NULL = use the
+     *  product defaults in src/lib/risk-profile/age-bands.ts. */
+    riskAgeBands: jsonb("risk_age_bands").$type<Array<{ upTo: number | null; category: string }>>(),
+
     /** ── AMFI DDQ firm declarations (migration 0195) ──────────────────────
      *  2.1c/2.5 — how the firm categorises client relationships. An MFD giving
      *  "incidental advice" advises only incidentally to distribution (no RIA

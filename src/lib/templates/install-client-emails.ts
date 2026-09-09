@@ -26,6 +26,7 @@ const LOCALE = "en-IN";
 /** Keys seeded into every firm. Keep in step with migration 0206. */
 export const CLIENT_EMAIL_TEMPLATE_KEYS = [
   "risk_profile_result",
+  "risk_profile_assigned",
   "feedback_nps",
   "suitability_review",
 ] as const;

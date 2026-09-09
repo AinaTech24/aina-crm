@@ -257,6 +257,9 @@ export async function POST(req: NextRequest) {
               riskProfileScore: total,
               riskProfileSignedAt: now,
               riskProfileVersion: ((inv.riskProfileVersion ?? 0) + 1) as any,
+              // The client has now answered for themselves — whatever was
+              // provisionally assigned from their age is superseded.
+              riskProfileProvisional: false,
               updatedAt: now,
             } as any)
             .where(eq(investors.id, tk.subjectId));

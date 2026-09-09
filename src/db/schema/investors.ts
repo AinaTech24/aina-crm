@@ -215,6 +215,10 @@ export const investors = pgTable(
     }),
     riskProfileSignedAt: timestamp("risk_profile_signed_at", { withTimezone: true }),
     riskProfileVersion: integer("risk_profile_version"),
+    /** True when the category was assigned in bulk from AGE, not from the
+     *  client's own answers — a suggestion awaiting their confirmation.
+     *  Cleared the moment they submit the questionnaire (migration 0207). */
+    riskProfileProvisional: boolean("risk_profile_provisional").notNull().default(false),
 
     /** Computed/cached metrics — refreshed nightly */
     aum: numeric("aum", { precision: 18, scale: 2 }).default("0"),

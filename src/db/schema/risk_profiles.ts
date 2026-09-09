@@ -11,7 +11,7 @@
  * filters) without joining this table everywhere.
  */
 
-import { date, index, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { boolean, date, index, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { id, tenantId, timestamps } from "./_shared";
 
 export const riskProfileResponses = pgTable(
@@ -83,6 +83,11 @@ export const riskProfileResponses = pgTable(
 
     rmRemarks: text("rm_remarks"),
     createdById: uuid("created_by_id"),
+
+    /** Assigned without a questionnaire and awaiting the client's confirmation. */
+    provisional: boolean("provisional").notNull().default(false),
+    /** How the category was derived when provisional — e.g. 'age_band'. */
+    basis: text("basis"),
 
     ...timestamps,
   },
