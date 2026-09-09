@@ -8,6 +8,7 @@ import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
 import { RecordProvenance } from "@/components/common/RecordProvenance";
 import { TemplateActions } from "./TemplateActions";
+import { EmailPreview } from "./EmailPreview";
 
 export const dynamic = "force-dynamic";
 
@@ -184,23 +185,30 @@ export default async function TemplateDetailPage({
                     <div><strong>Subject:</strong> {(ver.body as any)?.subject}</div>
                     <div><strong>Preheader:</strong> {(ver.body as any)?.preheader}</div>
                   </div>
-                  <div className="border rounded-lg overflow-hidden bg-white p-4">
-                    {/* Email block renderer preview */}
-                    {((ver.body as any)?.blocks as any[])?.length > 0 ? (
-                      <div className="divide-y space-y-3">
-                        {((ver.body as any).blocks as any[]).map((b, idx) => (
-                          <div key={idx} className="pt-3 first:pt-0">
-                            <span className="text-[10px] text-slate-400 font-bold tracking-wider uppercase block mb-1">{b.type}</span>
-                            <p className="text-sm text-slate-800 whitespace-pre-line">{b.text || b.content || b.title || b.subtitle || b.html || b.label || "—"}</p>
+                  {/* Rendered mail (firm logo, theme, sign-off, footer) with the
+                      raw block list kept behind a tab for authors who want it. */}
+                  <EmailPreview
+                    body={ver.body}
+                    defaultTestEmail={session.email ?? ""}
+                    blocksView={
+                      <div className="border rounded-lg overflow-hidden bg-white p-4">
+                        {((ver.body as any)?.blocks as any[])?.length > 0 ? (
+                          <div className="divide-y space-y-3">
+                            {((ver.body as any).blocks as any[]).map((b, idx) => (
+                              <div key={idx} className="pt-3 first:pt-0">
+                                <span className="text-[10px] text-slate-400 font-bold tracking-wider uppercase block mb-1">{b.type}</span>
+                                <p className="text-sm text-slate-800 whitespace-pre-line">{b.text || b.content || b.title || b.subtitle || b.html || b.label || "—"}</p>
+                              </div>
+                            ))}
                           </div>
-                        ))}
+                        ) : (
+                          <pre className="text-xs bg-slate-50 p-3 rounded font-mono overflow-x-auto whitespace-pre-wrap">
+                            {JSON.stringify(ver.body, null, 2)}
+                          </pre>
+                        )}
                       </div>
-                    ) : (
-                      <pre className="text-xs bg-slate-50 p-3 rounded font-mono overflow-x-auto whitespace-pre-wrap">
-                        {JSON.stringify(ver.body, null, 2)}
-                      </pre>
-                    )}
-                  </div>
+                    }
+                  />
                 </div>
               ) : tpl.channel === "whatsapp" ? (
                 <div className="bg-slate-50 border p-4 rounded-lg font-mono text-sm whitespace-pre-wrap text-slate-800">
