@@ -78,9 +78,12 @@ export type RiskTemplateBandAllocation = z.infer<typeof BandAllocationSchema>;
 
 export function defaultTemplate(): RiskTemplate {
   return {
-    name: "Risk profile (SEBI default)",
+    // Both strings are shown to the INVESTOR on /r/<token>, so they carry no
+    // internal jargon: "SEBI default" and "score range 8-40" told the client
+    // nothing and made a simple form look like a compliance artefact.
+    name: "Your risk profile",
     description:
-      "8-question SEBI-style questionnaire. Score range 8–40, mapped to Conservative / Moderate / Aggressive.",
+      "A few questions about your plans and how you feel about risk, so we only suggest investments that suit you. It takes about three minutes.",
     questions: RISK_PROFILE_QUESTIONS.map((q) => ({
       key: q.key,
       label: q.label,

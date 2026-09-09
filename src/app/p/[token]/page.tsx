@@ -7,6 +7,7 @@
  */
 
 import { eq } from "drizzle-orm";
+import { formatArn } from "@/lib/branding/arn";
 import { FileSignature } from "lucide-react";
 import { withSystem } from "@/db/client";
 import { tenants, proposals } from "@/db/schema";
@@ -48,7 +49,7 @@ export default async function PublicProposalApprovalPage({ params }: { params: P
             <FileSignature className="size-5 text-brand-cyan" />
             <span className="font-semibold">{tenant?.displayName ?? tenant?.legalName ?? "Proposal"}</span>
           </div>
-          <div className="text-[11px] text-muted-foreground">{tenant?.arn ? `ARN-${tenant.arn}` : ""}</div>
+          <div className="text-[11px] text-muted-foreground">{formatArn(tenant?.arn)}</div>
         </div>
       </header>
 
@@ -73,7 +74,7 @@ export default async function PublicProposalApprovalPage({ params }: { params: P
 
       <footer className="max-w-3xl mx-auto px-4 py-6 text-[11px] text-muted-foreground text-center">
         Mutual fund investments are subject to market risks. Read all scheme related documents carefully.
-        {tenant?.arn ? <> · {tenant.displayName ?? tenant.legalName} · ARN-{tenant.arn}</> : null}
+        {tenant?.arn ? <> · {tenant.displayName ?? tenant.legalName} · {formatArn(tenant.arn)}</> : null}
       </footer>
     </div>
   );

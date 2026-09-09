@@ -185,6 +185,16 @@ export function PublicRiskForm({
   const canAdvance = q ? !!answers[q.key] : Object.keys(answers).length === N;
   const progress = onReview ? 100 : Math.round((step / N) * 100);
 
+  // Names imported from PAN/RTA files arrive in block capitals. Shouting the
+  // investor's own name back at them reads like a bank notice, so soften it —
+  // but leave a name they typed themselves exactly as they typed it.
+  const displayName =
+    recipientName && recipientName === recipientName.toUpperCase()
+      ? recipientName
+          .toLowerCase()
+          .replace(/[a-z]/g, (c) => c.toUpperCase())
+      : recipientName;
+
   function pick(value: string) {
     if (!q) return;
     setAnswers((s) => ({ ...s, [q.key]: value }));
@@ -295,8 +305,8 @@ export function PublicRiskForm({
             <h1 className="text-xl font-bold">{template.name}</h1>
             {recipientName && (
               <p className="text-sm text-muted-foreground mt-1">
-                Hi <span className="font-medium text-foreground">{recipientName}</span> — please take a moment to answer
-                these questions so we can recommend the right investments for you.
+                Hi <span className="font-medium text-foreground">{displayName}</span> — please answer these in your own
+                words. There are no right answers; they simply tell us what suits you.
               </p>
             )}
             {template.description && (
@@ -306,7 +316,6 @@ export function PublicRiskForm({
           {!onReview && (
             <div className="text-right text-xs">
               <div className="text-muted-foreground">Question {Math.min(step + 1, N)} of {N}</div>
-              <div className="font-bold tabular-nums mt-0.5">{progress}%</div>
             </div>
           )}
         </div>

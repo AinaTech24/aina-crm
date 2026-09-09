@@ -9,6 +9,7 @@
  */
 
 import { eq } from "drizzle-orm";
+import { formatArn } from "@/lib/branding/arn";
 import { FileText } from "lucide-react";
 import { withSystem } from "@/db/client";
 import { tenants, leads, investors } from "@/db/schema";
@@ -75,7 +76,7 @@ export default async function PublicDocsFormPage({ params }: { params: Promise<{
             <FileText className="size-5 text-brand-cyan" />
             <span className="font-semibold">{tenant?.displayName ?? tenant?.legalName ?? "Document collection"}</span>
           </div>
-          <div className="text-[11px] text-muted-foreground">{tenant?.arn ? `ARN-${tenant.arn}` : ""}</div>
+          <div className="text-[11px] text-muted-foreground">{formatArn(tenant?.arn)}</div>
         </div>
       </header>
 
@@ -90,7 +91,7 @@ export default async function PublicDocsFormPage({ params }: { params: Promise<{
 
       <footer className="max-w-2xl mx-auto px-4 py-6 text-[11px] text-muted-foreground text-center">
         Your documents are uploaded securely and only visible to your relationship manager and back-office team.
-        {tenant?.arn ? <> · {tenant.displayName ?? tenant.legalName} · ARN-{tenant.arn}</> : null}
+        {tenant?.arn ? <> · {tenant.displayName ?? tenant.legalName} · {formatArn(tenant.arn)}</> : null}
       </footer>
     </div>
   );

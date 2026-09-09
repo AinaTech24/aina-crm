@@ -299,8 +299,14 @@ export function RiskProfileWizard({
               <ShieldCheck className="size-5 text-brand-cyan" /> {template.name}
             </h1>
             <p className="text-sm text-muted-foreground mt-1">
-              For <span className="font-medium text-foreground">{investor.name}</span> · PAN{" "}
+              Recording <span className="font-medium text-foreground">{investor.name}</span>&apos;s answers · PAN{" "}
               <span className="font-mono">{investor.pan}</span>
+            </p>
+            {/* The questions address the investor directly ("you"), because the
+                same wording is what they see on their own form. Say plainly
+                that you are asking them, so an RM doesn't answer as themselves. */}
+            <p className="text-xs text-muted-foreground mt-1">
+              Ask {investor.name?.split(" ")[0] || "the client"} each question as written and record what they say.
             </p>
             {template.description && (
               <p className="text-[11px] text-muted-foreground mt-1 italic">{template.description}</p>

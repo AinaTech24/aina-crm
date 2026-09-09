@@ -1,6 +1,13 @@
 /**
  * SEBI-style risk-profile questionnaire — 8 questions, weighted scoring.
  *
+ * WORDING: every question addresses the INVESTOR directly ("you", "your").
+ * The same text is shown on the client's own form (/r/<token>) and in the RM
+ * wizard, where the RM reads it out and records the answer — so it must never
+ * say "the client", which reads absurdly to the person answering it. The
+ * wizard makes the context explicit instead ("recording answers for <name>").
+ * Keep new questions in the second person.
+ *
  * Each answer carries a score 1–5; total range 8–40 maps to:
  *   8–18  → Conservative
  *   19–29 → Moderate
@@ -28,8 +35,8 @@ export type Question = {
 export const RISK_PROFILE_QUESTIONS: Question[] = [
   {
     key: "age",
-    label: "What is the client's age?",
-    helperText: "Younger investors generally have higher risk capacity (longer time to recover).",
+    label: "What is your age?",
+    helperText: "The more years you can stay invested, the more time your money has to recover from a fall.",
     type: "single",
     options: [
       { value: "under_30", label: "Under 30", score: 5 },
@@ -41,7 +48,7 @@ export const RISK_PROFILE_QUESTIONS: Question[] = [
   },
   {
     key: "investmentHorizon",
-    label: "How long does the client plan to stay invested?",
+    label: "How long do you plan to stay invested?",
     type: "single",
     options: [
       { value: "under_1yr", label: "Less than 1 year", score: 1 },
@@ -53,58 +60,58 @@ export const RISK_PROFILE_QUESTIONS: Question[] = [
   },
   {
     key: "incomeStability",
-    label: "How stable is the client's income?",
+    label: "How steady is your income?",
     type: "single",
     options: [
-      { value: "variable", label: "Highly variable (freelance / commissions)", score: 1 },
-      { value: "moderate", label: "Moderately stable (some variability)", score: 2 },
-      { value: "stable", label: "Stable salaried income", score: 4 },
-      { value: "highly_stable", label: "Multiple stable sources / govt / PSU", score: 5 },
+      { value: "variable", label: "It varies a lot — freelance or commission", score: 1 },
+      { value: "moderate", label: "Mostly steady, with some ups and downs", score: 2 },
+      { value: "stable", label: "A steady salary", score: 4 },
+      { value: "highly_stable", label: "Very secure — government, PSU, or several steady sources", score: 5 },
     ],
   },
   {
     key: "riskCapacity",
-    label: "What % of total assets is being invested?",
-    helperText: "Higher concentration in this investment = lower risk capacity.",
+    label: "How much of your total savings are you investing here?",
+    helperText: "If most of your savings sit in one place, a fall hurts a lot more.",
     type: "single",
     options: [
-      { value: "very_high", label: "More than 75 % of net worth", score: 1 },
-      { value: "high", label: "50 – 75 %", score: 2 },
-      { value: "medium", label: "25 – 50 %", score: 3 },
-      { value: "low", label: "10 – 25 %", score: 4 },
-      { value: "very_low", label: "Less than 10 %", score: 5 },
+      { value: "very_high", label: "More than 75% of my savings", score: 1 },
+      { value: "high", label: "Between half and three quarters", score: 2 },
+      { value: "medium", label: "Between a quarter and half", score: 3 },
+      { value: "low", label: "Between a tenth and a quarter", score: 4 },
+      { value: "very_low", label: "Less than a tenth", score: 5 },
     ],
   },
   {
     key: "riskTolerance",
-    label: "If the portfolio dropped 20 % in 6 months, what would the client do?",
+    label: "If your investment fell 20% in six months, what would you do?",
     type: "single",
     options: [
-      { value: "sell_all", label: "Sell everything immediately", score: 1 },
+      { value: "sell_all", label: "Sell everything straight away", score: 1 },
       { value: "sell_some", label: "Sell some, hold the rest", score: 2 },
-      { value: "hold", label: "Hold and wait for recovery", score: 3 },
-      { value: "hold_buy_more", label: "Hold and gradually buy more", score: 4 },
-      { value: "buy_aggressively", label: "Buy aggressively at lower prices", score: 5 },
+      { value: "hold", label: "Hold on and wait for it to recover", score: 3 },
+      { value: "hold_buy_more", label: "Hold on, and slowly invest a bit more", score: 4 },
+      { value: "buy_aggressively", label: "Invest a lot more while prices are low", score: 5 },
     ],
   },
   {
     key: "investmentObjective",
-    label: "What is the primary investment objective?",
+    label: "What are you mainly investing for?",
     type: "single",
     options: [
-      { value: "capital_preservation", label: "Capital preservation", score: 1 },
-      { value: "regular_income", label: "Regular income", score: 2 },
-      { value: "balanced_growth", label: "Balanced growth + income", score: 3 },
-      { value: "long_term_growth", label: "Long-term capital growth", score: 4 },
-      { value: "aggressive_growth", label: "Aggressive capital appreciation", score: 5 },
+      { value: "capital_preservation", label: "Keeping my money safe", score: 1 },
+      { value: "regular_income", label: "A regular income from it", score: 2 },
+      { value: "balanced_growth", label: "A balance of growth and income", score: 3 },
+      { value: "long_term_growth", label: "Growing my money over the long term", score: 4 },
+      { value: "aggressive_growth", label: "The highest growth I can get, accepting bigger swings", score: 5 },
     ],
   },
   {
     key: "mfExperience",
-    label: "How much experience does the client have with mutual funds?",
+    label: "How much experience do you have with mutual funds?",
     type: "single",
     options: [
-      { value: "none", label: "None — first-time investor", score: 1 },
+      { value: "none", label: "None — this is my first time", score: 1 },
       { value: "less_than_2yr", label: "Less than 2 years", score: 2 },
       { value: "2_to_5yr", label: "2 – 5 years", score: 3 },
       { value: "5_to_10yr", label: "5 – 10 years", score: 4 },
@@ -113,7 +120,7 @@ export const RISK_PROFILE_QUESTIONS: Question[] = [
   },
   {
     key: "netWorthBand",
-    label: "What is the client's approximate net worth?",
+    label: "Roughly what are your total savings and investments worth?",
     type: "single",
     options: [
       { value: "under_10L", label: "Under ₹ 10 lakh", score: 1 },

@@ -11,6 +11,7 @@
  */
 
 import { eq } from "drizzle-orm";
+import { formatArn } from "@/lib/branding/arn";
 import { MessageSquareHeart } from "lucide-react";
 import { withSystem } from "@/db/client";
 import { tenants, leads, investors } from "@/db/schema";
@@ -58,7 +59,7 @@ export default async function PublicFeedbackPage({ params }: { params: Promise<{
             <span className="font-semibold">{firmName}</span>
           </div>
           <div className="text-[11px] text-muted-foreground">
-            {data.tenant?.arn ? `ARN-${data.tenant.arn}` : ""}
+            {formatArn(data.tenant?.arn)}
           </div>
         </div>
       </header>
@@ -69,7 +70,7 @@ export default async function PublicFeedbackPage({ params }: { params: Promise<{
 
       <footer className="max-w-2xl mx-auto px-4 py-6 text-[11px] text-muted-foreground text-center">
         Mutual fund investments are subject to market risks. Read all scheme related documents carefully.
-        {data.tenant?.arn ? <> · {firmName} · ARN-{data.tenant.arn}</> : null}
+        {data.tenant?.arn ? <> · {firmName} · {formatArn(data.tenant.arn)}</> : null}
       </footer>
     </div>
   );

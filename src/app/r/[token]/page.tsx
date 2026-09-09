@@ -10,6 +10,7 @@
  */
 
 import { notFound } from "next/navigation";
+import { formatArn } from "@/lib/branding/arn";
 import { eq, sql } from "drizzle-orm";
 import { ShieldCheck } from "lucide-react";
 import { withSystem } from "@/db/client";
@@ -99,7 +100,7 @@ export default async function PublicRiskFormPage({ params }: { params: Promise<{
             <span className="font-semibold">{data.tenant?.displayName ?? data.tenant?.legalName ?? "Risk profile"}</span>
           </div>
           <div className="text-[11px] text-muted-foreground">
-            {data.tenant?.arn ? `ARN-${data.tenant.arn}` : ""}
+            {formatArn(data.tenant?.arn)}
           </div>
         </div>
       </header>
@@ -116,7 +117,7 @@ export default async function PublicRiskFormPage({ params }: { params: Promise<{
 
       <footer className="max-w-3xl mx-auto px-4 py-6 text-[11px] text-muted-foreground text-center">
         Mutual fund investments are subject to market risks. Read all scheme related documents carefully.
-        {data.tenant?.arn ? <> · {data.tenant.displayName ?? data.tenant.legalName} · ARN-{data.tenant.arn}</> : null}
+        {data.tenant?.arn ? <> · {data.tenant.displayName ?? data.tenant.legalName} · {formatArn(data.tenant.arn)}</> : null}
       </footer>
     </div>
   );
