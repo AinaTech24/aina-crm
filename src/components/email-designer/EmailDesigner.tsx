@@ -120,7 +120,7 @@ export function EmailDesigner({
         baseFontSize: 15,
         containerWidth: 600,
         cornerRadius: 12,
-        logoHeight: 40,
+        logoHeight: 56,
         logoAlign: "center",
         logoUrl: tenant?.logoUrl ?? undefined,
       }) as EmailTheme,
@@ -717,7 +717,7 @@ function ThemePanel({
               type="number"
               min={20}
               max={120}
-              value={theme.logoHeight ?? 40}
+              value={theme.logoHeight ?? 56}
               onChange={(e) => onChange({ logoHeight: Number(e.target.value) })}
               className="input-base text-xs w-full"
             />
@@ -952,7 +952,42 @@ function ImageUploadInput({ value, onChange, placeholder }: { value: string; onC
 function BlockEditor({ block, onChange }: { block: any; onChange: (patch: any) => void }) {
   switch (block.type) {
     case "logo":
-      return <div className="text-[11px] text-muted-foreground italic">Logo URL is set in the Theme panel.</div>;
+      // Size/alignment are per-email overrides; blank falls back to the Theme
+      // panel, which is also where the logo image itself is set.
+      return (
+        <div className="space-y-1.5">
+          <div className="text-[11px] text-muted-foreground italic">
+            The logo image comes from your firm branding (Theme panel).
+          </div>
+          <div className="flex gap-1.5 items-end">
+            <label className="flex-1">
+              <span className="text-[10px] text-muted-foreground block">Height (px)</span>
+              <input
+                type="number"
+                min={20}
+                max={160}
+                value={block.height ?? ""}
+                placeholder="Theme default"
+                onChange={(e) =>
+                  onChange({ height: e.target.value === "" ? undefined : Number(e.target.value) })
+                }
+                className="input-base text-xs w-full tabular-nums"
+              />
+            </label>
+            <SelectInline
+              label="Align"
+              value={block.align ?? "center"}
+              onChange={(v) => onChange({ align: v })}
+              options={[
+                { value: "left", label: "Left" },
+                { value: "center", label: "Center" },
+                { value: "right", label: "Right" },
+              ]}
+            />
+          </div>
+          <p className="text-[10px] text-muted-foreground">Leave height blank to use the theme setting.</p>
+        </div>
+      );
     case "hero":
       return (
         <div className="space-y-1.5">

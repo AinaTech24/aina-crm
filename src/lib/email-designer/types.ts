@@ -20,7 +20,7 @@ import { z } from "zod";
 export const EmailThemeSchema = z.object({
   /** Logo URL — usually pulled from tenant brandingConfig.logoUrl. */
   logoUrl: z.string().optional(),
-  logoHeight: z.number().int().min(20).max(120).default(40),
+  logoHeight: z.number().int().min(20).max(160).default(56),
   logoAlign: z.enum(["left", "center", "right"]).default("center"),
 
   /** Brand color (primary). Used by buttons, links, accent strips. */
@@ -73,7 +73,13 @@ export type BlockType = (typeof BLOCK_TYPES)[number];
 
 const baseBlock = { id: z.string(), type: z.string() };
 
-export const LogoBlock = z.object({ ...baseBlock, type: z.literal("logo") });
+export const LogoBlock = z.object({
+  ...baseBlock,
+  type: z.literal("logo"),
+  /** Per-email overrides. Omitted → the theme's Logo settings apply. */
+  height: z.number().int().min(20).max(160).optional(),
+  align: z.enum(["left", "center", "right"]).optional(),
+});
 export const HeroBlock = z.object({
   ...baseBlock,
   type: z.literal("hero"),

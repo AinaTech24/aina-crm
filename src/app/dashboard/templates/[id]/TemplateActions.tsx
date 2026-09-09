@@ -96,10 +96,17 @@ export function TemplateActions({
             disabled={loading}
             className="rounded-md bg-primary text-primary-foreground hover:bg-primary/90 px-3 py-1.5 text-xs font-semibold flex items-center gap-1.5"
           >
-            <Plus className="size-3.5" /> Create new version draft
+            <Edit2 className="size-3.5" /> Edit template (creates a new draft)
           </button>
         )}
       </div>
+
+      {(templateStatus === "approved" || versionStatus === "approved_internal" || versionStatus === "approved_external") && (
+        <p className="text-[11px] text-muted-foreground -mt-2">
+          Approved versions stay locked so mail already sent can always be reproduced. Editing opens a new draft —
+          change the wording, logo size or colours there, then submit it to replace this version.
+        </p>
+      )}
 
       {versionStatus === "submitted" && hasApproveRole && (
         <div className="border border-amber-200 bg-amber-50/30 rounded-lg p-4 space-y-3">

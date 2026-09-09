@@ -65,7 +65,7 @@ export function renderEmailHtml(body: EmailDesignerBody, ctx: RenderContext): st
   const autoLogoUrl = absoluteEmailUrl(theme.logoUrl || ctx.tenant?.logoUrl || "");
   const autoLogo =
     !hasLogoBlock && autoLogoUrl
-      ? `<div style="text-align:${theme.logoAlign ?? "center"};margin-bottom:18px;"><img src="${escape(autoLogoUrl)}" alt="${escape(ctx.tenant?.displayName ?? "Logo")}" height="${theme.logoHeight ?? 40}" style="height:${theme.logoHeight ?? 40}px;max-height:${theme.logoHeight ?? 40}px;display:inline-block;"/></div>`
+      ? logoImgHtml(autoLogoUrl, theme, ctx)
       : "";
   const inner =
     autoLogo +
@@ -136,7 +136,7 @@ export function renderEmailText(body: EmailDesignerBody, ctx: RenderContext): st
 function renderBlock(block: EmailBlock, theme: EmailTheme, ctx: RenderContext): string {
   switch (block.type) {
     case "logo":
-      return renderLogo(theme, ctx);
+      return renderLogo(block, theme, ctx);
     case "signature":
       return renderSignature(block, theme, ctx);
     case "hero":
@@ -168,10 +168,31 @@ function renderBlock(block: EmailBlock, theme: EmailTheme, ctx: RenderContext): 
   }
 }
 
-function renderLogo(theme: EmailTheme, ctx: RenderContext): string {
+function renderLogo(b: any, theme: EmailTheme, ctx: RenderContext): string {
   const url = absoluteEmailUrl(theme.logoUrl || ctx.tenant?.logoUrl || "");
   if (!url) return "";
-  return `<div style="text-align:${theme.logoAlign};margin-bottom:18px;"><img src="${escape(url)}" alt="${escape(ctx.tenant?.displayName ?? "Logo")}" height="${theme.logoHeight}" style="height:${theme.logoHeight}px;max-height:${theme.logoHeight}px;display:inline-block;"/></div>`;
+  // A logo block may override the theme for this one email.
+  return logoImgHtml(url, theme, ctx, b?.height, b?.align);
+}
+
+/**
+ * One logo <img> for both paths.
+ *
+ * `max-width:100%` + `width:auto` matter: only the HEIGHT is set, so a wide
+ * banner logo scaled to that height would otherwise run past the 600px email
+ * container and get clipped by the mail client.
+ */
+function logoImgHtml(
+  url: string,
+  theme: EmailTheme,
+  ctx: RenderContext,
+  heightOverride?: number,
+  alignOverride?: string
+): string {
+  const h = Number(heightOverride) || theme.logoHeight || 56;
+  const align = alignOverride || theme.logoAlign || "center";
+  const alt = escape(ctx.tenant?.displayName ?? "Logo");
+  return `<div style="text-align:${align};margin-bottom:18px;"><img src="${escape(url)}" alt="${alt}" height="${h}" style="height:${h}px;max-height:${h}px;width:auto;max-width:100%;display:inline-block;"/></div>`;
 }
 
 /**
@@ -387,7 +408,7 @@ function renderFooter(footer: EmailFooter, theme: EmailTheme, ctx: RenderContext
 function resolveTheme(theme: EmailTheme | undefined, tenant: RenderContext["tenant"]): EmailTheme {
   const base: EmailTheme = {
     logoUrl: tenant?.logoUrl ?? undefined,
-    logoHeight: 40,
+    logoHeight: 56,
     logoAlign: "center",
     brandColor: tenant?.brandColor ?? "#0ea5e9",
     accentColor: "#0e2557",
