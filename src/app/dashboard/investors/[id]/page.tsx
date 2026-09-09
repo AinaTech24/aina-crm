@@ -1,4 +1,3 @@
-import { assertInvestorAccess } from "@/lib/investors/access";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
@@ -136,7 +135,6 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
     redirect("/dashboard/investors");
   }
   const session = await requireSession();
-    await assertInvestorAccess(session, (await params).id);
   const license = await loadTenantLicense(session.tenantId, session.roles);
 
   const showPan = isFieldAllowed(license, "investor", "pan");

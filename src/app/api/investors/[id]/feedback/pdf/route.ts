@@ -1,4 +1,3 @@
-import { assertInvestorAccess } from "@/lib/investors/access";
 /**
  * GET /api/investors/[id]/feedback/pdf
  *   Branded Client Feedback Report for ONE client — every submission with each
@@ -24,7 +23,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   try {
     const { id } = await params;
     const session = await requireSession();
-    await assertInvestorAccess(session, id);
     requireAny(session.roles, ["investor.view.all", "investor.view.assigned"], session.permissions);
     const canViewAll = can(session.roles, "investor.view.all", session.permissions);
     const download = req.nextUrl.searchParams.get("download") === "1";
