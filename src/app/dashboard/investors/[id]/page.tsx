@@ -1205,7 +1205,12 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
             id="rel-srs"
             title="Service requests"
             count={data.serviceRequests.filter((s) => s.status !== "closed" && s.status !== "resolved").length}
-            action={<SendRiskProfileLinkButton investorId={inv.id} kind="feedback" />}
+            action={
+              <span className="flex items-center gap-3">
+                <ClientNpsChip requests={data.serviceRequests as any[]} />
+                <SendRiskProfileLinkButton investorId={inv.id} kind="feedback" />
+              </span>
+            }
           >
             {data.serviceRequests.length === 0 ? (
               <EmptyRow text="No tickets." />
@@ -1246,6 +1251,52 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
       </RelatedListSection>
       </RelatedListsContainer>
     </div>
+  );
+}
+
+/**
+ * The client's own satisfaction score, on their record.
+ *
+ * A submitted rating is filed as a closed `feedback` service request, so the
+ * number was only readable inside a ticket subject ("Client Feedback (NPS: 8)")
+ * — present in the list, but not something you could see at a glance on the
+ * client. Shows the latest rating in the standard NPS bands, with the full
+ * history and comment on hover.
+ */
+function ClientNpsChip({ requests }: { requests: any[] }) {
+  const scored = (requests ?? [])
+    .filter((r) => r?.type === "feedback" && r?.csatRating != null)
+    .sort((a, b) => new Date(b.csatAt ?? 0).getTime() - new Date(a.csatAt ?? 0).getTime());
+  if (!scored.length) return null;
+
+  const latest = scored[0];
+  const score = Number(latest.csatRating);
+  // 0-6 detractor, 7-8 passive, 9-10 promoter.
+  const tone =
+    score <= 6
+      ? "bg-rose-50 text-rose-700 border-rose-200"
+      : score <= 8
+        ? "bg-amber-50 text-amber-700 border-amber-200"
+        : "bg-emerald-50 text-emerald-700 border-emerald-200";
+  const when = latest.csatAt
+    ? new Date(latest.csatAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })
+    : "";
+
+  return (
+    <Link
+      href="/dashboard/support/feedback"
+      title={[
+        `Latest feedback: ${score}/10${when ? ` on ${when}` : ""}`,
+        latest.csatComment ? `"${latest.csatComment}"` : null,
+        scored.length > 1 ? `${scored.length} responses in total` : null,
+      ]
+        .filter(Boolean)
+        .join("\n")}
+      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${tone}`}
+    >
+      Feedback {score}/10
+      {scored.length > 1 && <span className="font-normal opacity-70">· {scored.length}</span>}
+    </Link>
   );
 }
 

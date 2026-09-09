@@ -23,6 +23,7 @@ export const SIDEBAR_REGISTRY: SidebarEntry[] = [
   { group: "General", href: "/dashboard/next-best-action", label: "Next Best Action" },
   { group: "General", href: "/dashboard/tasks", label: "Tasks" },
   { group: "General", href: "/dashboard/service-requests", label: "Service Requests" },
+  { group: "General", href: "/dashboard/support/feedback", label: "Client Feedback" },
   { group: "General", href: "/dashboard/tasks/daily", label: "Daily Tracker" },
   { group: "General", href: "/dashboard/review-meetings", label: "Meetings" },
   { group: "General", href: "/dashboard/calendar", label: "Calendar" },

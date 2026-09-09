@@ -113,6 +113,9 @@ const NAV: NavSection[] = [
         roles: ["owner", "rm", "branch_head", "back_office", "ops", "compliance"] },
       { href: "/dashboard/tasks", label: "Tasks", icon: ListChecks, module: "tasks" },
       { href: "/dashboard/service-requests", label: "Service Requests", icon: LifeBuoy, module: "service_requests" },
+      // NPS + every response the /f/<token> form collects. The page existed but
+      // nothing linked to it, so the feedback being gathered was invisible.
+      { href: "/dashboard/support/feedback", label: "Client Feedback", icon: Gauge, module: "service_requests" },
       { href: "/dashboard/review-meetings", label: "Meetings", icon: Presentation, module: "review_meetings",
         roles: ["owner", "rm", "branch_head", "back_office", "ops"] },
       { href: "/dashboard/attendance", label: "Attendance", icon: CalendarCheck },
