@@ -1224,7 +1224,7 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
     category: "utility",
     body: {
       subject: "{{investor.first_name}}, how are we doing?",
-      preheader: "One question, about a minute — it genuinely shapes how we work.",
+      preheader: "Five quick questions, about a minute — it genuinely shapes how we work.",
       mode: "designer",
       blocks: [
         b({ type: "logo" } as any),
@@ -1233,12 +1233,12 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
         b({
           type: "text",
           html:
-            "We would like to hear from you. On a scale of 0 to 10, how likely are you to recommend {{tenant.displayName}} to a friend or colleague?",
+            "We would like to hear from you. It is five short questions about how we are doing — your reviews, how quickly we respond, how clearly we explain things, and whether you would recommend us. Each one is a simple 0 to 10 rating.",
           align: "left",
         } as any),
         b({
           type: "text",
-          html: "It is one question and an optional comment box - about a minute, with no login needed.",
+          html: "About a minute in total, with an optional comment box at the end. No login needed.",
           align: "left",
         } as any),
         b({
