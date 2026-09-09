@@ -16,6 +16,7 @@ import { PLATFORM_TENANT_ID } from "@/lib/platform";
 import { signSession, SESSION_COOKIE, SESSION_TTL_SECONDS } from "@/lib/auth/session";
 import { MASTER_SEEDS } from "@/lib/masters/seeds";
 import { installDefaultRecipes } from "@/lib/recipes/install-defaults";
+import { installClientEmailTemplates } from "@/lib/templates/install-client-emails";
 import { issueEmailVerification } from "@/lib/auth/email-verification";
 import { enforce } from "@/lib/rate-limit";
 
@@ -169,6 +170,19 @@ export async function POST(req: NextRequest) {
         // the tenant create to succeed. The owner can install from the
         // library later.
         console.error("[signup] default-recipe install failed:", err);
+      }
+
+      // Client-facing email templates, so Templates isn't empty on day one and
+      // the risk-result / feedback / suitability emails can be sent right away.
+      // Existing tenants were backfilled by migration 0206. Additive: a failure
+      // must not fail the signup.
+      try {
+        const r = await installClientEmailTemplates(tx, tenantId, userId);
+        console.log(
+          `[signup] installed ${r.installed.length} client email template(s) for tenant ${tenantId}`
+        );
+      } catch (err) {
+        console.error("[signup] client email template install failed:", err);
       }
     });
   } catch (err: any) {
