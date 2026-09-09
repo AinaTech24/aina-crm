@@ -90,6 +90,7 @@ export const NAV_ACCESS_GROUPS: NavAccessGroup[] = [
       { key: "/dashboard/campaigns", label: "Marketing Campaigns", module: "marketing_campaigns" },
       { key: "/dashboard/aina-library", label: "AINA Content Library" },
       { key: "/dashboard/communications", label: "Communications", module: "broadcasts" },
+      { key: "/dashboard/communications/responses", label: "Client Responses" },
     ],
   },
   {

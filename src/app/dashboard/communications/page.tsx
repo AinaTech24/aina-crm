@@ -153,11 +153,15 @@ export default async function CommunicationsPage({
     <div className="space-y-5 max-w-6xl">
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+          <h1 className="page-title">
             <Mail className="size-6 text-brand-cyan" /> Communications
           </h1>
+          <p className="page-subtitle mt-1">Every message sent and received, across WhatsApp, email and SMS.</p>
         </div>
         <div className="flex items-center gap-2">
+          <Link href="/dashboard/communications/responses" className="btn-secondary text-xs whitespace-nowrap">
+            Client responses →
+          </Link>
           <Link href="/dashboard/communications/cadence" className="btn-secondary text-xs whitespace-nowrap">
             Cadence (SOP) →
           </Link>

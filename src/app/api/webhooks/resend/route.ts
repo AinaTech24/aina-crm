@@ -55,6 +55,19 @@ export async function POST(req: NextRequest) {
   await withSystem(async (tx) => {
     await applyMonotonicStatus(tx, { externalId: emailId, channel: "email", newStatus });
 
+    // A click is the strongest signal an email worked, and the column for it
+    // already existed — but nothing wrote it, so every click collapsed into the
+    // same "read" as a pixel load and the distinction was lost. Stamp it (first
+    // click wins) so the follow-through view can separate "opened it" from
+    // "actually tapped the button".
+    if (type === "email.clicked") {
+      await tx.execute(sql`
+        UPDATE communications
+           SET clicked_at = COALESCE(clicked_at, now()), updated_at = now()
+         WHERE external_id = ${emailId} AND channel = 'email'
+      `);
+    }
+
     // Hard bounce / spam complaint → suppress the address so the pipeline
     // stops sending to it (deliverability + consent). Resolve the tenant from
     // the originating communication; take the recipient from the event payload.
