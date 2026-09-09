@@ -34,6 +34,11 @@ export function resolveTokens(
   ctx: ResolveContext
 ): Record<string, string> {
   const resolved: Record<string, string> = {};
+  // A template version can carry `variables: null` (older rows, and any version
+  // duplicated from one). Iterating that threw "variables is not iterable",
+  // which surfaced to the user as an unexplained "render_error" and blocked the
+  // send outright — for a field list that is optional in the first place.
+  if (!Array.isArray(variables)) return resolved;
   for (const v of variables) {
     const value = resolveOne(v, ctx);
     // Don't hard-fail the whole send when a field can't be resolved — render it

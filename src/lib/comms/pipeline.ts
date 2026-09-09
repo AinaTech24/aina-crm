@@ -82,7 +82,10 @@ export interface DispatchResult {
   communicationId: string;
   status: "sent" | "queued" | "skipped";
   externalId?: string;
-  skipped?: { reason: string; findings?: ComplianceResult["findings"] };
+  skipped?: {
+    reason: string;
+    detail?: string;
+    findings?: ComplianceResult["findings"] };
 }
 
 export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchResult> {
@@ -308,14 +311,20 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
         console.warn("[comms] client-link auto-fill skipped:", (e as Error)?.message);
       }
 
-      rendered = renderBody(input.channel, version, tokens);
+      try {
+        rendered = renderBody(input.channel, version, tokens);
+      } catch (err) {
+        // Separated from token resolution so the reason names the real step
+        // instead of always blaming variables.
+        throw new Error(`rendering the ${input.channel} body failed: ${(err as Error)?.message ?? err}`);
+      }
     } catch (err) {
       return await skip(
         tx,
         communicationId,
         input,
         "render_error",
-        `Variable resolution failed: ${(err as Error).message}`
+        `Template "${input.templateKey ?? "(none)"}": ${(err as Error)?.message ?? String(err)}`
       );
     }
   }
@@ -679,7 +688,9 @@ async function skip(
     campaignId: input.campaignId,
     variant: input.variant,
   });
-  return { communicationId: id, status: "skipped", skipped: { reason, findings: compliance?.findings } };
+  // `detail` travels back too: the UI previously showed only the bare status
+  // ("Email blocked: render_error"), which told the user nothing they could act on.
+  return { communicationId: id, status: "skipped", skipped: { reason, detail, findings: compliance?.findings } };
 }
 
 function renderBody(

@@ -161,6 +161,16 @@ export function PublicDocsForm({
             headers: { "content-type": "application/json" },
             body: JSON.stringify({ tokenId, files: chosen.map((c) => ({ docKey: c.docKey, filename: c.file.name, contentType: c.file.type })) }),
           });
+          if (!presignRes.ok) {
+            // 404 = an older deploy without the endpoint; the multipart
+            // fallback below is the correct path there. Anything else is a real
+            // failure (bad token, storage down, rejected file) and must be
+            // shown — falling through hid it behind a FormData parse error.
+            if (presignRes.status !== 404) {
+              const pj = await presignRes.json().catch(() => ({}));
+              throw new Error(pj?.error ?? `Could not prepare the upload (HTTP ${presignRes.status})`);
+            }
+          }
           if (presignRes.ok) {
             const { uploads } = (await presignRes.json()) as { uploads: Array<{ docKey: string; key: string; url: string }> };
             const byKey = new Map(uploads.map((u) => [u.docKey, u]));

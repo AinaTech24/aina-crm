@@ -291,7 +291,7 @@ function FreeComposeModal({
       });
       const j = await res.json();
       if (!res.ok) { setErr(j.error ?? "Failed to send"); return; }
-      if (j.status === "skipped") { onSkipped(`Email blocked: ${j.reason ?? "compliance/consent check"}`); return; }
+      if (j.status === "skipped") { onSkipped(`Email blocked: ${j.skipped?.detail ?? j.reason ?? "compliance/consent check"}`); return; }
       onSent(j.status === "queued" ? "Email queued." : "Email sent.");
     } catch (e: any) {
       setErr(e?.message ?? "Network error");
@@ -395,7 +395,7 @@ function ComposeModal({
       });
       const j = await res.json();
       if (!res.ok) { setErr(j.error ?? "Failed to send"); return; }
-      if (j.status === "skipped") { onSkipped(`Email blocked: ${j.skipped?.reason ?? "compliance/consent check"}`); return; }
+      if (j.status === "skipped") { onSkipped(`Email blocked: ${j.skipped?.detail ?? j.skipped?.reason ?? "compliance/consent check"}`); return; }
       onSent(j.status === "queued" ? "Email queued for sending." : "Email sent.");
     } catch (e: any) {
       setErr(e?.message ?? "Network error");

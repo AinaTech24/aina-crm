@@ -86,7 +86,19 @@ export async function POST(req: NextRequest) {
         });
       }
     } else {
-      const formData = await req.formData();
+      // A malformed / truncated multipart body makes req.formData() throw
+      // "Failed to parse body as FormData", which reached the client verbatim
+      // and told them nothing. Most often the upload was interrupted on a phone
+      // network, so say that and let them retry.
+      let formData: FormData;
+      try {
+        formData = await req.formData();
+      } catch {
+        return NextResponse.json(
+          { error: "Your upload did not arrive complete — please check your connection and try again." },
+          { status: 400 }
+        );
+      }
       tokenId = String(formData.get("tokenId") ?? "");
       signatureName = String(formData.get("signatureName") ?? "").trim();
       extraNotes = String(formData.get("extraNotes") ?? "");
