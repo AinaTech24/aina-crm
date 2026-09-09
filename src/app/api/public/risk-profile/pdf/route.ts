@@ -86,6 +86,21 @@ export async function GET(req: NextRequest) {
       ).rows[0] as any;
 
       // Template max score gives the number a scale ("24 / 40" on the PDF).
+      // Goals chips — investor subjects only; a lead has no goals yet.
+      let goalNames: string[] = [];
+      if (tk.subjectType === "investor") {
+        try {
+          const g = await tx.execute(sql`
+            SELECT name FROM goals
+            WHERE tenant_id = ${tk.tenantId}::uuid AND investor_id = ${tk.subjectId}::uuid
+            ORDER BY created_at ASC LIMIT 8
+          `);
+          goalNames = (g.rows as Array<{ name?: string }>).map((x) => String(x.name ?? "").trim()).filter(Boolean);
+        } catch {
+          goalNames = [];
+        }
+      }
+
       const tpl = await loadActiveTemplate(tx, tk.tenantId!).catch(() => null);
       const maxScore = tpl
         ? tpl.questions.reduce((s, q) => s + Math.max(...q.options.map((o) => o.score)), 0)
@@ -103,6 +118,7 @@ export async function GET(req: NextRequest) {
           age: row.age != null ? Number(row.age) : null,
           verificationMethod: row.verification_method ?? null,
           signatureImage: await loadSignatureImage(row.document_url),
+          investmentGoals: goalNames,
           responses: Array.isArray(row.responses) ? row.responses : [],
           bands: tpl?.bands ?? null,
           questions: tpl?.questions ?? null,

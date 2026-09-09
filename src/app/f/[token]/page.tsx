@@ -15,12 +15,14 @@ import { MessageSquareHeart } from "lucide-react";
 import { withSystem } from "@/db/client";
 import { tenants, leads, investors } from "@/db/schema";
 import { resolveShareToken } from "@/lib/share-tokens";
+import { isSampleShareToken } from "@/lib/share-tokens/sample";
 import { PublicFeedbackForm } from "@/components/public/PublicFeedbackForm";
 
 export const dynamic = "force-dynamic";
 
 export default async function PublicFeedbackPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
+  if (isSampleShareToken(token)) return <SampleScreen what="feedback form" />;
 
   let info: Awaited<ReturnType<typeof resolveShareToken>>;
   try {
@@ -82,6 +84,28 @@ function ErrorScreen({ message }: { message: string }) {
         <p className="text-sm text-muted-foreground mt-2">{message}</p>
         <p className="text-xs text-muted-foreground mt-4">
           Please reach out to your relationship manager for a new link.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A link from a PREVIEW or TEST email. There is no client behind it, so explain
+ * that plainly instead of showing the generic "link unavailable" error, which
+ * made a working feature look broken.
+ */
+function SampleScreen({ what }: { what: string }) {
+  return (
+    <div className="min-h-screen bg-slate-50 grid place-items-center p-6">
+      <div className="max-w-md bg-white rounded-lg shadow p-6 text-center">
+        <MessageSquareHeart className="size-10 text-brand-cyan mx-auto" />
+        <h1 className="text-lg font-semibold mt-3">This is a sample link</h1>
+        <p className="text-sm text-muted-foreground mt-2">
+          You have opened a link from a test or preview email, so there is no {what} to load.
+        </p>
+        <p className="text-xs text-muted-foreground mt-4">
+          Emails sent to a real client carry a personal link that opens their own form.
         </p>
       </div>
     </div>

@@ -61,20 +61,18 @@ export function renderEmailHtml(body: EmailDesignerBody, ctx: RenderContext): st
 
   // Every email should lead with the firm's logo. If this template has no logo
   // block, auto-prepend one from the theme/tenant logo so nothing ships unbranded.
-  const hasLogoBlock = blocks.some((b) => (b as any)?.type === "logo");
-  const autoLogoUrl = absoluteEmailUrl(theme.logoUrl || ctx.tenant?.logoUrl || "");
-  const autoLogo =
-    !hasLogoBlock && autoLogoUrl
-      ? logoImgHtml(autoLogoUrl, theme, ctx)
-      : "";
-  const inner =
-    autoLogo +
-    blocks
-      .map((b) => {
-        const rendered = renderBlock(b, theme, ctx);
-        return ctx.previewMarkers ? `<div id="eb-${escape(String((b as any).id ?? ""))}">${rendered}</div>` : rendered;
-      })
-      .join("");
+  // The masthead below carries the logo, so a logo block in the body would
+  // print it twice. The block still controls height/align — it is the masthead's
+  // settings, not a second image.
+  const logoBlock = blocks.find((b) => (b as any)?.type === "logo") as any;
+  const bodyBlocks = blocks.filter((b) => (b as any)?.type !== "logo");
+  const mastheadHtml = renderMasthead(logoBlock, theme, ctx);
+  const inner = bodyBlocks
+    .map((b) => {
+      const rendered = renderBlock(b, theme, ctx);
+      return ctx.previewMarkers ? `<div id="eb-${escape(String((b as any).id ?? ""))}">${rendered}</div>` : rendered;
+    })
+    .join("");
   const footerHtml = renderFooter(footer, theme, ctx);
   const subject = substituteVariables(body.subject ?? "", ctx);
   const preheader = substituteVariables(body.preheader ?? "", ctx);
@@ -94,13 +92,14 @@ export function renderEmailHtml(body: EmailDesignerBody, ctx: RenderContext): st
       : "",
     `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${theme.pageBackground};">`,
     `<tr><td align="center" style="padding:24px 12px;">`,
-    `<table role="presentation" class="email-card" width="${theme.containerWidth}" cellpadding="0" cellspacing="0" border="0" style="background:${theme.cardBackground};border-radius:${theme.cornerRadius}px;overflow:hidden;max-width:${theme.containerWidth}px;width:100%;">`,
-    `<tr><td style="padding:32px 28px;">`,
+    `<table role="presentation" class="email-card" width="${theme.containerWidth}" cellpadding="0" cellspacing="0" border="0" style="background:${theme.cardBackground};border-radius:${theme.cornerRadius}px;overflow:hidden;max-width:${theme.containerWidth}px;width:100%;box-shadow:0 1px 2px rgba(16,24,40,.06);">`,
+    mastheadHtml,
+    `<tr><td style="padding:30px 32px 26px;">`,
     inner,
     `</td></tr>`,
     footerHtml,
     `</table>`,
-    `<div style="margin-top:14px;font-size:11px;color:${theme.mutedColor};max-width:${theme.containerWidth}px;">If you have any questions, simply reply to this email.</div>`,
+    `<div style="margin-top:16px;font-size:11px;line-height:1.5;color:${theme.mutedColor};max-width:${theme.containerWidth}px;text-align:center;">If you have any questions, simply reply to this email.</div>`,
     `</td></tr></table>`,
     `</body></html>`,
   ].join("");
@@ -168,6 +167,39 @@ function renderBlock(block: EmailBlock, theme: EmailTheme, ctx: RenderContext): 
   }
 }
 
+/**
+ * Branded masthead row at the top of the card: the firm's logo on a tinted
+ * band, closed by a brand-coloured rule.
+ *
+ * Every email gets one. Previously the logo simply floated in the body padding
+ * (and was absent entirely for a firm with no logo on file), so a client's first
+ * impression was an unbranded wall of text. When there is no logo image, the
+ * firm's NAME is set in the band instead, so identity is never missing.
+ */
+function renderMasthead(logoBlock: any, theme: EmailTheme, ctx: RenderContext): string {
+  const url = absoluteEmailUrl(theme.logoUrl || ctx.tenant?.logoUrl || "");
+  const align = logoBlock?.align || theme.logoAlign || "center";
+  const firm = ctx.tenant?.displayName || ctx.tenant?.legalName || "";
+  const band = tint(theme.brandColor, 0.045);
+
+  let mark: string;
+  if (url) {
+    const h = Number(logoBlock?.height) || theme.logoHeight || 56;
+    mark = `<img src="${escape(url)}" alt="${escape(firm || "Logo")}" height="${h}" style="height:${h}px;max-height:${h}px;width:auto;max-width:100%;display:inline-block;border:0;"/>`;
+  } else if (firm) {
+    mark = `<span style="font-size:19px;font-weight:700;letter-spacing:-.2px;color:${theme.accentColor};">${escape(firm)}</span>`;
+  } else {
+    return "";
+  }
+
+  const arn = ctx.tenant?.arn ? arnDisplay(ctx.tenant.arn) : "";
+  const sub = arn
+    ? `<div style="margin-top:6px;font-size:11px;letter-spacing:.3px;color:${theme.mutedColor};">AMFI Registered Mutual Fund Distributor &nbsp;&middot;&nbsp; ${escape(arn)}</div>`
+    : "";
+
+  return `<tr><td style="padding:22px 32px 18px;background:${band};border-bottom:3px solid ${theme.brandColor};text-align:${align};">${mark}${sub}</td></tr>`;
+}
+
 function renderLogo(b: any, theme: EmailTheme, ctx: RenderContext): string {
   const url = absoluteEmailUrl(theme.logoUrl || ctx.tenant?.logoUrl || "");
   if (!url) return "";
@@ -208,7 +240,12 @@ function renderSignature(b: any, theme: EmailTheme, ctx: RenderContext): string 
 
   const align = b.align === "center" ? "center" : "left";
   const name = v("investor.rm_name") || v("lead.owner_name");
-  const designation = b.showDesignation === false ? "" : v("investor.rm_designation");
+  // AMFI/SEBI: a distributor's client-facing sign-off states the REGISTRATION,
+  // not an internal department. "Advisory" in particular reads as investment
+  // advice, which an AMFI-registered distributor is not authorised to give
+  // (advice is incidental to distribution). An explicit override still wins.
+  const designation =
+    b.showDesignation === false ? "" : (b.designation as string) || "AMFI Registered Mutual Fund Distributor";
   const email = b.showContact === false ? "" : v("investor.rm_email");
   const phone = b.showContact === false ? "" : v("investor.rm_phone");
   const sigUrl = b.showSignatureImage === false ? "" : absoluteEmailUrl(v("investor.rm_signature_url"));
@@ -268,13 +305,22 @@ function renderHero(b: any, theme: EmailTheme, ctx: RenderContext): string {
 
 function renderHeading(b: any, theme: EmailTheme, ctx: RenderContext): string {
   const tag = b.level;
-  const size = b.level === "h1" ? 24 : b.level === "h2" ? 19 : 16;
-  return `<${tag} style="font-size:${size}px;color:${theme.accentColor};margin:18px 0 10px;text-align:${b.align};font-weight:700;line-height:1.3;">${escape(substituteVariables(b.text ?? "", ctx))}</${tag}>`;
+  // h3 is used as a SECTION heading inside a message, so it needs more air above
+  // than below — it belongs to the text that follows it, not the block before.
+  const size = b.level === "h1" ? 25 : b.level === "h2" ? 20 : 15;
+  const margin = b.level === "h3" ? "26px 0 8px" : "22px 0 12px";
+  const spacing = b.level === "h3" ? "letter-spacing:.1px;" : "letter-spacing:-.2px;";
+  return `<${tag} style="font-size:${size}px;color:${theme.accentColor};margin:${margin};text-align:${b.align};font-weight:700;line-height:1.32;${spacing}">${escape(substituteVariables(b.text ?? "", ctx))}</${tag}>`;
 }
 
 function renderText(b: any, theme: EmailTheme, ctx: RenderContext): string {
   const html = substituteVariables(b.html ?? "", ctx, /* htmlEscapeValues */ true);
-  return `<div style="margin:0 0 14px;text-align:${b.align};font-size:${theme.baseFontSize}px;line-height:1.6;color:${theme.textColor};">${html}</div>`;
+  // "note" = small print (disclaimers, link caveats). Set at body size it
+  // competed with the message; it now reads as a footnote, separated by a rule.
+  if (b.variant === "note") {
+    return `<div style="margin:18px 0 0;padding-top:12px;border-top:1px solid ${tint(theme.mutedColor, 0.35)};text-align:${b.align};font-size:11.5px;line-height:1.55;color:${theme.mutedColor};">${html}</div>`;
+  }
+  return `<div style="margin:0 0 15px;text-align:${b.align};font-size:${theme.baseFontSize}px;line-height:1.62;color:${theme.textColor};">${html}</div>`;
 }
 
 function renderButton(b: any, theme: EmailTheme, ctx: RenderContext): string {
@@ -285,8 +331,11 @@ function renderButton(b: any, theme: EmailTheme, ctx: RenderContext): string {
   const color = solid ? "#ffffff" : theme.brandColor;
   const border = solid ? theme.brandColor : theme.brandColor;
   const width = b.fullWidth ? "width:100%;" : "";
-  return `<div style="text-align:${b.align};margin:18px 0;">
-<a href="${escape(url)}" style="${width}display:inline-block;background:${bg};color:${color};border:2px solid ${border};border-radius:8px;padding:11px 22px;font-weight:600;text-decoration:none;font-size:14px;">${label}</a>
+  // Solid buttons take a 1px same-colour border so the hit area matches the
+  // outline variant exactly; a 2px border made solid buttons visibly chunkier.
+  const bw = solid ? 1 : 2;
+  return `<div style="text-align:${b.align};margin:24px 0;">
+<a href="${escape(url)}" style="${width}display:inline-block;background:${bg};color:${color};border:${bw}px solid ${border};border-radius:8px;padding:13px 28px;font-weight:600;text-decoration:none;font-size:14.5px;line-height:1.2;letter-spacing:.2px;">${label}</a>
 </div>`;
 }
 
@@ -314,13 +363,19 @@ function renderImageRow(b: any, _theme: EmailTheme, ctx: RenderContext): string 
 
 function renderDataTable(b: any, theme: EmailTheme, ctx: RenderContext): string {
   const caption = substituteVariables(b.caption ?? "", ctx);
-  const rows = (b.rows ?? [])
-    .map(
-      (r: any, i: number) =>
-        `<tr style="background:${i % 2 === 0 ? "#f9fafb" : "#ffffff"};"><td style="padding:10px 14px;color:${theme.mutedColor};font-size:13px;border-bottom:1px solid #f1f5f9;width:40%;">${escape(substituteVariables(r.label ?? "", ctx))}</td><td style="padding:10px 14px;font-weight:600;font-size:14px;border-bottom:1px solid #f1f5f9;">${escape(substituteVariables(r.value ?? "", ctx))}</td></tr>`
-    )
+  const all = (b.rows ?? []) as any[];
+  const rows = all
+    .map((r: any, i: number) => {
+      const last = i === all.length - 1;
+      return `<tr><td style="padding:11px 16px;color:${theme.mutedColor};font-size:13px;${last ? "" : `border-bottom:1px solid ${tint(theme.mutedColor, 0.28)};`}width:44%;vertical-align:top;">${escape(substituteVariables(r.label ?? "", ctx))}</td><td style="padding:11px 16px;font-weight:600;font-size:14px;color:${theme.textColor};${last ? "" : `border-bottom:1px solid ${tint(theme.mutedColor, 0.28)};`}vertical-align:top;">${escape(substituteVariables(r.value ?? "", ctx))}</td></tr>`;
+    })
     .join("");
-  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:14px 0;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">${caption ? `<caption style="padding:8px 14px;text-align:left;font-weight:600;color:${theme.accentColor};">${caption}</caption>` : ""}${rows}</table>`;
+  // The caption becomes a proper header strip rather than a floating line, so
+  // the block reads as one panel instead of a stray label above a grid.
+  const head = caption
+    ? `<tr><td colspan="2" style="padding:11px 16px;background:${tint(theme.brandColor, 0.07)};font-weight:700;font-size:12px;letter-spacing:.4px;text-transform:uppercase;color:${theme.accentColor};border-bottom:1px solid ${tint(theme.brandColor, 0.22)};">${caption}</td></tr>`
+    : "";
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:18px 0;border:1px solid ${tint(theme.mutedColor, 0.3)};border-radius:10px;overflow:hidden;background:#ffffff;">${head}${rows}</table>`;
 }
 
 function renderDivider(b: any, _theme: EmailTheme): string {
@@ -477,6 +532,18 @@ function readPath(obj: Record<string, unknown>, path: string): unknown {
 // ---------------------------------------------------------------------------
 // Utils
 // ---------------------------------------------------------------------------
+
+/**
+ * Mix a hex colour toward white by `amount` (0 = white, 1 = the colour).
+ * Email clients cannot be relied on for rgba(), so tints are pre-computed.
+ */
+function tint(hex: string | undefined, amount: number): string {
+  const m = String(hex ?? "").replace(/^#/, "").match(/^([0-9a-fA-F]{6})$/);
+  if (!m) return "#e5e7eb";
+  const [r, g, b] = (m[1].match(/.{2}/g) as string[]).map((x) => parseInt(x, 16));
+  const mix = (c: number) => Math.round(255 - (255 - c) * amount);
+  return `#${[mix(r), mix(g), mix(b)].map((c) => c.toString(16).padStart(2, "0")).join("")}`;
+}
 
 function escape(s: string): string {
   return String(s ?? "")

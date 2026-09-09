@@ -40,9 +40,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
           r.final_category, r.total_score, r.responses, r.profile_date, r.age,
           r.signed_at, r.signed_by_name, r.next_review_at, r.verification_method, r.document_url,
           i.name AS investor_name, i.pan AS investor_pan,
-          i.address AS investor_address, i.email AS investor_email, i.phone AS investor_phone
+          i.address AS investor_address, i.email AS investor_email, i.phone AS investor_phone,
+          i.id AS investor_id, u.name AS rm_name
         FROM risk_profile_responses r
         LEFT JOIN investors i ON i.id = r.investor_id
+        LEFT JOIN users u ON u.id = i.rm_id
         WHERE r.id = ${id}::uuid AND r.tenant_id = ${session.tenantId}::uuid
           AND ${ownerScope}
         LIMIT 1
@@ -59,6 +61,22 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       ).rows[0] as any;
 
       // Template max score gives the number a scale ("24 / 40" on the PDF).
+      // The client's goals become the chips under the gauge. Best-effort: a
+      // client with none simply gets no goals section.
+      let goalNames: string[] = [];
+      if (row.investor_id) {
+        try {
+          const g = await tx.execute(sql`
+            SELECT name FROM goals
+            WHERE tenant_id = ${session.tenantId}::uuid AND investor_id = ${row.investor_id}::uuid
+            ORDER BY created_at ASC LIMIT 8
+          `);
+          goalNames = (g.rows as Array<{ name?: string }>).map((x) => String(x.name ?? "").trim()).filter(Boolean);
+        } catch {
+          goalNames = [];
+        }
+      }
+
       const tpl = await loadActiveTemplate(tx, session.tenantId).catch(() => null);
       const maxScore = tpl
         ? tpl.questions.reduce((s, q) => s + Math.max(...q.options.map((o) => o.score)), 0)
@@ -76,6 +94,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
           age: row.age != null ? Number(row.age) : null,
           verificationMethod: row.verification_method ?? null,
           signatureImage: await loadSignatureImage(row.document_url),
+          investmentGoals: goalNames,
           responses: Array.isArray(row.responses) ? row.responses : [],
           // The template drives the band ladder, the asset-allocation section and
           // the "every option, chosen one highlighted" questionnaire.
@@ -106,6 +125,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         },
         generatedAt: new Date().toISOString(),
         refId: id,
+        adviserName: row.rm_name ?? session.name ?? null,
       });
       return { pdf, name: row.investor_name ?? "client" };
     });

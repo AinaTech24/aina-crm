@@ -16,6 +16,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { v4 as uuid } from "uuid";
 import {
+  PenLine,
   Type as TypeIcon,
   Heading as HeadingIcon,
   Image as ImageIcon,
@@ -63,6 +64,7 @@ function resolvePreviewTokens(text: string): string {
 function blockTypeLabel(b: any): string {
   switch (b.type) {
     case "logo": return "Logo";
+    case "signature": return "Sign-off";
     case "hero": return "Hero";
     case "heading": return `Heading (${String(b.level ?? "h2").toUpperCase()})`;
     case "text": return "Paragraph";
@@ -543,6 +545,7 @@ function AccordionSection({
 function blockSummary(b: any): string {
   switch (b.type) {
     case "logo": return "Brand logo";
+    case "signature": return b.closing || "Sign-off";
     case "hero": return b.title || "Hero";
     case "heading": return b.text || "Heading";
     case "text": return (b.html || "").replace(/<[^>]+>/g, "").slice(0, 36) || "Text";
@@ -656,6 +659,7 @@ const PALETTE: Array<{ type: any; label: string; icon: any }> = [
   { type: "data_table", label: "Data table", icon: TableIcon },
   { type: "divider", label: "Divider", icon: Minus },
   { type: "spacer", label: "Spacer", icon: ArrowUpDown },
+  { type: "signature", label: "Sign-off", icon: PenLine },
   { type: "quote", label: "Quote", icon: Quote },
   { type: "social", label: "Social", icon: Share2 },
   { type: "html", label: "Custom HTML", icon: Code },
@@ -988,6 +992,78 @@ function BlockEditor({ block, onChange }: { block: any; onChange: (patch: any) =
           <p className="text-[10px] text-muted-foreground">Leave height blank to use the theme setting.</p>
         </div>
       );
+    case "signature":
+      // Every line here resolves per recipient at send time (the client's own
+      // RM), so this panel controls WHICH lines appear, not their values.
+      return (
+        <div className="space-y-2">
+          <label className="block">
+            <span className="text-[10px] text-muted-foreground">Closing line</span>
+            <input
+              value={block.closing ?? ""}
+              onChange={(e) => onChange({ closing: e.target.value })}
+              placeholder="Warm regards,"
+              className="input-base text-sm w-full mt-0.5"
+            />
+          </label>
+          <label className="block">
+            <span className="text-[10px] text-muted-foreground">Designation shown under the name</span>
+            <input
+              value={block.designation ?? ""}
+              onChange={(e) => onChange({ designation: e.target.value })}
+              placeholder="AMFI Registered Mutual Fund Distributor"
+              className="input-base text-xs w-full mt-0.5"
+            />
+            <span className="text-[10px] text-muted-foreground">
+              Leave blank for the AMFI registration line. A distributor should not describe itself as an adviser.
+            </span>
+          </label>
+          <div className="flex flex-wrap gap-3 pt-1">
+            <Toggle
+              label="Signature image"
+              checked={block.showSignatureImage !== false}
+              onChange={(v) => onChange({ showSignatureImage: v })}
+            />
+            <Toggle
+              label="Designation"
+              checked={block.showDesignation !== false}
+              onChange={(v) => onChange({ showDesignation: v })}
+            />
+            <Toggle
+              label="Phone & email"
+              checked={block.showContact !== false}
+              onChange={(v) => onChange({ showContact: v })}
+            />
+            <Toggle label="Firm & ARN" checked={block.showFirm !== false} onChange={(v) => onChange({ showFirm: v })} />
+          </div>
+          <div className="flex gap-1.5 items-end">
+            <label className="flex-1">
+              <span className="text-[10px] text-muted-foreground block">Signature height (px)</span>
+              <input
+                type="number"
+                min={24}
+                max={120}
+                value={block.signatureHeight ?? 56}
+                onChange={(e) => onChange({ signatureHeight: Number(e.target.value) })}
+                className="input-base text-xs w-full tabular-nums"
+              />
+            </label>
+            <SelectInline
+              label="Align"
+              value={block.align ?? "left"}
+              onChange={(v) => onChange({ align: v })}
+              options={[
+                { value: "left", label: "Left" },
+                { value: "center", label: "Center" },
+              ]}
+            />
+          </div>
+          <p className="text-[10px] text-muted-foreground">
+            The name, phone, email and signature image come from the client&apos;s own relationship manager at send
+            time. Each person sets their signature in Settings &rarr; Profile.
+          </p>
+        </div>
+      );
     case "hero":
       return (
         <div className="space-y-1.5">
@@ -1018,6 +1094,17 @@ function BlockEditor({ block, onChange }: { block: any; onChange: (patch: any) =
             placeholder="Paragraph text — supports basic HTML: <b>, <i>, <a href='…'>, <br>"
             className="input-base text-xs w-full"
           />
+          <div className="mt-1.5">
+            <SelectInline
+              label="Style"
+              value={block.variant ?? "body"}
+              onChange={(v) => onChange({ variant: v === "body" ? undefined : v })}
+              options={[
+                { value: "body", label: "Body text" },
+                { value: "note", label: "Small print / disclaimer" },
+              ]}
+            />
+          </div>
           <SelectInline label="Align" value={block.align ?? "left"} onChange={(v) => onChange({ align: v })} options={[{ value: "left", label: "Left" }, { value: "center", label: "Center" }, { value: "right", label: "Right" }]} />
         </div>
       );
@@ -1222,6 +1309,15 @@ function ColorRow({ label, value, onChange }: { label: string; value: string; on
   );
 }
 
+function Toggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <label className="flex items-center gap-1.5 text-[11px] cursor-pointer">
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="size-3.5" />
+      <span className="text-muted-foreground">{label}</span>
+    </label>
+  );
+}
+
 function SelectInline({ label, value, onChange, options }: { label: string; value: string; onChange: (v: string) => void; options: { value: string; label: string }[] }) {
   return (
     <label className="flex items-center gap-1.5 text-[11px]">
@@ -1253,6 +1349,16 @@ function mkBlock(type: any, patch: any = {}): EmailBlock {
     divider: { type: "divider", thickness: 1, color: "#e5e7eb" },
     spacer: { type: "spacer", height: 24 },
     quote: { type: "quote", text: "A great client relationship is built on trust.", author: "" },
+    signature: {
+      type: "signature",
+      closing: "Warm regards,",
+      showSignatureImage: true,
+      signatureHeight: 56,
+      showDesignation: true,
+      showContact: true,
+      showFirm: true,
+      align: "left",
+    },
     social: { type: "social", links: { website: "", linkedin: "", facebook: "", instagram: "", youtube: "", twitter: "" } },
     html: { type: "html", html: "<!-- Custom HTML — merge fields supported -->" },
   };

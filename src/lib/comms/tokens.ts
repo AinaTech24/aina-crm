@@ -45,6 +45,24 @@ export function resolveTokens(
   return resolved;
 }
 
+/**
+ * Resolve a merge path that the template never DECLARED, e.g. "investor.name"
+ * typed straight into a designer block.
+ *
+ * `resolveTokens` only walks the declared `variables` array. Templates built in
+ * the designer (and the seeded starters) declare nothing, so every
+ * {{investor.name}} / {{investor.rm_email}} in them rendered blank on a real
+ * send while looking fine in preview, which uses sample data. This lets the
+ * pipeline fill anything the body actually references.
+ *
+ * Returns "" when the path resolves to nothing, so a missing field blanks out
+ * rather than leaving a raw {{token}} in a client's inbox.
+ */
+export function resolveTokenPath(path: string, ctx: ResolveContext): string {
+  const value = resolveOne({ key: path, type: "string" } as VariableDef, ctx);
+  return value === null || value === undefined ? "" : String(value);
+}
+
 function resolveOne(def: VariableDef, ctx: ResolveContext): unknown {
   // Override always wins.
   if (ctx.overrides && def.key in ctx.overrides) {

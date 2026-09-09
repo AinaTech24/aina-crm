@@ -34,7 +34,7 @@ export const MERGE_FIELDS: MergeField[] = [
   { token: "investor.aum", label: "AUM (₹)", example: "₹1,25,00,000", category: "Recipient" },
   { token: "investor.date_of_birth", label: "Date of birth", example: "15 Aug 1978", category: "Recipient" },
   { token: "investor.rm_name", label: "Relationship manager", example: "Priya Mehta", category: "Recipient" },
-  { token: "investor.rm_designation", label: "RM designation", example: "Advisory", category: "Recipient" },
+  { token: "investor.rm_designation", label: "Sender designation", example: "AMFI Registered Mutual Fund Distributor", category: "Recipient" },
   { token: "investor.rm_email", label: "RM email", example: "priya@firm.in", category: "Recipient" },
   { token: "investor.rm_phone", label: "RM phone", example: "+91 98200 11223", category: "Recipient" },
 
@@ -84,8 +84,8 @@ export const MERGE_FIELDS: MergeField[] = [
   // These mint (or reuse) a share token at send time, so the client can act
   // straight from the email. Prefer them over system.dashboard_url in any
   // client-facing CTA — dashboard_url is the FIRM's login page.
-  { token: "link.risk_profile", label: "Risk profile form link", example: "https://crm.ainatech.in/r/abc123", category: "Client links" },
-  { token: "link.feedback", label: "Feedback form link", example: "https://crm.ainatech.in/f/abc123", category: "Client links" },
+  { token: "link.risk_profile", label: "Risk profile form link", example: "https://crm.ainatech.in/r/sample-preview-link", category: "Client links" },
+  { token: "link.feedback", label: "Feedback form link", example: "https://crm.ainatech.in/f/sample-preview-link", category: "Client links" },
 
   // ── System ────────────────────────────────────────────────────────────────
   { token: "system.today", label: "Today's date", example: "15 Jun 2026", category: "System" },

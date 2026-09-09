@@ -77,7 +77,10 @@ const AMFI_RISK_DISCLAIMER_PATTERNS = [
 
 const GUARANTEED_RETURN_PATTERNS = [
   /\b(guaranteed|guarantee|assured|risk[-\s]?free|no[-\s]?risk|safe|certain)\s+(return|profit|growth|income)/i,
-  /\b(guaranteed|guarantee|assured)\b(?![^.]*subject to market risks)/i,
+  // "sum assured" is the statutory term for a life policy's benefit amount, not
+  // a promise of returns — excluded, or every legitimate insurance renewal
+  // reminder is blocked with a misleading reason.
+  /(?<!\bsum\s)\b(guaranteed|guarantee|assured)\b(?![^.]*subject to market risks)/i,
   /\bfixed\s+return\b/i,
   /\bzero\s+risk\b/i,
   /\b\d+%\s+(guaranteed|assured)\b/i,

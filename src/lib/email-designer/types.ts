@@ -102,6 +102,8 @@ export const TextBlock = z.object({
   /** Stored as light HTML (allows <b>, <i>, <a>, <br>). */
   html: z.string().default("Type your message here. Use the merge field picker to insert variables."),
   align: z.enum(["left", "center", "right"]).default("left"),
+  /** "note" renders as separated small print — use it for disclaimers. */
+  variant: z.enum(["body", "note"]).optional(),
 });
 export const ButtonBlock = z.object({
   ...baseBlock,
@@ -170,6 +172,8 @@ export const SignatureBlock = z.object({
   /** Rendered height of that image, in px. */
   signatureHeight: z.number().int().min(24).max(120).default(56),
   showDesignation: z.boolean().default(true),
+  /** Overrides the default "AMFI Registered Mutual Fund Distributor" line. */
+  designation: z.string().max(120).optional(),
   showContact: z.boolean().default(true),
   /** Repeat the firm name + ARN under the person (the auto-footer also carries it). */
   showFirm: z.boolean().default(true),

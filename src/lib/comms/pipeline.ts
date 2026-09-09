@@ -32,7 +32,7 @@ import {
   type TemplateVersion,
 } from "@/db/schema";
 import { runComplianceChecks, missingMandatoryLines, type ComplianceResult } from "./compliance";
-import { resolveTokens, renderTemplateText, type VariableDef } from "./tokens";
+import { resolveTokens, resolveTokenPath, renderTemplateText, type VariableDef } from "./tokens";
 import { whatsappAdapter, whatsappProviderId } from "./adapters/whatsapp";
 import { emailAdapter } from "./adapters/resend";
 import { smsAdapter } from "./adapters/msg91";
@@ -208,6 +208,42 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
           ? [addr.line1, addr.line2, addr.city, addr.state, addr.pincode].filter(Boolean).join(", ")
           : "",
       });
+
+      // Fill every merge field the BODY references but the template never
+      // declared. resolveTokens above only walks the declared `variables`
+      // array, and designer-built templates (including the seeded starters)
+      // declare none — so {{investor.name}}, {{investor.rm_name}} and the RM's
+      // phone/email all went out BLANK on real sends while previewing fine on
+      // sample data. Declared values and caller overrides still win.
+      try {
+        const bodyStr = JSON.stringify((version as any).body ?? {});
+        const referenced = new Set<string>();
+        for (const m of bodyStr.matchAll(/\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}/g)) referenced.add(m[1]);
+        // Also cover the subject line, which lives outside the blocks.
+        for (const m of String((version as any).body?.subject ?? "").matchAll(/\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}/g)) {
+          referenced.add(m[1]);
+        }
+        // The signature block reads the sender's details straight off the
+        // variables envelope rather than through {{...}}, so nothing above
+        // would fill them and the sign-off went out with no phone or email.
+        if (bodyStr.includes('"signature"')) {
+          for (const k of ["investor.rm_name", "investor.rm_email", "investor.rm_phone", "investor.rm_signature_url"]) {
+            referenced.add(k);
+          }
+        }
+        for (const path of referenced) {
+          if ((tokens as any)[path]) continue;
+          const v = resolveTokenPath(path, {
+            tenant: tenantRow,
+            subject,
+            context: input.meta,
+            overrides: input.variables as Record<string, any>,
+          });
+          if (v) (tokens as any)[path] = v;
+        }
+      } catch (e) {
+        console.warn("[comms] undeclared merge-field fill skipped:", (e as Error)?.message);
+      }
 
       // Apply caller-supplied variable values (the compose-modal "Fill in the
       // details" form) for EVERY provided key — including merge fields that live
@@ -727,18 +763,17 @@ export async function loadTenant(tx: Tx, tenantId: string) {
   const [t] = await tx.select().from(tenants).where(eq(tenants.id, tenantId));
   return t;
 }
-/** Human labels for the `users.department` enum, used in email signatures. */
-const DEPARTMENT_LABELS: Record<string, string> = {
-  sales: "Sales",
-  operations: "Operations",
-  back_office: "Back Office",
-  compliance: "Compliance",
-  marketing: "Marketing",
-  advisory: "Advisory",
-  support: "Client Support",
-  leadership: "Leadership",
-  other: "",
-};
+/**
+ * A client-facing sign-off states the firm's REGISTRATION, never the sender's
+ * internal department.
+ *
+ * `users.department` is an org chart field ("advisory", "back_office", …). It
+ * was being printed under the sender's name, so client emails went out reading
+ * "Advisory" — which implies investment advice, something an AMFI-registered
+ * distributor is not registered to give (advice is incidental to distribution).
+ * The department never reaches a client now.
+ */
+const CLIENT_FACING_DESIGNATION = "AMFI Registered Mutual Fund Distributor";
 
 /** Make an app-relative asset path absolute — email clients cannot load "/…". */
 function absoluteAppUrl(url: string): string {
@@ -772,14 +807,14 @@ async function loadInvestor(tx: Tx, id: string) {
     enriched.rm_name = rm?.name ?? "";
     enriched.rm_email = rm?.email ?? "";
     enriched.rm_phone = rm?.phone ?? "";
-    enriched.rm_designation = rm?.department ? DEPARTMENT_LABELS[rm.department] ?? rm.department : "";
+    enriched.rm_designation = CLIENT_FACING_DESIGNATION;
     // Relative keys must be absolute for Gmail/Outlook, same as the firm logo.
     enriched.rm_signature_url = rm?.signatureUrl ? absoluteAppUrl(rm.signatureUrl) : "";
   } else {
     enriched.rm_name = "";
     enriched.rm_email = "";
     enriched.rm_phone = "";
-    enriched.rm_designation = "";
+    enriched.rm_designation = CLIENT_FACING_DESIGNATION;
     enriched.rm_signature_url = "";
   }
   return enriched;

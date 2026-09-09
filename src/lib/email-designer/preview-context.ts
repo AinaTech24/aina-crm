@@ -19,19 +19,17 @@ import { withTenant } from "@/db/client";
 import { tenants, users } from "@/db/schema";
 import { MERGE_FIELDS } from "@/lib/email-designer/merge-fields";
 
-/** Human labels for `users.department`. Mirrors the comms pipeline's map, so a
- *  preview reads exactly like the mail the pipeline sends. */
-const DEPARTMENT_LABELS: Record<string, string> = {
-  sales: "Sales",
-  operations: "Operations",
-  back_office: "Back Office",
-  compliance: "Compliance",
-  marketing: "Marketing",
-  advisory: "Advisory",
-  support: "Client Support",
-  leadership: "Leadership",
-  other: "",
-};
+/**
+ * A client-facing sign-off states the firm's REGISTRATION, never the sender's
+ * internal department.
+ *
+ * `users.department` is an org chart field ("advisory", "back_office", …). It
+ * was being printed under the sender's name, so client emails went out reading
+ * "Advisory" — which implies investment advice, something an AMFI-registered
+ * distributor is not registered to give (advice is incidental to distribution).
+ * The department never reaches a client now.
+ */
+const CLIENT_FACING_DESIGNATION = "AMFI Registered Mutual Fund Distributor";
 
 /** Nest every catalogued merge field's example into a variables envelope. */
 export function buildSampleVariables(): Record<string, unknown> {
@@ -168,7 +166,7 @@ export async function loadPreviewContext(tenantId: string, userId?: string | nul
     if (me.name) inv.rm_name = me.name;
     if (me.email) inv.rm_email = me.email;
     if (me.phone) inv.rm_phone = me.phone;
-    if (me.department) inv.rm_designation = DEPARTMENT_LABELS[me.department] ?? me.department;
+    inv.rm_designation = CLIENT_FACING_DESIGNATION;
     inv.rm_signature_url = absolute(me.signatureUrl ?? "");
   }
 
