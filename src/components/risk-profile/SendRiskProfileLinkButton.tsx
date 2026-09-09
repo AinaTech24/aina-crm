@@ -33,7 +33,57 @@ function waNumber(phone: string): string {
   return digits;
 }
 
-export function SendRiskProfileLinkButton({ investorId }: { investorId: string }) {
+/**
+ * The two client-facing links an RM sends ad-hoc. Same mechanics (mint a share
+ * token, then offer WhatsApp / Email / Copy), different endpoint and wording —
+ * so they share one component rather than two near-identical copies.
+ */
+export type SendLinkKind = "risk_profile" | "feedback";
+
+const KIND_CONFIG: Record<
+  SendLinkKind,
+  {
+    endpoint: (id: string) => string;
+    trigger: string;
+    title: string;
+    blurb: string;
+    emailSubject: string;
+    message: (url: string, name: string) => string;
+    expiry: string;
+  }
+> = {
+  risk_profile: {
+    endpoint: (id) => `/api/investors/${id}/risk-profile-link`,
+    trigger: "Send link to client",
+    title: "Send risk profile link",
+    blurb:
+      "The client fills the questionnaire themselves - no login needed. They confirm it with their own email OTP.",
+    emailSubject: "Your risk profile assessment",
+    message: (url, name) =>
+      `Hi ${name},\n\nPlease complete your risk profile assessment using the secure link below - it only takes a couple of minutes and needs no login:\n${url}`,
+    expiry: "Link expires in 14 days, single client.",
+  },
+  feedback: {
+    endpoint: (id) => `/api/investors/${id}/feedback-link`,
+    trigger: "Ask for feedback",
+    title: "Send feedback link",
+    blurb:
+      "The client rates you 0-10 with an optional comment - no login needed. The response files itself as a feedback ticket.",
+    emailSubject: "How are we doing?",
+    message: (url, name) =>
+      `Hi ${name},\n\nWe would value your feedback. It is one question and takes about a minute - no login needed:\n${url}`,
+    expiry: "Link expires in 30 days, single use.",
+  },
+};
+
+export function SendRiskProfileLinkButton({
+  investorId,
+  kind = "risk_profile",
+}: {
+  investorId: string;
+  kind?: SendLinkKind;
+}) {
+  const cfg = KIND_CONFIG[kind];
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -99,7 +149,7 @@ export function SendRiskProfileLinkButton({ investorId }: { investorId: string }
     setBusy(true);
     setErr(null);
     try {
-      const res = await fetch(`/api/investors/${investorId}/risk-profile-link`, { method: "POST" });
+      const res = await fetch(cfg.endpoint(investorId), { method: "POST" });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error ?? `Could not create the link (${res.status})`);
       setInfo({ url: data.url, investorName: data.investorName, phone: data.phone, email: data.email });
@@ -108,10 +158,6 @@ export function SendRiskProfileLinkButton({ investorId }: { investorId: string }
     } finally {
       setBusy(false);
     }
-  }
-
-  function message(url: string, name: string) {
-    return `Hi ${name},\n\nPlease complete your risk profile assessment using the secure link below — it only takes a couple of minutes and needs no login:\n${url}`;
   }
 
   async function copyLink() {
@@ -139,7 +185,7 @@ export function SendRiskProfileLinkButton({ investorId }: { investorId: string }
         }}
         className="text-xs font-semibold text-brand-cyan hover:underline inline-flex items-center gap-1"
       >
-        <Link2 className="size-3.5" /> Send link to client
+        <Link2 className="size-3.5" /> {cfg.trigger}
       </button>
 
       {mounted && open && pos && createPortal(
@@ -148,11 +194,8 @@ export function SendRiskProfileLinkButton({ investorId }: { investorId: string }
           onClick={(e) => e.stopPropagation()}
           style={{ position: "fixed", top: pos.top, left: pos.left, width: 320 }}
           className="z-[70] card-elevated bg-card p-3 space-y-2.5">
-          <div className="text-xs font-semibold text-foreground">Send risk profile link</div>
-          <p className="text-[11px] text-muted-foreground leading-snug">
-            The client fills the questionnaire themselves — no login needed. They confirm it with their
-            own email OTP.
-          </p>
+          <div className="text-xs font-semibold text-foreground">{cfg.title}</div>
+          <p className="text-[11px] text-muted-foreground leading-snug">{cfg.blurb}</p>
 
           {busy && (
             <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
@@ -172,7 +215,7 @@ export function SendRiskProfileLinkButton({ investorId }: { investorId: string }
                   every option rather than a silently-narrowed set. */}
               <div className="flex flex-col gap-1.5">
                 <a
-                  href={info.phone ? `https://wa.me/${waNumber(info.phone)}?text=${encodeURIComponent(message(info.url, info.investorName))}` : undefined}
+                  href={info.phone ? `https://wa.me/${waNumber(info.phone)}?text=${encodeURIComponent(cfg.message(info.url, info.investorName))}` : undefined}
                   target="_blank"
                   rel="noopener noreferrer"
                   aria-disabled={!info.phone}
@@ -189,7 +232,7 @@ export function SendRiskProfileLinkButton({ investorId }: { investorId: string }
                 <a
                   href={
                     info.email
-                      ? `mailto:${info.email}?subject=${encodeURIComponent("Your risk profile assessment")}&body=${encodeURIComponent(message(info.url, info.investorName))}`
+                      ? `mailto:${info.email}?subject=${encodeURIComponent(cfg.emailSubject)}&body=${encodeURIComponent(cfg.message(info.url, info.investorName))}`
                       : undefined
                   }
                   aria-disabled={!info.email}
@@ -212,7 +255,7 @@ export function SendRiskProfileLinkButton({ investorId }: { investorId: string }
                   {copied ? "Copied" : "Copy link"}
                 </button>
               </div>
-              <p className="text-[10px] text-muted-foreground">Link expires in 14 days, single client.</p>
+              <p className="text-[10px] text-muted-foreground">{cfg.expiry}</p>
             </>
           )}
         </div>,

@@ -21,6 +21,15 @@ function classOf(category: string | undefined): "equity" | "hybrid" | "defensive
   return "other";
 }
 
+/**
+ * Is this scheme category equity (or equity-ish)? Exported so the suitability
+ * email can name the schemes driving an over-exposure without re-deriving the
+ * bucketing rules — one definition of "equity", used by both.
+ */
+export function equityScheme(category: string | undefined): boolean {
+  return classOf(category) === "equity";
+}
+
 export type Exposure = {
   total: number;
   equity: number;

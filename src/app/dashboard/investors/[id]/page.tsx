@@ -1201,7 +1201,12 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
             )}
           </Section>
 
-          <Section id="rel-srs" title="Service requests" count={data.serviceRequests.filter((s) => s.status !== "closed" && s.status !== "resolved").length}>
+          <Section
+            id="rel-srs"
+            title="Service requests"
+            count={data.serviceRequests.filter((s) => s.status !== "closed" && s.status !== "resolved").length}
+            action={<SendRiskProfileLinkButton investorId={inv.id} kind="feedback" />}
+          >
             {data.serviceRequests.length === 0 ? (
               <EmptyRow text="No tickets." />
             ) : (
@@ -1244,12 +1249,28 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
   );
 }
 
-function Section({ id, title, count, children }: { id?: string; title: string; count?: number; children: React.ReactNode }) {
+function Section({
+  id,
+  title,
+  count,
+  action,
+  children,
+}: {
+  id?: string;
+  title: string;
+  count?: number;
+  /** Optional control rendered in the header, right of the count. */
+  action?: React.ReactNode;
+  children: React.ReactNode;
+}) {
   return (
     <div id={id} className="border rounded-lg bg-card p-5 scroll-mt-24">
-      <div className="font-semibold mb-3 flex items-center justify-between">
+      <div className="font-semibold mb-3 flex items-center justify-between gap-3">
         <span>{title}</span>
-        {count !== undefined && <span className="text-xs text-muted-foreground">{count}</span>}
+        <span className="flex items-center gap-3">
+          {count !== undefined && <span className="text-xs font-normal text-muted-foreground">{count}</span>}
+          {action}
+        </span>
       </div>
       {children}
     </div>

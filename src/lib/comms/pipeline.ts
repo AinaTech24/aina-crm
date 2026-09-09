@@ -39,6 +39,7 @@ import { smsAdapter } from "./adapters/msg91";
 import { getTenantIntegration } from "./integrations";
 import { resolveEmailSender } from "./sender";
 import { consumeRateLimit } from "./rate-limit";
+import { loadClientLinkTokens, wantsClientLinkTokens } from "@/lib/comms/client-links";
 import { checkMonthlyQuota } from "./usage";
 
 
@@ -243,6 +244,32 @@ export async function dispatch(tx: Tx, input: DispatchInput): Promise<DispatchRe
         }
       } catch (e) {
         console.warn("[comms] transaction auto-fill skipped:", (e as Error)?.message);
+      }
+
+      // Auto-fill the CLIENT-FACING tokens: the recipient's risk-profile result
+      // (risk.*), their portfolio-vs-profile suitability (suitability.*), and
+      // login-free action links (link.*). Only runs when the body actually
+      // references them, so a normal send mints no share token. Same precedence
+      // as above — anything already resolved wins.
+      try {
+        const bodyStr = JSON.stringify((version as any).body ?? {});
+        const want = wantsClientLinkTokens(bodyStr);
+        const subjectId = input.investorId ?? input.leadId;
+        const subjectType = input.investorId ? "investor" : "lead";
+        if (subjectId && (want.risk || want.suitability || want.riskLink || want.feedbackLink)) {
+          const auto = await loadClientLinkTokens(tx, {
+            tenantId: input.tenantId,
+            subjectType: subjectType as "investor" | "lead",
+            subjectId,
+            want,
+            createdBy: input.actorUserId ?? undefined,
+          });
+          for (const [k, val] of Object.entries(auto)) {
+            if (val && !(tokens as any)[k]) (tokens as any)[k] = val;
+          }
+        }
+      } catch (e) {
+        console.warn("[comms] client-link auto-fill skipped:", (e as Error)?.message);
       }
 
       rendered = renderBody(input.channel, version, tokens);

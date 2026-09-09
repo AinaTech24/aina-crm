@@ -178,6 +178,33 @@ Any skip (consent missing, compliance block, WA session not active for marketing
 
 Workflows call `dispatch()` via `send_whatsapp` / `send_email` / `send_sms` actions. Campaigns will call it via a per-recipient fan-out (TBD).
 
+### Client-facing CTAs: never link to `system.dashboard_url`
+
+`{{system.dashboard_url}}` resolves to the **firm's own login page**. In an
+email to a CLIENT it is a dead end — they cannot sign in. Use the per-recipient
+link tokens instead:
+
+| Token | Lands on | Minted as |
+|---|---|---|
+| `{{link.risk_profile}}` | `/r/<token>` — the questionnaire | `risk_profile` share token, 21 days |
+| `{{link.feedback}}` | `/f/<token>` — the 0–10 NPS form | `feedback` share token, 30 days |
+
+`src/lib/comms/client-links.ts` fills these, plus the recipient's own
+`risk.*` (category, score, what the band means, review date) and
+`suitability.*` (equity exposure vs the profile's band, and the schemes driving
+a breach). It runs inside `dispatch()` only when the template body actually
+references one of those namespaces, so an ordinary send mints nothing. A live,
+unused token for the same (subject, kind) is REUSED — otherwise a reminder
+email would silently invalidate the link sitting in the first one.
+
+Two constraints worth knowing before authoring a template:
+
+- **Merge values are HTML-escaped.** A token carrying markup (`<li>…</li>`)
+  prints its own tags to the client. Emit plain text and let the block do the
+  formatting.
+- **Every public form path needs a `PUBLIC_PATH_PREFIXES` entry** in
+  `src/middleware.ts`, or the link 307s the client to `/login`.
+
 ### Adding a new compliance rule
 
 Append a function to `ALL_RULES` in `src/lib/comms/compliance.ts`. Each rule is `(ctx) => ComplianceFinding[]`. Severity `block` stops sends; `warn` shows in UI but allows; `info` is logged.

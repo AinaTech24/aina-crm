@@ -1,7 +1,7 @@
 /**
  * Public client feedback submission (NPS) — POST /api/public/feedback/submit.
  *
- * Accepts a public feedback form submission with token ID, rating (1-10),
+ * Accepts a public feedback form submission with token ID, rating (0-10),
  * and comment. Saves it as a closed service request of type 'feedback' with CSAT fields.
  */
 
@@ -22,12 +22,16 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json().catch(() => ({}));
     const tokenId: string | undefined = body.tokenId;
-    const rating: number | undefined = Number(body.rating); // 1-10 NPS score
+    // NPS is 0-10. `Number(undefined)` is NaN, which the check below rejects —
+    // do NOT use a truthiness test here: it would throw away a genuine 0, the
+    // most negative score a client can give.
+    const rating: number = Number(body.rating);
     const comment: string = String(body.comment ?? "").trim();
     const signatureName: string = String(body.signatureName ?? "").trim();
 
     if (!tokenId) return NextResponse.json({ error: "missing tokenId" }, { status: 400 });
-    if (!rating || rating < 1 || rating > 10) return NextResponse.json({ error: "Invalid rating (1-10 required)" }, { status: 400 });
+    if (!Number.isFinite(rating) || rating < 0 || rating > 10)
+      return NextResponse.json({ error: "Invalid rating (0-10 required)" }, { status: 400 });
     if (!signatureName) return NextResponse.json({ error: "Signature required" }, { status: 400 });
 
     const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "";

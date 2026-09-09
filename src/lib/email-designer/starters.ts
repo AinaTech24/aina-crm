@@ -244,18 +244,70 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
   {
     key: "risk_profile_result",
     name: "Risk Profile — Your Result",
-    description: "Shares the client's risk-profile outcome and recommended approach.",
+    description:
+      "Sent after the questionnaire is completed: the client's score, what the category means, and a link to redo it if anything has changed.",
     category: "utility",
     body: {
-      subject: "Your risk profile result is ready, {{investor.first_name}}",
-      preheader: "Here's what your risk profile tells us.",
+      subject: "Your risk profile result: {{risk.category}}",
+      preheader: "Your score, what it means, and how to change it if it no longer fits.",
       mode: "designer",
       blocks: [
         b({ type: "logo" } as any),
-        b({ type: "hero", title: "Your Risk Profile is Ready", subtitle: "Here's what it means for your investment strategy.", imageUrl: "", imageAlt: "", align: "center" } as any),
-        b({ type: "text", html: "Dear {{investor.name}},<br><br>Thank you for completing your risk profiling. Based on your responses, we've prepared a summary of your profile and the investment approach we recommend. Your advisor will walk you through your risk category, a suggested equity-debt mix, and the best way to get started.", align: "left" } as any),
-        b({ type: "text", html: "This is a starting point — we'll fine-tune your portfolio together as your goals evolve. Your advisor will walk you through the details and answer any questions.", align: "left" } as any),
-        b({ type: "button", label: "Discuss with your advisor", url: "{{system.dashboard_url}}", align: "center", style: "solid", fullWidth: false } as any),
+        b({ type: "heading", text: "Your risk profile is complete", level: "h2", align: "left" } as any),
+        b({
+          type: "text",
+          html:
+            "Dear {{investor.name}},<br><br>Thank you for completing your risk profiling questionnaire. Based on your answers, your risk category is <b>{{risk.category}}</b>.",
+          align: "left",
+        } as any),
+        b({
+          type: "data_table",
+          caption: "Your result",
+          rows: [
+            { label: "Risk category", value: "{{risk.category}}" },
+            { label: "Your score", value: "{{risk.score_display}}" },
+            { label: "Profiled on", value: "{{risk.profiled_on}}" },
+            { label: "Next review due", value: "{{risk.review_due}}" },
+          ],
+        } as any),
+        b({
+          type: "heading",
+          text: "What this means for you",
+          level: "h3",
+          align: "left",
+        } as any),
+        b({
+          type: "text",
+          html:
+            "{{risk.meaning}}<br><br>Your risk category is how we judge whether a scheme is suitable for you before we recommend it. It reflects the time you plan to stay invested, how much of your money is at stake, and how you told us you would react if markets fell sharply. A higher score means you are comfortable with larger ups and downs in exchange for higher potential long-term growth; a lower score means we prioritise protecting your capital over chasing returns.",
+          align: "left",
+        } as any),
+        b({
+          type: "heading",
+          text: "If this no longer fits you",
+          level: "h3",
+          align: "left",
+        } as any),
+        b({
+          type: "text",
+          html:
+            "Your answers were a snapshot of the day you filled the form. A new job, a home loan, a change in family responsibilities or simply a change of mind can all move your risk appetite. If any answer no longer reflects your situation, you can redo the questionnaire yourself using the button below — it takes about three minutes, and your profile updates as soon as you submit it.",
+          align: "left",
+        } as any),
+        b({
+          type: "button",
+          label: "Review or change my answers",
+          url: "{{link.risk_profile}}",
+          align: "center",
+          style: "solid",
+          fullWidth: false,
+        } as any),
+        b({
+          type: "text",
+          html:
+            "<span style=\"font-size:13px;color:#6b7280\">The link above is personal to you. Prefer to talk it through? Just reply to this email and {{investor.rm_name}} will call you.</span>",
+          align: "left",
+        } as any),
         b({ type: "text", html: SIGNOFF, align: "left" } as any),
         b({ type: "text", html: AMFI_DISCLAIMER, align: "left" } as any),
       ],
@@ -1096,18 +1148,125 @@ export const STARTER_TEMPLATES: StarterTemplate[] = [
   {
     key: "feedback_nps",
     name: "Feedback / NPS Survey",
-    description: "Asks the client for quick feedback after a service interaction.",
+    description:
+      "Asks the client to rate the firm 0-10 with an optional comment. The response is filed in the CRM as a feedback ticket.",
     category: "utility",
     body: {
-      subject: "How are we doing, {{investor.first_name}}?",
-      preheader: "Two minutes to help us serve you better.",
+      subject: "{{investor.first_name}}, how are we doing?",
+      preheader: "One question, about a minute — it genuinely shapes how we work.",
       mode: "designer",
       blocks: [
         b({ type: "logo" } as any),
-        b({ type: "heading", text: "We'd love your feedback", level: "h2", align: "left" } as any),
-        b({ type: "text", html: "Dear {{investor.name}},<br><br>Your experience matters to us. Could you spare two minutes to tell us how we're doing? Your honest feedback helps us serve you — and every client — better.", align: "left" } as any),
-        b({ type: "button", label: "Share feedback", url: "{{system.dashboard_url}}", align: "center", style: "solid", fullWidth: false } as any),
-        b({ type: "text", html: "Thank you — it genuinely helps.<br><br>" + SIGNOFF, align: "left" } as any),
+        b({ type: "heading", text: "How are we doing?", level: "h2", align: "left" } as any),
+        b({
+          type: "text",
+          html:
+            "Dear {{investor.name}},<br><br>We would like to hear from you. On a scale of 0 to 10, how likely are you to recommend {{tenant.displayName}} to a friend or colleague?",
+          align: "left",
+        } as any),
+        b({
+          type: "button",
+          label: "Give my feedback",
+          url: "{{link.feedback}}",
+          align: "center",
+          style: "solid",
+          fullWidth: false,
+        } as any),
+        b({
+          type: "text",
+          html:
+            "It is one question and an optional comment box, so it should take about a minute. You do not need to log in anywhere.",
+          align: "left",
+        } as any),
+        b({
+          type: "text",
+          html:
+            "We read every response. If something has not gone the way you expected, please say so plainly — that is the feedback we most need, and {{investor.rm_name}} will follow up personally.",
+          align: "left",
+        } as any),
+        b({ type: "text", html: "Thank you for your time.<br><br>" + SIGNOFF, align: "left" } as any),
+        b({ type: "text", html: AMFI_DISCLAIMER, align: "left" } as any),
+      ],
+      footer: { includeArn: true, includeAddress: true, includeUnsubscribe: true },
+    },
+  },
+
+  {
+    key: "suitability_review",
+    name: "Portfolio vs Risk Profile — Suitability Note",
+    description:
+      "For clients holding schemes that sit outside their risk profile's comfort band. Explains why it was recommended, and invites them to raise any concern.",
+    category: "utility",
+    body: {
+      subject: "A quick note on your portfolio and your risk profile",
+      preheader: "Why you hold what you hold — and how to tell us if it no longer suits you.",
+      mode: "designer",
+      blocks: [
+        b({ type: "logo" } as any),
+        b({ type: "heading", text: "Your portfolio and your risk profile", level: "h2", align: "left" } as any),
+        b({
+          type: "text",
+          html:
+            "Dear {{investor.name}},<br><br>As part of our regular review we compare what you hold against the risk profile you signed with us. Your profile is <b>{{risk.category}}</b>, and some of your current holdings sit outside the range that profile normally implies. We would rather tell you plainly than leave it unsaid.",
+          align: "left",
+        } as any),
+        b({
+          type: "data_table",
+          caption: "What we compared",
+          rows: [
+            { label: "Your risk category", value: "{{risk.category}}" },
+            { label: "Equity exposure today", value: "{{suitability.equity_pct}}%" },
+            { label: "Usual range for this profile", value: "{{suitability.band}}" },
+            { label: "Profiled on", value: "{{risk.profiled_on}}" },
+          ],
+        } as any),
+        b({
+          type: "heading",
+          text: "The schemes this relates to",
+          level: "h3",
+          align: "left",
+        } as any),
+        b({
+          type: "text",
+          // A plain comma list, NOT injected markup: the renderer HTML-escapes
+          // every merge value (a scheme name comes from an RTA file), so an
+          // "<li>…</li>" token would print its own tags on the page.
+          html: "<b>{{suitability.scheme_list}}</b>",
+          align: "left",
+        } as any),
+        b({
+          type: "heading",
+          text: "Why these were recommended",
+          level: "h3",
+          align: "left",
+        } as any),
+        b({
+          type: "text",
+          html:
+            "These schemes were suggested for your convenience and to suit the requirement you described at the time — typically a specific goal, a time horizon longer than the rest of your portfolio, or a tax consideration. A holding sitting outside the usual band is not automatically wrong, and this note is not a recommendation to sell. Markets move too: a strong run in equity can lift your exposure above the band without you having bought anything.",
+          align: "left",
+        } as any),
+        b({
+          type: "heading",
+          text: "If you have any concern",
+          level: "h3",
+          align: "left",
+        } as any),
+        b({
+          type: "text",
+          html:
+            "If you are not comfortable with this, please do reach out to us — reply to this email or call {{investor.rm_name}}, and we will walk through the options with you. Those usually include rebalancing towards your band, leaving the holding in place with your explicit consent, or updating your risk profile if your appetite has genuinely changed.",
+          align: "left",
+        } as any),
+        b({
+          type: "button",
+          label: "Update my risk profile",
+          url: "{{link.risk_profile}}",
+          align: "center",
+          style: "outline",
+          fullWidth: false,
+        } as any),
+        b({ type: "text", html: SIGNOFF, align: "left" } as any),
         b({ type: "text", html: AMFI_DISCLAIMER, align: "left" } as any),
       ],
       footer: { includeArn: true, includeAddress: true, includeUnsubscribe: true },

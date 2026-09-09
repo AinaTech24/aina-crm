@@ -62,6 +62,28 @@ export const MERGE_FIELDS: MergeField[] = [
   { token: "tenant.address", label: "Office address", example: "B-205, Andheri East, Mumbai 400069", category: "Firm" },
   { token: "tenant.websiteUrl", label: "Website URL", example: "https://demowealth.in", category: "Firm" },
 
+  // ── Risk profile (latest signed questionnaire) ────────────────────────────
+  { token: "risk.category", label: "Risk category", example: "Aggressive", category: "Risk profile" },
+  { token: "risk.score_display", label: "Score (out of max)", example: "32 / 40", category: "Risk profile" },
+  { token: "risk.score", label: "Score", example: "32", category: "Risk profile" },
+  { token: "risk.max_score", label: "Maximum score", example: "40", category: "Risk profile" },
+  { token: "risk.meaning", label: "What the category means", example: "High growth, higher volatility tolerance.", category: "Risk profile" },
+  { token: "risk.profiled_on", label: "Profiled on", example: "28 Aug 2026", category: "Risk profile" },
+  { token: "risk.review_due", label: "Review due", example: "28 Aug 2027", category: "Risk profile" },
+
+  // ── Suitability (portfolio vs the signed profile) ─────────────────────────
+  { token: "suitability.summary", label: "Suitability summary", example: "Equity exposure 88% is well above the aggressive ceiling (~85%).", category: "Suitability" },
+  { token: "suitability.equity_pct", label: "Equity exposure %", example: "88", category: "Suitability" },
+  { token: "suitability.band", label: "Comfort band for the profile", example: "50-85%", category: "Suitability" },
+  { token: "suitability.scheme_list", label: "Schemes driving it (comma list)", example: "ICICI Bluechip Fund, Axis Smallcap Fund", category: "Suitability" },
+
+  // ── Client action links (login-free, per recipient) ───────────────────────
+  // These mint (or reuse) a share token at send time, so the client can act
+  // straight from the email. Prefer them over system.dashboard_url in any
+  // client-facing CTA — dashboard_url is the FIRM's login page.
+  { token: "link.risk_profile", label: "Risk profile form link", example: "https://crm.ainatech.in/r/abc123", category: "Client links" },
+  { token: "link.feedback", label: "Feedback form link", example: "https://crm.ainatech.in/f/abc123", category: "Client links" },
+
   // ── System ────────────────────────────────────────────────────────────────
   { token: "system.today", label: "Today's date", example: "15 Jun 2026", category: "System" },
   { token: "system.dashboard_url", label: "Client portal link", example: "https://...", category: "System" },

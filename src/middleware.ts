@@ -90,6 +90,11 @@ const PUBLIC_PATH_PREFIXES = [
   "/p/",
   "/lf/",
   "/fd/",
+  // /f/* — the client feedback (NPS) form. Same contract as /r/ and /fd/: the
+  // random token IS the credential, and the submit endpoint enforces
+  // single-use + expiry. Without this the feedback email's button 307s to the
+  // FIRM's login page, which no client can pass.
+  "/f/",
   "/portal/",
   "/knowledge-base/",
   // /induction/letter/* — the training confirmation letter. Unauthenticated by
