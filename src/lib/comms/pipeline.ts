@@ -743,19 +743,45 @@ function extractTextFromBlocks(body: any): string {
     .join("\n\n");
 }
 
+/**
+ * Nest the flat token map for the plain-text renderer.
+ *
+ * Designer merge fields are DOTTED paths ("investor.name"); the legacy
+ * WhatsApp/SMS tokens are underscore namespaces ("tenant_display_name"). Both
+ * must work, so dots are handled first and underscores only as a fallback.
+ *
+ * Splitting on the first UNDERSCORE alone — what this did — breaks any dotted
+ * key that also contains one: "risk.score_display" became ns "risk.score" +
+ * rest "display", and "risk.score" is itself a token holding the client's
+ * score. Assigning .display onto that string threw
+ *   Cannot create property 'display' on string '19'
+ * which aborted the whole send. It only bit clients who HAVE a risk score, so
+ * it passed every test against a client without one.
+ *
+ * `setPath` therefore also refuses to descend into a non-object: a leaf and a
+ * branch can collide on any tenant's data, and losing one token is a blank
+ * field, while throwing loses the entire email.
+ */
 function unflattenForText(tokens: Record<string, string>): Record<string, unknown> {
   const out: Record<string, any> = {};
-  for (const [k, v] of Object.entries(tokens ?? {})) {
-    if (!k.includes("_")) {
-      out[k] = v;
-      continue;
+  const setPath = (parts: string[], v: string) => {
+    let node: any = out;
+    for (let i = 0; i < parts.length - 1; i++) {
+      const p = parts[i];
+      if (typeof node[p] !== "object" || node[p] === null) node[p] = {};
+      node = node[p];
     }
-    const idx = k.indexOf("_");
-    const ns = k.slice(0, idx);
-    const rest = k.slice(idx + 1);
-    out[ns] ??= {};
-    out[ns][rest] = v;
+    node[parts[parts.length - 1]] = v;
+  };
+  for (const [k, v] of Object.entries(tokens ?? {})) {
+    // Keep the flat alias too — some templates reference the raw key.
     out[k] = v;
+    if (k.includes(".")) {
+      setPath(k.split("."), v);
+    } else if (k.includes("_")) {
+      const idx = k.indexOf("_");
+      setPath([k.slice(0, idx), k.slice(idx + 1)], v);
+    }
   }
   return out;
 }
