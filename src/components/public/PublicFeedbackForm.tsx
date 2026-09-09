@@ -1,19 +1,23 @@
 "use client";
 
 /**
- * Client feedback (NPS) form — the landing page for /f/<token>.
+ * Client feedback form — the landing page for /f/<token>.
  *
- * Deliberately one screen: an 0–10 score, an optional comment, and the client's
- * name as a signature. Every extra field costs responses, and the score is the
- * part the firm acts on.
+ * A short rated questionnaire (see lib/support/feedback-questions), an optional
+ * comment, and the client's name as a signature.
+ *
+ * Every question sits on ONE screen rather than a wizard: five 0–10 rows are
+ * quicker to answer in a single pass than five steps, and the client can see how
+ * much is left — the main reason short forms get abandoned part-way.
  *
  * POSTs to /api/public/feedback/submit, which files the response as a closed
- * `feedback` service request (CSAT fields set, detractors raised to high
- * priority) and emits a `feedback.submitted` event.
+ * `feedback` service request (per-question answers stored, detractors raised to
+ * high priority) and emits a `feedback.submitted` event.
  */
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { CheckCircle2, Loader2, MessageSquareHeart } from "lucide-react";
+import { FEEDBACK_QUESTIONS, NPS_QUESTION_KEY } from "@/lib/support/feedback-questions";
 
 /**
  * 0–6 detractor, 7–8 passive, 9–10 promoter (standard NPS bands).
@@ -48,16 +52,24 @@ export function PublicFeedbackForm({
   recipientName: string;
   firmName: string;
 }) {
-  const [rating, setRating] = useState<number | null>(null);
+  const [scores, setScores] = useState<Record<string, number>>({});
   const [comment, setComment] = useState("");
   const [signature, setSignature] = useState(recipientName ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
 
+  const answered = Object.keys(scores).length;
+  const firstUnanswered = useMemo(
+    () => FEEDBACK_QUESTIONS.find((q) => scores[q.key] === undefined)?.key ?? null,
+    [scores]
+  );
+  const npsScore = scores[NPS_QUESTION_KEY];
+
   async function submit() {
-    if (rating == null) {
-      setError("Please pick a score from 0 to 10.");
+    if (firstUnanswered) {
+      setError("Please answer every question above.");
+      document.getElementById(`q-${firstUnanswered}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
       return;
     }
     if (!signature.trim()) {
@@ -72,7 +84,7 @@ export function PublicFeedbackForm({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           tokenId,
-          rating,
+          answers: FEEDBACK_QUESTIONS.map((q) => ({ key: q.key, label: q.label, score: scores[q.key] })),
           comment: comment.trim(),
           signatureName: signature.trim(),
         }),
@@ -91,9 +103,12 @@ export function PublicFeedbackForm({
     return (
       <div className="bg-white rounded-xl shadow p-8 text-center">
         <CheckCircle2 className="size-12 text-emerald-500 mx-auto" />
-        <h2 className="text-xl font-bold mt-3">Thank you{recipientName ? `, ${recipientName.split(" ")[0]}` : ""}!</h2>
+        <h2 className="text-xl font-bold mt-3">
+          Thank you{recipientName ? `, ${recipientName.split(" ")[0]}` : ""}!
+        </h2>
         <p className="text-sm text-slate-600 mt-2">
-          Your feedback has reached {firmName}. {rating != null && rating <= 6
+          Your feedback has reached {firmName}.{" "}
+          {npsScore != null && npsScore <= 6
             ? "Someone from the team will get in touch with you shortly."
             : "We're grateful you took the time."}
         </p>
@@ -108,47 +123,69 @@ export function PublicFeedbackForm({
         <div>
           <h1 className="text-lg font-bold">How are we doing?</h1>
           <p className="text-sm text-slate-600 mt-1">
-            {recipientName ? `${recipientName}, how ` : "How "}likely are you to recommend {firmName} to a friend or
-            colleague?
+            {recipientName ? `${recipientName}, a` : "A"} few quick questions about working with {firmName}. Rate each
+            one from 0 (not at all) to 10 (completely) — it takes about a minute.
           </p>
         </div>
       </div>
 
-      {/* Score 0–10 */}
-      <fieldset className="mt-6">
-        <legend className="sr-only">Score from 0 to 10</legend>
-        <div className="grid grid-cols-6 sm:grid-cols-11 gap-1.5">
-          {Array.from({ length: 11 }, (_, n) => {
-            const tone = scoreTone(n);
-            const active = rating === n;
-            return (
-              <button
-                key={n}
-                type="button"
-                aria-pressed={active}
-                aria-label={`Score ${n}`}
-                onClick={() => {
-                  setRating(n);
-                  setError(null);
-                }}
-                className={`h-11 rounded-lg border text-sm font-semibold transition ${
-                  active ? tone.active : tone.idle
-                }`}
-              >
-                {n}
-              </button>
-            );
-          })}
+      {/* Progress — shown so it is obvious how much is left. */}
+      <div className="mt-5 flex items-center gap-3">
+        <div className="h-1.5 flex-1 rounded-full bg-slate-100 overflow-hidden">
+          <div
+            className="h-full bg-brand-cyan transition-all"
+            style={{ width: `${(answered / FEEDBACK_QUESTIONS.length) * 100}%` }}
+          />
         </div>
-        <div className="flex justify-between text-[11px] text-slate-500 mt-1.5">
-          <span>Not at all likely</span>
-          <span>Extremely likely</span>
-        </div>
-      </fieldset>
+        <span className="text-[11px] text-slate-500 tabular-nums shrink-0">
+          {answered} of {FEEDBACK_QUESTIONS.length}
+        </span>
+      </div>
 
-      <label className="block mt-6">
+      <div className="mt-6 space-y-7">
+        {FEEDBACK_QUESTIONS.map((q, qi) => (
+          <fieldset key={q.key} id={`q-${q.key}`}>
+            <legend className="text-sm font-medium text-slate-900">
+              {qi + 1}. {q.label}
+            </legend>
+            {q.hint && <p className="text-xs text-slate-500 mt-0.5">{q.hint}</p>}
+
+            <div className="grid grid-cols-6 sm:grid-cols-11 gap-1.5 mt-3">
+              {Array.from({ length: 11 }, (_, n) => {
+                const tone = scoreTone(n);
+                const active = scores[q.key] === n;
+                return (
+                  <button
+                    key={n}
+                    type="button"
+                    aria-pressed={active}
+                    aria-label={`${q.label} — score ${n}`}
+                    onClick={() => {
+                      setScores((s) => ({ ...s, [q.key]: n }));
+                      setError(null);
+                    }}
+                    className={`h-10 rounded-lg border text-sm font-semibold transition ${
+                      active ? tone.active : tone.idle
+                    }`}
+                  >
+                    {n}
+                  </button>
+                );
+              })}
+            </div>
+            {qi === 0 && (
+              <div className="flex justify-between text-[11px] text-slate-500 mt-1.5">
+                <span>Not at all</span>
+                <span>Completely</span>
+              </div>
+            )}
+          </fieldset>
+        ))}
+      </div>
+
+      <label className="block mt-8">
         <span className="text-sm font-medium">
-          What made you choose that score? <span className="font-normal text-slate-500">(optional)</span>
+          Anything you would like to add? <span className="font-normal text-slate-500">(optional)</span>
         </span>
         <textarea
           rows={4}

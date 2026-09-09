@@ -1,0 +1,13 @@
+-- Per-question feedback answers.
+--
+-- The form asked one question (0-10, "would you recommend us") and stored it in
+-- csat_rating. It now asks a short set — overall service, portfolio reviews,
+-- responsiveness, clarity of explanation, and the recommend question — so the
+-- individual answers need somewhere to live.
+--
+-- csat_rating KEEPS holding the recommend score: it is what the NPS page and
+-- every existing row already use, so the score stays continuous across the
+-- change and older single-answer feedback still counts.
+--
+-- Shape: [{ "key": "reviews", "label": "…", "score": 8 }, …]
+ALTER TABLE service_requests ADD COLUMN IF NOT EXISTS csat_responses jsonb;

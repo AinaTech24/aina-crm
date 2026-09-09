@@ -116,6 +116,9 @@ export const serviceRequests = pgTable(
     /** Post-resolution client satisfaction (1–5) + optional comment. */
     csatRating: integer("csat_rating"),
     csatComment: text("csat_comment"),
+    /** Per-question answers: [{ key, label, score }]. `csatRating` keeps the
+     *  recommend (NPS) score so the existing score stays continuous. */
+    csatResponses: jsonb("csat_responses").$type<Array<{ key: string; label: string; score: number }>>(),
     csatAt: timestamp("csat_at", { withTimezone: true }),
 
     ...timestamps,

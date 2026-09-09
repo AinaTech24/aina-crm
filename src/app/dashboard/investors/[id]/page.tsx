@@ -1,7 +1,9 @@
+import { assertInvestorAccess } from "@/lib/investors/access";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
-import { ChevronLeft, Phone, Mail, MessageCircle, MapPin, AlertTriangle, User2, ShieldCheck, Sparkles, ArrowRight, Wallet } from "lucide-react";
+import { ChevronLeft, Phone, Mail, MessageCircle, MapPin, AlertTriangle, User2, ShieldCheck, Sparkles, ArrowRight, Wallet, Download } from "lucide-react";
+import { DownloadButton } from "@/components/common/SecureLinkButtons";
 import { withTenant } from "@/db/client";
 import {
   investors,
@@ -134,6 +136,7 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
     redirect("/dashboard/investors");
   }
   const session = await requireSession();
+    await assertInvestorAccess(session, (await params).id);
   const license = await loadTenantLicense(session.tenantId, session.roles);
 
   const showPan = isFieldAllowed(license, "investor", "pan");
@@ -1208,6 +1211,20 @@ export default async function InvestorDetailPage({ params }: { params: Promise<{
             action={
               <span className="flex items-center gap-3">
                 <ClientNpsChip requests={data.serviceRequests as any[]} />
+                {/* Only offered once they have actually given feedback — an
+                    empty report is a worse answer than no button. */}
+                {(data.serviceRequests as any[]).some(
+                  (s) => s?.type === "feedback" && s?.csatRating != null
+                ) && (
+                  <DownloadButton
+                    url={`/api/investors/${inv.id}/feedback/pdf?download=1`}
+                    filename="Client_Feedback.pdf"
+                    className="text-xs font-semibold text-brand-cyan hover:underline inline-flex items-center gap-1"
+                    title="Download this client's feedback report"
+                  >
+                    <Download className="size-3.5" /> Feedback PDF
+                  </DownloadButton>
+                )}
                 <SendRiskProfileLinkButton investorId={inv.id} kind="feedback" />
               </span>
             }

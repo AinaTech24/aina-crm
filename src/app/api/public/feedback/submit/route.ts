@@ -1,7 +1,8 @@
 /**
  * Public client feedback submission (NPS) — POST /api/public/feedback/submit.
  *
- * Accepts a public feedback form submission with token ID, rating (0-10),
+ * Accepts a public feedback form submission: token ID, one 0-10 answer per
+ * question (a bare `rating` is still accepted from an older cached form),
  * and comment. Saves it as a closed service request of type 'feedback' with CSAT fields.
  */
 
@@ -12,6 +13,7 @@ import { withSystem, withTenant } from "@/db/client";
 import { serviceRequests, shareTokens, eventsOutbox, investors, leads } from "@/db/schema";
 import { claimShareToken, releaseShareToken, finalizeShareToken } from "@/lib/share-tokens";
 import { enforce } from "@/lib/rate-limit";
+import { NPS_QUESTION_KEY } from "@/lib/support/feedback-questions";
 
 export const dynamic = "force-dynamic";
 
@@ -22,14 +24,33 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json().catch(() => ({}));
     const tokenId: string | undefined = body.tokenId;
-    // NPS is 0-10. `Number(undefined)` is NaN, which the check below rejects —
-    // do NOT use a truthiness test here: it would throw away a genuine 0, the
-    // most negative score a client can give.
-    const rating: number = Number(body.rating);
     const comment: string = String(body.comment ?? "").trim();
     const signatureName: string = String(body.signatureName ?? "").trim();
 
+    // The form posts one answer per question. A single `rating` is still
+    // accepted so an older cached form (or a saved link) keeps working rather
+    // than failing on submit after the client has filled it in.
+    const rawAnswers: Array<{ key?: string; label?: string; score?: unknown }> = Array.isArray(body.answers)
+      ? body.answers
+      : [];
+    const answers = rawAnswers
+      .map((a) => ({
+        key: String(a?.key ?? "").trim(),
+        label: String(a?.label ?? "").trim(),
+        score: Number(a?.score),
+      }))
+      .filter((a) => a.key && Number.isFinite(a.score) && a.score >= 0 && a.score <= 10);
+
     if (!tokenId) return NextResponse.json({ error: "missing tokenId" }, { status: 400 });
+
+    // The NPS figure. `Number(undefined)` is NaN, which the check below rejects
+    // — do NOT use a truthiness test: it would throw away a genuine 0, the most
+    // negative score a client can give.
+    const npsAnswer = answers.find((a) => a.key === NPS_QUESTION_KEY);
+    const rating: number = npsAnswer ? npsAnswer.score : Number(body.rating);
+
+    if (rawAnswers.length && !answers.length)
+      return NextResponse.json({ error: "Invalid answers (each score must be 0-10)" }, { status: 400 });
     if (!Number.isFinite(rating) || rating < 0 || rating > 10)
       return NextResponse.json({ error: "Invalid rating (0-10 required)" }, { status: 400 });
     if (!signatureName) return NextResponse.json({ error: "Signature required" }, { status: 400 });
@@ -86,12 +107,17 @@ export async function POST(req: NextRequest) {
           type: "feedback",
           channel: "form",
           subject: `Client Feedback (NPS: ${rating})`,
-          description: comment || `Client submitted feedback with NPS score of ${rating}.`,
+          description:
+            comment ||
+            (answers.length
+              ? answers.map((a) => `${a.label || a.key}: ${a.score}/10`).join("\n")
+              : `Client submitted feedback with NPS score of ${rating}.`),
           status: "closed", // auto-resolved since it's feedback
           priority: rating <= 6 ? "high" : "normal", // Detractors get higher priority
           assignedToUserId,
           csatRating: rating,
           csatComment: comment || null,
+          csatResponses: answers.length ? answers : null,
           csatAt: now,
           timeline: [
             { at: now.toISOString(), by: signatureName, event: "Feedback submitted" }
@@ -104,7 +130,7 @@ export async function POST(req: NextRequest) {
           kind: "feedback.submitted",
           entityType: tk.subjectType,
           entityId: tk.subjectId,
-          after: { rating, comment, signature: signatureName, serviceRequestId },
+          after: { rating, answers, comment, signature: signatureName, serviceRequestId },
           meta: { tokenId, ip, userAgent: ua } as any,
         } as any);
 
@@ -117,7 +143,7 @@ export async function POST(req: NextRequest) {
 
     await finalizeShareToken({
       id: tokenId,
-      result: { rating, comment, signature: signatureName, serviceRequestId: out.serviceRequestId },
+      result: { rating, answers, comment, signature: signatureName, serviceRequestId: out.serviceRequestId },
       ipAddress: ip,
       userAgent: ua,
     });
