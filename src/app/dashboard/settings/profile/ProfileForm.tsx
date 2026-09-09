@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Check, Camera, Trash2, LogOut, User, KeyRound, ImageIcon, Monitor } from "lucide-react";
+import { Loader2, Check, Camera, Trash2, LogOut, User, KeyRound, ImageIcon, Monitor, PenLine } from "lucide-react";
 
 /** 0=weak … 3=strong, from length + character-class variety. */
 function pwStrength(pw: string): 0 | 1 | 2 | 3 {
@@ -23,11 +23,13 @@ export default function ProfileForm({
   email,
   emailVerified,
   initialAvatarUrl,
+  initialSignatureUrl,
 }: {
   initialName: string;
   email: string;
   emailVerified: boolean;
   initialAvatarUrl?: string | null;
+  initialSignatureUrl?: string | null;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -65,6 +67,12 @@ export default function ProfileForm({
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [avatarMsg, setAvatarMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Email signature image — signs off the client emails this user sends.
+  const [signatureUrl, setSignatureUrl] = useState<string>(initialSignatureUrl ?? "");
+  const [uploadingSignature, setUploadingSignature] = useState(false);
+  const [signatureMsg, setSignatureMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+  const signatureRef = useRef<HTMLInputElement>(null);
 
   const [curPw, setCurPw] = useState("");
   const [newPw, setNewPw] = useState("");
@@ -215,6 +223,72 @@ export default function ProfileForm({
     }
   }
 
+  async function saveSignatureUrl(url: string) {
+    const res = await fetch("/api/me/profile", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ signatureUrl: url }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data?.error ?? "Could not save signature");
+  }
+
+  async function onPickSignature(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      return setSignatureMsg({ kind: "err", text: "Please choose an image file." });
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      return setSignatureMsg({ kind: "err", text: "Signature must be under 2 MB." });
+    }
+    setUploadingSignature(true);
+    setSignatureMsg(null);
+    try {
+      const presign = await fetch("/api/compliance/upload-url", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          filename: file.name,
+          contentType: file.type || "image/png",
+          kind: "general",
+          docType: "email-signature",
+        }),
+      });
+      const pj = await presign.json();
+      if (!presign.ok) throw new Error(pj.error ?? "Could not start upload");
+      const put = await fetch(pj.url, {
+        method: "PUT",
+        headers: { "content-type": file.type || "image/png" },
+        body: file,
+      });
+      if (!put.ok) throw new Error("Upload failed");
+      const publicUrl = `/api/upload-local/${pj.key}`;
+      await saveSignatureUrl(publicUrl);
+      setSignatureUrl(publicUrl);
+      setSignatureMsg({ kind: "ok", text: "Signature updated." });
+    } catch (err: any) {
+      setSignatureMsg({ kind: "err", text: err.message ?? "Upload failed" });
+    } finally {
+      setUploadingSignature(false);
+    }
+  }
+
+  async function removeSignature() {
+    setUploadingSignature(true);
+    setSignatureMsg(null);
+    try {
+      await saveSignatureUrl("");
+      setSignatureUrl("");
+      setSignatureMsg({ kind: "ok", text: "Signature removed." });
+    } catch (err: any) {
+      setSignatureMsg({ kind: "err", text: err.message ?? "Could not remove signature" });
+    } finally {
+      setUploadingSignature(false);
+    }
+  }
+
   const field = "mt-1 w-full rounded-md border px-3 py-2 text-sm bg-background";
   const label = "text-xs font-medium text-muted-foreground";
 
@@ -274,6 +348,68 @@ export default function ProfileForm({
             )}
           </div>
           <input ref={fileRef} type="file" accept="image/*" hidden onChange={onPickAvatar} />
+        </div>
+      </div>
+
+      {/* Email signature — drawn at the end of client emails you send */}
+      <div className="border rounded-lg bg-card p-5">
+        <h3 className="font-semibold text-sm mb-3 flex items-center gap-2">
+          <PenLine className="size-4 text-muted-foreground" /> Email signature
+        </h3>
+        <div className="flex items-center gap-5 flex-wrap">
+          <div className="relative shrink-0">
+            {signatureUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={signatureUrl}
+                alt="Email signature"
+                className="h-16 w-44 object-contain rounded-md border bg-white p-2"
+              />
+            ) : (
+              <div className="h-16 w-44 rounded-md border border-dashed grid place-items-center text-xs text-muted-foreground">
+                No signature
+              </div>
+            )}
+            {uploadingSignature && (
+              <div className="absolute inset-0 rounded-md bg-black/40 grid place-items-center">
+                <Loader2 className="size-5 animate-spin text-white" />
+              </div>
+            )}
+          </div>
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => signatureRef.current?.click()}
+                disabled={uploadingSignature}
+                className="text-sm px-3 py-2 rounded-md bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50 inline-flex items-center gap-2"
+              >
+                <PenLine className="size-3.5" /> {signatureUrl ? "Change signature" : "Upload signature"}
+              </button>
+              {signatureUrl && (
+                <button
+                  type="button"
+                  onClick={removeSignature}
+                  disabled={uploadingSignature}
+                  className="text-sm px-3 py-2 rounded-md border hover:bg-accent disabled:opacity-50 inline-flex items-center gap-2 text-muted-foreground"
+                >
+                  <Trash2 className="size-3.5" /> Remove
+                </button>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              A scan of your signature on white (PNG works best) · up to 2 MB. It is drawn above your name in
+              client emails that use the sign-off block. Without one, those emails still sign off with your
+              typed name, designation and contact details.
+            </p>
+            {signatureMsg && (
+              <p className={`text-xs ${signatureMsg.kind === "ok" ? "text-emerald-600" : "text-red-600"}`}>
+                {signatureMsg.kind === "ok" && <Check className="size-3 inline mr-1" />}
+                {signatureMsg.text}
+              </p>
+            )}
+          </div>
+          <input ref={signatureRef} type="file" accept="image/*" hidden onChange={onPickSignature} />
         </div>
       </div>
 

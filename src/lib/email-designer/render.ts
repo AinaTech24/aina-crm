@@ -137,6 +137,8 @@ function renderBlock(block: EmailBlock, theme: EmailTheme, ctx: RenderContext): 
   switch (block.type) {
     case "logo":
       return renderLogo(theme, ctx);
+    case "signature":
+      return renderSignature(block, theme, ctx);
     case "hero":
       return renderHero(block, theme, ctx);
     case "heading":
@@ -170,6 +172,70 @@ function renderLogo(theme: EmailTheme, ctx: RenderContext): string {
   const url = absoluteEmailUrl(theme.logoUrl || ctx.tenant?.logoUrl || "");
   if (!url) return "";
   return `<div style="text-align:${theme.logoAlign};margin-bottom:18px;"><img src="${escape(url)}" alt="${escape(ctx.tenant?.displayName ?? "Logo")}" height="${theme.logoHeight}" style="height:${theme.logoHeight}px;max-height:${theme.logoHeight}px;display:inline-block;"/></div>`;
+}
+
+/**
+ * Sender sign-off. Reads the per-send `investor.rm_*` tokens the comms pipeline
+ * fills from the client's relationship manager, so the same block signs as
+ * whoever owns the client. Any missing line is dropped rather than left blank.
+ */
+function renderSignature(b: any, theme: EmailTheme, ctx: RenderContext): string {
+  const v = (path: string): string => {
+    const raw = readPath({ ...ctx.variables, tenant: ctx.tenant }, path);
+    return raw === undefined || raw === null ? "" : String(raw).trim();
+  };
+
+  const align = b.align === "center" ? "center" : "left";
+  const name = v("investor.rm_name") || v("lead.owner_name");
+  const designation = b.showDesignation === false ? "" : v("investor.rm_designation");
+  const email = b.showContact === false ? "" : v("investor.rm_email");
+  const phone = b.showContact === false ? "" : v("investor.rm_phone");
+  const sigUrl = b.showSignatureImage === false ? "" : absoluteEmailUrl(v("investor.rm_signature_url"));
+  const firmName = ctx.tenant?.displayName || ctx.tenant?.legalName || "";
+  const arn = ctx.tenant?.arn ? arnDisplay(ctx.tenant.arn) : "";
+
+  const parts: string[] = [];
+  if (b.closing) {
+    parts.push(
+      `<div style="margin:0 0 6px;color:${theme.textColor};font-size:${theme.baseFontSize}px;">${escape(
+        substituteVariables(b.closing, ctx)
+      )}</div>`
+    );
+  }
+  if (sigUrl) {
+    const h = Number(b.signatureHeight) || 56;
+    parts.push(
+      `<div style="margin:0 0 4px;"><img src="${escape(sigUrl)}" alt="${escape(
+        name ? `${name} signature` : "Signature"
+      )}" height="${h}" style="height:${h}px;max-height:${h}px;display:inline-block;"/></div>`
+    );
+  }
+  if (name) {
+    parts.push(
+      `<div style="font-weight:700;color:${theme.accentColor};font-size:${theme.baseFontSize}px;">${escape(name)}</div>`
+    );
+  }
+  if (designation) {
+    parts.push(`<div style="color:${theme.mutedColor};font-size:13px;">${escape(designation)}</div>`);
+  }
+  const contact = [phone, email].filter(Boolean);
+  if (contact.length) {
+    // Link the address/number so a client can act from the signature itself.
+    const bits = [
+      phone ? `<a href="tel:${escape(phone.replace(/[^+\d]/g, ""))}" style="color:${theme.mutedColor};text-decoration:none;">${escape(phone)}</a>` : "",
+      email ? `<a href="mailto:${escape(email)}" style="color:${theme.mutedColor};text-decoration:none;">${escape(email)}</a>` : "",
+    ].filter(Boolean);
+    parts.push(`<div style="color:${theme.mutedColor};font-size:13px;margin-top:2px;">${bits.join(" &nbsp;·&nbsp; ")}</div>`);
+  }
+  if (b.showFirm !== false && firmName) {
+    parts.push(
+      `<div style="color:${theme.mutedColor};font-size:13px;margin-top:6px;">${escape(firmName)}${
+        arn ? ` &nbsp;·&nbsp; ${escape(arn)}` : ""
+      }</div>`
+    );
+  }
+  if (!parts.length) return "";
+  return `<div style="margin:22px 0 6px;text-align:${align};line-height:1.5;">${parts.join("")}</div>`;
 }
 
 function renderHero(b: any, theme: EmailTheme, ctx: RenderContext): string {

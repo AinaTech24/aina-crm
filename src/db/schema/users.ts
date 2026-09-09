@@ -17,6 +17,9 @@ export const users = pgTable(
     phone: text("phone"),
     passwordHash: text("password_hash"),
     avatarUrl: text("avatar_url"),
+    /** Email signature image (scanned signature / signature-style graphic).
+     *  Rendered by the `signature` block in outgoing client emails. */
+    signatureUrl: text("signature_url"),
 
     /** Stacked roles. A user is often owner + RM + compliance simultaneously.
      *  'platform_admin' is reserved for AINA staff who manage the SaaS itself.

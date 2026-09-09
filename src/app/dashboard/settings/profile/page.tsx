@@ -23,6 +23,7 @@ export default async function ProfilePage() {
         email: users.email,
         emailVerifiedAt: users.emailVerifiedAt,
         avatarUrl: users.avatarUrl,
+        signatureUrl: users.signatureUrl,
         department: users.department,
         joiningDate: users.joiningDate,
         annualTarget: users.annualTarget,
@@ -110,6 +111,7 @@ export default async function ProfilePage() {
         email={me?.email ?? ""}
         emailVerified={!!me?.emailVerifiedAt}
         initialAvatarUrl={me?.avatarUrl ?? ""}
+        initialSignatureUrl={me?.signatureUrl ?? ""}
       />
 
       {/* Targets */}

@@ -197,6 +197,26 @@ references one of those namespaces, so an ordinary send mints nothing. A live,
 unused token for the same (subject, kind) is REUSED — otherwise a reminder
 email would silently invalidate the link sitting in the first one.
 
+### Branding an email: logo and sign-off
+
+Both are automatic, from data the firm already holds:
+
+- **Logo** — the `logo` block (or, with no such block, an auto-logo at the top)
+  draws `tenants.logo_url`. The pipeline makes it absolute before sending;
+  Gmail and Outlook cannot load a relative `/…` path. No logo on the tenant
+  means the block renders nothing rather than a broken image.
+- **Sign-off** — the `signature` block draws the RECIPIENT'S relationship
+  manager: their uploaded signature image (`users.signature_url`, set in
+  Settings → Profile), then name, designation, phone/email, and the firm with
+  its ARN. Every line is optional and simply omitted when absent, so a user who
+  has uploaded nothing still gets a clean typed sign-off. The pipeline fills
+  `investor.rm_name` / `rm_designation` / `rm_email` / `rm_phone` /
+  `rm_signature_url` in `loadInvestor`.
+
+Prefer the block over hand-writing "Warm regards, {{investor.rm_name}}" in a
+text block: the block also carries the image and contact details, and one
+template then signs correctly for whichever RM owns the client.
+
 Two constraints worth knowing before authoring a template:
 
 - **Merge values are HTML-escaped.** A token carrying markup (`<li>…</li>`)

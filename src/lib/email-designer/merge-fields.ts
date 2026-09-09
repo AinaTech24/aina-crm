@@ -34,6 +34,9 @@ export const MERGE_FIELDS: MergeField[] = [
   { token: "investor.aum", label: "AUM (₹)", example: "₹1,25,00,000", category: "Recipient" },
   { token: "investor.date_of_birth", label: "Date of birth", example: "15 Aug 1978", category: "Recipient" },
   { token: "investor.rm_name", label: "Relationship manager", example: "Priya Mehta", category: "Recipient" },
+  { token: "investor.rm_designation", label: "RM designation", example: "Advisory", category: "Recipient" },
+  { token: "investor.rm_email", label: "RM email", example: "priya@firm.in", category: "Recipient" },
+  { token: "investor.rm_phone", label: "RM phone", example: "+91 98200 11223", category: "Recipient" },
 
   // ── Lead ──────────────────────────────────────────────────────────────────
   { token: "lead.name", label: "Lead name", example: "Anita Desai", category: "Lead" },

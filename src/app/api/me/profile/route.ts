@@ -1,5 +1,6 @@
 /**
- * PATCH /api/me/profile — update your own basic profile (name, phone).
+ * PATCH /api/me/profile — update your own basic profile (name, phone, photo,
+ * email signature).
  *
  * Self-service for every role. Deliberately limited to harmless fields — a
  * user can NOT change their own roles, email, targets, department, or reporting
@@ -72,6 +73,7 @@ export async function GET() {
         email: u.email ?? "",
         emailVerified: !!u.emailVerifiedAt,
         avatarUrl: u.avatarUrl ?? null,
+        signatureUrl: u.signatureUrl ?? null,
         department: u.department ?? null,
         roleLabel: primaryRoleLabel(session.roles),
       },
@@ -98,6 +100,16 @@ const Body = z.object({
     .refine((v) => v === "" || v.startsWith("/") || /^https?:\/\//i.test(v), "invalid url")
     .optional()
     .or(z.literal("")),
+  // Email signature image. Same URL guard as the avatar: it is rendered in an
+  // <img src> inside emails we send on the user's behalf, so a javascript:/data:
+  // URL must never be storable here.
+  signatureUrl: z
+    .string()
+    .trim()
+    .max(2000)
+    .refine((v) => v === "" || v.startsWith("/") || /^https?:\/\//i.test(v), "invalid url")
+    .optional()
+    .or(z.literal("")),
 });
 
 export async function PATCH(req: NextRequest) {
@@ -111,6 +123,7 @@ export async function PATCH(req: NextRequest) {
     if (parsed.data.name !== undefined) patch.name = parsed.data.name;
     if (parsed.data.phone !== undefined) patch.phone = parsed.data.phone || null;
     if (parsed.data.avatarUrl !== undefined) patch.avatarUrl = parsed.data.avatarUrl || null;
+    if (parsed.data.signatureUrl !== undefined) patch.signatureUrl = parsed.data.signatureUrl || null;
 
     await withTenant(session.tenantId, async (tx) => {
       await tx.update(users).set(patch).where(eq(users.id, session.userId));

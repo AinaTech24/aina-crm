@@ -727,6 +727,27 @@ export async function loadTenant(tx: Tx, tenantId: string) {
   const [t] = await tx.select().from(tenants).where(eq(tenants.id, tenantId));
   return t;
 }
+/** Human labels for the `users.department` enum, used in email signatures. */
+const DEPARTMENT_LABELS: Record<string, string> = {
+  sales: "Sales",
+  operations: "Operations",
+  back_office: "Back Office",
+  compliance: "Compliance",
+  marketing: "Marketing",
+  advisory: "Advisory",
+  support: "Client Support",
+  leadership: "Leadership",
+  other: "",
+};
+
+/** Make an app-relative asset path absolute — email clients cannot load "/…". */
+function absoluteAppUrl(url: string): string {
+  if (/^https?:\/\//i.test(url)) return url;
+  const base = (process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL || "").replace(/\/$/, "");
+  if (!base) return url;
+  return `${base}${url.startsWith("/") ? "" : "/"}${url}`;
+}
+
 async function loadInvestor(tx: Tx, id: string) {
   const { investors, users } = await import("@/db/schema");
   const [i] = await tx.select().from(investors).where(eq(investors.id, id));
@@ -736,10 +757,30 @@ async function loadInvestor(tx: Tx, id: string) {
   const enriched: any = { ...i };
   enriched.first_name = String((i as any).name ?? "").trim().split(/\s+/)[0] ?? "";
   if ((i as any).rmId) {
-    const [rm] = await tx.select({ name: users.name }).from(users).where(eq(users.id, (i as any).rmId));
+    // The signature block needs more than a name: the RM's own contact details
+    // and their uploaded signature image, so the email signs off as a person.
+    const [rm] = await tx
+      .select({
+        name: users.name,
+        email: users.email,
+        phone: users.phone,
+        department: users.department,
+        signatureUrl: users.signatureUrl,
+      })
+      .from(users)
+      .where(eq(users.id, (i as any).rmId));
     enriched.rm_name = rm?.name ?? "";
+    enriched.rm_email = rm?.email ?? "";
+    enriched.rm_phone = rm?.phone ?? "";
+    enriched.rm_designation = rm?.department ? DEPARTMENT_LABELS[rm.department] ?? rm.department : "";
+    // Relative keys must be absolute for Gmail/Outlook, same as the firm logo.
+    enriched.rm_signature_url = rm?.signatureUrl ? absoluteAppUrl(rm.signatureUrl) : "";
   } else {
     enriched.rm_name = "";
+    enriched.rm_email = "";
+    enriched.rm_phone = "";
+    enriched.rm_designation = "";
+    enriched.rm_signature_url = "";
   }
   return enriched;
 }

@@ -146,6 +146,29 @@ export const SpacerBlock = z.object({
   type: z.literal("spacer"),
   height: z.number().int().min(4).max(120).default(24),
 });
+/**
+ * Sign-off block: the sender's signature image (when they have uploaded one),
+ * then their name, designation and contact details, then the firm.
+ *
+ * Everything is a merge field resolved per send, so one block signs correctly
+ * whoever the client's RM happens to be. A missing piece is simply omitted —
+ * a firm with no uploaded signatures still gets a clean typed sign-off.
+ */
+export const SignatureBlock = z.object({
+  ...baseBlock,
+  type: z.literal("signature"),
+  /** Closing line above the name. */
+  closing: z.string().default("Warm regards,"),
+  /** Draw the sender's uploaded signature image above their name. */
+  showSignatureImage: z.boolean().default(true),
+  /** Rendered height of that image, in px. */
+  signatureHeight: z.number().int().min(24).max(120).default(56),
+  showDesignation: z.boolean().default(true),
+  showContact: z.boolean().default(true),
+  /** Repeat the firm name + ARN under the person (the auto-footer also carries it). */
+  showFirm: z.boolean().default(true),
+  align: z.enum(["left", "center"]).default("left"),
+});
 export const QuoteBlock = z.object({
   ...baseBlock,
   type: z.literal("quote"),
@@ -183,6 +206,7 @@ export const BlockSchema = z.discriminatedUnion("type", [
   DataTableBlock,
   DividerBlock,
   SpacerBlock,
+  SignatureBlock,
   QuoteBlock,
   SocialBlock,
   HtmlBlock,
