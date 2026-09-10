@@ -553,8 +553,30 @@ function escape(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
+/**
+ * HTML block content -> plain text for the text/plain alternative.
+ *
+ * Stripping every tag outright ran sentences together: "Dear Anil,<br><br>Thank
+ * you" came out as "Dear Anil,Thank you". That alternative is what some mail
+ * clients display, what screen readers read, and what spam filters score, so it
+ * has to read as prose. Breaks and block ends become newlines, list items
+ * become dashes, and the few entities the designer emits are decoded.
+ */
 function stripHtml(s: string): string {
-  return s.replace(/<[^>]+>/g, "").replace(/\n{3,}/g, "\n\n").trim();
+  return String(s ?? "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|h[1-6]|tr|ul|ol)>/gi, "\n\n")
+    .replace(/<li[^>]*>/gi, "\n- ")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 function blockToText(b: EmailBlock): string {
