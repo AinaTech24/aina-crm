@@ -105,7 +105,10 @@ export async function GET(req: NextRequest) {
           status: r.status,
           statusReason: r.statusReason ?? null,
           subject: ic.subject ?? "(no subject)",
-          text: ic.text ?? (ic.html ? "(HTML email — open to view)" : ""),
+          // `hasHtml` is what the poller writes now; `html` is the old shape,
+          // still present on rows written before the raw body stopped being
+          // stored. Either means "there was an HTML part we aren't showing".
+          text: ic.text ?? (ic.hasHtml || ic.html ? "(HTML email — open to view)" : ""),
           from: ic.from ?? ic.fromName ?? null,
           templateKey: null,
           externalId: r.externalId ?? null,

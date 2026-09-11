@@ -530,6 +530,47 @@ export async function importRtaFolios(
           updatedAt: sql`now()`,
         };
 
+  // Adopt any folio this tenant already holds under a BLANK amc_code before the
+  // upsert runs.
+  //
+  // A CAMS monthly AUM statement (WBR22) carries a per-scheme product code, not
+  // a folio-level AMC, so processAumStatement creates the folio with amc_code ''
+  // and leaves a later master to fill it in. Nothing ever did: the conflict
+  // target below is (tenant, amc_code, folio_number), so ('', '123/45') and
+  // ('P', '123/45') are different keys and the master INSERTED A SECOND ROW —
+  // same folio, same money, twice, under two different clients.
+  //
+  // Measured on Ahpal Financial Services: 9,188 folios duplicated exactly this
+  // way, Rs 493.62 Cr double-counted, and 3,525 extra PAN-less clients, because
+  // the AUM statement was uploaded four minutes before the folio master.
+  //
+  // Claiming the blank row here turns that second INSERT into the UPDATE it was
+  // always meant to be. The NOT EXISTS guard skips the claim when a properly
+  // coded row for the same folio already exists, so the update can never trip
+  // the unique index.
+  for (const part of chunk(folioValues, 400)) {
+    await tx.execute(sql`
+      UPDATE folios f
+         SET amc_code = v.amc_code,
+             amc_name = COALESCE(NULLIF(trim(f.amc_name), ''), v.amc_name),
+             updated_at = now()
+        FROM (VALUES ${sql.join(
+          part.map((p) => sql`(${p.folioNumber}, ${p.amcCode}, ${p.amcName})`),
+          sql`, `
+        )}) AS v(folio_number, amc_code, amc_name)
+       WHERE f.tenant_id = ${tenantId}::uuid
+         AND f.folio_number = v.folio_number
+         AND trim(COALESCE(f.amc_code, '')) = ''
+         AND trim(COALESCE(v.amc_code, '')) <> ''
+         AND NOT EXISTS (
+           SELECT 1 FROM folios f2
+            WHERE f2.tenant_id = f.tenant_id
+              AND f2.folio_number = f.folio_number
+              AND f2.amc_code = v.amc_code
+         )
+    `);
+  }
+
   let foliosDone = 0;
   for (const part of chunk(folioValues, 400)) {
     await tx

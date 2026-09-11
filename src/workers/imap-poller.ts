@@ -118,7 +118,19 @@ async function ingest(
           fromName: m.fromName ?? null,
           subject: m.subject ?? null,
           text: m.text ?? null,
-          html: m.html ?? null,
+          // The raw HTML body is deliberately NOT stored, only whether there
+          // was one.
+          //
+          // Nothing ever rendered it: its single reader was a truthiness check
+          // in /api/comms/email-thread that swaps in the string "(HTML email —
+          // open to view)". Meanwhile it had grown to 2,315 MB across 129,393
+          // rows — 64% of the whole database, one row holding 13 MB — on an
+          // instance with 88 MB of shared_buffers, so it was evicting genuinely
+          // hot data and making every page slow for every firm.
+          //
+          // Mailback ZIPs arrive as attachments and are handled separately; the
+          // plain-text part is kept because the inbox preview does render it.
+          hasHtml: !!m.html,
           messageId: m.messageId ?? null,
           receivedAt: m.date ? m.date.toISOString() : null,
         },

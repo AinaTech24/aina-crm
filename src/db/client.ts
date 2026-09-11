@@ -52,7 +52,11 @@ export const pool: Pool =
     // Wait up to 12s for a free slot before failing — 5s was too tight under
     // transient contention (e.g. an RTA import running while the dialog polls
     // status), which surfaced as a 500 "Connection terminated" on upload.
-    connectionTimeoutMillis: 12_000,
+    //
+    // Raise via PG_CONNECT_TIMEOUT_MS for maintenance scripts run against a
+    // CPU-throttled instance, where even the TLS handshake can exceed 12s and
+    // the script dies at connect rather than doing any work.
+    connectionTimeoutMillis: Number(process.env.PG_CONNECT_TIMEOUT_MS ?? 12_000),
     // If a connection sits with an open transaction for > 30s, kill it —
     // protects against zombie connections from crashed routes.
     statement_timeout: 30_000,
