@@ -63,8 +63,10 @@ async function main() {
     const isUuid = /^[0-9a-f-]{36}$/i.test(TENANT_Q);
     const r = await tx.execute(
       isUuid
-        ? sql`SELECT id, name, arn FROM tenants WHERE id = ${TENANT_Q}::uuid`
-        : sql`SELECT id, name, arn FROM tenants WHERE name ILIKE ${"%" + TENANT_Q + "%"} ORDER BY created_at LIMIT 10`
+        ? sql`SELECT id, COALESCE(display_name, legal_name) AS name, arn FROM tenants WHERE id = ${TENANT_Q}::uuid`
+        : sql`SELECT id, COALESCE(display_name, legal_name) AS name, arn FROM tenants
+                WHERE display_name ILIKE ${"%" + TENANT_Q + "%"} OR legal_name ILIKE ${"%" + TENANT_Q + "%"}
+                ORDER BY created_at LIMIT 10`
     );
     return r.rows as Array<{ id: string; name: string; arn: string | null }>;
   });
@@ -74,7 +76,17 @@ async function main() {
   }
   if (tenants.length > 1) {
     console.error(`"${TENANT_Q}" matched ${tenants.length} tenants - re-run with the exact id:`);
-    for (const t of tenants) console.error(`   ${t.id}  ${t.name}`);
+    for (const t of tenants) {
+      const size = await withSystem(async (tx) =>
+        (
+          await tx.execute(sql`
+            SELECT (SELECT COUNT(*) FROM investors WHERE tenant_id = ${t.id}::uuid AND deleted_at IS NULL)::int AS clients,
+                   (SELECT COUNT(*) FROM folios    WHERE tenant_id = ${t.id}::uuid)::int                        AS folios
+          `)
+        ).rows[0] as Record<string, unknown>
+      );
+      console.error(`   ${t.id}  ${padr(t.name ?? "(unnamed)", 34)} ARN ${padr(t.arn ?? "-", 14)} ${pad(n(size.clients), 7)} clients  ${pad(n(size.folios), 7)} folios`);
+    }
     process.exit(1);
   }
   const tenant = tenants[0];
