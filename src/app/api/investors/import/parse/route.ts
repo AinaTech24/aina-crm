@@ -1,4 +1,5 @@
 import { handleApiError } from "@/lib/api/error-handler";
+import { MAX_IMPORT_ROWS, MAX_IMPORT_BYTES } from "@/lib/investors/import-limits";
 /**
  * POST /api/investors/import/parse
  * multipart/form-data: file=<xlsx|csv>
@@ -189,8 +190,11 @@ export async function POST(req: NextRequest) {
     if (!(file instanceof File)) {
       return NextResponse.json({ error: "file required" }, { status: 400 });
     }
-    if (file.size > 10 * 1024 * 1024) {
-      return NextResponse.json({ error: "file too large (max 10MB)" }, { status: 413 });
+    if (file.size > MAX_IMPORT_BYTES) {
+      return NextResponse.json(
+        { error: `file too large (max ${Math.round(MAX_IMPORT_BYTES / (1024 * 1024))}MB)` },
+        { status: 413 }
+      );
     }
 
     const buf = Buffer.from(await file.arrayBuffer());
@@ -204,8 +208,11 @@ export async function POST(req: NextRequest) {
     if (rows.length === 0) {
       return NextResponse.json({ error: "empty sheet" }, { status: 400 });
     }
-    if (rows.length > 5000) {
-      return NextResponse.json({ error: "too many rows (max 5000 per import)" }, { status: 413 });
+    if (rows.length > MAX_IMPORT_ROWS) {
+      return NextResponse.json(
+        { error: `too many rows (max ${MAX_IMPORT_ROWS.toLocaleString("en-IN")} per import)` },
+        { status: 413 }
+      );
     }
 
     const headers = Object.keys(rows[0]);
@@ -249,13 +256,15 @@ export async function POST(req: NextRequest) {
       ...cfDefs.map((d) => ({ key: d.key, label: d.label, group: "Custom fields" })),
     ];
 
-    // Return every parsed row (capped at the 5,000 import limit) so the commit
-    // step imports the whole file — the preview UI only renders the first row.
+    // Return every parsed row (capped at the import limit) so the commit step
+    // imports the whole file — the preview UI only renders the first row. The
+    // browser then commits in chunks; one request carrying 50,000 rows of JSON
+    // would be tens of megabytes and die at the proxy.
     return NextResponse.json({
       headers,
       ourFields,
       suggestedMapping: suggested,
-      rows: rows.slice(0, 5000),
+      rows: rows.slice(0, MAX_IMPORT_ROWS),
       total: rows.length,
     });
   } catch (err: any) {

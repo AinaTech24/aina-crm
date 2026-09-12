@@ -41,6 +41,8 @@ export function TrashTable({
   columns,
   restoreTemplate,
   purgeTemplate,
+  bulkPurgeUrl,
+  totalCount,
   itemLabel,
   maxHeightClass = "max-h-[360px]",
   purgeButtonLabel = "Delete",
@@ -58,6 +60,18 @@ export function TrashTable({
   restoreTemplate: string;
   /** e.g. "/api/investors/{id}?purge=1" */
   purgeTemplate: string;
+  /**
+   * Set-based bulk purge endpoint. When present, a bulk delete is ONE request
+   * per batch instead of one request per row - the per-row loop took minutes
+   * for a few hundred clients. POSTs { action: "purge", ids }, or
+   * { action: "purge", scope: "trash" } to empty the whole bin, and repeats
+   * while the server reports `remaining`.
+   */
+  bulkPurgeUrl?: string;
+  /** Rows in the bin in TOTAL. The table itself renders a capped page, so
+   *  "empty the bin" must work off the server's scope, not off what is on
+   *  screen. */
+  totalCount?: number;
   itemLabel: string; // "client" / "task"
   maxHeightClass?: string;
   /** Copy overrides for the permanent-removal action (e.g. employees, where
@@ -75,6 +89,12 @@ export function TrashTable({
   const [bulk, setBulk] = useState<null | "restore" | "purge">(null);
   const [confirmRowPurge, setConfirmRowPurge] = useState<TrashRow | null>(null);
   const [confirmBulkPurge, setConfirmBulkPurge] = useState(false);
+  const [confirmPurgeAll, setConfirmPurgeAll] = useState(false);
+  const [purgedSoFar, setPurgedSoFar] = useState(0);
+
+  // Everything in the bin, which may be more than the page rendered below.
+  const binTotal = totalCount ?? count;
+  const canEmptyBin = Boolean(bulkPurgeUrl) && binTotal > 0;
 
   const allSelected = rows.length > 0 && selected.size === rows.length;
   const someSelected = selected.size > 0;
@@ -122,9 +142,63 @@ export function TrashTable({
     }
   }
 
-  // Bulk — run the per-id endpoints sequentially so one failure doesn't abort
+  /**
+   * Permanently erase either the current selection or EVERYTHING in the bin.
+   *
+   * The server erases a bounded batch per call and says whether more is left,
+   * so this loops until it is done: one request per few thousand rows instead
+   * of one request (and ~15 statements) per row.
+   */
+  async function runBulkPurge(all: boolean) {
+    if (!bulkPurgeUrl) return;
+    const ids = rows.filter((r) => selected.has(r.id)).map((r) => r.id);
+    if (!all && ids.length === 0) return;
+
+    setBulk("purge");
+    setPurgedSoFar(0);
+    let purged = 0;
+    let failed: string | null = null;
+    try {
+      // Bounded so a server that never reports completion cannot spin forever.
+      for (let pass = 0; pass < 500; pass++) {
+        const res = await fetch(bulkPurgeUrl, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(all ? { action: "purge", scope: "trash" } : { action: "purge", ids }),
+        });
+        const j = await res.json().catch(() => ({}) as any);
+        if (!res.ok) {
+          failed = j?.error ?? `Failed (${res.status})`;
+          break;
+        }
+        purged += Number(j?.purged ?? 0);
+        setPurgedSoFar(purged);
+        // A selection is erased in one pass; only "empty the bin" repeats.
+        if (!all || !j?.remaining) break;
+      }
+    } catch (e: any) {
+      failed = e?.message ?? "Network error";
+    }
+    setBulk(null);
+    setPurgedSoFar(0);
+    setConfirmBulkPurge(false);
+    setConfirmPurgeAll(false);
+    setSelected(new Set());
+    if (purged) {
+      toast.success(
+        `${purged.toLocaleString("en-IN")} ${itemLabel}${purged === 1 ? "" : "s"} permanently deleted` +
+          (failed ? " - stopped early" : "")
+      );
+    }
+    if (failed && !purged) toast.error(failed, "Couldn't delete");
+    router.refresh();
+  }
+
+  // Bulk - run the per-id endpoints sequentially so one failure doesn't abort
   // the rest; report a summary.
   async function runBulk(kind: "restore" | "purge") {
+    // Prefer the set-based endpoint when the caller supplied one.
+    if (kind === "purge" && bulkPurgeUrl) return runBulkPurge(false);
     const ids = rows.filter((r) => selected.has(r.id));
     if (ids.length === 0) return;
     setBulk(kind);
@@ -169,7 +243,7 @@ export function TrashTable({
           {open ? <ChevronDown className="size-4 text-muted-foreground" /> : <ChevronRight className="size-4 text-muted-foreground" />}
           {icon}
           <span className="font-semibold text-sm truncate">{title}</span>
-          <span className="chip text-[11px] bg-secondary text-muted-foreground tabular-nums">{count}</span>
+          <span className="chip text-[11px] bg-secondary text-muted-foreground tabular-nums">{count.toLocaleString("en-IN")}</span>
         </button>
 
         <div className="ml-auto flex items-center gap-2">
@@ -191,6 +265,18 @@ export function TrashTable({
                 <Trash2 className="size-3.5" /> {purgeButtonLabel}
               </button>
             </>
+          )}
+          {canEmptyBin && !someSelected && (
+            <button
+              onClick={() => setConfirmPurgeAll(true)}
+              disabled={bulk !== null}
+              className="inline-flex items-center gap-1 rounded-md border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-100 disabled:opacity-50"
+            >
+              {bulk === "purge" ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
+              {bulk === "purge"
+                ? `Deleting ${purgedSoFar.toLocaleString("en-IN")} of ${binTotal.toLocaleString("en-IN")}...`
+                : `${purgeButtonLabel} all ${binTotal.toLocaleString("en-IN")}`}
+            </button>
           )}
           <label className="inline-flex items-center gap-1.5 text-xs cursor-pointer select-none">
             <input type="checkbox" checked={allSelected} onChange={toggleAll} className="size-3.5 rounded" />
@@ -261,6 +347,16 @@ export function TrashTable({
         </div>
       )}
 
+      {open && binTotal > rows.length && (
+        // The list is capped so 25,000 rows don't lock the browser. Say so, or
+        // the count in the header looks like a bug.
+        <div className="px-4 py-2.5 border-t text-xs text-muted-foreground">
+          Showing the {rows.length.toLocaleString("en-IN")} most recently deleted of{" "}
+          {binTotal.toLocaleString("en-IN")}. Use &ldquo;{purgeButtonLabel} all&rdquo; above to clear the bin
+          completely.
+        </div>
+      )}
+
       <ConfirmDialog
         open={confirmRowPurge !== null}
         title={purgeTitle ?? "Delete permanently?"}
@@ -270,6 +366,16 @@ export function TrashTable({
         busy={busyId === confirmRowPurge?.id}
         onConfirm={() => confirmRowPurge && purgeOne(confirmRowPurge)}
         onCancel={() => setConfirmRowPurge(null)}
+      />
+      <ConfirmDialog
+        open={confirmPurgeAll}
+        title={`Delete all ${binTotal.toLocaleString("en-IN")} ${itemLabel}${binTotal === 1 ? "" : "s"} in the bin permanently?`}
+        message={`This irreversibly erases every ${itemLabel} currently in the Trash - including any not shown in the list above - and all of their data. This cannot be undone.`}
+        confirmLabel={purgeCta}
+        tone="danger"
+        busy={bulk === "purge"}
+        onConfirm={() => runBulkPurge(true)}
+        onCancel={() => setConfirmPurgeAll(false)}
       />
       <ConfirmDialog
         open={confirmBulkPurge}

@@ -48,6 +48,10 @@ const Body = z.object({
   // row, so an unbounded array would hold a write lock + memory for minutes.
   // 10k/upload is comfortably above a normal MFD book migration; larger books
   // should be split (a background-job importer is the longer-term fix).
+  // Per REQUEST, not per import. The browser splits a large file into chunks
+  // (see the import page) so one request stays small enough for the proxy and
+  // gets its own transaction — a single 50,000-row commit would be one very
+  // long-running transaction on a burstable instance.
   rows: z.array(z.record(z.string(), z.any())).max(10000),
   mode: z.enum(["add", "update", "both"]).default("add"),
   matchBy: z.enum(["none", "clientId", "email", "phone", "pan"]).default("none"),

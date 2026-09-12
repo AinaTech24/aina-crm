@@ -4,6 +4,7 @@ import { handleApiError } from "@/lib/api/error-handler";
  *
  * Body: { ids: string[], action, value? }
  *   action = "assign"   value = rmId (uuid) | null      → reassign RM
+ *   action = "purge"    ids OR scope:"trash"            → PERMANENT erase
  *          = "review"   value = ISO date string         → set next review date
  *          = "tier"     value = "A" | "B" | "C"          → set service tier
  *          = "segment"  value = segment tag              → set segment
@@ -15,7 +16,7 @@ import { handleApiError } from "@/lib/api/error-handler";
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNotNull } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
@@ -23,12 +24,18 @@ import { require as requireCap } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
 import { investors, users } from "@/db/schema";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
+import { purgeInvestorsChunk, PURGE_REQUEST_MAX, PURGE_TX_CHUNK } from "@/lib/investors/purge";
 
 export const dynamic = "force-dynamic";
 
 const Body = z.object({
-  ids: z.array(z.string().uuid()).min(1).max(20000),
-  action: z.enum(["assign", "review", "tier", "segment", "category", "delete"]),
+  // `ids` is optional for purge, which can instead target everything currently
+  // in the Trash — a firm emptying 25,000 clients should not have to send
+  // 25,000 ids the browser had to list first.
+  ids: z.array(z.string().uuid()).max(20000).optional(),
+  action: z.enum(["assign", "review", "tier", "segment", "category", "delete", "purge"]),
+  /** purge only: "trash" targets every soft-deleted client in the firm. */
+  scope: z.literal("trash").optional(),
   value: z.string().nullable().optional(),
 });
 
@@ -48,11 +55,54 @@ export async function POST(req: NextRequest) {
     if (!parsed.success) {
       return NextResponse.json({ error: "invalid body", issues: parsed.error.issues }, { status: 400 });
     }
-    const { ids, action, value } = parsed.data;
-    // Permanent bulk erasure (up to 1000 clients + cascaded data) is far more
-    // dangerous than a re-tag — gate it on the narrow delete capability, not the
-    // broad edit.all this route otherwise runs on.
-    if (action === "delete") requireCap(session.roles, "investor.delete", session.permissions);
+    const { ids, action, value, scope: bodyScope } = parsed.data;
+
+    // Permanent erasure and soft-delete are far more dangerous than a re-tag, so
+    // both are gated on the narrow delete capability rather than the broad
+    // edit.all this route otherwise runs on. This MUST sit above the purge
+    // branch below, which returns before reaching the later checks.
+    if (action === "delete" || action === "purge") {
+      requireCap(session.roles, "investor.delete", session.permissions);
+    }
+
+    if (action !== "purge" && (!ids || ids.length === 0)) {
+      return NextResponse.json({ error: "ids required" }, { status: 400 });
+    }
+
+    // ── Permanent erasure ────────────────────────────────────────────────
+    // Bounded per request and chunked per transaction, so emptying a Trash of
+    // any size is a handful of set-based statements per batch rather than one
+    // request (and ~15 statements) per client.
+    if (action === "purge") {
+      const result = await withTenant(session.tenantId, async (tx) => {
+        let targets: string[];
+        if (bodyScope === "trash") {
+          const rows = await tx
+            .select({ id: investors.id })
+            .from(investors)
+            .where(and(eq(investors.tenantId, session.tenantId), isNotNull(investors.deletedAt)))
+            .limit(PURGE_REQUEST_MAX + 1);
+          targets = rows.map((r) => r.id);
+        } else {
+          targets = (ids ?? []).slice(0, PURGE_REQUEST_MAX + 1);
+        }
+
+        // One more than the cap tells us work remains without a second count.
+        const more = targets.length > PURGE_REQUEST_MAX;
+        const batch = more ? targets.slice(0, PURGE_REQUEST_MAX) : targets;
+
+        let purged = 0;
+        for (let i = 0; i < batch.length; i += PURGE_TX_CHUNK) {
+          purged += await purgeInvestorsChunk(tx, session.tenantId, batch.slice(i, i + PURGE_TX_CHUNK));
+        }
+        return { purged, more };
+      });
+
+      // `remaining` is "there is more to do", not an exact count — the caller
+      // loops until it is false.
+      return NextResponse.json({ ok: true, purged: result.purged, remaining: result.more });
+    }
+
     const meta = clientMetaFromHeaders(req.headers);
 
     const patch: Record<string, any> = { updatedAt: new Date() };
@@ -110,7 +160,7 @@ export async function POST(req: NextRequest) {
     const count = await withTenant(session.tenantId, async (tx) => {
       // Tenant predicate (defense-in-depth) — a destructive bulk op must never
       // touch another firm's clients even if RLS is bypassed (superuser role).
-      const scope = and(eq(investors.tenantId, session.tenantId), inArray(investors.id, ids));
+      const scope = and(eq(investors.tenantId, session.tenantId), inArray(investors.id, ids ?? []));
       let updated: { id: string }[];
       if (action === "delete") {
         // Soft delete into the Trash bin — preserves all related data.
@@ -128,7 +178,7 @@ export async function POST(req: NextRequest) {
         action: `investor.bulk_${action}`,
         entityType: "investor",
         entityId: session.tenantId,
-        after: { action, value: value ?? null, count: updated.length, ids } as any,
+        after: { action, value: value ?? null, count: updated.length, ids: ids ?? [] } as any,
         ...meta,
       });
       return updated.length;

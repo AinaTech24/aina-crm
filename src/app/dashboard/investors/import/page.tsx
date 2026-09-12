@@ -6,6 +6,7 @@ import Link from "next/link";
 import { ChevronLeft, Upload, FileSpreadsheet, Loader2, Check, AlertCircle } from "lucide-react";
 import { SelectField } from "@/components/ui/SelectField";
 import { useToast } from "@/components/ui/Toast";
+import { MAX_IMPORT_ROWS, IMPORT_COMMIT_CHUNK } from "@/lib/investors/import-limits";
 
 type FieldDef = { key: string; label: string; group: string };
 type Parsed = {
@@ -28,6 +29,7 @@ export default function ImportPage() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [commitResult, setCommitResult] = useState<any>(null);
+  const [progress, setProgress] = useState<{ done: number; total: number; rows: number } | null>(null);
 
   // How the file's rows are processed (mirrors Zoho's import dialog).
   const [mode, setMode] = useState<Mode>("add");
@@ -62,22 +64,62 @@ export default function ImportPage() {
     }
   }
 
+  /**
+   * Commit in CHUNKS.
+   *
+   * The whole file used to go in one POST. At the old 5,000-row ceiling that was
+   * merely large; at 50,000 it would be tens of megabytes — rejected by the
+   * proxy, and one very long transaction on the database. Each chunk is its own
+   * request and its own transaction, and the counts are added up as they land,
+   * so a big import also shows progress instead of appearing to hang.
+   */
   async function commit() {
     if (!parsed) return;
     setBusy(true);
     setErr(null);
+    setProgress(null);
     try {
-      const res = await fetch("/api/investors/import/commit", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ mapping, rows: parsed.rows, mode, matchBy, dontUpdateEmpty }),
-      });
-      const j = await res.json();
-      if (!res.ok) {
-        setErr(j.error ?? "Commit failed");
-        toast.error(j.error ?? "Import failed", "Import");
-        return;
+      const all = parsed.rows ?? [];
+      const chunks: any[][] = [];
+      for (let i = 0; i < all.length; i += IMPORT_COMMIT_CHUNK) {
+        chunks.push(all.slice(i, i + IMPORT_COMMIT_CHUNK));
       }
+      if (chunks.length === 0) chunks.push([]);
+
+      const totals = { inserted: 0, updated: 0, skipped: 0, quotaSkipped: 0, errored: 0 };
+      let errors: any[] = [];
+      let quotaMessage: string | undefined;
+
+      for (let c = 0; c < chunks.length; c++) {
+        setProgress({ done: c, total: chunks.length, rows: Math.min((c + 1) * IMPORT_COMMIT_CHUNK, all.length) });
+        const res = await fetch("/api/investors/import/commit", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ mapping, rows: chunks[c], mode, matchBy, dontUpdateEmpty }),
+        });
+        const part = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          // Report what DID land rather than implying nothing happened — the
+          // earlier chunks are already committed and cannot be rolled back.
+          const done = totals.inserted + totals.updated;
+          const msg = part?.error ?? "Commit failed";
+          setErr(done ? `${msg} — ${done} row(s) from earlier batches were already imported.` : msg);
+          toast.error(msg, "Import");
+          return;
+        }
+        totals.inserted += Number(part.inserted ?? 0);
+        totals.updated += Number(part.updated ?? 0);
+        totals.skipped += Number(part.skipped ?? 0);
+        totals.quotaSkipped += Number(part.quotaSkipped ?? 0);
+        totals.errored += Number(part.errored ?? 0);
+        if (Array.isArray(part.errors) && errors.length < 1000) {
+          errors = errors.concat(part.errors).slice(0, 1000);
+        }
+        if (part.quotaMessage) quotaMessage = part.quotaMessage;
+      }
+      setProgress({ done: chunks.length, total: chunks.length, rows: all.length });
+
+      const j: any = { ...totals, errors, ...(quotaMessage ? { quotaMessage } : {}) };
       setCommitResult(j);
       setStep("done");
       const ins = Number(j.inserted ?? 0);
@@ -134,7 +176,7 @@ export default function ImportPage() {
           </label>
           {err && <div className="text-sm text-rose-600 mt-3">{err}</div>}
           <p className="text-xs text-muted-foreground mt-6">
-            Max 10,000 rows, 10MB. Headers in row 1. Only a Name (or PAN / email / mobile) is needed — every other
+            Max {MAX_IMPORT_ROWS.toLocaleString("en-IN")} rows, 40MB. Headers in row 1. Only a Name (or PAN / email / mobile) is needed — every other
             column is optional and imported as-is. Rows without a PAN are kept blank, and odd date formats
             (DD-MM-YYYY, Excel dates) are handled automatically.
           </p>
@@ -262,7 +304,11 @@ export default function ImportPage() {
               >
                 {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Upload className="size-3.5" />}
                 {busy
-                  ? mode === "update" ? "Updating…" : "Importing…"
+                  ? // A 50,000-row file takes a while; show how far along it is
+                    // rather than a spinner that looks like a hang.
+                    progress && progress.total > 1
+                    ? `${mode === "update" ? "Updating" : "Importing"} ${progress.rows.toLocaleString("en-IN")} of ${parsed.total.toLocaleString("en-IN")}…`
+                    : mode === "update" ? "Updating…" : "Importing…"
                   : mode === "update"
                     ? `Update matching of ${parsed.total} rows`
                     : mode === "both"

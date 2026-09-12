@@ -6,7 +6,7 @@
  */
 
 import { redirect } from "next/navigation";
-import { and, desc, eq, inArray, isNotNull, or } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
 import { Trash2, Info, Users, ListChecks, UserCog } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
@@ -17,6 +17,10 @@ import { formatINR, formatDate } from "@/lib/utils";
 import { TrashTable, type TrashColumn } from "@/components/trash/TrashTable";
 
 export const dynamic = "force-dynamic";
+
+/** The bin can hold tens of thousands; the TABLE stays bounded so the browser
+ *  survives, and the total is shown beside it. */
+const TRASH_LIST_LIMIT = 1000;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -31,7 +35,7 @@ export default async function TrashPage() {
 
   const retention = DEFAULT_SOFT_DELETE_RETENTION_DAYS;
 
-  const { invRows, taskRows, empRows, deleterNameById } = await withTenant(session.tenantId, async (tx) => {
+  const { invRows, taskRows, empRows, deleterNameById, invTotal } = await withTenant(session.tenantId, async (tx) => {
     const invRows = canInvestors
       ? await tx
           .select({
@@ -47,7 +51,7 @@ export default async function TrashPage() {
           .from(investors)
           .where(and(eq(investors.tenantId, session.tenantId), isNotNull(investors.deletedAt)))
           .orderBy(desc(investors.deletedAt))
-          .limit(500)
+          .limit(TRASH_LIST_LIMIT)
       : [];
 
     // task.edit.assigned users see only their own trashed tasks; task.edit.all sees all.
@@ -68,7 +72,7 @@ export default async function TrashPage() {
           .from(tasks)
           .where(and(eq(tasks.tenantId, session.tenantId), isNotNull(tasks.deletedAt), taskScope))
           .orderBy(desc(tasks.deletedAt))
-          .limit(500)
+          .limit(TRASH_LIST_LIMIT)
       : [];
 
     const empRows = canEmployees
@@ -85,8 +89,21 @@ export default async function TrashPage() {
           .from(users)
           .where(and(eq(users.tenantId, session.tenantId), isNotNull(users.deletedAt)))
           .orderBy(desc(users.deletedAt))
-          .limit(500)
+          .limit(TRASH_LIST_LIMIT)
       : [];
+
+    // How many clients are in the bin in total. The list above is capped for the
+    // browser's sake; this is what "Delete all" acts on.
+    const invTotal = canInvestors
+      ? Number(
+          (
+            await tx.execute(
+              sql`SELECT count(*)::int AS n FROM investors
+                  WHERE tenant_id = ${session.tenantId}::uuid AND deleted_at IS NOT NULL`
+            )
+          ).rows?.[0]?.n ?? 0
+        )
+      : 0;
 
     // Resolve the "deleted by" user ids to display names in one lookup.
     const deleterIds = [
@@ -101,7 +118,7 @@ export default async function TrashPage() {
       : [];
     const deleterNameById = new Map(deleters.map((u) => [u.id, u.name]));
 
-    return { invRows, taskRows, empRows, deleterNameById };
+    return { invRows, taskRows, empRows, deleterNameById, invTotal };
   });
 
   const deleterName = (id: string | null | undefined) => (id && deleterNameById.get(id)) || "—";
@@ -196,13 +213,18 @@ export default async function TrashPage() {
           {canInvestors && invTrashRows.length > 0 && (
             <TrashTable
               title="Clients"
-              count={invTrashRows.length}
+              count={invTotal}
               icon={<Users className="size-4 text-muted-foreground" />}
               rows={invTrashRows}
               columns={invCols}
               restoreTemplate="/api/investors/{id}/restore"
               purgeTemplate="/api/investors/{id}?purge=1"
               itemLabel="client"
+              // One set-based request per batch instead of one request per
+              // client; "empty the bin" works off the server-side scope, so it
+              // is not limited to the rows rendered above.
+              bulkPurgeUrl="/api/investors/bulk"
+              totalCount={invTotal}
             />
           )}
 
