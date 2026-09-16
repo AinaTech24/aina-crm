@@ -33,6 +33,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { sql } from "drizzle-orm";
+import { splitStatements } from "./lib/sql-split";
 
 // This runner applies schema/RLS migrations cross-tenant, so it legitimately
 // needs system (RLS-bypassing) DB access. withSystem() is gated by this flag;
@@ -199,19 +200,38 @@ async function main() {
     // client.query(string) uses the SIMPLE protocol, which is what psql uses
     // and what multi-statement SQL requires. Errors also arrive intact instead
     // of being truncated into drizzle's "Failed query: …" wrapper.
+    //
+    // A file whose header carries
+    //     -- migrate:no-transaction
+    // is applied statement by statement with NO surrounding transaction. Some
+    // statements simply cannot run inside one — `CREATE INDEX CONCURRENTLY`
+    // being the case that forced this — and a multi-statement simple query is
+    // itself an implicit transaction, so the statements must also be sent
+    // separately. Such a file gives up all-or-nothing: it MUST be written so a
+    // re-run after a partial failure is safe (IF NOT EXISTS, and clean up
+    // anything a failed attempt leaves behind).
+    // Scanned over the whole file, not just the header: the marker changes how
+    // the file is APPLIED, so missing it because a header ran long would fail in
+    // a way that reads like a SQL bug.
+    const noTx = /^--\s*migrate:no-transaction\s*$/m.test(text);
     const client = await pool.connect();
     try {
-      await client.query("BEGIN");
-      // Mirror withSystem(): the platform-admin branch of every RLS policy.
-      await client.query("SELECT set_config('app.is_platform_admin', 'true', true)");
-      await client.query(text);
+      if (noTx) {
+        await client.query("SELECT set_config('app.is_platform_admin', 'true', false)");
+        for (const stmt of splitStatements(text)) await client.query(stmt);
+      } else {
+        await client.query("BEGIN");
+        // Mirror withSystem(): the platform-admin branch of every RLS policy.
+        await client.query("SELECT set_config('app.is_platform_admin', 'true', true)");
+        await client.query(text);
+      }
       await client.query(
         `INSERT INTO _applied_migrations (filename, checksum)
          VALUES ($1, $2)
          ON CONFLICT (filename) DO UPDATE SET checksum = EXCLUDED.checksum, applied_at = now()`,
         [f, cs]
       );
-      await client.query("COMMIT");
+      if (!noTx) await client.query("COMMIT");
       console.log("ok");
     } catch (err: any) {
       await client.query("ROLLBACK").catch(() => {});
