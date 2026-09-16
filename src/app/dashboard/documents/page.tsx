@@ -4,7 +4,7 @@ import { Upload, ShieldCheck, ScrollText } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { complianceDocuments, investors, ddqScores, sops } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
-import { can } from "@/lib/auth/rbac";
+import { canOpenVault, seesWholeVault, vaultScopeCondition, vaultScopeFragment } from "@/lib/compliance/document-access";
 import { DocumentsFeed } from "@/components/compliance/DocumentsFeed";
 
 export const dynamic = "force-dynamic";
@@ -12,20 +12,22 @@ export const dynamic = "force-dynamic";
 export default async function DocumentsPage() {
   const session = await requireSession();
 
-  // The compliance vault is restricted to the compliance + back-office team
-  // (owner wins via can()). Matches the API gate on /api/compliance/documents.
-  const canView =
-    can(session.roles, "compliance.view", session.permissions) ||
-    can(session.roles, "kyc.manage", session.permissions);
-  if (!canView) {
+  // Compliance / back-office / owner see the whole vault; an RM or branch head
+  // sees documents filed against their own clients. Anyone else is told so
+  // plainly -- and no longer shown the sidebar link in the first place.
+  if (!canOpenVault(session)) {
     return (
       <div className="max-w-2xl mx-auto card-surface p-8 text-center text-sm text-muted-foreground">
-        The document vault is available to the compliance and back-office team.
+        The document vault is available to the compliance and back-office team, and to relationship
+        managers for their own clients.
       </div>
     );
   }
+  const wholeVault = seesWholeVault(session);
 
   const data = await withTenant(session.tenantId, async (tx) => {
+    // Scoped inside the transaction: the per-tenant data wall is a row read.
+    const scope = await vaultScopeCondition(tx, session);
     // Tenant predicate is mandatory under the superuser/RLS-bypass model — without
     // it both queries return EVERY tenant's compliance documents.
     const stats = await tx.execute(sql`
@@ -39,12 +41,19 @@ export default async function DocumentsPage() {
       FROM compliance_documents
       WHERE tenant_id = ${session.tenantId}::uuid
         AND superseded_by_id IS NULL
+        AND ${await vaultScopeFragment(tx, session)}
     `);
     const s = stats.rows[0] as any;
     const rows = await tx
       .select()
       .from(complianceDocuments)
-      .where(and(eq(complianceDocuments.tenantId, session.tenantId), isNull(complianceDocuments.supersededById)))
+      .where(
+        and(
+          eq(complianceDocuments.tenantId, session.tenantId),
+          isNull(complianceDocuments.supersededById),
+          scope
+        )
+      )
       .orderBy(desc(complianceDocuments.createdAt))
       .limit(100);
 
@@ -121,7 +130,12 @@ export default async function DocumentsPage() {
     <div className="space-y-6 max-w-7xl">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Documents</h1>
+          <h1 className="page-title">Documents</h1>
+          <p className="page-subtitle mt-1">
+            {wholeVault
+              ? "KYC forms, agreements and statements, filed against the right client."
+              : "KYC forms, agreements and statements for the clients you manage."}
+          </p>
         </div>
         <Link
           href="/dashboard/documents/upload"

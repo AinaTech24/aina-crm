@@ -10,7 +10,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { inArray, and, eq } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { requireAny } from "@/lib/auth/rbac";
+import { canOpenVault, vaultScopeCondition } from "@/lib/compliance/document-access";
 import { complianceDocuments } from "@/db/schema";
 import { getObjectBytes } from "@/lib/storage/s3";
 import { makeZip } from "@/lib/storage/zip";
@@ -44,7 +44,10 @@ function extFor(mime: string | null): string {
 export async function GET(req: NextRequest) {
   try {
     const session = await requireSession();
-    requireAny(session.roles, ["compliance.view", "kyc.manage"], session.permissions);
+    // Same gate and same scope as the vault list: ids outside the caller's
+    // reach simply do not come back, so a hand-built id list cannot zip up
+    // another RM's clients.
+    if (!canOpenVault(session)) throw Object.assign(new Error("forbidden: missing document.view"), { status: 403 });
 
     const idsParam = new URL(req.url).searchParams.get("ids") ?? "";
     const ids = idsParam.split(",").map((s) => s.trim()).filter(Boolean).slice(0, MAX_DOCS);
@@ -53,6 +56,7 @@ export async function GET(req: NextRequest) {
     }
 
     const docs = await withTenant(session.tenantId, async (tx) => {
+      const scope = await vaultScopeCondition(tx, session);
       return tx
         .select({
           id: complianceDocuments.id,
@@ -61,7 +65,7 @@ export async function GET(req: NextRequest) {
           mimeType: complianceDocuments.mimeType,
         })
         .from(complianceDocuments)
-        .where(and(inArray(complianceDocuments.id, ids), eq(complianceDocuments.tenantId, session.tenantId)));
+        .where(and(inArray(complianceDocuments.id, ids), eq(complianceDocuments.tenantId, session.tenantId), scope));
     });
 
     if (docs.length === 0) {

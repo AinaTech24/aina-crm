@@ -205,7 +205,10 @@ const NAV: NavSection[] = [
       { href: "/dashboard/compliance/command-center", label: "Compliance Center", icon: ShieldCheck, roles: ["owner", "compliance", "branch_head"] },
       { href: "/dashboard/compliance", label: "DDQ Readiness", icon: FileCheck, module: "ddq", roles: ["owner", "compliance"] },
       { href: "/dashboard/compliance/amfi-circulars", label: "Circular Digest", icon: Newspaper, roles: ["owner", "compliance", "back_office", "ops", "rm", "branch_head"] },
-      { href: "/dashboard/documents", label: "Documents", icon: FolderOpen, module: "documents" },
+      // Every other item in this group carries a roles list; this one did not,
+      // so marketing and team members were shown a link that answered "the
+      // document vault is available to the compliance and back-office team".
+      { href: "/dashboard/documents", label: "Documents", icon: FolderOpen, module: "documents", roles: ["owner", "compliance", "back_office", "ops", "rm", "branch_head"] },
       { href: "/dashboard/sops", label: "SOP Library", icon: ScrollText, roles: ["owner", "compliance"] },
       { href: "/dashboard/announcements", label: "Announcements", icon: BellRing },
       { href: "/dashboard/duplicates", label: "Find Duplicates", icon: CopyCheck, roles: ["owner", "branch_head"] },

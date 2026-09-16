@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { eq, and } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { requireAny } from "@/lib/auth/rbac";
+import { canOpenVault, vaultScopeCondition } from "@/lib/compliance/document-access";
 import { complianceDocuments } from "@/db/schema";
 import { presignedGetUrl } from "@/lib/storage/s3";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
@@ -28,8 +28,11 @@ function filenameFor(name: string | null, mime: string | null): string {
 export async function GET(req: NextRequest) {
   try {
     const session = await requireSession();
-    // Same gate as the vault list — compliance + back-office team (owner via can()).
-    requireAny(session.roles, ["compliance.view", "kyc.manage"], session.permissions);
+    // Same gate as the vault list. An RM or branch head may open a document
+    // only if it is filed against one of their own clients -- the scope below
+    // is part of the lookup, so a guessed id reads as "not found" rather than
+    // handing over another RM's client's KYC.
+    if (!canOpenVault(session)) throw Object.assign(new Error("forbidden: missing document.view"), { status: 403 });
 
     const id = new URL(req.url).searchParams.get("id");
     // inline=1 → view in a browser tab (PDF/image); otherwise download as a file.
@@ -40,6 +43,7 @@ export async function GET(req: NextRequest) {
 
     const clientMeta = clientMetaFromHeaders(req.headers);
     const downloadUrl = await withTenant(session.tenantId, async (tx) => {
+      const scope = await vaultScopeCondition(tx, session);
       const [doc] = await tx
         .select({
           name: complianceDocuments.name,
@@ -49,7 +53,7 @@ export async function GET(req: NextRequest) {
           relatedEntityId: complianceDocuments.relatedEntityId,
         })
         .from(complianceDocuments)
-        .where(and(eq(complianceDocuments.id, id), eq(complianceDocuments.tenantId, session.tenantId)))
+        .where(and(eq(complianceDocuments.id, id), eq(complianceDocuments.tenantId, session.tenantId), scope))
         .limit(1);
 
       if (!doc) {
