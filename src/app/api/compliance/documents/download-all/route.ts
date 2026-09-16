@@ -10,7 +10,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { inArray, and, eq } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { canOpenVault, ownClientDocsOnly } from "@/lib/compliance/document-access";
+import { canOpenVault, vaultScopeCondition } from "@/lib/compliance/document-access";
 import { complianceDocuments } from "@/db/schema";
 import { getObjectBytes } from "@/lib/storage/s3";
 import { makeZip } from "@/lib/storage/zip";
@@ -48,7 +48,6 @@ export async function GET(req: NextRequest) {
     // reach simply do not come back, so a hand-built id list cannot zip up
     // another RM's clients.
     if (!canOpenVault(session)) throw Object.assign(new Error("forbidden: missing document.view"), { status: 403 });
-    const scope = ownClientDocsOnly(session);
 
     const idsParam = new URL(req.url).searchParams.get("ids") ?? "";
     const ids = idsParam.split(",").map((s) => s.trim()).filter(Boolean).slice(0, MAX_DOCS);
@@ -57,6 +56,7 @@ export async function GET(req: NextRequest) {
     }
 
     const docs = await withTenant(session.tenantId, async (tx) => {
+      const scope = await vaultScopeCondition(tx, session);
       return tx
         .select({
           id: complianceDocuments.id,

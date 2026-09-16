@@ -4,7 +4,7 @@ import { Upload, ShieldCheck, ScrollText } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { complianceDocuments, investors, ddqScores, sops } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
-import { canOpenVault, ownClientDocsOnly, seesWholeVault, vaultScopeFragment } from "@/lib/compliance/document-access";
+import { canOpenVault, seesWholeVault, vaultScopeCondition, vaultScopeFragment } from "@/lib/compliance/document-access";
 import { DocumentsFeed } from "@/components/compliance/DocumentsFeed";
 
 export const dynamic = "force-dynamic";
@@ -24,9 +24,10 @@ export default async function DocumentsPage() {
     );
   }
   const wholeVault = seesWholeVault(session);
-  const scope = ownClientDocsOnly(session);
 
   const data = await withTenant(session.tenantId, async (tx) => {
+    // Scoped inside the transaction: the per-tenant data wall is a row read.
+    const scope = await vaultScopeCondition(tx, session);
     // Tenant predicate is mandatory under the superuser/RLS-bypass model — without
     // it both queries return EVERY tenant's compliance documents.
     const stats = await tx.execute(sql`
@@ -40,7 +41,7 @@ export default async function DocumentsPage() {
       FROM compliance_documents
       WHERE tenant_id = ${session.tenantId}::uuid
         AND superseded_by_id IS NULL
-        AND ${vaultScopeFragment(session)}
+        AND ${await vaultScopeFragment(tx, session)}
     `);
     const s = stats.rows[0] as any;
     const rows = await tx
