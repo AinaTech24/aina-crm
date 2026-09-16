@@ -54,7 +54,7 @@ export function CompletenessCard({
         {editHref && (
           <a
             href={editHref}
-            className="text-[11px] font-medium text-primary inline-flex items-center gap-1 hover:underline"
+            className="text-2xs font-medium text-primary inline-flex items-center gap-1 hover:underline"
           >
             Complete profile
             <ArrowRight className="size-3" />
@@ -110,7 +110,7 @@ export function CompletenessCard({
             {missing.map((m) => (
               <span
                 key={m.key}
-                className={`inline-flex items-center text-[11px] px-2 py-0.5 rounded-full border ${
+                className={`inline-flex items-center text-2xs px-2 py-0.5 rounded-full border ${
                   band === "rose"
                     ? "bg-rose-50 text-rose-700 border-rose-200"
                     : "bg-amber-50 text-amber-700 border-amber-200"

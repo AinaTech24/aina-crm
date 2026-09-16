@@ -57,13 +57,13 @@ export function UpcomingDatesWidget({ items }: { items: UpcomingDate[] }) {
                   >
                     {item.name}
                   </Link>
-                  <span className="text-[11px] text-muted-foreground capitalize">
+                  <span className="text-2xs text-muted-foreground capitalize">
                     {item.type}
                   </span>
                 </div>
               </div>
               <span
-                className={`chip text-[10px] font-bold border whitespace-nowrap ${
+                className={`chip text-2xs font-bold border whitespace-nowrap ${
                   isToday
                     ? "bg-emerald-50 text-emerald-700 border-emerald-200"
                     : "bg-secondary text-muted-foreground"

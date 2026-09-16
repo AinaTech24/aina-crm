@@ -1,54 +1,39 @@
-import { handleApiError } from "@/lib/api/error-handler";
-/**
- * POST /api/auth/refresh
- *
- * Re-signs a fresh session token for a mobile client carrying a Bearer token
- * (mobile has no sliding-cookie refresh, so its token would otherwise expire
- * mid-use). The app calls this on launch / before expiry to roll the 8h window.
- *
- * IMPORTANT: this route lives under the PUBLIC `/api/auth/*` middleware prefix
- * (so login/forgot work without a session), which means the middleware does NOT
- * inject the decoded Bearer session here. So we verify the Authorization Bearer
- * token OURSELVES and run the DB revocation check — a refreshed token can't
- * outlive an offboard or a forced logout.
- */
-
 import { NextRequest, NextResponse } from "next/server";
-import { verifySession } from "@/lib/auth/jwt";
-import { isSessionRevoked } from "@/lib/auth/revocation";
-import { issueSessionToken } from "@/lib/auth/issue-session";
+import { sql } from "drizzle-orm";
+import { withTenant } from "@/db/client";
+import { verifySession, signSession } from "@/lib/auth/jwt";
+import { handleApiError } from "@/lib/api/error-handler";
 
 export const dynamic = "force-dynamic";
 
+/** Refresh the same device family; a revoked device can never acquire a new sid. */
 export async function POST(req: NextRequest) {
   try {
     const authz = req.headers.get("authorization");
-    const bearer = authz?.startsWith("Bearer ") ? authz.slice(7).trim() : null;
-    const session = bearer ? await verifySession(bearer) : null;
-    if (!session) {
-      return NextResponse.json({ error: "not authenticated" }, { status: 401 });
-    }
-
-    const revoked = await isSessionRevoked({
-      userId: session.userId,
-      tenantId: session.tenantId,
-      iatSeconds: session.iat,
+    const session = authz?.startsWith("Bearer ") ? await verifySession(authz.slice(7).trim()) : null;
+    if (!session?.sid || !session.iat) return NextResponse.json({ error: "not authenticated" }, { status: 401 });
+    const token = await withTenant(session.tenantId, async (tx) => {
+      // Hold row locks through signing so account/device revocations serialize with refresh.
+      const r = await tx.execute(sql`
+        SELECT u.id, u.email, u.name, u.branch_id, u.roles, u.permissions, u.status,
+               u.deleted_at, t.deleted_at AS tenant_deleted_at, u.sessions_invalid_after, s.revoked_at
+        FROM user_sessions s JOIN users u ON u.id = s.user_id AND u.tenant_id = s.tenant_id
+        JOIN tenants t ON t.id = u.tenant_id
+        WHERE s.session_id = ${session.sid} AND u.id = ${session.userId}
+          AND u.tenant_id = ${session.tenantId} FOR SHARE OF s, u, t
+      `);
+      const row = r.rows[0] as {
+        id: string; email: string; name: string; branch_id: string | null;
+        roles: string[] | null; permissions: string[] | null; status: string;
+        deleted_at: string | null; tenant_deleted_at: string | null;
+        sessions_invalid_after: string | null; revoked_at: string | null;
+      } | undefined;
+      if (!row || row.revoked_at || row.status !== "active" || row.deleted_at || row.tenant_deleted_at ||
+          (row.sessions_invalid_after && session.iat! * 1000 < new Date(row.sessions_invalid_after).getTime())) return null;
+      return signSession({ ...session, branchId: row.branch_id ?? undefined,
+        roles: row.roles ?? [], permissions: row.permissions ?? [], name: row.name, email: row.email });
     });
-    if (revoked) {
-      return NextResponse.json({ error: "session revoked" }, { status: 401 });
-    }
-
-    const token = await issueSessionToken({
-      userId: session.userId,
-      tenantId: session.tenantId,
-      branchId: session.branchId,
-      roles: session.roles,
-      email: session.email,
-      name: session.name,
-      permissions: session.permissions,
-    });
+    if (!token) return NextResponse.json({ error: "session revoked" }, { status: 401 });
     return NextResponse.json({ token });
-  } catch (err: any) {
-    return handleApiError(err);
-  }
+  } catch (err) { return handleApiError(err); }
 }

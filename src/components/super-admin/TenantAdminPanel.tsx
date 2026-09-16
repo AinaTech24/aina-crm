@@ -201,7 +201,7 @@ export function TenantAdminPanel({
         </label>
         <div className="mt-2 grid sm:grid-cols-2 gap-2">
           <div>
-            <div className="text-[11px] text-muted-foreground mb-1">Firm name</div>
+            <div className="text-2xs text-muted-foreground mb-1">Firm name</div>
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -210,7 +210,7 @@ export function TenantAdminPanel({
             />
           </div>
           <div>
-            <div className="text-[11px] text-muted-foreground mb-1">ARN (optional)</div>
+            <div className="text-2xs text-muted-foreground mb-1">ARN (optional)</div>
             <input
               value={arnValue}
               onChange={(e) => setArnValue(e.target.value)}
@@ -264,11 +264,11 @@ export function TenantAdminPanel({
         </label>
         <div className="mt-2 grid sm:grid-cols-2 gap-2">
           <div>
-            <div className="text-[11px] text-muted-foreground mb-1">Owner name</div>
+            <div className="text-2xs text-muted-foreground mb-1">Owner name</div>
             <input value={ownName} onChange={(e) => setOwnName(e.target.value)} placeholder="Owner name" className="input-base text-sm h-9 w-full" />
           </div>
           <div>
-            <div className="text-[11px] text-muted-foreground mb-1">Owner login email</div>
+            <div className="text-2xs text-muted-foreground mb-1">Owner login email</div>
             <input type="email" value={ownEmail} onChange={(e) => setOwnEmail(e.target.value)} placeholder="owner@example.com" className="input-base text-sm h-9 w-full" />
           </div>
         </div>
@@ -291,7 +291,7 @@ export function TenantAdminPanel({
         </label>
         <div className="mt-2 grid sm:grid-cols-2 gap-2">
           <div>
-            <div className="text-[11px] text-muted-foreground mb-1">Package</div>
+            <div className="text-2xs text-muted-foreground mb-1">Package</div>
             <select value={pkg} onChange={(e) => setPkg(e.target.value)} className="input-base text-sm h-9 w-full">
               {!pkg && <option value="">Select…</option>}
               {packages.map((p) => (
@@ -300,7 +300,7 @@ export function TenantAdminPanel({
             </select>
           </div>
           <div>
-            <div className="text-[11px] text-muted-foreground mb-1">Billing cycle</div>
+            <div className="text-2xs text-muted-foreground mb-1">Billing cycle</div>
             <select value={billing} onChange={(e) => setBilling(e.target.value)} className="input-base text-sm h-9 w-full">
               <option value="yearly">Yearly</option>
               <option value="monthly">Monthly</option>

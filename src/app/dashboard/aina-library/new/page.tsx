@@ -143,7 +143,7 @@ export default function NewCustomAssetPage() {
 
       <div>
         <h1 className="page-title">
-          <ImageIcon className="size-6 text-brand-cyan" /> Upload custom asset
+          <ImageIcon className="size-6 text-muted-foreground" /> Upload custom asset
         </h1>
       </div>
 
@@ -233,7 +233,7 @@ export default function NewCustomAssetPage() {
             </div>
           )}
         </label>
-        <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+        <div className="flex items-center gap-2 text-2xs text-muted-foreground">
           <Link2 className="size-3" /> Or paste a public URL:
         </div>
         <label className="block">

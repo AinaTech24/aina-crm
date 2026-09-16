@@ -64,7 +64,7 @@ export function SipHealthCard({ health }: { health: SipHealth }) {
         />
       </div>
       {b !== "green" && (
-        <p className="text-[11px] text-muted-foreground mt-2.5">
+        <p className="text-2xs text-muted-foreground mt-2.5">
           {b === "red"
             ? "Repeated SIP failures — check the mandate / bank balance and call the client before the SIP is auto-stopped."
             : "A recent SIP bounce — a quick nudge now usually prevents the next one from failing."}
@@ -78,7 +78,7 @@ function Metric({ value, label, danger }: { value: string; label: string; danger
   return (
     <div>
       <div className={`text-xl font-bold tabular-nums ${danger ? "text-rose-600" : ""}`}>{value}</div>
-      <div className="text-[11px] text-muted-foreground mt-0.5">{label}</div>
+      <div className="text-2xs text-muted-foreground mt-0.5">{label}</div>
     </div>
   );
 }

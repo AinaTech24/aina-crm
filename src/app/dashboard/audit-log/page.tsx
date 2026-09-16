@@ -114,7 +114,8 @@ export default async function AuditLogPage({
     <div className="space-y-6 max-w-6xl">
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Audit log</h1>
+          <h1 className="page-title">Audit log</h1>
+          <p className="page-subtitle mt-1">Who changed what, and when — the permanent record for audits and disputes.</p>
         </div>
         <a href={exportHref} className="inline-flex items-center gap-1.5 rounded-md border bg-card px-3 py-1.5 text-xs font-medium hover:bg-accent">
           <Download className="size-3.5" /> Export CSV

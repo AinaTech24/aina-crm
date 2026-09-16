@@ -244,10 +244,10 @@ export function ArnEuinTrackerClient({
                     >
                       {r.name}
                     </Link>
-                    <div className="text-[10px] text-muted-foreground">
+                    <div className="text-2xs text-muted-foreground">
                       {r.email}
                     </div>
-                    <div className="text-[10px] text-muted-foreground">
+                    <div className="text-2xs text-muted-foreground">
                       {(r.roles ?? []).slice(0, 2).join(" · ")}
                     </div>
                   </td>
@@ -260,13 +260,13 @@ export function ArnEuinTrackerClient({
                         {r.distributingAmcs.slice(0, 4).map((a) => (
                           <span
                             key={a}
-                            className="chip bg-slate-100 text-slate-700 text-[10px]"
+                            className="chip bg-slate-100 text-slate-700 text-2xs"
                           >
                             {a}
                           </span>
                         ))}
                         {r.distributingAmcs.length > 4 && (
-                          <span className="text-[10px] text-muted-foreground">
+                          <span className="text-2xs text-muted-foreground">
                             +{r.distributingAmcs.length - 4}
                           </span>
                         )}
@@ -276,7 +276,7 @@ export function ArnEuinTrackerClient({
                     )}
                   </td>
 
-                  <td className="px-3 py-2 font-mono text-[11px]">
+                  <td className="px-3 py-2 font-mono text-2xs">
                     <div className="flex items-center gap-1">
                       <span>{r.nismCertificateNo ?? "—"}</span>
                       {(() => {
@@ -293,7 +293,7 @@ export function ArnEuinTrackerClient({
                       })()}
                     </div>
                     {r.nismCategory && (
-                      <div className="text-[10px] text-muted-foreground font-sans">
+                      <div className="text-2xs text-muted-foreground font-sans">
                         {r.nismCategory}
                       </div>
                     )}
@@ -305,7 +305,7 @@ export function ArnEuinTrackerClient({
                     <ExpiryCell date={r.nismExpiryAt} />
                   </td>
 
-                  <td className="px-3 py-2 font-mono text-[11px]">
+                  <td className="px-3 py-2 font-mono text-2xs">
                     <div className="flex items-center gap-1">
                       <span>{r.personalArn ?? "—"}</span>
                       {(() => {
@@ -329,7 +329,7 @@ export function ArnEuinTrackerClient({
                     <ExpiryCell date={r.arnExpiryAt} />
                   </td>
 
-                  <td className="px-3 py-2 font-mono text-[11px]">
+                  <td className="px-3 py-2 font-mono text-2xs">
                     <div className="flex items-center gap-1">
                       <span>{r.euin ?? "—"}</span>
                       {(() => {
@@ -353,11 +353,11 @@ export function ArnEuinTrackerClient({
                   <td className="px-3 py-2">
                     <div className="flex items-center gap-1.5">
                       {r.dscSubmitted ? (
-                        <span className="chip bg-emerald-50 text-emerald-700 text-[10px]">
+                        <span className="chip bg-emerald-50 text-emerald-700 text-2xs">
                           Yes
                         </span>
                       ) : (
-                        <span className="chip bg-rose-50 text-rose-700 text-[10px]">
+                        <span className="chip bg-rose-50 text-rose-700 text-2xs">
                           No
                         </span>
                       )}
@@ -390,7 +390,7 @@ export function ArnEuinTrackerClient({
         </table>
       </div>
 
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-2xs text-muted-foreground">
         Click an employee name to update licensing fields. The colour band on
         each expiry: <span className="text-emerald-600">green</span> &gt; 90
         days, <span className="text-amber-600">amber</span> 30–90 days,{" "}
@@ -414,7 +414,7 @@ function Th({ children, group }: { children: React.ReactNode; group?: string }) 
             : "";
   return (
     <th
-      className={`px-3 py-2 text-left text-[11px] uppercase tracking-wide font-medium ${tone}`}
+      className={`px-3 py-2 text-left text-2xs uppercase tracking-wide font-medium ${tone}`}
     >
       {children}
     </th>
@@ -436,9 +436,9 @@ function ExpiryCell({ date }: { date: string | null }) {
           ? "bg-amber-50 text-amber-700"
           : "bg-emerald-50 text-emerald-700";
   return (
-    <span className={`chip text-[10px] ${tone}`} title={date}>
+    <span className={`chip text-2xs ${tone}`} title={date}>
       {fmt(date)}
-      <span className="ml-1 text-[9px] opacity-70">
+      <span className="ml-1 text-2xs opacity-70">
         {diffDays < 0
           ? "expired"
           : diffDays === 0
@@ -518,7 +518,7 @@ function SummaryStats({ rows }: { rows: Row[] }) {
                 : ""
           }`}
         >
-          <div className="text-[11px] text-muted-foreground">{s.label}</div>
+          <div className="text-2xs text-muted-foreground">{s.label}</div>
           <div className="text-lg font-semibold">{s.count}</div>
         </div>
       ))}

@@ -25,8 +25,18 @@ const ICONS: Record<string, LucideIcon> = {
   Calendar, CalendarClock, Briefcase, Shield, ShieldCheck, Clock, CheckCircle2, ListChecks, Megaphone,
 };
 
-type Item = { key: string; label: string; iconName: string; href: string; desc?: string };
+type Item = { key: string; label: string; iconName: string; href: string; desc?: string; aliases?: string[] };
 type Section = { group: string; items: Item[] };
+
+/**
+ * Everything a search should match a report on: its name, the description shown
+ * under it, and its non-rendering aliases (what the previous back office called
+ * it, the RTA file code, the plain word someone actually types). Matching the
+ * label alone is how a report that exists reads as a report that doesn't.
+ */
+function haystack(item: Item): string {
+  return [item.label, item.desc ?? "", ...(item.aliases ?? [])].join(" ").toLowerCase();
+}
 
 const LS_KEY = "aina:hidden-reports:v1";
 const FAV_KEY = "aina:favorite-reports:v1";
@@ -101,7 +111,7 @@ export function ReportsGrid({ sections }: { sections: Section[] }) {
       .map((section) => {
         const groupMatch = !!ql && section.group.toLowerCase().includes(ql);
         let items = !ready ? section.items : manage ? section.items : section.items.filter((it) => !hidden.has(it.key));
-        if (ql) items = items.filter((it) => groupMatch || it.label.toLowerCase().includes(ql));
+        if (ql) items = items.filter((it) => groupMatch || haystack(it).includes(ql));
         return { group: section.group, items };
       })
       .filter((s) => s.items.length > 0);
@@ -126,11 +136,18 @@ export function ReportsGrid({ sections }: { sections: Section[] }) {
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search reports…"
+            placeholder="Search reports — try “capital gains”, “brokerage”, “LTCG”…"
             className="h-9 w-full rounded-lg border border-border bg-card pl-9 pr-3 text-sm focus:outline-none focus:border-brand-cyan/60 focus:ring-2 focus:ring-brand-cyan/15"
           />
         </div>
         <div className="flex items-center gap-2 text-xs">
+          {/* Groups are collapsed by default, which reads as a dead end unless
+              you know they open. Say so, and say how many reports are here. */}
+          {!ql && (
+            <span className="text-muted-foreground mr-1 hidden sm:inline">
+              {allItems.length} reports · click a group to open it
+            </span>
+          )}
           {ready && manage && hiddenCount > 0 && (
             <button type="button" onClick={() => save(new Set())} className="text-brand-cyan-deep hover:underline font-medium">
               Restore all
@@ -150,7 +167,11 @@ export function ReportsGrid({ sections }: { sections: Section[] }) {
           <button type="button" onClick={() => setQuery("")} className="text-brand-cyan-deep hover:underline">Clear search</button>
         </div>
       ) : (
-        visible.map((section) => {
+        /* Multi-column so all ~19 groups are visible at once instead of a
+           single narrow list next to two-thirds of empty screen. Each group
+           stays whole (`break-inside-avoid`) as it expands. */
+        <div className="columns-1 lg:columns-2 xl:columns-3 gap-4 [&>section]:break-inside-avoid [&>section]:mb-4">
+        {visible.map((section) => {
           const pinnedGroup = section.group === "Favorites" || section.group === "Recent";
           const isOpen = pinnedGroup || !!ql || manage || openGroups.has(section.group);
           return (
@@ -166,7 +187,7 @@ export function ReportsGrid({ sections }: { sections: Section[] }) {
               >
                 <ChevronRight className={`size-3.5 text-muted-foreground transition-transform ${isOpen ? "rotate-90" : ""}`} />
                 <h2 className="font-semibold text-xs uppercase tracking-wide text-muted-foreground group-hover/hdr:text-foreground transition-colors">{section.group}</h2>
-                <span className="text-[10px] text-muted-foreground/70 tabular-nums">{section.items.length}</span>
+                <span className="text-2xs text-muted-foreground/70 tabular-nums">{section.items.length}</span>
               </button>
             )}
             {isOpen && (
@@ -180,7 +201,7 @@ export function ReportsGrid({ sections }: { sections: Section[] }) {
                       <Icon className="size-4 text-muted-foreground shrink-0" />
                       <span className="min-w-0">
                         <span className="block text-sm font-medium truncate">{r.label}</span>
-                        {r.desc && <span className="block text-[11px] text-muted-foreground truncate">{r.desc}</span>}
+                        {r.desc && <span className="block text-2xs text-muted-foreground truncate">{r.desc}</span>}
                       </span>
                       <ChevronRight className="size-4 text-muted-foreground/40 ml-auto shrink-0" />
                     </Link>
@@ -217,7 +238,8 @@ export function ReportsGrid({ sections }: { sections: Section[] }) {
             )}
           </section>
           );
-        })
+        })}
+        </div>
       )}
     </div>
   );

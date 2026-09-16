@@ -32,7 +32,7 @@ export async function SignalScoreCard({ session, leadId }: { session: { tenantId
     <div className="border rounded-lg bg-card p-4">
       <div className="flex items-center justify-between mb-2">
         <div className="font-semibold text-sm flex items-center gap-2"><Activity className="size-4 text-brand-cyan" /> Engagement signals</div>
-        <span className={`chip text-[11px] capitalize inline-flex items-center gap-1 ${BAND_TONE[score.band]}`}><Flame className="size-3" /> {score.band} · +{score.total}</span>
+        <span className={`chip text-2xs capitalize inline-flex items-center gap-1 ${BAND_TONE[score.band]}`}><Flame className="size-3" /> {score.band} · +{score.total}</span>
       </div>
       {score.lines.length === 0 ? (
         <p className="text-xs text-muted-foreground">No engagement signals yet — log a call, message, or meeting to build this lead&apos;s behavioural score.</p>
@@ -46,7 +46,7 @@ export async function SignalScoreCard({ session, leadId }: { session: { tenantId
           ))}
         </ul>
       )}
-      <p className="text-[10px] text-muted-foreground mt-2 italic">Behavioural bonus on top of the deterministic lead score.</p>
+      <p className="text-2xs text-muted-foreground mt-2 italic">Behavioural bonus on top of the deterministic lead score.</p>
     </div>
   );
 }

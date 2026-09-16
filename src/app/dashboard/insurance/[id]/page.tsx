@@ -99,7 +99,7 @@ export default async function InsuranceDetailPage({
         <div className="brand-mesh px-6 py-5 text-white">
           <div className="flex items-end justify-between flex-wrap gap-3">
             <div>
-              <div className="text-[11px] uppercase tracking-[0.18em] text-white/70 font-semibold">
+              <div className="text-2xs uppercase tracking-[0.18em] text-white/70 font-semibold">
                 {TYPE_LABEL[p.policyType] ?? p.policyType}
               </div>
               <h1 className="text-2xl font-bold tracking-tight mt-1">{p.planName}</h1>
@@ -285,7 +285,7 @@ function Tile({
   return (
     <div className="kpi-card">
       <div className="flex items-center justify-between">
-        <span className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">
+        <span className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">
           {label}
         </span>
         <div className={`size-7 rounded-lg grid place-items-center ${bg[accent ?? "muted"]}`}>
@@ -300,7 +300,7 @@ function Tile({
 function KV({ label, value }: { label: string; value: string }) {
   return (
     <div className="bg-secondary/40 rounded-lg px-3 py-2">
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className="text-2xs uppercase tracking-wider text-muted-foreground">{label}</div>
       <div className="font-semibold mt-0.5 capitalize">{value}</div>
     </div>
   );

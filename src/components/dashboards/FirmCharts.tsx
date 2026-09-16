@@ -95,7 +95,7 @@ export function AumBreakupDonut({ data }: { data: AumSlice[] }) {
             total is the number people look for first. */}
         <div className="absolute inset-0 grid place-items-center pointer-events-none">
           <div className="text-center">
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Total</div>
+            <div className="text-2xs uppercase tracking-wider text-muted-foreground">Total</div>
             <div className="text-lg font-bold tabular-nums">{money(total)}</div>
           </div>
         </div>

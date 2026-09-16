@@ -7,11 +7,14 @@
  */
 
 import React from "react";
-import { Redirect, Stack } from "expo-router";
+import { Redirect, Stack, useRouter } from "expo-router";
 import { useSession } from "../../src/state/session";
+import { addNotificationTapListener, getInitialNotificationUrl } from "../../src/push";
+import { toMobileRoute } from "../../src/features/command-center/api";
 import { useApplyTenantBrand } from "../../src/features/settings/api";
 import { CallLogPrompt } from "../../src/features/activities/CallLogPrompt";
 import { OfflineBanner } from "../../src/components/ui/OfflineBanner";
+import { AppLock } from "../../src/components/AppLock";
 import { useRecentlyViewed } from "../../src/state/recentlyViewed";
 import { configurePushHandler, registerForPush } from "../../src/lib/push";
 import { useOfflineQueue, watchConnectivityAndFlush } from "../../src/lib/offlineQueue";
@@ -22,9 +25,32 @@ import { palette } from "../../src/theme/tokens";
 // the first back press goes Home instead of exiting the app.
 export const unstable_settings = { initialRouteName: "(drawer)" };
 
+/** Push payloads carry a web path ("/dashboard/tasks/…") or a full URL; map
+ *  it to the native route, or null when this app has no screen for it. */
+function routeFromPush(url: string): string | null {
+  try {
+    const path = /^https?:\/\//i.test(url) ? new URL(url).pathname : url;
+    if (path.startsWith("/m/")) return path;
+    return toMobileRoute(path);
+  } catch {
+    return null;
+  }
+}
+
 export default function AppLayout() {
+  const router = useRouter();
   const status = useSession((s) => s.status);
   const token = useSession((s) => s.token);
+  const owner = useSession((s) => s.owner);
+  // A tapped notification should land on the thing it's about — both when the
+  // app is already running and when the tap cold-started it.
+  React.useEffect(() => {
+    if (status !== "authed") return;
+    const go = (url: string) => { const r = routeFromPush(url); if (r) router.push(r as any); };
+    const sub = addNotificationTapListener(go);
+    getInitialNotificationUrl().then((u) => { if (u) go(u); });
+    return () => sub.remove();
+  }, [status, router]);
   // Apply the firm's brand colour app-wide (and live whenever the theme is saved).
   useApplyTenantBrand();
   // Restore the recently-viewed rail once per authenticated session.
@@ -40,9 +66,9 @@ export default function AppLayout() {
   // Restore any writes made while offline and replay them the moment we're back.
   React.useEffect(() => {
     if (status !== "authed") return;
-    useOfflineQueue.getState().hydrate().then(() => useOfflineQueue.getState().flush());
+    useOfflineQueue.getState().hydrate().then(() => useOfflineQueue.getState().flush()).catch(() => {});
     return watchConnectivityAndFlush();
-  }, [status]);
+  }, [status, owner]);
   // Device preferences (e.g. auto-log calls) must be loaded before the first
   // call returns, or the very first call would use the default instead.
   React.useEffect(() => { usePrefs.getState().hydrate(); }, []);
@@ -61,6 +87,8 @@ export default function AppLayout() {
       {/* Semi-automatic call logging — prompts to log a call on return to the app. */}
       <CallLogPrompt />
       <OfflineBanner />
+      {/* Biometric gate (opt-in, App preferences) — last so it paints over everything. */}
+      <AppLock />
     </>
   );
 }

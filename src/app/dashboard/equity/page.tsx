@@ -17,7 +17,7 @@ export default function EquityPage() {
         <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
           <LineChart className="size-5" /> Direct Equity — DMAT Accounts
         </h1>
-        <p className="text-muted-foreground text-sm">
+        <p className="page-subtitle mt-1">
           Your broking desk's DMAT accounts. New-DMAT and Active-Client counts in the Equity Team MIS come from
           these open / close dates.
         </p>

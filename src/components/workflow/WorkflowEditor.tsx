@@ -574,7 +574,7 @@ function toFlowNodes(graph: WorkflowGraph, selectedId: string | null): Node[] {
       data: {
         label: (
           <div className="px-2.5 py-2 text-left">
-            <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">
+            <div className="text-2xs uppercase tracking-wide text-muted-foreground font-semibold">
               {palette?.label ?? n.type}
             </div>
             <div className="text-xs font-medium mt-0.5 leading-tight">{deriveLabel(n)}</div>

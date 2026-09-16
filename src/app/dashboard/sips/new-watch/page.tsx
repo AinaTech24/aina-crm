@@ -41,7 +41,7 @@ export default async function NewSipWatchPage() {
 
       <div>
         <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-          <ShieldAlert className="size-6 text-brand-cyan" /> New-SIP Installment Watch
+          <ShieldAlert className="size-6 text-muted-foreground" /> New-SIP Installment Watch
         </h1>
       </div>
 
@@ -89,7 +89,7 @@ export default async function NewSipWatchPage() {
                         {r.investorName}
                       </Link>
                       <div className="text-xs text-muted-foreground truncate">{r.schemeName}</div>
-                      <div className="text-[11px] text-muted-foreground/80 truncate">
+                      <div className="text-2xs text-muted-foreground/80 truncate">
                         {r.amcName}{r.folioNumber ? ` · ${r.folioNumber}` : ""}{r.rmName ? ` · ${r.rmName}` : ""}
                       </div>
                     </td>
@@ -100,7 +100,7 @@ export default async function NewSipWatchPage() {
                     </td>
                     <td className="py-3 pr-4">
                       <span className={`chip ${RISK_TONE[r.risk]}`}>{RISK_LABEL[r.risk]}</span>
-                      <div className="text-[11px] text-muted-foreground mt-1 max-w-[160px]">{r.riskReason}</div>
+                      <div className="text-2xs text-muted-foreground mt-1 max-w-[160px]">{r.riskReason}</div>
                     </td>
                   </tr>
                 ))}

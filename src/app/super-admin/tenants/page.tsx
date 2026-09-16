@@ -129,7 +129,7 @@ function TabLink({ href, active, icon: Icon, label, count }: { href: string; act
       }`}
     >
       <Icon className="size-4" /> {label}
-      <span className={`text-[11px] px-1.5 rounded-full ${active ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>{count}</span>
+      <span className={`text-2xs px-1.5 rounded-full ${active ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>{count}</span>
     </Link>
   );
 }

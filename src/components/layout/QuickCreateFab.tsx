@@ -113,7 +113,7 @@ export function QuickCreateFab() {
         <div className="mb-3 w-72 rounded-2xl bg-card border border-border shadow-2xl overflow-hidden animate-fade-in">
           <div className="px-4 py-3 border-b border-border/70 bg-gradient-to-br from-brand-navy to-brand-cyan-deep">
             <div className="text-white text-sm font-semibold">Quick create</div>
-            <div className="text-white/70 text-[11px]">
+            <div className="text-white/70 text-2xs">
               Pick what you want to add. We&apos;ll guide you through the rest.
             </div>
           </div>
@@ -132,7 +132,7 @@ export function QuickCreateFab() {
                     </div>
                     <div className="min-w-0">
                       <div className="text-sm font-medium leading-tight">{a.label}</div>
-                      <div className="text-[11px] text-muted-foreground mt-0.5 leading-snug">
+                      <div className="text-2xs text-muted-foreground mt-0.5 leading-snug">
                         {a.sub}
                       </div>
                     </div>

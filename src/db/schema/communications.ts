@@ -1,4 +1,4 @@
-import { index, jsonb, numeric, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { index, integer, jsonb, numeric, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { id, tenantId, timestamps } from "./_shared";
 import { tenants } from "./tenants";
@@ -58,6 +58,9 @@ export const communications = pgTable(
 
     /** Future send time for status='scheduled'. NULL for immediate sends. */
     scheduledAt: timestamp("scheduled_at", { withTimezone: true }),
+    claimToken: uuid("claim_token"),
+    claimUntil: timestamp("claim_until", { withTimezone: true }),
+    sendAttempts: integer("send_attempts").notNull().default(0),
     /** User-flagged ("starred") row — surfaces in the Flagged filter. */
     flaggedAt: timestamp("flagged_at", { withTimezone: true }),
 

@@ -21,7 +21,7 @@ export default async function RiskProfileSettingsPage() {
           <ChevronLeft className="size-3" /> Back to settings
         </Link>
         <h1 className="page-title mt-2">
-          <ShieldCheck className="size-6 text-brand-cyan" /> Risk Profile Questionnaire
+          <ShieldCheck className="size-6 text-muted-foreground" /> Risk Profile Questionnaire
         </h1>
         <p className="page-subtitle">
           Customise the questions, scoring, and risk categories for your firm. The published version

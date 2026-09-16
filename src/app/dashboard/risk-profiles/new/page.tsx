@@ -92,7 +92,7 @@ export default async function NewRiskProfilePage({
                           <span className="text-amber-600 font-medium">Not profiled</span>
                         )}
                       </div>
-                      <div className="text-[11px] text-muted-foreground">
+                      <div className="text-2xs text-muted-foreground">
                         {i.risk_profile_signed_at
                           ? `Last ${new Date(i.risk_profile_signed_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}`
                           : "Never"}

@@ -7,6 +7,7 @@
  */
 
 import { useMemo, useState } from "react";
+import { notify } from "@/components/ui/Toast";
 import { useRouter } from "next/navigation";
 import {
   ArrowDown,
@@ -254,12 +255,12 @@ export function TaskTemplatesManager({
       const res = await fetch(`/api/task-templates/${t.id}`, { method: "DELETE" });
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
-        window.alert(j?.error ?? "Couldn't delete the template.");
+        notify.error(j?.error ?? "Couldn't delete the template.");
         return;
       }
       router.refresh();
     } catch {
-      window.alert("Couldn't delete the template.");
+      notify.error("Couldn't delete the template.");
     } finally {
       setDeletingId(null);
     }
@@ -300,7 +301,7 @@ export function TaskTemplatesManager({
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-semibold">{t.name}</span>
                     <span
-                      className={`chip text-[11px] ${
+                      className={`chip text-2xs ${
                         t.isActive
                           ? "bg-emerald-50 text-emerald-700 border-emerald-200"
                           : "bg-muted text-muted-foreground"
@@ -316,22 +317,22 @@ export function TaskTemplatesManager({
                   )}
                   <div className="flex items-center gap-1.5 flex-wrap mt-2">
                     {labelOf(TASK_TYPES, t.taskType) && (
-                      <span className="chip text-[11px]">{labelOf(TASK_TYPES, t.taskType)}</span>
+                      <span className="chip text-2xs">{labelOf(TASK_TYPES, t.taskType)}</span>
                     )}
                     {labelOf(DEPARTMENTS, t.department) && (
-                      <span className="chip text-[11px]">{labelOf(DEPARTMENTS, t.department)}</span>
+                      <span className="chip text-2xs">{labelOf(DEPARTMENTS, t.department)}</span>
                     )}
                     {labelOf(PRIORITIES, t.priority) && (
-                      <span className="chip text-[11px]">
+                      <span className="chip text-2xs">
                         {labelOf(PRIORITIES, t.priority)} priority
                       </span>
                     )}
                     {t.dueOffsetDays != null && (
-                      <span className="chip text-[11px]">
+                      <span className="chip text-2xs">
                         Due in {t.dueOffsetDays} day{t.dueOffsetDays === 1 ? "" : "s"}
                       </span>
                     )}
-                    <span className="chip text-[11px]">
+                    <span className="chip text-2xs">
                       {t.subtasks.length} sub-task{t.subtasks.length === 1 ? "" : "s"}
                     </span>
                   </div>

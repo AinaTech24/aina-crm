@@ -27,15 +27,15 @@ export type TenantRow = {
 };
 
 const STATUS_BADGE: Record<string, string> = {
-  active: "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
-  trial: "bg-blue-50 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300",
-  inactive: "bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300",
+  active: "bg-emerald-50 text-emerald-700",
+  trial: "bg-blue-50 text-blue-700",
+  inactive: "bg-rose-50 text-rose-700",
 };
 const PKG_BADGE: Record<string, string> = {
-  premium: "bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300",
-  professional: "bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300",
-  starter: "bg-slate-100 text-slate-700 dark:bg-slate-500/15 dark:text-slate-300",
-  platform: "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300",
+  premium: "bg-violet-100 text-violet-700",
+  professional: "bg-blue-100 text-blue-700",
+  starter: "bg-slate-100 text-slate-700",
+  platform: "bg-amber-100 text-amber-700",
 };
 
 function effectiveStatus(r: TenantRow): "active" | "trial" | "inactive" | null {
@@ -156,14 +156,14 @@ export function TenantsTable({
         )}
       </div>
 
-      <div className="text-[11px] text-muted-foreground">Showing {shown.length} of {rows.length}</div>
+      <div className="text-2xs text-muted-foreground">Showing {shown.length} of {rows.length}</div>
 
       <div className="card-surface table-scroll min-h-[28rem]" style={{ ["--table-scroll-h" as any]: "calc(100vh - 22rem)" }}>
         {shown.length === 0 ? (
           <div className="p-12 text-center text-sm text-muted-foreground">No tenants match your filters.</div>
         ) : (
           <table className="w-full text-sm">
-            <thead className="text-[11px] uppercase tracking-wider text-muted-foreground border-b sticky top-0 z-10 bg-card">
+            <thead className="text-2xs uppercase tracking-wider text-muted-foreground border-b sticky top-0 z-10 bg-card">
               <tr>
                 <th className="text-left font-medium">MFD</th>
                 <th className="text-left font-medium">ARN</th>
@@ -198,7 +198,7 @@ export function TenantsTable({
                     <td className="font-mono text-xs text-muted-foreground">{t.arn ?? "—"}</td>
                     <td>
                       {t.package_key ? (
-                        <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full uppercase tracking-wide ${PKG_BADGE[pk] ?? "bg-muted text-muted-foreground"}`}>{t.package_key}</span>
+                        <span className={`text-2xs font-semibold px-2 py-0.5 rounded-full uppercase tracking-wide ${PKG_BADGE[pk] ?? "bg-muted text-muted-foreground"}`}>{t.package_key}</span>
                       ) : (
                         <span className="text-xs text-muted-foreground">—</span>
                       )}

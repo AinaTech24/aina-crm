@@ -137,7 +137,7 @@ export async function FamilyToolsGrid({ session }: { session: SessionUser }) {
                 <span className="font-semibold text-sm">{t.title}</span>
                 {t.badge && (
                   <span
-                    className={`text-[10px] font-bold tabular-nums rounded-full px-1.5 py-0.5 ${
+                    className={`text-2xs font-bold tabular-nums rounded-full px-1.5 py-0.5 ${
                       t.tone === "amber" ? "bg-amber-600 text-white" : "bg-secondary text-muted-foreground"
                     }`}
                   >
@@ -145,7 +145,7 @@ export async function FamilyToolsGrid({ session }: { session: SessionUser }) {
                   </span>
                 )}
               </span>
-              <span className="block text-[11px] text-muted-foreground mt-0.5">{t.desc}</span>
+              <span className="block text-2xs text-muted-foreground mt-0.5">{t.desc}</span>
             </span>
             <ArrowRight className="size-4 text-muted-foreground/50 shrink-0 transition-transform group-hover:translate-x-0.5" />
           </Link>

@@ -100,7 +100,7 @@ export function MergeFieldInserter({ onInsert }: { onInsert: (token: string, dec
           <option key={f.key} value={f.key}>{f.label}</option>
         ))}
       </select>
-      <span className="text-[11px] text-muted-foreground">
+      <span className="text-2xs text-muted-foreground">
         inserts e.g. <code className="bg-muted px-1 rounded">{`{{investor.name}}`}</code> + declares it
       </span>
     </div>

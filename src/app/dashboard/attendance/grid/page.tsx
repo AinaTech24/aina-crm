@@ -71,7 +71,7 @@ export default async function AttendanceGridPage({
             <ChevronLeft className="size-4" /> Back to attendance
           </Link>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2 mt-1">
-            <Grid3x3 className="size-6 text-brand-cyan" /> Monthly attendance
+            <Grid3x3 className="size-6 text-muted-foreground" /> Monthly attendance
           </h1>
         </div>
         <div className="flex items-center gap-3">
@@ -85,7 +85,7 @@ export default async function AttendanceGridPage({
       </div>
 
       {/* Legend */}
-      <div className="flex flex-wrap gap-2 text-[11px]">
+      <div className="flex flex-wrap gap-2 text-2xs">
         {Object.entries(ATTENDANCE_STATUS_LABELS).map(([k, l]) => (
           <span key={k} className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 ${ATTENDANCE_STATUS_TONE[k]}`}>
             <b>{ATTENDANCE_STATUS_SHORT[k]}</b> {l}
@@ -120,7 +120,7 @@ export default async function AttendanceGridPage({
                       return (
                         <td key={d} className="px-0.5 py-1.5 text-center">
                           {st ? (
-                            <span className={`inline-block w-6 rounded text-[10px] font-bold ${ATTENDANCE_STATUS_TONE[st] ?? ""}`} title={ATTENDANCE_STATUS_LABELS[st]}>
+                            <span className={`inline-block w-6 rounded text-2xs font-bold ${ATTENDANCE_STATUS_TONE[st] ?? ""}`} title={ATTENDANCE_STATUS_LABELS[st]}>
                               {ATTENDANCE_STATUS_SHORT[st]}
                             </span>
                           ) : (

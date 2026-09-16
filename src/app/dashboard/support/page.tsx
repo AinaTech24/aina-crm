@@ -38,7 +38,7 @@ export default function SupportPage() {
     <div className="space-y-6 max-w-4xl">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Support</h1>
-        <p className="text-muted-foreground text-sm">Get help from AINA — bugs, billing, feature requests, training.</p>
+        <p className="page-subtitle mt-1">Get help from AINA — bugs, billing, feature requests, training.</p>
       </div>
 
       <div className="grid grid-cols-2 gap-4">

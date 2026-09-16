@@ -191,7 +191,7 @@ export function AiSettingsForm({ initial, providers }: { initial: Status; provid
               }`}
             >
               <div className="font-medium">{p.label}</div>
-              <div className="text-[11px] text-muted-foreground">{p.keyHint}</div>
+              <div className="text-2xs text-muted-foreground">{p.keyHint}</div>
             </button>
           ))}
         </div>
@@ -222,12 +222,12 @@ export function AiSettingsForm({ initial, providers }: { initial: Status; provid
           </button>
         </div>
         {provider !== savedProvider && (
-          <p className="text-[11px] text-amber-600 font-medium">
+          <p className="text-2xs text-amber-600 font-medium">
             You&apos;re switching to {def.label} — paste its own API key. The saved key belongs to{" "}
             {providers.find((p) => p.value === savedProvider)?.label ?? savedProvider} and won&apos;t work here.
           </p>
         )}
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-2xs text-muted-foreground">
           Get one from{" "}
           <a href={def.docsUrl} target="_blank" rel="noreferrer" className="underline">
             {def.label} console
@@ -245,7 +245,7 @@ export function AiSettingsForm({ initial, providers }: { initial: Status; provid
             onChange={(e) => setFastModel(e.target.value)}
             className="w-full rounded-md border px-3 py-2 text-sm font-mono"
           />
-          <p className="text-[11px] text-muted-foreground">Classify, score, triage, translate.</p>
+          <p className="text-2xs text-muted-foreground">Classify, score, triage, translate.</p>
         </div>
         <div className="space-y-1.5">
           <label className="text-sm font-medium">Reasoning model</label>
@@ -254,7 +254,7 @@ export function AiSettingsForm({ initial, providers }: { initial: Status; provid
             onChange={(e) => setReasoningModel(e.target.value)}
             className="w-full rounded-md border px-3 py-2 text-sm font-mono"
           />
-          <p className="text-[11px] text-muted-foreground">Compose, briefs, summaries, extraction.</p>
+          <p className="text-2xs text-muted-foreground">Compose, briefs, summaries, extraction.</p>
         </div>
       </div>
 

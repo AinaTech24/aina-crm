@@ -31,6 +31,12 @@ const Body = z.object({
    *  the suggestion list, or an operator's note. Recorded on the loser so the
    *  merged-clients audit can explain each row instead of just listing it. */
   reason: z.string().max(300).optional(),
+  /** Survivor fields to take from the loser where the two disagree. Without
+   *  these a merge only fills fields the survivor left blank. */
+  fieldOverrides: z.record(z.string(), z.boolean()).optional(),
+  /** Explicit acknowledgement that the two records carry different PANs.
+   *  Refused without it — see the guard in mergeInvestors. */
+  allowPanMismatch: z.boolean().optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -54,12 +60,29 @@ export async function POST(req: NextRequest) {
           source: "manual",
           reason: parse.data.reason,
           auditMeta: meta as any,
+          fieldOverrides: parse.data.fieldOverrides as any,
+          allowPanMismatch: parse.data.allowPanMismatch,
         }),
       { userId: session.userId, branchId: session.branchId, roles: session.roles }
     );
 
-    const errMsg = "error" in result ? result.error : null;
-    if (errMsg) return NextResponse.json({ error: errMsg }, { status: errMsg.includes("not found") ? 404 : 409 });
+    if ("error" in result) {
+      // A PAN clash is a distinct, recoverable outcome: the caller may re-send
+      // with allowPanMismatch once a human has confirmed. Give it its own code
+      // and the two PANs so the UI can name them.
+      if (result.error === "different PAN") {
+        return NextResponse.json(
+          {
+            error: `These records have different PANs (${result.survivorPan} and ${result.loserPan}), so they are probably different people.`,
+            code: "pan_mismatch",
+            survivorPan: result.survivorPan,
+            loserPan: result.loserPan,
+          },
+          { status: 409 }
+        );
+      }
+      return NextResponse.json({ error: result.error }, { status: result.error.includes("not found") ? 404 : 409 });
+    }
     return NextResponse.json(result);
   } catch (err: any) {
     return handleApiError(err);

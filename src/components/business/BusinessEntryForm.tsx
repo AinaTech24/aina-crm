@@ -365,7 +365,7 @@ export function BusinessEntryForm({
                     />
                   )}
                   {cfg.catalog && (l.amcName || l.assetCategory) && (
-                    <div className="text-[10px] text-muted-foreground mt-1 truncate">
+                    <div className="text-2xs text-muted-foreground mt-1 truncate">
                       {l.amcName ? <><span className="font-medium text-foreground/70">AMC:</span> {l.amcName}</> : null}
                       {l.amcName && l.assetCategory ? " · " : ""}
                       {l.assetCategory}
@@ -424,7 +424,7 @@ export function BusinessEntryForm({
                           placeholder="e.g. 5"
                           className="w-full h-8 rounded-lg border border-border bg-card px-2.5 text-xs focus:outline-none focus:border-brand-cyan/60 focus:ring-2 focus:ring-brand-cyan/15"
                         />
-                        <div className="text-[10px] text-muted-foreground mt-0.5">Drives the SIP reminder workflow.</div>
+                        <div className="text-2xs text-muted-foreground mt-0.5">Drives the SIP reminder workflow.</div>
                       </div>
                     )}
                     {NEEDS_FROM.has(l.txnType) && (
@@ -506,7 +506,7 @@ export function BusinessEntryForm({
 }
 
 function Label({ children, sm }: { children: React.ReactNode; sm?: boolean }) {
-  return <span className={`block font-medium text-muted-foreground ${sm ? "text-[10px] mb-0.5" : "text-xs mb-1"}`}>{children}</span>;
+  return <span className={`block font-medium text-muted-foreground ${sm ? "text-2xs mb-0.5" : "text-xs mb-1"}`}>{children}</span>;
 }
 function Input({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
   return (

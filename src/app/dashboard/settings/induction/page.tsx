@@ -22,7 +22,7 @@ export default async function InductionSettingsPage() {
     <div className="max-w-4xl mx-auto space-y-5">
       <div>
         <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-          <GraduationCap className="size-6 text-brand-cyan" /> Induction
+          <GraduationCap className="size-6 text-muted-foreground" /> Induction
         </h1>
         <p className="text-muted-foreground text-sm mt-1">
           Build the training track new team members walk through. Each lesson can unlock the CRM

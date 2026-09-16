@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { notify } from "@/components/ui/Toast";
 import { useRouter } from "next/navigation";
 import { RotateCcw, Loader2 } from "lucide-react";
+import { confirmDialog } from "@/components/ui/ConfirmProvider";
 
 /** Restore a soft-deleted tenant (clears deleted_at, reactivates, restores ARN). */
 export function RecoverTenantButton({ tenantId, tenantName }: { tenantId: string; tenantName: string }) {
@@ -10,13 +12,13 @@ export function RecoverTenantButton({ tenantId, tenantName }: { tenantId: string
   const [busy, setBusy] = useState(false);
 
   async function recover() {
-    if (!confirm(`Recover "${tenantName}"? Its data and access will be restored.`)) return;
+    if (!(await confirmDialog({ title: `Recover "${tenantName}"?`, message: `Its data and access will be restored.` }))) return;
     setBusy(true);
     try {
       const res = await fetch(`/api/super-admin/tenants/${tenantId}/recover`, { method: "POST" });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) {
-        alert(j.error ?? "Recover failed");
+        notify.error(j.error ?? "Recover failed");
         return;
       }
       router.refresh();

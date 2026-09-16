@@ -54,15 +54,15 @@ export function ChildEducationProjector() {
       </div>
 
       <div>
-        <div className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium mb-1.5">Education milestones</div>
+        <div className="text-2xs uppercase tracking-wide text-muted-foreground font-medium mb-1.5">Education milestones</div>
         <div className="space-y-2">
           {rows.map((row) => (
             <div key={row.id} className="flex items-end gap-2 flex-wrap">
-              <label className="block"><span className="text-[10px] text-muted-foreground block mb-0.5">Course</span>
+              <label className="block"><span className="text-2xs text-muted-foreground block mb-0.5">Course</span>
                 <input value={row.name} onChange={(e) => update(row.id, { name: e.target.value })} className="input-base text-sm w-40" /></label>
-              <label className="block"><span className="text-[10px] text-muted-foreground block mb-0.5">Starts at child age</span>
+              <label className="block"><span className="text-2xs text-muted-foreground block mb-0.5">Starts at child age</span>
                 <input type="number" value={row.childAgeAtStart} step={1} onChange={(e) => update(row.id, { childAgeAtStart: clampNum(e.target.value) })} className="input-base text-sm w-28" /></label>
-              <label className="block"><span className="text-[10px] text-muted-foreground block mb-0.5">Cost today (₹)</span>
+              <label className="block"><span className="text-2xs text-muted-foreground block mb-0.5">Cost today (₹)</span>
                 <input type="number" value={row.currentCost} step={100000} onChange={(e) => update(row.id, { currentCost: clampNum(e.target.value) })} className="input-base text-sm w-36" /></label>
               <button type="button" onClick={() => remove(row.id)} className="text-rose-500 hover:text-rose-700 pb-1.5 print:hidden" aria-label="Remove"><Trash2 className="size-4" /></button>
             </div>

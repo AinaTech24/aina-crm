@@ -52,7 +52,7 @@ export function RebalanceCalculator() {
           <thead>
             <tr className="text-left">
               {["Asset class", "Current ₹", "Current %", "Target %", "Target ₹", "Action", "From new money", ""].map((h, i) => (
-                <th key={i} className={`py-1.5 px-2 text-[11px] uppercase tracking-wide text-muted-foreground font-semibold border-b border-border ${i >= 1 && i <= 6 ? "text-right" : ""}`}>{h}</th>
+                <th key={i} className={`py-1.5 px-2 text-2xs uppercase tracking-wide text-muted-foreground font-semibold border-b border-border ${i >= 1 && i <= 6 ? "text-right" : ""}`}>{h}</th>
               ))}
             </tr>
           </thead>
@@ -78,7 +78,7 @@ export function RebalanceCalculator() {
         </table>
       </div>
       <button type="button" onClick={add} className="btn-ghost text-xs print:hidden">+ Add asset class</button>
-      {targetBad && <p className="text-[11px] text-rose-600">Target allocation should total 100% (currently {targetTotal.toFixed(0)}%).</p>}
+      {targetBad && <p className="text-2xs text-rose-600">Target allocation should total 100% (currently {targetTotal.toFixed(0)}%).</p>}
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Stat label="Portfolio value" value={inr(result.totalCurrent)} />

@@ -120,7 +120,7 @@ function ClaimForm() {
     <div className="space-y-4 max-w-5xl">
       <Link href="/dashboard/insurance-claims" className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1"><ChevronLeft className="size-4" /> Back to claims</Link>
       <div>
-        <h1 className="page-title"><FileText className="size-6 text-brand-cyan" /> {editId ? "Edit claim" : "New claim"}</h1>
+        <h1 className="page-title"><FileText className="size-6 text-muted-foreground" /> {editId ? "Edit claim" : "New claim"}</h1>
       </div>
 
       <Section title="Overview">

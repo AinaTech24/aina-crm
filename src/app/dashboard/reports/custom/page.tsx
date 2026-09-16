@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { notify } from "@/components/ui/Toast";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { BarChart3, Plus, Star, Search, Trash2, Pencil, Loader2, Table2, Grid3x3, Rows3, ChevronLeft, Copy, Folder, FolderOpen, Inbox } from "lucide-react";
+import { confirmDialog } from "@/components/ui/ConfirmProvider";
 
 type Report = {
   id: string;
@@ -68,7 +70,7 @@ export default function CustomReportsPage() {
     });
   }
   async function del(id: string) {
-    if (!confirm("Delete this report? This can't be undone.")) return;
+    if (!(await confirmDialog({ title: "Delete this report?", message: "This can't be undone.", confirmLabel: "Delete", tone: "danger" }))) return;
     await fetch(`/api/reports/saved/${id}`, { method: "DELETE" });
     load();
   }
@@ -76,7 +78,7 @@ export default function CustomReportsPage() {
     const r = await fetch(`/api/reports/saved/${id}/clone`, { method: "POST" });
     const j = await r.json();
     if (r.ok && j.id) router.push(`/dashboard/reports/custom/new?edit=${j.id}`);
-    else alert(j.error ?? "Clone failed");
+    else notify.error(j.error ?? "Clone failed");
   }
 
   // Folder list (custom folders, sorted) + counts.
@@ -110,7 +112,7 @@ export default function CustomReportsPage() {
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
           <h1 className="page-title">
-            <BarChart3 className="size-6 text-brand-cyan" /> Custom Reports
+            <BarChart3 className="size-6 text-muted-foreground" /> Custom Reports
           </h1>
         </div>
         <Link href="/dashboard/reports/custom/new" className="btn-primary">
@@ -123,7 +125,7 @@ export default function CustomReportsPage() {
         <aside className="card-surface p-2 h-fit space-y-0.5">
           <FolderBtn value={ALL} label="All Reports" count={reports.length} icon={Inbox} />
           <FolderBtn value={FAV} label="Favourites" count={reports.filter((r) => r.starred).length} icon={Star} />
-          {folders.length > 0 && <div className="px-3 pt-2 pb-1 text-[10px] uppercase tracking-wide text-muted-foreground">Folders</div>}
+          {folders.length > 0 && <div className="px-3 pt-2 pb-1 text-2xs uppercase tracking-wide text-muted-foreground">Folders</div>}
           {folders.map(([name, count]) => (
             <FolderBtn key={name} value={name} label={name} count={count} icon={activeFolder === name ? FolderOpen : Folder} />
           ))}

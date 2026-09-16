@@ -72,7 +72,7 @@ export function RecordProvenance({
   const showModified = !!modifiedWhen && (modifiedWhen !== createdWhen || !!modifiedBy);
 
   return (
-    <div className={`flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground ${className}`}>
+    <div className={`flex flex-wrap items-center gap-x-3 gap-y-0.5 text-2xs text-muted-foreground ${className}`}>
       {createdWhen && (
         <span className="inline-flex items-center gap-1">
           <UserRound className="size-3 shrink-0" />

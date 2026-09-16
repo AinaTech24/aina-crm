@@ -73,7 +73,7 @@ export default async function WorkflowActionsPage() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="page-title">
-            <ListChecks className="size-6 text-brand-cyan" /> Workflow Actions
+            <ListChecks className="size-6 text-muted-foreground" /> Workflow Actions
           </h1>
         </div>
         <div className="flex gap-2">
@@ -124,13 +124,13 @@ export default async function WorkflowActionsPage() {
                   <tr key={action.key} className="border-b last:border-0 hover:bg-secondary/40">
                     <td className="px-4 py-3">
                       <div className="font-medium">{action.actionLabel}</div>
-                      <div className="text-[11px] text-muted-foreground line-clamp-1">{action.summary}</div>
+                      <div className="text-2xs text-muted-foreground line-clamp-1">{action.summary}</div>
                     </td>
                     <td className="py-3">
                       <Link href={`/dashboard/workflows/rules/${action.ruleId}`} className="font-medium hover:underline">
                         {action.ruleName}
                       </Link>
-                      <div className="text-[11px] text-muted-foreground">
+                      <div className="text-2xs text-muted-foreground">
                         {action.moduleLabel} {action.active ? "" : "(inactive)"}
                       </div>
                     </td>
@@ -139,9 +139,9 @@ export default async function WorkflowActionsPage() {
                       <span className={`chip ${action.timing === "scheduled" ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700"}`}>
                         {action.timing}
                       </span>
-                      {action.schedule && <div className="text-[11px] text-muted-foreground mt-1">{action.schedule}</div>}
+                      {action.schedule && <div className="text-2xs text-muted-foreground mt-1">{action.schedule}</div>}
                     </td>
-                    <td className="py-3 text-right pr-4 text-[11px] text-muted-foreground">
+                    <td className="py-3 text-right pr-4 text-2xs text-muted-foreground">
                       {action.updatedAt ? formatRelative(action.updatedAt) : "-"}
                     </td>
                   </tr>
@@ -157,7 +157,7 @@ export default async function WorkflowActionsPage() {
                 <div className="flex items-center justify-between gap-2">
                   <div>
                     <div className="font-semibold text-sm">{ACTION_LABELS[group.type] ?? group.type}</div>
-                    <div className="text-[11px] text-muted-foreground">
+                    <div className="text-2xs text-muted-foreground">
                       {group.active} active of {group.total}
                     </div>
                   </div>
@@ -295,12 +295,12 @@ function Metric({
     <div className="card-surface p-4">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</div>
+          <div className="text-2xs uppercase tracking-wide text-muted-foreground">{label}</div>
           <div className="text-2xl font-semibold tabular-nums mt-1">{value}</div>
         </div>
         <Icon className="size-5 text-brand-cyan" />
       </div>
-      <div className="mt-2 text-[11px] text-muted-foreground">{sub}</div>
+      <div className="mt-2 text-2xs text-muted-foreground">{sub}</div>
     </div>
   );
 }

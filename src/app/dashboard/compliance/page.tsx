@@ -221,7 +221,10 @@ export default async function CompliancePage() {
   return (
     <div className="space-y-6 max-w-7xl">
       <div className="flex items-center gap-2">
-        <h1 className="text-2xl font-bold tracking-tight">Compliance & DDQ readiness</h1>
+        <div className="min-w-0">
+          <h1 className="page-title">Compliance & DDQ readiness</h1>
+        <p className="page-subtitle mt-1">How ready your firm is for a due-diligence questionnaire, and what is still missing.</p>
+        </div>
         <HelpTip title="Compliance / DDQ">
           Your firm&apos;s audit-readiness score. It checks the documents and records SEBI/AMFI
           expect in a due-diligence review (DDQ = Due Diligence Questionnaire) and shows what&apos;s
@@ -274,7 +277,7 @@ export default async function CompliancePage() {
         </span>
       </Link>
 
-      <div className="border rounded-lg p-6 bg-gradient-to-br from-emerald-50 to-blue-50 dark:from-emerald-950/20 dark:to-blue-950/20">
+      <div className="border rounded-lg p-6 bg-gradient-to-br from-emerald-50 to-blue-50">
         <div className="flex items-center justify-between">
           <div>
             <div className="text-sm font-medium text-muted-foreground">DDQ readiness score</div>
@@ -354,7 +357,7 @@ export default async function CompliancePage() {
           ) : (
             auditTrailItems.map((item) => (
               <li key={item.id} className="py-1 border-b last:border-0">
-                <span className="text-muted-foreground">{item.atStr}</span> · <span className="text-amber-800 dark:text-amber-400 font-semibold">{item.actorType}</span> · <span className="font-medium">{item.actorName}</span> · {item.action}
+                <span className="text-muted-foreground">{item.atStr}</span> · <span className="text-amber-800 font-semibold">{item.actorType}</span> · <span className="font-medium">{item.actorName}</span> · {item.action}
               </li>
             ))
           )}

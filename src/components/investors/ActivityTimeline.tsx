@@ -193,19 +193,19 @@ export function ActivityTimeline({
                     <span className="font-semibold text-sm text-foreground/90 block">
                       {item.title}
                     </span>
-                    <span className="text-[10px] text-muted-foreground block mt-0.5">
+                    <span className="text-2xs text-muted-foreground block mt-0.5">
                       {formatRelative(item.timestamp)}
                     </span>
                   </div>
 
                   <div className="flex items-center gap-1.5">
                     {item.meta && (
-                      <span className="text-[10px] bg-secondary text-muted-foreground border px-2 py-0.5 rounded font-mono">
+                      <span className="text-2xs bg-secondary text-muted-foreground border px-2 py-0.5 rounded font-mono">
                         {item.meta}
                       </span>
                     )}
                     <span
-                      className={`chip text-[10px] font-bold border capitalize ${
+                      className={`chip text-2xs font-bold border capitalize ${
                         toneClasses[item.badgeTone]
                       }`}
                     >

@@ -7,6 +7,7 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../../api/client";
+import { queuedPatch } from "../../../lib/offlineQueue";
 import { API_BASE_URL } from "../../../config";
 import { useSession } from "../../../state/session";
 
@@ -176,7 +177,7 @@ export function useUploadAvatar(id: string) {
 export function useOnboardingStep(id: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (patch: Record<string, any>) => api.patch(`/api/investors/${id}`, patch),
+    mutationFn: (patch: Record<string, any>) => queuedPatch(`/api/investors/${id}`, patch, "Onboarding step"),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["investor-full", id] });
       qc.invalidateQueries({ queryKey: ["investor", id] });

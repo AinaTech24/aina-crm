@@ -16,7 +16,7 @@ export async function BestTimeBadge({ session, investorId }: { session: { tenant
   );
   if (!bt) return null;
   return (
-    <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-sky-50 text-sky-700" title={`Inferred from ${bt.basis} successful contacts`}>
+    <span className="inline-flex items-center gap-1 text-2xs px-2 py-0.5 rounded-full bg-sky-50 text-sky-700" title={`Inferred from ${bt.basis} successful contacts`}>
       <Clock className="size-3" /> Best time: {bt.label}
     </span>
   );

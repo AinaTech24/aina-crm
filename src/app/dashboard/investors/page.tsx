@@ -303,7 +303,8 @@ export default async function InvestorsPage({
     <div className="space-y-6 max-w-7xl">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Clients</h1>
+          <h1 className="page-title">Clients</h1>
+        <p className="page-subtitle mt-1">Your whole client book — AUM, SIPs, KYC and profile health in one list.</p>
         </div>
         <div className="flex gap-2 items-center flex-wrap">
           {/* View toggle — Table vs Kanban. Mirrors the leads page pattern.
@@ -330,22 +331,26 @@ export default async function InvestorsPage({
             </Link>
           </div>
           <span className="hidden sm:block"><RecomputeTiersButton /></span>
+          {/* Export = data leaving the CRM (arrow down, you get a file);
+              Import = data coming in (arrow up, you send a file). These two
+              icons were the wrong way round. */}
           <DownloadButton
             url={`/api/investors/export${exportQs ? `?${exportQs}` : ""}`}
-            className="hidden sm:flex rounded-md border px-3 py-1.5 text-sm items-center gap-1.5 hover:bg-accent"
+            className="btn-secondary hidden sm:inline-flex px-3 py-1.5 "
             title="Download the current (filtered) book as an Excel file"
           >
-            <FileUp className="size-4" /> Export
+            <FileDown className="size-4" /> Export
           </DownloadButton>
           <Link
             href="/dashboard/investors/import"
-            className="hidden sm:flex rounded-md border px-3 py-1.5 text-sm items-center gap-1.5"
+            className="btn-secondary hidden sm:inline-flex px-3 py-1.5 "
+            title="Bring clients in from an Excel or CSV file"
           >
-            <FileDown className="size-4" /> Import
+            <FileUp className="size-4" /> Import
           </Link>
           <Link
             href="/dashboard/investors/new"
-            className="rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-sm font-medium flex items-center gap-1.5"
+            className="btn-primary px-3 py-1.5 "
           >
             <Plus className="size-4" /> Add client
           </Link>
@@ -357,13 +362,13 @@ export default async function InvestorsPage({
       {canViewAll && (dupCount ?? 0) > 0 && (
         <Link
           href="/dashboard/duplicates"
-          className="flex items-center gap-2.5 rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-500/10 dark:border-amber-500/30 px-4 py-2.5 text-sm hover:bg-amber-100/70 transition-colors"
+          className="flex items-center gap-2.5 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm hover:bg-amber-100/70 transition-colors"
         >
           <CopyPlus className="size-4 text-amber-600 shrink-0" />
-          <span className="text-amber-800 dark:text-amber-200">
+          <span className="text-amber-800">
             <strong>{dupCount}</strong> client{dupCount === 1 ? "" : "s"} look like possible duplicates (same PAN or mobile).
           </span>
-          <span className="ml-auto text-xs font-medium text-amber-700 dark:text-amber-300">Review &amp; merge →</span>
+          <span className="ml-auto text-xs font-medium text-amber-700">Review &amp; merge →</span>
         </Link>
       )}
 
@@ -468,7 +473,7 @@ export default async function InvestorsPage({
               <span>·</span>
               <span>{kanbanRows.length} clients</span>
             </div>
-            <span className="text-[11px] text-muted-foreground">
+            <span className="text-2xs text-muted-foreground">
               Drag a card to move stages (works for clients converted from a lead)
             </span>
           </div>

@@ -174,7 +174,7 @@ export function GoalDetailCalculator({ goal }: { goal: any }) {
               Target-date value
             </ToggleBtn>
           </div>
-          <p className="text-[11px] text-muted-foreground mt-1.5">
+          <p className="text-2xs text-muted-foreground mt-1.5">
             {form.targetMode === "today"
               ? "We'll inflate this to the target year using the inflation rate below."
               : "Amount is already in target-year rupees — no inflation applied."}
@@ -253,7 +253,7 @@ export function GoalDetailCalculator({ goal }: { goal: any }) {
               <option key={v} value={v}>{l}</option>
             ))}
           </SelectField>
-          <p className="text-[11px] text-muted-foreground mt-1.5">
+          <p className="text-2xs text-muted-foreground mt-1.5">
             Tapers the expected return as the target nears (shifts toward debt).
           </p>
         </Field>
@@ -309,7 +309,7 @@ export function GoalDetailCalculator({ goal }: { goal: any }) {
                 <div className="text-2xl font-bold mt-1 tabular-nums">
                   {formatINR(Math.round(calc.futureTarget))}
                 </div>
-                <div className="text-[11px] text-muted-foreground mt-1">
+                <div className="text-2xs text-muted-foreground mt-1">
                   ₹{Math.round(calc.futureTarget / Math.pow(1 + calc.inflationPct / 100, calc.yearsLeft)).toLocaleString("en-IN")}{" "}
                   in today's purchasing power · {calc.inflationPct}% inflation
                 </div>
@@ -379,7 +379,7 @@ export function GoalDetailCalculator({ goal }: { goal: any }) {
                     <div className="text-lg font-bold tabular-nums mt-0.5">
                       {formatINR(Math.round(s.sip))}
                     </div>
-                    <div className="text-[10px] text-muted-foreground mt-0.5">flat SIP</div>
+                    <div className="text-2xs text-muted-foreground mt-0.5">flat SIP</div>
                   </div>
                 ))}
               </div>
@@ -489,7 +489,7 @@ function PlanCard({
     >
       <div className="text-xs text-muted-foreground">{label}</div>
       <div className="text-lg font-bold tabular-nums mt-0.5">{value}</div>
-      <div className="text-[10px] text-muted-foreground mt-0.5 leading-tight">{sub}</div>
+      <div className="text-2xs text-muted-foreground mt-0.5 leading-tight">{sub}</div>
     </div>
   );
 }

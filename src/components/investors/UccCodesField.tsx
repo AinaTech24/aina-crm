@@ -48,7 +48,7 @@ export function UccCodesField({
                 type="button"
                 onClick={() => remove(i)}
                 aria-label="Remove UCC"
-                className="shrink-0 rounded-md p-1.5 text-muted-foreground hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-500/10"
+                className="shrink-0 rounded-md p-1.5 text-muted-foreground hover:bg-rose-50 hover:text-rose-600"
               >
                 <X className="size-4" />
               </button>

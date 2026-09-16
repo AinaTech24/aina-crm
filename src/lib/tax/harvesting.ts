@@ -88,7 +88,7 @@ export async function scanTaxHarvest(tx: Tx, opts: { limit?: number; rmId?: stri
   // per (investor, scheme). Redeemed lots fall out of FIFO automatically.
   const res = await tx.execute(sql`
     SELECT t.investor_id, i.name AS investor_name, i.rm_id,
-           t.scheme_code, t.scheme_name, t.scheme_category, t.type, t.direction,
+           t.folio_id, t.folio_number, t.amc_code, t.amc_name, t.scheme_code, t.scheme_name, t.scheme_category, t.type, t.direction,
            t.units, t.nav, t.amount, t.order_date
     FROM transactions t
     JOIN investors i ON i.id = t.investor_id AND i.status = 'active' AND i.deleted_at IS NULL${rmScope}
@@ -168,3 +168,4 @@ export async function scanTaxHarvest(tx: Tx, opts: { limit?: number; rmId?: stri
   losses.sort((a, b) => b.totalLoss - a.totalLoss);
   return { gains: opts.limit ? gains.slice(0, opts.limit) : gains, losses: opts.limit ? losses.slice(0, opts.limit) : losses, fyStartYear };
 }
+

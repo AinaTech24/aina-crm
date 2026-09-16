@@ -160,7 +160,7 @@ function MemberNode({
       isPrimary ? "border-brand-cyan/60 bg-gradient-to-br from-brand-cyan-light/10 to-transparent" : "border-border/60"
     }`}>
       {isPrimary && (
-        <span className="absolute -top-2 left-4 px-2 py-0.5 rounded-full text-[9px] uppercase tracking-wider font-extrabold bg-brand-cyan text-white shadow-sm">
+        <span className="absolute -top-2 left-4 px-2 py-0.5 rounded-full text-2xs uppercase tracking-wider font-extrabold bg-brand-cyan text-white shadow-sm">
           Head
         </span>
       )}
@@ -179,20 +179,20 @@ function MemberNode({
           >
             {member.name}
           </Link>
-          <span className="text-[10px] text-muted-foreground capitalize block mt-0.5 font-medium">
+          <span className="text-2xs text-muted-foreground capitalize block mt-0.5 font-medium">
             {roleLabel}
           </span>
         </div>
       </div>
 
-      <div className="border-t border-border/40 mt-3 pt-2.5 grid grid-cols-2 gap-1 text-[11px] font-medium text-muted-foreground">
+      <div className="border-t border-border/40 mt-3 pt-2.5 grid grid-cols-2 gap-1 text-2xs font-medium text-muted-foreground">
         <div>
-          <span className="text-[9px] text-muted-foreground/70 block uppercase font-semibold">AUM</span>
+          <span className="text-2xs text-muted-foreground/70 block uppercase font-semibold">AUM</span>
           <span className="text-foreground font-semibold tabular-nums">{formatINR(aumValue)}</span>
         </div>
         {sipValue > 0 && (
           <div>
-            <span className="text-[9px] text-muted-foreground/70 block uppercase font-semibold flex items-center gap-0.5">
+            <span className="text-2xs text-muted-foreground/70 block uppercase font-semibold flex items-center gap-0.5">
               <TrendingUp className="size-2.5 text-emerald-500" /> SIP
             </span>
             <span className="text-foreground font-semibold tabular-nums">{formatINR(sipValue)}/mo</span>
@@ -203,12 +203,12 @@ function MemberNode({
       {(hasKycGaps || hasNomineeGaps) && (
         <div className="border-t border-border/40 mt-2.5 pt-2 flex flex-wrap gap-1">
           {hasKycGaps && (
-            <span className="inline-flex items-center gap-0.5 text-[9px] font-semibold bg-rose-50 text-rose-700 border border-rose-100 rounded px-1.5 py-0.5">
+            <span className="inline-flex items-center gap-0.5 text-2xs font-semibold bg-rose-50 text-rose-700 border border-rose-100 rounded px-1.5 py-0.5">
               <ShieldAlert className="size-2.5" /> KYC Gap
             </span>
           )}
           {hasNomineeGaps && (
-            <span className="inline-flex items-center gap-0.5 text-[9px] font-semibold bg-rose-50 text-rose-700 border border-rose-100 rounded px-1.5 py-0.5">
+            <span className="inline-flex items-center gap-0.5 text-2xs font-semibold bg-rose-50 text-rose-700 border border-rose-100 rounded px-1.5 py-0.5">
               <ShieldAlert className="size-2.5" /> Nominee Gap
             </span>
           )}

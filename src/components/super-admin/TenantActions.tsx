@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { notify } from "@/components/ui/Toast";
 import { useRouter } from "next/navigation";
 import { Pause, Play, Ban, Clock } from "lucide-react";
 
@@ -34,7 +35,7 @@ export function TenantActions({
       });
       const j = await res.json();
       if (!res.ok) {
-        alert(j.error ?? "Failed");
+        notify.error(j.error ?? "Failed");
         return;
       }
       router.refresh();

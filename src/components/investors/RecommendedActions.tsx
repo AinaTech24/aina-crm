@@ -44,10 +44,10 @@ export async function RecommendedActions({
             const meta = NBA_META[a.type];
             return (
               <li key={a.key} className="flex items-center gap-3 rounded-lg border px-3 py-2">
-                <span className={`chip text-[10px] shrink-0 ${CHIP_TONE[meta.tone]}`}>{meta.label}</span>
+                <span className={`chip text-2xs shrink-0 ${CHIP_TONE[meta.tone]}`}>{meta.label}</span>
                 <div className="min-w-0 flex-1">
                   <div className="text-sm font-medium truncate">{a.title}</div>
-                  <div className="text-[11px] text-muted-foreground truncate">{a.reason}</div>
+                  <div className="text-2xs text-muted-foreground truncate">{a.reason}</div>
                 </div>
                 {a.impactInr > 0 && <div className="text-xs font-semibold tabular-nums text-emerald-700 shrink-0">{inr(a.impactInr)}</div>}
                 <ContactQuickActions phone={phone ?? a.phone} email={email ?? a.email} message={a.type === "birthday_today" ? `Dear ${firstName}, wishing you a very Happy Birthday! 🎂` : `Hi ${firstName}, `} show={["whatsapp", "call"]} size={14} />

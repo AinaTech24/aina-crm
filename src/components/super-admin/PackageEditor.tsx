@@ -324,7 +324,7 @@ export function FeatureAccessGrid({
           </button>
         </div>
       </div>
-      <p className="text-[11px] text-muted-foreground mb-2">
+      <p className="text-2xs text-muted-foreground mb-2">
         <span className="font-medium text-emerald-700">Included</span> = free with the package ·{" "}
         <span className="font-medium text-amber-700">Add-on</span> = the MFD can buy it for the price you set ·{" "}
         <span className="font-medium">Off</span> = hidden from this firm.
@@ -335,8 +335,8 @@ export function FeatureAccessGrid({
           return (
           <div key={group.title}>
             <div className="sticky top-0 z-10 bg-secondary/90 backdrop-blur px-3 py-1 flex items-center justify-between border-y">
-              <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">{group.title}</span>
-              <span className="flex items-center gap-2 text-[10px] font-medium">
+              <span className="text-2xs font-bold uppercase tracking-wide text-muted-foreground">{group.title}</span>
+              <span className="flex items-center gap-2 text-2xs font-medium">
                 <button type="button" onClick={() => setGroupState(groupKeys, "included")} className="text-emerald-700 hover:underline">Include all</button>
                 <button type="button" onClick={() => setGroupState(groupKeys, "off")} className="text-muted-foreground hover:underline">Off</button>
               </span>
@@ -350,7 +350,7 @@ export function FeatureAccessGrid({
                     <span className="flex-1 min-w-0" title={item.key}>
                       <span className="block text-xs font-medium truncate">{item.label}</span>
                     </span>
-                    <div className="inline-flex rounded-md border overflow-hidden text-[11px] shrink-0">
+                    <div className="inline-flex rounded-md border overflow-hidden text-2xs shrink-0">
                       {(["off", "included", "addon"] as FeatureState[]).map((opt) => (
                         <button
                           key={opt}
@@ -396,7 +396,7 @@ function PriceMini({ value, onChange, placeholder }: { value: number; onChange: 
       value={value || ""}
       placeholder={placeholder}
       onChange={(e) => onChange(Number(e.target.value))}
-      className="w-20 border rounded px-1.5 py-1 text-[11px] bg-background tabular-nums"
+      className="w-20 border rounded px-1.5 py-1 text-2xs bg-background tabular-nums"
       title={placeholder}
     />
   );
@@ -426,7 +426,7 @@ export function PerUserPricing({
   return (
     <div className="border-t pt-3">
       <div className="text-xs font-medium mb-1">Per-user pricing (add-on seats)</div>
-      <p className="text-[11px] text-muted-foreground mb-2">
+      <p className="text-2xs text-muted-foreground mb-2">
         Setup is a one-time fee charged once <span className="font-medium">per organisation</span>. When an MFD wants
         more staff logins, each extra user costs this much — billed per their cycle.
       </p>
@@ -434,7 +434,7 @@ export function PerUserPricing({
         <NumberField label="Per user / year ₹" value={perUserYearlyRupees} onChange={onYearly} />
         <NumberField label="Per user / month ₹" value={perUserMonthlyRupees} onChange={onMonthly} />
       </div>
-      <div className="mt-2 rounded-md bg-muted/40 border px-3 py-2 text-[11px] text-muted-foreground space-y-0.5">
+      <div className="mt-2 rounded-md bg-muted/40 border px-3 py-2 text-2xs text-muted-foreground space-y-0.5">
         <div>
           <span className="font-medium text-foreground">1 extra user</span> ={" "}
           {inr(perUserYearlyRupees)}/yr <span className="opacity-60">or</span> {inr(perUserMonthlyRupees)}/mo

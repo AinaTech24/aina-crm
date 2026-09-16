@@ -1,6 +1,12 @@
 import type { Config } from "tailwindcss";
 
 const config: Config = {
+  // The app is light-only: the `.dark` palette, the ThemeToggle and the
+  // boot-time class strip were removed together. This key MUST stay "class"
+  // even so — dropping it makes Tailwind fall back to the `media` strategy,
+  // which would fire every `dark:` utility on a viewer whose OS is dark, with
+  // no dark palette behind it. Kept as an inert guard: nothing ever sets the
+  // class, so `dark:` can never match.
   darkMode: ["class"],
   content: [
     "./src/app/**/*.{ts,tsx}",
@@ -13,6 +19,20 @@ const config: Config = {
       fontFamily: {
         sans: ["var(--font-inter)", "ui-sans-serif", "system-ui", "sans-serif"],
         display: ["var(--font-inter)", "ui-sans-serif", "system-ui", "sans-serif"],
+      },
+      fontSize: {
+        /**
+         * `2xs` (11px) is the ONLY size added here, and it is deliberately the
+         * app's smallest. It had no name until now: 1,155 places spelled it
+         * `text-[11px]` by hand, and another 1,074 went smaller still
+         * (`text-[10px]` ×994, `text-[9px]` ×77, `text-[8px]` ×3) — unreadable
+         * for back-office staff scanning PANs and SIP dates all day. Those all
+         * collapse onto this token, which makes 11px the floor.
+         *
+         * Tailwind's own xs/sm/base/lg/xl/2xl are intentionally NOT redefined.
+         * Re-scaling `text-sm` would silently move 2,662 call sites.
+         */
+        "2xs": ["0.6875rem", { lineHeight: "1rem", letterSpacing: "0.01em" }],
       },
       colors: {
         border: "hsl(var(--border))",
@@ -59,6 +79,21 @@ const config: Config = {
         popover: {
           DEFAULT: "hsl(var(--popover))",
           foreground: "hsl(var(--popover-foreground))",
+        },
+        /**
+         * Chart ramp. Charts previously reached for raw palette hex —
+         * `#10b981` in 36 places, `#0891b2` in 21, `#f59e0b` in 20 — so a firm
+         * branded indigo still got teal charts, and the series fought the red
+         * accent for attention. These six are deliberately muted and share no
+         * hue with `--primary`, so red stays available to mean "look here".
+         */
+        chart: {
+          1: "hsl(var(--chart-1))",
+          2: "hsl(var(--chart-2))",
+          3: "hsl(var(--chart-3))",
+          4: "hsl(var(--chart-4))",
+          5: "hsl(var(--chart-5))",
+          6: "hsl(var(--chart-6))",
         },
         // Brand colors — referenced by hero stripes, badges, gradients
         brand: {

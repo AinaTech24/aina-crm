@@ -46,17 +46,17 @@ export function GoalCollisionTimeline() {
 
 
       <div>
-        <div className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium mb-1.5">Goals</div>
+        <div className="text-2xs uppercase tracking-wide text-muted-foreground font-medium mb-1.5">Goals</div>
         <div className="space-y-2">
           {rows.map((row) => (
             <div key={row.id} className="flex items-end gap-2 flex-wrap">
-              <label className="block"><span className="text-[10px] text-muted-foreground block mb-0.5">Goal</span>
+              <label className="block"><span className="text-2xs text-muted-foreground block mb-0.5">Goal</span>
                 <input value={row.name} onChange={(e) => update(row.id, { name: e.target.value })} className="input-base text-sm w-40" /></label>
-              <label className="block"><span className="text-[10px] text-muted-foreground block mb-0.5">Years away</span>
+              <label className="block"><span className="text-2xs text-muted-foreground block mb-0.5">Years away</span>
                 <input type="number" value={row.yearsAway} step={1} onChange={(e) => update(row.id, { yearsAway: clampNum(e.target.value) })} className="input-base text-sm w-24" /></label>
-              <label className="block"><span className="text-[10px] text-muted-foreground block mb-0.5">Future cost (₹)</span>
+              <label className="block"><span className="text-2xs text-muted-foreground block mb-0.5">Future cost (₹)</span>
                 <input type="number" value={row.futureCost} step={100000} onChange={(e) => update(row.id, { futureCost: clampNum(e.target.value) })} className="input-base text-sm w-36" /></label>
-              <label className="block"><span className="text-[10px] text-muted-foreground block mb-0.5">Return %</span>
+              <label className="block"><span className="text-2xs text-muted-foreground block mb-0.5">Return %</span>
                 <input type="number" value={row.returnPct} step={0.5} onChange={(e) => update(row.id, { returnPct: clampNum(e.target.value) })} className="input-base text-sm w-20" /></label>
               <button type="button" onClick={() => remove(row.id)} className="text-rose-500 hover:text-rose-700 pb-1.5 print:hidden" aria-label="Remove"><Trash2 className="size-4" /></button>
             </div>

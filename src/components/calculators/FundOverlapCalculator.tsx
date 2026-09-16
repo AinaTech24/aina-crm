@@ -173,7 +173,7 @@ export function FundOverlapCalculator() {
           <thead>
             <tr className="text-left">
               {["Fund", "Category", "Value", "Overlap", "Underperformance", "Signal", ""].map((h, i) => (
-                <th key={h} className={`py-1.5 px-2 text-[11px] uppercase tracking-wide text-muted-foreground font-semibold border-b border-border ${i >= 2 && i <= 5 ? "text-right" : ""}`}>
+                <th key={h} className={`py-1.5 px-2 text-2xs uppercase tracking-wide text-muted-foreground font-semibold border-b border-border ${i >= 2 && i <= 5 ? "text-right" : ""}`}>
                   {h}
                 </th>
               ))}

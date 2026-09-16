@@ -10,6 +10,7 @@
  */
 
 import { useState } from "react";
+import { notify } from "@/components/ui/Toast";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Loader2, X, UserCog, RefreshCw, Ban } from "lucide-react";
@@ -69,7 +70,7 @@ export function ServiceRequestsTable({ rows }: { rows: any[] }) {
         method: "PATCH", headers: { "content-type": "application/json" },
         body: JSON.stringify({ status }),
       });
-      if (!res.ok) { const j = await res.json().catch(() => ({})); alert(j.error ?? "Update failed"); return; }
+      if (!res.ok) { const j = await res.json().catch(() => ({})); notify.error(j.error ?? "Update failed"); return; }
       router.refresh();
     } finally { setRowBusy(null); }
   }
@@ -167,7 +168,7 @@ export function ServiceRequestsTable({ rows }: { rows: any[] }) {
                   </td>
                   <td data-col="type" className="py-3 text-xs">
                     <Link href={`/dashboard/service-requests/${sr.id}`} className="font-medium hover:underline">{TYPE_LABEL[sr.type] ?? sr.type}</Link>
-                    {sr.subject && <div className="text-[11px] text-muted-foreground max-w-[180px] truncate">{sr.subject}</div>}
+                    {sr.subject && <div className="text-2xs text-muted-foreground max-w-[180px] truncate">{sr.subject}</div>}
                   </td>
                   <td data-col="raised" className="py-3 text-xs text-muted-foreground tabular-nums whitespace-nowrap">{formatDate(sr.created_at)}</td>
                   <td data-col="assignee" className="py-3 text-xs whitespace-nowrap">{sr.assignee_name ?? "—"}</td>
@@ -179,7 +180,7 @@ export function ServiceRequestsTable({ rows }: { rows: any[] }) {
                         {STATUSES.map(([k, l]) => <option key={k} value={k} className="bg-white text-foreground">{l}</option>)}
                       </select>
                     </span>
-                    {sr.escalated_at && <div className="text-[10px] text-rose-600 font-semibold mt-0.5">escalated</div>}
+                    {sr.escalated_at && <div className="text-2xs text-rose-600 font-semibold mt-0.5">escalated</div>}
                   </td>
                   <td data-col="expected" className="py-3 text-xs text-muted-foreground tabular-nums whitespace-nowrap">{sr.sla_resolution_at ? formatDate(sr.sla_resolution_at) : "—"}</td>
                   <td data-col="tat" className="py-3 text-right tabular-nums">

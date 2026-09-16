@@ -76,7 +76,7 @@ export default async function PublicDocsFormPage({ params }: { params: Promise<{
             <FileText className="size-5 text-brand-cyan" />
             <span className="font-semibold">{tenant?.displayName ?? tenant?.legalName ?? "Document collection"}</span>
           </div>
-          <div className="text-[11px] text-muted-foreground">{formatArn(tenant?.arn)}</div>
+          <div className="text-2xs text-muted-foreground">{formatArn(tenant?.arn)}</div>
         </div>
       </header>
 
@@ -89,7 +89,7 @@ export default async function PublicDocsFormPage({ params }: { params: Promise<{
         />
       </main>
 
-      <footer className="max-w-2xl mx-auto px-4 py-6 text-[11px] text-muted-foreground text-center">
+      <footer className="max-w-2xl mx-auto px-4 py-6 text-2xs text-muted-foreground text-center">
         Your documents are uploaded securely and only visible to your relationship manager and back-office team.
         {tenant?.arn ? <> · {tenant.displayName ?? tenant.legalName} · {formatArn(tenant.arn)}</> : null}
       </footer>

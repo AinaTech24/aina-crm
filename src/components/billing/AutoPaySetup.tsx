@@ -107,7 +107,7 @@ export function AutoPaySetup({
             {status === "trial" && " You won't be charged until your trial ends."}
           </p>
           {mandateStatus === "pending" && (
-            <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2.5 py-1.5 mt-2">
+            <p className="text-2xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2.5 py-1.5 mt-2">
               A setup was started but not finished. Click below to complete it.
             </p>
           )}

@@ -659,7 +659,7 @@ export function GuidedStageActions({
                     {p.label}
                   </div>
                   {!p.satisfied && p.hint && (
-                    <div className="text-[11px] text-muted-foreground mt-0.5 leading-snug">
+                    <div className="text-2xs text-muted-foreground mt-0.5 leading-snug">
                       {p.hint}
                     </div>
                   )}
@@ -756,7 +756,7 @@ export function GuidedStageActions({
             {/* Dynamic Required Fields */}
             {missingFields.length > 0 && (
               <div className="space-y-3 border-t border-b border-border py-3">
-                <div className="text-[10px] font-bold uppercase tracking-wider text-brand-cyan">
+                <div className="text-2xs font-bold uppercase tracking-wider text-brand-cyan">
                   Required Information
                 </div>
                 {missingFields.map((f) => (
@@ -812,7 +812,7 @@ export function GuidedStageActions({
                         key={days}
                         type="button"
                         onClick={() => setCallBackAt(toLocalInput(Date.now() + days * 86400000))}
-                        className="rounded-md border border-border px-2 py-0.5 text-[11px] hover:bg-accent"
+                        className="rounded-md border border-border px-2 py-0.5 text-2xs hover:bg-accent"
                       >
                         +{days}d
                       </button>
@@ -826,11 +826,11 @@ export function GuidedStageActions({
                   onChange={(e) => setCallBackAt(e.target.value)}
                   className="input-base text-xs w-full"
                 />
-                <p className="text-[10px] text-muted-foreground">
+                <p className="text-2xs text-muted-foreground">
                   We&apos;ll create a reminder task for the lead owner at this time so it doesn&apos;t slip.
                 </p>
                 {transitioningAction.targetStage === "call_not_connected" && notConnectedCount != null && notConnectedCount >= 2 && (
-                  <div className="rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[10px] text-amber-800 flex items-start gap-1.5">
+                  <div className="rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-2xs text-amber-800 flex items-start gap-1.5">
                     <AlertTriangle className="size-3 mt-0.5 shrink-0" />
                     <span>
                       This will be attempt #{notConnectedCount + 1} with no connection. Consider <strong>Long-term Nurture</strong> or
@@ -858,7 +858,7 @@ export function GuidedStageActions({
                     <option key={r} value={r}>{r}</option>
                   ))}
                 </select>
-                <p className="text-[10px] text-muted-foreground">
+                <p className="text-2xs text-muted-foreground">
                   Captured for win/loss analytics. Add any detail in the notes below.
                 </p>
               </div>
@@ -868,7 +868,7 @@ export function GuidedStageActions({
                 auto-creates a pre-filled task and notifies the assignee. */}
             {TASK_ON_TRANSITION[transitioningAction.targetStage] && (
               <div className="space-y-2.5 border-t border-b border-border py-3">
-                <div className="text-[10px] font-bold uppercase tracking-wider text-brand-cyan">Create &amp; assign task</div>
+                <div className="text-2xs font-bold uppercase tracking-wider text-brand-cyan">Create &amp; assign task</div>
                 <div className="space-y-1">
                   <label className="text-xs text-foreground font-medium">
                     Assign task to <span className="text-rose-500">*</span>
@@ -894,7 +894,7 @@ export function GuidedStageActions({
                     className="input-base text-xs w-full"
                   />
                 </div>
-                <p className="text-[10px] text-muted-foreground">
+                <p className="text-2xs text-muted-foreground">
                   We&apos;ll create a high-priority task — &ldquo;{TASK_ON_TRANSITION[transitioningAction.targetStage].title}&rdquo; — assigned to them, and notify them.
                 </p>
               </div>
@@ -914,7 +914,7 @@ export function GuidedStageActions({
                   placeholder="e.g. 1234567"
                   className="input-base text-xs w-full"
                 />
-                <p className="text-[10px] text-muted-foreground">
+                <p className="text-2xs text-muted-foreground">
                   We'll save this UCC on the client's profile.
                 </p>
               </div>
@@ -923,7 +923,7 @@ export function GuidedStageActions({
             {/* Mandate details — required for "Mandate Activated". */}
             {transitioningAction.targetStage === "mandate_activated" && (
               <div className="space-y-3 border-t border-b border-border py-3">
-                <div className="text-[10px] font-bold uppercase tracking-wider text-brand-cyan">
+                <div className="text-2xs font-bold uppercase tracking-wider text-brand-cyan">
                   Mandate details
                 </div>
                 <div className="space-y-1">
@@ -965,7 +965,7 @@ export function GuidedStageActions({
                     placeholder="e.g. 25000"
                     className="input-base text-xs w-full"
                   />
-                  <p className="text-[10px] text-muted-foreground">
+                  <p className="text-2xs text-muted-foreground">
                     Max amount the NACH / e-mandate authorises per debit.
                   </p>
                 </div>
@@ -980,7 +980,7 @@ export function GuidedStageActions({
                     placeholder="e.g. HDFC6100000012345"
                     className="input-base text-xs w-full"
                   />
-                  <p className="text-[10px] text-muted-foreground">
+                  <p className="text-2xs text-muted-foreground">
                     Marks the mandate Active on the client's profile.
                   </p>
                 </div>
@@ -1148,7 +1148,7 @@ function CollectDetailsModal({
           ) : (
             sections.map(([section, fs]) => (
               <div key={section} className="space-y-3">
-                <div className="text-[10px] font-bold uppercase tracking-wider text-brand-cyan">{section}</div>
+                <div className="text-2xs font-bold uppercase tracking-wider text-brand-cyan">{section}</div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {fs.map((f) => (
                     <CollectField key={f.key} field={f} value={values[f.key] ?? ""} onChange={(v) => onChange(f.key, v)} />
@@ -1211,7 +1211,7 @@ function CollectField({ field, value, onChange }: { field: KycField; value: stri
           className={cls}
         />
       )}
-      {field.helpText && <div className="text-[10px] text-muted-foreground mt-1">{field.helpText}</div>}
+      {field.helpText && <div className="text-2xs text-muted-foreground mt-1">{field.helpText}</div>}
     </label>
   );
 }

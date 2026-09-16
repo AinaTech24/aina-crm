@@ -129,7 +129,7 @@ export function CircularSummarizer() {
               Summarise
             </button>
             {text.trim().length > 0 && text.trim().length < 40 && (
-              <span className="text-[11px] text-muted-foreground">Paste at least a paragraph.</span>
+              <span className="text-2xs text-muted-foreground">Paste at least a paragraph.</span>
             )}
           </div>
           {err && <p className="text-xs text-destructive">{err}</p>}
@@ -142,7 +142,7 @@ export function CircularSummarizer() {
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="flex flex-col gap-1">
-                  <label className="text-[10px] font-bold text-muted-foreground uppercase">Title</label>
+                  <label className="text-2xs font-bold text-muted-foreground uppercase">Title</label>
                   <input
                     type="text"
                     value={draftTitle}
@@ -153,7 +153,7 @@ export function CircularSummarizer() {
                 
                 <div className="grid grid-cols-3 gap-2">
                   <div className="flex flex-col gap-1">
-                    <label className="text-[10px] font-bold text-muted-foreground uppercase">Category</label>
+                    <label className="text-2xs font-bold text-muted-foreground uppercase">Category</label>
                     <input
                       type="text"
                       value={draftCategory}
@@ -163,7 +163,7 @@ export function CircularSummarizer() {
                   </div>
                   
                   <div className="flex flex-col gap-1">
-                    <label className="text-[10px] font-bold text-muted-foreground uppercase">Issuer</label>
+                    <label className="text-2xs font-bold text-muted-foreground uppercase">Issuer</label>
                     <input
                       type="text"
                       value={draftIssuer}
@@ -174,7 +174,7 @@ export function CircularSummarizer() {
                   </div>
 
                   <div className="flex flex-col gap-1">
-                    <label className="text-[10px] font-bold text-muted-foreground uppercase">Severity</label>
+                    <label className="text-2xs font-bold text-muted-foreground uppercase">Severity</label>
                     <select
                       value={draftSeverity}
                       onChange={(e) => setDraftSeverity(e.target.value as any)}
@@ -189,7 +189,7 @@ export function CircularSummarizer() {
               </div>
 
               <div className="flex flex-col gap-1">
-                <label className="text-[10px] font-bold text-muted-foreground uppercase">Summary</label>
+                <label className="text-2xs font-bold text-muted-foreground uppercase">Summary</label>
                 <textarea
                   value={draftSummary}
                   onChange={(e) => setDraftSummary(e.target.value)}
@@ -199,7 +199,7 @@ export function CircularSummarizer() {
               </div>
 
               <div className="flex flex-col gap-1">
-                <label className="text-[10px] font-bold text-muted-foreground uppercase">MFD Actions (one action per line)</label>
+                <label className="text-2xs font-bold text-muted-foreground uppercase">MFD Actions (one action per line)</label>
                 <textarea
                   value={draftActions}
                   onChange={(e) => setDraftActions(e.target.value)}
@@ -214,7 +214,7 @@ export function CircularSummarizer() {
                   {saving ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
                   Save to my library
                 </button>
-                <span className="text-[10px] text-muted-foreground italic">
+                <span className="text-2xs text-muted-foreground italic">
                   Review and audit fields before saving.
                 </span>
               </div>

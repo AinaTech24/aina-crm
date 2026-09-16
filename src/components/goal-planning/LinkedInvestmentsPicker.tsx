@@ -195,7 +195,7 @@ export function LinkedInvestmentsPicker({
             <span className="flex items-center gap-1.5">
               <Wallet className="size-3.5" /> Folios ({folios.length})
             </span>
-            <span className="text-[10px] text-muted-foreground font-normal">% allocated →</span>
+            <span className="text-2xs text-muted-foreground font-normal">% allocated →</span>
           </div>
           {folios.length === 0 ? (
             <p className="p-4 text-xs text-muted-foreground text-center">No folios.</p>
@@ -218,10 +218,10 @@ export function LinkedInvestmentsPicker({
                       />
                       <div className="flex-1 min-w-0">
                         <div className="text-sm font-medium truncate">{f.amcName}</div>
-                        <div className="text-[11px] text-muted-foreground font-mono">
+                        <div className="text-2xs text-muted-foreground font-mono">
                           {f.folioNumber}
                         </div>
-                        <div className="text-[11px] text-muted-foreground mt-0.5">
+                        <div className="text-2xs text-muted-foreground mt-0.5">
                           AUM <span className="font-semibold text-foreground">{formatINR(f.aum)}</span>
                         </div>
                       </div>
@@ -243,7 +243,7 @@ export function LinkedInvestmentsPicker({
                             />
                             <Percent className="size-3 text-muted-foreground" />
                           </div>
-                          <div className="text-[10px] text-brand-cyan-deep font-semibold tabular-nums">
+                          <div className="text-2xs text-brand-cyan-deep font-semibold tabular-nums">
                             = {formatINR(Math.round(allocated))}
                           </div>
                         </div>
@@ -273,7 +273,7 @@ export function LinkedInvestmentsPicker({
             <span className="flex items-center gap-1.5">
               <Repeat className="size-3.5" /> Active SIPs ({sips.length})
             </span>
-            <span className="text-[10px] text-muted-foreground font-normal">% allocated →</span>
+            <span className="text-2xs text-muted-foreground font-normal">% allocated →</span>
           </div>
           {sips.length === 0 ? (
             <p className="p-4 text-xs text-muted-foreground text-center">No active SIPs.</p>
@@ -308,10 +308,10 @@ export function LinkedInvestmentsPicker({
                         <div className="text-sm font-medium truncate">
                           {s.schemeName ?? "Scheme"}
                         </div>
-                        <div className="text-[11px] text-muted-foreground capitalize">
+                        <div className="text-2xs text-muted-foreground capitalize">
                           {s.frequency} · {s.status}
                         </div>
-                        <div className="text-[11px] text-muted-foreground mt-0.5">
+                        <div className="text-2xs text-muted-foreground mt-0.5">
                           {formatINR(s.amount)}/{s.frequency.slice(0, 3)}
                           {s.frequency !== "monthly" && (
                             <span className="opacity-70">
@@ -339,7 +339,7 @@ export function LinkedInvestmentsPicker({
                             />
                             <Percent className="size-3 text-muted-foreground" />
                           </div>
-                          <div className="text-[10px] text-brand-cyan-deep font-semibold tabular-nums">
+                          <div className="text-2xs text-brand-cyan-deep font-semibold tabular-nums">
                             = {formatINR(Math.round(allocated))}/mo
                           </div>
                         </div>
@@ -371,7 +371,7 @@ export function LinkedInvestmentsPicker({
           <div className="text-xl font-bold tabular-nums mt-0.5">
             {formatINR(Math.round(totals.aum))}
           </div>
-          <div className="text-[10px] text-muted-foreground mt-1">
+          <div className="text-2xs text-muted-foreground mt-1">
             Σ folio AUM × allocation %
           </div>
         </div>
@@ -380,7 +380,7 @@ export function LinkedInvestmentsPicker({
           <div className="text-xl font-bold tabular-nums mt-0.5">
             {formatINR(Math.round(totals.monthly))}/mo
           </div>
-          <div className="text-[10px] text-muted-foreground mt-1">
+          <div className="text-2xs text-muted-foreground mt-1">
             Σ SIP monthly-equivalent × allocation %
           </div>
         </div>
@@ -404,7 +404,7 @@ export function LinkedInvestmentsPicker({
         </button>
       </div>
 
-      <p className="text-[11px] text-muted-foreground leading-relaxed">
+      <p className="text-2xs text-muted-foreground leading-relaxed">
         An investment can be linked to multiple goals — set each row's <strong>%</strong> to control
         how much of its value flows into this particular goal. The same folio can sit at 60 % here and
         40 % under another goal.

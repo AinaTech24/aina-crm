@@ -60,7 +60,7 @@ export default async function RegularizationsPage() {
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <ClipboardCheck className="size-6 text-brand-cyan" /> Attendance Corrections
+            <ClipboardCheck className="size-6 text-muted-foreground" /> Attendance Corrections
           </h1>
           <p className="text-muted-foreground text-sm">
             Regularization requests · missed punches · wrong-status fixes · approval workflow.

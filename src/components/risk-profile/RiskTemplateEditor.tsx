@@ -30,6 +30,7 @@ import {
   X,
 } from "lucide-react";
 import { v4 as uuid } from "uuid";
+import { confirmDialog } from "@/components/ui/ConfirmProvider";
 
 type Option = { value: string; label: string; score: number };
 type Question = { key: string; label: string; helperText?: string; type: "single"; options: Option[] };
@@ -234,7 +235,7 @@ export function RiskTemplateEditor({
   }
 
   async function reset() {
-    if (!confirm("Reset to the SEBI default questionnaire? Your current customisation will be archived as a previous version.")) return;
+    if (!(await confirmDialog({ title: "Reset to the SEBI default questionnaire?", message: "Your current customisation will be archived as a previous version.", confirmLabel: "Reset", tone: "danger" }))) return;
     setSaving(true);
     setError(null);
     try {
@@ -254,7 +255,7 @@ export function RiskTemplateEditor({
       {/* Header / save bar */}
       <div className="card-surface p-4 flex flex-wrap items-end gap-3">
         <div className="flex-1 min-w-[260px]">
-          <label className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Template name</label>
+          <label className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">Template name</label>
           <input
             value={t.name}
             onChange={(e) => setMeta("name", e.target.value)}
@@ -263,7 +264,7 @@ export function RiskTemplateEditor({
           />
         </div>
         <div className="w-40">
-          <label className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Review interval (days)</label>
+          <label className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">Review interval (days)</label>
           <input
             type="number"
             min={30}
@@ -327,7 +328,7 @@ export function RiskTemplateEditor({
 
       {/* Description */}
       <div>
-        <label className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Description (shown on the wizard header)</label>
+        <label className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">Description (shown on the wizard header)</label>
         <textarea
           rows={2}
           value={t.description}
@@ -368,7 +369,7 @@ export function RiskTemplateEditor({
             <div key={q.key + "_" + qi} className="card-surface p-4">
               <div className="flex items-center gap-2 mb-3">
                 <GripVertical className="size-4 text-muted-foreground" />
-                <span className="chip bg-secondary text-[10px]">Q{qi + 1}</span>
+                <span className="chip bg-secondary text-2xs">Q{qi + 1}</span>
                 <input
                   value={q.label}
                   onChange={(e) => updateQuestion(qi, { label: e.target.value })}
@@ -405,7 +406,7 @@ export function RiskTemplateEditor({
               </div>
 
               <div>
-                <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-1.5">
+                <div className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground mb-1.5">
                   Options ({q.options.length})
                 </div>
                 <div className="space-y-1.5">
@@ -434,7 +435,7 @@ export function RiskTemplateEditor({
                       </button>
                     </div>
                   ))}
-                  <button onClick={() => addOption(qi)} disabled={q.options.length >= 10} className="btn-ghost text-[11px]">
+                  <button onClick={() => addOption(qi)} disabled={q.options.length >= 10} className="btn-ghost text-2xs">
                     <Plus className="size-3" /> Add option
                   </button>
                 </div>
@@ -516,7 +517,7 @@ export function RiskTemplateEditor({
           <div className="mt-2 space-y-2">
             {t.bands.map((b, bi) => (
               <div key={bi} className="flex items-start gap-2">
-                <span className="chip text-[10px]" style={{ background: `${b.color ?? "#0ea5e9"}22`, color: b.color ?? "#0e2557" }}>
+                <span className="chip text-2xs" style={{ background: `${b.color ?? "#0ea5e9"}22`, color: b.color ?? "#0e2557" }}>
                   {b.label}
                 </span>
                 <textarea
@@ -536,7 +537,7 @@ export function RiskTemplateEditor({
         <details className="mt-2">
           <summary className="text-xs text-muted-foreground cursor-pointer">Edit indicative asset allocation (shown on the client PDF) →</summary>
           <div className="mt-2 space-y-2">
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-2xs text-muted-foreground">
               Whole percentages, ideally summing to 100. Leave a band empty to let the report use a sensible default for that risk level.
             </p>
             {t.bands.map((b, bi) => {
@@ -544,7 +545,7 @@ export function RiskTemplateEditor({
               const sum = ALLOCATION_FIELDS.reduce((s2, f) => s2 + (Number(alloc[f.key]) || 0), 0);
               return (
                 <div key={bi} className="card-surface p-2 flex items-center gap-2">
-                  <span className="chip text-[10px] shrink-0" style={{ background: `${b.color ?? "#0ea5e9"}22`, color: b.color ?? "#0e2557" }}>
+                  <span className="chip text-2xs shrink-0" style={{ background: `${b.color ?? "#0ea5e9"}22`, color: b.color ?? "#0e2557" }}>
                     {b.label}
                   </span>
                   <div className="flex-1 grid grid-cols-5 gap-2">
@@ -568,7 +569,7 @@ export function RiskTemplateEditor({
                       </Field>
                     ))}
                   </div>
-                  <span className={`text-[11px] tabular-nums w-14 text-right ${sum === 0 || sum === 100 ? "text-muted-foreground" : "text-amber-600"}`}>
+                  <span className={`text-2xs tabular-nums w-14 text-right ${sum === 0 || sum === 100 ? "text-muted-foreground" : "text-amber-600"}`}>
                     {sum === 0 ? "auto" : `${sum}%`}
                   </span>
                 </div>
@@ -579,7 +580,7 @@ export function RiskTemplateEditor({
 
         {/* Visual coverage bar */}
         <div className="mt-3">
-          <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-1">Coverage map</div>
+          <div className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground mb-1">Coverage map</div>
           <div className="flex h-7 rounded-md overflow-hidden border">
             {[...t.bands]
               .sort((a, b) => a.minScore - b.minScore)
@@ -589,7 +590,7 @@ export function RiskTemplateEditor({
                 return (
                   <div
                     key={i}
-                    className="flex items-center justify-center text-[10px] font-semibold text-white"
+                    className="flex items-center justify-center text-2xs font-semibold text-white"
                     style={{ background: b.color ?? "#0ea5e9", width: `${pct}%` }}
                     title={`${b.label} · ${b.minScore}–${b.maxScore}`}
                   >
@@ -598,7 +599,7 @@ export function RiskTemplateEditor({
                 );
               })}
           </div>
-          <div className="flex justify-between text-[10px] text-muted-foreground tabular-nums mt-1">
+          <div className="flex justify-between text-2xs text-muted-foreground tabular-nums mt-1">
             <span>{range.min}</span>
             <span>{range.max}</span>
           </div>
@@ -611,7 +612,7 @@ export function RiskTemplateEditor({
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <div className="text-[9px] uppercase tracking-wider font-semibold text-muted-foreground mb-0.5">{label}</div>
+      <div className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground mb-0.5">{label}</div>
       {children}
     </label>
   );

@@ -90,7 +90,7 @@ export default function ComposePage() {
 
       <div>
         <h1 className="page-title">
-          <Mail className="size-6 text-brand-cyan" /> Compose email
+          <Mail className="size-6 text-muted-foreground" /> Compose email
         </h1>
       </div>
 
@@ -133,7 +133,7 @@ export default function ComposePage() {
             />
           )}
           {mode === "email" && (
-            <p className="text-[11px] text-muted-foreground mt-1">
+            <p className="text-2xs text-muted-foreground mt-1">
               Raw addresses skip the consent check (no client record) — use a client where possible.
             </p>
           )}
@@ -158,7 +158,7 @@ export default function ComposePage() {
             placeholder={"Hi {{name}},\n\n…\n\nThanks,"}
             className="input-base font-sans"
           />
-          <p className="text-[11px] text-muted-foreground mt-1">
+          <p className="text-2xs text-muted-foreground mt-1">
             <ShieldCheck className="size-3 inline mr-0.5" />
             The MF risk disclaimer and your ARN signature are appended automatically. Use{" "}
             <code className="font-mono">{"{{name}}"}</code> for the client's name.

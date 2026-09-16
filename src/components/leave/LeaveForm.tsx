@@ -139,7 +139,7 @@ export function LeaveForm({
               <option key={e.id} value={e.id}>{e.name}{e.id === currentUserId ? " (me)" : ""}</option>
             ))}
           </ThemeSelect>
-          {!isManager && <p className="text-[11px] text-muted-foreground mt-1">You can only file leave for yourself.</p>}
+          {!isManager && <p className="text-2xs text-muted-foreground mt-1">You can only file leave for yourself.</p>}
         </Field>
         <Field label="Leave type">
           <ThemeSelect value={leaveType} onChange={(val) => setLeaveType(val)}>

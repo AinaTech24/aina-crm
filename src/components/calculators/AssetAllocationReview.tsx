@@ -70,7 +70,7 @@ export function AssetAllocationReview() {
               <th className="px-3 py-2 font-medium text-right" colSpan={2}>Existing</th>
               <th className="px-3 py-2 font-medium text-right" colSpan={2}>Suggested</th>
             </tr>
-            <tr className="text-left text-[10px]">
+            <tr className="text-left text-2xs">
               <th className="px-3 py-1"></th>
               <th className="px-3 py-1 text-right">Amount ₹</th>
               <th className="px-3 py-1 text-right">Return %</th>
@@ -83,7 +83,7 @@ export function AssetAllocationReview() {
               <tr key={c.key} className="border-t border-border/50">
                 <td className="px-3 py-1.5 font-medium whitespace-nowrap">
                   {c.label}
-                  {c.kind === "monthly" && <span className="ml-1 text-[9px] text-muted-foreground">/mo</span>}
+                  {c.kind === "monthly" && <span className="ml-1 text-2xs text-muted-foreground">/mo</span>}
                 </td>
                 <td className="px-2 py-1"><GridNum value={existing[i].amount} onChange={(v) => setRow("existing", i, { amount: v })} step={50000} /></td>
                 <td className="px-2 py-1"><GridNum value={existing[i].returnPct} onChange={(v) => setRow("existing", i, { returnPct: v })} step={0.5} /></td>
@@ -129,11 +129,11 @@ export function AssetAllocationReview() {
         />
         <div className="grid md:grid-cols-2 gap-4 mt-1">
           <div>
-            <div className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium mb-1">Existing mix</div>
+            <div className="text-2xs uppercase tracking-wide text-muted-foreground font-medium mb-1">Existing mix</div>
             <BarsChart bars={bucketBars(e)} fmtV={(v) => `${v.toFixed(0)}%`} accent="#94a3b8" />
           </div>
           <div>
-            <div className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium mb-1">Suggested mix</div>
+            <div className="text-2xs uppercase tracking-wide text-muted-foreground font-medium mb-1">Suggested mix</div>
             <BarsChart bars={bucketBars(s)} fmtV={(v) => `${v.toFixed(0)}%`} accent="#B71A20" />
           </div>
         </div>
@@ -159,7 +159,7 @@ export function AssetAllocationReview() {
         <PortfolioTable p={s} yA={yA} yB={yB} />
       </Section>
 
-      <p className="text-[10px] text-muted-foreground border-t pt-3">
+      <p className="text-2xs text-muted-foreground border-t pt-3">
         * Illustration only. Each sleeve is assumed to grow at its stated annual return; the SIP sleeve compounds monthly
         (begin-of-month). The gross corpus and allocation % exclude the monthly SIP. Returns are not guaranteed and vary
         with markets. Not investment advice — mutual fund investments are subject to market risks.
@@ -214,7 +214,7 @@ function PortfolioTable({ p, yA, yB }: { p: PortfolioResult; yA: number; yB: num
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium block mb-1">{label}</span>
+      <span className="text-2xs uppercase tracking-wide text-muted-foreground font-medium block mb-1">{label}</span>
       {children}
     </label>
   );

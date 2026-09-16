@@ -92,7 +92,7 @@ export function TenantDataScope({
         ))}
       </div>
 
-      <dl className="mt-4 text-[11px] border rounded-md divide-y bg-secondary/10">
+      <dl className="mt-4 text-2xs border rounded-md divide-y bg-secondary/10">
         {[
           ["Owner, Compliance, Back office, Ops", "Whole firm's book"],
           ["Branch head", "Their branch only"],
@@ -105,7 +105,7 @@ export function TenantDataScope({
         ))}
       </dl>
 
-      <p className="text-[11px] text-muted-foreground mt-3">
+      <p className="text-2xs text-muted-foreground mt-3">
         Applies to the client list, the Excel export and the mobile/JSON API.
         Lead visibility is always scoped and is not affected by this switch.
       </p>

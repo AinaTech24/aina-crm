@@ -142,7 +142,7 @@ export default async function ResponsesPage({
 function Stat({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone?: "good" }) {
   return (
     <div className="card-surface p-4">
-      <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className="text-2xs uppercase tracking-wide text-muted-foreground">{label}</div>
       <div className="mt-1.5 flex items-baseline gap-2">
         <span className={`text-xl font-semibold tabular-nums ${tone === "good" ? "text-emerald-700" : ""}`}>{value}</span>
         {sub && <span className="text-xs text-muted-foreground tabular-nums">{sub}</span>}

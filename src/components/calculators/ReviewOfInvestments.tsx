@@ -122,7 +122,7 @@ export function ReviewOfInvestments() {
 
       {/* Period visibility toggles */}
       <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border/70 p-3 bg-secondary/20 print:hidden">
-        <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium">Show periods:</span>
+        <span className="text-2xs uppercase tracking-wide text-muted-foreground font-medium">Show periods:</span>
         {PERIODS.map((p) => (
           <label key={p.key} className="flex items-center gap-1.5 cursor-pointer select-none text-xs">
             <input
@@ -216,7 +216,7 @@ export function ReviewOfInvestments() {
 
       <button type="button" onClick={addRow} className="btn-secondary text-xs print:hidden">+ Add more</button>
 
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-2xs text-muted-foreground">
         Pick a scheme to <strong>auto-fill live trailing returns from MFAPI</strong> (point-to-point; periods ≥ 1 year are annualised),
         or type any name and enter values manually. *Mutual fund investments are subject to market risk; read all scheme-related
         documents carefully. Past performance may or may not be sustained.
@@ -235,7 +235,7 @@ function signedNum(raw: string): number {
 
 function Th({ children, center }: { children: React.ReactNode; center?: boolean }) {
   return (
-    <th className={`py-1.5 px-2 text-[11px] uppercase tracking-wide text-muted-foreground font-semibold border-b border-border ${center ? "text-center" : ""}`}>
+    <th className={`py-1.5 px-2 text-2xs uppercase tracking-wide text-muted-foreground font-semibold border-b border-border ${center ? "text-center" : ""}`}>
       {children}
     </th>
   );
@@ -257,7 +257,7 @@ function SelectOrCustom({
           placeholder="Custom…"
           className="input-base text-sm w-28"
         />
-        <button type="button" onClick={() => { setCustom(false); onChange(options[0]); }} className="text-[10px] text-muted-foreground hover:text-foreground print:hidden" title="Back to list">↩</button>
+        <button type="button" onClick={() => { setCustom(false); onChange(options[0]); }} className="text-2xs text-muted-foreground hover:text-foreground print:hidden" title="Back to list">↩</button>
       </div>
     );
   }

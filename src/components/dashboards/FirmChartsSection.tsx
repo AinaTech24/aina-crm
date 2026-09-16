@@ -7,7 +7,7 @@
  */
 
 import Link from "next/link";
-import { AlertTriangle, Building2, LineChart, PieChart, Repeat, Users } from "lucide-react";
+import { Building2, LineChart, PieChart, Repeat, Users } from "lucide-react";
 import { withTenant } from "@/db/client";
 import type { SessionUser } from "@/lib/auth/session";
 import {
@@ -48,7 +48,7 @@ function Panel({
           <Icon className="size-4 text-brand-cyan" /> {title}
         </h3>
         {href && (
-          <Link href={href} className="text-[11px] text-muted-foreground hover:text-brand-cyan hover:underline">
+          <Link href={href} className="text-2xs text-muted-foreground hover:text-brand-cyan hover:underline">
             View →
           </Link>
         )}
@@ -74,7 +74,6 @@ export async function FirmChartsSection({ session }: { session: SessionUser }) {
     { userId: session.userId, branchId: session.branchId, roles: session.roles }
   );
 
-  const worst = data.compliance.filter((r) => r.missing > 0).length;
 
   return (
     <div className="space-y-4">
@@ -96,60 +95,18 @@ export async function FirmChartsSection({ session }: { session: SessionUser }) {
                 className={`rounded-lg border p-3 transition hover:shadow-sm ${TONE[c.tone] ?? TONE.cyan}`}
               >
                 <div className="text-xl font-bold tabular-nums leading-none">{c.count.toLocaleString("en-IN")}</div>
-                <div className="mt-1 text-[11px] font-medium opacity-80">{c.label}</div>
+                <div className="mt-1 text-2xs font-medium opacity-80">{c.label}</div>
               </Link>
             ))}
           </div>
         </Panel>
 
-        <Panel title="Compliance gaps" icon={AlertTriangle} href="/dashboard/compliance">
-          {data.compliance[0]?.total === 0 ? (
-            <div className="h-56 grid place-items-center text-xs text-muted-foreground">No clients yet.</div>
-          ) : (
-            <>
-              <p className="text-[11px] text-muted-foreground -mt-1 mb-2">
-                Clients still missing each field — {worst} of {data.compliance.length} have a gap.
-              </p>
-              <div className="max-h-[19rem] overflow-y-auto pr-1">
-                <table className="w-full text-xs">
-                  <thead className="text-[10px] uppercase tracking-wider text-muted-foreground sticky top-0 bg-card">
-                    <tr>
-                      <th className="text-left font-medium py-1.5">Field</th>
-                      <th className="text-right font-medium py-1.5 w-20">Missing</th>
-                      <th className="text-right font-medium py-1.5 w-14">of</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.compliance.map((r) => {
-                      const pct = r.total > 0 ? (r.missing / r.total) * 100 : 0;
-                      return (
-                        <tr key={r.label} className="border-t border-border/60">
-                          <td className="py-1.5">{r.label}</td>
-                          <td className="py-1.5 text-right">
-                            <span
-                              className={`chip text-[10px] tabular-nums ${
-                                r.missing === 0
-                                  ? "bg-emerald-50 text-emerald-700"
-                                  : pct >= 50
-                                    ? "bg-rose-50 text-rose-700"
-                                    : "bg-amber-50 text-amber-700"
-                              }`}
-                            >
-                              {r.missing.toLocaleString("en-IN")}
-                            </span>
-                          </td>
-                          <td className="py-1.5 text-right tabular-nums text-muted-foreground">
-                            {r.total.toLocaleString("en-IN")}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </>
-          )}
-        </Panel>
+        {/* The "Compliance gaps" panel that stood here listed the same eleven
+            client-master gaps the "Client master — data gaps" tile below already
+            shows (identical numbers, sourced from the same columns) — but as a
+            read-only table, while that tile groups them by compliance vs
+            engagement impact and lets you click a chip to inspect or bulk-remind.
+            Two views of one dataset on one screen, only one of them actionable. */}
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">

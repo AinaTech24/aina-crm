@@ -26,7 +26,7 @@ function ExpiryCell({ value, holder }: { value: string | Date | null; holder?: s
     <span className={`text-xs inline-flex items-center gap-1 ${tone}`}>
       {dl != null && dl < 30 && <AlertTriangle className="size-3" />}
       {formatDate(value)}
-      {dl != null && <span className="text-[10px] text-muted-foreground">({dl < 0 ? `${-dl}d ago` : `${dl}d`})</span>}
+      {dl != null && <span className="text-2xs text-muted-foreground">({dl < 0 ? `${-dl}d ago` : `${dl}d`})</span>}
     </span>
   );
 }
@@ -86,15 +86,15 @@ export default async function TeamLicensingPage({ searchParams }: { searchParams
       </Link>
       <div>
         <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-          <ShieldCheck className="size-6 text-brand-cyan" /> Team licensing &amp; compliance
+          <ShieldCheck className="size-6 text-muted-foreground" /> Team licensing &amp; compliance
         </h1>
         <p className="text-muted-foreground text-sm">NISM · ARN · EUIN · DSC expiry across the team. Renew certificates from each employee&apos;s profile.</p>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-        <div className="kpi-card"><div className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">Team members</div><div className="text-2xl font-bold mt-1">{enriched.length}</div></div>
-        <div className="kpi-card"><div className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">Expiring (90d)</div><div className={`text-2xl font-bold mt-1 ${counts.expiring > 0 ? "text-amber-600" : ""}`}>{counts.expiring}</div></div>
-        <div className="kpi-card"><div className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">Expired</div><div className={`text-2xl font-bold mt-1 ${counts.expired > 0 ? "text-rose-600" : ""}`}>{counts.expired}</div></div>
+        <div className="kpi-card"><div className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">Team members</div><div className="text-2xl font-bold mt-1">{enriched.length}</div></div>
+        <div className="kpi-card"><div className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">Expiring (90d)</div><div className={`text-2xl font-bold mt-1 ${counts.expiring > 0 ? "text-amber-600" : ""}`}>{counts.expiring}</div></div>
+        <div className="kpi-card"><div className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">Expired</div><div className={`text-2xl font-bold mt-1 ${counts.expired > 0 ? "text-rose-600" : ""}`}>{counts.expired}</div></div>
       </div>
 
       <div className="flex gap-2">
@@ -132,13 +132,13 @@ export default async function TeamLicensingPage({ searchParams }: { searchParams
                   <tr key={e.id} className="border-b last:border-0 hover:bg-secondary/40">
                     <td className="px-4 py-3">
                       <Link href={`/dashboard/employees/${e.id}`} className="font-medium hover:underline">{e.name}</Link>
-                      <div className="text-[11px] text-muted-foreground capitalize">{e.department?.replace(/_/g, " ") ?? "—"}</div>
+                      <div className="text-2xs text-muted-foreground capitalize">{e.department?.replace(/_/g, " ") ?? "—"}</div>
                     </td>
                     <td className="py-3"><ExpiryCell value={e.nismExpiryAt} /></td>
                     <td className="py-3"><ExpiryCell value={e.arnExpiryAt} /></td>
                     <td className="py-3"><ExpiryCell value={e.euinExpiryAt} /></td>
                     <td className="py-3 pr-4">
-                      {e.dscSubmitted ? <ExpiryCell value={e.dscExpiryAt} /> : <span className="text-[11px] text-muted-foreground">not submitted</span>}
+                      {e.dscSubmitted ? <ExpiryCell value={e.dscExpiryAt} /> : <span className="text-2xs text-muted-foreground">not submitted</span>}
                     </td>
                   </tr>
                 ))}

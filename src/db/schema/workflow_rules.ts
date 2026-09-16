@@ -257,6 +257,8 @@ export const workflowRuleScheduledJobs = pgTable(
       .default("pending"),
 
     attempts: integer("attempts").notNull().default(0),
+    claimToken: uuid("claim_token"),
+    claimUntil: timestamp("claim_until", { withTimezone: true }),
     lastError: text("last_error"),
     completedAt: timestamp("completed_at", { withTimezone: true }),
     cancelReason: text("cancel_reason"),

@@ -26,6 +26,7 @@ import { firmFolderName } from "@/lib/storage/firm-folder";
 import { transitionTo } from "@/lib/blueprints/engine";
 import { mapKycFieldsToInvestorUpdate } from "@/lib/onboarding/kyc-fields";
 import { enforce } from "@/lib/rate-limit";
+import { claimDocumentUpload } from "@/lib/storage/document-upload-grants";
 
 export const dynamic = "force-dynamic";
 
@@ -176,6 +177,7 @@ export async function POST(req: NextRequest) {
             await putObject(key, item.buf, item.mime);
             size = item.buf.length;
           } else {
+            await claimDocumentUpload(tx, tk, item);
             // Presigned path: the object is already in S3 — fetch it back and
             // verify the bytes, deleting + rejecting anything that isn't a real
             // PDF/JPG/PNG (a forged key, or a bait-and-switch upload).
@@ -194,8 +196,11 @@ export async function POST(req: NextRequest) {
               await deleteObject(item.key).catch(() => {});
               throw new Error(`${item.label}: file is not a valid PDF, JPG or PNG`);
             }
-            key = item.key;
-            size = item.size || bytes.length;
+            // Seal the verified bytes under a fresh server-only key. The upload
+            // URL can still be used until expiry, but cannot overwrite this document.
+            key = vaultKey(tk.tenantId!, "kyc", item.name, { firm, uploader: "client-upload", client: clientName, docType: "kyc" });
+            await putObject(key, bytes, item.mime);
+            size = bytes.length;
           }
 
           const docId = uuid();

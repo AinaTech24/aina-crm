@@ -6,7 +6,8 @@
  */
 
 import React, { useState } from "react";
-import { View, Image, Pressable, StyleSheet } from "react-native";
+import { View, Pressable, StyleSheet } from "react-native";
+import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { palette, spacing, radius, fontWeight } from "../theme/tokens";
@@ -45,7 +46,7 @@ export function HeaderProfileButton() {
 
   return (
     <>
-      <Pressable onPress={() => setOpen(true)} hitSlop={8} style={styles.btn}>
+      <Pressable onPress={() => setOpen(true)} hitSlop={8} style={styles.btn} accessibilityRole="button" accessibilityLabel="Profile menu">
         {photo ? (
           <Image source={{ uri: photo }} style={styles.avatar} />
         ) : (

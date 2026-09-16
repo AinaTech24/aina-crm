@@ -87,13 +87,13 @@ export function ModuleControlsForm({ initial }: { initial: Mod[] }) {
       <div className="space-y-3">
         {groups.map((g) => (
           <div key={g.name} className="border rounded-lg bg-card overflow-hidden">
-            <div className="px-4 py-1.5 bg-muted/40 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{g.name}</div>
+            <div className="px-4 py-1.5 bg-muted/40 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">{g.name}</div>
             <div className="divide-y">
               {g.items.map((m) => (
                 <div key={m.key} className="flex flex-wrap items-center gap-2 px-4 py-2">
                   <div className="min-w-0 flex-1">
                     <div className="text-sm font-medium truncate">{m.label}</div>
-                    <div className="text-[11px] text-muted-foreground font-mono truncate">{m.key}</div>
+                    <div className="text-2xs text-muted-foreground font-mono truncate">{m.key}</div>
                   </div>
                   <div className="flex items-center gap-1 rounded-lg bg-muted/60 p-0.5 shrink-0">
                     {STATES.map((st) => (

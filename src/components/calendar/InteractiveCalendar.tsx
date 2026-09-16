@@ -57,16 +57,16 @@ type Item = {
 };
 
 const KIND_META: Record<Item["kind"], { color: string; icon: any; label: string }> = {
-  task: { color: "bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100/70 dark:bg-amber-950/50 dark:text-amber-200 dark:border-amber-900 dark:hover:bg-amber-950/70", icon: ListChecks, label: "Task" },
-  follow_up: { color: "bg-blue-50 text-blue-800 border-blue-200 hover:bg-blue-100/70 dark:bg-blue-950/50 dark:text-blue-200 dark:border-blue-900 dark:hover:bg-blue-950/70", icon: Sparkles, label: "Follow-up" },
+  task: { color: "bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100/70", icon: ListChecks, label: "Task" },
+  follow_up: { color: "bg-blue-50 text-blue-800 border-blue-200 hover:bg-blue-100/70", icon: Sparkles, label: "Follow-up" },
   // Actually-scheduled meetings (Meetings module) — distinct from "review"
   // below, which is only an auto-computed "due for review" reminder date and
   // has no fixed time.
-  meeting: { color: "bg-cyan-50 text-cyan-800 border-cyan-200 hover:bg-cyan-100/70 dark:bg-cyan-950/50 dark:text-cyan-200 dark:border-cyan-900 dark:hover:bg-cyan-950/70", icon: CalendarClock, label: "Meeting" },
-  review: { color: "bg-violet-50 text-violet-800 border-violet-200 hover:bg-violet-100/70 dark:bg-violet-950/50 dark:text-violet-200 dark:border-violet-900 dark:hover:bg-violet-950/70", icon: Users, label: "Review due" },
-  sip: { color: "bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100/70 dark:bg-emerald-950/50 dark:text-emerald-200 dark:border-emerald-900 dark:hover:bg-emerald-950/70", icon: Repeat, label: "SIP" },
-  campaign: { color: "bg-pink-50 text-pink-800 border-pink-200 hover:bg-pink-100/70 dark:bg-pink-950/50 dark:text-pink-200 dark:border-pink-900 dark:hover:bg-pink-950/70", icon: Megaphone, label: "Campaign" },
-  compliance: { color: "bg-rose-50 text-rose-800 border-rose-200 hover:bg-rose-100/70 dark:bg-rose-950/50 dark:text-rose-200 dark:border-rose-900 dark:hover:bg-rose-950/70", icon: ShieldCheck, label: "Compliance" },
+  meeting: { color: "bg-cyan-50 text-cyan-800 border-cyan-200 hover:bg-cyan-100/70", icon: CalendarClock, label: "Meeting" },
+  review: { color: "bg-violet-50 text-violet-800 border-violet-200 hover:bg-violet-100/70", icon: Users, label: "Review due" },
+  sip: { color: "bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100/70", icon: Repeat, label: "SIP" },
+  campaign: { color: "bg-pink-50 text-pink-800 border-pink-200 hover:bg-pink-100/70", icon: Megaphone, label: "Campaign" },
+  compliance: { color: "bg-rose-50 text-rose-800 border-rose-200 hover:bg-rose-100/70", icon: ShieldCheck, label: "Compliance" },
 };
 
 interface InteractiveCalendarProps {
@@ -303,7 +303,7 @@ export function InteractiveCalendar({
                           {cell.date!.getDate()}
                         </span>
                         {cell.items.length > 0 && (
-                          <span className="text-[10px] font-bold text-slate-400 font-mono">
+                          <span className="text-2xs font-bold text-slate-400 font-mono">
                             {cell.items.length}
                           </span>
                         )}
@@ -314,7 +314,7 @@ export function InteractiveCalendar({
                           return (
                             <div
                               key={idx}
-                              className={`text-[10px] truncate rounded px-1.5 py-0.5 border ${meta.color} font-medium flex items-center gap-1`}
+                              className={`text-2xs truncate rounded px-1.5 py-0.5 border ${meta.color} font-medium flex items-center gap-1`}
                               title={`${meta.label}: ${it.title}`}
                             >
                               {it.subjectId && (
@@ -325,7 +325,7 @@ export function InteractiveCalendar({
                           );
                         })}
                         {cell.items.length > 3 && (
-                          <div className="text-[9px] text-brand-cyan font-bold px-1 mt-0.5">
+                          <div className="text-2xs text-brand-cyan font-bold px-1 mt-0.5">
                             + {cell.items.length - 3} more
                           </div>
                         )}
@@ -377,7 +377,7 @@ export function InteractiveCalendar({
                   }`}
                 >
                   {dayItems.length === 0 ? (
-                    <div className="text-[10px] text-slate-300 italic text-center mt-12 select-none">
+                    <div className="text-2xs text-slate-300 italic text-center mt-12 select-none">
                       No events
                     </div>
                   ) : (
@@ -386,7 +386,7 @@ export function InteractiveCalendar({
                       return (
                         <div
                           key={idx}
-                          className={`text-[10px] rounded p-1.5 border leading-tight ${meta.color} font-medium flex flex-col gap-0.5 shadow-sm`}
+                          className={`text-2xs rounded p-1.5 border leading-tight ${meta.color} font-medium flex flex-col gap-0.5 shadow-sm`}
                           title={`${meta.label}: ${it.title}`}
                         >
                           <span className="font-semibold flex items-center gap-1">
@@ -395,7 +395,7 @@ export function InteractiveCalendar({
                             )}
                             <span className="truncate">{it.title}</span>
                           </span>
-                          {it.meta && <span className="opacity-75 text-[9px] font-normal font-mono truncate">{it.meta}</span>}
+                          {it.meta && <span className="opacity-75 text-2xs font-normal font-mono truncate">{it.meta}</span>}
                         </div>
                       );
                     })
@@ -463,7 +463,7 @@ export function InteractiveCalendar({
                     >
                       <div className="flex items-center gap-1.5 mb-1.5">
                         <Icon className="size-3.5 flex-shrink-0" />
-                        <span className="text-[10px] uppercase font-extrabold tracking-wider opacity-75">
+                        <span className="text-2xs uppercase font-extrabold tracking-wider opacity-75">
                           {meta.label}
                         </span>
                       </div>

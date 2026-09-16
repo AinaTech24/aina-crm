@@ -121,7 +121,8 @@ export default async function DuplicatesPage({ searchParams }: { searchParams: P
   return (
     <div className="space-y-6 max-w-4xl">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2"><Copy className="size-6 text-brand-cyan" /> Find Duplicate Records</h1>
+        <h1 className="page-title"><Copy className="size-6 text-muted-foreground" /> Find Duplicate Records</h1>
+        <p className="page-subtitle mt-1">Client records that look like the same person — review them and merge.</p>
       </div>
 
       {/* Module toggle */}
@@ -152,7 +153,7 @@ export default async function DuplicatesPage({ searchParams }: { searchParams: P
               ? cliClusters.map((c) => <DuplicateGroup key={`${c.kind}-${c.gkey}`} kind={c.kind} gkey={c.gkey} members={c.members.map((m) => ({ ...m, aum: Number(m.aum) }))} />)
               : famClusters.map((c) => <FamilyDuplicateGroup key={c.gkey} gkey={c.gkey} members={c.members.map((m) => ({ ...m, member_count: Number(m.member_count), family_aum: Number(m.family_aum) }))} />)}
           </div>
-          <p className="text-[11px] text-muted-foreground italic">Merging is irreversible and fully audit-logged. {mod === "family" ? "The duplicate grouping is removed once its members move." : "The duplicate client is retired (status “inactive”, marked merged)."}</p>
+          <p className="text-2xs text-muted-foreground italic">Merging is irreversible and fully audit-logged. {mod === "family" ? "The duplicate grouping is removed once its members move." : "The duplicate client is retired (status “inactive”, marked merged)."}</p>
         </>
       )}
     </div>

@@ -7,6 +7,7 @@
 import React, { useState } from "react";
 import { View, Pressable, Text, StyleSheet } from "react-native";
 import { Tabs, useRouter } from "expo-router";
+import { useTranslation } from "react-i18next";
 import { DrawerToggleButton } from "@react-navigation/drawer";
 import { Feather } from "@expo/vector-icons";
 import { palette, spacing, fontWeight, TOUCH_MIN } from "../../../../src/theme/tokens";
@@ -69,6 +70,7 @@ const styles = StyleSheet.create({
 
 export default function TabsLayout() {
   const { brand } = useBrand();
+  const { t } = useTranslation();
   return (
     <Tabs
       screenOptions={{
@@ -87,15 +89,15 @@ export default function TabsLayout() {
     >
       <Tabs.Screen
         name="home"
-        options={{ title: "Home", tabBarIcon: ({ color, size }) => <Feather name="home" size={size} color={color} /> }}
+        options={{ title: t("tabs.home"), tabBarIcon: ({ color, size }) => <Feather name="home" size={size} color={color} /> }}
       />
       <Tabs.Screen
         name="tasks"
-        options={{ title: "Tasks", tabBarIcon: ({ color, size }) => <Feather name="check-square" size={size} color={color} /> }}
+        options={{ title: t("tabs.tasks"), tabBarIcon: ({ color, size }) => <Feather name="check-square" size={size} color={color} /> }}
       />
       <Tabs.Screen
         name="settings"
-        options={{ title: "Settings", tabBarIcon: ({ color, size }) => <Feather name="settings" size={size} color={color} /> }}
+        options={{ title: t("tabs.settings"), tabBarIcon: ({ color, size }) => <Feather name="settings" size={size} color={color} /> }}
       />
     </Tabs>
   );

@@ -152,7 +152,7 @@ export function CustomChartBuilder({
                       key={c.key}
                       type="button"
                       onClick={() => setChartType(c.key)}
-                      className={`flex flex-col items-center gap-1 rounded-lg border py-2 text-[11px] font-medium transition ${chartType === c.key ? "border-brand-cyan ring-1 ring-brand-cyan bg-brand-cyan-light/40 text-brand-cyan-deep" : "border-border hover:bg-secondary"}`}
+                      className={`flex flex-col items-center gap-1 rounded-lg border py-2 text-2xs font-medium transition ${chartType === c.key ? "border-brand-cyan ring-1 ring-brand-cyan bg-brand-cyan-light/40 text-brand-cyan-deep" : "border-border hover:bg-secondary"}`}
                     >
                       <Icon className="size-4" /> {c.label}
                     </button>
@@ -204,7 +204,7 @@ export function CustomChartBuilder({
                   <button
                     type="button"
                     onClick={() => setAst(EMPTY_AST)}
-                    className="text-[11px] text-muted-foreground hover:text-foreground underline"
+                    className="text-2xs text-muted-foreground hover:text-foreground underline"
                   >
                     Clear
                   </button>
@@ -213,7 +213,7 @@ export function CustomChartBuilder({
               <div className="rounded-lg border border-border bg-secondary/20 p-2">
                 <FilterBuilder subject={subject} value={ast} onChange={setAst} />
               </div>
-              <p className="text-[11px] text-muted-foreground mt-1">
+              <p className="text-2xs text-muted-foreground mt-1">
                 Limit this component to records that match — e.g. only “Status is Won”, or “AUM ≥ 10,00,000”.
               </p>
             </div>
@@ -221,7 +221,7 @@ export function CustomChartBuilder({
 
           {/* ── Live preview ── */}
           <div className="space-y-2">
-            <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Live preview</div>
+            <div className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">Live preview</div>
             <div className="border rounded-lg bg-card p-3 h-72">
               {valid ? (
                 <WidgetView widgetKey="custom_chart" config={config} titleOverride={title || "Preview"} />
@@ -231,7 +231,7 @@ export function CustomChartBuilder({
                 </div>
               )}
             </div>
-            <p className="text-[11px] text-muted-foreground">Preview uses your live data, scoped to this firm.</p>
+            <p className="text-2xs text-muted-foreground">Preview uses your live data, scoped to this firm.</p>
           </div>
         </div>
 

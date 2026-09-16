@@ -91,22 +91,22 @@ export function TransactionLedger({ transactions, total }: { transactions: Tx[];
                       {t.orderDate ? formatDate(t.orderDate) : "—"}
                     </td>
                     <td className="py-2.5">
-                      <span className={`text-[11px] px-1.5 py-0.5 rounded border ${TYPE_TONE[t.type] ?? "bg-muted"}`}>
+                      <span className={`text-2xs px-1.5 py-0.5 rounded border ${TYPE_TONE[t.type] ?? "bg-muted"}`}>
                         {TYPE_LABEL[t.type] ?? t.type}
                       </span>
                     </td>
                     <td className="py-2.5">
                       <div className="text-sm">{t.schemeName ?? "—"}</div>
-                      {t.amcName && <div className="text-[11px] text-muted-foreground">{t.amcName}</div>}
+                      {t.amcName && <div className="text-2xs text-muted-foreground">{t.amcName}</div>}
                       {(t.status === "rejected" || t.status === "failed") && t.reasonDescription && (
-                        <div className="text-[11px] text-rose-600 mt-0.5">⚠ {t.reasonDescription}</div>
+                        <div className="text-2xs text-rose-600 mt-0.5">⚠ {t.reasonDescription}</div>
                       )}
                     </td>
                     <td className={`py-2.5 text-right tabular-nums font-medium ${isOut ? "text-rose-600" : "text-emerald-700"}`}>
                       {amt > 0 ? `${isOut ? "−" : "+"}${formatINR(amt)}` : "—"}
                     </td>
                     <td className="py-2.5 pl-4">
-                      <span className={`text-[11px] px-1.5 py-0.5 rounded-full capitalize ${statusTone(t.status)}`}>
+                      <span className={`text-2xs px-1.5 py-0.5 rounded-full capitalize ${statusTone(t.status)}`}>
                         {t.status}
                       </span>
                     </td>

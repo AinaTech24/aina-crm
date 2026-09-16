@@ -74,14 +74,14 @@ export function DebtFundBenefitCalculator() {
       </div>
 
       {!r.valid ? (
-        <div className="text-[11px] text-rose-700 bg-rose-50 border border-rose-200 rounded-md px-3 py-2">Enter valid purchase and redemption dates.</div>
+        <div className="text-2xs text-rose-700 bg-rose-50 border border-rose-200 rounded-md px-3 py-2">Enter valid purchase and redemption dates.</div>
       ) : (
         <>
           {/* Two scenarios */}
           <div className="grid md:grid-cols-2 gap-4">
             {/* Sell today */}
             <section className="border border-amber-200 bg-amber-50/40 rounded-lg p-4 space-y-2">
-              <div className="text-[11px] uppercase tracking-wider font-semibold text-amber-700">If redeemed today · {fmtDate(redemptionDate)}</div>
+              <div className="text-2xs uppercase tracking-wider font-semibold text-amber-700">If redeemed today · {fmtDate(redemptionDate)}</div>
               <Row k="Investment amount" v={inr(investmentAmount)} />
               <Row k="Current market value" v={inr(currentMarketValue)} />
               <Row k="Taxable short-term gain" v={inr(r.shortTermGain)} />
@@ -92,7 +92,7 @@ export function DebtFundBenefitCalculator() {
 
             {/* Hold to LTCG */}
             <section className="border border-emerald-200 bg-emerald-50/40 rounded-lg p-4 space-y-2">
-              <div className="text-[11px] uppercase tracking-wider font-semibold text-emerald-700">
+              <div className="text-2xs uppercase tracking-wider font-semibold text-emerald-700">
                 If held to LTCG · {fmtDate(r.qualifyDate)} (after {r.remainingDays} days)
               </div>
               <Row k="Expected redemption amount" v={inr(r.expectedRedemptionAmount)} />
@@ -120,7 +120,7 @@ export function DebtFundBenefitCalculator() {
         </>
       )}
 
-      <p className="text-[10px] text-muted-foreground border-t pt-3">
+      <p className="text-2xs text-muted-foreground border-t pt-3">
         * Illustration only. Models the indexation regime; indexation on debt funds was withdrawn for units bought on/after
         1 Apr 2023 (gains taxed at slab regardless of period). Verify the applicable tax rules for the specific units. Not tax
         or investment advice.
@@ -134,7 +134,7 @@ export function DebtFundBenefitCalculator() {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium block mb-1">{label}</span>
+      <span className="text-2xs uppercase tracking-wide text-muted-foreground font-medium block mb-1">{label}</span>
       {children}
     </label>
   );
@@ -180,7 +180,7 @@ function Row({ k, v, strong }: { k: string; v: string; strong?: boolean }) {
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className="border border-slate-200 rounded-md p-3">
-      <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">{label}</div>
+      <div className="text-2xs uppercase tracking-wide text-muted-foreground font-medium">{label}</div>
       <div className="text-sm font-semibold mt-0.5">{value}</div>
     </div>
   );

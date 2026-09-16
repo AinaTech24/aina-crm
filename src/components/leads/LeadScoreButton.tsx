@@ -78,7 +78,7 @@ export function LeadScoreButton(props: {
             {BandIcon && <BandIcon className="size-4" />}
             <span className={`chip border ${b.chip}`}>{b.label}</span>
             <span className="font-bold tabular-nums">{result.score}/100</span>
-            <button onClick={score} disabled={busy} className="ml-auto text-[11px] text-muted-foreground hover:underline">
+            <button onClick={score} disabled={busy} className="ml-auto text-2xs text-muted-foreground hover:underline">
               {busy ? "…" : "re-score"}
             </button>
           </div>
@@ -89,7 +89,7 @@ export function LeadScoreButton(props: {
               {result.nextAction}
             </div>
           )}
-          <p className="text-[10px] text-muted-foreground italic">AI estimate — your judgement decides.</p>
+          <p className="text-2xs text-muted-foreground italic">AI estimate — your judgement decides.</p>
         </div>
       )}
     </div>

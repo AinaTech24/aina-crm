@@ -23,8 +23,12 @@ const RAIL = "4rem"; // collapsed icon-rail width
 const FULL = "16rem"; // expanded width (matches the old w-64)
 
 export function DesktopSidebar({ children }: { children: React.ReactNode }) {
-  // Persisted pin state. Default "closed" → icon rail, expands on hover.
-  const [pinned, setPinned] = useState<"open" | "closed">("closed");
+  // Persisted pin state. Default "open" → the nav reads as words, not as a
+  // column of unlabelled glyphs. Someone who has never touched the pin cannot
+  // be expected to discover that hovering a 4rem rail reveals the labels, and
+  // this app has ~50 nav items whose icons are not self-evident. A user who
+  // pins it closed still gets the slim rail back on every later visit.
+  const [pinned, setPinned] = useState<"open" | "closed">("open");
   const [hovered, setHovered] = useState(false);
 
   useEffect(() => {

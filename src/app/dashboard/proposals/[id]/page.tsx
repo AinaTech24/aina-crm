@@ -95,7 +95,7 @@ export default async function ProposalDetailPage({
         <div className="brand-mesh px-6 py-5 text-white">
           <div className="flex items-end justify-between flex-wrap gap-3">
             <div>
-              <div className="text-[11px] uppercase tracking-[0.18em] text-white/70 font-semibold font-mono">
+              <div className="text-2xs uppercase tracking-[0.18em] text-white/70 font-semibold font-mono">
                 {p.proposalNumber}
               </div>
               <h1 className="text-2xl font-bold tracking-tight mt-1">{p.title}</h1>
@@ -127,7 +127,7 @@ export default async function ProposalDetailPage({
       <div className="grid grid-cols-4 gap-3">
         <div className="kpi-card">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">
+            <span className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">
               Total investment
             </span>
             <div className="size-7 rounded-lg bg-brand-cyan-light text-brand-cyan-deep grid place-items-center">
@@ -140,7 +140,7 @@ export default async function ProposalDetailPage({
         </div>
         <div className="kpi-card">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">
+            <span className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">
               Projected corpus
             </span>
             <div className="size-7 rounded-lg bg-emerald-50 text-emerald-600 grid place-items-center">
@@ -152,7 +152,7 @@ export default async function ProposalDetailPage({
           </div>
         </div>
         <div className="kpi-card">
-          <div className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">
+          <div className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">
             Risk rating
           </div>
           <div className="text-xl font-bold mt-2 capitalize">
@@ -160,7 +160,7 @@ export default async function ProposalDetailPage({
           </div>
         </div>
         <div className="kpi-card">
-          <div className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">
+          <div className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">
             Line items
           </div>
           <div className="text-xl font-bold mt-2 tabular-nums">{products.length}</div>
@@ -256,7 +256,7 @@ export default async function ProposalDetailPage({
               >
                 <div className="flex items-center gap-2 mb-2">
                   <span
-                    className={`chip text-[10px] ${
+                    className={`chip text-2xs ${
                       it.kind === "mf"
                         ? "bg-emerald-50 text-emerald-700"
                         : it.kind === "insurance"
@@ -345,7 +345,7 @@ function ProductDetails({ it }: { it: any }) {
     <div className="grid grid-cols-4 gap-2 text-xs">
       {kv.map(([k, v]) => (
         <div key={k} className="bg-secondary/40 rounded px-2 py-1.5">
-          <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+          <div className="text-2xs uppercase tracking-wider text-muted-foreground">
             {k}
           </div>
           <div className="font-semibold mt-0.5">{v}</div>

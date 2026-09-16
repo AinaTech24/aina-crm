@@ -114,14 +114,14 @@ export function LibraryGrid({ rows }: { rows: Asset[] }) {
                     <Icon className="size-10 text-muted-foreground/50" />
                   )}
                   <span
-                    className={`absolute top-2 left-2 chip text-[10px] ${
+                    className={`absolute top-2 left-2 chip text-2xs ${
                       TYPE_TONE[a.type] ?? ""
                     }`}
                   >
                     {a.type}
                   </span>
                   {a.tenantId && (
-                    <span className="absolute bottom-2 right-2 chip text-[9px] bg-brand-cyan text-white border-0 font-medium">
+                    <span className="absolute bottom-2 right-2 chip text-2xs bg-brand-cyan text-white border-0 font-medium">
                       My Upload
                     </span>
                   )}
@@ -131,11 +131,11 @@ export function LibraryGrid({ rows }: { rows: Asset[] }) {
                     {a.title}
                   </div>
                   {a.description && (
-                    <div className="text-[11px] text-muted-foreground line-clamp-2">
+                    <div className="text-2xs text-muted-foreground line-clamp-2">
                       {a.description}
                     </div>
                   )}
-                  <div className="text-[10px] text-muted-foreground capitalize flex items-center justify-between">
+                  <div className="text-2xs text-muted-foreground capitalize flex items-center justify-between">
                     <span>{a.category.replace(/_/g, " ")}</span>
                     <span className="tabular-nums">{formatDate(a.createdAt)}</span>
                   </div>

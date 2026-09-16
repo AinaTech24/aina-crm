@@ -108,7 +108,7 @@ export function CalcAssumptionsForm({
         </Field>
       </div>
 
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-2xs text-muted-foreground">
         These seed the default values across every calculator (SIP, goal, retirement,
         child-education, asset-allocation). Advisors can still override them per calculation.
       </p>

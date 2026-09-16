@@ -53,7 +53,7 @@ export default async function StatementPage({
          WHERE id = ${id}::uuid AND deleted_at IS NULL
       `)).rows[0] as any;
       if (!inv) return null;
-      const tenant = (await tx.execute(sql`SELECT name, arn FROM tenants WHERE id = ${session.tenantId}::uuid`)).rows[0] as any;
+      const tenant = (await tx.execute(sql`SELECT display_name AS name, arn FROM tenants WHERE id = ${session.tenantId}::uuid`)).rows[0] as any;
       return { inv, tenant, statement: await loadAccountStatement(tx, id, from, to) };
     },
     { userId: session.userId, branchId: session.branchId, roles: session.roles }
@@ -70,7 +70,7 @@ export default async function StatementPage({
         </Link>
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <FileText className="size-6 text-brand-cyan" /> Account Statement
+            <FileText className="size-6 text-muted-foreground" /> Account Statement
           </h1>
           <form className="flex items-end gap-2" action={`/dashboard/investors/${id}/statement`}>
             <label className="text-xs">
@@ -124,20 +124,21 @@ export default async function StatementPage({
               <div className="px-4 py-3 border-b border-border bg-secondary/30 flex items-start justify-between gap-3 flex-wrap">
                 <div>
                   <div className="font-semibold text-sm">{g.schemeName}</div>
-                  <div className="text-[11px] text-muted-foreground tabular-nums">
+                  <div className="text-2xs text-muted-foreground tabular-nums">
                     {[g.amcName, g.folioNumber ? `Folio ${g.folioNumber}` : null].filter(Boolean).join(" · ")}
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-[11px] text-muted-foreground">Closing value</div>
+                  <div className="text-2xs text-muted-foreground">Closing units at latest NAV</div>
                   <div className="text-sm font-bold tabular-nums">
                     {g.closingValue != null ? inr(g.closingValue) : "not priced"}
                   </div>
+                  <div className="text-2xs text-muted-foreground">NAV dated {g.navDate ? fmtDate(g.navDate) : "unknown"}</div>
                 </div>
               </div>
 
               <table className="w-full text-xs">
-                <thead className="text-[10px] uppercase tracking-wider text-muted-foreground border-b">
+                <thead className="text-2xs uppercase tracking-wider text-muted-foreground border-b">
                   <tr>
                     <th className="text-left py-2 px-4 font-medium">Date</th>
                     <th className="text-left py-2 px-4 font-medium">Transaction</th>
@@ -177,9 +178,11 @@ export default async function StatementPage({
           ))}
 
           <div className="rounded-xl border border-border bg-card p-4 flex items-center justify-between">
-            <span className="text-sm font-semibold">Portfolio value as on {fmtDate(statement.to)}</span>
+            <span className="text-sm font-semibold">Units at {fmtDate(statement.to)}, valued at the NAV dates shown above</span>
             <span className="text-lg font-bold tabular-nums">{inr(statement.totalClosingValue)}</span>
           </div>
+
+          <p className="text-xs text-muted-foreground">The transaction period ends on {fmtDate(statement.to)}. Historical NAVs are not stored; values use the latest available NAV for each scheme and are not a historical period-end valuation.</p>
 
           {statement.unpricedSchemes > 0 && (
             <p className="text-xs text-muted-foreground">

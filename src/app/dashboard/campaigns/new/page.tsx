@@ -176,7 +176,7 @@ export default function NewCampaignPage() {
       </Link>
 
       <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-        <Megaphone className="size-6 text-brand-cyan" /> New marketing campaign
+        <Megaphone className="size-6 text-muted-foreground" /> New marketing campaign
       </h1>
 
       <div className="card-surface p-5 space-y-5">
@@ -253,7 +253,7 @@ export default function NewCampaignPage() {
             placeholder="HNI clients in Mumbai · prospects from Diwali campaign · all SIPs >5y"
             className="input-base"
           />
-          <p className="text-[11px] text-muted-foreground mt-1">
+          <p className="text-2xs text-muted-foreground mt-1">
             Optional note for your records. For broadcasts, set the actual <strong>Audience</strong> below.
           </p>
         </label>
@@ -275,7 +275,7 @@ export default function NewCampaignPage() {
                 ))}
               </SelectField>
               {filteredTemplates.length === 0 && (
-                <p className="text-[11px] text-amber-700 mt-1">No approved {kind} template yet — create &amp; approve one under Templates first.</p>
+                <p className="text-2xs text-amber-700 mt-1">No approved {kind} template yet — create &amp; approve one under Templates first.</p>
               )}
             </label>
             {/* A/B testing */}
@@ -288,7 +288,7 @@ export default function NewCampaignPage() {
                 {abEnabled && (
                   <div className="grid grid-cols-2 gap-3 pt-1">
                     <label className="block">
-                      <div className="text-[11px] text-muted-foreground mb-1">Variant B template</div>
+                      <div className="text-2xs text-muted-foreground mb-1">Variant B template</div>
                       <SelectField value={variantTemplateId} onChange={(e) => setVariantTemplateId(e.target.value)}>
                         <option value="">Select template…</option>
                         {filteredTemplates.filter((t) => t.id !== templateId).map((t) => (
@@ -297,9 +297,9 @@ export default function NewCampaignPage() {
                       </SelectField>
                     </label>
                     <label className="block">
-                      <div className="text-[11px] text-muted-foreground mb-1">% of audience to variant B: <strong>{abSplitPct}%</strong></div>
+                      <div className="text-2xs text-muted-foreground mb-1">% of audience to variant B: <strong>{abSplitPct}%</strong></div>
                       <input type="range" min={0} max={100} step={5} value={abSplitPct} onChange={(e) => setAbSplitPct(Number(e.target.value))} className="w-full" />
-                      <div className="text-[10px] text-muted-foreground">A gets {100 - abSplitPct}% · B gets {abSplitPct}%. Pick a winner later from the campaign page.</div>
+                      <div className="text-2xs text-muted-foreground">A gets {100 - abSplitPct}% · B gets {abSplitPct}%. Pick a winner later from the campaign page.</div>
                     </label>
                   </div>
                 )}
@@ -317,7 +317,7 @@ export default function NewCampaignPage() {
                 }}
               />
               {templateId && !segmentId && (
-                <p className="text-[11px] text-amber-700 mt-1.5">
+                <p className="text-2xs text-amber-700 mt-1.5">
                   ⚠ No audience set yet — pick one above (you should see a green “N recipients will receive this”). Without it
                   the campaign has no recipients and can only be saved as a draft.
                 </p>
@@ -364,13 +364,13 @@ export default function NewCampaignPage() {
             {preflight && (
               <div className="space-y-1.5">
                 {preflight.recentOverlap.length > 0 && (
-                  <div className="rounded-md border border-amber-300 bg-amber-50 text-amber-800 px-3 py-2 text-[11px]">
+                  <div className="rounded-md border border-amber-300 bg-amber-50 text-amber-800 px-3 py-2 text-2xs">
                     ⚠ This audience was already messaged by {preflight.recentOverlap.length} campaign{preflight.recentOverlap.length > 1 ? "s" : ""} in the last 14 days
                     ({preflight.recentOverlap.map((o) => o.name).join(", ")}). Sending again may cause fatigue.
                   </div>
                 )}
                 {kind === "whatsapp" && preflight.waOutsideWindow != null && preflight.waOutsideWindow > 0 && (
-                  <div className="rounded-md border border-blue-200 bg-blue-50 text-blue-800 px-3 py-2 text-[11px]">
+                  <div className="rounded-md border border-blue-200 bg-blue-50 text-blue-800 px-3 py-2 text-2xs">
                     ℹ ~{preflight.waOutsideWindow} of {preflight.recipients} recipients are outside the WhatsApp 24h window. A marketing template
                     can still reach them, but free-form messages to them will be skipped.
                   </div>
@@ -406,7 +406,7 @@ export default function NewCampaignPage() {
               <option value="pending">Pending</option>
               <option value="not_required">Not required</option>
             </SelectField>
-            <p className="text-[10px] text-muted-foreground mt-1">Approve from the campaign page, or use Save &amp; send.</p>
+            <p className="text-2xs text-muted-foreground mt-1">Approve from the campaign page, or use Save &amp; send.</p>
           </label>
         </div>
 

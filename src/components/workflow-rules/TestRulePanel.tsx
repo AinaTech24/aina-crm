@@ -10,6 +10,7 @@
 import { useEffect, useState } from "react";
 import { FlaskConical, Loader2, CheckCircle2, XCircle, Zap, Clock, Send, AlertTriangle } from "lucide-react";
 import { SelectField } from "@/components/ui/SelectField";
+import { confirmDialog } from "@/components/ui/ConfirmProvider";
 
 type TestResult = {
   matched: boolean;
@@ -82,7 +83,7 @@ export function TestRulePanel({ ruleId }: { ruleId: string }) {
 
   async function runNow() {
     if (!subjectId) return;
-    if (!confirm("Run this rule now for the selected record? Instant actions will execute and scheduled actions may be queued.")) return;
+    if (!(await confirmDialog({ title: "Run this rule now for the selected record?", message: "Instant actions will execute and scheduled actions may be queued." }))) return;
     setBusy(true);
     setErr(null);
     setResult(null);
@@ -106,7 +107,7 @@ export function TestRulePanel({ ruleId }: { ruleId: string }) {
     <div className="card-surface p-4 space-y-3">
       <h3 className="font-semibold flex items-center gap-2 text-sm">
         <FlaskConical className="size-4 text-brand-cyan" /> Test this rule
-        <span className="text-[10px] font-normal text-muted-foreground">dry-run first; run now only when you want real actions</span>
+        <span className="text-2xs font-normal text-muted-foreground">dry-run first; run now only when you want real actions</span>
       </h3>
 
       <div className="flex items-center gap-2 flex-wrap">
@@ -200,7 +201,7 @@ export function TestRulePanel({ ruleId }: { ruleId: string }) {
                 {result.wouldRunInstant?.length ? (
                   <ul className="flex flex-wrap gap-1.5">
                     {result.wouldRunInstant.map((a, i) => (
-                      <li key={i} className="chip bg-brand-cyan-light text-brand-cyan-deep text-[10px]">
+                      <li key={i} className="chip bg-brand-cyan-light text-brand-cyan-deep text-2xs">
                         {ACTION_LABELS[a.type] ?? a.type}
                       </li>
                     ))}
@@ -216,7 +217,7 @@ export function TestRulePanel({ ruleId }: { ruleId: string }) {
                 {result.wouldQueueScheduled?.length ? (
                   <ul className="flex flex-wrap gap-1.5">
                     {result.wouldQueueScheduled.map((a, i) => (
-                      <li key={i} className="chip bg-amber-50 text-amber-700 text-[10px]">
+                      <li key={i} className="chip bg-amber-50 text-amber-700 text-2xs">
                         {ACTION_LABELS[a.type] ?? a.type}
                         {a.delay ? ` · after ${a.delay.amount} ${a.delay.unit}(s)` : ""}
                       </li>
@@ -229,7 +230,7 @@ export function TestRulePanel({ ruleId }: { ruleId: string }) {
             </>
           )}
 
-          {result.note && <p className="text-[10px] text-muted-foreground">{result.note}</p>}
+          {result.note && <p className="text-2xs text-muted-foreground">{result.note}</p>}
         </div>
       )}
     </div>

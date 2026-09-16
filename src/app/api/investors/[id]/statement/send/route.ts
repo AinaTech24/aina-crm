@@ -1,3 +1,4 @@
+import { assertInvestorAccess } from "@/lib/investors/access";
 import { handleApiError } from "@/lib/api/error-handler";
 /**
  * POST /api/investors/[id]/statement/send
@@ -23,6 +24,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
   try {
     const session = await requireSession();
+    await assertInvestorAccess(session, (await params).id);
     requireAny(session.roles, ["investor.view.all", "investor.view.assigned"], session.permissions);
     const parse = Body.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) return NextResponse.json({ error: "invalid body" }, { status: 400 });

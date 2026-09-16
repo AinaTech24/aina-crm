@@ -61,6 +61,9 @@ DECLARE
     'template_approvals',
     'whatsapp_templates',
     'communications',
+    'communication_deliveries',
+    'communication_delivery_attempts',
+    'campaign_recipients',
     'whatsapp_numbers',
     'consents',
     'campaigns',
@@ -96,7 +99,8 @@ DECLARE
     'tenant_integrations',
     'ignored_duplicates',
     'investor_portal_access',
-    'business_impacts'
+    'business_impacts',
+    'document_upload_grants'
   ];
 BEGIN
   FOREACH t IN ARRAY tenant_tables

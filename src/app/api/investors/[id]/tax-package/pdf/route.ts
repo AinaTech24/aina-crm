@@ -1,3 +1,4 @@
+import { assertInvestorAccess } from "@/lib/investors/access";
 import { handleApiError } from "@/lib/api/error-handler";
 /**
  * GET /api/investors/[id]/tax-package/pdf?fy=2025&download=1
@@ -22,6 +23,7 @@ export const runtime = "nodejs";
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await requireSession();
+    await assertInvestorAccess(session, (await params).id);
     requireAny(session.roles, ["investor.view.all", "investor.view.assigned"], session.permissions);
     const { id } = await params;
     const fy = parseFy(req.nextUrl.searchParams.get("fy") ?? undefined);

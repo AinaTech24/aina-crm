@@ -88,7 +88,7 @@ export function LeaveSettingsForm({
         Carry forward unused earned leave to next financial year
       </label>
 
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-2xs text-muted-foreground">
         Leave blank for uncapped (no annual limit). Per-employee custom entitlements override these firm-wide values.
       </p>
 

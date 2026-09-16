@@ -230,11 +230,11 @@ function KanbanColumn({
     >
       <div className={`px-3 py-2 border-b ${TONE_BORDER[stage.tone] ?? "border-border"} flex items-center justify-between`}>
         <div className="text-xs font-bold uppercase tracking-wider">{stage.label}</div>
-        <div className="text-[10px] text-muted-foreground tabular-nums">{rows.length}</div>
+        <div className="text-2xs text-muted-foreground tabular-nums">{rows.length}</div>
       </div>
       <div className="p-2 space-y-2 min-h-[120px] max-h-[70vh] overflow-y-auto">
         {rows.length === 0 ? (
-          <div className="text-[11px] text-muted-foreground text-center py-6 italic">
+          <div className="text-2xs text-muted-foreground text-center py-6 italic">
             No clients here
           </div>
         ) : (
@@ -283,7 +283,7 @@ function InvestorCard({
       } ${isDragging || dragging ? "opacity-50 shadow-xl" : "hover:shadow-md"} transition-shadow`}
     >
       <div className="flex items-start gap-2">
-        <div className="size-7 rounded-full brand-gradient text-white grid place-items-center text-[10px] font-bold flex-shrink-0">
+        <div className="size-7 rounded-full brand-gradient text-white grid place-items-center text-2xs font-bold flex-shrink-0">
           {initials}
         </div>
         <div className="flex-1 min-w-0">
@@ -294,21 +294,21 @@ function InvestorCard({
           >
             {row.investor.name}
           </Link>
-          <div className="text-[10px] font-mono text-muted-foreground">{row.investor.pan}</div>
+          <div className="text-2xs font-mono text-muted-foreground">{row.investor.pan}</div>
         </div>
         {saving && <Loader2 className="size-3 animate-spin text-muted-foreground" />}
       </div>
-      <div className="mt-2 flex items-center justify-between text-[10px] text-muted-foreground">
+      <div className="mt-2 flex items-center justify-between text-2xs text-muted-foreground">
         <span className="tabular-nums">{aum > 0 ? `AUM ${formatINR(aum)}` : "—"}</span>
         <span className="tabular-nums">{sip > 0 ? `SIP ${formatINR(sip)}` : "—"}</span>
       </div>
       {row.investor.segmentTag && (
-        <span className="mt-1.5 inline-block text-[10px] px-1.5 py-0.5 rounded-full bg-secondary text-muted-foreground">
+        <span className="mt-1.5 inline-block text-2xs px-1.5 py-0.5 rounded-full bg-secondary text-muted-foreground">
           {row.investor.segmentTag}
         </span>
       )}
       {!row.leadId && (
-        <div className="mt-1.5 text-[9px] text-muted-foreground italic">
+        <div className="mt-1.5 text-2xs text-muted-foreground italic">
           Direct entry · pinned
         </div>
       )}

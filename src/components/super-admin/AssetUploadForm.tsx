@@ -182,7 +182,7 @@ export function AssetUploadForm() {
                     </div>
                     <div className="min-w-0 flex-1">
                       <input value={f.title} onChange={(e) => setFiles((fs) => fs.map((x) => x.key === f.key ? { ...x, title: e.target.value } : x))} className="w-full rounded border border-border bg-background px-2 py-1 text-sm" />
-                      <div className="text-[11px] text-muted-foreground mt-0.5">
+                      <div className="text-2xs text-muted-foreground mt-0.5">
                         {f.uploading ? <span className="inline-flex items-center gap-1"><Loader2 className="size-3 animate-spin" /> uploading…</span>
                           : f.error ? <span className="text-rose-600">{f.error}</span>
                           : <>{(f.sizeBytes / 1024 / 1024).toFixed(2)} MB{f.width ? ` · ${f.width}×${f.height}` : ""} · {f.mimeType}</>}
@@ -210,7 +210,7 @@ export function AssetUploadForm() {
               <div><Label>Publish on</Label><DateField value={publishAt} onChange={(e) => setPublishAt(e.target.value)} className="w-full" /></div>
               <div><Label>Expire on</Label><DateField value={expireAt} onChange={(e) => setExpireAt(e.target.value)} className="w-full" /></div>
             </div>
-            <p className="text-[11px] text-muted-foreground">Before the publish date / after the expiry date the asset is hidden from MFDs.</p>
+            <p className="text-2xs text-muted-foreground">Before the publish date / after the expiry date the asset is hidden from MFDs.</p>
           </Section>
 
           {type === "image" && (
@@ -220,11 +220,11 @@ export function AssetUploadForm() {
                 <div><Label>Height (% of image)</Label><input type="number" min={5} max={50} value={bHeight} onChange={(e) => setBHeight(Number(e.target.value))} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" /></div>
                 <div><Label>Background (hex, optional)</Label><input value={bBackground} onChange={(e) => setBBackground(e.target.value)} placeholder="defaults to brand" className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" /></div>
               </div>
-              <p className="text-[11px] text-muted-foreground">Default placement for the MFD's logo + contact strip. MFDs can still pick a different preset when sharing.</p>
+              <p className="text-2xs text-muted-foreground">Default placement for the MFD's logo + contact strip. MFDs can still pick a different preset when sharing.</p>
             </Section>
           )}
 
-          {err && <div className="rounded-lg border border-rose-300 bg-rose-50 dark:bg-rose-500/10 text-rose-700 dark:text-rose-300 px-3 py-2 text-sm">{err}</div>}
+          {err && <div className="rounded-lg border border-rose-300 bg-rose-50 text-rose-700 px-3 py-2 text-sm">{err}</div>}
 
           <div className="flex justify-end gap-2 pt-2 border-t">
             <Link href="/super-admin/content-library" className="rounded-lg border px-4 py-2 text-sm hover:bg-accent transition">Cancel</Link>

@@ -166,7 +166,7 @@ export function WealthStoryButton({
                 >
                   <X className="size-4" />
                 </button>
-                <div className="text-[11px] uppercase tracking-[0.2em] text-white/70 font-semibold">Portfolio Review & Wealth Report</div>
+                <div className="text-2xs uppercase tracking-[0.2em] text-white/70 font-semibold">Portfolio Review & Wealth Report</div>
                 <h2 className="text-xl sm:text-2xl font-bold mt-1 flex items-center gap-2">
                   <span aria-hidden>✨</span> {clientName}&rsquo;s Review Pack
                 </h2>
@@ -230,7 +230,7 @@ export function WealthStoryButton({
                           <h3 className="font-semibold text-foreground flex items-center gap-1.5 text-xs">
                             <PieChart className="size-3.5 text-brand-navy" /> Asset Allocation Breakdown
                           </h3>
-                          <span className="text-[11px] text-muted-foreground">100% Portfolio Coverage</span>
+                          <span className="text-2xs text-muted-foreground">100% Portfolio Coverage</span>
                         </div>
                         {/* Multi-segment progress bar */}
                         <div className="h-3 w-full rounded-full bg-muted overflow-hidden flex">
@@ -246,7 +246,7 @@ export function WealthStoryButton({
                             );
                           })}
                         </div>
-                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1 text-[11px]">
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1 text-2xs">
                           {s.assetAllocation.map((a, i) => {
                             const dotColors = ["bg-emerald-500", "bg-blue-500", "bg-amber-500", "bg-purple-500", "bg-teal-500"];
                             return (
@@ -272,11 +272,11 @@ export function WealthStoryButton({
                             <div key={i} className="flex items-center justify-between rounded-lg border border-border/70 p-2.5 bg-card">
                               <div className="truncate mr-3">
                                 <span className="font-medium text-foreground block truncate">{h.name}</span>
-                                {h.category && <span className="text-[10px] text-muted-foreground">{h.category}</span>}
+                                {h.category && <span className="text-2xs text-muted-foreground">{h.category}</span>}
                               </div>
                               <div className="text-right shrink-0">
                                 <span className="font-bold text-foreground block tabular-nums">{inr(h.value)}</span>
-                                <span className="text-[10px] text-muted-foreground">{h.sharePct}% of portfolio</span>
+                                <span className="text-2xs text-muted-foreground">{h.sharePct}% of portfolio</span>
                               </div>
                             </div>
                           ))}
@@ -308,7 +308,7 @@ export function WealthStoryButton({
                     {s.funFacts.length > 0 && (
                       <div className="flex flex-wrap gap-2">
                         {s.funFacts.map((f, i) => (
-                          <span key={i} className="chip bg-violet-50 text-violet-700 dark:bg-violet-500/10 dark:text-violet-300 text-xs">
+                          <span key={i} className="chip bg-violet-50 text-violet-700 text-xs">
                             <span aria-hidden>🎉</span> {f}
                           </span>
                         ))}
@@ -382,11 +382,11 @@ function StatCard({
 }) {
   return (
     <div className="rounded-xl border border-border/60 bg-background/60 p-3">
-      <div className={`inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground`}>
+      <div className={`inline-flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-wide text-muted-foreground`}>
         <span className={accent}>{icon}</span> {label}
       </div>
       <div className={`mt-1 font-bold text-sm ${accent}`}>{value}</div>
-      {sub && <div className="text-[10px] text-muted-foreground mt-0.5">{sub}</div>}
+      {sub && <div className="text-2xs text-muted-foreground mt-0.5">{sub}</div>}
     </div>
   );
 }

@@ -167,7 +167,7 @@ function Builder() {
       </Link>
       <div>
         <h1 className="page-title">
-          <BarChart3 className="size-6 text-brand-cyan" /> {editId ? "Edit report" : "New report"}
+          <BarChart3 className="size-6 text-muted-foreground" /> {editId ? "Edit report" : "New report"}
         </h1>
       </div>
 
@@ -295,7 +295,7 @@ function Builder() {
                 <Plus className="size-3.5" /> Add summary column
               </button>
             </div>
-            <p className="text-[11px] text-muted-foreground mt-1">A record count is always shown per group. Sub-totals + grand total are computed automatically.</p>
+            <p className="text-2xs text-muted-foreground mt-1">A record count is always shown per group. Sub-totals + grand total are computed automatically.</p>
           </div>
 
           <label className="flex items-center gap-2 text-sm cursor-pointer">
@@ -349,7 +349,7 @@ function Builder() {
               </SelectField>
             </Field>
           </div>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             Example: group by RM, pivot by status, count → an RM × status cross-tab.
           </p>
         </Section>

@@ -32,7 +32,7 @@ export default async function ComplaintDisclosurePage({
             <ChevronLeft className="size-4" /> Back to complaint register
           </Link>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2 mt-1">
-            <FileText className="size-6 text-brand-cyan" /> Monthly complaint disclosure
+            <FileText className="size-6 text-muted-foreground" /> Monthly complaint disclosure
           </h1>
           <p className="text-muted-foreground text-sm">
             SEBI-format statement — pending, received &amp; resolved for the month, by category &amp; source.
@@ -73,7 +73,7 @@ export default async function ComplaintDisclosurePage({
         <Breakdown title="Received by source" rows={d.bySource} total={d.received} />
       </div>
 
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-2xs text-muted-foreground">
         Complaints carry a 21-day resolution SLA. This statement is the standard monthly disclosure to retain for
         SEBI/AMFI inspection; export the CSV for your records each month.
       </p>

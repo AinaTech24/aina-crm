@@ -103,7 +103,7 @@ export function ReviewCadenceEditor({
           </div>
           <div>
             <h3 className="text-sm font-semibold leading-tight">Review cadence</h3>
-            <p className="text-[11px] text-muted-foreground">How often to review this client</p>
+            <p className="text-2xs text-muted-foreground">How often to review this client</p>
           </div>
         </div>
         {canEdit && !editing && (
@@ -123,7 +123,7 @@ export function ReviewCadenceEditor({
             {nextReviewAt ? (
               <span className={overdue ? "text-rose-600 font-semibold" : "font-medium"}>
                 {fmtDate(nextReviewAt)}
-                {overdue && <span className="ml-1 text-[10px] font-semibold uppercase">overdue</span>}
+                {overdue && <span className="ml-1 text-2xs font-semibold uppercase">overdue</span>}
               </span>
             ) : (
               <span className="text-muted-foreground">—</span>
@@ -182,7 +182,7 @@ export function ReviewCadenceEditor({
             </div>
           )}
 
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             Next review is set from the last completed review (or onboarding date). The client appears in the Command
             Center when a review is due, and drops off automatically once a review meeting is marked completed.
           </p>
@@ -206,7 +206,7 @@ export function ReviewCadenceEditor({
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="min-w-0">
-      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className="text-2xs uppercase tracking-wide text-muted-foreground">{label}</div>
       <div className="text-sm mt-0.5 truncate">{children}</div>
     </div>
   );

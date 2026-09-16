@@ -137,7 +137,7 @@ export function SurrenderAnalyzer() {
       <div className="grid md:grid-cols-2 gap-4">
         {/* Continue */}
         <section className="border border-amber-200 bg-amber-50/40 rounded-lg p-4 space-y-2">
-          <div className="text-[11px] uppercase tracking-wider font-semibold text-amber-700">If you CONTINUE the policy</div>
+          <div className="text-2xs uppercase tracking-wider font-semibold text-amber-700">If you CONTINUE the policy</div>
           <Row k="Current surrender value (kept in)" v={inr(currentSurrenderValue)} />
           <Row k="Future premiums to pay" v={inr(result.futurePremiumsPaid)} />
           {result.totalPayouts > 0 && <Row k="Money-back / annuity payouts" v={inr(result.totalPayouts)} />}
@@ -148,7 +148,7 @@ export function SurrenderAnalyzer() {
 
         {/* Surrender */}
         <section className="border border-emerald-200 bg-emerald-50/40 rounded-lg p-4 space-y-2">
-          <div className="text-[11px] uppercase tracking-wider font-semibold text-emerald-700">If you SURRENDER &amp; invest</div>
+          <div className="text-2xs uppercase tracking-wider font-semibold text-emerald-700">If you SURRENDER &amp; invest</div>
           <Row k="Surrender value invested (lumpsum)" v={inr(currentSurrenderValue)} />
           <Row k="Premiums invested instead" v={inr(result.futurePremiumsPaid)} />
           <Row k={`Assumed return (${ALT_OPTIONS.find((o) => o.value === altOption)?.label})`} v={`${altReturnPct.toFixed(2)}%`} />
@@ -179,13 +179,13 @@ export function SurrenderAnalyzer() {
       </div>
 
       {/* Protection caveat */}
-      <div className="text-[11px] bg-blue-50/60 border border-blue-200 rounded-md px-3 py-2 text-blue-900">
+      <div className="text-2xs bg-blue-50/60 border border-blue-200 rounded-md px-3 py-2 text-blue-900">
         ⚠️ <strong>Before surrendering:</strong> a policy also provides <strong>life cover</strong> you would lose. Insurance is for
         protection; investments are for growth. If you surrender, consider a pure <strong>term plan</strong> for the cover, and check
         surrender charges, guarantees and tax before deciding.
       </div>
 
-      <p className="text-[10px] text-muted-foreground border-t pt-3">
+      <p className="text-2xs text-muted-foreground border-t pt-3">
         * Illustration only, on the assumptions you enter. Endowment maturity is typically guaranteed/bonus-based while market
         investments carry risk and are not guaranteed. This is not investment advice — review the policy document and consult a
         qualified advisor.
@@ -199,7 +199,7 @@ export function SurrenderAnalyzer() {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium block mb-1">{label}</span>
+      <span className="text-2xs uppercase tracking-wide text-muted-foreground font-medium block mb-1">{label}</span>
       {children}
     </label>
   );

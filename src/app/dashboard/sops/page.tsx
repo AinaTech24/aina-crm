@@ -38,7 +38,8 @@ export default async function SopsPage() {
     <div className="space-y-6 max-w-7xl">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">SOP library</h1>
+          <h1 className="page-title">SOP library</h1>
+          <p className="page-subtitle mt-1">The written procedures your team follows, versioned and searchable.</p>
         </div>
         {canManage && (
           <Link

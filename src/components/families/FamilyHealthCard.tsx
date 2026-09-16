@@ -74,7 +74,7 @@ export function FamilyHealthCard({
             <div className="absolute inset-0 grid place-items-center text-center">
               <div>
                 <div className="text-2xl font-bold tabular-nums">{health.score}</div>
-                <div className="text-[9px] uppercase tracking-wider text-muted-foreground">
+                <div className="text-2xs uppercase tracking-wider text-muted-foreground">
                   / 100
                 </div>
               </div>
@@ -93,7 +93,7 @@ export function FamilyHealthCard({
 
         {/* Coverage bars */}
         <div className="space-y-2.5">
-          <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
+          <div className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">
             Coverage
           </div>
           <CoverageBar label="Nominee" pct={health.coverage.nomineePct} />
@@ -103,7 +103,7 @@ export function FamilyHealthCard({
 
         {/* Why-this-score */}
         <div>
-          <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-2">
+          <div className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground mb-2">
             Why this score
           </div>
           {health.factors.length === 0 ? (
@@ -125,7 +125,7 @@ export function FamilyHealthCard({
                 </li>
               ))}
               {health.factors.length > 4 && (
-                <li className="text-[10px] text-muted-foreground italic">
+                <li className="text-2xs text-muted-foreground italic">
                   + {health.factors.length - 4} more
                 </li>
               )}
@@ -137,7 +137,7 @@ export function FamilyHealthCard({
       {/* Missing-data punch-list */}
       {checklist.length > 0 && (
         <div className="mt-4 pt-4 border-t border-border/40">
-          <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-2">
+          <div className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground mb-2">
             Fix-it checklist · {checklist.length} item{checklist.length === 1 ? "" : "s"}
           </div>
           <ul className="grid grid-cols-1 md:grid-cols-2 gap-1.5">
@@ -163,7 +163,7 @@ export function FamilyHealthCard({
               </li>
             ))}
             {checklist.length > 8 && (
-              <li className="text-[10px] text-muted-foreground italic px-2.5 py-1.5">
+              <li className="text-2xs text-muted-foreground italic px-2.5 py-1.5">
                 + {checklist.length - 8} more — scroll the member list to address.
               </li>
             )}

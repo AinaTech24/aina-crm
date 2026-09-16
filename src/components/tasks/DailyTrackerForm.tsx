@@ -84,7 +84,7 @@ export function DailyTrackerForm({
                   className="size-4 rounded border-border accent-brand-cyan"
                 />
                 <span className={`${f.done ? "line-through text-muted-foreground" : ""}`}>{f.text}</span>
-                {f.forType && <span className={`chip text-[10px] ${TYPE_STYLE[f.forType]}`}>{f.forType}</span>}
+                {f.forType && <span className={`chip text-2xs ${TYPE_STYLE[f.forType]}`}>{f.forType}</span>}
                 {!readOnly && (
                   <button
                     onClick={() => {
@@ -117,7 +117,7 @@ export function DailyTrackerForm({
                   <button
                     key={k}
                     onClick={() => setType(k)}
-                    className={`px-2 py-0.5 rounded-md text-[11px] font-medium capitalize ${type === k ? TYPE_STYLE[k] : "text-muted-foreground"}`}
+                    className={`px-2 py-0.5 rounded-md text-2xs font-medium capitalize ${type === k ? TYPE_STYLE[k] : "text-muted-foreground"}`}
                   >
                     {k}
                   </button>
@@ -138,7 +138,7 @@ export function DailyTrackerForm({
                       <button
                         key={d.id}
                         onClick={() => add(d.title, d.for ? "client" : "other", d.id)}
-                        className="chip bg-secondary hover:bg-brand-cyan-light/50 text-[11px]"
+                        className="chip bg-secondary hover:bg-brand-cyan-light/50 text-2xs"
                       >
                         <Plus className="size-3" /> {d.title}
                       </button>

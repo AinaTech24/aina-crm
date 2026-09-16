@@ -6,6 +6,7 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../api/client";
+import { queuedPost } from "../../lib/offlineQueue";
 import type { Tone } from "../../theme";
 
 export interface Lead {
@@ -118,7 +119,7 @@ export function useUpdateLeadStage(id: string) {
 export function useLogActivity(id: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (v: { note: string; activityType: string; nextFollowUpAt?: string }) => api.post(`/api/leads/${id}/notes`, v),
+    mutationFn: (v: { note: string; activityType: string; nextFollowUpAt?: string }) => queuedPost(`/api/leads/${id}/notes`, v, "Lead note"),
     onSuccess: () => invalidateLead(qc, id),
   });
 }

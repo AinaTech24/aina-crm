@@ -13,7 +13,8 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
-import { withSystem } from "@/db/client";
+import { withSystem, withTenant } from "@/db/client";
+import { grantDocumentUpload } from "@/lib/storage/document-upload-grants";
 import { shareTokens, leads, investors } from "@/db/schema";
 import { presignedPutUrl, vaultKey } from "@/lib/storage/s3";
 import { firmFolderName } from "@/lib/storage/firm-folder";
@@ -74,6 +75,7 @@ export async function POST(req: NextRequest) {
         docType: "kyc",
       });
       const url = await presignedPutUrl(key, contentType, 900);
+      await withTenant(tk.tenantId!, (tx) => grantDocumentUpload(tx, tk, { key, docKey: String(f.docKey ?? ""), mime: contentType }));
       out.push({ docKey: String(f.docKey ?? ""), key, url });
     }
 

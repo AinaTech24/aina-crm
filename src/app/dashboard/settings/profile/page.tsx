@@ -147,13 +147,13 @@ export default async function ProfilePage() {
               ) : (
                 <>
                   <div className="text-lg font-bold">{l.remaining}<span className="text-xs font-normal text-muted-foreground"> / {l.entitlement} left</span></div>
-                  <div className="text-[10px] text-muted-foreground">{l.used} used this FY</div>
+                  <div className="text-2xs text-muted-foreground">{l.used} used this FY</div>
                 </>
               )}
             </div>
           ))}
         </div>
-        <p className="text-[11px] text-muted-foreground mt-2">Balances are for the current financial year (Apr–Mar){custom ? " · includes your custom allowance" : ""}.</p>
+        <p className="text-2xs text-muted-foreground mt-2">Balances are for the current financial year (Apr–Mar){custom ? " · includes your custom allowance" : ""}.</p>
       </div>
 
       {/* Recent activity — your own audit trail */}

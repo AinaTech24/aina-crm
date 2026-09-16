@@ -116,7 +116,7 @@ export function BoardsManager({ mine, shared, deleted, templates = [] }: { mine:
                   )}
                 </div>
                 <div className="text-xs text-muted-foreground mt-0.5">{t.description}</div>
-                <div className="text-[11px] text-muted-foreground/70 mt-1">{t.widgetCount} widgets</div>
+                <div className="text-2xs text-muted-foreground/70 mt-1">{t.widgetCount} widgets</div>
               </button>
             ))}
           </div>
@@ -162,8 +162,8 @@ function Card({ b, busy, shared, onDefault, onClone, onShare, onDelete }: {
       <div className="min-w-0">
         <div className="font-medium truncate flex items-center gap-1.5">
           {b.name}
-          {b.isDefault && <span className="text-[10px] rounded-full bg-amber-100 text-amber-700 px-1.5 py-0.5 inline-flex items-center gap-0.5"><Star className="size-2.5" /> Default</span>}
-          {b.scope === "shared" && <span className="text-[10px] rounded-full bg-sky-100 text-sky-700 px-1.5 py-0.5 inline-flex items-center gap-0.5"><Users className="size-2.5" /> Shared</span>}
+          {b.isDefault && <span className="text-2xs rounded-full bg-amber-100 text-amber-700 px-1.5 py-0.5 inline-flex items-center gap-0.5"><Star className="size-2.5" /> Default</span>}
+          {b.scope === "shared" && <span className="text-2xs rounded-full bg-sky-100 text-sky-700 px-1.5 py-0.5 inline-flex items-center gap-0.5"><Users className="size-2.5" /> Shared</span>}
           {b.locked && <Lock className="size-3 text-muted-foreground" />}
         </div>
         <div className="text-xs text-muted-foreground truncate">

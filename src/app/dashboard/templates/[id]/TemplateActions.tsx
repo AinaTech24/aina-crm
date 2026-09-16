@@ -102,7 +102,7 @@ export function TemplateActions({
       </div>
 
       {(templateStatus === "approved" || versionStatus === "approved_internal" || versionStatus === "approved_external") && (
-        <p className="text-[11px] text-muted-foreground -mt-2">
+        <p className="text-2xs text-muted-foreground -mt-2">
           Approved versions stay locked so mail already sent can always be reproduced. Editing opens a new draft —
           change the wording, logo size or colours there, then submit it to replace this version.
         </p>
@@ -119,7 +119,7 @@ export function TemplateActions({
 
           {showRejectInput ? (
             <div className="space-y-2">
-              <label className="text-[10px] uppercase font-bold text-slate-500 block">Rejection notes</label>
+              <label className="text-2xs uppercase font-bold text-slate-500 block">Rejection notes</label>
               <textarea
                 value={rejectReason}
                 onChange={(e) => setRejectReason(e.target.value)}

@@ -87,7 +87,7 @@ function layout(graph: WorkflowGraph): { nodes: Node[]; edges: Edge[] } {
       data: {
         label: (
           <div className="px-2.5 py-2 text-left">
-            <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">
+            <div className="text-2xs uppercase tracking-wide text-muted-foreground font-semibold">
               {style.label}
             </div>
             <div className="text-xs font-medium mt-0.5 leading-tight">{label}</div>

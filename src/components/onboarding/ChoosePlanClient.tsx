@@ -127,7 +127,7 @@ export function ChoosePlanClient({ plans, firmName }: { plans: Plan[]; firmName:
           {plans.map((p) => (
             <div key={p.id} className="relative flex flex-col rounded-2xl border border-border bg-card p-5 shadow-sm">
               {p.badge && (
-                <span className="absolute -top-2.5 right-4 text-[10px] font-bold uppercase tracking-wide bg-primary text-primary-foreground rounded-full px-2 py-0.5">
+                <span className="absolute -top-2.5 right-4 text-2xs font-bold uppercase tracking-wide bg-primary text-primary-foreground rounded-full px-2 py-0.5">
                   {p.badge}
                 </span>
               )}
@@ -137,9 +137,9 @@ export function ChoosePlanClient({ plans, firmName }: { plans: Plan[]; firmName:
                 <span className="text-2xl font-extrabold">{p.monthlyPaise > 0 ? inr(p.monthlyPaise) : "Free"}</span>
                 {p.monthlyPaise > 0 && <span className="text-xs text-muted-foreground">/mo</span>}
                 {p.yearlyPaise > 0 && (
-                  <div className="text-[11px] text-muted-foreground">or {inr(p.yearlyPaise)}/yr (billed yearly)</div>
+                  <div className="text-2xs text-muted-foreground">or {inr(p.yearlyPaise)}/yr (billed yearly)</div>
                 )}
-                <div className="text-[11px] text-muted-foreground mt-0.5 space-x-2">
+                <div className="text-2xs text-muted-foreground mt-0.5 space-x-2">
                   {p.setupPaise > 0 && <span>One-time setup {inr(p.setupPaise)}</span>}
                   {p.perUserMonthlyPaise > 0 && <span>+ {inr(p.perUserMonthlyPaise)}/extra user/mo</span>}
                 </div>
@@ -155,15 +155,15 @@ export function ChoosePlanClient({ plans, firmName }: { plans: Plan[]; firmName:
 
               {/* Actual modules included in this package (admin-configured) */}
               <div className="mt-3 flex-1">
-                <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
+                <div className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5">
                   {p.moduleKeys.length} modules included
                 </div>
                 <div className="flex flex-wrap gap-1 max-h-32 overflow-y-auto scrollbar-thin">
                   {p.moduleKeys.length === 0 ? (
-                    <span className="text-[11px] text-muted-foreground">No modules configured</span>
+                    <span className="text-2xs text-muted-foreground">No modules configured</span>
                   ) : (
                     p.moduleKeys.map((k) => (
-                      <span key={k} className="text-[10px] bg-secondary rounded px-1.5 py-0.5 text-muted-foreground">
+                      <span key={k} className="text-2xs bg-secondary rounded px-1.5 py-0.5 text-muted-foreground">
                         {humanizeModule(k)}
                       </span>
                     ))
@@ -182,7 +182,7 @@ export function ChoosePlanClient({ plans, firmName }: { plans: Plan[]; firmName:
           ))}
         </div>
 
-        <p className="text-center text-[11px] text-muted-foreground mt-6">
+        <p className="text-center text-2xs text-muted-foreground mt-6">
           You're signed in to set this up. After confirming your plan, you'll be taken to the login page to enter your new dashboard.
         </p>
       </div>

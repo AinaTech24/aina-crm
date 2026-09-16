@@ -309,11 +309,11 @@ export function EmailDesigner({
         {/* Header: subject / preheader / mode */}
         <div className="px-3.5 py-3 border-b border-border space-y-2 shrink-0">
           <div>
-            <label className="text-[10px] font-medium text-muted-foreground">Subject</label>
+            <label className="text-2xs font-medium text-muted-foreground">Subject</label>
             <input value={value.subject ?? ""} onChange={(e) => update({ subject: e.target.value })} placeholder="Subject line — visible in the inbox" className="input-base text-sm w-full mt-0.5" />
           </div>
           <div>
-            <label className="text-[10px] font-medium text-muted-foreground">Preheader (inbox preview)</label>
+            <label className="text-2xs font-medium text-muted-foreground">Preheader (inbox preview)</label>
             <input value={value.preheader ?? ""} onChange={(e) => update({ preheader: e.target.value })} placeholder="Short preview text after the subject" className="input-base text-sm w-full mt-0.5" />
           </div>
           <div className="flex items-center gap-0.5 rounded-lg border border-border p-0.5 bg-background w-fit">
@@ -397,7 +397,7 @@ export function EmailDesigner({
           </span>
           <div className="flex items-center gap-2">
             {testMsg && (
-              <span className={`text-[11px] ${testState === "error" ? "text-rose-600" : "text-emerald-600"}`}>{testMsg}</span>
+              <span className={`text-2xs ${testState === "error" ? "text-rose-600" : "text-emerald-600"}`}>{testMsg}</span>
             )}
             <button
               onClick={sendTest}
@@ -528,7 +528,7 @@ function AccordionSection({
         <span className={`flex-1 text-left truncate ${titleClassName ?? ""}`}>{title}</span>
         {action}
         {count != null && (
-          <span className="text-[10px] text-muted-foreground bg-secondary rounded-full px-1.5 leading-5">{count}</span>
+          <span className="text-2xs text-muted-foreground bg-secondary rounded-full px-1.5 leading-5">{count}</span>
         )}
         <ChevronDown className={`size-4 text-muted-foreground shrink-0 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
       </button>
@@ -617,8 +617,8 @@ function BlockList({
               </span>
               <Icon className={`size-3.5 shrink-0 ${sel ? "text-primary" : "text-muted-foreground"}`} />
               <div className="min-w-0 flex-1">
-                <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground leading-none">{blockTypeLabel(b)}</div>
-                <div className="text-[11px] truncate text-foreground/80 leading-tight mt-0.5">{blockSummary(b)}</div>
+                <div className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground leading-none">{blockTypeLabel(b)}</div>
+                <div className="text-2xs truncate text-foreground/80 leading-tight mt-0.5">{blockSummary(b)}</div>
               </div>
               <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
                 <button onClick={(e) => { e.stopPropagation(); onMoveUp(b.id); }} disabled={i === 0} title="Move up" className="btn-icon h-5 w-5 disabled:opacity-30"><ChevronUp className="size-3" /></button>
@@ -668,9 +668,9 @@ const PALETTE: Array<{ type: any; label: string; icon: any }> = [
 function BlockPalette({ onAdd, disabled }: { onAdd: (t: any) => void; disabled?: boolean }) {
   return (
     <div>
-      <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-2">Add a block</div>
+      <div className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground mb-2">Add a block</div>
       {disabled && (
-        <div className="text-[11px] text-muted-foreground italic mb-2">
+        <div className="text-2xs text-muted-foreground italic mb-2">
           Switch to <strong>Designer</strong> mode to use blocks. HTML mode is a raw paste-area.
         </div>
       )}
@@ -712,11 +712,11 @@ function ThemePanel({
       </Section>
 
       <Section title="Logo">
-        <label className="text-[10px] text-muted-foreground">Logo image</label>
+        <label className="text-2xs text-muted-foreground">Logo image</label>
         <ImageUploadInput value={theme.logoUrl ?? ""} onChange={(v) => onChange({ logoUrl: v })} placeholder="https://…/logo.png" />
         <div className="grid grid-cols-2 gap-2 mt-1">
           <div>
-            <label className="text-[10px] text-muted-foreground">Logo height</label>
+            <label className="text-2xs text-muted-foreground">Logo height</label>
             <input
               type="number"
               min={20}
@@ -727,7 +727,7 @@ function ThemePanel({
             />
           </div>
           <div>
-            <label className="text-[10px] text-muted-foreground">Logo align</label>
+            <label className="text-2xs text-muted-foreground">Logo align</label>
             <select
               value={theme.logoAlign ?? "center"}
               onChange={(e) => onChange({ logoAlign: e.target.value as any })}
@@ -742,7 +742,7 @@ function ThemePanel({
       </Section>
 
       <Section title="Typography">
-        <label className="text-[10px] text-muted-foreground">Font family</label>
+        <label className="text-2xs text-muted-foreground">Font family</label>
         <select
           value={theme.fontFamily ?? "sans"}
           onChange={(e) => onChange({ fontFamily: e.target.value as any })}
@@ -753,7 +753,7 @@ function ThemePanel({
           <option value="modern">Modern (Inter)</option>
           <option value="rounded">Rounded</option>
         </select>
-        <label className="text-[10px] text-muted-foreground mt-2 block">Base font size (px)</label>
+        <label className="text-2xs text-muted-foreground mt-2 block">Base font size (px)</label>
         <input
           type="number"
           min={12}
@@ -767,7 +767,7 @@ function ThemePanel({
       <Section title="Layout">
         <div className="grid grid-cols-2 gap-2">
           <div>
-            <label className="text-[10px] text-muted-foreground">Container width</label>
+            <label className="text-2xs text-muted-foreground">Container width</label>
             <input
               type="number"
               min={480}
@@ -778,7 +778,7 @@ function ThemePanel({
             />
           </div>
           <div>
-            <label className="text-[10px] text-muted-foreground">Corner radius</label>
+            <label className="text-2xs text-muted-foreground">Corner radius</label>
             <input
               type="number"
               min={0}
@@ -816,7 +816,7 @@ function ThemePanel({
           />
           Include unsubscribe link
         </label>
-        <label className="text-[10px] text-muted-foreground mt-2 block">Custom footer text (optional)</label>
+        <label className="text-2xs text-muted-foreground mt-2 block">Custom footer text (optional)</label>
         <textarea
           rows={2}
           value={footer.customText ?? ""}
@@ -837,7 +837,7 @@ function MergeFieldPicker({ onPick }: { onPick: (f: MergeField) => void }) {
   );
   return (
     <div className="space-y-1.5 text-xs">
-      <div className="text-[10px] text-muted-foreground mb-1">
+      <div className="text-2xs text-muted-foreground mb-1">
         Click a field to insert it at the cursor. Use{" "}
         <code className="bg-secondary px-1 rounded">{`{{token}}`}</code> syntax anywhere in your text.
       </div>
@@ -845,11 +845,11 @@ function MergeFieldPicker({ onPick }: { onPick: (f: MergeField) => void }) {
         <div key={cat} className="rounded-lg border border-border overflow-hidden bg-card">
           <button
             onClick={() => setOpen((o) => ({ ...o, [cat]: !o[cat] }))}
-            className="w-full flex items-center gap-2 px-2.5 py-2 text-[11px] font-semibold bg-secondary/30 hover:bg-secondary/50 transition-colors"
+            className="w-full flex items-center gap-2 px-2.5 py-2 text-2xs font-semibold bg-secondary/30 hover:bg-secondary/50 transition-colors"
           >
             <span className="size-1.5 rounded-full bg-primary shrink-0" />
             <span className="flex-1 text-left uppercase tracking-wider text-muted-foreground">{cat}</span>
-            <span className="text-[10px] text-muted-foreground bg-background rounded-full px-1.5 leading-4">{fields.length}</span>
+            <span className="text-2xs text-muted-foreground bg-background rounded-full px-1.5 leading-4">{fields.length}</span>
             <ChevronDown className={`size-3.5 text-muted-foreground shrink-0 transition-transform duration-200 ${open[cat] ? "rotate-180" : ""}`} />
           </button>
           <div className={`grid transition-[grid-template-rows] duration-200 ease-out ${open[cat] ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}>
@@ -863,7 +863,7 @@ function MergeFieldPicker({ onPick }: { onPick: (f: MergeField) => void }) {
                     className="w-full text-left rounded hover:bg-primary/10 p-1.5"
                   >
                     <div className="text-xs font-medium">{f.label}</div>
-                    <div className="text-[10px] text-muted-foreground font-mono">{`{{${f.token}}}`}</div>
+                    <div className="text-2xs text-muted-foreground font-mono">{`{{${f.token}}}`}</div>
                   </button>
                 ))}
               </div>
@@ -886,7 +886,7 @@ function FieldMenu({ onPick }: { onPick: (f: MergeField) => void }) {
         onMouseDown={(e) => e.preventDefault()}
         onClick={() => setOpen((o) => !o)}
         title="Insert a personalisation field"
-        className="text-[11px] px-1.5 py-1 rounded-md border border-border hover:bg-secondary inline-flex items-center gap-1"
+        className="text-2xs px-1.5 py-1 rounded-md border border-border hover:bg-secondary inline-flex items-center gap-1"
       >
         <Variable className="size-3" /> Field
       </button>
@@ -896,7 +896,7 @@ function FieldMenu({ onPick }: { onPick: (f: MergeField) => void }) {
           <div className="absolute right-0 mt-1 z-50 w-60 max-h-72 overflow-y-auto scrollbar-thin card-elevated bg-card p-1.5 text-xs">
             {Object.entries(cats).map(([cat, fields]) => (
               <div key={cat}>
-                <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground px-1.5 pt-1.5">{cat}</div>
+                <div className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground px-1.5 pt-1.5">{cat}</div>
                 {fields.map((f) => (
                   <button
                     key={f.token}
@@ -905,7 +905,7 @@ function FieldMenu({ onPick }: { onPick: (f: MergeField) => void }) {
                     className="w-full text-left rounded hover:bg-primary/10 p-1.5"
                   >
                     <div className="font-medium">{f.label}</div>
-                    <div className="text-[10px] text-muted-foreground font-mono">{`{{${f.token}}}`}</div>
+                    <div className="text-2xs text-muted-foreground font-mono">{`{{${f.token}}}`}</div>
                   </button>
                 ))}
               </div>
@@ -939,12 +939,12 @@ function ImageUploadInput({ value, onChange, placeholder }: { value: string; onC
     <div className="space-y-1">
       <div className="flex gap-1.5">
         <input value={value ?? ""} onChange={(e) => onChange(e.target.value)} placeholder={placeholder ?? "https://…/image.png"} className="input-base text-xs flex-1 font-mono" />
-        <label className="shrink-0 inline-flex items-center gap-1 px-2 rounded-md border border-border hover:bg-secondary cursor-pointer text-[11px]" title="Upload image">
+        <label className="shrink-0 inline-flex items-center gap-1 px-2 rounded-md border border-border hover:bg-secondary cursor-pointer text-2xs" title="Upload image">
           {busy ? <Loader2 className="size-3.5 animate-spin" /> : <UploadCloud className="size-3.5" />} Upload
           <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) pick(f); e.currentTarget.value = ""; }} />
         </label>
       </div>
-      {err && <div className="text-[10px] text-rose-600">{err}</div>}
+      {err && <div className="text-2xs text-rose-600">{err}</div>}
     </div>
   );
 }
@@ -960,12 +960,12 @@ function BlockEditor({ block, onChange }: { block: any; onChange: (patch: any) =
       // panel, which is also where the logo image itself is set.
       return (
         <div className="space-y-1.5">
-          <div className="text-[11px] text-muted-foreground italic">
+          <div className="text-2xs text-muted-foreground italic">
             The logo image comes from your firm branding (Theme panel).
           </div>
           <div className="flex gap-1.5 items-end">
             <label className="flex-1">
-              <span className="text-[10px] text-muted-foreground block">Height (px)</span>
+              <span className="text-2xs text-muted-foreground block">Height (px)</span>
               <input
                 type="number"
                 min={20}
@@ -989,7 +989,7 @@ function BlockEditor({ block, onChange }: { block: any; onChange: (patch: any) =
               ]}
             />
           </div>
-          <p className="text-[10px] text-muted-foreground">Leave height blank to use the theme setting.</p>
+          <p className="text-2xs text-muted-foreground">Leave height blank to use the theme setting.</p>
         </div>
       );
     case "signature":
@@ -998,7 +998,7 @@ function BlockEditor({ block, onChange }: { block: any; onChange: (patch: any) =
       return (
         <div className="space-y-2">
           <label className="block">
-            <span className="text-[10px] text-muted-foreground">Closing line</span>
+            <span className="text-2xs text-muted-foreground">Closing line</span>
             <input
               value={block.closing ?? ""}
               onChange={(e) => onChange({ closing: e.target.value })}
@@ -1007,14 +1007,14 @@ function BlockEditor({ block, onChange }: { block: any; onChange: (patch: any) =
             />
           </label>
           <label className="block">
-            <span className="text-[10px] text-muted-foreground">Designation shown under the name</span>
+            <span className="text-2xs text-muted-foreground">Designation shown under the name</span>
             <input
               value={block.designation ?? ""}
               onChange={(e) => onChange({ designation: e.target.value })}
               placeholder="AMFI Registered Mutual Fund Distributor"
               className="input-base text-xs w-full mt-0.5"
             />
-            <span className="text-[10px] text-muted-foreground">
+            <span className="text-2xs text-muted-foreground">
               Leave blank for the AMFI registration line. A distributor should not describe itself as an adviser.
             </span>
           </label>
@@ -1038,7 +1038,7 @@ function BlockEditor({ block, onChange }: { block: any; onChange: (patch: any) =
           </div>
           <div className="flex gap-1.5 items-end">
             <label className="flex-1">
-              <span className="text-[10px] text-muted-foreground block">Signature height (px)</span>
+              <span className="text-2xs text-muted-foreground block">Signature height (px)</span>
               <input
                 type="number"
                 min={24}
@@ -1058,7 +1058,7 @@ function BlockEditor({ block, onChange }: { block: any; onChange: (patch: any) =
               ]}
             />
           </div>
-          <p className="text-[10px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             The name, phone, email and signature image come from the client&apos;s own relationship manager at send
             time. Each person sets their signature in Settings &rarr; Profile.
           </p>
@@ -1069,7 +1069,7 @@ function BlockEditor({ block, onChange }: { block: any; onChange: (patch: any) =
         <div className="space-y-1.5">
           <input value={block.title ?? ""} onChange={(e) => onChange({ title: e.target.value })} placeholder="Hero title" className="input-base text-sm w-full" />
           <input value={block.subtitle ?? ""} onChange={(e) => onChange({ subtitle: e.target.value })} placeholder="Subtitle" className="input-base text-xs w-full" />
-          <label className="text-[10px] text-muted-foreground">Hero image (optional)</label>
+          <label className="text-2xs text-muted-foreground">Hero image (optional)</label>
           <ImageUploadInput value={block.imageUrl ?? ""} onChange={(v) => onChange({ imageUrl: v })} placeholder="Hero image URL (optional)" />
           <SelectInline label="Align" value={block.align ?? "center"} onChange={(v) => onChange({ align: v })} options={[{ value: "left", label: "Left" }, { value: "center", label: "Center" }]} />
         </div>
@@ -1116,7 +1116,7 @@ function BlockEditor({ block, onChange }: { block: any; onChange: (patch: any) =
           <div className="flex gap-1.5">
             <SelectInline label="Style" value={block.style ?? "solid"} onChange={(v) => onChange({ style: v })} options={[{ value: "solid", label: "Solid" }, { value: "outline", label: "Outline" }]} />
             <SelectInline label="Align" value={block.align ?? "center"} onChange={(v) => onChange({ align: v })} options={[{ value: "left", label: "Left" }, { value: "center", label: "Center" }, { value: "right", label: "Right" }]} />
-            <label className="flex items-center gap-1 text-[11px]">
+            <label className="flex items-center gap-1 text-2xs">
               <input type="checkbox" checked={block.fullWidth ?? false} onChange={(e) => onChange({ fullWidth: e.target.checked })} /> Full width
             </label>
           </div>
@@ -1138,7 +1138,7 @@ function BlockEditor({ block, onChange }: { block: any; onChange: (patch: any) =
         <div className="space-y-1.5">
           {(block.items ?? []).map((it: any, i: number) => (
             <div key={i} className="space-y-1 rounded-md border border-border p-1.5">
-              <div className="text-[10px] text-muted-foreground">Image {i + 1}</div>
+              <div className="text-2xs text-muted-foreground">Image {i + 1}</div>
               <ImageUploadInput value={it.url} onChange={(v) => onChange({ items: block.items.map((x: any, ix: number) => (ix === i ? { ...x, url: v } : x)) })} placeholder={`Image ${i + 1} URL`} />
               <input value={it.alt ?? ""} onChange={(e) => onChange({ items: block.items.map((x: any, ix: number) => (ix === i ? { ...x, alt: e.target.value } : x)) })} placeholder="Alt text" className="input-base text-xs w-full" />
             </div>
@@ -1152,7 +1152,7 @@ function BlockEditor({ block, onChange }: { block: any; onChange: (patch: any) =
                 ].slice(0, 3),
               })
             }
-            className="btn-ghost text-[11px]"
+            className="btn-ghost text-2xs"
           >
             + Add image (max 3)
           </button>
@@ -1171,7 +1171,7 @@ function BlockEditor({ block, onChange }: { block: any; onChange: (patch: any) =
               </button>
             </div>
           ))}
-          <button onClick={() => onChange({ rows: [...(block.rows ?? []), { label: "", value: "" }] })} className="btn-ghost text-[11px]">
+          <button onClick={() => onChange({ rows: [...(block.rows ?? []), { label: "", value: "" }] })} className="btn-ghost text-2xs">
             + Add row
           </button>
         </div>
@@ -1179,16 +1179,16 @@ function BlockEditor({ block, onChange }: { block: any; onChange: (patch: any) =
     case "divider":
       return (
         <div className="flex gap-2 items-center">
-          <label className="text-[11px]">Thickness</label>
+          <label className="text-2xs">Thickness</label>
           <input type="number" min={1} max={6} value={block.thickness ?? 1} onChange={(e) => onChange({ thickness: Number(e.target.value) })} className="input-base text-xs w-16" />
-          <label className="text-[11px]">Color</label>
+          <label className="text-2xs">Color</label>
           <input type="color" value={block.color ?? "#e5e7eb"} onChange={(e) => onChange({ color: e.target.value })} className="h-7 w-10 rounded border" />
         </div>
       );
     case "spacer":
       return (
         <div className="flex items-center gap-2">
-          <label className="text-[11px]">Height (px)</label>
+          <label className="text-2xs">Height (px)</label>
           <input type="number" min={4} max={120} value={block.height ?? 24} onChange={(e) => onChange({ height: Number(e.target.value) })} className="input-base text-xs w-20" />
         </div>
       );
@@ -1293,7 +1293,7 @@ function ModeChip({ active, onClick, label }: { active: boolean; onClick: () => 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1.5">
-      <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">{title}</div>
+      <div className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">{title}</div>
       {children}
     </div>
   );
@@ -1304,14 +1304,14 @@ function ColorRow({ label, value, onChange }: { label: string; value: string; on
     <div className="flex items-center gap-2">
       <input type="color" value={value} onChange={(e) => onChange(e.target.value)} className="h-7 w-10 rounded border" />
       <input value={value} onChange={(e) => onChange(e.target.value)} className="input-base text-xs flex-1 font-mono" />
-      <label className="text-[11px] text-muted-foreground w-20 text-right">{label}</label>
+      <label className="text-2xs text-muted-foreground w-20 text-right">{label}</label>
     </div>
   );
 }
 
 function Toggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
   return (
-    <label className="flex items-center gap-1.5 text-[11px] cursor-pointer">
+    <label className="flex items-center gap-1.5 text-2xs cursor-pointer">
       <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="size-3.5" />
       <span className="text-muted-foreground">{label}</span>
     </label>
@@ -1320,7 +1320,7 @@ function Toggle({ label, checked, onChange }: { label: string; checked: boolean;
 
 function SelectInline({ label, value, onChange, options }: { label: string; value: string; onChange: (v: string) => void; options: { value: string; label: string }[] }) {
   return (
-    <label className="flex items-center gap-1.5 text-[11px]">
+    <label className="flex items-center gap-1.5 text-2xs">
       <span className="text-muted-foreground">{label}</span>
       <select value={value} onChange={(e) => onChange(e.target.value)} className="input-base text-xs">
         {options.map((o) => (

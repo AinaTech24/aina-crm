@@ -35,7 +35,7 @@ export default async function AttendanceSettingsPage() {
           <ArrowLeft className="size-3.5" /> Back to attendance
         </Link>
         <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2 mt-2">
-          <Settings2 className="size-6 text-brand-cyan" /> Attendance settings
+          <Settings2 className="size-6 text-muted-foreground" /> Attendance settings
         </h1>
         <p className="text-muted-foreground text-sm">
           Work hours, grace period, half/full-day thresholds, and weekly offs. Drives late /

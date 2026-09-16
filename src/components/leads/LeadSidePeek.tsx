@@ -137,7 +137,7 @@ export function LeadSidePeek({
                   href={waUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-300 transition-colors"
+                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors"
                 >
                   <MessageSquare className="size-3" /> WhatsApp
                 </a>
@@ -162,7 +162,7 @@ export function LeadSidePeek({
           {/* Quick Metrics Bar */}
           <div className="grid grid-cols-2 gap-2 p-4 bg-secondary/30 border-b border-border text-center">
             <div className="p-2.5 bg-card rounded-lg border border-border/60">
-              <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block">
+              <span className="text-2xs uppercase font-bold text-muted-foreground tracking-wider block">
                 Intended Investment
               </span>
               <span className="text-sm font-bold text-foreground tabular-nums">
@@ -170,7 +170,7 @@ export function LeadSidePeek({
               </span>
             </div>
             <div className="p-2.5 bg-card rounded-lg border border-border/60">
-              <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block">
+              <span className="text-2xs uppercase font-bold text-muted-foreground tracking-wider block">
                 Source
               </span>
               <span className="text-sm font-bold text-brand-navy capitalize">{lead.source.replace("_", " ")}</span>
@@ -192,11 +192,11 @@ export function LeadSidePeek({
                   </h4>
                   <div className="grid grid-cols-2 gap-2 text-xs">
                     <div>
-                      <span className="text-muted-foreground block text-[11px]">Assigned RM</span>
+                      <span className="text-muted-foreground block text-2xs">Assigned RM</span>
                       <span className="font-medium text-foreground">{lead.owner ?? "Unassigned"}</span>
                     </div>
                     <div>
-                      <span className="text-muted-foreground block text-[11px]">Next Follow-up</span>
+                      <span className="text-muted-foreground block text-2xs">Next Follow-up</span>
                       <span className="font-medium text-foreground">
                         {lead.nextFollowUpAt ? formatDate(lead.nextFollowUpAt) : "No follow-up set"}
                       </span>

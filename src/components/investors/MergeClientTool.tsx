@@ -15,10 +15,24 @@
  *      every merge here is reversible from Differ Clients.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Check, GitMerge, Loader2, Search, ShieldAlert, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Check, GitMerge, Loader2, Search, ShieldAlert, X } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
+
+/** Shape of POST /api/investors/merge/preview — see src/lib/investors/merge.ts. */
+type MergePreview = {
+  moves: Array<{ table: string; label: string; count: number }>;
+  stays: Array<{ table: string; label: string; count: number }>;
+  conflicts: Array<{
+    field: string;
+    label: string;
+    survivorValue: string | null;
+    loserValues: Array<{ id: string; name: string; value: string }>;
+  }>;
+  panMismatch: boolean;
+  totals: { moving: number; staying: number };
+};
 
 type Candidate = {
   id: string;
@@ -55,6 +69,15 @@ export function MergeClientTool() {
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<string | null>(null);
   const seq = useRef(0);
+  // Dry run of the chosen survivor/losers: what actually moves, what stays on
+  // the retired record, and where the two records disagree.
+  const [preview, setPreview] = useState<MergePreview | null>(null);
+  const [previewing, setPreviewing] = useState(false);
+  /** Fields the operator wants taken FROM the duplicate (overwriting the survivor). */
+  const [takeFromLoser, setTakeFromLoser] = useState<Record<string, boolean>>({});
+  /** Ticked only when the operator has accepted a PAN clash. */
+  const [panAck, setPanAck] = useState(false);
+  const previewSeq = useRef(0);
 
   // Debounced search; `seq` stops a slow earlier request overwriting fresher results.
   useEffect(() => {
@@ -112,6 +135,41 @@ export function MergeClientTool() {
     setStep("preview");
   }
 
+  /** Ask the server what this merge would actually do. Re-runs whenever the
+   *  survivor changes, because "what moves" is relative to who is kept. */
+  const loadPreview = useCallback(async (keepId: string, loserIds: string[]) => {
+    const mine = ++previewSeq.current;
+    setPreviewing(true);
+    setPreview(null);
+    try {
+      const res = await fetch("/api/investors/merge/preview", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ survivorId: keepId, loserIds }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (mine === previewSeq.current) setPreview(res.ok ? j : null);
+    } catch {
+      if (mine === previewSeq.current) setPreview(null);
+    } finally {
+      if (mine === previewSeq.current) setPreviewing(false);
+    }
+  }, []);
+
+  // Any change of survivor invalidates the previous answer — and the operator's
+  // per-field picks, which were made against the old survivor's values.
+  useEffect(() => {
+    if (step !== "preview" || !survivorId) return;
+    const loserIds = selected.filter((s) => s.id !== survivorId).map((s) => s.id);
+    if (!loserIds.length) return;
+    setTakeFromLoser({});
+    setPanAck(false);
+    void loadPreview(survivorId, loserIds);
+    // `selected` is derived from picked+included, which cannot change on the
+    // preview step, so the survivor is the only real dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, survivorId, loadPreview]);
+
   async function confirmMerge() {
     if (!survivorId) return;
     const survivor = selected.find((s) => s.id === survivorId);
@@ -126,7 +184,13 @@ export function MergeClientTool() {
         const res = await fetch("/api/investors/merge", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ survivorId, loserId: loser.id, reason: reason.trim() || undefined }),
+          body: JSON.stringify({
+            survivorId,
+            loserId: loser.id,
+            reason: reason.trim() || undefined,
+            fieldOverrides: Object.keys(takeFromLoser).length ? takeFromLoser : undefined,
+            allowPanMismatch: panAck || undefined,
+          }),
         });
         const j = await res.json().catch(() => ({}));
         if (!res.ok || j.error) {
@@ -144,6 +208,9 @@ export function MergeClientTool() {
         setSurvivorId(null);
         setReason("");
         setQ("");
+        setPreview(null);
+        setTakeFromLoser({});
+        setPanAck(false);
         router.refresh();
       }
     } catch (e: any) {
@@ -226,6 +293,132 @@ export function MergeClientTool() {
             <span className="text-muted-foreground">Reversible from Differ Clients</span>
           </div>
 
+          {/* ── Different PAN: almost certainly two different people ───────── */}
+          {preview?.panMismatch && (
+            <div className="mt-4 rounded-lg border border-destructive/30 bg-destructive/10 p-4">
+              <div className="flex items-start gap-2.5">
+                <AlertTriangle className="size-4 text-destructive shrink-0 mt-0.5" />
+                <div className="min-w-0 text-xs">
+                  <div className="font-semibold text-destructive">These records have different PANs</div>
+                  <p className="mt-1 text-muted-foreground leading-relaxed">
+                    A PAN identifies one person, so this is almost always two different clients — merging would move one
+                    person&apos;s folios and transactions onto another. Check the PANs in the table above before continuing.
+                  </p>
+                  <label className="mt-2.5 inline-flex items-start gap-2 cursor-pointer font-medium text-destructive">
+                    <input
+                      type="checkbox"
+                      checked={panAck}
+                      onChange={(e) => setPanAck(e.target.checked)}
+                      className="mt-0.5"
+                    />
+                    <span>I have checked — these really are the same person</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── What actually moves, counted on the server ─────────────────── */}
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <div className="rounded-lg border border-border p-3">
+              <div className="text-xs font-semibold">
+                What moves to {survivor.name.split(" ")[0]}
+                {preview && <span className="ml-1.5 text-muted-foreground font-normal">({preview.totals.moving} rows)</span>}
+              </div>
+              {previewing ? (
+                <div className="mt-2 text-xs text-muted-foreground inline-flex items-center gap-1.5">
+                  <Loader2 className="size-3 animate-spin" /> Counting…
+                </div>
+              ) : !preview ? (
+                <p className="mt-2 text-xs text-muted-foreground">Couldn&apos;t load the preview — the merge itself is unaffected.</p>
+              ) : preview.moves.length === 0 ? (
+                <p className="mt-2 text-xs text-muted-foreground">Nothing attached to the duplicate — only the record itself is retired.</p>
+              ) : (
+                <ul className="mt-2 space-y-0.5 text-xs max-h-44 overflow-y-auto scrollbar-thin">
+                  {preview.moves.map((m) => (
+                    <li key={m.table} className="flex justify-between gap-3">
+                      <span className="text-muted-foreground truncate">{m.label}</span>
+                      <span className="tabular-nums font-medium shrink-0">{m.count}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div className="rounded-lg border border-border p-3">
+              <div className="text-xs font-semibold">
+                What stays on the retired record
+                {preview && <span className="ml-1.5 text-muted-foreground font-normal">({preview.totals.staying} rows)</span>}
+              </div>
+              {previewing ? (
+                <div className="mt-2 text-xs text-muted-foreground inline-flex items-center gap-1.5">
+                  <Loader2 className="size-3 animate-spin" /> Counting…
+                </div>
+              ) : preview && preview.stays.length > 0 ? (
+                <>
+                  <ul className="mt-2 space-y-0.5 text-xs max-h-32 overflow-y-auto scrollbar-thin">
+                    {preview.stays.map((m) => (
+                      <li key={m.table} className="flex justify-between gap-3">
+                        <span className="text-muted-foreground truncate">{m.label}</span>
+                        <span className="tabular-nums font-medium shrink-0">{m.count}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="mt-2 text-2xs text-muted-foreground leading-relaxed">
+                    Consent, message history and risk profiles are tied to the person who gave them, so they are not moved.
+                    They remain readable on the retired record.
+                  </p>
+                </>
+              ) : (
+                <p className="mt-2 text-xs text-muted-foreground">Nothing is left behind.</p>
+              )}
+            </div>
+          </div>
+
+          {/* ── Field disagreements: pick which value the survivor keeps ───── */}
+          {preview && preview.conflicts.length > 0 && (
+            <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4">
+              <div className="text-xs font-semibold text-amber-900">
+                {preview.conflicts.length} field{preview.conflicts.length === 1 ? "" : "s"} disagree — choose what {survivor.name.split(" ")[0]} keeps
+              </div>
+              <p className="mt-1 text-2xs text-amber-800/80">
+                Blank fields on the surviving record are filled from the duplicate automatically. These already hold a value,
+                so nothing changes unless you pick the duplicate&apos;s.
+              </p>
+              <div className="mt-3 space-y-2.5">
+                {preview.conflicts.map((c) => (
+                  <div key={c.field} className="grid gap-1.5 sm:grid-cols-[7rem_1fr] sm:items-start">
+                    <div className="text-xs font-medium text-amber-900 pt-1">{c.label}</div>
+                    <div className="flex flex-wrap gap-1.5">
+                      <label className="inline-flex items-center gap-1.5 text-xs bg-card border border-border rounded-md px-2 py-1 cursor-pointer">
+                        <input
+                          type="radio"
+                          name={`conflict-${c.field}`}
+                          checked={!takeFromLoser[c.field]}
+                          onChange={() => setTakeFromLoser((p) => ({ ...p, [c.field]: false }))}
+                        />
+                        <span className="font-medium">{c.survivorValue}</span>
+                        <span className="text-2xs text-muted-foreground">keep</span>
+                      </label>
+                      {c.loserValues.map((lv) => (
+                        <label key={lv.id} className="inline-flex items-center gap-1.5 text-xs bg-card border border-border rounded-md px-2 py-1 cursor-pointer">
+                          <input
+                            type="radio"
+                            name={`conflict-${c.field}`}
+                            checked={!!takeFromLoser[c.field]}
+                            onChange={() => setTakeFromLoser((p) => ({ ...p, [c.field]: true }))}
+                          />
+                          <span className="font-medium">{lv.value}</span>
+                          <span className="text-2xs text-muted-foreground">from {lv.name.split(" ")[0]}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <input
             value={reason}
             onChange={(e) => setReason(e.target.value)}
@@ -242,7 +435,15 @@ export function MergeClientTool() {
 
           <div className="mt-4 flex items-center justify-end gap-2">
             <button type="button" onClick={() => setStep("pick")} disabled={busy} className="btn-secondary text-sm">Cancel</button>
-            <button type="button" onClick={confirmMerge} disabled={busy} className="btn-primary text-sm inline-flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={confirmMerge}
+              // A PAN clash must be acknowledged before the merge can run; the
+              // server refuses it anyway, this just says so before the click.
+              disabled={busy || previewing || (!!preview?.panMismatch && !panAck)}
+              title={preview?.panMismatch && !panAck ? "Confirm the PAN mismatch above first" : undefined}
+              className="btn-primary text-sm inline-flex items-center gap-1.5"
+            >
               {busy ? <Loader2 className="size-4 animate-spin" /> : <GitMerge className="size-4" />}
               Merge {losers.length} into {survivor.name.split(" ")[0]}
             </button>
@@ -300,13 +501,13 @@ export function MergeClientTool() {
                         </span>
                         <span className="min-w-0 flex-1">
                           <span className="block text-sm font-medium truncate">{c.name}</span>
-                          <span className="block text-[11px] text-muted-foreground truncate tabular-nums">
+                          <span className="block text-2xs text-muted-foreground truncate tabular-nums">
                             {[c.pan, c.phone, c.email, c.address ?? c.city].filter(Boolean).join(" · ") || "no identifiers"}
                           </span>
                         </span>
                         <span className="text-right shrink-0">
                           <span className="block text-xs font-medium tabular-nums">{inr(c.aum)}</span>
-                          <span className="block text-[11px] text-muted-foreground">{c.folios} folio{c.folios === 1 ? "" : "s"}</span>
+                          <span className="block text-2xs text-muted-foreground">{c.folios} folio{c.folios === 1 ? "" : "s"}</span>
                         </span>
                       </button>
                     );

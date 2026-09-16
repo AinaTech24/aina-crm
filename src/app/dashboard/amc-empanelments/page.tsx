@@ -68,7 +68,8 @@ export default async function AmcEmpanelmentsListPage({
     <div className="space-y-5">
       <div className="flex items-end justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">AMC empanelments</h1>
+          <h1 className="page-title">AMC empanelments</h1>
+          <p className="page-subtitle mt-1">Which fund houses you are empanelled with, and when each empanelment expires.</p>
         </div>
         <Link href="/dashboard/amc-empanelments/new" className="btn-primary text-sm">
           <Plus className="size-4" /> Add empanelment
@@ -134,7 +135,7 @@ export default async function AmcEmpanelmentsListPage({
                     >
                       {r.amcName}
                     </Link>
-                    <div className="text-[10px] text-muted-foreground font-mono">
+                    <div className="text-2xs text-muted-foreground font-mono">
                       {r.amcCode}
                     </div>
                   </td>
@@ -167,7 +168,7 @@ export default async function AmcEmpanelmentsListPage({
                   />
                   <td className="px-3 py-2">
                     {r.trailRateOverridePct ? (
-                      <span className="chip bg-violet-50 text-violet-700 text-[10px]">
+                      <span className="chip bg-violet-50 text-violet-700 text-2xs">
                         {Number(r.trailRateOverridePct).toFixed(2)}%
                       </span>
                     ) : (
@@ -180,7 +181,7 @@ export default async function AmcEmpanelmentsListPage({
                         href={r.portalUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-violet-600 hover:underline inline-flex items-center gap-1 text-[11px]"
+                        className="text-violet-600 hover:underline inline-flex items-center gap-1 text-2xs"
                       >
                         Login <ExternalLink className="size-2.5" />
                       </a>
@@ -190,7 +191,7 @@ export default async function AmcEmpanelmentsListPage({
                   </td>
                   <td className="px-3 py-2">
                     <span
-                      className={`chip text-[10px] ${STATUS_TONE[r.status] ?? "bg-slate-100"
+                      className={`chip text-2xs ${STATUS_TONE[r.status] ?? "bg-slate-100"
                         }`}
                     >
                       {r.status.replace("_", " ")}
@@ -222,11 +223,11 @@ function ContactCell({
   }
   return (
     <td className="px-3 py-2">
-      {name && <div className="text-[11px] font-medium">{name}</div>}
+      {name && <div className="text-2xs font-medium">{name}</div>}
       {email && (
         <a
           href={`mailto:${email}`}
-          className="inline-flex items-center gap-1 text-[10px] text-slate-600 hover:text-slate-900"
+          className="inline-flex items-center gap-1 text-2xs text-slate-600 hover:text-slate-900"
         >
           <Mail className="size-2.5" />
           {email}
@@ -236,7 +237,7 @@ function ContactCell({
         <div>
           <a
             href={`tel:${phone}`}
-            className="inline-flex items-center gap-1 text-[10px] text-slate-600 hover:text-slate-900"
+            className="inline-flex items-center gap-1 text-2xs text-slate-600 hover:text-slate-900"
           >
             <Phone className="size-2.5" />
             {phone}

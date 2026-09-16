@@ -123,8 +123,9 @@ export default async function FinancialPlansPage({
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="page-title">
-            <ScrollText className="size-6 text-brand-cyan" /> Financial Plans
+            <ScrollText className="size-6 text-muted-foreground" /> Financial Plans
           </h1>
+          <p className="page-subtitle mt-1">Full financial plans with cash-flow, goals and recommendations you can print.</p>
         </div>
         <Link href="/dashboard/financial-plans/new" className="btn-primary">
           <Plus className="size-4" /> Create Financial Plan
@@ -200,7 +201,7 @@ export default async function FinancialPlansPage({
                             <Avatar src={p.investorAvatarUrl && p.investorId ? `/api/investors/${p.investorId}/avatar` : null} name={p.investorName ?? p.leadName} size={26} />
                             <span className="flex items-center gap-1.5">
                               {p.investorName ?? p.leadName ?? "—"}
-                              {!p.investorId && p.leadId && <span className="chip text-[9px] bg-amber-100 text-amber-700">Lead</span>}
+                              {!p.investorId && p.leadId && <span className="chip text-2xs bg-amber-100 text-amber-700">Lead</span>}
                             </span>
                           </div>
                         </td>
@@ -299,7 +300,7 @@ function StatCard({
   return (
     <div className="kpi-card bg-card border border-border/60 rounded-xl p-4 shadow-sm">
       <div className="flex items-center justify-between">
-        <span className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">
+        <span className="text-2xs uppercase tracking-wider font-bold text-muted-foreground">
           {label}
         </span>
         {Icon && (
@@ -311,7 +312,7 @@ function StatCard({
       <div className={`text-2xl font-bold mt-2 tabular-nums tracking-tight ${color}`}>
         {value}
       </div>
-      {subtext && <p className="text-[10px] text-muted-foreground mt-1">{subtext}</p>}
+      {subtext && <p className="text-2xs text-muted-foreground mt-1">{subtext}</p>}
     </div>
   );
 }

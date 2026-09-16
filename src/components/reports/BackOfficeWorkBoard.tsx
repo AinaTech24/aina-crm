@@ -186,7 +186,7 @@ export function BackOfficeWorkBoard() {
                 <th colSpan={2} className="px-3 py-1.5 font-semibold text-xs uppercase tracking-wide border-l border-border">Offline</th>
                 <th colSpan={2} className="px-3 py-1.5 font-semibold text-xs uppercase tracking-wide border-l border-border">Total</th>
               </tr>
-              <tr className="bg-brand-cyan-light/20 text-right text-[11px] text-muted-foreground uppercase">
+              <tr className="bg-brand-cyan-light/20 text-right text-2xs text-muted-foreground uppercase">
                 <th className="px-3 py-1 border-l border-border">Value</th><th className="px-3 py-1">No.</th>
                 <th className="px-3 py-1 border-l border-border">Value</th><th className="px-3 py-1">No.</th>
                 <th className="px-3 py-1 border-l border-border">Value</th><th className="px-3 py-1">No.</th>

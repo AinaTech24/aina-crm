@@ -86,7 +86,7 @@ export function SuitabilityCard({
           Risk suitability
         </h2>
         <span
-          className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full ${styles.badge}`}
+          className={`inline-flex items-center gap-1 text-2xs font-semibold px-2 py-0.5 rounded-full ${styles.badge}`}
         >
           <SeverityIcon severity={severity} className="size-3" />
           {styles.label}

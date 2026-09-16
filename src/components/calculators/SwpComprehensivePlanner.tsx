@@ -111,7 +111,7 @@ export function SwpComprehensivePlanner() {
 
       {/* Distribution allocation grid */}
       <div className="rounded-lg border border-border/70 p-4 bg-secondary/20 print:bg-transparent space-y-3">
-        <div className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+        <div className="text-2xs font-bold uppercase tracking-wider text-muted-foreground">
           Distribution phase — asset allocation &amp; returns
         </div>
         <AllocGrid title="Allocation %" total={allocTotal} totalBad={Math.abs(allocTotal - 100) > 0.01}
@@ -123,7 +123,7 @@ export function SwpComprehensivePlanner() {
           onChange={(i, v) => setRates((p) => ({ debtPct: i === 0 ? v : p.debtPct, hybridPct: i === 1 ? v : p.hybridPct, equityPct: i === 2 ? v : p.equityPct }))}
         />
         {Math.abs(allocTotal - 100) > 0.01 && (
-          <p className="text-[11px] text-rose-600">Allocation should total 100% (currently {allocTotal.toFixed(0)}%).</p>
+          <p className="text-2xs text-rose-600">Allocation should total 100% (currently {allocTotal.toFixed(0)}%).</p>
         )}
       </div>
 
@@ -238,7 +238,7 @@ function AllocGrid({
     <div className="grid grid-cols-4 gap-2 items-end">
       {labels.map((lab, i) => (
         <label key={i} className="block">
-          <span className="text-[10px] text-muted-foreground block mb-0.5">{i === 0 ? `${title} — ${lab}` : lab}</span>
+          <span className="text-2xs text-muted-foreground block mb-0.5">{i === 0 ? `${title} — ${lab}` : lab}</span>
           <input
             type="number" value={values[i]} step={0.5} min={0}
             onChange={(e) => onChange(i, clampNum(e.target.value))}
@@ -247,7 +247,7 @@ function AllocGrid({
         </label>
       ))}
       <label className="block">
-        <span className="text-[10px] text-muted-foreground block mb-0.5">{totalLabel}</span>
+        <span className="text-2xs text-muted-foreground block mb-0.5">{totalLabel}</span>
         <div className={`input-base text-sm w-full bg-secondary/40 ${totalBad ? "text-rose-600 font-semibold" : ""}`}>
           {total.toFixed(totalLabel.includes("Average") ? 2 : 0)}%
         </div>

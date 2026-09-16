@@ -60,7 +60,7 @@ export default async function LifecyclePage({ searchParams }: { searchParams: Pr
 
   return (
     <div className="max-w-7xl space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3"><div><h1 className="page-title"><Route className="size-6 text-brand-cyan" /> Lead-to-client lifecycle</h1><p className="mt-1 text-sm text-muted-foreground">One view from first contact through onboarding and active-client handoff.</p></div><WorkSwitcher current="/dashboard/lifecycle" options={VIEWS} label="Module" /></div>
+      <div className="flex flex-wrap items-start justify-between gap-3"><div><h1 className="page-title"><Route className="size-6 text-muted-foreground" /> Lead-to-client lifecycle</h1><p className="mt-1 text-sm text-muted-foreground">One view from first contact through onboarding and active-client handoff.</p></div><WorkSwitcher current="/dashboard/lifecycle" options={VIEWS} label="Module" /></div>
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><PhaseCard label="Lead phase" value={leadCount} href="lead" icon={Users} /><PhaseCard label="Onboarding" value={onboardingCount} href="onboarding" icon={Clock3} /><PhaseCard label="Active clients" value={activeCount} href="active" icon={CheckCircle2} /><PhaseCard label="SLA overdue" value={overdueCount} href="all" icon={AlertTriangle} danger={overdueCount > 0} /></div>
 

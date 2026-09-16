@@ -5,6 +5,7 @@ name: CI
 # effectively never ran: the checks below — typecheck, RBAC gating, migration
 # numbering, RLS coverage — only fired on branches nobody pushes to.
 on:
+  workflow_call:
   push:
   pull_request:
 
@@ -35,9 +36,25 @@ jobs:
         run: npm run check:mathimports
       - name: Unit tests (money math + central spine)
         run: npm test
-      - name: Lint (non-blocking for now — surfaces issues without failing CI)
+      - name: Lint
         run: npm run lint
-        continue-on-error: true
+
+  mobile:
+    name: Mobile types and regression tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm test -- --runInBand
 
   db-checks:
     name: Migrate · RLS coverage

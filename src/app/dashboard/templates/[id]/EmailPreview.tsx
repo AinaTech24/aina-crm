@@ -189,7 +189,7 @@ export function EmailPreview({ body, blocksView, defaultTestEmail = "" }: Props)
             <div className="rounded-lg border bg-card p-3 mb-3">
               <div className="flex items-end gap-2 flex-wrap">
                 <label className="flex-1 min-w-[220px]">
-                  <span className="text-[11px] font-medium text-muted-foreground">Send this email to</span>
+                  <span className="text-2xs font-medium text-muted-foreground">Send this email to</span>
                   <input
                     type="email"
                     value={to}
@@ -218,7 +218,7 @@ export function EmailPreview({ body, blocksView, defaultTestEmail = "" }: Props)
                 </p>
               )}
               {sendErr && <p className="text-xs text-rose-600 mt-2">{sendErr}</p>}
-              <p className="text-[11px] text-muted-foreground mt-2">
+              <p className="text-2xs text-muted-foreground mt-2">
                 Goes out from your firm's connected mailbox with sample client data. No client is contacted and
                 nothing is recorded against a client record.
               </p>
@@ -249,7 +249,7 @@ export function EmailPreview({ body, blocksView, defaultTestEmail = "" }: Props)
             </div>
           )}
 
-          <p className="text-[11px] text-muted-foreground mt-2">
+          <p className="text-2xs text-muted-foreground mt-2">
             Merge fields show sample client data. Your firm logo, colours and footer are real, and the sign-off
             uses your own signature — upload one under Settings → Profile if it is missing.
           </p>

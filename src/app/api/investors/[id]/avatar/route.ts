@@ -1,3 +1,4 @@
+import { assertInvestorAccess } from "@/lib/investors/access";
 /**
  * GET /api/investors/[id]/avatar
  *
@@ -20,6 +21,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const { id } = await params;
   try {
     const session = await requireSession();
+    await assertInvestorAccess(session, (await params).id);
     const avatar = await withTenant(session.tenantId, async (tx) => {
       const [r] = await tx
         .select({ avatarUrl: investors.avatarUrl })

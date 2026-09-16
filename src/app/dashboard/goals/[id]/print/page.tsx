@@ -106,9 +106,9 @@ export default async function GoalPrintPage({
               maxWidth={200}
             />
             <div>
-              <div className="text-[11px] text-slate-600">ARN {String(data.tenant?.arn ?? "—").replace(/^ARN-?/i, "")}</div>
+              <div className="text-2xs text-slate-600">ARN {String(data.tenant?.arn ?? "—").replace(/^ARN-?/i, "")}</div>
               {data.tenant?.email && (
-                <div className="text-[11px] text-slate-600">{data.tenant.email}</div>
+                <div className="text-2xs text-slate-600">{data.tenant.email}</div>
               )}
             </div>
           </div>
@@ -135,12 +135,12 @@ export default async function GoalPrintPage({
         {/* Goal headline */}
         <div className="mt-6 grid grid-cols-2 gap-4">
           <div className="rounded-lg border border-slate-200 p-4">
-            <div className="text-[11px] uppercase tracking-wide text-slate-500">Goal</div>
+            <div className="text-2xs uppercase tracking-wide text-slate-500">Goal</div>
             <div className="font-semibold mt-1">{goal.name}</div>
             <div className="text-xs text-slate-600 mt-0.5">{categoryLabel(goal.category)}</div>
           </div>
           <div className="rounded-lg border border-slate-200 p-4">
-            <div className="text-[11px] uppercase tracking-wide text-slate-500">Status</div>
+            <div className="text-2xs uppercase tracking-wide text-slate-500">Status</div>
             <div className={`text-xs font-semibold inline-block px-2 py-0.5 rounded-full mt-1 ${status.tone}`}>
               {status.label}
             </div>
@@ -310,7 +310,7 @@ export default async function GoalPrintPage({
         )}
 
         {/* Disclosure footer */}
-        <div className="mt-10 pt-4 border-t border-slate-200 text-[10px] text-slate-500 leading-relaxed">
+        <div className="mt-10 pt-4 border-t border-slate-200 text-2xs text-slate-500 leading-relaxed">
           <p>
             <strong>Important disclosures:</strong> Mutual fund investments are subject to market risks.
             Read all scheme-related documents carefully. The illustrations above are based on assumed
@@ -330,7 +330,7 @@ export default async function GoalPrintPage({
 function Money({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-lg border border-slate-200 p-3">
-      <div className="text-[11px] uppercase tracking-wide text-slate-500">{label}</div>
+      <div className="text-2xs uppercase tracking-wide text-slate-500">{label}</div>
       <div className="text-lg font-bold tabular-nums mt-0.5">{value}</div>
     </div>
   );
@@ -339,9 +339,9 @@ function Money({ label, value }: { label: string; value: string }) {
 function Plan({ label, value, sub }: { label: string; value: string; sub: string }) {
   return (
     <div className="rounded-lg border border-slate-300 p-3">
-      <div className="text-[10px] uppercase tracking-wide text-slate-500">{label}</div>
+      <div className="text-2xs uppercase tracking-wide text-slate-500">{label}</div>
       <div className="text-lg font-bold tabular-nums mt-1">{value}</div>
-      <div className="text-[10px] text-slate-600 mt-0.5 leading-tight">{sub}</div>
+      <div className="text-2xs text-slate-600 mt-0.5 leading-tight">{sub}</div>
     </div>
   );
 }

@@ -32,7 +32,7 @@ function Dot({ health }: { health: Health }) {
 }
 
 function Spark({ series, color = "#0891b2", height = 34, width = 150, fill }: { series: { v: number }[] | Point[]; color?: string; height?: number; width?: number; fill?: boolean }) {
-  if (!series || series.length < 2) return <div className="text-[10px] text-muted-foreground" style={{ height }} />;
+  if (!series || series.length < 2) return <div className="text-2xs text-muted-foreground" style={{ height }} />;
   const vs = series.map((p: any) => p.v);
   const min = Math.min(...vs), max = Math.max(...vs);
   const span = max - min || 1;
@@ -74,9 +74,9 @@ function Card({ title, icon, health, right, children }: { title: string; icon: R
 function Metric({ label, value, sub, health }: { label: string; value: string; sub?: string; health?: Health }) {
   return (
     <div>
-      <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className="text-2xs uppercase tracking-wide text-muted-foreground">{label}</div>
       <div className="text-lg font-bold tabular-nums" style={health ? { color: HEALTH_COLOR[health] } : undefined}>{value}</div>
-      {sub && <div className="text-[11px] text-muted-foreground">{sub}</div>}
+      {sub && <div className="text-2xs text-muted-foreground">{sub}</div>}
     </div>
   );
 }
@@ -99,7 +99,7 @@ function LiveGauge({ icon, label, value, sub, pct, health, hist, color }: { icon
         <span className="size-2 rounded-full" style={{ background: c }} />
       </div>
       <div className="text-2xl font-bold tabular-nums" style={{ color: c }}>{value}</div>
-      {sub && <div className="text-[11px] text-muted-foreground -mt-1">{sub}</div>}
+      {sub && <div className="text-2xs text-muted-foreground -mt-1">{sub}</div>}
       {pct != null && <Bar pct={pct} health={health} />}
       <Spark series={hist} color={c} fill height={30} width={220} />
     </div>
@@ -213,14 +213,14 @@ export function AwsMonitoringDashboard() {
             <div className="absolute inset-0 grid place-items-center">
               <div className="text-center leading-none">
                 <div className="text-2xl font-bold tabular-nums" style={{ color: HEALTH_COLOR[scoreHealth] }}>{score}</div>
-                <div className="text-[9px] text-muted-foreground">/ 100</div>
+                <div className="text-2xs text-muted-foreground">/ 100</div>
               </div>
             </div>
           </div>
           <div>
             <div className="font-semibold inline-flex items-center gap-1.5"><HeartPulse className="size-4 text-muted-foreground" /> System Health</div>
             <Dot health={scoreHealth} />
-            <p className="text-[11px] text-muted-foreground mt-1">Weighted across CPU, RAM, disk, swap, DB, EC2 status &amp; jobs.</p>
+            <p className="text-2xs text-muted-foreground mt-1">Weighted across CPU, RAM, disk, swap, DB, EC2 status &amp; jobs.</p>
           </div>
         </div>
         <div className="border rounded-xl bg-card p-4 lg:col-span-2">
@@ -315,7 +315,7 @@ export function AwsMonitoringDashboard() {
                 <Metric label="This month" value={s.s3.growthMonthBytes != null ? `+${fmtBytes(s.s3.growthMonthBytes)}` : "—"} />
               </div>
               {s.s3.sizeSeries.length > 1 && <Spark series={s.s3.sizeSeries} color="#0891b2" fill height={32} width={300} />}
-              <p className="text-[11px] text-muted-foreground">Per-folder &amp; large-file breakdown needs S3 Inventory — later pass.</p>
+              <p className="text-2xs text-muted-foreground">Per-folder &amp; large-file breakdown needs S3 Inventory — later pass.</p>
             </Card>
 
             <Card title="IAM &amp; platform" icon={<ShieldCheck className="size-4" />}>
@@ -360,7 +360,7 @@ export function AwsMonitoringDashboard() {
                 <Metric label="Failed" value={fmtNum(ops.jobs.failed)} health={ops.jobs.failed > 0 ? "warning" : undefined} />
                 <Metric label="Queues" value={fmtNum(ops.jobs.queues.length)} />
               </div>
-              <div className="text-[11px] text-muted-foreground space-y-0.5 max-h-24 overflow-y-auto">
+              <div className="text-2xs text-muted-foreground space-y-0.5 max-h-24 overflow-y-auto">
                 {ops.jobs.queues.map((q) => (
                   <div key={q.name} className="flex justify-between"><span className="font-mono truncate">{q.name}</span><span className="tabular-nums">{q.active}▶ {q.waiting + q.delayed}⏳ {q.failed > 0 ? <span className="text-rose-600">{q.failed}✕</span> : "0✕"}</span></div>
                 ))}
@@ -373,7 +373,7 @@ export function AwsMonitoringDashboard() {
                 <Metric label="2FA enabled" value={ops.security.twoFaPct != null ? `${ops.security.twoFaPct}%` : "—"} health={ops.security.twoFaPct != null ? bandPctInv(ops.security.twoFaPct) : "unknown"} />
                 <Metric label="Suspended" value={fmtNum(ops.security.suspended)} health={ops.security.suspended > 0 ? "warning" : undefined} />
               </div>
-              <p className="text-[11px] text-muted-foreground">Failed-login tracking isn&apos;t logged to the DB yet (rate-limited only).</p>
+              <p className="text-2xs text-muted-foreground">Failed-login tracking isn&apos;t logged to the DB yet (rate-limited only).</p>
             </Card>
 
             <Card title="Application (Node)" icon={<Activity className="size-4" />}>

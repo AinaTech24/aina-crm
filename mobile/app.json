@@ -63,7 +63,10 @@
           "isIosBackgroundLocationEnabled": false,
           "isAndroidBackgroundLocationEnabled": false
         }
-      ]
+      ],
+      "@sentry/react-native",
+      "expo-localization",
+      "expo-font"
     ],
     "extra": {
       "router": {},
@@ -71,6 +74,12 @@
         "projectId": "6f496da1-7cc7-4891-9fb7-ca03a97dd8f0"
       }
     },
-    "owner": "ainatech-services-llp"
+    "owner": "ainatech-services-llp",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/6f496da1-7cc7-4891-9fb7-ca03a97dd8f0"
+    }
   }
 }

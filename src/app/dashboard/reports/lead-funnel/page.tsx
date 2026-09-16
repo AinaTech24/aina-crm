@@ -246,7 +246,7 @@ export default async function LeadFunnelReport({
         />
       </Section>
 
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-2xs text-muted-foreground">
         &ldquo;Converted&rdquo; counts leads where a client record was actually created (not just a stage rename).
         Avg days = time from lead created to client created.
       </p>
@@ -262,7 +262,7 @@ function Kpi({
   const inner = (
     <div className="card-surface glass-card p-4 h-full">
       <div className="flex items-center justify-between">
-        <span className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">{label}</span>
+        <span className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">{label}</span>
         <Icon className="size-4 text-muted-foreground" />
       </div>
       <div className={`text-xl font-bold mt-2 tabular-nums tracking-tight ${color}`}>{value}</div>
@@ -289,7 +289,7 @@ function Table({
     <div className="max-h-96 overflow-auto scrollbar-none rounded-lg border">
       <table className="w-full text-sm border-collapse min-w-[560px]">
         <thead className="sticky top-0 bg-muted/60 backdrop-blur">
-          <tr className="text-[11px] uppercase tracking-wide text-muted-foreground">
+          <tr className="text-2xs uppercase tracking-wide text-muted-foreground">
             {head.map((h, i) => (
               <th key={h} className={`py-2.5 px-3 font-medium ${i === 0 ? "text-left" : "text-right"} whitespace-nowrap`}>{h}</th>
             ))}

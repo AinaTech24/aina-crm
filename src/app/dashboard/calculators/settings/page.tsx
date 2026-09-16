@@ -25,7 +25,7 @@ export default async function CalculatorSettingsPage() {
           <ArrowLeft className="size-3.5" /> Back to calculators
         </Link>
         <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2 mt-2">
-          <Settings2 className="size-6 text-brand-cyan" /> Calculator assumptions
+          <Settings2 className="size-6 text-muted-foreground" /> Calculator assumptions
         </h1>
       </div>
 

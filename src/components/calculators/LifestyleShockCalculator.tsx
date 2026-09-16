@@ -49,7 +49,7 @@ export function LifestyleShockCalculator() {
       </div>
 
       <div className="rounded-xl border border-rose-200 bg-rose-50/60 p-5 text-center">
-        <div className="text-[11px] uppercase tracking-wider font-semibold text-rose-700">
+        <div className="text-2xs uppercase tracking-wider font-semibold text-rose-700">
           In {yearsToRetire} years, the same lifestyle costs
         </div>
         <div className="text-3xl font-extrabold text-rose-700 mt-1">{inr(Math.round(res.futureMonthly))}/mo</div>

@@ -286,39 +286,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         ...clientMeta,
       });
 
-      // Referral recognition (closed loop). The lead_welcome recipe already
-      // thanked the referrer when the lead came in; now that it has actually
-      // CONVERTED, task the owning RM to recognise the referrer personally —
-      // genuine recognition is what drives the next referral.
-      if (lead.referredByInvestorId) {
-        try {
-          await tx.transaction(async (sp) => {
-            await sp.execute(sql`
-              INSERT INTO tasks (
-                id, tenant_id, title, description, status, priority,
-                assignee_id, due_at, kind, created_by, created_at, updated_at
-              )
-              VALUES (
-                gen_random_uuid(), ${session.tenantId}::uuid,
-                ${`Thank ${lead.referredByName ?? "your client"} — their referral just converted`},
-                ${`${lead.name} (referred by ${lead.referredByName ?? "an existing client"}) is now a client. Call the referrer within 2 days to thank them — referral recognition is the cheapest growth you have.`},
-                'open', 'normal',
-                ${lead.ownerId ?? session.userId}::uuid,
-                now() + interval '2 days',
-                'admin',
-                ${session.userId}::uuid,
-                now(), now()
-              )
-            `);
-          });
-        } catch (refErr) {
-          console.warn(
-            `[lead.convert] referral-recognition task insert failed for lead ${leadId}:`,
-            (refErr as Error)?.message
-          );
-        }
-      }
-
+      // Automatic tasks are disabled by firm preference. Keep referral context
+      // in the conversion result; the RM may create a follow-up explicitly.
+      const referralFollowUp = lead.referredByInvestorId
+        ? { status: "disabled" as const, reason: "Automatic task creation is disabled", investorId: lead.referredByInvestorId }
+        : null;
       // Push the shared blueprint instance into the client phase so the
       // freshly-converted client appears in the right column of the
       // Clients Kanban (Request Documents) — instead of being stuck at
@@ -329,7 +301,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         remarks: "Lead converted to client — entering onboarding phase.",
       });
 
-      return { investorId, alreadyConverted: false };
+      return { investorId, alreadyConverted: false, referralFollowUp };
     });
 
     if ("badRm" in result) {
@@ -346,3 +318,4 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return handleApiError(err);
   }
 }
+

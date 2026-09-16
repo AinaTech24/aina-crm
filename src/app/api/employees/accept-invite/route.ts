@@ -1,3 +1,4 @@
+import { issueSessionToken } from "@/lib/auth/issue-session";
 import { handleApiError } from "@/lib/api/error-handler";
 /**
  * POST /api/employees/accept-invite
@@ -14,7 +15,7 @@ import bcrypt from "bcryptjs";
 import { eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withSystem, withTenant } from "@/db/client";
-import { signSession, SESSION_COOKIE, SESSION_TTL_SECONDS } from "@/lib/auth/session";
+import { SESSION_COOKIE, SESSION_TTL_SECONDS } from "@/lib/auth/session";
 import { ASSIGNABLE_ROLES } from "@/lib/auth/rbac";
 import { autoEnrol } from "@/lib/induction/engine";
 
@@ -115,7 +116,7 @@ export async function POST(req: NextRequest) {
       /* non-fatal — see above */
     }
 
-    const tokenJwt = await signSession({
+    const tokenJwt = await issueSessionToken({
       userId: result.userId,
       tenantId: result.tenantId,
       branchId: result.branchId,

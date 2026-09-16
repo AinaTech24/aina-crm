@@ -129,7 +129,7 @@ export function IncomeBridgePlanner() {
       <div className="grid md:grid-cols-2 gap-4">
         {/* Accumulation */}
         <section className="border border-slate-200 rounded-lg p-4 space-y-3">
-          <div className="text-[11px] uppercase tracking-wider font-semibold text-primary">
+          <div className="text-2xs uppercase tracking-wider font-semibold text-primary">
             ① Accumulation — build the corpus
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -153,7 +153,7 @@ export function IncomeBridgePlanner() {
             )}
           </div>
           {isReverse && (
-            <p className="text-[10px] text-muted-foreground">
+            <p className="text-2xs text-muted-foreground">
               In “How much to invest?” mode the {investMode === "lumpsum" ? "lumpsum" : "monthly SIP"} is calculated for you — see the result below.
             </p>
           )}
@@ -161,7 +161,7 @@ export function IncomeBridgePlanner() {
 
         {/* Distribution */}
         <section className="border border-slate-200 rounded-lg p-4 space-y-3">
-          <div className="text-[11px] uppercase tracking-wider font-semibold text-emerald-700">
+          <div className="text-2xs uppercase tracking-wider font-semibold text-emerald-700">
             ② Distribution — draw the income
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -172,7 +172,7 @@ export function IncomeBridgePlanner() {
             <div className="col-span-2">
               <Num label="Balance to leave at end of SWP (₹)" value={endBalance} setValue={setEndBalance} />
               {!isReverse && (
-                <p className="text-[10px] text-muted-foreground mt-1">
+                <p className="text-2xs text-muted-foreground mt-1">
                   Max — {inr(result.maxEndBalance)} (if you withdraw nothing). Leave ₹0 to spend it all down.
                 </p>
               )}
@@ -182,7 +182,7 @@ export function IncomeBridgePlanner() {
       </div>
 
       {result.warning && (
-        <div className="text-[11px] text-rose-700 bg-rose-50 border border-rose-200 rounded-md px-3 py-2">⚠️ {result.warning}</div>
+        <div className="text-2xs text-rose-700 bg-rose-50 border border-rose-200 rounded-md px-3 py-2">⚠️ {result.warning}</div>
       )}
 
       {/* Headline results */}
@@ -255,7 +255,7 @@ export function IncomeBridgePlanner() {
         </details>
       )}
 
-      <p className="text-[10px] text-muted-foreground border-t pt-3">
+      <p className="text-2xs text-muted-foreground border-t pt-3">
         * Illustration only. Figures assume constant returns and inflation; actual results vary with market performance.
         SWP grows with inflation each month. Not investment advice.
       </p>
@@ -278,7 +278,7 @@ function Segmented({
 }) {
   return (
     <div>
-      <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium block mb-1">{label}</span>
+      <span className="text-2xs uppercase tracking-wide text-muted-foreground font-medium block mb-1">{label}</span>
       <div className="flex flex-wrap gap-1 rounded-lg bg-slate-100 p-1">
         {options.map((o) => (
           <button
@@ -300,7 +300,7 @@ function Segmented({
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium block mb-1">{label}</span>
+      <span className="text-2xs uppercase tracking-wide text-muted-foreground font-medium block mb-1">{label}</span>
       {children}
     </label>
   );
@@ -337,7 +337,7 @@ function Num({
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className="border border-slate-200 rounded-md p-3">
-      <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">{label}</div>
+      <div className="text-2xs uppercase tracking-wide text-muted-foreground font-medium">{label}</div>
       <div className="text-sm font-semibold mt-0.5">{value}</div>
     </div>
   );
@@ -361,7 +361,7 @@ function ResultRow({
                 : "";
         return (
           <div key={i} className={`border rounded-md p-3 ${tone}`}>
-            <div className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium">{c.label}</div>
+            <div className="text-2xs uppercase tracking-wide text-muted-foreground font-medium">{c.label}</div>
             <div className="text-lg font-semibold mt-0.5">{c.value}</div>
           </div>
         );

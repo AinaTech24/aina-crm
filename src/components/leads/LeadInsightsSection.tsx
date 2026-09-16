@@ -278,29 +278,29 @@ export async function LeadInsightsSection({ session }: { session: SessionUser })
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div className="p-3 rounded-lg bg-white/80 ring-1 ring-emerald-200/50">
-              <div className="text-[10px] uppercase tracking-wider text-emerald-700 font-semibold">
+              <div className="text-2xs uppercase tracking-wider text-emerald-700 font-semibold">
                 Weighted forecast
               </div>
               <div className="text-2xl font-bold text-emerald-700 mt-1 tabular-nums">
                 {formatINR(data.pipelineForecast)}
               </div>
-              <div className="text-[11px] text-emerald-700/80 mt-0.5">
+              <div className="text-2xs text-emerald-700/80 mt-0.5">
                 Each stage × historic win-prob
               </div>
             </div>
             <div className="p-3 rounded-lg bg-white/70">
-              <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+              <div className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">
                 Gross intended (open)
               </div>
               <div className="text-2xl font-bold mt-1 tabular-nums">
                 {formatINR(data.pipelineGross)}
               </div>
-              <div className="text-[11px] text-muted-foreground mt-0.5">
+              <div className="text-2xs text-muted-foreground mt-0.5">
                 Sum of `intended_amount`
               </div>
             </div>
             <div className="p-3 rounded-lg bg-white/70">
-              <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+              <div className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">
                 Avg ticket
               </div>
               <div className="text-2xl font-bold mt-1 tabular-nums">
@@ -308,7 +308,7 @@ export async function LeadInsightsSection({ session }: { session: SessionUser })
                   ? formatINR(Math.round(data.pipelineGross / data.openCount))
                   : "—"}
               </div>
-              <div className="text-[11px] text-muted-foreground mt-0.5">
+              <div className="text-2xs text-muted-foreground mt-0.5">
                 Per open lead
               </div>
             </div>
@@ -348,7 +348,7 @@ export async function LeadInsightsSection({ session }: { session: SessionUser })
                   {data.sla.noResponse}
                 </span>
               </div>
-              <p className="text-[10px] text-muted-foreground leading-relaxed">
+              <p className="text-2xs text-muted-foreground leading-relaxed">
                 Industry baseline: 50% of inbound leads respond best to a
                 call/WA inside 60 minutes. Falling response rates predict
                 falling conversion rates 30 days out.
@@ -441,7 +441,7 @@ export async function LeadInsightsSection({ session }: { session: SessionUser })
             </p>
           ) : (
             <table className="w-full text-xs">
-              <thead className="text-[10px] text-muted-foreground uppercase tracking-wider">
+              <thead className="text-2xs text-muted-foreground uppercase tracking-wider">
                 <tr>
                   <th className="text-left pb-2">Source</th>
                   <th className="text-right pb-2">Leads</th>
@@ -512,7 +512,7 @@ export async function LeadInsightsSection({ session }: { session: SessionUser })
               ))}
             </ul>
           )}
-          <p className="text-[10px] text-muted-foreground mt-3">
+          <p className="text-2xs text-muted-foreground mt-3">
             Capture a lost reason on every closure — it's the cheapest market
             research you'll do.
           </p>
@@ -538,7 +538,7 @@ export async function LeadInsightsSection({ session }: { session: SessionUser })
           </p>
         ) : (
           <table className="w-full text-xs">
-            <thead className="text-[10px] text-muted-foreground uppercase tracking-wider">
+            <thead className="text-2xs text-muted-foreground uppercase tracking-wider">
               <tr>
                 <th className="text-left pb-2">RM</th>
                 <th className="text-right pb-2">Open</th>

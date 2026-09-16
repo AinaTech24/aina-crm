@@ -5,7 +5,8 @@
  */
 
 import React, { useState } from "react";
-import { View, Image, Pressable, ScrollView, RefreshControl, StyleSheet } from "react-native";
+import { View, Pressable, ScrollView, RefreshControl, StyleSheet } from "react-native";
+import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { Feather } from "@expo/vector-icons";

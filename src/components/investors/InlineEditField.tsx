@@ -143,7 +143,7 @@ export function InlineEditField({ spec, display }: { spec: InlineEditSpec; displ
         </>
       )}
       {busy && spec.type === "select" && <Loader2 className="size-3.5 animate-spin text-muted-foreground" />}
-      {err && <span className="text-[11px] text-rose-600 w-full">{err}</span>}
+      {err && <span className="text-2xs text-rose-600 w-full">{err}</span>}
     </span>
   );
 }

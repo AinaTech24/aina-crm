@@ -27,7 +27,7 @@ export default function SuperAdminError({
         This admin page hit an unexpected error. It&apos;s been logged.
       </p>
       {error?.digest && (
-        <p className="mt-3 text-[11px] text-muted-foreground font-mono">Reference: {error.digest}</p>
+        <p className="mt-3 text-2xs text-muted-foreground font-mono">Reference: {error.digest}</p>
       )}
       <div className="mt-6 flex gap-2 justify-center">
         <button onClick={reset} className="btn-primary">

@@ -33,7 +33,8 @@ export default async function PortfolioIntelligencePage({ searchParams }: { sear
     <div className="space-y-6 max-w-6xl">
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2"><PieChart className="size-6 text-brand-cyan" /> Portfolio Intelligence</h1>
+          <h1 className="page-title"><PieChart className="size-6 text-muted-foreground" /> Portfolio Intelligence</h1>
+          <p className="page-subtitle mt-1">How your clients&apos; money is actually invested, and where it is concentrated.</p>
         </div>
         <div className="flex items-center gap-2">
           {intel.totalAum > 0 && (
@@ -94,7 +95,7 @@ export default async function PortfolioIntelligencePage({ searchParams }: { sear
                     <PortfolioDrillBar key={c.label} by="class" label={c.label} pct={c.pct} value={c.value} color={CLASS_COLOR[c.label] ?? "bg-slate-400"} mine={mine} />
                   ))}
                   {intel.classifiedPct < 100 && (
-                    <p className="text-[11px] text-muted-foreground pt-1">{intel.classifiedPct}% of measured holdings classified · {intel.coveragePct}% of book AUM has scheme detail.</p>
+                    <p className="text-2xs text-muted-foreground pt-1">{intel.classifiedPct}% of measured holdings classified · {intel.coveragePct}% of book AUM has scheme detail.</p>
                   )}
                 </div>
               )}
@@ -124,7 +125,7 @@ export default async function PortfolioIntelligencePage({ searchParams }: { sear
                     {intel.concentratedClients.map((c) => (
                       <tr key={c.id} className="border-b last:border-0 hover:bg-secondary/40">
                         <td className="py-2"><Link href={`/dashboard/investors/${c.id}`} className="font-medium hover:underline">{c.name}</Link></td>
-                        <td className="py-2"><span className="chip text-[10px] bg-amber-50 text-amber-700">{c.reason}</span></td>
+                        <td className="py-2"><span className="chip text-2xs bg-amber-50 text-amber-700">{c.reason}</span></td>
                         <td className="py-2 text-right tabular-nums pr-2">{inr(c.aum)}</td>
                       </tr>
                     ))}
@@ -147,7 +148,7 @@ export default async function PortfolioIntelligencePage({ searchParams }: { sear
                         <td className="py-2 text-muted-foreground tabular-nums">{i + 1}</td>
                         <td className="py-2 font-medium max-w-[280px] truncate">{s.scheme}</td>
                         <td className="py-2 text-xs">{s.amc ?? "—"}</td>
-                        <td className="py-2"><span className={`chip text-[10px] text-white ${CLASS_COLOR[s.klass] ?? "bg-slate-400"}`}>{s.klass}</span></td>
+                        <td className="py-2"><span className={`chip text-2xs text-white ${CLASS_COLOR[s.klass] ?? "bg-slate-400"}`}>{s.klass}</span></td>
                         <td className="py-2 text-right tabular-nums">{inr(s.value)}</td>
                         <td className="py-2 text-right tabular-nums font-semibold">{s.pct}%</td>
                       </tr>

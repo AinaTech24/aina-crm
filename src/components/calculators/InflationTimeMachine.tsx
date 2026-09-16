@@ -63,7 +63,7 @@ export function InflationTimeMachine() {
       </div>
 
       <div className="rounded-xl border border-primary/30 bg-primary/10 p-5 text-center">
-        <div className="text-[11px] uppercase tracking-wider font-semibold text-primary">
+        <div className="text-2xs uppercase tracking-wider font-semibold text-primary">
           {inr(amount)} in {fromYear} {forward ? "will need to be" : "had the buying power of"}
         </div>
         <div className="text-3xl font-extrabold text-primary mt-1">{inr(Math.round(res.equivalent))}</div>
@@ -73,7 +73,7 @@ export function InflationTimeMachine() {
       </div>
 
       <div>
-        <div className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium mb-1.5">
+        <div className="text-2xs uppercase tracking-wide text-muted-foreground font-medium mb-1.5">
           The same span, on everyday things
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">

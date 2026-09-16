@@ -35,7 +35,7 @@ export default async function FinancialChecklistPage() {
             </Link>
           </div>
           <h1 className="text-2xl font-semibold flex items-center gap-2">
-            <CheckSquare className="size-6 text-brand-cyan" /> Finance management checklist
+            <CheckSquare className="size-6 text-muted-foreground" /> Finance management checklist
           </h1>
         </div>
         <PrintReportButton />
@@ -53,7 +53,7 @@ export default async function FinancialChecklistPage() {
           <div key={group.cadence} className="border rounded-lg bg-card overflow-hidden break-inside-avoid">
             <div className={`px-4 py-2.5 border-b flex items-center justify-between ${CADENCE_TONE[group.cadence] ?? ""}`}>
               <span className="font-semibold text-sm">{group.cadence}</span>
-              {group.note && <span className="text-[11px] font-medium opacity-80">{group.note}</span>}
+              {group.note && <span className="text-2xs font-medium opacity-80">{group.note}</span>}
             </div>
             <ul className="p-4 space-y-2">
               {group.items.map((item, i) => (
@@ -67,7 +67,7 @@ export default async function FinancialChecklistPage() {
         ))}
       </div>
 
-      <p className="text-[11px] text-muted-foreground border-t pt-3">
+      <p className="text-2xs text-muted-foreground border-t pt-3">
         Adapted from the Network FP "8.6 Financial Checklist". The CRM already automates several of
         these — commission capture &amp; reconciliation (Commission Reconciliation) and SIP / asset
         tracking (SIP Tracker &amp; Reports).

@@ -146,7 +146,7 @@ export function EmployeeRowActions({ employee }: { employee: EmployeeRow }) {
             <div className="flex items-start justify-between gap-3 p-5 border-b">
               <div>
                 <h3 className="text-lg font-bold leading-tight">{employee.name}</h3>
-                <span className={`inline-block mt-1 text-[11px] font-medium capitalize px-2 py-0.5 rounded border ${STATUS_TONE[employee.status] ?? "bg-secondary"}`}>
+                <span className={`inline-block mt-1 text-2xs font-medium capitalize px-2 py-0.5 rounded border ${STATUS_TONE[employee.status] ?? "bg-secondary"}`}>
                   {employee.status}
                 </span>
               </div>
@@ -159,8 +159,8 @@ export function EmployeeRowActions({ employee }: { employee: EmployeeRow }) {
               <Row icon={Users} label="Manager" value={employee.managerName} />
               <Row icon={ShieldCheck} label="Roles" value={employee.roles?.length ? employee.roles.join(", ") : null} />
               <div className="grid grid-cols-2 gap-3 pt-2 border-t">
-                <div><div className="text-[11px] text-muted-foreground">Clients</div><div className="font-semibold tabular-nums">{employee.assignedClients}</div></div>
-                <div><div className="text-[11px] text-muted-foreground">AUM</div><div className="font-semibold tabular-nums">{fmtINR(employee.aum)}</div></div>
+                <div><div className="text-2xs text-muted-foreground">Clients</div><div className="font-semibold tabular-nums">{employee.assignedClients}</div></div>
+                <div><div className="text-2xs text-muted-foreground">AUM</div><div className="font-semibold tabular-nums">{fmtINR(employee.aum)}</div></div>
               </div>
             </div>
             <div className="flex justify-end gap-2 p-4 border-t">

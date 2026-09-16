@@ -7,10 +7,12 @@ import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { buildProductReadiness, type ReadinessStatus } from "@/lib/platform/product-readiness";
 import { commercialLegalReadiness } from "@/lib/legal/company";
+import { probeDatabaseIsolation, probeRedis, probeWorkers } from "@/lib/platform/readiness-probes";
 
 export const dynamic = "force-dynamic";
 
 const STATUS: Record<ReadinessStatus, { label: string; icon: typeof CheckCircle2; className: string }> = {
+  unknown: { label: "Unverified", icon: CircleDashed, className: "bg-muted text-muted-foreground border-border" },
   live: { label: "Live", icon: CheckCircle2, className: "bg-primary/10 text-primary border-primary/20" },
   configured: { label: "Configured", icon: Wrench, className: "bg-secondary text-secondary-foreground border-border" },
   demo: { label: "Demo only", icon: FlaskConical, className: "bg-accent text-accent-foreground border-border" },
@@ -35,33 +37,21 @@ export default async function ProductReadinessPage() {
     return { providers: new Set(integrations.map((row) => row.provider)), lastRtaImportAt };
   });
 
-  let workerHealthy: boolean | null = null;
-  try {
-    workerHealthy = await withSystem(async (tx) => {
-      const result = await tx.execute(sql`SELECT last_run_status, last_heartbeat_at FROM scheduler_state`);
-      if (!result.rows.length) return null;
-      return (result.rows as Array<{ last_run_status: string | null; last_heartbeat_at: string | null }>).every((row) => {
-        const age = row.last_heartbeat_at ? Date.now() - new Date(row.last_heartbeat_at).getTime() : Number.POSITIVE_INFINITY;
-        return row.last_run_status !== "failed" && age < 30 * 3_600_000;
-      });
-    });
-  } catch {
-    workerHealthy = null;
-  }
+  const [workerHealthy, databaseHealthy, redisHealthy] = await Promise.all([probeWorkers(), probeDatabaseIsolation(session.tenantId), probeRedis()]);
 
-  const items = buildProductReadiness({ tenantProviders: tenantState.providers, workerHealthy, lastRtaImportAt: tenantState.lastRtaImportAt });
+  const items = buildProductReadiness({ tenantProviders: tenantState.providers, workerHealthy, databaseHealthy, redisHealthy, lastRtaImportAt: tenantState.lastRtaImportAt });
   const legal = commercialLegalReadiness();
-  const criticalBlocked = items.filter((item) => item.critical && item.status === "blocked").length;
-  const liveOrConfigured = items.filter((item) => item.status === "live" || item.status === "configured").length;
+  const criticalBlocked = items.filter((item) => item.critical && item.status !== "live").length;
+  const liveOrConfigured = items.filter((item) => item.status === "live").length;
   const categories = ["Core", "Communication", "Data", "Execution", "Governance"] as const;
 
   return (
     <div className="max-w-6xl space-y-6">
-      <div><Link href="/dashboard/settings" className="mb-2 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"><ArrowLeft className="size-3.5" /> Settings</Link><h1 className="page-title"><Activity className="size-6 text-brand-cyan" /> Product readiness</h1><p className="mt-1 text-sm text-muted-foreground">One honest view of what is live, configured, demo-only, blocked or not available.</p></div>
+      <div><Link href="/dashboard/settings" className="mb-2 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"><ArrowLeft className="size-3.5" /> Settings</Link><h1 className="page-title"><Activity className="size-6 text-muted-foreground" /> Product readiness</h1><p className="mt-1 text-sm text-muted-foreground">One honest view of what is live, configured, demo-only, blocked or not available.</p></div>
 
       <div className="grid gap-3 sm:grid-cols-3">
-        <Summary label="Ready services" value={`${liveOrConfigured} / ${items.length}`} hint="live or configured" />
-        <Summary label="Critical blockers" value={String(criticalBlocked)} hint={criticalBlocked ? "resolve before commercial launch" : "commercial path clear"} danger={criticalBlocked > 0} />
+        <Summary label="Verified services" value={`${liveOrConfigured} / ${items.length}`} hint="live checks passed" />
+        <Summary label="Critical items to verify" value={String(criticalBlocked)} hint={criticalBlocked ? "blocked, configured only, or unverified" : "automated checks passed; complete the launch checklist"} danger={criticalBlocked > 0} />
         <Summary label="Runtime mode" value={process.env.NODE_ENV === "production" ? "Production" : "Development"} hint={process.env.ALLOW_DEMO_PROVIDERS === "1" ? "demo providers allowed" : "demo providers fail closed"} />
       </div>
 

@@ -164,10 +164,10 @@ export function TaskKanban({ initialRows, currentUserId, canManageAll = false }:
                         <div className="min-w-0 flex-1">
                           <div className="text-sm font-medium leading-snug line-clamp-2">{t.title}</div>
                           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                            <span className={`chip text-[10px] capitalize ${PRIORITY_TONE[t.priority] ?? ""}`}>{t.priority}</span>
+                            <span className={`chip text-2xs capitalize ${PRIORITY_TONE[t.priority] ?? ""}`}>{t.priority}</span>
                             {checklist.length > 0 && (
                               <span
-                                className={`chip text-[10px] inline-flex items-center gap-1 ${
+                                className={`chip text-2xs inline-flex items-center gap-1 ${
                                   checklistDone === checklist.length ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-600"
                                 }`}
                                 title={`${checklistDone}/${checklist.length} action points done`}
@@ -176,7 +176,7 @@ export function TaskKanban({ initialRows, currentUserId, canManageAll = false }:
                               </span>
                             )}
                             {who && (
-                              <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground truncate max-w-[8rem]">
+                              <span className="inline-flex items-center gap-1 text-2xs text-muted-foreground truncate max-w-[8rem]">
                                 <Avatar
                                   src={
                                     row.investorName && t.relatedInvestorId && row.investorAvatarUrl
@@ -192,7 +192,7 @@ export function TaskKanban({ initialRows, currentUserId, canManageAll = false }:
                               </span>
                             )}
                           </div>
-                          <div className="mt-1.5 flex items-center justify-between text-[10px] text-muted-foreground">
+                          <div className="mt-1.5 flex items-center justify-between text-2xs text-muted-foreground">
                             <span className="inline-flex items-center gap-1 truncate">
                               <User className="size-3 shrink-0" />
                               {row.assignee ? (t.assigneeId === currentUserId ? "You" : row.assignee) : "Unassigned"}
@@ -210,7 +210,7 @@ export function TaskKanban({ initialRows, currentUserId, canManageAll = false }:
                   );
                 })}
                 {col.items.length === 0 && addingCol !== col.key && (
-                  <div className="text-[11px] text-muted-foreground/60 text-center py-4">Drop tasks here</div>
+                  <div className="text-2xs text-muted-foreground/60 text-center py-4">Drop tasks here</div>
                 )}
               </div>
 

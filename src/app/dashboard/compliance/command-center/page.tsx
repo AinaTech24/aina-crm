@@ -58,7 +58,7 @@ export default async function ComplianceCommandCenterPage() {
     <div className="space-y-6 max-w-5xl">
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2"><ShieldCheck className="size-6 text-brand-cyan" /> Compliance Command Center</h1>
+          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2"><ShieldCheck className="size-6 text-muted-foreground" /> Compliance Command Center</h1>
         </div>
         <DownloadButton url="/api/compliance/inspection-pack" className="btn-primary text-sm inline-flex items-center gap-1"><Download className="size-4" /> SEBI inspection pack</DownloadButton>
       </div>
@@ -74,7 +74,7 @@ export default async function ComplianceCommandCenterPage() {
         {/* Consent coverage */}
         <div className="card-surface p-5">
           <div className="font-semibold text-sm flex items-center gap-2 mb-3"><ShieldCheck className="size-4 text-brand-cyan" /> Consent coverage</div>
-          <p className="text-[11px] text-muted-foreground mb-3">Share of {d.active.toLocaleString("en-IN")} active clients with a recorded <strong>granted</strong> consent, per channel.</p>
+          <p className="text-2xs text-muted-foreground mb-3">Share of {d.active.toLocaleString("en-IN")} active clients with a recorded <strong>granted</strong> consent, per channel.</p>
           <div className="space-y-3">
             {[{ ch: "whatsapp", label: "WhatsApp", icon: MessageCircle }, { ch: "email", label: "Email", icon: Mail }, { ch: "sms", label: "SMS", icon: MessageSquare }].map(({ ch, label, icon: Icon }) => {
               const c = consentByCh(ch); const p = pct(Number(c.granted), d.active);
@@ -94,7 +94,7 @@ export default async function ComplianceCommandCenterPage() {
         {/* Compliance gate */}
         <div className="card-surface p-5">
           <div className="font-semibold text-sm flex items-center gap-2 mb-3"><BadgeCheck className="size-4 text-brand-cyan" /> Compliance gate (90 days)</div>
-          <p className="text-[11px] text-muted-foreground mb-3">Every send passes consent → 11 deterministic rules → DLT. Avg compliance score {g.avg_score ?? "—"}/100.</p>
+          <p className="text-2xs text-muted-foreground mb-3">Every send passes consent → 11 deterministic rules → DLT. Avg compliance score {g.avg_score ?? "—"}/100.</p>
           <div className="space-y-1.5 text-sm">
             <GateRow label="Delivered" value={Number(g.delivered ?? 0)} total={Number(g.total ?? 0)} tone="emerald" />
             <GateRow label="Blocked — compliance rule" value={Number(g.blocked_compliance ?? 0)} total={Number(g.total ?? 0)} tone="rose" />
@@ -115,7 +115,7 @@ export default async function ComplianceCommandCenterPage() {
           <div className="flex flex-wrap gap-2">
             {d.dlt.map((x) => (
               <div key={x.template_type} className="rounded-lg border px-3 py-2 text-sm">
-                <div className="text-[11px] text-muted-foreground capitalize">{x.template_type}</div>
+                <div className="text-2xs text-muted-foreground capitalize">{x.template_type}</div>
                 <div className="font-bold tabular-nums">{x.active}<span className="text-xs text-muted-foreground font-normal"> / {x.total} active</span></div>
               </div>
             ))}
@@ -138,7 +138,7 @@ function GateRow({ label, value, total, tone }: { label: string; value: number; 
   return (
     <div className="flex items-center justify-between">
       <span className="flex items-center gap-2"><span className={`size-1.5 rounded-full ${dot}`} /> {label}</span>
-      <span className="tabular-nums text-muted-foreground">{value.toLocaleString("en-IN")} <span className="text-[11px]">({p}%)</span></span>
+      <span className="tabular-nums text-muted-foreground">{value.toLocaleString("en-IN")} <span className="text-2xs">({p}%)</span></span>
     </div>
   );
 }

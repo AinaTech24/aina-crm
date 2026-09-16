@@ -80,9 +80,10 @@ export default async function CalculatorsPage() {
       {/* On-screen heading — hidden on print (the letterhead replaces it) */}
       <div className="print:hidden flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold flex items-center gap-2">
+          <h1 className="page-title">
             <Calculator className="size-6" /> MF Investment Calculators
           </h1>
+          <p className="page-subtitle mt-1">SIP, lumpsum, retirement and goal maths you can run with a client in seconds.</p>
         </div>
         <Link href="/dashboard/calculators/settings" className="btn-secondary text-xs shrink-0">
           <SlidersHorizontal className="size-3.5" /> Assumptions
@@ -95,7 +96,7 @@ export default async function CalculatorsPage() {
           to a client has to carry the market-risk disclaimer (AMFI best
           practice; mirrors the 3.5 spreadsheet, which keeps it on the
           printable sheet). Do NOT add print:hidden here. */}
-      <div className="text-[11px] text-muted-foreground border-t pt-3">
+      <div className="text-2xs text-muted-foreground border-t pt-3">
         <strong>Disclaimer:</strong> Past performance may or may not be
         sustained in future and is not a guarantee of any future returns.
         These calculators are for illustration only and do not represent

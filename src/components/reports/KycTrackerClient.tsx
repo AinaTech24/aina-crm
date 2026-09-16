@@ -291,11 +291,11 @@ export function KycTrackerClient({
                       {r.name}
                     </Link>
                     {r.nameAsPerPan && r.nameAsPerPan !== r.name && (
-                      <div className="text-[10px] text-muted-foreground">
+                      <div className="text-2xs text-muted-foreground">
                         PAN name: {r.nameAsPerPan}
                       </div>
                     )}
-                    <div className="text-[10px] text-muted-foreground">
+                    <div className="text-2xs text-muted-foreground">
                       {r.email ?? ""}
                       {r.email && r.phone && " · "}
                       {r.phone ?? ""}
@@ -304,7 +304,7 @@ export function KycTrackerClient({
                   <td className="px-3 py-2 font-mono">{r.pan}</td>
                   <td className="px-3 py-2">
                     <span
-                      className={`chip text-[10px] ${
+                      className={`chip text-2xs ${
                         KYC_TONE[r.kycStatus] ?? "bg-slate-100"
                       }`}
                     >
@@ -314,7 +314,7 @@ export function KycTrackerClient({
                   <td className="px-3 py-2">
                     {r.panAadhaarLinkStatus ? (
                       <span
-                        className={`chip text-[10px] ${
+                        className={`chip text-2xs ${
                           LINK_TONE[r.panAadhaarLinkStatus] ?? "bg-slate-100"
                         }`}
                       >
@@ -322,7 +322,7 @@ export function KycTrackerClient({
                           r.panAadhaarLinkStatus}
                       </span>
                     ) : (
-                      <span className="text-muted-foreground text-[10px]">
+                      <span className="text-muted-foreground text-2xs">
                         Unknown
                       </span>
                     )}
@@ -356,7 +356,7 @@ export function KycTrackerClient({
                   <td className="px-3 py-2">
                     {r.kycLastUpdatedByName ?? "—"}
                     {r.updatedAt && (
-                      <div className="text-[10px] text-muted-foreground">
+                      <div className="text-2xs text-muted-foreground">
                         {new Date(r.updatedAt).toLocaleDateString("en-GB")}
                       </div>
                     )}
@@ -392,7 +392,7 @@ function Tile({
           : "";
   return (
     <div className={`card-surface p-3 ${cardTone}`}>
-      <div className="text-[11px] text-muted-foreground">{label}</div>
+      <div className="text-2xs text-muted-foreground">{label}</div>
       <div className="text-lg font-semibold">
         {value}
         {pct && (
@@ -441,7 +441,7 @@ function ExpiryBadge({ date }: { date: string | null }) {
           ? "bg-amber-50 text-amber-700"
           : "bg-emerald-50 text-emerald-700";
   return (
-    <span className={`chip text-[10px] ${tone}`}>
+    <span className={`chip text-2xs ${tone}`}>
       {new Date(date).toLocaleDateString("en-GB", {
         day: "2-digit",
         month: "short",

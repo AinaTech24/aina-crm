@@ -142,13 +142,14 @@ export default async function CommandCenterPage({
       {/* Header */}
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <Inbox className="size-6 text-brand-cyan" /> My Day
+          <h1 className="page-title">
+            <Inbox className="size-6 text-muted-foreground" /> My Day
             <HelpTip title="My Day">
               Your single &ldquo;what needs me today&rdquo; screen — overdue tasks, today&apos;s
               meetings, SIP bounces, birthdays and follow-ups, ranked by urgency. Start your day here.
             </HelpTip>
           </h1>
+          <p className="page-subtitle mt-1">Everything that needs you today — overdue tasks, follow-ups, reviews and breaches.</p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
           <div className="flex items-center gap-4 rounded-lg border border-border bg-card px-3 py-1.5">
@@ -188,7 +189,7 @@ export default async function CommandCenterPage({
       />
 
       {(dateFrom || dateTo) && (
-        <p className="text-[11px] text-muted-foreground -mt-3">
+        <p className="text-2xs text-muted-foreground -mt-3">
           Date filter narrows dated items (reviews, meetings, follow-ups…). Always-current items like SLA breaches stay visible.
         </p>
       )}
@@ -243,7 +244,7 @@ function GroupCard({ group }: { group: ActionGroup }) {
           <Icon className={`size-4 shrink-0 ${sev.icon}`} />
           <span className="font-semibold text-sm truncate">{group.label}</span>
         </div>
-        <span className={`shrink-0 text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full tabular-nums ${sev.cls}`}>
+        <span className={`shrink-0 text-2xs font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full tabular-nums ${sev.cls}`}>
           {sev.label} · {group.count}
         </span>
       </div>
@@ -254,12 +255,12 @@ function GroupCard({ group }: { group: ActionGroup }) {
               <div className="min-w-0 flex-1">
                 <div className="text-sm font-medium truncate">{it.title}</div>
                 {it.detail && (
-                  <div className="text-[11px] text-muted-foreground truncate">{it.detail}</div>
+                  <div className="text-2xs text-muted-foreground truncate">{it.detail}</div>
                 )}
               </div>
               {typeof it.ageDays === "number" && it.ageDays > 0 && (
                 <span
-                  className={`text-[10px] tabular-nums shrink-0 ${
+                  className={`text-2xs tabular-nums shrink-0 ${
                     it.ageDays > 30
                       ? "font-semibold px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200"
                       : it.ageDays > 7
@@ -304,7 +305,7 @@ function Stat({ label, value, tone }: { label: string; value: number; tone: "ros
   return (
     <div className="text-center">
       <div className={`text-xl font-bold tabular-nums leading-none ${cls}`}>{value}</div>
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground mt-0.5">{label}</div>
+      <div className="text-2xs uppercase tracking-wider text-muted-foreground mt-0.5">{label}</div>
     </div>
   );
 }

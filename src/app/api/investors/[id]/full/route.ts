@@ -12,6 +12,7 @@ import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { can } from "@/lib/auth/rbac";
+import { loadViewableInvestor } from "@/lib/investors/access";
 import { valueInvestor } from "@/lib/finance/valuation";
 import { churnForInvestor } from "@/lib/churn/scan";
 import { assetClassExposure } from "@/lib/investors/asset-class";
@@ -40,7 +41,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     const data = await withTenant(
       session.tenantId,
       async (tx) => {
-        const inv = (await tx.select().from(investors).where(eq(investors.id, id)).limit(1))[0];
+        const inv = await loadViewableInvestor(tx, session, id);
         if (!inv || (inv as any).deletedAt) return null;
 
         const [foliosRows, sipsRows, goalsRows, commsRows, tasksRows, srRows, consentsRows, rmRow, familyRow, lumpsumSum, valuation, reviewMeetingsRows, riskHistoryRows, recentTxRows, txCountRow, sipBouncesRow] = await Promise.all([

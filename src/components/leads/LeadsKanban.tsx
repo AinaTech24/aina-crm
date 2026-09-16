@@ -391,7 +391,7 @@ export function LeadsKanban({
             return (
               <DroppableColumn key={s.key} stage={s} tone={tone} count={items.length}>
                 {items.length === 0 ? (
-                  <div className="flex items-center justify-center h-24 text-[11px] text-muted-foreground/70 italic">
+                  <div className="flex items-center justify-center h-24 text-2xs text-muted-foreground/70 italic">
                     Drop a lead here
                   </div>
                 ) : (
@@ -421,14 +421,14 @@ export function LeadsKanban({
           {activeRow ? (
             <div className="rounded-lg bg-card border border-brand-cyan shadow-glow-lg p-2.5 w-[260px] rotate-2 cursor-grabbing">
               <div className="flex items-start gap-2">
-                <div className="size-7 rounded-full brand-gradient text-white grid place-items-center text-[10px] font-bold flex-shrink-0 shadow-sm">
+                <div className="size-7 rounded-full brand-gradient text-white grid place-items-center text-2xs font-bold flex-shrink-0 shadow-sm">
                   {initialsOf(activeRow.lead.name)}
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="font-semibold text-foreground truncate text-[13px]">
                     {activeRow.lead.name}
                   </div>
-                  <div className="text-[10px] text-muted-foreground">moving…</div>
+                  <div className="text-2xs text-muted-foreground">moving…</div>
                 </div>
               </div>
             </div>
@@ -502,7 +502,7 @@ function DroppableColumn({
           </span>
         </div>
         <span
-          className={`chip text-[10px] ${tone.chip} font-bold tabular-nums flex-shrink-0`}
+          className={`chip text-2xs ${tone.chip} font-bold tabular-nums flex-shrink-0`}
         >
           {count}
         </span>
@@ -571,7 +571,7 @@ function DraggableCard({
 
       {/* Top row — avatar + name + phone */}
       <div className="flex items-start gap-2 pr-5">
-        <div className="size-8 rounded-full brand-gradient text-white grid place-items-center text-[11px] font-bold flex-shrink-0 shadow-sm relative">
+        <div className="size-8 rounded-full brand-gradient text-white grid place-items-center text-2xs font-bold flex-shrink-0 shadow-sm relative">
           {initialsOf(l.name)}
           {/* Temperature dot — top-right corner of the avatar */}
           <span
@@ -591,7 +591,7 @@ function DraggableCard({
             {l.name}
           </Link>
           {(l.mobile || l.phone) && (
-            <div className="text-[10px] text-muted-foreground font-mono truncate mt-0.5">
+            <div className="text-2xs text-muted-foreground font-mono truncate mt-0.5">
               {l.mobile ?? l.phone}
             </div>
           )}
@@ -603,17 +603,17 @@ function DraggableCard({
 
       {/* Source chip + relative time */}
       <div className="mt-2 flex items-center justify-between gap-1.5">
-        <span className={`chip text-[10px] ${sourceColors[l.source] ?? "bg-muted"}`}>
+        <span className={`chip text-2xs ${sourceColors[l.source] ?? "bg-muted"}`}>
           {l.source.replace(/_/g, " ")}
         </span>
-        <span className="text-[10px] text-muted-foreground tabular-nums">
+        <span className="text-2xs text-muted-foreground tabular-nums">
           {formatRelative(l.updatedAt)}
         </span>
       </div>
 
       {/* Owner */}
       {owner && (
-        <div className="mt-1.5 pt-1.5 border-t border-border/60 text-[10px] text-muted-foreground truncate">
+        <div className="mt-1.5 pt-1.5 border-t border-border/60 text-2xs text-muted-foreground truncate">
           <span className="opacity-60">RM ·</span>{" "}
           <span className="font-medium text-foreground/80">{owner}</span>
         </div>
@@ -641,7 +641,7 @@ function CardInsightChips({ lead }: { lead: LeadRow["lead"] }) {
     chips.push(
       <span
         key="utm"
-        className="chip text-[10px] inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 border border-indigo-200 max-w-[160px] truncate"
+        className="chip text-2xs inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 border border-indigo-200 max-w-[160px] truncate"
         title={`UTM Campaign/Source: ${utmLabel}`}
       >
         📣 {utmLabel}
@@ -652,7 +652,7 @@ function CardInsightChips({ lead }: { lead: LeadRow["lead"] }) {
     chips.push(
       <span
         key="amt"
-        className="chip text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200"
+        className="chip text-2xs bg-emerald-50 text-emerald-700 border border-emerald-200"
         title="Intended investment amount"
       >
         ₹ {formatINR(amt)}
@@ -668,11 +668,11 @@ function CardInsightChips({ lead }: { lead: LeadRow["lead"] }) {
     chips.push(
       <span
         key="age"
-        className={`chip text-[10px] inline-flex items-center gap-1 border ${cls}`}
+        className={`chip text-2xs inline-flex items-center gap-1 border ${cls}`}
         title={`Stuck ${aging} days in current stage`}
       >
         <Clock className="size-2.5" />
-        {aging}d
+        {aging}d in stage
       </span>
     );
   }
@@ -680,7 +680,7 @@ function CardInsightChips({ lead }: { lead: LeadRow["lead"] }) {
     chips.push(
       <span
         key="ovd"
-        className="chip text-[10px] inline-flex items-center gap-1 bg-rose-50 text-rose-700 border border-rose-200"
+        className="chip text-2xs inline-flex items-center gap-1 bg-rose-50 text-rose-700 border border-rose-200"
         title="Next follow-up is overdue"
       >
         <AlertCircle className="size-2.5" />
@@ -693,7 +693,7 @@ function CardInsightChips({ lead }: { lead: LeadRow["lead"] }) {
     chips.push(
       <span
         key="hot"
-        className="chip text-[10px] inline-flex items-center gap-1 bg-rose-100 text-rose-700 border border-rose-200 font-semibold"
+        className="chip text-2xs inline-flex items-center gap-1 bg-rose-100 text-rose-700 border border-rose-200 font-semibold"
         title="Hot lead — late funnel or imminent follow-up"
       >
         <Flame className="size-2.5" />
@@ -705,7 +705,7 @@ function CardInsightChips({ lead }: { lead: LeadRow["lead"] }) {
     chips.push(
       <span
         key="ready_to_convert"
-        className="chip text-[10px] inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold"
+        className="chip text-2xs inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold"
         title="Lead is won and ready to be converted to client"
       >
         ✨ Ready to Convert
@@ -863,7 +863,7 @@ function ConvertDialog({
             className="w-full border rounded-md px-3 py-2 text-sm bg-background font-mono tracking-wider"
             autoFocus
           />
-          {pan.length > 0 && !valid && <p className="text-[11px] text-rose-600 mt-1">PAN must look like ABCDE1234F.</p>}
+          {pan.length > 0 && !valid && <p className="text-2xs text-rose-600 mt-1">PAN must look like ABCDE1234F.</p>}
         </label>
 
         <label className="block">

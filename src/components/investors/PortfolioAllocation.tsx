@@ -108,7 +108,7 @@ export function PortfolioAllocation({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           {/* Asset class breakdown */}
           <div>
-            <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-2">
+            <div className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground mb-2">
               By asset class
             </div>
             {allocationEntries.length === 0 ? (
@@ -150,7 +150,7 @@ export function PortfolioAllocation({
 
           {/* AMC concentration */}
           <div>
-            <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-2 flex items-center gap-1.5">
+            <div className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground mb-2 flex items-center gap-1.5">
               <Building2 className="size-3" /> Top AMCs
             </div>
             {amcEntries.length === 0 ? (
@@ -199,7 +199,7 @@ export function PortfolioAllocation({
               </ul>
             )}
             {amcEntries.length > 0 && amcEntries[0].pct > 40 && (
-              <p className="text-[10px] text-rose-700 mt-2 leading-relaxed">
+              <p className="text-2xs text-rose-700 mt-2 leading-relaxed">
                 ⚠ {amcEntries[0].name} holds {amcEntries[0].pct.toFixed(0)}% of
                 this client's book — diversify before the next review.
               </p>

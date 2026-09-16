@@ -210,7 +210,7 @@ export function WhatsAppRelatedList({
           <MessageCircle className="size-4 text-emerald-600" />
           <span className="font-medium text-foreground">WhatsApp</span>
           <span className="text-xs">· {messages.length}</span>
-          <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${sessionActive ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-slate-100 text-slate-600 border-slate-200"}`}>
+          <span className={`text-2xs font-semibold px-1.5 py-0.5 rounded-full border ${sessionActive ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-slate-100 text-slate-600 border-slate-200"}`}>
             {sessionActive ? "Window open" : "Window closed"}
           </span>
         </div>
@@ -239,13 +239,13 @@ export function WhatsAppRelatedList({
                 <div key={m.id} className={`flex ${out ? "justify-end" : "justify-start"}`}>
                   <div className={`max-w-[78%] rounded-2xl px-3 py-2 text-sm shadow-sm ${out ? "bg-emerald-600 text-white rounded-br-sm" : "bg-card border border-border rounded-bl-sm"}`}>
                     <div className="whitespace-pre-wrap break-words">{m.text || <span className="italic opacity-70">(no content)</span>}</div>
-                    <div className={`mt-0.5 flex items-center gap-1 text-[10px] ${out ? "text-emerald-50/80 justify-end" : "text-muted-foreground"}`}>
+                    <div className={`mt-0.5 flex items-center gap-1 text-2xs ${out ? "text-emerald-50/80 justify-end" : "text-muted-foreground"}`}>
                       {m.templateKey && <span className="opacity-80">{m.templateKey}</span>}
                       <span>{fmtWhen(m.createdAt)}</span>
                       {out && <Ticks status={m.status} />}
                     </div>
                     {out && m.status?.startsWith("skipped") && m.statusReason && (
-                      <div className="text-[10px] text-amber-100/90 mt-0.5">{m.statusReason}</div>
+                      <div className="text-2xs text-amber-100/90 mt-0.5">{m.statusReason}</div>
                     )}
                   </div>
                 </div>
@@ -274,7 +274,7 @@ export function WhatsAppRelatedList({
           >
             Template
           </button>
-          <span className="text-[11px] text-muted-foreground ml-1 truncate">To: {entityPhone || "— no number —"}</span>
+          <span className="text-2xs text-muted-foreground ml-1 truncate">To: {entityPhone || "— no number —"}</span>
         </div>
 
         {tab === "reply" ? (
@@ -286,7 +286,7 @@ export function WhatsAppRelatedList({
                     key={i}
                     type="button"
                     onClick={() => setText(q)}
-                    className="inline-flex items-center gap-1 text-[11px] rounded-full border border-border bg-secondary/40 px-2 py-0.5 hover:bg-secondary"
+                    className="inline-flex items-center gap-1 text-2xs rounded-full border border-border bg-secondary/40 px-2 py-0.5 hover:bg-secondary"
                   >
                     <Zap className="size-2.5 text-emerald-600" /> {q.length > 32 ? q.slice(0, 32) + "…" : q}
                   </button>
@@ -339,7 +339,7 @@ export function WhatsAppRelatedList({
               <div className="space-y-2">
                 {(selectedTpl.variables ?? []).map((v) => (
                   <label key={v.key} className="block">
-                    <div className="text-[11px] font-medium mb-0.5">
+                    <div className="text-2xs font-medium mb-0.5">
                       {v.key.replace(/_/g, " ")}
                       {v.required && <span className="text-rose-600"> *</span>}
                     </div>

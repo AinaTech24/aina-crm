@@ -199,7 +199,7 @@ function Section({ title, href, children, wide }: { title: string; href: string;
 function Stat({ label, value, tone }: { label: string; value: string; tone?: "good" | "bad" }) {
   return (
     <div className="rounded-lg border border-border/60 px-3 py-2">
-      <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className="text-2xs uppercase tracking-wide text-muted-foreground">{label}</div>
       <div className={`font-semibold tabular-nums ${tone === "good" ? "text-emerald-600" : tone === "bad" ? "text-rose-600" : ""}`}>{value}</div>
     </div>
   );

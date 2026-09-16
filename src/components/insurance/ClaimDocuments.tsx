@@ -161,7 +161,7 @@ export function ClaimDocuments({
               <div className="min-w-0 flex-1">
                 <div className="font-medium truncate">{d.name}</div>
                 {(d.docType || d.uploadedAt) && (
-                  <div className="text-[11px] text-muted-foreground">
+                  <div className="text-2xs text-muted-foreground">
                     {d.docType ? docTypeLabel(d.docType) : ""}
                     {d.docType && d.uploadedAt ? " · " : ""}
                     {d.uploadedAt ? new Date(d.uploadedAt).toLocaleDateString() : ""}
@@ -196,7 +196,7 @@ export function ClaimDocuments({
       <div className="rounded-lg border border-dashed border-border bg-secondary/30 p-3">
         <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">
           <div className="sm:col-span-4">
-            <div className="text-[11px] font-medium mb-1 text-muted-foreground">Name</div>
+            <div className="text-2xs font-medium mb-1 text-muted-foreground">Name</div>
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -205,7 +205,7 @@ export function ClaimDocuments({
             />
           </div>
           <div className="sm:col-span-3">
-            <div className="text-[11px] font-medium mb-1 text-muted-foreground">Type</div>
+            <div className="text-2xs font-medium mb-1 text-muted-foreground">Type</div>
             <SelectField value={docType} onChange={(e) => setDocType(e.target.value)} placeholder="Type…">
               <option value="">— type —</option>
               {checklist.map((c) => (
@@ -217,7 +217,7 @@ export function ClaimDocuments({
             </SelectField>
           </div>
           <div className="sm:col-span-3">
-            <div className="text-[11px] font-medium mb-1 text-muted-foreground">URL</div>
+            <div className="text-2xs font-medium mb-1 text-muted-foreground">URL</div>
             <input
               value={url}
               onChange={(e) => setUrl(e.target.value)}

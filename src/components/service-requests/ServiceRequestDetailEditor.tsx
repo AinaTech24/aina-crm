@@ -174,29 +174,29 @@ export function ServiceRequestDetailEditor({
           <h3 className="font-semibold text-amber-800">SEBI complaint register</h3>
           <div className="grid sm:grid-cols-2 gap-3">
             <label className="block">
-              <div className="text-[11px] text-muted-foreground mb-0.5">Category</div>
+              <div className="text-2xs text-muted-foreground mb-0.5">Category</div>
               <select value={sebiCategory} onChange={(e) => setSebiCategory(e.target.value)} className="input-base">
                 {SEBI_CATEGORIES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
               </select>
             </label>
             <label className="block">
-              <div className="text-[11px] text-muted-foreground mb-0.5">Sub-category</div>
+              <div className="text-2xs text-muted-foreground mb-0.5">Sub-category</div>
               <input value={sebiSubCategory} onChange={(e) => setSebiSubCategory(e.target.value)} placeholder="e.g. Scheme switch" className="input-base" />
             </label>
             <label className="block">
-              <div className="text-[11px] text-muted-foreground mb-0.5">Source</div>
+              <div className="text-2xs text-muted-foreground mb-0.5">Source</div>
               <select value={complaintSource} onChange={(e) => setComplaintSource(e.target.value)} className="input-base">
                 {COMPLAINT_SOURCES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
               </select>
             </label>
             {complaintSource === "scores" && (
               <label className="block">
-                <div className="text-[11px] text-muted-foreground mb-0.5">SCORES ref no</div>
+                <div className="text-2xs text-muted-foreground mb-0.5">SCORES ref no</div>
                 <input value={scoresRefNo} onChange={(e) => setScoresRefNo(e.target.value)} placeholder="2026/0001234" className="input-base" />
               </label>
             )}
           </div>
-          <p className="text-[11px] text-muted-foreground">Saved with the ticket — feeds the register filter + the monthly disclosure statement.</p>
+          <p className="text-2xs text-muted-foreground">Saved with the ticket — feeds the register filter + the monthly disclosure statement.</p>
         </div>
       )}
 
@@ -231,7 +231,7 @@ export function ServiceRequestDetailEditor({
             {csat > 0 && <span className="text-sm text-muted-foreground ml-2">{csat}/5</span>}
           </div>
           <input value={csatComment} onChange={(e) => setCsatComment(e.target.value)} placeholder="Optional client comment" className="input-base" />
-          <p className="text-[11px] text-muted-foreground">Saved with the ticket — feeds the firm-wide CSAT average.</p>
+          <p className="text-2xs text-muted-foreground">Saved with the ticket — feeds the firm-wide CSAT average.</p>
         </div>
       )}
 
@@ -273,7 +273,7 @@ export function ServiceRequestDetailEditor({
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-medium">{EVENT_LABEL[t.event] ?? t.event}</span>
-                    <span className="text-[11px] text-muted-foreground">{userMap[t.by] ?? "system"} · {formatRelative(t.at)}</span>
+                    <span className="text-2xs text-muted-foreground">{userMap[t.by] ?? "system"} · {formatRelative(t.at)}</span>
                   </div>
                   {t.note && <div className="text-muted-foreground text-[13px]">{t.note}</div>}
                 </div>

@@ -36,7 +36,7 @@ export default async function ClaimsScorecardPage() {
         >
           <ChevronLeft className="size-3.5" /> Insurance Claims
         </Link>
-        <h1 className="page-title"><Clock className="size-6 text-brand-cyan" /> Settlement Scorecard</h1>
+        <h1 className="page-title"><Clock className="size-6 text-muted-foreground" /> Settlement Scorecard</h1>
         <p className="page-subtitle">Open-claim aging and per-insurer settlement performance (TAT & approval rate).</p>
       </div>
 
@@ -127,7 +127,7 @@ function AgingCard({ bucket, tone }: { bucket: AgingBucket; tone: string }) {
   return (
     <div className="kpi-card">
       <div className="flex items-center justify-between">
-        <span className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">{bucket.label}</span>
+        <span className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">{bucket.label}</span>
         <Clock className={`size-4 ${tone}`} />
       </div>
       <div className={`text-2xl font-bold mt-1.5 tabular-nums ${tone}`}>{bucket.count}</div>

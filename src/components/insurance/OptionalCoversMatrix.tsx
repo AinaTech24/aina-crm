@@ -97,7 +97,7 @@ export function OptionalCoversMatrix({ rows: rawRows, onChange }: { rows: Row[];
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="text-left text-[11px] uppercase tracking-wide text-muted-foreground border-b">
+            <tr className="text-left text-2xs uppercase tracking-wide text-muted-foreground border-b">
               <th className="px-2 py-1.5 font-medium w-44">Member name</th>
               {covers.map((c) => (
                 <th key={c} className="px-2 py-1 font-medium align-top">
@@ -106,7 +106,7 @@ export function OptionalCoversMatrix({ rows: rawRows, onChange }: { rows: Row[];
                       value={c}
                       onChange={(e) => renameCover(c, e.target.value)}
                       placeholder="Cover name"
-                      className="input-base text-[11px] py-1 font-medium min-w-[8rem]"
+                      className="input-base text-2xs py-1 font-medium min-w-[8rem]"
                     />
                     <button type="button" onClick={() => removeCover(c)} className="text-muted-foreground hover:text-rose-600 mt-1" aria-label="Remove cover column">
                       <X className="size-3" />

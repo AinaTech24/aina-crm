@@ -58,29 +58,29 @@ export default async function SipAtRiskPage() {
       {/* Summary */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <div className="kpi-card">
-          <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground flex items-center gap-1.5">
+          <div className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground flex items-center gap-1.5">
             <ShieldAlert className="size-4" /> At-risk SIPs
           </div>
           <div className="text-2xl font-bold mt-1.5 tabular-nums">{data.counts.total}</div>
-          <div className="text-[11px] mt-0.5 text-muted-foreground">
+          <div className="text-2xs mt-0.5 text-muted-foreground">
             <span className="text-rose-700 font-semibold">{data.counts.high} high</span> · {data.counts.medium} medium
           </div>
         </div>
         <div className="kpi-card">
-          <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground flex items-center gap-1.5">
+          <div className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground flex items-center gap-1.5">
             <Repeat className="size-4" /> Monthly inflow at risk
           </div>
           <div className="text-2xl font-bold mt-1.5 tabular-nums">{formatINR(data.monthlyValueAtRisk)}</div>
-          <div className="text-[11px] mt-0.5 text-muted-foreground">if these SIPs stop</div>
+          <div className="text-2xs mt-0.5 text-muted-foreground">if these SIPs stop</div>
         </div>
         <div className="kpi-card md:col-span-2">
-          <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground flex items-center gap-1.5">
+          <div className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground flex items-center gap-1.5">
             <IndianRupee className="size-4" /> Annual trail exposed
           </div>
           <div className="text-2xl font-bold mt-1.5 tabular-nums text-rose-700">
             {formatINR(data.annualTrailAtRisk)}
           </div>
-          <div className="text-[11px] mt-0.5 text-muted-foreground">
+          <div className="text-2xs mt-0.5 text-muted-foreground">
             estimated trail lost per year if unaddressed
           </div>
         </div>
@@ -118,27 +118,27 @@ export default async function SipAtRiskPage() {
                         {s.investorName}
                       </Link>
                       {s.riskLevel === "high" && (
-                        <span className="ml-2 chip bg-rose-50 text-rose-700 text-[10px]">High</span>
+                        <span className="ml-2 chip bg-rose-50 text-rose-700 text-2xs">High</span>
                       )}
                     </td>
                     <td className="px-4 py-2.5">
                       <div className="text-xs">{s.amcName ?? "—"}</div>
-                      <div className="text-[11px] text-muted-foreground truncate max-w-[200px]">{s.schemeName ?? "—"}</div>
+                      <div className="text-2xs text-muted-foreground truncate max-w-[200px]">{s.schemeName ?? "—"}</div>
                     </td>
                     <td className="px-4 py-2.5 text-right tabular-nums">
                       <div className="font-medium">{formatINR(s.amount)}</div>
-                      <div className="text-[11px] text-muted-foreground capitalize">{s.frequency}</div>
+                      <div className="text-2xs text-muted-foreground capitalize">{s.frequency}</div>
                     </td>
                     <td className="px-4 py-2.5">
                       <div className="flex flex-wrap gap-1">
                         {s.reasons.map((r) => (
-                          <span key={r} className={`chip text-[10px] ${REASON_TONE[r]}`}>
+                          <span key={r} className={`chip text-2xs ${REASON_TONE[r]}`}>
                             {SIP_RISK_LABEL[r]}
                           </span>
                         ))}
                       </div>
                       {s.endDate && s.reasons.includes("ending_soon") && (
-                        <div className="text-[10px] text-muted-foreground mt-0.5">ends {formatDate(s.endDate)}</div>
+                        <div className="text-2xs text-muted-foreground mt-0.5">ends {formatDate(s.endDate)}</div>
                       )}
                     </td>
                     <td className="px-4 py-2.5 text-xs text-muted-foreground">{s.rmName ?? "Unassigned"}</td>

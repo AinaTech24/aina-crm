@@ -8,8 +8,10 @@
  */
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Loader2, GitMerge, ShieldAlert } from "lucide-react";
+import { confirmDialog } from "@/components/ui/ConfirmProvider";
 
 type Member = { id: string; name: string; pan: string | null; phone: string | null; email: string | null; aum: number; rm_name: string | null };
 
@@ -24,7 +26,7 @@ export function DuplicateGroup({ kind, gkey, members }: { kind: string; gkey: st
   const [done, setDone] = useState(false);
 
   async function dismiss() {
-    if (!confirm("Are you sure these records are NOT duplicates? This will dismiss this warning pair.")) return;
+    if (!(await confirmDialog({ title: "Are you sure these records are NOT duplicates?", message: "This will dismiss this warning pair." }))) return;
     setBusy(true); setErr(null);
     try {
       const res = await fetch("/api/duplicates/ignore", {
@@ -47,7 +49,7 @@ export function DuplicateGroup({ kind, gkey, members }: { kind: string; gkey: st
   async function merge() {
     const losers = members.filter((m) => m.id !== survivor);
     if (!losers.length) return;
-    if (!confirm(`Merge ${losers.length} duplicate record(s) into "${members.find((m) => m.id === survivor)?.name}"? Child records (folios, transactions, activities, policies…) will move to the survivor and the duplicates will be retired.`)) return;
+    if (!(await confirmDialog({ title: `Merge ${losers.length} duplicate record(s) into "${members.find((m) => m.id === survivor)?.name}"?`, message: "Child records (folios, transactions, activities, policies…) will move to the survivor, and the duplicates will be retired.", confirmLabel: "Merge", tone: "danger" }))) return;
     setBusy(true); setErr(null);
     try {
       for (const l of losers) {
@@ -85,8 +87,8 @@ export function DuplicateGroup({ kind, gkey, members }: { kind: string; gkey: st
           <label key={m.id} className={`flex items-center gap-3 rounded-lg border px-3 py-2 cursor-pointer ${survivor === m.id ? "border-emerald-300 bg-emerald-50/50" : "border-border hover:bg-secondary/40"}`}>
             <input type="radio" name={`survivor-${kind}-${gkey}`} checked={survivor === m.id} onChange={() => setSurvivor(m.id)} className="size-4" />
             <div className="min-w-0 flex-1">
-              <div className="font-medium text-sm truncate">{m.name} {survivor === m.id && <span className="text-[10px] text-emerald-700 font-semibold">· keep</span>}</div>
-              <div className="text-[11px] text-muted-foreground">
+              <div className="font-medium text-sm truncate">{m.name} {survivor === m.id && <span className="text-2xs text-emerald-700 font-semibold">· keep</span>}</div>
+              <div className="text-2xs text-muted-foreground">
                 {m.pan ? <span className="font-mono">{m.pan}</span> : "no PAN"} · {m.phone ?? "no phone"} · {m.email ?? "no email"}{m.rm_name ? ` · RM ${m.rm_name}` : ""}
               </div>
             </div>
@@ -94,7 +96,7 @@ export function DuplicateGroup({ kind, gkey, members }: { kind: string; gkey: st
           </label>
         ))}
       </div>
-      {err && <div className="text-sm text-rose-600 mt-2 flex items-center gap-1"><ShieldAlert className="size-4" /> {err}</div>}
+      {err && <MergeError message={err} />}
     </div>
   );
 }
@@ -110,7 +112,7 @@ export function FamilyDuplicateGroup({ gkey, members }: { gkey: string; members:
   const [done, setDone] = useState(false);
 
   async function dismiss() {
-    if (!confirm("Are you sure these families are NOT duplicates? This will dismiss this warning pair.")) return;
+    if (!(await confirmDialog({ title: "Are you sure these families are NOT duplicates?", message: "This will dismiss this warning pair." }))) return;
     setBusy(true); setErr(null);
     try {
       const res = await fetch("/api/duplicates/ignore", {
@@ -133,7 +135,7 @@ export function FamilyDuplicateGroup({ gkey, members }: { gkey: string; members:
   async function merge() {
     const losers = members.filter((m) => m.id !== survivor);
     if (!losers.length) return;
-    if (!confirm(`Merge ${losers.length} duplicate family grouping(s) into "${members.find((m) => m.id === survivor)?.name}"? Members and meetings move to the survivor; the empty duplicates are removed.`)) return;
+    if (!(await confirmDialog({ title: `Merge ${losers.length} duplicate family grouping(s) into "${members.find((m) => m.id === survivor)?.name}"?`, message: "Members and meetings move to the survivor; the empty duplicates are removed.", confirmLabel: "Merge", tone: "danger" }))) return;
     setBusy(true); setErr(null);
     try {
       for (const l of losers) {
@@ -159,14 +161,40 @@ export function FamilyDuplicateGroup({ gkey, members }: { gkey: string; members:
           <label key={m.id} className={`flex items-center gap-3 rounded-lg border px-3 py-2 cursor-pointer ${survivor === m.id ? "border-emerald-300 bg-emerald-50/50" : "border-border hover:bg-secondary/40"}`}>
             <input type="radio" name={`famsurvivor-${gkey}`} checked={survivor === m.id} onChange={() => setSurvivor(m.id)} className="size-4" />
             <div className="min-w-0 flex-1">
-              <div className="font-medium text-sm truncate">{m.name} {survivor === m.id && <span className="text-[10px] text-emerald-700 font-semibold">· keep</span>}</div>
-              <div className="text-[11px] text-muted-foreground">{m.member_count} member{m.member_count === 1 ? "" : "s"}</div>
+              <div className="font-medium text-sm truncate">{m.name} {survivor === m.id && <span className="text-2xs text-emerald-700 font-semibold">· keep</span>}</div>
+              <div className="text-2xs text-muted-foreground">{m.member_count} member{m.member_count === 1 ? "" : "s"}</div>
             </div>
             <div className="text-xs tabular-nums text-muted-foreground shrink-0">{m.family_aum > 0 ? fmtINR(m.family_aum) : "₹0"}</div>
           </label>
         ))}
       </div>
-      {err && <div className="text-sm text-rose-600 mt-2 flex items-center gap-1"><ShieldAlert className="size-4" /> {err}</div>}
+      {err && <MergeError message={err} />}
+    </div>
+  );
+}
+
+/**
+ * Merge failure notice. A PAN clash is the one failure an operator can act on —
+ * it means the group is probably not one person — so it gets a way forward
+ * (review side by side in the full tool) instead of a dead end.
+ */
+function MergeError({ message }: { message: string }) {
+  const panClash = /different PANs/i.test(message);
+  return (
+    <div className={`mt-2 rounded-lg border p-3 text-sm ${panClash ? "border-destructive/30 bg-destructive/10" : "border-transparent"}`}>
+      <div className="flex items-start gap-2 text-rose-600">
+        <ShieldAlert className="size-4 shrink-0 mt-0.5" />
+        <div className="min-w-0">
+          <div>{message}</div>
+          {panClash && (
+            <div className="mt-1.5 text-xs text-muted-foreground">
+              If they really are one person, merge them from{" "}
+              <Link href="/dashboard/merge-clients?tab=merge" className="text-primary hover:underline">Merge Client</Link>, where you
+              can compare the records and confirm. Otherwise use “Not duplicates”.
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

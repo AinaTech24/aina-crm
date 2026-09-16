@@ -99,7 +99,7 @@ export function AdminShell({
             style={{ background: "linear-gradient(135deg,#fff, #ffd9da)", color: "#B71A20" }}>A</div>
           <div className="leading-tight">
             <div className="font-bold tracking-tight">AINA</div>
-            <div className="text-[10px] text-white/55 font-medium uppercase tracking-wider">Platform Admin</div>
+            <div className="text-2xs text-white/55 font-medium uppercase tracking-wider">Platform Admin</div>
           </div>
         </div>
 
@@ -163,7 +163,7 @@ export function AdminShell({
             </div>
             <div className="min-w-0 flex-1">
               <div className="text-[13px] font-semibold truncate text-white">{name}</div>
-              <div className="text-[10px] text-white/55 truncate">{email}</div>
+              <div className="text-2xs text-white/55 truncate">{email}</div>
             </div>
             <ChevronUp className={`size-4 text-white/50 transition-transform ${menuOpen ? "" : "rotate-180"}`} />
           </button>
@@ -175,7 +175,7 @@ export function AdminShell({
         <header className="sticky top-0 z-20 shrink-0 h-14 px-6 flex items-center justify-between border-b border-border bg-background/80 backdrop-blur-md">
           <div className="flex items-center gap-2.5">
             <h1 className="text-sm font-semibold text-foreground">{title}</h1>
-            <span className="hidden sm:inline text-[11px] text-muted-foreground">· Cross-tenant platform view</span>
+            <span className="hidden sm:inline text-2xs text-muted-foreground">· Cross-tenant platform view</span>
           </div>
           <div className="flex items-center gap-2">
             <button

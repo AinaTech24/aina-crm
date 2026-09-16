@@ -1,3 +1,4 @@
+import { assertInvestorAccess } from "@/lib/investors/access";
 import { handleApiError } from "@/lib/api/error-handler";
 /**
  * Single investor endpoints.
@@ -16,6 +17,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
+import { withIdempotentMutation } from "@/lib/api/idempotent-mutation";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap, requireAny, can } from "@/lib/auth/rbac";
 import { cleanUccCodes } from "@/lib/investors/ucc";
@@ -197,6 +199,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
   try {
     const session = await requireSession();
+    await assertInvestorAccess(session, (await params).id);
     const seesAll = can(session.roles, "investor.view.all", session.permissions);
     const seesAssigned = can(session.roles, "investor.view.assigned", session.permissions);
     if (!seesAll && !seesAssigned) {
@@ -266,13 +269,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const { id } = await params;
   try {
     const session = await requireSession();
+
     requireAny(session.roles, ["investor.edit.all", "investor.edit.assigned"], session.permissions);
     const editsAll = can(session.roles, "investor.edit.all", session.permissions);
     const parse = Patch.safeParse(await req.json().catch(() => ({})));
     if (!parse.success)
       return NextResponse.json({ error: "invalid body", issues: parse.error.issues }, { status: 400 });
 
-    const result = await withTenant(session.tenantId, async (tx) => {
+    const result = await withIdempotentMutation(session, req, parse.data, async (tx) => {
       const before = (await tx.select().from(investors).where(and(eq(investors.id, id), eq(investors.tenantId, session.tenantId))).limit(1))[0];
       if (!before) return null;
 
@@ -488,6 +492,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const { id } = await params;
   try {
     const session = await requireSession();
+
     // Permanent erasure is far more dangerous than an edit — gate on the narrow
     // delete capability (owner / compliance), not the broad edit.all.
     requireCap(session.roles, "investor.delete", session.permissions);

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { FilterASTSchema } from "@/lib/filter/ast";
+import { validateRuntimeFilter } from "@/lib/filter/event-fields";
 
 /**
  * Workflow Graph Schema — the validated representation of a DAG saved in
@@ -318,6 +319,16 @@ export function validateGraph(graph: WorkflowGraph): {
   issues: ValidationIssue[];
 } {
   const issues: ValidationIssue[] = [];
+  const subject = graph.nodes.find((node) => node.type === "trigger")?.config.subjectType ?? "investor";
+  for (const node of graph.nodes) {
+    const criteria = node.type === "branch" ? node.config.cases.map((entry) => entry.criteria)
+      : node.type === "wait_for_event" && node.config.criteria ? [node.config.criteria] : [];
+    for (const filter of criteria) {
+      try { validateRuntimeFilter(filter, subject); }
+      catch (error) { issues.push({ severity: "error", nodeId: node.id, message: (error as Error).message }); }
+    }
+    if (node.type === "create_task") issues.push({ severity: "warning", nodeId: node.id, message: "Automatic task creation is disabled by firm policy; this action will be skipped." });
+  }
   const nodeIds = new Set(graph.nodes.map((n) => n.id));
   const startNode = graph.nodes.find((n) => n.id === graph.startNodeId);
   if (!startNode) {
@@ -379,19 +390,19 @@ export function validateGraph(graph: WorkflowGraph): {
 
   // Branch edge labels
   for (const n of graph.nodes) {
-    if (n.type === "branch") {
+    if (n.type === "branch" || n.type === "wait_for_event" || n.type === "loop") {
       const branches = graph.edges.filter((e) => e.source === n.id);
       const labels = new Set(branches.map((e) => e.sourceHandle));
-      const expected = new Set([
+      const expected = new Set(n.type === "wait_for_event" ? (n.config.timeout ? ["matched", "timeout"] : ["matched"]) : n.type === "loop" ? ["body", "done"] : [
         ...n.config.cases.map((_, i) => `case_${i}`),
         "default",
       ]);
       for (const lbl of expected) {
-        if (!labels.has(lbl)) {
+        if (branches.filter((edge) => edge.sourceHandle === lbl).length !== 1) {
           issues.push({
-            severity: "warning",
+            severity: "error",
             nodeId: n.id,
-            message: `Branch case '${lbl}' has no outgoing edge — runs taking this path will end.`,
+            message: `Branch '${lbl}' requires exactly one outgoing edge.`,
           });
         }
       }

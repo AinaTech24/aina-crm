@@ -57,7 +57,7 @@ export default async function TrailForecastPage() {
       {/* Header */}
       <div>
         <h1 className="page-title">
-          <TrendingUp className="size-6 text-brand-cyan" /> Trail Forecast &amp; Revenue-at-Risk
+          <TrendingUp className="size-6 text-muted-foreground" /> Trail Forecast &amp; Revenue-at-Risk
         </h1>
       </div>
 
@@ -120,31 +120,31 @@ export default async function TrailForecastPage() {
                 (() => {
                   const gapPct = f.projectedAnnual > 0 ? ((f.projectedAnnual - f.received12mo) / f.projectedAnnual) * 100 : 0;
                   return (
-                    <span className={`chip text-[11px] ${gapPct >= 10 ? "bg-rose-50 text-rose-700" : gapPct >= 3 ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700"}`}>
+                    <span className={`chip text-2xs ${gapPct >= 10 ? "bg-rose-50 text-rose-700" : gapPct >= 3 ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700"}`}>
                       {gapPct >= 0 ? `${gapPct.toFixed(0)}% under-recovery` : `${Math.abs(gapPct).toFixed(0)}% over`}
                     </span>
                   );
                 })()
               ) : (
-                <span className="chip text-[11px] bg-secondary text-muted-foreground">No payouts recorded</span>
+                <span className="chip text-2xs bg-secondary text-muted-foreground">No payouts recorded</span>
               )}
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               <div className="rounded-lg border border-border bg-card p-3">
-                <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Projected / year</div>
+                <div className="text-2xs uppercase tracking-wider text-muted-foreground">Projected / year</div>
                 <div className="text-xl font-bold tabular-nums">{formatINR(f.projectedAnnual)}</div>
               </div>
               <div className="rounded-lg border border-border bg-card p-3">
-                <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Received (last 12 mo)</div>
+                <div className="text-2xs uppercase tracking-wider text-muted-foreground">Received (last 12 mo)</div>
                 <div className="text-xl font-bold tabular-nums">{f.received12mo > 0 ? formatINR(f.received12mo) : "—"}</div>
               </div>
               <Link href="/dashboard/commission-reconciliation" className="rounded-lg border border-border bg-card p-3 hover:border-brand-cyan/40 transition-colors">
-                <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Gap (potential leak)</div>
+                <div className="text-2xs uppercase tracking-wider text-muted-foreground">Gap (potential leak)</div>
                 <div className="text-xl font-bold tabular-nums text-rose-700">{f.received12mo > 0 ? formatINR(Math.max(0, f.projectedAnnual - f.received12mo)) : "—"}</div>
-                <div className="text-[11px] text-muted-foreground">Reconcile →</div>
+                <div className="text-2xs text-muted-foreground">Reconcile →</div>
               </Link>
             </div>
-            <p className="text-[11px] text-muted-foreground mt-2">AMC trail under-payment (wrong ARN mapping, missed trail-on-transfer) is a common leak — record payouts in Commission Reconciliation to track recovery.</p>
+            <p className="text-2xs text-muted-foreground mt-2">AMC trail under-payment (wrong ARN mapping, missed trail-on-transfer) is a common leak — record payouts in Commission Reconciliation to track recovery.</p>
           </div>
 
           {/* Revenue at risk */}
@@ -154,7 +154,7 @@ export default async function TrailForecastPage() {
                 <AlertTriangle className="size-4 text-rose-600" /> Revenue at risk
               </h2>
               <span
-                className={`chip text-[11px] ${riskPctOfAnnual >= 10
+                className={`chip text-2xs ${riskPctOfAnnual >= 10
                     ? "bg-rose-50 text-rose-700"
                     : riskPctOfAnnual >= 3
                       ? "bg-amber-50 text-amber-700"
@@ -168,13 +168,13 @@ export default async function TrailForecastPage() {
             <div className="grid md:grid-cols-3 gap-3">
               {/* Total */}
               <div className="rounded-xl bg-rose-50/60 border border-rose-100 p-4">
-                <div className="text-[10px] uppercase tracking-wider font-semibold text-rose-800">
+                <div className="text-2xs uppercase tracking-wider font-semibold text-rose-800">
                   Total trail at risk
                 </div>
                 <div className="text-2xl font-bold text-rose-800 mt-1 tabular-nums">
                   {formatINR(f.atRisk.totalRevenueAtRisk)}
                 </div>
-                <div className="text-[11px] text-rose-700/80 mt-0.5">per year, if not saved</div>
+                <div className="text-2xs text-rose-700/80 mt-0.5">per year, if not saved</div>
               </div>
 
               {/* Redemption drag */}
@@ -182,13 +182,13 @@ export default async function TrailForecastPage() {
                 href="/dashboard/transactions"
                 className="rounded-xl bg-white border border-border p-4 hover:border-rose-200 transition-colors"
               >
-                <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground flex items-center gap-1">
+                <div className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground flex items-center gap-1">
                   <ArrowDownRight className="size-3.5" /> Redemption drag (30d)
                 </div>
                 <div className="text-xl font-bold mt-1 tabular-nums">
                   {formatINR(f.atRisk.redemptionTrailLost)}
                 </div>
-                <div className="text-[11px] text-muted-foreground mt-0.5">
+                <div className="text-2xs text-muted-foreground mt-0.5">
                   {formatCr(f.atRisk.redemptionOutflow30d)} redeemed · {f.atRisk.redemptionCount} txns
                 </div>
               </Link>
@@ -198,18 +198,18 @@ export default async function TrailForecastPage() {
                 href="/dashboard/sips"
                 className="rounded-xl bg-white border border-border p-4 hover:border-amber-200 transition-colors"
               >
-                <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground flex items-center gap-1">
+                <div className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground flex items-center gap-1">
                   <Repeat className="size-3.5" /> At-risk SIP trail
                 </div>
                 <div className="text-xl font-bold mt-1 tabular-nums">
                   {formatINR(f.atRisk.atRiskSipTrail)}
                 </div>
-                <div className="text-[11px] text-muted-foreground mt-0.5">
+                <div className="text-2xs text-muted-foreground mt-0.5">
                   {f.atRisk.atRiskSipCount} SIPs · {formatINR(f.atRisk.atRiskSipMonthly)}/mo inflow
                 </div>
               </Link>
             </div>
-            <p className="text-[11px] text-muted-foreground mt-3 flex items-start gap-1.5">
+            <p className="text-2xs text-muted-foreground mt-3 flex items-start gap-1.5">
               <Info className="size-3.5 mt-0.5 flex-shrink-0" />
               Redemption drag is the annual trail lost on AUM redeemed in the last 30 days. At-risk SIPs are
               active SIPs with repeated mandate failures, a dead mandate, or ending within 60 days. Saving
@@ -230,11 +230,11 @@ export default async function TrailForecastPage() {
                       <Link key={s.id} href={s.investorId ? `/dashboard/investors/${s.investorId}` : "/dashboard/sips"} className="flex items-center gap-3 py-2 hover:bg-accent/40 -mx-2 px-2 rounded">
                         <div className="min-w-0 flex-1">
                           <div className="text-sm font-medium truncate">{s.client}</div>
-                          <div className="text-[11px] text-amber-700">{s.reason}</div>
+                          <div className="text-2xs text-amber-700">{s.reason}</div>
                         </div>
                         <div className="text-right shrink-0">
                           <div className="text-sm tabular-nums">{formatINR(s.monthly)}/mo</div>
-                          <div className="text-[11px] text-muted-foreground tabular-nums">{formatINR(s.annual)}/yr</div>
+                          <div className="text-2xs text-muted-foreground tabular-nums">{formatINR(s.annual)}/yr</div>
                         </div>
                       </Link>
                     ))}
@@ -252,7 +252,7 @@ export default async function TrailForecastPage() {
                         <div className="min-w-0 flex-1 text-sm font-medium truncate">{c.client}</div>
                         <div className="text-right shrink-0">
                           <div className="text-sm tabular-nums">{formatINR(c.amount)}</div>
-                          <div className="text-[11px] text-rose-600 tabular-nums">−{formatINR(c.trailLost)}/yr trail</div>
+                          <div className="text-2xs text-rose-600 tabular-nums">−{formatINR(c.trailLost)}/yr trail</div>
                         </div>
                       </Link>
                     ))}
@@ -271,7 +271,7 @@ export default async function TrailForecastPage() {
           </div>
 
           {/* Methodology note */}
-          <p className="text-[11px] text-muted-foreground flex items-start gap-1.5">
+          <p className="text-2xs text-muted-foreground flex items-start gap-1.5">
             <Info className="size-3.5 mt-0.5 flex-shrink-0" />
             Trail rates use your per-AMC negotiated rate from the{" "}
             <Link href="/dashboard/amc-empanelments" className="underline">
@@ -302,14 +302,14 @@ function Kpi({
   return (
     <div className={hero ? "kpi-hero" : "kpi-card"}>
       <div
-        className={`text-[10px] uppercase tracking-wider font-semibold flex items-center gap-1.5 ${hero ? "opacity-90" : "text-muted-foreground"
+        className={`text-2xs uppercase tracking-wider font-semibold flex items-center gap-1.5 ${hero ? "opacity-90" : "text-muted-foreground"
           }`}
       >
         {icon}
         {label}
       </div>
       <div className="text-2xl font-bold mt-1.5 tabular-nums">{value}</div>
-      <div className={`text-[11px] mt-0.5 ${hero ? "opacity-80" : "text-muted-foreground"}`}>{sub}</div>
+      <div className={`text-2xs mt-0.5 ${hero ? "opacity-80" : "text-muted-foreground"}`}>{sub}</div>
     </div>
   );
 }

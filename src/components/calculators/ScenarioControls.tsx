@@ -205,7 +205,7 @@ export function ScenarioControls({
                 <li key={s.id} className="flex items-center gap-1.5 rounded-md px-2 py-1.5 hover:bg-secondary">
                   <button onClick={() => load(s)} className="flex-1 min-w-0 text-left">
                     <span className="block text-xs font-medium truncate">{s.title}</span>
-                    <span className="block text-[10px] text-muted-foreground">
+                    <span className="block text-2xs text-muted-foreground">
                       {new Date(s.createdAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}
                     </span>
                   </button>

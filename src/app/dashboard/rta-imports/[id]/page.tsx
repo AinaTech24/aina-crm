@@ -267,7 +267,7 @@ function fmtNum(n: number | null | undefined): string {
 function Meta({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+      <div className="text-2xs uppercase tracking-wider text-muted-foreground">
         {label}
       </div>
       <div className="font-medium mt-0.5">{value}</div>
@@ -296,7 +296,7 @@ function KpiTile({
       : "bg-secondary/40 text-muted-foreground border-border";
   return (
     <div className={`card-elevated p-4 border ${cls}`}>
-      <div className="text-[11px] uppercase tracking-wider opacity-80">{label}</div>
+      <div className="text-2xs uppercase tracking-wider opacity-80">{label}</div>
       <div className="text-2xl font-bold tabular-nums mt-1">{value}</div>
     </div>
   );

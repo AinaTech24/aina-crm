@@ -56,17 +56,17 @@ export default async function KbArticlePage({ params }: { params: Promise<{ slug
         </Link>
 
         <div className="mt-6 flex items-center gap-2 flex-wrap">
-          <span className="text-[10px] font-bold uppercase tracking-widest text-primary bg-primary/10 px-2 py-1 rounded-full">
+          <span className="text-2xs font-bold uppercase tracking-widest text-primary bg-primary/10 px-2 py-1 rounded-full">
             {a.series}
             {a.episodeNo != null ? ` #${a.episodeNo}` : ""}
           </span>
           {a.readMinutes ? (
-            <span className="text-[11px] text-muted-foreground inline-flex items-center gap-1">
+            <span className="text-2xs text-muted-foreground inline-flex items-center gap-1">
               <Clock className="size-3" /> {a.readMinutes} min read
             </span>
           ) : null}
           {a.publishedAt ? (
-            <span className="text-[11px] text-muted-foreground">
+            <span className="text-2xs text-muted-foreground">
               {new Date(a.publishedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
             </span>
           ) : null}
@@ -80,7 +80,7 @@ export default async function KbArticlePage({ params }: { params: Promise<{ slug
         {a.modules.length > 0 && (
           <div className="mt-5 flex flex-wrap gap-1.5">
             {a.modules.map((m) => (
-              <span key={m} className="text-[10px] rounded-full border border-border/60 bg-secondary/40 px-2 py-0.5 text-muted-foreground">
+              <span key={m} className="text-2xs rounded-full border border-border/60 bg-secondary/40 px-2 py-0.5 text-muted-foreground">
                 {m}
               </span>
             ))}
@@ -182,7 +182,7 @@ export default async function KbArticlePage({ params }: { params: Promise<{ slug
                 href={`/knowledge-base/${c.slug}`}
                 className="rounded-xl border border-border/60 bg-card p-4 hover:border-brand-cyan/50 transition-colors"
               >
-                <span className="text-[10px] font-bold uppercase tracking-widest text-primary">
+                <span className="text-2xs font-bold uppercase tracking-widest text-primary">
                   {c.series}
                   {c.episodeNo != null ? ` #${c.episodeNo}` : ""}
                 </span>

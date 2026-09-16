@@ -42,7 +42,7 @@ function StatusBadge({ status }: { status: string }) {
     uploaded: "bg-blue-50 text-blue-700",
   };
   return (
-    <span className={`text-[11px] px-2 py-0.5 rounded-full ${map[status] ?? "bg-secondary text-muted-foreground"}`}>
+    <span className={`text-2xs px-2 py-0.5 rounded-full ${map[status] ?? "bg-secondary text-muted-foreground"}`}>
       {status}
     </span>
   );
@@ -162,7 +162,7 @@ export function RtaImportsTable({ recent, trashed }: { recent: Row[]; trashed: R
         </div>
 
         {reimportMsg && (
-          <div className="text-[11px] text-muted-foreground border rounded-md px-2.5 py-1.5 bg-secondary/40">
+          <div className="text-2xs text-muted-foreground border rounded-md px-2.5 py-1.5 bg-secondary/40">
             {reimportMsg}
           </div>
         )}
@@ -243,7 +243,7 @@ export function RtaImportsTable({ recent, trashed }: { recent: Row[]; trashed: R
                     <td className="py-2.5 pl-4">
                       <StatusBadge status={r.status} />
                       {r.remarks && (r.status === "failed" || r.status === "partial" || r.status === "rejected") && (
-                        <div className="text-[11px] text-rose-600 mt-0.5 max-w-[20rem] truncate" title={r.remarks}>{r.remarks}</div>
+                        <div className="text-2xs text-rose-600 mt-0.5 max-w-[20rem] truncate" title={r.remarks}>{r.remarks}</div>
                       )}
                     </td>
                     <td className="py-2.5 text-xs text-muted-foreground">{r.uploaded_by_name ?? "—"}</td>

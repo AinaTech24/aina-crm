@@ -34,7 +34,7 @@ export default function DashboardError({
         to your dashboard.
       </p>
       {error?.digest && (
-        <p className="mt-3 text-[11px] text-muted-foreground font-mono">
+        <p className="mt-3 text-2xs text-muted-foreground font-mono">
           Reference: {error.digest}
         </p>
       )}

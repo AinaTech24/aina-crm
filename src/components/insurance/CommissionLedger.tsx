@@ -6,6 +6,7 @@ import { Trash2, Loader2 } from "lucide-react";
 import { formatINR, formatDate } from "@/lib/utils";
 import { useToast } from "@/components/ui/Toast";
 import { COMMISSION_TYPE_LABELS } from "./AddCommissionEntry";
+import { confirmDialog } from "@/components/ui/ConfirmProvider";
 
 export type CommissionRow = {
   id: string;
@@ -37,7 +38,7 @@ export function CommissionLedger({ entries, canDelete }: { entries: CommissionRo
   const [busy, setBusy] = useState<string | null>(null);
 
   async function del(id: string) {
-    if (!confirm("Delete this commission entry?")) return;
+    if (!(await confirmDialog({ title: "Delete this commission entry?", confirmLabel: "Delete", tone: "danger" }))) return;
     setBusy(id);
     try {
       const res = await fetch(`/api/insurance/commission-entries/${id}`, { method: "DELETE" });
@@ -74,7 +75,7 @@ export function CommissionLedger({ entries, canDelete }: { entries: CommissionRo
             <td className="px-4 py-2.5 whitespace-nowrap tabular-nums text-xs">{formatDate(e.entry_date)}</td>
             <td className="py-2.5">{e.insurer ?? "—"}</td>
             <td className="py-2.5">
-              <span className={`text-[11px] px-2 py-0.5 rounded-full ${TYPE_TONE[e.commission_type] ?? ""}`}>
+              <span className={`text-2xs px-2 py-0.5 rounded-full ${TYPE_TONE[e.commission_type] ?? ""}`}>
                 {COMMISSION_TYPE_LABELS[e.commission_type] ?? e.commission_type}
               </span>
             </td>

@@ -218,7 +218,7 @@ export function LeaveTimeline({
                         : "text-muted-foreground"
                     }`}
                   >
-                    <div className="text-[10px] uppercase tracking-wider">{dayName[0]}</div>
+                    <div className="text-2xs uppercase tracking-wider">{dayName[0]}</div>
                     <div className={`mt-0.5 text-xs inline-block size-5 leading-5 rounded-full ${
                       today ? "bg-brand-cyan text-primary-foreground font-semibold" : ""
                     }`}>
@@ -243,7 +243,7 @@ export function LeaveTimeline({
                   <optgroup key={deptKey} label={deptLabel}>
                     {/* Department Header Row */}
                     <tr className="border-b bg-secondary/15">
-                      <td className="sticky left-0 bg-secondary/15 z-10 p-2 font-bold text-[10px] tracking-wider uppercase text-muted-foreground border-r border-border shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">
+                      <td className="sticky left-0 bg-secondary/15 z-10 p-2 font-bold text-2xs tracking-wider uppercase text-muted-foreground border-r border-border shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">
                         {deptLabel}
                       </td>
                       <td colSpan={daysInMonth} className="p-0 border-r border-border last:border-r-0">
@@ -257,7 +257,7 @@ export function LeaveTimeline({
                           <div className="font-semibold text-foreground truncate" title={user.name}>
                             {user.name}
                           </div>
-                          <div className="text-[10px] text-muted-foreground truncate" title={user.email}>
+                          <div className="text-2xs text-muted-foreground truncate" title={user.email}>
                             {user.email}
                           </div>
                         </td>
@@ -281,8 +281,8 @@ export function LeaveTimeline({
                             
                             // Base color styles
                             const bgStyle = isApproved 
-                              ? "bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-500/30" 
-                              : "bg-amber-500/20 text-amber-800 dark:text-amber-300 hover:bg-amber-500/30 border-dashed border-y border-amber-400";
+                              ? "bg-emerald-500/20 text-emerald-800 hover:bg-emerald-500/30" 
+                              : "bg-amber-500/20 text-amber-800 hover:bg-amber-500/30 border-dashed border-y border-amber-400";
                             
                             // Border details for continuous block
                             const roundStyle = isStart && isEnd 
@@ -299,7 +299,7 @@ export function LeaveTimeline({
 
                             cellClass = `${bgStyle} ${roundStyle} ${borderStyle} font-semibold py-0.5 px-1 flex items-center justify-center cursor-pointer transition-all duration-150`;
                             cellContent = (
-                              <span className="text-[10px] tracking-tight">{lAbbr}</span>
+                              <span className="text-2xs tracking-tight">{lAbbr}</span>
                             );
 
                             const leaveLabel = LEAVE_TYPE_LABELS[leave.leave_type] || leave.leave_type;
@@ -335,7 +335,7 @@ export function LeaveTimeline({
       </div>
 
       {/* Legend & Instructions */}
-      <div className="flex items-center justify-between text-[11px] text-muted-foreground flex-wrap gap-4 pt-4 border-t border-border">
+      <div className="flex items-center justify-between text-2xs text-muted-foreground flex-wrap gap-4 pt-4 border-t border-border">
         <div className="flex items-center gap-4 flex-wrap">
           <div className="flex items-center gap-1.5">
             <div className="size-3.5 rounded bg-emerald-500/20 border border-emerald-500" />

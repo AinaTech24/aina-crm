@@ -109,8 +109,9 @@ export default async function RtaImportsPage() {
       <div className="flex items-end justify-between flex-wrap gap-3">
         <div>
           <h1 className="page-title">
-            <FileText className="size-6 text-brand-cyan" /> RTA file imports
+            <FileText className="size-6 text-muted-foreground" /> RTA file imports
           </h1>
+          <p className="page-subtitle mt-1">Upload CAMS and KFintech files to bring transactions into the CRM.</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <RtaMailboxSyncButton />
@@ -189,13 +190,13 @@ function FileKindTile({ t }: { t: (typeof RTA_FILE_TYPES)[number] & { last: any;
         </div>
         <div className="flex-1 min-w-0">
           <div className="text-sm font-semibold">{t.label}</div>
-          <div className="text-[11px] text-muted-foreground mt-0.5 leading-snug">
+          <div className="text-2xs text-muted-foreground mt-0.5 leading-snug">
             {t.short}
           </div>
         </div>
       </div>
 
-      <div className="mt-3 grid grid-cols-2 gap-2 text-[11px]">
+      <div className="mt-3 grid grid-cols-2 gap-2 text-2xs">
         <Field label="Cadence" value={cadenceLabel(t.cadence)} />
         <Field
           label="Last received"
@@ -251,7 +252,7 @@ function Field({
 }) {
   return (
     <div>
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className="text-2xs uppercase tracking-wider text-muted-foreground">{label}</div>
       <div
         className={`font-medium ${tone === "rose" ? "text-rose-700" : tone === "muted" ? "text-muted-foreground" : ""
           }`}
@@ -283,7 +284,7 @@ function SummaryTile({
     <div className={`card-elevated p-4 border ${cls}`}>
       <div className="text-xs uppercase tracking-wider opacity-80">{label}</div>
       <div className="text-2xl font-bold tabular-nums mt-1">{value}</div>
-      <div className="text-[11px] opacity-70 mt-0.5">{sub}</div>
+      <div className="text-2xs opacity-70 mt-0.5">{sub}</div>
     </div>
   );
 }
@@ -301,7 +302,7 @@ function StatusBadge({ status }: { status: string }) {
     rejected: "bg-gray-100 text-gray-600",
   };
   return (
-    <span className={`text-[11px] px-2 py-0.5 rounded-full ${map[status] ?? "bg-secondary text-muted-foreground"}`}>
+    <span className={`text-2xs px-2 py-0.5 rounded-full ${map[status] ?? "bg-secondary text-muted-foreground"}`}>
       {status === "rejected" ? "not ours" : status}
     </span>
   );

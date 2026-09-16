@@ -246,7 +246,7 @@ export function CreateGoalFromCalc({
                         >
                           <span className="font-medium text-sm">{h.name}</span>
                           {h.pan && (
-                            <span className="text-[11px] text-muted-foreground ml-2 font-mono">{h.pan}</span>
+                            <span className="text-2xs text-muted-foreground ml-2 font-mono">{h.pan}</span>
                           )}
                         </button>
                       </li>

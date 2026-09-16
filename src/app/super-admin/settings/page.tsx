@@ -148,7 +148,7 @@ function Stat({ label, value, tone }: { label: string; value: number; tone?: "am
   const color = tone === "amber" && value > 0 ? "text-amber-600" : tone === "rose" && value > 0 ? "text-rose-600" : "text-foreground";
   return (
     <div className="border rounded-md p-3">
-      <div className="text-[10px] text-muted-foreground uppercase tracking-wide">{label}</div>
+      <div className="text-2xs text-muted-foreground uppercase tracking-wide">{label}</div>
       <div className={`text-xl font-bold mt-1 ${color}`}>{value}</div>
     </div>
   );

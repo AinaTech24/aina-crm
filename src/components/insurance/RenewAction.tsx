@@ -26,7 +26,7 @@ export function RenewAction({ policyId, frequency }: { policyId: string; frequen
     } finally { setBusy(false); }
   }
 
-  if (frequency === "single") return <span className="text-[10px] text-muted-foreground">single-pay</span>;
+  if (frequency === "single") return <span className="text-2xs text-muted-foreground">single-pay</span>;
   return (
     <button onClick={renew} disabled={busy || done} className="btn-secondary text-xs inline-flex items-center gap-1" title="Mark this premium as paid + advance the due date">
       {busy ? <Loader2 className="size-3.5 animate-spin" /> : <CheckCircle2 className="size-3.5" />} {done ? "Renewed ✓" : "Mark renewed"}

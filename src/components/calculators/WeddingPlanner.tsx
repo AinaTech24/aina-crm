@@ -59,7 +59,7 @@ export function WeddingPlanner() {
       </div>
 
       <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-5 text-center">
-        <div className="text-[11px] uppercase tracking-wider font-semibold text-emerald-700">Start a SIP of</div>
+        <div className="text-2xs uppercase tracking-wider font-semibold text-emerald-700">Start a SIP of</div>
         <div className="text-3xl font-extrabold text-emerald-700 mt-1">{inr(Math.round(res.requiredSip))}/mo</div>
         <div className="text-xs text-muted-foreground mt-1">for {years} years to fund the big day, stress-free</div>
       </div>

@@ -151,11 +151,11 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
     { label: "Messages", value: messageCount >= 50 ? "50+" : String(messageCount) },
     { label: "Open tasks", value: String(openTasks) },
   ];
-  const snapshot =
-    `${l.source ? `${l.source} lead` : "Lead"} · ${bandLabel(scoreBand)} (${l.leadScore ?? 0}) · ${stageLabel(l.stage)} — ` +
-    `${messageCount > 0 ? `${messageCount} message${messageCount > 1 ? "s" : ""} logged` : "no engagement logged yet"}` +
-    `${l.lastContactAt ? `, last contact ${formatRelative(l.lastContactAt)}` : ""}` +
-    `${next ? `. Next: ${next.label}.` : "."}`;
+  // NOTE: there used to be a `snapshot` sentence rendered under the badges.
+  // Every clause in it duplicated something already on screen — source, band,
+  // score and stage are the badges beside the name; message count is a stat
+  // cell; last contact sits top-right; the next step is the banner. It read as
+  // the page explaining itself twice, in the most valuable strip of the screen.
 
   return (
     <div className="max-w-5xl space-y-4">
@@ -171,11 +171,11 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
 
       <RelatedListsContainer>
       <RelatedListSection moduleKey="leads-detail" sectionKey="header">
-      <div className="border rounded-lg bg-card p-6 space-y-4">
+      <div className="card-surface p-6 space-y-4">
         {/* Identity row */}
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <h1 className="text-2xl font-bold tracking-tight">{l.name}</h1>
+            <h1 className="page-title">{l.name}</h1>
             <div className="flex flex-wrap items-center gap-2 mt-1.5 text-sm">
               <span className={`text-xs px-2 py-0.5 rounded-full border ${stageBadgeClass(l.stage)}`}>
                 {stageLabel(l.stage)}
@@ -207,18 +207,15 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
             now" is the FIRST thing the RM sees, before the stat strip. */}
         {next && <NextStepBanner label={next.label} hint={next.hint} />}
 
-        {/* Smart snapshot — instant, deterministic (no AI call on load) */}
-        <p className="text-sm text-muted-foreground">{snapshot}</p>
-
         {/* Contact chips */}
         <div className="flex flex-wrap gap-2 text-sm">
           {l.phone && (
-            <a href={`tel:${l.phone}`} className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-muted-foreground hover:text-foreground hover:border-foreground/30">
+            <a href={`tel:${l.phone}`} className="btn-secondary !px-2.5 !py-1 !text-sm !font-normal text-muted-foreground hover:text-foreground">
               <Phone className="size-4" /> {formatPhoneIN(l.phone)}
             </a>
           )}
           {l.email && (
-            <a href={`mailto:${l.email}`} className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-muted-foreground hover:text-foreground hover:border-foreground/30">
+            <a href={`mailto:${l.email}`} className="btn-secondary !px-2.5 !py-1 !text-sm !font-normal text-muted-foreground hover:text-foreground">
               <Mail className="size-4" /> {l.email}
             </a>
           )}
@@ -227,7 +224,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
               href={`https://wa.me/${l.phone.replace(/[^\d]/g, "")}`}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-muted-foreground hover:text-foreground hover:border-foreground/30"
+              className="btn-secondary !px-2.5 !py-1 !text-sm !font-normal text-muted-foreground hover:text-foreground"
             >
               <MessageCircle className="size-4" /> WhatsApp
             </a>
@@ -238,8 +235,8 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
         <div className="flex flex-wrap items-center gap-1 rounded-lg border bg-muted/30 p-2">
           {statCells.map((s) => (
             <div key={s.label} className="px-3 py-1 min-w-[6rem]">
-              <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{s.label}</div>
-              <div className="text-base font-semibold tabular-nums">
+              <div className="text-2xs uppercase tracking-wide text-muted-foreground">{s.label}</div>
+              <div className="text-lg font-semibold tabular-nums">
                 {s.value}
                 {s.sub && <span className="text-xs font-normal text-muted-foreground ml-1 capitalize">{s.sub}</span>}
               </div>

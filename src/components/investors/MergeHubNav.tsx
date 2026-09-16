@@ -37,7 +37,7 @@ export function MergeHubNav({ active, counts }: { active: MergeHubTab; counts: P
                 <span className="truncate">{t.label}</span>
                 {typeof n === "number" && n > 0 && (
                   <span
-                    className={`ml-auto text-[10px] font-semibold tabular-nums rounded-full px-1.5 py-0.5 ${
+                    className={`ml-auto text-2xs font-semibold tabular-nums rounded-full px-1.5 py-0.5 ${
                       isActive ? "bg-white/25 text-white" : "bg-secondary text-muted-foreground"
                     }`}
                   >

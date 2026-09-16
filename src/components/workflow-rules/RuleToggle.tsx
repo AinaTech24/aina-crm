@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { notify } from "@/components/ui/Toast";
 import { useRouter } from "next/navigation";
 
 export function RuleToggle({
@@ -24,7 +25,7 @@ export function RuleToggle({
       const r = await fetch(`/api/workflow-rules/${id}/toggle`, { method: "POST" });
       if (!r.ok) {
         setOn(enabled); // revert
-        alert("Failed to toggle rule");
+        notify.error("Failed to toggle rule");
       }
       router.refresh();
     } finally {

@@ -62,7 +62,7 @@ export async function loadFirmTxGroups(
   const invScope = opts.investorId ? sql` AND i.id = ${opts.investorId}::uuid` : sql``;
   const res = await tx.execute(sql`
     SELECT t.investor_id, i.name AS investor_name, i.pan, i.rm_id,
-           t.scheme_code, t.scheme_name, t.scheme_category, t.type, t.direction,
+           t.folio_id, t.folio_number, t.amc_code, t.amc_name, t.scheme_code, t.scheme_name, t.scheme_category, t.type, t.direction,
            t.units, t.nav, t.amount, t.order_date
       FROM transactions t
       JOIN investors i ON i.id = t.investor_id
@@ -81,6 +81,7 @@ export async function loadFirmTxGroups(
       groups.set(id, g);
     }
     g.rows.push({
+      investor_id: id, folio_id: r.folio_id ?? null, folio_number: r.folio_number ?? null, amc_code: r.amc_code ?? null, amc_name: r.amc_name ?? null,
       scheme_code: r.scheme_code ?? null,
       scheme_name: r.scheme_name ?? null,
       type: r.type ?? null,
@@ -292,3 +293,4 @@ export function fyWiseByClient(groups: Map<string, TxGroup>, fys: number[]): FyW
   const latest = fys[0];
   return out.sort((a, b) => Math.abs(b.byFy[latest]?.net ?? 0) - Math.abs(a.byFy[latest]?.net ?? 0));
 }
+

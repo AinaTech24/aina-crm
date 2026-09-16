@@ -135,7 +135,7 @@ export function ReferralSection({
           the referrals worth talking about. */}
       {referredLeads.length > 0 && (
         <div className={seed.length > 0 ? "mb-5" : ""}>
-          <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-2">
+          <div className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground mb-2">
             Leads referred by this client ({referredLeads.length})
           </div>
           <div className="grid gap-2 sm:grid-cols-2">
@@ -152,7 +152,7 @@ export function ReferralSection({
                       {isConverted ? l.convertedName || l.name : l.name}
                     </Link>
                     <span
-                      className={`chip text-[10px] shrink-0 ${
+                      className={`chip text-2xs shrink-0 ${
                         isConverted
                           ? "bg-emerald-50 text-emerald-700"
                           : isLost
@@ -163,7 +163,7 @@ export function ReferralSection({
                       {isConverted ? "Client" : (l.stage ?? "lead").replace(/_/g, " ")}
                     </span>
                   </div>
-                  <div className="mt-1.5 text-[11px] text-muted-foreground">
+                  <div className="mt-1.5 text-2xs text-muted-foreground">
                     {isConverted ? (
                       <>
                         Converted{l.convertedAt ? ` ${fmtDate(l.convertedAt)}` : ""}
@@ -195,7 +195,7 @@ export function ReferralSection({
       ) : seed.length === 0 ? null : (
         <div>
           {referredLeads.length > 0 && (
-            <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-2">
+            <div className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground mb-2">
               Added manually ({seed.length})
             </div>
           )}
@@ -203,7 +203,7 @@ export function ReferralSection({
           {seed.map((n, i) => (
             <div key={i} className="rounded-lg border border-border bg-secondary/20 p-3.5">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">
+                <span className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">
                   Referral {i + 1}
                 </span>
               </div>
@@ -213,7 +213,7 @@ export function ReferralSection({
                 <RefKV label="Mobile" value={n.mobile} mono />
                 <RefKV label="Email" value={n.email} />
               </div>
-              {n.note && <div className="mt-2.5 text-[11px] text-muted-foreground whitespace-pre-wrap">{n.note}</div>}
+              {n.note && <div className="mt-2.5 text-2xs text-muted-foreground whitespace-pre-wrap">{n.note}</div>}
             </div>
           ))}
         </div>
@@ -258,7 +258,7 @@ export function ReferralSection({
 function RefKV({ label, value, cap, mono }: { label: string; value?: string | null; cap?: boolean; mono?: boolean }) {
   return (
     <div>
-      <div className="text-[10px] text-muted-foreground">{label}</div>
+      <div className="text-2xs text-muted-foreground">{label}</div>
       <div className={`${mono ? "font-mono" : ""} ${cap ? "capitalize" : ""} break-words`}>{value || "—"}</div>
     </div>
   );

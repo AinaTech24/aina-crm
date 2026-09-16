@@ -14,6 +14,7 @@
  */
 
 import { useState, useEffect } from "react";
+import { notify } from "@/components/ui/Toast";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Loader2, Star, X, Plus, Pencil, ClipboardList, Save } from "lucide-react";
@@ -79,7 +80,7 @@ export function SchemesCatalog({ rows, amcs, canManage }: { rows: Scheme[]; amcs
         method: "POST", headers: { "content-type": "application/json" },
         body: JSON.stringify({ schemeId: s.id, isShortlisted: !s.is_shortlisted, coarseCategory: s.coarse_category ?? undefined }),
       });
-      if (!res.ok) { const j = await res.json().catch(() => ({})); alert(j.error ?? "Failed"); return; }
+      if (!res.ok) { const j = await res.json().catch(() => ({})); notify.error(j.error ?? "Failed"); return; }
       router.refresh();
     } finally { setRowBusy(null); }
   }
@@ -92,7 +93,7 @@ export function SchemesCatalog({ rows, amcs, canManage }: { rows: Scheme[]; amcs
         body: JSON.stringify({ schemeIds: [...selected], isShortlisted, coarseCategory: bulkCoarse || undefined }),
       });
       const j = await res.json().catch(() => ({}));
-      if (!res.ok) { alert(j.error ?? "Bulk failed"); return; }
+      if (!res.ok) { notify.error(j.error ?? "Bulk failed"); return; }
       setSelected(new Set()); setBulkOpen(false); router.refresh();
     } finally { setBulkBusy(false); }
   }
@@ -156,16 +157,16 @@ export function SchemesCatalog({ rows, amcs, canManage }: { rows: Scheme[]; amcs
                     </td>
                     <td className="py-2.5">
                       <button onClick={() => setDetail(s)} className="font-medium max-w-[280px] truncate text-left hover:text-brand-cyan hover:underline" title="View scheme details">{s.scheme_name}</button>
-                      <div className="text-[11px] text-muted-foreground font-mono">{s.scheme_code}{s.is_closed ? " · closed" : !s.is_active ? " · inactive" : ""}</div>
+                      <div className="text-2xs text-muted-foreground font-mono">{s.scheme_code}{s.is_closed ? " · closed" : !s.is_active ? " · inactive" : ""}</div>
                     </td>
                     <td className="py-2.5 text-xs whitespace-nowrap">{s.amc_name ?? s.amc_code}</td>
                     <td className="py-2.5 text-xs">
-                      {s.coarse_category && <span className={`chip text-[10px] ${COARSE_TONE[s.coarse_category] ?? ""}`}>{s.coarse_category}</span>}
-                      <div className="text-[11px] text-muted-foreground max-w-[160px] truncate">{s.category ?? ""}</div>
+                      {s.coarse_category && <span className={`chip text-2xs ${COARSE_TONE[s.coarse_category] ?? ""}`}>{s.coarse_category}</span>}
+                      <div className="text-2xs text-muted-foreground max-w-[160px] truncate">{s.category ?? ""}</div>
                     </td>
                     <td className="py-2.5 text-xs capitalize">{s.plan ?? ""}</td>
                     <td className="py-2.5 text-xs capitalize">{s.risk_category ? String(s.risk_category).replace(/_/g, " ") : ""}</td>
-                    <td className="py-2.5">{v ? <span className={`chip capitalize text-[10px] ${VERDICT_TONE[v] ?? ""}`}>{v}</span> : null}</td>
+                    <td className="py-2.5">{v ? <span className={`chip capitalize text-2xs ${VERDICT_TONE[v] ?? ""}`}>{v}</span> : null}</td>
                     <td className="py-2.5 pr-4 text-right whitespace-nowrap">
                       {canManage && (
                         <div className="inline-flex items-center gap-1">
@@ -245,15 +246,15 @@ function SchemeDetailDrawer({
               {s.is_shortlisted && <Star className="size-4 fill-amber-400 text-amber-400 shrink-0" />}
               <span className="truncate">{s.scheme_name}</span>
             </div>
-            <div className="text-[11px] text-muted-foreground font-mono mt-0.5">{s.scheme_code}</div>
+            <div className="text-2xs text-muted-foreground font-mono mt-0.5">{s.scheme_code}</div>
           </div>
           <button onClick={onClose} className="rounded p-1 hover:bg-secondary text-muted-foreground" aria-label="Close"><X className="size-4" /></button>
         </div>
         <div className="flex-1 overflow-y-auto p-5 space-y-4 scrollbar-thin">
           <div className="flex flex-wrap gap-1.5">
-            {s.coarse_category && <span className={`chip text-[10px] ${COARSE_TONE[s.coarse_category] ?? ""}`}>{s.coarse_category}</span>}
-            {v && <span className={`chip capitalize text-[10px] ${VERDICT_TONE[v] ?? ""}`}>IC: {v}</span>}
-            <span className={`chip text-[10px] ${s.is_closed ? "bg-rose-50 text-rose-700" : s.is_active ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>
+            {s.coarse_category && <span className={`chip text-2xs ${COARSE_TONE[s.coarse_category] ?? ""}`}>{s.coarse_category}</span>}
+            {v && <span className={`chip capitalize text-2xs ${VERDICT_TONE[v] ?? ""}`}>IC: {v}</span>}
+            <span className={`chip text-2xs ${s.is_closed ? "bg-rose-50 text-rose-700" : s.is_active ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>
               {s.is_closed ? "Closed" : s.is_active ? "Active / open" : "Inactive"}
             </span>
           </div>
@@ -287,13 +288,13 @@ function SchemeDetailDrawer({
           </div>
           {s.shortlist_rationale && (
             <div>
-              <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Shortlist rationale</div>
+              <div className="text-2xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Shortlist rationale</div>
               <p className="text-xs text-foreground/80 whitespace-pre-wrap">{s.shortlist_rationale}</p>
             </div>
           )}
           {s.evaluation && (
             <div>
-              <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">IC evaluation</div>
+              <div className="text-2xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">IC evaluation</div>
               <div className="rounded-lg border border-border px-3 py-1">
                 {v && <Row label="Verdict" value={<span className="capitalize font-semibold">{v}</span>} />}
                 {typeof s.evaluation.score === "number" && <Row label="Score" value={`${s.evaluation.score}/100`} />}
@@ -490,5 +491,5 @@ function DrawerFooter({ onClose, onSave, busy, saveLabel = "Save" }: { onClose: 
   );
 }
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return <label className="block"><div className="text-[11px] text-muted-foreground mb-0.5">{label}</div>{children}</label>;
+  return <label className="block"><div className="text-2xs text-muted-foreground mb-0.5">{label}</div>{children}</label>;
 }

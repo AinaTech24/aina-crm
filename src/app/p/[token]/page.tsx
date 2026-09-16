@@ -49,7 +49,7 @@ export default async function PublicProposalApprovalPage({ params }: { params: P
             <FileSignature className="size-5 text-brand-cyan" />
             <span className="font-semibold">{tenant?.displayName ?? tenant?.legalName ?? "Proposal"}</span>
           </div>
-          <div className="text-[11px] text-muted-foreground">{formatArn(tenant?.arn)}</div>
+          <div className="text-2xs text-muted-foreground">{formatArn(tenant?.arn)}</div>
         </div>
       </header>
 
@@ -72,7 +72,7 @@ export default async function PublicProposalApprovalPage({ params }: { params: P
         />
       </main>
 
-      <footer className="max-w-3xl mx-auto px-4 py-6 text-[11px] text-muted-foreground text-center">
+      <footer className="max-w-3xl mx-auto px-4 py-6 text-2xs text-muted-foreground text-center">
         Mutual fund investments are subject to market risks. Read all scheme related documents carefully.
         {tenant?.arn ? <> · {tenant.displayName ?? tenant.legalName} · {formatArn(tenant.arn)}</> : null}
       </footer>

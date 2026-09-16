@@ -275,7 +275,7 @@ export default async function RevenueIntelligencePage() {
       {/* Header */}
       <div>
         <h1 className="page-title">
-          <PieChart className="size-6 text-brand-cyan" /> Revenue Intelligence
+          <PieChart className="size-6 text-muted-foreground" /> Revenue Intelligence
         </h1>
         <p className="text-sm text-muted-foreground mt-1">
           Estimated trail revenue per client — who actually pays for the practice, and where big AUM earns thin trail.
@@ -370,7 +370,7 @@ export default async function RevenueIntelligencePage() {
             <div className="card-surface p-5">
               <h2 className="section-title flex items-center gap-2 mb-3">
                 <Landmark className="size-4 text-brand-cyan" /> Blended trail rate by AMC
-                <span className="text-[11px] font-normal text-muted-foreground">
+                <span className="text-2xs font-normal text-muted-foreground">
                   latest brokerage period per AMC
                 </span>
               </h2>
@@ -382,7 +382,7 @@ export default async function RevenueIntelligencePage() {
                       {(a.annualRate * 10000).toFixed(0)} bps
                       {!a.fromTrailRows && <span className="text-muted-foreground font-normal" title="Derived from all brokerage rows (no trail-typed rows in the statement)">*</span>}
                     </div>
-                    <div className="text-[10px] text-muted-foreground tabular-nums">
+                    <div className="text-2xs text-muted-foreground tabular-nums">
                       {formatMonth(a.periodEnd)} · {formatCr(a.stmtAum)} AUM
                     </div>
                   </div>
@@ -391,7 +391,7 @@ export default async function RevenueIntelligencePage() {
                   <div className="rounded-lg border border-dashed border-border bg-secondary/40 px-3 py-2">
                     <div className="text-xs font-semibold">Firm blended (fallback)</div>
                     <div className="text-sm tabular-nums font-bold">~{(data.firmFallbackRate * 10000).toFixed(0)} bps</div>
-                    <div className="text-[10px] text-muted-foreground">used for AMCs without brokerage data</div>
+                    <div className="text-2xs text-muted-foreground">used for AMCs without brokerage data</div>
                   </div>
                 )}
               </div>
@@ -404,7 +404,7 @@ export default async function RevenueIntelligencePage() {
               <h2 className="section-title">
                 {hasBrokerage ? "Clients by estimated annual trail" : "Clients by AUM"}
               </h2>
-              <span className="text-[11px] text-muted-foreground">
+              <span className="text-2xs text-muted-foreground">
                 top {top100.length} of {clients.length}
               </span>
             </div>
@@ -459,13 +459,13 @@ export default async function RevenueIntelligencePage() {
                         <td className="px-4 py-2.5">
                           <div className="flex flex-wrap gap-1">
                             {anchor && (
-                              <span className="chip text-[11px] bg-emerald-50 text-emerald-700" title="Top-5 trail contributor — an anchor client">
+                              <span className="chip text-2xs bg-emerald-50 text-emerald-700" title="Top-5 trail contributor — an anchor client">
                                 🏆 anchor
                               </span>
                             )}
                             {thin && (
                               <span
-                                className="chip text-[11px] bg-amber-50 text-amber-700"
+                                className="chip text-2xs bg-amber-50 text-amber-700"
                                 title={`Top-quartile AUM but only ${c.bps.toFixed(0)} bps vs firm average ${firmBps.toFixed(0)} bps — likely direct plans, liquid/debt-heavy, or an AMC paying below your blend`}
                               >
                                 ⚠ thin trail
@@ -482,7 +482,7 @@ export default async function RevenueIntelligencePage() {
           </div>
 
           {/* Methodology footnote */}
-          <p className="text-[11px] text-muted-foreground flex items-start gap-1.5">
+          <p className="text-2xs text-muted-foreground flex items-start gap-1.5">
             <Info className="size-3.5 mt-0.5 flex-shrink-0" />
             <span>
               <strong>Methodology:</strong> this is a blended-rate <em>estimate</em>, not your actual
@@ -521,7 +521,7 @@ function Kpi({
   return (
     <div className={hero ? "kpi-hero" : "kpi-card"}>
       <div
-        className={`text-[10px] uppercase tracking-wider font-semibold flex items-center gap-1.5 ${
+        className={`text-2xs uppercase tracking-wider font-semibold flex items-center gap-1.5 ${
           hero ? "opacity-90" : "text-muted-foreground"
         }`}
       >
@@ -529,7 +529,7 @@ function Kpi({
         {label}
       </div>
       <div className="text-2xl font-bold mt-1.5 tabular-nums">{value}</div>
-      <div className={`text-[11px] mt-0.5 ${hero ? "opacity-80" : "text-muted-foreground"}`}>{sub}</div>
+      <div className={`text-2xs mt-0.5 ${hero ? "opacity-80" : "text-muted-foreground"}`}>{sub}</div>
     </div>
   );
 }

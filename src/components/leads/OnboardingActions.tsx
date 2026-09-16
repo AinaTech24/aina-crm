@@ -114,7 +114,7 @@ export function OnboardingActions({
         <h3 className="font-semibold text-sm flex items-center gap-2">
           <LinkIcon className="size-4 text-brand-cyan" /> Onboarding actions
         </h3>
-        <span className="text-[10px] text-muted-foreground italic">
+        <span className="text-2xs text-muted-foreground italic">
           Each link is single-use, signed, and expires automatically.
         </span>
       </div>
@@ -218,8 +218,8 @@ function ActionTile({
         <span className="font-semibold text-sm">{title}</span>
         {busy && <Loader2 className="size-3 animate-spin ml-auto" />}
       </div>
-      <p className="text-[11px] text-muted-foreground">{subtitle}</p>
-      <p className="text-[10px] text-muted-foreground italic mt-1">{status}</p>
+      <p className="text-2xs text-muted-foreground">{subtitle}</p>
+      <p className="text-2xs text-muted-foreground italic mt-1">{status}</p>
     </button>
   );
 }

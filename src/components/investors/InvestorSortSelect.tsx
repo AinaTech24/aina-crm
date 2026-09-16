@@ -77,7 +77,7 @@ export function InvestorSortSelect({ sort, dir }: { sort: string; dir: string })
 
       {open && (
         <div className="absolute right-0 top-full mt-1 z-50 w-56 card-elevated bg-card p-1 animate-scale-in">
-          <div className="px-2 py-1 text-[10px] uppercase font-bold tracking-wide text-muted-foreground">Sort by</div>
+          <div className="px-2 py-1 text-2xs uppercase font-bold tracking-wide text-muted-foreground">Sort by</div>
           {OPTIONS.map((o) => {
             const isCur = o.value === current;
             return (

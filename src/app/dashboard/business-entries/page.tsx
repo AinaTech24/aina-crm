@@ -93,9 +93,9 @@ export default async function BusinessEntriesPage({
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <Briefcase className="size-6 text-brand-cyan" /> Business Closing Entries
+            <Briefcase className="size-6 text-muted-foreground" /> Business Closing Entries
           </h1>
-          <p className="text-muted-foreground text-sm">
+          <p className="page-subtitle mt-1">
             Log booked business (MF / PMS / AIF / SIF…), email clients, and report.
           </p>
         </div>

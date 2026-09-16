@@ -165,7 +165,7 @@ export default async function UnmappedClientsPage({
                       <Link href={`/dashboard/investors/${i.id}`} className="font-medium hover:underline">
                         {i.name}
                       </Link>
-                      <div className="text-[11px] text-muted-foreground">
+                      <div className="text-2xs text-muted-foreground">
                         {[i.phone, i.segmentTag].filter(Boolean).join(" · ") || "—"}
                       </div>
                     </td>
@@ -192,7 +192,7 @@ export default async function UnmappedClientsPage({
 function Kpi({ label, value, tone }: { label: string; value: string; tone: "amber" | "emerald" }) {
   return (
     <div className="border rounded-lg bg-card p-4">
-      <div className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold">{label}</div>
+      <div className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold">{label}</div>
       <div
         className={`mt-1 text-2xl font-bold tabular-nums ${
           tone === "emerald" ? "text-emerald-600" : "text-amber-600"

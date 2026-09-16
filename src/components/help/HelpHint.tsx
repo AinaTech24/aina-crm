@@ -48,7 +48,7 @@ export function HelpHint({ term, children, className }: Props) {
           className="absolute left-0 top-full mt-2 z-50 w-64 max-w-[min(16rem,75vw)] rounded-lg border border-border bg-popover p-3 text-xs text-popover-foreground shadow-xl"
         >
           {term && (
-            <span className="block text-[10px] font-bold uppercase tracking-wider text-brand-cyan mb-1">
+            <span className="block text-2xs font-bold uppercase tracking-wider text-brand-cyan mb-1">
               {term}
             </span>
           )}

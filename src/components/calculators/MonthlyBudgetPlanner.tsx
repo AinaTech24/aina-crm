@@ -178,18 +178,18 @@ export function MonthlyBudgetPlanner() {
 
       {/* Where the money goes */}
       <div>
-        <div className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium mb-1.5">Where your money goes</div>
+        <div className="text-2xs uppercase tracking-wide text-muted-foreground font-medium mb-1.5">Where your money goes</div>
         <div className="flex h-8 w-full overflow-hidden rounded-md border border-border">
           {bars.filter((b) => b.value > 0).map((b, i) => {
             const pct = m.totalIn > 0 ? (b.value / m.totalIn) * 100 : 0;
             return (
-              <div key={i} className="h-full flex items-center justify-center text-[10px] font-semibold text-white" style={{ width: `${Math.max(3, pct)}%`, background: b.color }} title={`${b.label}: ${pct.toFixed(0)}%`}>
+              <div key={i} className="h-full flex items-center justify-center text-2xs font-semibold text-white" style={{ width: `${Math.max(3, pct)}%`, background: b.color }} title={`${b.label}: ${pct.toFixed(0)}%`}>
                 {pct >= 7 ? `${pct.toFixed(0)}%` : ""}
               </div>
             );
           })}
         </div>
-        <div className="flex flex-wrap gap-3 mt-2 text-[11px]">
+        <div className="flex flex-wrap gap-3 mt-2 text-2xs">
           {bars.map((b, i) => (
             <span key={i} className="inline-flex items-center gap-1.5">
               <span className="size-2.5 rounded-sm" style={{ background: b.color }} /> {b.label} {inrShort(b.value)}
@@ -201,7 +201,7 @@ export function MonthlyBudgetPlanner() {
       {/* Health diagnostic */}
       <div>
         <div className="flex items-center justify-between mb-1.5">
-          <div className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium">Budget health check</div>
+          <div className="text-2xs uppercase tracking-wide text-muted-foreground font-medium">Budget health check</div>
           <div className="text-xs font-semibold">
             Score: <span className={score >= 4 ? "text-emerald-600" : score >= 3 ? "text-amber-600" : "text-rose-600"}>{score}/5</span>
           </div>
@@ -209,7 +209,7 @@ export function MonthlyBudgetPlanner() {
         <div className="overflow-x-auto">
           <table className="w-full text-xs border-collapse">
             <thead>
-              <tr className="text-left text-[10px] uppercase tracking-wide text-muted-foreground">
+              <tr className="text-left text-2xs uppercase tracking-wide text-muted-foreground">
                 <th className="py-1.5 px-2 border-b border-border">Category</th>
                 <th className="py-1.5 px-2 border-b border-border text-right">Amount</th>
                 <th className="py-1.5 px-2 border-b border-border text-right">% of income</th>
@@ -235,7 +235,7 @@ export function MonthlyBudgetPlanner() {
       {/* Grow the surplus */}
       <div className="rounded-lg border border-border bg-secondary/20 p-3">
         <div className="flex flex-wrap items-center gap-3">
-          <div className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium">Grow the leftover surplus</div>
+          <div className="text-2xs uppercase tracking-wide text-muted-foreground font-medium">Grow the leftover surplus</div>
           <label className="flex items-center gap-1.5 text-xs">
             <span className="text-muted-foreground">@</span>
             <input type="number" min={0} step={0.5} value={projectReturn} onChange={(e) => setProjectReturn(Number(e.target.value) || 0)} className="input-base text-xs w-16" />

@@ -324,7 +324,7 @@ function CustomizeDrawer({
               <Layers className="size-4 text-brand-cyan" />
               Customize page sections
             </div>
-            <div className="text-[11px] text-muted-foreground mt-0.5">
+            <div className="text-2xs text-muted-foreground mt-0.5">
               Show / hide sections and reorder them. Saved per browser.
             </div>
           </div>
@@ -337,7 +337,7 @@ function CustomizeDrawer({
           </button>
         </div>
 
-        <div className="px-4 pt-2 text-[11px] text-muted-foreground">Drag the handle to reorder.</div>
+        <div className="px-4 pt-2 text-2xs text-muted-foreground">Drag the handle to reorder.</div>
         <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
           {sections.map((s) => {
             const isHidden = hidden.has(s.key);
@@ -391,7 +391,7 @@ function CustomizeDrawer({
                     {s.label}
                   </span>
                   {s.required && (
-                    <span className="ml-auto text-[9px] text-muted-foreground italic">
+                    <span className="ml-auto text-2xs text-muted-foreground italic">
                       required
                     </span>
                   )}

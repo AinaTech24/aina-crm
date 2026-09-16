@@ -23,10 +23,10 @@ type Notification = {
 };
 
 const SEV_TONE: Record<string, string> = {
-  info: "bg-sky-50 text-sky-800 border-sky-200 dark:bg-sky-950/50 dark:text-sky-200 dark:border-sky-900",
-  success: "bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-200 dark:border-emerald-900",
-  warning: "bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/50 dark:text-amber-200 dark:border-amber-900",
-  critical: "bg-rose-50 text-rose-800 border-rose-200 dark:bg-rose-950/50 dark:text-rose-200 dark:border-rose-900",
+  info: "bg-sky-50 text-sky-800 border-sky-200",
+  success: "bg-emerald-50 text-emerald-800 border-emerald-200",
+  warning: "bg-amber-50 text-amber-800 border-amber-200",
+  critical: "bg-rose-50 text-rose-800 border-rose-200",
 };
 
 const SEVERITIES = ["all", "info", "success", "warning", "critical"] as const;
@@ -70,9 +70,12 @@ export default function NotificationsPage() {
   return (
     <div className="space-y-4 max-w-3xl">
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <h1 className="text-2xl font-semibold flex items-center gap-2">
+        <div className="min-w-0">
+          <h1 className="page-title">
           <Bell className="size-6" /> Notifications
         </h1>
+        <p className="page-subtitle mt-1">Everything the CRM has told you, newest first.</p>
+        </div>
         <button onClick={markAllRead} className="btn-secondary text-xs">
           <Check className="size-3.5" /> Mark all read
         </button>
@@ -117,7 +120,7 @@ export default function NotificationsPage() {
                   n.readAt ? "border-border bg-card opacity-75" : "border-border bg-card shadow-sm"
                 } ${n.linkUrl ? "hover:border-brand-cyan/50" : ""}`}
               >
-                <span className={`mt-0.5 shrink-0 rounded-md border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${SEV_TONE[n.severity] ?? SEV_TONE.info}`}>
+                <span className={`mt-0.5 shrink-0 rounded-md border px-1.5 py-0.5 text-2xs font-semibold uppercase tracking-wide ${SEV_TONE[n.severity] ?? SEV_TONE.info}`}>
                   {n.severity}
                 </span>
                 <div className="min-w-0 flex-1">
@@ -127,7 +130,7 @@ export default function NotificationsPage() {
                     {!n.readAt && <span className="size-1.5 rounded-full bg-brand-cyan inline-block" aria-label="unread" />}
                   </div>
                   {n.body && <p className="text-xs text-muted-foreground mt-0.5 break-words">{n.body}</p>}
-                  <div className="text-[10px] text-muted-foreground mt-1">
+                  <div className="text-2xs text-muted-foreground mt-1">
                     {new Date(n.createdAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}
                   </div>
                 </div>

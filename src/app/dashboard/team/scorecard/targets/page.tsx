@@ -54,7 +54,7 @@ export default async function TargetsPage() {
           <ArrowLeft className="size-3" /> Scorecard
         </Link>
         <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-          <Target className="size-6 text-brand-cyan" /> KRA targets
+          <Target className="size-6 text-muted-foreground" /> KRA targets
         </h1>
         <p className="text-muted-foreground text-sm mt-0.5">
           Annual targets for FY {fy}. The scorecard pro-rates each to the selected period (e.g. month-to-date) and

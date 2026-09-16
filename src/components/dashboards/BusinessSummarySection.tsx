@@ -59,18 +59,18 @@ function Tile({
         strong ? "border-brand-cyan/40 bg-brand-cyan-light/25" : "border-border bg-card"
       }`}
     >
-      <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground truncate" title={label}>
+      <div className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground truncate" title={label}>
         {label}
       </div>
       <div className={`mt-0.5 text-base font-bold tabular-nums ${toneCls}`}>{formatINR(value)}</div>
-      {sub && <div className="text-[10px] text-muted-foreground mt-0.5">{sub}</div>}
+      {sub && <div className="text-2xs text-muted-foreground mt-0.5">{sub}</div>}
     </div>
   );
 }
 
 const netTone = (n: number): Tone => (n > 0 ? "emerald" : n < 0 ? "rose" : "muted");
 const SubLabel = ({ children }: { children: React.ReactNode }) => (
-  <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 mb-1.5">{children}</div>
+  <div className="text-2xs font-bold uppercase tracking-wider text-muted-foreground/70 mb-1.5">{children}</div>
 );
 
 export function BusinessSummarySection({
@@ -95,7 +95,7 @@ export function BusinessSummarySection({
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <div className="h-4 w-1 rounded-full brand-bar" />
-          <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-foreground/70">
+          <h2 className="text-2xs font-bold uppercase tracking-[0.12em] text-foreground/70">
             Business summary — {periodLabel}
           </h2>
         </div>
@@ -159,7 +159,7 @@ export function BusinessSummarySection({
             </div>
           </div>
 
-          <p className="text-[10px] text-muted-foreground/80 leading-relaxed pt-0.5 border-t border-border/60">
+          <p className="text-2xs text-muted-foreground/80 leading-relaxed pt-0.5 border-t border-border/60">
             Booked business by business date (excludes cancelled entries). Purchase = fresh + additional +
             switch/STP-in; Redemption = redemption/SWP + switch/STP-out; Net = Purchase − Redemption. Total Business
             = all mutual-fund purchases (incl. equity &amp; liquid). PMS / AIF / SIF are gross business booked;

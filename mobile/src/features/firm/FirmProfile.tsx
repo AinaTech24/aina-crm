@@ -6,7 +6,8 @@
  */
 
 import React from "react";
-import { View, Image, ScrollView, StyleSheet } from "react-native";
+import { View, ScrollView, StyleSheet } from "react-native";
+import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { ScreenHeader } from "../../components/ui/ScreenHeader";
@@ -45,7 +46,7 @@ export function FirmProfile() {
         <Card>
           <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
             {absUrl(t.logoUrl) ? (
-              <Image source={{ uri: absUrl(t.logoUrl)! }} style={styles.logo} resizeMode="cover" />
+              <Image source={{ uri: absUrl(t.logoUrl)! }} style={styles.logo} contentFit="cover" transition={150} />
             ) : (
               <View style={[styles.logo, { backgroundColor: brand }]}>
                 <Text style={{ color: palette.white, fontWeight: fontWeight.bold as any, fontSize: 20 }}>{initials(name) || "F"}</Text>

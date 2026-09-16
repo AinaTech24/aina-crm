@@ -309,7 +309,7 @@ export function RiskProfileWizard({
               Ask {investor.name?.split(" ")[0] || "the client"} each question as written and record what they say.
             </p>
             {template.description && (
-              <p className="text-[11px] text-muted-foreground mt-1 italic">{template.description}</p>
+              <p className="text-2xs text-muted-foreground mt-1 italic">{template.description}</p>
             )}
           </div>
           {!onReview && (
@@ -461,7 +461,7 @@ export function RiskProfileWizard({
                   <div className="text-sm font-medium flex items-center gap-1.5">
                     <KeyRound className="size-3.5" /> Verify with OTP
                   </div>
-                  <div className="text-[11px] text-muted-foreground mt-0.5">
+                  <div className="text-2xs text-muted-foreground mt-0.5">
                     One-time code to the client&apos;s email, checked on the server.
                   </div>
                 </button>
@@ -477,7 +477,7 @@ export function RiskProfileWizard({
                   <div className="text-sm font-medium flex items-center gap-1.5">
                     <Upload className="size-3.5" /> Upload signature
                   </div>
-                  <div className="text-[11px] text-muted-foreground mt-0.5">
+                  <div className="text-2xs text-muted-foreground mt-0.5">
                     Attach the physically signed form (PDF or image).
                   </div>
                 </button>
@@ -509,7 +509,7 @@ export function RiskProfileWizard({
                     </div>
                   )}
                   {uploadErr && <div className="text-sm text-rose-600">{uploadErr}</div>}
-                  <p className="text-[11px] text-muted-foreground">
+                  <p className="text-2xs text-muted-foreground">
                     Recorded as a physically-signed form. Keep the original — this is the audit
                     evidence, and it is not the same as an OTP-verified confirmation.
                   </p>

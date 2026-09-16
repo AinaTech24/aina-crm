@@ -166,7 +166,7 @@ function Kpi({
   return (
     <div className="card-surface glass-card p-4">
       <div className="flex items-center justify-between">
-        <span className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">
+        <span className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">
           {label}
         </span>
         <div className={`size-8 rounded-lg grid place-items-center ${bg[accent]}`}>
@@ -176,7 +176,7 @@ function Kpi({
       <div className={`text-xl font-bold mt-2 tabular-nums tracking-tight ${valueColor}`}>
         {value}
       </div>
-      {sub && <div className="text-[11px] text-muted-foreground mt-1">{sub}</div>}
+      {sub && <div className="text-2xs text-muted-foreground mt-1">{sub}</div>}
     </div>
   );
 }

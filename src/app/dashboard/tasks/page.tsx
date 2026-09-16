@@ -200,15 +200,18 @@ export default async function TasksPage({
     <div className="space-y-6 max-w-6xl">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-4 flex-wrap">
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <ListChecks className="size-6 text-brand-cyan" /> Tasks
-          </h1>
+          <div className="min-w-0">
+            <h1 className="page-title">
+              <ListChecks className="size-6 text-muted-foreground" /> Tasks
+            </h1>
+            <p className="page-subtitle mt-1">Everything your team has to do — assigned, due-dated and tracked to done.</p>
+          </div>
           {/* View switcher — segmented tabs (list / mine / assigned-by-me / kanban) */}
           <TaskViewSelect current={view} layout={layout} />
         </div>
         <Link
           href="/dashboard/tasks/new"
-          className="rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-sm font-medium flex items-center gap-1.5"
+          className="btn-primary"
         >
           <Plus className="size-4" /> New task
         </Link>

@@ -63,9 +63,10 @@ export default async function CalendarPage({
       <MyDayNav />
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <Calendar className="size-6 text-brand-cyan" /> Calendar
+          <h1 className="page-title">
+            <Calendar className="size-6 text-muted-foreground" /> Calendar
           </h1>
+          <p className="page-subtitle mt-1">Meetings, reviews, follow-ups and SIP dates on one calendar.</p>
         </div>
         <div className="flex items-center gap-2">
           <Link

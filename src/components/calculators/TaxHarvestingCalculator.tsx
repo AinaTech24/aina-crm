@@ -69,7 +69,7 @@ export function TaxHarvestingCalculator() {
         <strong>{inr(r.taxSaved)}</strong> less tax than someone who simply holds and sells at the end — with no change
         to the underlying investment.
       </Insight>
-      <p className="text-[10px] text-muted-foreground">Assumes gains qualify as long-term and exit loads/STT are ignored. Illustration only.</p>
+      <p className="text-2xs text-muted-foreground">Assumes gains qualify as long-term and exit loads/STT are ignored. Illustration only.</p>
     </div>
   );
 }

@@ -11,6 +11,8 @@ export interface RunContext {
   runId: string;
   versionId: string;
   stepId: string;
+  /** Stable logical execution number, including repeated loop visits. */
+  stepSequence?: number;
   workflowId: string;
   /** The entity this run is bound to ('investor' | 'lead' | etc.) */
   subjectType: string | null;
@@ -57,7 +59,8 @@ function resolveSinglePath(path: string, ctx: RunContext): unknown {
   }
   for (const seg of rest) {
     if (cur == null) return null;
-    cur = cur[seg];
+    if (["__proto__", "prototype", "constructor"].includes(seg)) return undefined;
+    cur = cur[seg] ?? cur[seg.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase())];
   }
   return cur;
 }

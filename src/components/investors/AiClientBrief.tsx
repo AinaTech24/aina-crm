@@ -82,7 +82,7 @@ export function AiClientBrief({ investorId, name, phone }: { investorId: string;
                       </div>
                     </div>
                   )}
-                  <p className="text-[10px] text-muted-foreground italic">AI-generated from this client&apos;s data. Review before acting — not investment advice. Standard MF risk disclosure applies to any message sent.</p>
+                  <p className="text-2xs text-muted-foreground italic">AI-generated from this client&apos;s data. Review before acting — not investment advice. Standard MF risk disclosure applies to any message sent.</p>
                 </>
               ) : null}
             </div>

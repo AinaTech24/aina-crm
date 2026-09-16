@@ -168,11 +168,11 @@ export function TaskComments({ taskId, currentUserId }: { taskId: string; curren
                   onClick={() => pickMention(e)}
                   className="w-full text-left rounded-md px-2 py-1.5 hover:bg-secondary flex items-center gap-2"
                 >
-                  <span className="size-6 rounded-full bg-brand-cyan-light/60 text-brand-cyan-deep text-[10px] font-bold flex items-center justify-center shrink-0">
+                  <span className="size-6 rounded-full bg-brand-cyan-light/60 text-brand-cyan-deep text-2xs font-bold flex items-center justify-center shrink-0">
                     {initials(e.name)}
                   </span>
                   <span className="text-xs font-medium truncate">{e.name}</span>
-                  {e.department && <span className="text-[10px] text-muted-foreground ml-auto shrink-0">{e.department}</span>}
+                  {e.department && <span className="text-2xs text-muted-foreground ml-auto shrink-0">{e.department}</span>}
                 </button>
               </li>
             ))}
@@ -183,7 +183,7 @@ export function TaskComments({ taskId, currentUserId }: { taskId: string; curren
         <div className="flex flex-wrap items-center gap-1.5">
           <AtSign className="size-3 text-muted-foreground" />
           {picked.map((e) => (
-            <span key={e.id} className="chip text-[10px] bg-brand-cyan-light/50 text-brand-cyan-deep border border-brand-cyan/20">
+            <span key={e.id} className="chip text-2xs bg-brand-cyan-light/50 text-brand-cyan-deep border border-brand-cyan/20">
               {e.name}
             </span>
           ))}
@@ -192,22 +192,22 @@ export function TaskComments({ taskId, currentUserId }: { taskId: string; curren
 
       {/* Thread */}
       {comments == null ? (
-        <div className="flex items-center gap-2 text-[11px] text-muted-foreground py-2">
+        <div className="flex items-center gap-2 text-2xs text-muted-foreground py-2">
           <Loader2 className="size-3.5 animate-spin" /> Loading comments…
         </div>
       ) : comments.length === 0 ? (
-        <div className="text-[11px] text-muted-foreground text-center py-2">No comments yet.</div>
+        <div className="text-2xs text-muted-foreground text-center py-2">No comments yet.</div>
       ) : (
         <div className="space-y-3 max-h-72 overflow-y-auto pr-1 scrollbar-thin">
           {comments.map((c) => (
             <div key={c.id} className="group flex gap-2.5 items-start">
-              <div className="size-6 rounded-full bg-slate-100 border text-[10px] font-bold text-slate-600 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <div className="size-6 rounded-full bg-slate-100 border text-2xs font-bold text-slate-600 flex items-center justify-center flex-shrink-0 mt-0.5">
                 {initials(c.authorName)}
               </div>
               <div className="flex-1 min-w-0 bg-slate-50 border border-slate-100 rounded-lg p-2.5">
                 <div className="flex items-center gap-2 mb-1">
-                  <span className="text-[11px] font-semibold text-slate-700 truncate">{c.authorName ?? "Someone"}</span>
-                  <span className="text-[10px] text-slate-400">{whenLabel(c.createdAt)}</span>
+                  <span className="text-2xs font-semibold text-slate-700 truncate">{c.authorName ?? "Someone"}</span>
+                  <span className="text-2xs text-slate-400">{whenLabel(c.createdAt)}</span>
                   {c.authorId === currentUserId && (
                     <button
                       type="button"

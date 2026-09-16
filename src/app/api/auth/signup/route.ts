@@ -1,3 +1,4 @@
+import { issueSessionToken } from "@/lib/auth/issue-session";
 /**
  * POST /api/auth/signup
  * Body: { firmName, arn, ownerName, ownerEmail, password }
@@ -13,7 +14,7 @@ import { sql, eq, asc } from "drizzle-orm";
 import { withSystem } from "@/db/client";
 import { packages, subscriptions, subscriptionEvents } from "@/db/schema";
 import { PLATFORM_TENANT_ID } from "@/lib/platform";
-import { signSession, SESSION_COOKIE, SESSION_TTL_SECONDS } from "@/lib/auth/session";
+import { SESSION_COOKIE, SESSION_TTL_SECONDS } from "@/lib/auth/session";
 import { MASTER_SEEDS } from "@/lib/masters/seeds";
 import { installDefaultRecipes } from "@/lib/recipes/install-defaults";
 import { installClientEmailTemplates } from "@/lib/templates/install-client-emails";
@@ -262,7 +263,7 @@ export async function POST(req: NextRequest) {
     console.error("[signup] email-verification issue failed:", err);
   }
 
-  const token = await signSession({
+  const token = await issueSessionToken({
     userId,
     tenantId,
     branchId,

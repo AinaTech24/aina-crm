@@ -79,7 +79,7 @@ export function ClientNameField({
                   className="w-full text-left px-3 py-1.5 hover:bg-primary/10 transition-colors"
                 >
                   <span className="font-medium text-sm">{r.name}</span>
-                  <span className="text-[11px] text-muted-foreground ml-2 font-mono">
+                  <span className="text-2xs text-muted-foreground ml-2 font-mono">
                     {r.pan ?? "—"} · {r.phone ?? "—"}
                   </span>
                 </button>

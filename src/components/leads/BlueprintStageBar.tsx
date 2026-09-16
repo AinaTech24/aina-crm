@@ -236,7 +236,7 @@ export function BlueprintStageBar({
               works the journey. Lead phase only (score is a lead-stage signal). */}
           {phase !== "client" && data?.leadScore != null && (
             <span
-              className={`chip inline-flex items-center gap-1 text-[10px] ${scoreBandClasses(data.scoreBand)}`}
+              className={`chip inline-flex items-center gap-1 text-2xs ${scoreBandClasses(data.scoreBand)}`}
               title={`Lead score ${data.leadScore}/100${data.scoreBand ? ` · ${data.scoreBand}` : ""}`}
             >
               {data.scoreBand === "hot" ? "🔥" : "★"} {data.leadScore}
@@ -244,25 +244,25 @@ export function BlueprintStageBar({
             </span>
           )}
           {slaTone === "overdue" && (
-            <span className="chip bg-rose-50 text-rose-700 inline-flex items-center gap-1 text-[10px]">
+            <span className="chip bg-rose-50 text-rose-700 inline-flex items-center gap-1 text-2xs">
               <AlertTriangle className="size-3" />
               Overdue by {Math.abs(Math.ceil(current.slaRemainingDays!))}d
             </span>
           )}
           {slaTone === "due-soon" && (
-            <span className="chip bg-amber-50 text-amber-700 inline-flex items-center gap-1 text-[10px]">
+            <span className="chip bg-amber-50 text-amber-700 inline-flex items-center gap-1 text-2xs">
               <Clock className="size-3" />
               Due in {Math.max(0, Math.floor((current.slaRemainingDays ?? 0) * 24))}h
             </span>
           )}
           {slaTone === "ok" && current.slaDays != null && (
-            <span className="chip bg-emerald-50 text-emerald-700 inline-flex items-center gap-1 text-[10px]">
+            <span className="chip bg-emerald-50 text-emerald-700 inline-flex items-center gap-1 text-2xs">
               <Clock className="size-3" />
               Due in {Math.ceil(current.slaRemainingDays!)}d
             </span>
           )}
           {current.ownerRole && (
-            <span className="chip bg-secondary text-[10px] capitalize">
+            <span className="chip bg-secondary text-2xs capitalize">
               Owner: {current.ownerRole.replace(/_/g, " ")}
             </span>
           )}
@@ -270,11 +270,11 @@ export function BlueprintStageBar({
             onClick={resync}
             disabled={advancing}
             title="Re-detect stage from risk profile / proposal / docs on file"
-            className="btn-ghost text-[11px]"
+            className="btn-ghost text-2xs"
           >
             <RefreshCw className={`size-3 ${advancing ? "animate-spin" : ""}`} /> Re-sync
           </button>
-          <button onClick={() => setShowHistory((v) => !v)} className="btn-ghost text-[11px]">
+          <button onClick={() => setShowHistory((v) => !v)} className="btn-ghost text-2xs">
             <History className="size-3" /> {showHistory ? "Hide" : "History"}
           </button>
         </div>
@@ -287,7 +287,7 @@ export function BlueprintStageBar({
             <li key={s.key} className="flex items-center">
               <div className="flex flex-col items-center min-w-[64px]">
                 <div
-                  className={`size-7 rounded-full grid place-items-center text-[10px] font-bold ${
+                  className={`size-7 rounded-full grid place-items-center text-2xs font-bold ${
                     s.status === "done"
                       ? "bg-emerald-500 text-white"
                       : s.status === "current"
@@ -299,7 +299,7 @@ export function BlueprintStageBar({
                   {s.status === "done" ? "✓" : s.order}
                 </div>
                 <span
-                  className={`mt-1 text-[9px] text-center leading-tight max-w-[80px] ${
+                  className={`mt-1 text-2xs text-center leading-tight max-w-[80px] ${
                     s.status === "current" ? "font-semibold" : "text-muted-foreground"
                   }`}
                 >
@@ -445,7 +445,7 @@ export function BlueprintStageBar({
                 />
                 <div className="flex-1 min-w-0">
                   <div className="font-medium">{h.stageName}</div>
-                  <div className="text-[10px] text-muted-foreground">
+                  <div className="text-2xs text-muted-foreground">
                     Entered {new Date(h.enteredAt).toLocaleString("en-IN")}
                     {h.exitedAt && (
                       <>
@@ -507,7 +507,7 @@ function ForwardPicker({
       {open && (
         <div className="mt-2 space-y-2">
           <div>
-            <label className="text-[10px] text-muted-foreground">Move to</label>
+            <label className="text-2xs text-muted-foreground">Move to</label>
             <select
               value={target}
               onChange={(e) => setTarget(e.target.value)}
@@ -520,7 +520,7 @@ function ForwardPicker({
             </select>
           </div>
           <div>
-            <label className="text-[10px] text-muted-foreground">Remarks (optional)</label>
+            <label className="text-2xs text-muted-foreground">Remarks (optional)</label>
             <textarea
               value={remarks}
               onChange={(e) => setRemarks(e.target.value)}

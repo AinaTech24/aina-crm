@@ -22,6 +22,9 @@ const Body = z.object({ code: z.string().min(6).max(10) });
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession();
+    if (!session.authTime || Date.now() / 1000 - session.authTime > 15 * 60) {
+      return NextResponse.json({ error: "Sign in again before changing two-factor authentication" }, { status: 403 });
+    }
     const parse = Body.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) {
       return NextResponse.json({ error: "code required" }, { status: 400 });
@@ -34,7 +37,7 @@ export async function POST(req: NextRequest) {
       return (r.rows[0] ?? null) as { two_fa_secret: string | null; two_fa_enabled: boolean } | null;
     });
 
-    if (!row?.two_fa_secret) {
+    if (!row?.two_fa_secret || row.two_fa_enabled) {
       return NextResponse.json({ error: "no pending enrollment — start setup first" }, { status: 409 });
     }
     if (!verifyTotp(decryptSecret(row.two_fa_secret), parse.data.code)) {
@@ -46,13 +49,15 @@ export async function POST(req: NextRequest) {
     const hashed = await Promise.all(backupCodes.map((c) => bcrypt.hash(c, 10)));
 
     await withSystem(async (tx) => {
-      await tx.execute(sql`
+      const changed = await tx.execute(sql`
         UPDATE users
         SET two_fa_enabled = true,
             two_fa_backup_codes = ${JSON.stringify(hashed)}::jsonb,
             updated_at = now()
-        WHERE id = ${session.userId}
+        WHERE id = ${session.userId} AND two_fa_enabled IS NOT TRUE AND two_fa_secret = ${row.two_fa_secret}
+        RETURNING id
       `);
+      if (!changed.rows.length) throw Object.assign(new Error("Enrollment changed; start again"), { status: 409 });
       await recordAudit(tx, {
         tenantId: session.tenantId,
         actorUserId: session.userId,

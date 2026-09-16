@@ -20,6 +20,7 @@ import { useRouter } from "next/navigation";
 import { Save, Loader2, Trash2, Plus, X, ExternalLink } from "lucide-react";
 import { SelectField } from "@/components/ui/SelectField";
 import { DateField } from "@/components/ui/DateField";
+import { confirmDialog } from "@/components/ui/ConfirmProvider";
 
 const STATUSES = [
   { value: "empanelled", label: "Empanelled" },
@@ -204,7 +205,7 @@ export function AmcEmpanelmentForm({
 
   async function terminate() {
     if (!initial?.id) return;
-    if (!confirm("Terminate this empanelment? Commission history is preserved.")) return;
+    if (!(await confirmDialog({ title: "Terminate this empanelment?", message: "Commission history is preserved.", confirmLabel: "Terminate", tone: "danger" }))) return;
     setBusy(true);
     try {
       const res = await fetch(`/api/amc-empanelments/${initial.id}`, {
@@ -382,11 +383,11 @@ export function AmcEmpanelmentForm({
                 className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-md px-3 py-2"
               >
                 <div className="min-w-0">
-                  <div className="text-[10px] uppercase tracking-wide text-violet-700 font-semibold">
+                  <div className="text-2xs uppercase tracking-wide text-violet-700 font-semibold">
                     {c.role}
                   </div>
                   <div className="text-sm font-medium">{c.name}</div>
-                  <div className="text-[10px] text-muted-foreground">
+                  <div className="text-2xs text-muted-foreground">
                     {c.email && `${c.email}`}
                     {c.email && c.phone && " · "}
                     {c.phone && c.phone}
@@ -467,7 +468,7 @@ export function AmcEmpanelmentForm({
                     href={d.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-[11px] text-slate-500 truncate inline-flex items-center gap-1 hover:text-slate-800"
+                    className="text-2xs text-slate-500 truncate inline-flex items-center gap-1 hover:text-slate-800"
                   >
                     {d.url} <ExternalLink className="size-2.5" />
                   </a>
@@ -600,7 +601,7 @@ function ContactRow({
 }) {
   return (
     <div className="space-y-1">
-      <div className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium">
+      <div className="text-2xs uppercase tracking-wide text-muted-foreground font-medium">
         {label}
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
@@ -637,7 +638,7 @@ function Section({
 }) {
   return (
     <div className="space-y-2">
-      <h3 className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold">
+      <h3 className="text-2xs uppercase tracking-wide text-muted-foreground font-semibold">
         {title}
       </h3>
       {children}
@@ -658,7 +659,7 @@ function Field({
 }) {
   return (
     <label className="block">
-      <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium block mb-1">
+      <span className="text-2xs uppercase tracking-wide text-muted-foreground font-medium block mb-1">
         {label}
       </span>
       {children}

@@ -58,7 +58,7 @@ export default async function PublicFeedbackPage({ params }: { params: Promise<{
             <MessageSquareHeart className="size-5 text-brand-cyan" />
             <span className="font-semibold">{firmName}</span>
           </div>
-          <div className="text-[11px] text-muted-foreground">
+          <div className="text-2xs text-muted-foreground">
             {formatArn(data.tenant?.arn)}
           </div>
         </div>
@@ -68,7 +68,7 @@ export default async function PublicFeedbackPage({ params }: { params: Promise<{
         <PublicFeedbackForm tokenId={info.id} recipientName={data.recipientName} firmName={firmName} />
       </main>
 
-      <footer className="max-w-2xl mx-auto px-4 py-6 text-[11px] text-muted-foreground text-center">
+      <footer className="max-w-2xl mx-auto px-4 py-6 text-2xs text-muted-foreground text-center">
         Mutual fund investments are subject to market risks. Read all scheme related documents carefully.
         {data.tenant?.arn ? <> · {firmName} · {formatArn(data.tenant.arn)}</> : null}
       </footer>

@@ -287,11 +287,11 @@ export function DashboardHeaderBar({
           {sub === "range" && (
             <div className="px-2 py-1.5 space-y-1.5">
               <div className="flex items-center gap-1.5">
-                <span className="text-[10px] uppercase tracking-wide text-muted-foreground w-8">From</span>
+                <span className="text-2xs uppercase tracking-wide text-muted-foreground w-8">From</span>
                 <DatePicker value={rangeFrom} onChange={setRangeFrom} size="sm" className="flex-1" ariaLabel="Range from" />
               </div>
               <div className="flex items-center gap-1.5">
-                <span className="text-[10px] uppercase tracking-wide text-muted-foreground w-8">To</span>
+                <span className="text-2xs uppercase tracking-wide text-muted-foreground w-8">To</span>
                 <DatePicker value={rangeTo} onChange={setRangeTo} size="sm" className="flex-1" ariaLabel="Range to" />
               </div>
               <button className="w-full btn-primary text-xs justify-center disabled:opacity-50" disabled={!rangeFrom || !rangeTo}

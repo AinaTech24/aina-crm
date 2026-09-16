@@ -7,6 +7,7 @@
  */
 
 import { useMemo, useState, useEffect } from "react";
+import { notify } from "@/components/ui/Toast";
 import Link from "next/link";
 import { 
   ShieldCheck, 
@@ -47,10 +48,10 @@ export type ComplianceDocSummary = {
 const STATUS_ORDER: DdqStatus[] = ["in_place", "in_progress", "pending", "not_applicable"];
 
 const STATUS_TONE: Record<DdqStatus, string> = {
-  in_place: "bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/20 dark:text-emerald-400 dark:border-emerald-900/50",
-  in_progress: "bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/20 dark:text-amber-400 dark:border-amber-900/50",
-  pending: "bg-rose-50 text-rose-700 border-rose-300 dark:bg-rose-950/20 dark:text-rose-400 dark:border-rose-900/50",
-  not_applicable: "bg-slate-50 text-slate-600 border-slate-300 dark:bg-slate-900 dark:text-slate-400 dark:border-slate-800",
+  in_place: "bg-emerald-50 text-emerald-700 border-emerald-300",
+  in_progress: "bg-amber-50 text-amber-700 border-amber-300",
+  pending: "bg-rose-50 text-rose-700 border-rose-300",
+  not_applicable: "bg-slate-50 text-slate-600 border-slate-300",
 };
 
 export function DdqAuditChecklist({
@@ -131,12 +132,12 @@ export function DdqAuditChecklist({
       if (!res.ok) {
         // Revert
         setRecords((prev) => ({ ...prev, [itemKey]: current }));
-        alert("Failed to save changes.");
+        notify.error("Failed to save changes.");
       }
     } catch (err) {
       setRecords((prev) => ({ ...prev, [itemKey]: current }));
       console.error(err);
-      alert("Error saving checklist status.");
+      notify.error("Error saving checklist status.");
     } finally {
       setSavingKey(null);
     }
@@ -174,13 +175,13 @@ export function DdqAuditChecklist({
         }
         setTempNotes((prev) => ({ ...prev, ...updatedTemp }));
         
-        alert("Verification check completed! Applicable in-app evidence was automatically promoted to 'In place'.");
+        notify.success("Verification check completed! Applicable in-app evidence was automatically promoted to 'In place'.");
       } else {
-        alert("Failed to run automated verification.");
+        notify.error("Failed to run automated verification.");
       }
     } catch (err) {
       console.error(err);
-      alert("Error executing auto-verification scanning.");
+      notify.error("Error executing auto-verification scanning.");
     } finally {
       setVerifying(false);
     }
@@ -230,23 +231,23 @@ export function DdqAuditChecklist({
                 <ShieldCheck className="size-5 text-emerald-600" /> AMFI Audit Checklist Readiness
               </div>
               <div className="text-xs text-muted-foreground mt-1.5 flex items-center gap-2 flex-wrap">
-                <span className="chip bg-emerald-50 text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-400 border border-emerald-200/30 font-semibold px-2 py-0.5 rounded text-[10px]">
+                <span className="chip bg-emerald-50 text-emerald-700 border border-emerald-200/30 font-semibold px-2 py-0.5 rounded text-2xs">
                   {readiness.inPlace} in place
                 </span>
-                <span className="chip bg-amber-50 text-amber-700 dark:bg-amber-950/20 dark:text-amber-400 border border-amber-200/30 font-semibold px-2 py-0.5 rounded text-[10px]">
+                <span className="chip bg-amber-50 text-amber-700 border border-amber-200/30 font-semibold px-2 py-0.5 rounded text-2xs">
                   {readiness.inProgress} in progress
                 </span>
-                <span className="chip bg-rose-50 text-rose-700 dark:bg-rose-950/20 dark:text-rose-400 border border-rose-200/30 font-semibold px-2 py-0.5 rounded text-[10px]">
+                <span className="chip bg-rose-50 text-rose-700 border border-rose-200/30 font-semibold px-2 py-0.5 rounded text-2xs">
                   {readiness.pending} pending
                 </span>
                 {readiness.na > 0 && (
-                  <span className="chip bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 font-semibold px-2 py-0.5 rounded text-[10px]">
+                  <span className="chip bg-slate-100 text-slate-700 font-semibold px-2 py-0.5 rounded text-2xs">
                     {readiness.na} N/A
                   </span>
                 )}
                 <span className="text-muted-foreground font-mono">({DDQ_ITEMS.length} items total)</span>
               </div>
-              <div className="text-[10px] text-muted-foreground mt-2">
+              <div className="text-2xs text-muted-foreground mt-2">
                 Readiness score computes dynamic in-app verifications and manual uploads. Excludes N/A items.
               </div>
             </div>
@@ -341,18 +342,18 @@ export function DdqAuditChecklist({
                           <span className="text-xs font-mono text-muted-foreground shrink-0 mt-0.5 min-w-[32px]">{item.ddqRef || "—"}</span>
                           <div className="min-w-0 flex-1">
                             <div className="font-semibold text-sm text-foreground/90">{item.title}</div>
-                            <div className="text-[11px] text-muted-foreground mt-1.5 flex items-center gap-2 flex-wrap">
+                            <div className="text-2xs text-muted-foreground mt-1.5 flex items-center gap-2 flex-wrap">
                               <span
-                                className={`chip text-[9px] font-bold py-0.5 px-2 rounded-full border ${
+                                className={`chip text-2xs font-bold py-0.5 px-2 rounded-full border ${
                                   item.coverage === "in_app"
                                     ? "bg-brand-cyan-light text-brand-cyan-deep border-brand-cyan/20"
-                                    : "bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700"
+                                    : "bg-slate-100 text-slate-600 border-slate-200"
                                 }`}
                               >
                                 {item.coverage === "in_app" ? "In-app evidence" : "Document vault"}
                               </span>
                               {item.note && (
-                                <span className="text-[11px] text-muted-foreground italic truncate max-w-[350px]">
+                                <span className="text-2xs text-muted-foreground italic truncate max-w-[350px]">
                                   Note: {item.note}
                                 </span>
                               )}
@@ -401,7 +402,7 @@ export function DdqAuditChecklist({
                       {isExpanded && (
                         <div className="px-11 pb-4 pt-1 border-t border-border/40 bg-secondary/5 grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div className="flex flex-col gap-2">
-                            <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
+                            <label className="text-2xs font-bold text-muted-foreground uppercase tracking-wider">
                               Internal Audit Notes
                             </label>
                             <textarea
@@ -415,7 +416,7 @@ export function DdqAuditChecklist({
                               <button
                                 onClick={() => updateRecord(item.key, { note: currentTempNote })}
                                 disabled={savingKey === item.key}
-                                className="inline-flex items-center gap-1 bg-brand-cyan text-brand-cyan-deep hover:bg-brand-cyan/80 text-[10px] font-bold px-2.5 py-1 rounded transition-colors"
+                                className="inline-flex items-center gap-1 bg-brand-cyan text-brand-cyan-deep hover:bg-brand-cyan/80 text-2xs font-bold px-2.5 py-1 rounded transition-colors"
                               >
                                 <Save className="size-3" /> Save Notes
                               </button>
@@ -423,7 +424,7 @@ export function DdqAuditChecklist({
                           </div>
 
                           <div className="flex flex-col gap-2">
-                            <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
+                            <label className="text-2xs font-bold text-muted-foreground uppercase tracking-wider">
                               Linked Compliance Document
                             </label>
                             {item.coverage === "document" ? (
@@ -440,15 +441,15 @@ export function DdqAuditChecklist({
                                     </option>
                                   ))}
                                 </select>
-                                <p className="text-[10px] text-muted-foreground">
+                                <p className="text-2xs text-muted-foreground">
                                   Link a validated document from your compliance folder for verification audits.
                                 </p>
                               </>
                             ) : (
                               <div className="border border-dashed rounded p-3 text-center bg-secondary/15 flex flex-col items-center justify-center h-full">
                                 <FileCheck className="size-5 text-emerald-600 mb-1" />
-                                <span className="text-[11px] font-semibold text-emerald-800">In-App Automated Verification</span>
-                                <span className="text-[10px] text-muted-foreground mt-0.5">Evidence resides directly in platform database modules.</span>
+                                <span className="text-2xs font-semibold text-emerald-800">In-App Automated Verification</span>
+                                <span className="text-2xs text-muted-foreground mt-0.5">Evidence resides directly in platform database modules.</span>
                               </div>
                             )}
                           </div>
@@ -463,7 +464,7 @@ export function DdqAuditChecklist({
         })}
       </div>
 
-      <p className="text-[11px] text-muted-foreground border-t pt-3">
+      <p className="text-2xs text-muted-foreground border-t pt-3">
         Adapted from the AMFI Due-Diligence audit checklist. Mark each item as you assemble evidence;
         readiness updates live. "In-app" items are produced by this platform; "Document" items are
         files/SOPs you maintain (upload under Documents / SOP Library).

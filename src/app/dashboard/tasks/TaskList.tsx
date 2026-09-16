@@ -372,7 +372,7 @@ export function TaskList({ initialRows, currentUserId, canManageAll = false, ini
               <button
                 type="button"
                 onClick={() => setSelectMenuOpen((o) => !o)}
-                className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
+                className="inline-flex items-center gap-1 text-2xs text-muted-foreground hover:text-foreground"
               >
                 {selectingAll ? <Loader2 className="size-3 animate-spin" /> : null}
                 Select <ChevronDown className="size-3 opacity-60" />
@@ -393,7 +393,7 @@ export function TaskList({ initialRows, currentUserId, canManageAll = false, ini
                 </div>
               )}
             </div>
-            {selected.size > 0 && <span className="text-[11px] text-muted-foreground whitespace-nowrap">· {selected.size} selected</span>}
+            {selected.size > 0 && <span className="text-2xs text-muted-foreground whitespace-nowrap">· {selected.size} selected</span>}
           </div>
           {toolbar && <div className="flex-1 min-w-0">{toolbar}</div>}
         </div>
@@ -401,13 +401,30 @@ export function TaskList({ initialRows, currentUserId, canManageAll = false, ini
             so the page doesn't collapse under the toolbar. The header above is
             always rendered — previously the empty state replaced it, which hid
             the very filter controls needed to undo the filter. */}
-        <ul className="divide-y divide-slate-100 max-h-[60vh] min-h-[240px] overflow-y-auto scrollbar-thin">
+        {/* Column headings — named ONCE here instead of repeating a tiny
+            "Assigned by / Assigned to" caption inside all 50 rows, which was
+            most of the visual noise in the list. Hidden on the breakpoints
+            where those columns themselves are hidden. */}
+        {rows.length > 0 && (
+          <div className="hidden md:flex items-center gap-3 px-4 py-1.5 border-b border-border bg-secondary/40 text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
+            <span className="size-3.5 shrink-0" aria-hidden />
+            <span className="size-5 shrink-0" aria-hidden />
+            <span className="flex-1 min-w-0">Task</span>
+            <span className="hidden sm:block shrink-0">Due · priority · status</span>
+            <span className="flex items-center gap-5 shrink-0">
+              <span className="w-28">Assigned by</span>
+              <span className="w-28">Assigned to</span>
+            </span>
+            <span className="w-[68px] shrink-0 text-right">Actions</span>
+          </div>
+        )}
+        <ul className="divide-y divide-border max-h-[60vh] min-h-[240px] overflow-y-auto scrollbar-thin">
           {rows.length === 0 && (
             <li className="p-12 text-center">
-              <div className="mx-auto size-12 rounded-full bg-brand-cyan-light/40 flex items-center justify-center mb-3">
-                <ListChecks className="size-6 text-brand-cyan" />
+              <div className="mx-auto size-12 rounded-full bg-secondary flex items-center justify-center mb-3">
+                <ListChecks className="size-6 text-muted-foreground" />
               </div>
-              <div className="text-sm font-semibold text-slate-700">
+              <div className="text-sm font-semibold text-foreground">
                 {activeFilterLabel ? `No ${activeFilterLabel} tasks` : "You're all caught up"}
               </div>
               <p className="text-xs text-muted-foreground mt-1 max-w-sm mx-auto">
@@ -420,7 +437,7 @@ export function TaskList({ initialRows, currentUserId, canManageAll = false, ini
                   <button
                     type="button"
                     onClick={() => router.push("/dashboard/tasks")}
-                    className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-accent"
+                    className="btn-secondary !px-3 !py-1.5"
                   >
                     <X className="size-4" /> Clear filters
                   </button>
@@ -494,7 +511,7 @@ export function TaskList({ initialRows, currentUserId, canManageAll = false, ini
                   {t.title}
                 </span>
                 {isCancelled && (
-                  <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-slate-500 bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5">
+                  <span className="shrink-0 text-2xs font-semibold uppercase tracking-wide text-slate-500 bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5">
                     Cancelled
                   </span>
                 )}
@@ -505,7 +522,7 @@ export function TaskList({ initialRows, currentUserId, canManageAll = false, ini
                 <div className="hidden sm:flex items-center gap-2 shrink-0">
                   {t.dueAt && !isDone && (
                     <span
-                      className={`inline-flex items-center gap-1 text-[11px] rounded-md px-1.5 py-0.5 border ${
+                      className={`inline-flex items-center gap-1 text-2xs rounded-md px-1.5 py-0.5 border ${
                         new Date(t.dueAt).getTime() < Date.now()
                           ? "text-rose-700 bg-rose-50 border-rose-200 font-semibold"
                           : "text-slate-600 bg-white border-slate-200"
@@ -517,14 +534,14 @@ export function TaskList({ initialRows, currentUserId, canManageAll = false, ini
                     </span>
                   )}
                   {(t.priority === "urgent" || t.priority === "high") && !isDone && (
-                    <span className={`text-[10px] font-semibold uppercase tracking-wide rounded px-1.5 py-0.5 ${
+                    <span className={`text-2xs font-semibold uppercase tracking-wide rounded px-1.5 py-0.5 ${
                       t.priority === "urgent" ? "text-rose-700 bg-rose-50 border border-rose-200" : "text-amber-700 bg-amber-50 border border-amber-200"
                     }`}>
                       {t.priority}
                     </span>
                   )}
                   {(t.status === "in_progress" || t.status === "blocked") && (
-                    <span className={`text-[10px] font-medium rounded px-1.5 py-0.5 border ${
+                    <span className={`text-2xs font-medium rounded px-1.5 py-0.5 border ${
                       t.status === "blocked" ? "text-rose-700 bg-rose-50 border-rose-200" : "text-violet-700 bg-violet-50 border-violet-200"
                     }`}>
                       {t.status === "blocked" ? "Blocked" : "In progress"}
@@ -532,17 +549,17 @@ export function TaskList({ initialRows, currentUserId, canManageAll = false, ini
                   )}
                 </div>
 
-                {/* Assigned by / assigned to — two clearly-labelled columns */}
+                {/* Assigned by / assigned to — the column headings above name
+                    these, so the rows carry values only. */}
                 <div className="hidden md:flex items-center gap-5 shrink-0">
-                  <div className="w-28 min-w-0">
-                    <div className="text-[9px] uppercase tracking-wide text-slate-400 leading-none">Assigned by</div>
-                    <div className={`text-xs truncate mt-0.5 ${creatorName === "System" ? "text-slate-400 font-normal" : "text-slate-700 font-medium"}`}>
-                      {creatorName === "System" ? "Automation" : creatorName}
-                    </div>
+                  <div
+                    className={`w-28 min-w-0 text-xs truncate ${creatorName === "System" ? "text-slate-400 font-normal" : "text-slate-700 font-medium"}`}
+                    title={creatorName === "System" ? "Created automatically by a workflow" : `Assigned by ${creatorName}`}
+                  >
+                    {creatorName === "System" ? "Automation" : creatorName}
                   </div>
-                  <div className="w-28 min-w-0">
-                    <div className="text-[9px] uppercase tracking-wide text-slate-400 leading-none">Assigned to</div>
-                    <div className="text-xs text-slate-700 font-medium truncate mt-0.5">{assigneeLabel}</div>
+                  <div className="w-28 min-w-0 text-xs text-slate-700 font-medium truncate" title={`Assigned to ${assigneeLabel}`}>
+                    {assigneeLabel}
                   </div>
                 </div>
 

@@ -149,7 +149,7 @@ export function WidgetView({ widgetKey, rm, period, titleOverride, config }: { w
                   <button
                     type="button"
                     onClick={() => load(true)}
-                    className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                    className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-2xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
                   >
                     <RefreshCw className="size-3" /> Retry
                   </button>
@@ -229,11 +229,11 @@ function Body({ view, rows, chart }: { view: View; rows: any[]; chart?: string }
       <div className="h-full overflow-auto space-y-1 pr-1">
         {data.map((d, i) => (
           <div key={i} className="flex items-center gap-2">
-            <div className="w-28 shrink-0 text-[11px] text-muted-foreground truncate">{d.label}</div>
+            <div className="w-28 shrink-0 text-2xs text-muted-foreground truncate">{d.label}</div>
             <div className="flex-1 h-4 rounded bg-muted overflow-hidden">
               <div className="h-full rounded bg-brand-cyan/70" style={{ width: `${(d.value / max) * 100}%` }} />
             </div>
-            <div className="w-10 shrink-0 text-right text-[11px] font-mono tabular-nums">{d.value}</div>
+            <div className="w-10 shrink-0 text-right text-2xs font-mono tabular-nums">{d.value}</div>
           </div>
         ))}
       </div>
@@ -249,7 +249,7 @@ function Body({ view, rows, chart }: { view: View; rows: any[]; chart?: string }
       <div className="h-full flex flex-col justify-center gap-2 px-1">
         <div className="flex items-end justify-between gap-2">
           <span className="text-2xl font-bold tabular-nums">{fmt(value, view.format)}</span>
-          <span className="text-[11px] text-muted-foreground text-right">{target > 0 ? `of ${fmt(target, view.format)} · ${pct.toFixed(0)}%` : "no target set"}</span>
+          <span className="text-2xs text-muted-foreground text-right">{target > 0 ? `of ${fmt(target, view.format)} · ${pct.toFixed(0)}%` : "no target set"}</span>
         </div>
         <div className="h-2.5 rounded-full bg-muted overflow-hidden">
           <div className={`h-full rounded-full ${tone}`} style={{ width: `${pct}%` }} />
@@ -267,12 +267,12 @@ function Body({ view, rows, chart }: { view: View; rows: any[]; chart?: string }
       <div className="h-full flex items-center justify-around gap-2 px-1">
         <div className="text-center">
           <div className="text-2xl font-bold tabular-nums">{fmt(cur, view.format)}</div>
-          <div className="text-[10px] uppercase tracking-wide text-muted-foreground">This month</div>
+          <div className="text-2xs uppercase tracking-wide text-muted-foreground">This month</div>
         </div>
         <div className={`text-sm font-semibold ${up ? "text-emerald-600" : "text-rose-600"}`}>{up ? "▲" : "▼"} {Math.abs(delta).toFixed(0)}%</div>
         <div className="text-center">
           <div className="text-lg font-semibold tabular-nums text-muted-foreground">{fmt(prev, view.format)}</div>
-          <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Last month</div>
+          <div className="text-2xs uppercase tracking-wide text-muted-foreground">Last month</div>
         </div>
       </div>
     );
@@ -284,7 +284,7 @@ function Body({ view, rows, chart }: { view: View; rows: any[]; chart?: string }
   return (
     <div className="h-full overflow-auto">
       <table className="w-full text-xs">
-        <thead className="text-[10px] uppercase text-muted-foreground sticky top-0 bg-card">
+        <thead className="text-2xs uppercase text-muted-foreground sticky top-0 bg-card">
           <tr>{view.columns.map((c) => <th key={c.key} className={`text-left font-medium py-1 pr-2 ${c.format === "inr" || c.format === "number" ? "text-right" : ""}`}>{c.label}</th>)}</tr>
         </thead>
         <tbody>

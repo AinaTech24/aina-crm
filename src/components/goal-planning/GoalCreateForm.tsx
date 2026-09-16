@@ -228,7 +228,7 @@ export function GoalCreateForm({
               Target-date value
             </ToggleBtn>
           </div>
-          <p className="text-[11px] text-muted-foreground mt-1.5">
+          <p className="text-2xs text-muted-foreground mt-1.5">
             {form.targetMode === "today"
               ? "We'll inflate this to the target year using the inflation rate below."
               : "Amount is already in target-year rupees — no inflation applied."}
@@ -322,7 +322,7 @@ export function GoalCreateForm({
               <option key={v} value={v}>{l}</option>
             ))}
           </SelectField>
-          <p className="text-[11px] text-muted-foreground mt-1.5">
+          <p className="text-2xs text-muted-foreground mt-1.5">
             Tapers the expected return as the target nears (shifts toward debt).
           </p>
         </Field>
@@ -370,7 +370,7 @@ export function GoalCreateForm({
 
             <div className="grid grid-cols-2 gap-3">
               <div className="card-surface p-4">
-                <div className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">
+                <div className="text-2xs uppercase tracking-wider font-bold text-muted-foreground">
                   You'll see
                 </div>
                 <ul className="mt-2 text-xs text-muted-foreground space-y-1.5">
@@ -381,7 +381,7 @@ export function GoalCreateForm({
                 </ul>
               </div>
               <div className="card-surface p-4">
-                <div className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground">
+                <div className="text-2xs uppercase tracking-wider font-bold text-muted-foreground">
                   Quick-start templates
                 </div>
                 <div className="mt-2 grid grid-cols-1 gap-1.5">
@@ -461,7 +461,7 @@ export function GoalCreateForm({
                   Target at goal date (inflation-adjusted)
                 </div>
                 <div className="text-2xl font-bold mt-1 tabular-nums">{formatINR(Math.round(calc.futureTarget))}</div>
-                <div className="text-[11px] text-muted-foreground mt-1">
+                <div className="text-2xs text-muted-foreground mt-1">
                   {form.targetMode === "today" ? (
                     <>From ₹{Number(form.targetAmount || 0).toLocaleString("en-IN")} today × ({1 + calc.inflationPct / 100})^{calc.yearsLeft.toFixed(1)}</>
                   ) : (
@@ -536,11 +536,11 @@ export function GoalCreateForm({
                     <div className="text-lg font-bold tabular-nums mt-0.5">
                       {formatINR(Math.round(s.sip))}
                     </div>
-                    <div className="text-[10px] text-muted-foreground mt-0.5">flat SIP</div>
+                    <div className="text-2xs text-muted-foreground mt-0.5">flat SIP</div>
                   </div>
                 ))}
               </div>
-              <p className="text-[11px] text-muted-foreground mt-3 leading-relaxed">
+              <p className="text-2xs text-muted-foreground mt-3 leading-relaxed">
                 Higher assumed return → lower SIP required. Conservative funds typically deliver 8–10 % p.a.,
                 equity-tilted hybrids 10–12 %, pure equity 12–15 % over 10+ years.
               </p>
@@ -642,7 +642,7 @@ export function GoalCreateForm({
                   <span className="text-foreground font-semibold">Lumpsum-today:</span> L = Target / (1 + r/12)<sup>n</sup>
                 </li>
               </ul>
-              <p className="text-[11px] text-muted-foreground mt-3">
+              <p className="text-2xs text-muted-foreground mt-3">
                 r = expected annual return ({calc.expectedReturnPct.toFixed(1)}%). π = inflation ({calc.inflationPct.toFixed(1)}%).
                 n = {calc.monthsLeft} months. Step-up SIP solved by bisection.
               </p>
@@ -703,7 +703,7 @@ function TemplateBtn({
       className="w-full text-left rounded-lg border border-border bg-card hover:bg-brand-cyan-light/30 hover:border-brand-cyan/40 px-3 py-2 text-xs transition-all"
     >
       <div className="font-semibold text-sm">{label}</div>
-      <div className="text-[11px] text-muted-foreground">{sub}</div>
+      <div className="text-2xs text-muted-foreground">{sub}</div>
     </button>
   );
 }
@@ -727,7 +727,7 @@ function PlanCard({
     >
       <div className="text-xs text-muted-foreground">{label}</div>
       <div className="text-lg font-bold tabular-nums mt-0.5">{value}</div>
-      <div className="text-[10px] text-muted-foreground mt-0.5 leading-tight">{sub}</div>
+      <div className="text-2xs text-muted-foreground mt-0.5 leading-tight">{sub}</div>
     </div>
   );
 }

@@ -237,10 +237,10 @@ export function SuitabilityMatrixEditor({
           <thead>
             <tr>
               <th className="border border-slate-300 bg-slate-100 px-3 py-2 text-left w-[140px]">
-                <div className="text-[10px] uppercase tracking-wide font-semibold text-slate-600">
+                <div className="text-2xs uppercase tracking-wide font-semibold text-slate-600">
                   Client Risk Profile
                 </div>
-                <div className="text-[10px] uppercase tracking-wide font-semibold text-slate-600 mt-3">
+                <div className="text-2xs uppercase tracking-wide font-semibold text-slate-600 mt-3">
                   ↓ × Time Horizon →
                 </div>
               </th>
@@ -250,7 +250,7 @@ export function SuitabilityMatrixEditor({
                   className="border border-slate-300 bg-slate-100 px-3 py-2 text-left"
                 >
                   <div className="font-semibold text-sm">{h.label}</div>
-                  <div className="text-[10px] text-muted-foreground">
+                  <div className="text-2xs text-muted-foreground">
                     {h.hint}
                   </div>
                 </th>
@@ -274,12 +274,12 @@ export function SuitabilityMatrixEditor({
                       className="border border-slate-300 align-top p-3 min-w-[180px]"
                     >
                       <div className="flex items-start justify-between gap-2 mb-2">
-                        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                        <div className="text-2xs uppercase tracking-wide text-muted-foreground">
                           {r.label} · {h.label}
                         </div>
                         <button
                           onClick={() => startEdit(key)}
-                          className="btn-ghost text-[10px] py-0.5 print:hidden"
+                          className="btn-ghost text-2xs py-0.5 print:hidden"
                           title="Edit cell"
                         >
                           <Pencil className="size-3" />
@@ -294,7 +294,7 @@ export function SuitabilityMatrixEditor({
                             return (
                               <span
                                 key={c}
-                                className={`chip text-[10px] border ${COARSE_TONE[c] ?? "bg-slate-100"}`}
+                                className={`chip text-2xs border ${COARSE_TONE[c] ?? "bg-slate-100"}`}
                               >
                                 {label}
                                 {pct != null && (
@@ -307,12 +307,12 @@ export function SuitabilityMatrixEditor({
                           })}
                         </div>
                       ) : (
-                        <p className="text-[11px] text-muted-foreground italic">
+                        <p className="text-2xs text-muted-foreground italic">
                           No categories set.
                         </p>
                       )}
                       {cell.notes && (
-                        <div className="text-[11px] text-slate-700 italic">
+                        <div className="text-2xs text-slate-700 italic">
                           “{cell.notes}”
                         </div>
                       )}
@@ -325,7 +325,7 @@ export function SuitabilityMatrixEditor({
         </table>
       </div>
 
-      <p className="text-[11px] text-muted-foreground print:hidden">
+      <p className="text-2xs text-muted-foreground print:hidden">
         Click the pencil icon on any cell to edit. Categories are picked
         from the same vocabulary as the AMC shortlist
         (equity / hybrid / debt / liquid / commodity / international /
@@ -360,7 +360,7 @@ export function SuitabilityMatrixEditor({
               )}
 
               <div>
-                <div className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold mb-2">
+                <div className="text-2xs uppercase tracking-wide text-muted-foreground font-semibold mb-2">
                   Coarse categories
                 </div>
                 <div className="flex flex-wrap gap-1.5">
@@ -386,7 +386,7 @@ export function SuitabilityMatrixEditor({
 
               {draft.coarseCategories.length > 0 && (
                 <div>
-                  <div className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold mb-2">
+                  <div className="text-2xs uppercase tracking-wide text-muted-foreground font-semibold mb-2">
                     Allocation hints (optional, % of portfolio)
                   </div>
                   <div className="grid grid-cols-2 gap-2">
@@ -422,7 +422,7 @@ export function SuitabilityMatrixEditor({
               )}
 
               <div>
-                <div className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold mb-2">
+                <div className="text-2xs uppercase tracking-wide text-muted-foreground font-semibold mb-2">
                   IC rationale (optional)
                 </div>
                 <textarea

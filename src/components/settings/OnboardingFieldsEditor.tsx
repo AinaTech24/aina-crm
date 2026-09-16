@@ -116,7 +116,7 @@ export function OnboardingFieldsEditor({
                         {f.label}
                       </span>
                       {f.backOffice && (
-                        <span className="chip text-[10px] bg-secondary text-muted-foreground">
+                        <span className="chip text-2xs bg-secondary text-muted-foreground">
                           back office
                         </span>
                       )}
@@ -127,7 +127,7 @@ export function OnboardingFieldsEditor({
                         />
                       )}
                     </div>
-                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                    <p className="text-2xs text-muted-foreground mt-0.5">
                       default: {f.required ? "required" : "optional"}
                     </p>
                   </div>
@@ -141,7 +141,7 @@ export function OnboardingFieldsEditor({
                     className="flex items-center gap-2 flex-shrink-0"
                   >
                     <span
-                      className={`text-[11px] font-medium w-14 text-right ${
+                      className={`text-2xs font-medium w-14 text-right ${
                         isRequired ? "text-foreground" : "text-muted-foreground"
                       }`}
                     >

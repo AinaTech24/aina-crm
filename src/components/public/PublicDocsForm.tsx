@@ -265,7 +265,7 @@ export function PublicDocsForm({
       <div className="bg-white rounded-xl shadow p-6 space-y-3">
         <div>
           <h2 className="text-sm font-bold text-slate-800">Upload your documents</h2>
-          <p className="text-[11px] text-muted-foreground mt-0.5">Files: PDF, JPG, PNG up to 10 MB each.</p>
+          <p className="text-2xs text-muted-foreground mt-0.5">Files: PDF, JPG, PNG up to 10 MB each.</p>
         </div>
         {requiredDocs.map((d) => (
           <DocRow key={d.key} doc={d} value={files[d.key] ?? null} onChange={(f) => setFile(d.key, f)} />
@@ -302,20 +302,20 @@ export function PublicDocsForm({
               <ImageUp className="size-3.5 text-brand-cyan" /> Upload your signature on blank paper
               <span className="font-normal text-muted-foreground">(recommended)</span>
             </div>
-            <p className="text-[10px] text-muted-foreground mb-1.5">
+            <p className="text-2xs text-muted-foreground mb-1.5">
               Sign on a plain white sheet, take a clear photo, and upload it (JPG or PNG). This is your wet signature for our records.
             </p>
             <SignatureUpload value={signatureFile} onChange={setSignatureFile} />
           </div>
 
-          <div className="text-[10px] text-muted-foreground mt-2">
+          <div className="text-2xs text-muted-foreground mt-2">
             By signing, you confirm that the details and documents you've provided are genuine and belong to you. They
             will be used solely for the purpose of opening your mutual fund investment account.
           </div>
         </div>
 
         {draftNotice && (
-          <div className="text-[11px] text-sky-800 bg-sky-50 border border-sky-200 rounded-md p-2 flex items-start gap-1.5">
+          <div className="text-2xs text-sky-800 bg-sky-50 border border-sky-200 rounded-md p-2 flex items-start gap-1.5">
             <Save className="size-3.5 mt-0.5 shrink-0" />
             <span>{draftNotice}</span>
           </div>
@@ -341,7 +341,7 @@ export function PublicDocsForm({
           </button>
         </div>
         {draftSavedAt && (
-          <div className="text-[10px] text-muted-foreground text-center flex items-center justify-center gap-1">
+          <div className="text-2xs text-muted-foreground text-center flex items-center justify-center gap-1">
             <Check className="size-3 text-emerald-600" /> Progress saved on this device at {fmtWhen(draftSavedAt)}
           </div>
         )}
@@ -386,7 +386,7 @@ function SignatureUpload({ value, onChange }: { value: File | null; onChange: (f
         )}
         <div className="flex-1 min-w-0">
           <div className="text-sm font-medium truncate">{value.name}</div>
-          <div className="text-[11px] text-muted-foreground">{(value.size / 1024).toFixed(0)} KB</div>
+          <div className="text-2xs text-muted-foreground">{(value.size / 1024).toFixed(0)} KB</div>
         </div>
         <button onClick={() => onChange(null)} className="text-rose-600 hover:bg-rose-50 rounded p-1" aria-label="Remove signature photo">
           <X className="size-4" />
@@ -437,7 +437,7 @@ function FieldRow({ field, value, onChange }: { field: KycField; value: string; 
           className={cls}
         />
       )}
-      {field.helpText && <div className="text-[10px] text-muted-foreground mt-1">{field.helpText}</div>}
+      {field.helpText && <div className="text-2xs text-muted-foreground mt-1">{field.helpText}</div>}
     </label>
   );
 }
@@ -451,7 +451,7 @@ function DocRow({ doc, value, onChange }: { doc: RequiredDoc; value: File | null
           {doc.label}
           {doc.required && <span className="text-rose-600 ml-1">*</span>}
         </div>
-        {value && <div className="text-[11px] text-muted-foreground truncate">{value.name} · {(value.size / 1024).toFixed(0)} KB</div>}
+        {value && <div className="text-2xs text-muted-foreground truncate">{value.name} · {(value.size / 1024).toFixed(0)} KB</div>}
       </div>
       {value ? (
         <button onClick={() => onChange(null)} className="text-rose-600 hover:bg-rose-50 rounded p-1">

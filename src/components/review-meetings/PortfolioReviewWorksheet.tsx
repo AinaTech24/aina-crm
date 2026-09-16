@@ -285,7 +285,7 @@ export function PortfolioReviewWorksheet({
                       placeholder="Scheme name"
                       className="input-base text-xs w-full"
                     />
-                    <div className="text-[10px] text-muted-foreground mt-0.5 font-mono">
+                    <div className="text-2xs text-muted-foreground mt-0.5 font-mono">
                       {folio?.amcName ?? "—"} · {folio?.folioNumber ?? "—"}
                     </div>
                   </td>
@@ -489,7 +489,7 @@ function Stat({
         : "text-foreground";
   return (
     <div>
-      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+      <div className="text-2xs uppercase tracking-wide text-muted-foreground">
         {label}
       </div>
       <div className={`font-semibold ${cls}`}>{value}</div>

@@ -23,6 +23,7 @@
 
 import { sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
+import { positionKey } from "./position-key";
 
 export type StatementLine = {
   date: string;
@@ -46,6 +47,7 @@ export type StatementGroup = {
   /** Latest NAV, when we could price the scheme. */
   nav: number | null;
   closingValue: number | null;
+  navDate: string | null;
 };
 
 export type AccountStatement = {
@@ -87,13 +89,13 @@ export async function loadAccountStatement(
   // in-period. Two queries would have to agree on the grouping key; one cannot
   // disagree with itself.
   const rows = (await tx.execute(sql`
-    SELECT t.folio_number, t.scheme_code, t.scheme_name, t.amc_name,
+    SELECT t.folio_id, t.folio_number, t.amc_code, t.scheme_code, t.scheme_name, t.amc_name,
            t.order_date, t.type, t.direction,
            t.amount::numeric  AS amount,
            t.units::numeric   AS units,
            t.nav::numeric     AS nav,
            (t.order_date < ${from}::date) AS is_opening,
-           n.nav::numeric     AS live_nav
+           n.nav::numeric     AS live_nav, n.nav_date AS nav_date
       FROM transactions t
       LEFT JOIN scheme_nav n ON n.scheme_code = t.scheme_code
      WHERE t.investor_id = ${investorId}::uuid
@@ -109,7 +111,7 @@ export async function loadAccountStatement(
   for (const r of rows) {
     const folio = r.folio_number ?? null;
     const schemeName = r.scheme_name ?? "—";
-    const key = `${folio ?? ""}::${r.scheme_code ?? schemeName}`;
+    const key = positionKey(r);
     let g = byKey.get(key);
     if (!g) {
       g = {
@@ -120,6 +122,7 @@ export async function loadAccountStatement(
         openingUnits: 0,
         lines: [],
         nav: null,
+        navDate: r.nav_date ? String(r.nav_date).slice(0, 10) : null,
         liveNav: r.live_nav != null ? num(r.live_nav) : null,
       };
       byKey.set(key, g);
@@ -128,7 +131,7 @@ export async function loadAccountStatement(
     // Signed units: an outflow removes them. `direction` is authoritative here —
     // it is what valuation nets on, so the statement must agree with the
     // portfolio page or a client will find the discrepancy for us.
-    const signed = r.direction === "outflow" ? -Math.abs(num(r.units)) : Math.abs(num(r.units));
+    const signed = r.type === "dividend_payout" ? 0 : r.direction === "outflow" ? -Math.abs(num(r.units)) : Math.abs(num(r.units));
 
     if (r.is_opening) {
       g.openingUnits += signed;
@@ -173,6 +176,7 @@ export async function loadAccountStatement(
       closingUnits: settled,
       lines: g.lines,
       nav,
+      navDate: g.navDate,
       closingValue,
     });
   }

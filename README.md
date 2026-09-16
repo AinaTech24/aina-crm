@@ -22,7 +22,7 @@ This repository implements the design in `../MFD_Platform_Design_Blueprint.md`, 
 | Next.js dashboard (workflows, segments, templates, comms, compliance, investors, tasks) | ✅ | [src/app/dashboard/](src/app/dashboard/) |
 | Webhook routes: AiSensy + Resend | ✅ | [src/app/api/webhooks/](src/app/api/webhooks/) |
 | Signed web/mobile sessions, device revocation and TOTP 2FA | ✅ | [src/lib/auth/](src/lib/auth/) |
-| BSE Star MF adapter | ✅ live-capable | credentials required; demo mode fails closed in production |
+| BSE Star MF adapter | ⏳ written, not wired | [src/lib/integrations/bse-star-mf.ts](src/lib/integrations/bse-star-mf.ts) — SOAP calls exist and `getBseStarAdapter()` is exported, but **nothing imports it**: no API route, no action handler, no UI. Do not promise BSE execution yet. |
 | NSE NMF II adapter | ⏳ unavailable | do not promise NSE execution yet |
 | CAMS / KFintech mailback, parsing, import and reconciliation | ✅ | [src/lib/rta/](src/lib/rta/) |
 | Field-team mobile app (Expo / React Native) | ✅ | [mobile/](mobile/) |

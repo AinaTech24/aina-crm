@@ -13,9 +13,9 @@ const STATUSES = ["present", "absent", "half_day", "week_off", "holiday", "on_le
 
 const SOURCE_LABEL: Record<string, string> = { manual: "Manual", clock: "Clocked", auto: "Auto" };
 const SOURCE_TONE: Record<string, string> = {
-  manual: "bg-slate-100 text-slate-600 dark:bg-slate-500/15 dark:text-slate-300",
-  clock: "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
-  auto: "bg-slate-50 text-slate-400 dark:bg-slate-500/10 dark:text-slate-400",
+  manual: "bg-slate-100 text-slate-600",
+  clock: "bg-emerald-50 text-emerald-700",
+  auto: "bg-slate-50 text-slate-400",
 };
 
 export type AttRow = {
@@ -204,7 +204,7 @@ export function AttendanceTable({ rows, canManage, toolbar }: { rows: AttRow[]; 
                   <div className="flex items-center gap-1.5">
                     {formatDate(r.attendance_date)}
                     {r.source && (
-                      <span className={`text-[9px] px-1 py-px rounded ${SOURCE_TONE[r.source] ?? ""}`} title={`Marked: ${SOURCE_LABEL[r.source] ?? r.source}`}>
+                      <span className={`text-2xs px-1 py-px rounded ${SOURCE_TONE[r.source] ?? ""}`} title={`Marked: ${SOURCE_LABEL[r.source] ?? r.source}`}>
                         {SOURCE_LABEL[r.source] ?? r.source}
                       </span>
                     )}
@@ -236,7 +236,7 @@ export function AttendanceTable({ rows, canManage, toolbar }: { rows: AttRow[]; 
                       hhmm(r.clock_in_at)
                     )}
                     {r.is_late && (
-                      <span className="text-[9px] px-1 py-px rounded bg-rose-50 text-rose-600 dark:bg-rose-500/15 dark:text-rose-300" title={`Late by ${r.late_minutes ?? 0} min`}>
+                      <span className="text-2xs px-1 py-px rounded bg-rose-50 text-rose-600" title={`Late by ${r.late_minutes ?? 0} min`}>
                         Late
                       </span>
                     )}
@@ -256,7 +256,7 @@ export function AttendanceTable({ rows, canManage, toolbar }: { rows: AttRow[]; 
                       hhmm(r.clock_out_at)
                     )}
                     {r.is_early_out && (
-                      <span className="text-[9px] px-1 py-px rounded bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300" title={`Left ${r.early_minutes ?? 0} min early`}>
+                      <span className="text-2xs px-1 py-px rounded bg-amber-50 text-amber-600" title={`Left ${r.early_minutes ?? 0} min early`}>
                         Early
                       </span>
                     )}

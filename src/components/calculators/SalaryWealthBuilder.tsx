@@ -86,7 +86,7 @@ export function SalaryWealthBuilder() {
 
       {/* Existing investment toggle */}
       <div className="flex flex-wrap items-center gap-4">
-        <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium">Include existing investment?</span>
+        <span className="text-2xs uppercase tracking-wide text-muted-foreground font-medium">Include existing investment?</span>
         <label className="flex items-center gap-1.5 text-sm cursor-pointer">
           <input type="radio" checked={includeExisting} onChange={() => setIncludeExisting(true)} /> Yes
         </label>
@@ -157,13 +157,13 @@ export function SalaryWealthBuilder() {
               </tbody>
             </table>
           </div>
-          <p className="text-[10px] text-muted-foreground px-4 py-2 border-t">
+          <p className="text-2xs text-muted-foreground px-4 py-2 border-t">
             Corpus shown is the SIP investment only{includeExisting ? "; the existing fund grows separately to the figure above." : "."}
           </p>
         </details>
       )}
 
-      <p className="text-[10px] text-muted-foreground border-t pt-3">
+      <p className="text-2xs text-muted-foreground border-t pt-3">
         * Illustration only. Assumes the SIP rises in step with your salary increment and a constant rate of return; actual
         results vary with market performance. Not investment advice.
       </p>
@@ -186,7 +186,7 @@ function Segmented({
 }) {
   return (
     <div>
-      <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium block mb-1">{label}</span>
+      <span className="text-2xs uppercase tracking-wide text-muted-foreground font-medium block mb-1">{label}</span>
       <div className="inline-flex gap-1 rounded-lg bg-slate-100 p-1">
         {options.map((o) => (
           <button
@@ -208,7 +208,7 @@ function Segmented({
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium block mb-1">{label}</span>
+      <span className="text-2xs uppercase tracking-wide text-muted-foreground font-medium block mb-1">{label}</span>
       {children}
     </label>
   );
@@ -245,7 +245,7 @@ function Num({
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className="border border-slate-200 rounded-md p-3">
-      <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">{label}</div>
+      <div className="text-2xs uppercase tracking-wide text-muted-foreground font-medium">{label}</div>
       <div className="text-sm font-semibold mt-0.5">{value}</div>
     </div>
   );
@@ -269,7 +269,7 @@ function ResultRow({
                 : "";
         return (
           <div key={i} className={`border rounded-md p-3 ${tone}`}>
-            <div className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium">{c.label}</div>
+            <div className="text-2xs uppercase tracking-wide text-muted-foreground font-medium">{c.label}</div>
             <div className="text-lg font-semibold mt-0.5">{c.value}</div>
           </div>
         );

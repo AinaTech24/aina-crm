@@ -203,7 +203,7 @@ export default async function CrossSellReportPage() {
                     <td className="py-2.5">
                       <div className="flex flex-wrap gap-1">
                         {opps.map((o) => (
-                          <span key={o.key} className={`chip text-[11px] border ${crossSellStatusTone(o.status)}`}>
+                          <span key={o.key} className={`chip text-2xs border ${crossSellStatusTone(o.status)}`}>
                             {o.label} · {crossSellStatusLabel(o.status)}
                           </span>
                         ))}
@@ -224,9 +224,9 @@ function Tile({ label, value, sub, tone }: { label: string; value: string; sub?:
   const cls = tone === "violet" ? "text-violet-600" : tone === "emerald" ? "text-emerald-600" : "text-sky-600";
   return (
     <div className="card-surface p-4">
-      <div className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">{label}</div>
+      <div className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">{label}</div>
       <div className={`text-2xl font-bold mt-1 tabular-nums ${cls}`}>{value}</div>
-      {sub && <div className="text-[11px] text-muted-foreground mt-0.5">{sub}</div>}
+      {sub && <div className="text-2xs text-muted-foreground mt-0.5">{sub}</div>}
     </div>
   );
 }

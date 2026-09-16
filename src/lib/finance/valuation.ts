@@ -1,380 +1,223 @@
-/**
- * Portfolio valuation — turns raw transactions + live NAV into the numbers an
- * MFD and their client actually care about: current market value, net invested,
- * absolute gain, and XIRR (money-weighted annualised return).
- *
- * How it works:
- *   1. Pull every COMPLETED transaction for the investor, left-joined to the
- *      latest NAV (scheme_nav, keyed by AMFI scheme code).
- *   2. Net units per scheme = inflow units − outflow units; current value =
- *      net units × latest NAV. Schemes with no NAV match are flagged
- *      `priced:false` and excluded from value/XIRR (so a missing code never
- *      silently understates returns — the UI shows the coverage gap instead).
- *   3. Cashflows for XIRR: each buy is money out (−amount), each redemption /
- *      dividend payout is money in (+amount); the current market value is a
- *      final inflow dated today.
- *
- * Tenant scoping is the caller's responsibility — pass the `tx` from inside a
- * withTenant() block so RLS already scopes rows to the tenant.
- */
-
+/** One folio-aware valuation contract for profile, portal, PDF and stored AUM. */
 import { sql } from "drizzle-orm";
 import type { Tx } from "@/db/client";
-import { xirr, absoluteReturn, type CashFlow } from "./xirr";
+import { xirr, type CashFlow } from "./xirr";
+import { positionKey, type PositionIdentity } from "./position-key";
 
 export type SchemeHolding = {
-  schemeCode: string | null;
-  schemeName: string | null;
-  amcName: string | null;
-  /** Folio the holding sits in. If a scheme spans more than one folio we keep
-   *  the first and expose the rest via `folioNumbers`. */
-  folioNumber: string | null;
-  folioNumbers: string[];
+  schemeCode: string | null; schemeName: string | null; amcName: string | null;
+  folioNumber: string | null; folioNumbers: string[]; folioId: string | null;
   netUnits: number;
-  investedNet: number;
-  latestNav: number | null;
-  navDate: string | null;
-  currentValue: number | null;
-  gain: number | null;
-  /** Money-weighted return for THIS holding (priced holdings only). */
-  xirr: number | null;
-  /** How the holding was built up: "sip", "lumpsum", or "mixed" (both). */
-  kind: "sip" | "lumpsum" | "mixed" | null;
-  /** true when a live NAV was found for this scheme. */
-  priced: boolean;
-  // ── Transaction-derived (null when the holding came from a folio/holdings
-  //    snapshot with no transaction history). ──────────────────────────────
-  /** First purchase date for this scheme (ISO). */
-  startDate: string | null;
-  /** Units-weighted average holding period, in days. */
-  avgDays: number | null;
-  /** Gain already booked on redeemed units (average-cost method, ₹). */
-  realisedGain: number | null;
-  /** Dividend payouts received on this scheme (₹). */
-  dividend: number | null;
-  /** true when this holding has any transaction coverage (drives cost/gain/XIRR columns). */
-  hasTxns: boolean;
+  /** Remaining average acquisition cost; null if history is incomplete. */
+  investedNet: number | null;
+  latestNav: number | null; navDate: string | null; currentValue: number | null;
+  /** Unrealised gain on remaining units. */
+  gain: number | null; xirr: number | null;
+  kind: "sip" | "lumpsum" | "mixed" | null; priced: boolean;
+  startDate: string | null; avgDays: number | null;
+  realisedGain: number | null; dividend: number | null; hasTxns: boolean;
+  historyCoverage: "ledger" | "snapshot_only" | "incomplete";
+  snapshotDate: string | null;
 };
-
-/** Whole days between two dates (>= 0). */
-function daysBetween(from: Date, to: Date): number {
-  return Math.max(0, Math.round((to.getTime() - from.getTime()) / 86_400_000));
-}
-
 export type InvestorValuation = {
-  /** Market value of all PRICED holdings (units × latest NAV). */
   currentValue: number;
-  /** Net invested across ALL holdings (priced + unpriced). */
-  investedNet: number;
-  /** Net invested in PRICED holdings only — the basis for gain/return so a
-   *  scheme we couldn't price never distorts the percentage. */
-  pricedInvested: number;
-  /** Net invested in schemes we couldn't price (coverage gap, ₹). */
-  unpricedInvested: number;
-  /** currentValue − pricedInvested. */
-  gain: number;
-  /** decimal, e.g. 0.18 = +18% absolute (over priced holdings) */
-  absoluteReturn: number | null;
-  /** decimal, e.g. 0.142 = 14.2% p.a. (priced holdings only) */
-  xirr: number | null;
-  asOf: string | null; // latest NAV date seen across holdings
-  holdings: SchemeHolding[];
-  /** schemes (with units) that had NO live NAV — valuation coverage gap. */
-  unpricedSchemes: number;
-};
-
-type TxRow = {
-  scheme_code: string | null;
-  scheme_name: string | null;
-  amc_name: string | null;
-  folio_number: string | null;
-  direction: string | null;
-  type: string | null;
-  amount: string | null;
-  units: string | null;
-  order_date: string | null;
-  latest_nav: string | null;
-  latest_nav_date: string | null;
-};
-
-const COMPLETED = ["processed", "successful"];
-
-/**
- * Value one investor's whole book. Returns zeroed totals (not null) when the
- * investor has no completed transactions, so callers can render confidently.
- */
-export async function valueInvestor(
-  tx: Tx,
-  investorId: string
-): Promise<InvestorValuation> {
-  const res = await tx.execute(sql`
-    SELECT t.scheme_code, t.scheme_name, t.amc_name, t.folio_number,
-           t.direction, t.type, t.amount, t.units, t.order_date,
-           n.nav AS latest_nav, n.nav_date AS latest_nav_date
-    FROM transactions t
-    LEFT JOIN scheme_nav n ON n.scheme_code = t.scheme_code
-    WHERE t.investor_id = ${investorId}
-      AND t.status IN ('processed', 'successful')
-      AND t.order_date IS NOT NULL
-    ORDER BY t.order_date ASC
-  `);
-  const rows = res.rows as unknown as TxRow[];
-
-  // Per-scheme dated cashflows (for per-holding XIRR) and inflow-type tracking
-  // (for the SIP / Lumpsum label), keyed the same way as the holding map.
-  const flowsByKey = new Map<string, CashFlow[]>();
-  const typesByKey = new Map<string, { sip: boolean; lumpsum: boolean }>();
-
-  // Pass 1 — aggregate per scheme, and stash each transaction's cashflow
-  // candidate tagged with its scheme key (so XIRR can later include only the
-  // cashflows of schemes we can actually price).
-  const bySchemeKey = new Map<string, SchemeHolding>();
-  const flowCandidates: Array<{ key: string; date: Date; amount: number }> = [];
-  let latestNavDate: string | null = null;
-
-  // Running average-cost lot tracker per scheme (for realised gain), and a
-  // units-weighted holding-age accumulator (for avg days). Rows are ordered by
-  // order_date ASC, so the running avg cost is correct at each redemption.
-  const costTrackByKey = new Map<string, { boughtUnits: number; boughtCost: number }>();
-  const ageByKey = new Map<string, { unitsSum: number; dayUnitsSum: number }>();
-  const now = new Date();
-
-  for (const r of rows) {
-    const key = r.scheme_code ?? r.scheme_name ?? "unknown";
-    const amount = r.amount != null ? Number(r.amount) : 0;
-    const units = r.units != null ? Number(r.units) : 0;
-    const isInflow = r.direction === "inflow"; // money/units INTO the holding (buy)
-    const isDividend = !isInflow && !!r.type && /dividend/i.test(r.type); // payout, not a unit redemption
-
-    if (r.order_date && isFinite(amount) && amount !== 0) {
-      // buy = money out (−), sell/payout = money in (+).
-      const flow = { date: new Date(r.order_date), amount: isInflow ? -amount : amount };
-      flowCandidates.push({ key, ...flow });
-      const existing = flowsByKey.get(key);
-      if (existing) existing.push(flow);
-      else flowsByKey.set(key, [flow]);
-    }
-
-    // Track how each holding was funded (inflows only): SIP vs lumpsum.
-    if (isInflow) {
-      const t = typesByKey.get(key) ?? { sip: false, lumpsum: false };
-      if (r.type === "sip") t.sip = true;
-      else t.lumpsum = true; // lumpsum / switch / stp inflows all count as lumpsum
-      typesByKey.set(key, t);
-    }
-
-    let h = bySchemeKey.get(key);
-    if (!h) {
-      const latestNav = r.latest_nav != null ? Number(r.latest_nav) : null;
-      h = {
-        schemeCode: r.scheme_code,
-        schemeName: r.scheme_name,
-        amcName: r.amc_name,
-        folioNumber: r.folio_number ?? null,
-        folioNumbers: [],
-        netUnits: 0,
-        investedNet: 0,
-        latestNav: latestNav != null && isFinite(latestNav) ? latestNav : null,
-        navDate: r.latest_nav_date ?? null,
-        currentValue: null,
-        gain: null,
-        xirr: null,
-        kind: null,
-        priced: false,
-        startDate: null,
-        avgDays: null,
-        realisedGain: 0,
-        dividend: 0,
-        hasTxns: true,
-      };
-      bySchemeKey.set(key, h);
-    }
-    if (r.folio_number && !h.folioNumbers.includes(r.folio_number)) {
-      h.folioNumbers.push(r.folio_number);
-      if (!h.folioNumber) h.folioNumber = r.folio_number;
-    }
-
-    // First-purchase date (rows are ASC, so the first inflow we see is earliest).
-    if (isInflow && r.order_date && !h.startDate) h.startDate = r.order_date;
-
-    if (isDividend) {
-      // Dividend payout — money to the investor, no unit movement.
-      h.dividend = (h.dividend ?? 0) + Math.abs(amount);
-    } else if (isInflow) {
-      // Buy — add to the average-cost lot + units-weighted age accumulator.
-      const ct = costTrackByKey.get(key) ?? { boughtUnits: 0, boughtCost: 0 };
-      ct.boughtUnits += units;
-      ct.boughtCost += amount;
-      costTrackByKey.set(key, ct);
-      if (r.order_date && units > 0) {
-        const age = ageByKey.get(key) ?? { unitsSum: 0, dayUnitsSum: 0 };
-        age.unitsSum += units;
-        age.dayUnitsSum += units * daysBetween(new Date(r.order_date), now);
-        ageByKey.set(key, age);
-      }
-    } else if (units > 0) {
-      // Redemption / switch-out — book realised gain at the running average cost.
-      const ct = costTrackByKey.get(key);
-      if (ct && ct.boughtUnits > 0) {
-        const avgCost = ct.boughtCost / ct.boughtUnits;
-        const redeemed = Math.min(units, ct.boughtUnits);
-        h.realisedGain = (h.realisedGain ?? 0) + (amount - avgCost * redeemed);
-        ct.boughtUnits -= redeemed;
-        ct.boughtCost -= avgCost * redeemed;
-      }
-    }
-
-    h.netUnits += isInflow ? units : -units;
-    h.investedNet += isInflow ? amount : -amount;
-    if (r.latest_nav_date && (!latestNavDate || r.latest_nav_date > latestNavDate)) {
-      latestNavDate = r.latest_nav_date;
-    }
-  }
-
-  // Pass 2 — finalise per-scheme value + split totals into priced vs unpriced.
-  let currentValue = 0;
-  let investedNet = 0;
-  let pricedInvested = 0;
-  let unpricedInvested = 0;
-  let unpricedSchemes = 0;
-  const pricedKeys = new Set<string>();
-  const holdings: SchemeHolding[] = [];
-
-  for (const [key, h] of bySchemeKey.entries()) {
-    if (Math.abs(h.netUnits) < 0.0005) h.netUnits = 0; // dust → fully redeemed
-    investedNet += h.investedNet;
-
-    // SIP / Lumpsum / Mixed label from the inflow types we saw.
-    const t = typesByKey.get(key);
-    h.kind = t ? (t.sip && t.lumpsum ? "mixed" : t.sip ? "sip" : "lumpsum") : null;
-
-    // Units-weighted average holding period.
-    const age = ageByKey.get(key);
-    h.avgDays = age && age.unitsSum > 0 ? age.dayUnitsSum / age.unitsSum : null;
-
-    if (h.latestNav != null && h.netUnits > 0) {
-      h.priced = true;
-      h.currentValue = h.netUnits * h.latestNav;
-      h.gain = h.currentValue - h.investedNet;
-      currentValue += h.currentValue;
-      pricedInvested += h.investedNet;
-      pricedKeys.add(key);
-
-      // Per-holding XIRR: this scheme's dated cashflows + today's market value.
-      const flows = [...(flowsByKey.get(key) ?? []), { date: new Date(), amount: h.currentValue }];
-      h.xirr = xirr(flows);
-    } else if (h.netUnits > 0) {
-      unpricedSchemes++;
-      unpricedInvested += h.investedNet;
-    }
-    holdings.push(h);
-  }
-
-  // Market value from PRICED TRANSACTION holdings only — the basis for XIRR
-  // (folio-import holdings added below have no cashflow history, so including
-  // their value in XIRR would fabricate a return from money that never flowed).
-  const txnPricedValue = currentValue;
-
-  // ── Pass 3 — holdings imported via the RTA folio-master / holdings feed ──────
-  // `folios.schemes` carries units/NAV/value straight from the registrar. Surface
-  // any scheme with NO transaction coverage so imported holdings show up on the
-  // profile (and roll into AUM) even when a firm has only uploaded the folio
-  // master, not the transaction feed. Cost basis is unknown, so invested is set
-  // equal to current value (gain 0) — these never invent a gain — and they're
-  // kept out of XIRR (above).
-  const txnKeys = new Set(bySchemeKey.keys());
-  const folioRes = await tx.execute(sql`
-    SELECT f.folio_number, f.amc_name, sc AS scheme
-    FROM folios f, LATERAL jsonb_array_elements(COALESCE(f.schemes, '[]'::jsonb)) AS sc
-    WHERE f.investor_id = ${investorId}
-  `);
-  const folioByKey = new Map<string, SchemeHolding>();
-  for (const fr of folioRes.rows as any[]) {
-    const sc = (fr.scheme ?? {}) as any;
-    const schemeCode = sc.schemeCode ?? null;
-    const schemeName = sc.schemeName ?? null;
-    const key = (schemeCode ?? schemeName) as string | null;
-    if (!key || txnKeys.has(key)) continue; // covered by a transaction → no double-count
-    const units = Number(sc.units ?? 0) || 0;
-    const nav = sc.nav != null && isFinite(Number(sc.nav)) ? Number(sc.nav) : null;
-    let value = sc.value != null && isFinite(Number(sc.value)) ? Number(sc.value) : null;
-    if (value == null && nav != null && units > 0) value = units * nav;
-    if (!((value ?? 0) > 0) && !(units > 0)) continue; // nothing to show
-    let h = folioByKey.get(key);
-    if (!h) {
-      h = {
-        schemeCode, schemeName, amcName: fr.amc_name ?? null,
-        folioNumber: fr.folio_number ?? null, folioNumbers: [],
-        netUnits: 0, investedNet: 0, latestNav: nav, navDate: null,
-        currentValue: 0, gain: null, xirr: null, kind: null, priced: false,
-        startDate: null, avgDays: null, realisedGain: null, dividend: null, hasTxns: false,
-      };
-      folioByKey.set(key, h);
-    }
-    h.netUnits += units;
-    if (value != null) h.currentValue = (h.currentValue ?? 0) + value;
-    if (fr.folio_number && !h.folioNumbers.includes(fr.folio_number)) {
-      h.folioNumbers.push(fr.folio_number);
-      if (!h.folioNumber) h.folioNumber = fr.folio_number;
-    }
-  }
-  for (const h of folioByKey.values()) {
-    const cv = h.currentValue ?? 0;
-    if (cv > 0) {
-      h.priced = true;
-      h.investedNet = cv;   // cost unknown → invested = current value (gain 0)
-      currentValue += cv;
-      investedNet += cv;
-      pricedInvested += cv;
-    }
-    holdings.push(h);
-  }
-
-  // XIRR over PRICED holdings only: their dated cashflows + today's market value
-  // (transaction-priced value only — folio-import holdings have no cashflows).
-  const cashflows: CashFlow[] = flowCandidates
-    .filter((f) => pricedKeys.has(f.key))
-    .map((f) => ({ date: f.date, amount: f.amount }));
-  if (txnPricedValue > 0) cashflows.push({ date: new Date(), amount: txnPricedValue });
-
-  const irr = xirr(cashflows);
-  const abs = absoluteReturn(pricedInvested, currentValue);
-
-  return {
-    currentValue,
-    investedNet,
-    pricedInvested,
-    unpricedInvested,
-    gain: currentValue - pricedInvested,
-    absoluteReturn: abs,
-    xirr: irr,
-    asOf: latestNavDate,
-    holdings: holdings.sort((a, b) => (b.currentValue ?? 0) - (a.currentValue ?? 0)),
-    unpricedSchemes,
+  /** Lifetime purchases less redemptions/payouts; null if history is incomplete. */
+  investedNet: number | null;
+  pricedInvested: number | null; unpricedInvested: number;
+  /** Lifetime account gain, including fully redeemed holdings. */
+  gain: number | null; absoluteReturn: number | null; xirr: number | null;
+  asOf: string | null; holdings: SchemeHolding[]; unpricedSchemes: number;
+  dataQuality: {
+    pricedHoldings: number; openHoldings: number; unknownCostHoldings: number;
+    unknownCostValue: number; incompleteHistoryHoldings: number;
+    undatedPrices: number; oldestNavDate: string | null;
+    unmatchedRedemptionUnits: number; closedPositions: number;
   };
+};
+export type ValuationTransaction = PositionIdentity & {
+  direction: string | null; type: string | null; amount: string | number | null;
+  units: string | number | null; order_date: string | null;
+  latest_nav: string | number | null; latest_nav_date: string | null;
+};
+type SnapshotScheme = {
+  schemeCode?: string | null; schemeName?: string | null; units?: number | string;
+  nav?: number | string; value?: number | string; navDate?: string | null;
+  asOf?: string | null; snapshotDate?: string | null;
+};
+export type ValuationSnapshot = PositionIdentity & {
+  scheme: SnapshotScheme; latest_nav?: number | string | null; latest_nav_date?: string | null;
+  snapshot_date?: string | null;
+};
+const finite = (v: unknown): number | null => {
+  if (v == null || v === "") return null;
+  const n = Number(v); return Number.isFinite(n) ? n : null;
+};
+const positive = (v: unknown) => { const n = finite(v); return n != null && n > 0 ? n : null; };
+const dateOnly = (v?: string | null) => v && /^\d{4}-\d{2}-\d{2}/.test(String(v)) ? String(v).slice(0, 10) : null;
+const DUST = 0.0005;
+
+/** Two bulk reads for a batch, always inside the caller's withTenant transaction. */
+export async function loadValuationRows(tx: Tx, investorIds: string[]) {
+  if (investorIds.length === 0) return { transactions: [], snapshots: [] };
+  const ids = sql.join(investorIds.map((id) => sql`${id}::uuid`), sql`, `);
+  const transactions = (await tx.execute(sql`
+    SELECT t.investor_id, COALESCE(f.id, t.folio_id) AS folio_id,
+           COALESCE(f.folio_number, t.folio_number) AS folio_number,
+           COALESCE(f.amc_code, t.amc_code) AS amc_code,
+           COALESCE(f.amc_name, t.amc_name) AS amc_name,
+           t.scheme_code, t.scheme_name, t.direction, t.type, t.amount, t.units,
+           t.order_date, n.nav AS latest_nav, n.nav_date AS latest_nav_date
+    FROM transactions t
+    LEFT JOIN folios f ON f.tenant_id = t.tenant_id AND
+      (f.id = t.folio_id OR (t.folio_id IS NULL AND f.investor_id = t.investor_id
+        AND f.amc_code = t.amc_code AND f.folio_number = t.folio_number))
+    LEFT JOIN scheme_nav n ON n.scheme_code = t.scheme_code
+    WHERE t.investor_id IN (${ids}) AND t.status IN ('processed', 'successful')
+      AND t.order_date IS NOT NULL
+    ORDER BY t.order_date, t.id
+  `)).rows as unknown as ValuationTransaction[];
+  const snapshots = (await tx.execute(sql`
+    SELECT f.investor_id, f.id AS folio_id, f.folio_number, f.amc_code, f.amc_name,
+           sc AS scheme, n.nav AS latest_nav, n.nav_date AS latest_nav_date,
+           COALESCE(sc->>'snapshotDate', f.details->>'holdingsAsOf') AS snapshot_date
+    FROM folios f CROSS JOIN LATERAL jsonb_array_elements(COALESCE(f.schemes, '[]'::jsonb)) AS sc
+    LEFT JOIN scheme_nav n ON n.scheme_code = sc->>'schemeCode'
+    WHERE f.investor_id IN (${ids})
+  `)).rows as unknown as ValuationSnapshot[];
+  return { transactions, snapshots };
+}
+export async function valueInvestor(tx: Tx, investorId: string): Promise<InvestorValuation> {
+  const rows = await loadValuationRows(tx, [investorId]);
+  return computeInvestorValuation(rows.transactions, rows.snapshots);
 }
 
-/**
- * Short-TTL in-memory cache over valueInvestor. NAV moves once a day, yet the
- * computation (full transaction scan + Newton-Raphson XIRR) reran on EVERY
- * call — including every anonymous open of a shared public portfolio link. This
- * caches by investorId (globally-unique UUID, so no cross-tenant key collision)
- * for VALUATION_CACHE_TTL_MS (default 10 min), collapsing repeat hits to one
- * computation. Set VALUATION_CACHE_TTL_MS=0 to disable.
- */
-const _valuationCache = new Map<string, { at: number; data: InvestorValuation }>();
+/** Pure accounting engine; rows from the loader are in stable chronological order. */
+export function computeInvestorValuation(rows: ValuationTransaction[], snapshots: ValuationSnapshot[], now = new Date()): InvestorValuation {
+  type Ledger = { holding: SchemeHolding; flows: CashFlow[]; rows: ValuationTransaction[];
+    bought: number; net: number; cost: number; costUnits: number; missing: number; sip: boolean; lump: boolean };
+  const positions = new Map<string, Ledger>();
+  const makeHolding = (r: PositionIdentity): SchemeHolding => ({
+    schemeCode: r.scheme_code ?? null, schemeName: r.scheme_name ?? null, amcName: r.amc_name ?? null,
+    folioNumber: r.folio_number ?? null, folioNumbers: r.folio_number ? [r.folio_number] : [], folioId: r.folio_id ?? null,
+    netUnits: 0, investedNet: null, latestNav: null, navDate: null, currentValue: null,
+    gain: null, xirr: null, kind: null, priced: false, startDate: null, avgDays: null,
+    realisedGain: null, dividend: null, hasTxns: false, historyCoverage: "snapshot_only", snapshotDate: null,
+  });
+  for (const r of rows) {
+    const key = positionKey(r);
+    let p = positions.get(key);
+    if (!p) {
+      const h = makeHolding(r); h.hasTxns = true; h.historyCoverage = "ledger"; h.realisedGain = 0; h.dividend = 0;
+      p = { holding: h, flows: [], rows: [], bought: 0, net: 0, cost: 0, costUnits: 0, missing: 0, sip: false, lump: false };
+      positions.set(key, p);
+    }
+    p.rows.push(r);
+    const h = p.holding;
+    const amount = Math.abs(finite(r.amount) ?? 0), units = Math.abs(finite(r.units) ?? 0);
+    const buy = r.direction === "inflow", dividend = r.type === "dividend_payout";
+    if (!buy && r.direction !== "outflow") h.historyCoverage = "incomplete";
+    const date = dateOnly(r.order_date);
+    if (date && amount > 0) p.flows.push({ date: new Date(date), amount: buy ? -amount : amount });
+    p.net += buy ? amount : -amount;
+    if (dividend) h.dividend = (h.dividend ?? 0) + amount;
+    else if (buy) {
+      p.bought += amount; p.cost += amount; p.costUnits += units; h.netUnits += units;
+      if (units > 0 && amount <= 0) h.historyCoverage = "incomplete";
+      if (!h.startDate) h.startDate = date;
+      if (r.type === "sip") p.sip = true; else p.lump = true;
+    } else {
+      const matched = Math.min(units, p.costUnits), avg = p.costUnits > 0 ? p.cost / p.costUnits : 0;
+      h.realisedGain = (h.realisedGain ?? 0) + (units > 0 ? amount * matched / units : 0) - avg * matched;
+      p.cost -= avg * matched; p.costUnits -= matched; h.netUnits -= units;
+      p.missing += units - matched;
+      if (units - matched > DUST) h.historyCoverage = "incomplete";
+    }
+    if (positive(r.latest_nav) != null) { h.latestNav = positive(r.latest_nav); h.navDate = dateOnly(r.latest_nav_date); }
+    h.kind = p.sip && p.lump ? "mixed" : p.sip ? "sip" : p.lump ? "lumpsum" : null;
+  }
+  // Sum ARN legs within their own folio and scheme. Another folio never suppresses them.
+  const snapshotByKey = new Map<string, { holding: SchemeHolding; value: number; units: number; hasValue: boolean }>();
+  for (const r of snapshots) {
+    const sc = r.scheme ?? {}, identity = { ...r, scheme_code: sc.schemeCode, scheme_name: sc.schemeName };
+    if (!sc.schemeCode && !sc.schemeName) continue;
+    const key = positionKey(identity), units = finite(sc.units) ?? 0;
+    const nav = positive(r.latest_nav) ?? positive(sc.nav);
+    const value = nav != null && finite(sc.units) != null ? units * nav : finite(sc.value);
+    if (units < 0 || (units <= DUST && (value ?? 0) <= 0)) continue;
+    let s = snapshotByKey.get(key);
+    if (!s) { s = { holding: makeHolding(identity), value: 0, units: 0, hasValue: true }; snapshotByKey.set(key, s); }
+    s.units += units; s.value += value ?? 0; s.hasValue &&= value != null;
+    s.holding.latestNav = nav;
+    s.holding.navDate = positive(r.latest_nav) != null ? dateOnly(r.latest_nav_date) : dateOnly(sc.navDate ?? sc.asOf);
+    s.holding.snapshotDate = dateOnly(r.snapshot_date ?? sc.snapshotDate);
+  }
+  const holdings: SchemeHolding[] = [];
+  const quality: InvestorValuation["dataQuality"] = { pricedHoldings: 0, openHoldings: 0, unknownCostHoldings: 0,
+    unknownCostValue: 0, incompleteHistoryHoldings: 0, undatedPrices: 0, oldestNavDate: null,
+    unmatchedRedemptionUnits: 0, closedPositions: 0 };
+  let currentValue = 0, unpricedSchemes = 0, unpricedInvested = 0, net = 0, pricedNet = 0, bought = 0, latest: string | null = null;
+  let complete = true;
+  const flows: CashFlow[] = [];
+  for (const key of new Set([...positions.keys(), ...snapshotByKey.keys()])) {
+    const p = positions.get(key), s = snapshotByKey.get(key), h = p?.holding ?? s!.holding;
+    let snapshotUnits = s?.units ?? 0;
+    // Dated snapshots establish an opening balance; later ledger movements advance it.
+    if (s?.holding.snapshotDate) for (const r of p?.rows ?? []) {
+      if (r.order_date && r.order_date > s.holding.snapshotDate && r.type !== "dividend_payout") {
+        snapshotUnits += (r.direction === "inflow" ? 1 : -1) * Math.abs(finite(r.units) ?? 0);
+      }
+    }
+    const snapshotWins = !!s && (!p || Math.abs(h.netUnits - snapshotUnits) > DUST);
+    if (s) h.snapshotDate = s.holding.snapshotDate;
+    if (snapshotWins && s) {
+      h.netUnits = snapshotUnits; h.latestNav = s.holding.latestNav; h.navDate = s.holding.navDate;
+      h.currentValue = h.latestNav != null ? Math.max(0, snapshotUnits) * h.latestNav : s.hasValue ? s.value : null;
+      h.historyCoverage = p ? "incomplete" : "snapshot_only";
+    } else {
+      if (Math.abs(h.netUnits) <= DUST) h.netUnits = 0;
+      h.currentValue = h.netUnits === 0 ? 0 : h.latestNav != null && h.netUnits > 0 ? h.netUnits * h.latestNav : null;
+    }
+    if (h.netUnits < -DUST) h.historyCoverage = "incomplete";
+    const known = h.historyCoverage === "ledger";
+    h.investedNet = known && p ? Math.max(0, p.cost) : null;
+    h.gain = known && h.currentValue != null ? h.currentValue - (h.investedNet ?? 0) : null;
+    if (!known) { h.realisedGain = null; quality.unknownCostHoldings++; quality.unknownCostValue += h.currentValue ?? 0; complete = false; }
+    if (h.historyCoverage === "incomplete") quality.incompleteHistoryHoldings++;
+    quality.unmatchedRedemptionUnits += p?.missing ?? 0;
+    h.priced = h.currentValue != null && (h.netUnits > DUST || h.currentValue > 0);
+    if (h.netUnits > DUST || (h.currentValue ?? 0) > 0) {
+      quality.openHoldings++;
+      if (h.priced) {
+        quality.pricedHoldings++;
+        if (!h.navDate) quality.undatedPrices++;
+        else { if (!latest || h.navDate > latest) latest = h.navDate; if (!quality.oldestNavDate || h.navDate < quality.oldestNavDate) quality.oldestNavDate = h.navDate; }
+      } else { unpricedSchemes++; unpricedInvested += h.investedNet ?? 0; complete = false; }
+    } else if (p) quality.closedPositions++;
+    currentValue += h.currentValue ?? 0;
+    if (known && p) {
+      net += p.net;
+      if (h.currentValue != null) {
+        pricedNet += p.net; bought += p.bought; flows.push(...p.flows);
+        h.xirr = xirr([...p.flows, ...(h.currentValue > 0 ? [{ date: now, amount: h.currentValue }] : [])]);
+      }
+    }
+    holdings.push(h);
+  }
+  const gain = complete ? currentValue - pricedNet : null;
+  return { currentValue, investedNet: complete ? net : null, pricedInvested: complete ? pricedNet : null,
+    unpricedInvested, gain, absoluteReturn: gain != null && bought > 0 ? gain / bought : null,
+    xirr: complete ? xirr([...flows, ...(currentValue > 0 ? [{ date: now, amount: currentValue }] : [])]) : null,
+    asOf: latest, holdings: holdings.sort((a, b) => (b.currentValue ?? 0) - (a.currentValue ?? 0)), unpricedSchemes, dataQuality: quality };
+}
+const valuationCache = new Map<string, { at: number; data: InvestorValuation }>();
 const VALUATION_TTL = Number(process.env.VALUATION_CACHE_TTL_MS ?? 600_000);
-
+export function invalidateInvestorValuation(investorId: string) { valuationCache.delete(investorId); }
 export async function valueInvestorCached(tx: Tx, investorId: string, now = Date.now()): Promise<InvestorValuation> {
   if (VALUATION_TTL <= 0) return valueInvestor(tx, investorId);
-  const hit = _valuationCache.get(investorId);
+  const hit = valuationCache.get(investorId);
   if (hit && now - hit.at < VALUATION_TTL) return hit.data;
   const data = await valueInvestor(tx, investorId);
-  _valuationCache.set(investorId, { at: now, data });
-  // Bound memory: evict the oldest entries if the map grows large.
-  if (_valuationCache.size > 5000) {
-    const cutoff = now - VALUATION_TTL;
-    for (const [k, v] of _valuationCache) if (v.at < cutoff) _valuationCache.delete(k);
-  }
+  valuationCache.set(investorId, { at: now, data });
+  if (valuationCache.size > 5000) { const oldest = valuationCache.keys().next().value; if (oldest) valuationCache.delete(oldest); }
   return data;
 }

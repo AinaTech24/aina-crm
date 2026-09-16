@@ -77,14 +77,14 @@ export function TaskAttachments({ taskId }: { taskId: string }) {
   return (
     <div className="space-y-2.5">
       <div className="flex items-center justify-between">
-        <h4 className="text-[10px] uppercase font-bold text-slate-500 flex items-center gap-1.5">
+        <h4 className="text-2xs uppercase font-bold text-slate-500 flex items-center gap-1.5">
           <Paperclip className="size-3.5" /> Attachments
         </h4>
         <button
           type="button"
           onClick={() => fileRef.current?.click()}
           disabled={uploading}
-          className="btn-secondary text-[11px] px-2 py-1 flex items-center gap-1.5"
+          className="btn-secondary text-2xs px-2 py-1 flex items-center gap-1.5"
         >
           {uploading ? <Loader2 className="size-3 animate-spin" /> : <Upload className="size-3" />} Upload
         </button>
@@ -97,11 +97,11 @@ export function TaskAttachments({ taskId }: { taskId: string }) {
       </div>
 
       {items == null ? (
-        <div className="flex items-center gap-2 text-[11px] text-muted-foreground py-1">
+        <div className="flex items-center gap-2 text-2xs text-muted-foreground py-1">
           <Loader2 className="size-3.5 animate-spin" /> Loading…
         </div>
       ) : items.length === 0 ? (
-        <div className="text-[11px] text-muted-foreground">No files attached. Max 25 MB per file.</div>
+        <div className="text-2xs text-muted-foreground">No files attached. Max 25 MB per file.</div>
       ) : (
         <ul className="space-y-1.5">
           {items.map((a) => (
@@ -109,7 +109,7 @@ export function TaskAttachments({ taskId }: { taskId: string }) {
               <Paperclip className="size-3.5 text-slate-400 shrink-0" />
               <div className="min-w-0 flex-1">
                 <div className="text-xs font-medium text-slate-700 truncate">{a.fileName}</div>
-                <div className="text-[10px] text-slate-400">{fmtSize(a.sizeBytes)}{a.uploaderName ? ` · ${a.uploaderName}` : ""}</div>
+                <div className="text-2xs text-slate-400">{fmtSize(a.sizeBytes)}{a.uploaderName ? ` · ${a.uploaderName}` : ""}</div>
               </div>
               <DownloadButton
                 url={`/api/tasks/${taskId}/attachments/${a.id}/download`}

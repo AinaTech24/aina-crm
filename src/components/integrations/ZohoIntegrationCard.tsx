@@ -7,6 +7,7 @@ import { useToast } from "@/components/ui/Toast";
 import { PasswordInput } from "@/components/ui/PasswordInput";
 import { SelectField } from "@/components/ui/SelectField";
 import { NavButton } from "@/components/common/SecureLinkButtons";
+import { confirmDialog } from "@/components/ui/ConfirmProvider";
 
 const DATA_CENTERS = [
   { value: "in", label: "India (zoho.in)" },
@@ -115,7 +116,7 @@ export function ZohoIntegrationCard() {
   }
 
   async function disconnect() {
-    if (!confirm("Disconnect Zoho? Syncing stops; your Zoho records and saved credentials are kept.")) return;
+    if (!(await confirmDialog({ title: "Disconnect Zoho?", message: "Syncing stops; your Zoho records and saved credentials are kept.", confirmLabel: "Disconnect", tone: "danger" }))) return;
     setBusy(true);
     try {
       const r = await fetch("/api/integrations/zoho/disconnect", { method: "POST" });
@@ -138,13 +139,13 @@ export function ZohoIntegrationCard() {
   const statusChip = loading ? (
     <Loader2 className="size-4 animate-spin text-muted-foreground" />
   ) : status?.connected ? (
-    <span className="chip text-[11px] bg-emerald-50 text-emerald-700 border border-emerald-200 inline-flex items-center gap-1">
+    <span className="chip text-2xs bg-emerald-50 text-emerald-700 border border-emerald-200 inline-flex items-center gap-1">
       <CheckCircle2 className="size-3" /> Connected
     </span>
   ) : status?.hasCredentials ? (
-    <span className="chip text-[11px] bg-amber-50 text-amber-700 border border-amber-200">Awaiting authentication</span>
+    <span className="chip text-2xs bg-amber-50 text-amber-700 border border-amber-200">Awaiting authentication</span>
   ) : (
-    <span className="chip text-[11px] bg-secondary text-muted-foreground border border-border">Not connected</span>
+    <span className="chip text-2xs bg-secondary text-muted-foreground border border-border">Not connected</span>
   );
 
   return (
@@ -168,7 +169,7 @@ export function ZohoIntegrationCard() {
           Synced modules ({SYNCED_MODULES.length}) &amp; Zoho setup
         </summary>
         <div className="px-3 pb-3 space-y-2">
-          <p className="text-[11px] text-muted-foreground leading-relaxed">
+          <p className="text-2xs text-muted-foreground leading-relaxed">
             Each module below pushes to the named Zoho module. <strong>Native</strong> modules already exist; the
             others are <strong>custom modules you create</strong> in Zoho (Setup → Modules and Fields → New Module)
             using the exact API name shown. Add a single-line{" "}
@@ -181,7 +182,7 @@ export function ZohoIntegrationCard() {
             {SYNCED_MODULES.map((m) => (
               <li key={m.zoho} className="flex items-center justify-between gap-2">
                 <span>{m.label}</span>
-                <span className="text-[10px] text-muted-foreground font-mono">
+                <span className="text-2xs text-muted-foreground font-mono">
                   {m.zoho}
                   {m.native ? "" : " · custom"}
                 </span>
@@ -209,7 +210,7 @@ export function ZohoIntegrationCard() {
             <button onClick={() => setMode("edit")} className="btn-ghost text-xs">
               <KeyRound className="size-3.5" /> Edit credentials
             </button>
-            {status.dataCenter && <span className="text-[11px] text-muted-foreground ml-auto">DC: {status.dataCenter.toUpperCase()}</span>}
+            {status.dataCenter && <span className="text-2xs text-muted-foreground ml-auto">DC: {status.dataCenter.toUpperCase()}</span>}
           </div>
         </>
       )}
@@ -246,7 +247,7 @@ export function ZohoIntegrationCard() {
           <div>
             <label className="text-xs font-medium text-muted-foreground">Authorized redirect URL (paste this into your Zoho app)</label>
             <div className="mt-1 flex items-center gap-2">
-              <code className="flex-1 text-[11px] bg-secondary rounded-md px-2.5 py-1.5 break-all">{redirectUri}</code>
+              <code className="flex-1 text-2xs bg-secondary rounded-md px-2.5 py-1.5 break-all">{redirectUri}</code>
               <button type="button" onClick={copyRedirect} className="btn-ghost text-xs shrink-0" title="Copy">
                 <Copy className="size-3.5" />
               </button>
@@ -287,7 +288,7 @@ export function ZohoIntegrationCard() {
             />
           </div>
 
-          <div className="text-[11px] text-muted-foreground leading-relaxed rounded-lg border border-border bg-secondary/40 px-3 py-2 inline-flex items-start gap-2">
+          <div className="text-2xs text-muted-foreground leading-relaxed rounded-lg border border-border bg-secondary/40 px-3 py-2 inline-flex items-start gap-2">
             <AlertCircle className="size-3.5 mt-0.5 shrink-0" />
             In Zoho, add a single-line custom field named <code className="px-1 rounded bg-secondary">Aina_Record_ID</code> to
             every synced module — see the <strong>Synced modules</strong> list above. That&rsquo;s what stops the sync from
@@ -315,7 +316,7 @@ function Stat({ label, value, tone }: { label: string; value: number; tone: "eme
   return (
     <div className="rounded-lg border border-border bg-card py-2">
       <div className={`text-lg font-bold tabular-nums ${color}`}>{value}</div>
-      <div className="text-[10px] text-muted-foreground">{label}</div>
+      <div className="text-2xs text-muted-foreground">{label}</div>
     </div>
   );
 }

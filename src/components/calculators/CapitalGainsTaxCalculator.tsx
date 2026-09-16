@@ -79,7 +79,7 @@ export function CapitalGainsTaxCalculator() {
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         <label className="block">
-          <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium block mb-1">Asset type</span>
+          <span className="text-2xs uppercase tracking-wide text-muted-foreground font-medium block mb-1">Asset type</span>
           <select value={assetType} onChange={(e) => setAssetType(e.target.value as AssetType)} className="input-base text-sm w-full">
             {ASSET_TYPES.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
           </select>
@@ -96,18 +96,18 @@ export function CapitalGainsTaxCalculator() {
 
       {/* Improvements */}
       <div>
-        <div className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium mb-1.5">Cost of improvement (by financial year)</div>
+        <div className="text-2xs uppercase tracking-wide text-muted-foreground font-medium mb-1.5">Cost of improvement (by financial year)</div>
         <div className="space-y-2">
           {improvements.map((im, i) => (
             <div key={i} className="flex items-end gap-2">
               <label className="block">
-                <span className="text-[10px] text-muted-foreground block mb-0.5">Financial year</span>
+                <span className="text-2xs text-muted-foreground block mb-0.5">Financial year</span>
                 <select value={im.fyStartYear} onChange={(e) => setImp(i, { fyStartYear: Number(e.target.value) })} className="input-base text-sm w-32">
                   {FY_YEARS.map((y) => <option key={y} value={y}>{fyLabel(y)}</option>)}
                 </select>
               </label>
               <label className="block">
-                <span className="text-[10px] text-muted-foreground block mb-0.5">Cost of improvement (₹)</span>
+                <span className="text-2xs text-muted-foreground block mb-0.5">Cost of improvement (₹)</span>
                 <input type="number" step={50000} min={0} value={im.cost} onChange={(e) => setImp(i, { cost: clampNum(e.target.value) })} className="input-base text-sm w-40" />
               </label>
               <button type="button" onClick={() => removeImp(i)} className="text-rose-500 hover:text-rose-700 pb-1.5 print:hidden" aria-label="Remove improvement"><Trash2 className="size-4" /></button>

@@ -151,12 +151,12 @@ export default async function TemplateDetailPage({
                     <div className="flex justify-between items-center gap-1.5">
                       <span className="font-semibold text-xs text-slate-700">Version {v.versionNumber}</span>
                       {isActive && (
-                        <span className="text-[9px] bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded border border-emerald-200 font-bold uppercase tracking-wider">
+                        <span className="text-2xs bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded border border-emerald-200 font-bold uppercase tracking-wider">
                           Active
                         </span>
                       )}
                     </div>
-                    <div className="flex justify-between items-center mt-2 text-[10px]">
+                    <div className="flex justify-between items-center mt-2 text-2xs">
                       <span className={`px-1.5 py-0.5 rounded capitalize ${STATUS_COLORS[v.approvalStatus] ?? ""}`}>
                         {v.approvalStatus.replace(/_/g, " ").replace("approved ", "")}
                       </span>
@@ -196,7 +196,7 @@ export default async function TemplateDetailPage({
                           <div className="divide-y space-y-3">
                             {((ver.body as any).blocks as any[]).map((b, idx) => (
                               <div key={idx} className="pt-3 first:pt-0">
-                                <span className="text-[10px] text-slate-400 font-bold tracking-wider uppercase block mb-1">{b.type}</span>
+                                <span className="text-2xs text-slate-400 font-bold tracking-wider uppercase block mb-1">{b.type}</span>
                                 <p className="text-sm text-slate-800 whitespace-pre-line">{b.text || b.content || b.title || b.subtitle || b.html || b.label || "—"}</p>
                               </div>
                             ))}
@@ -279,7 +279,7 @@ export default async function TemplateDetailPage({
                     </li>
                   ))}
                 </ul>
-                <p className="text-[11px] text-muted-foreground mt-2">Auto-attached on every email send.</p>
+                <p className="text-2xs text-muted-foreground mt-2">Auto-attached on every email send.</p>
               </div>
             )}
 

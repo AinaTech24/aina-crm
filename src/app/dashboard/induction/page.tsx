@@ -50,7 +50,7 @@ export default async function InductionPage() {
       <div className="max-w-3xl mx-auto">
         <div className="card-surface p-12 text-center">
           <div className="mx-auto size-12 rounded-full bg-brand-cyan-light/40 flex items-center justify-center mb-3">
-            <GraduationCap className="size-6 text-brand-cyan" />
+            <GraduationCap className="size-6 text-muted-foreground" />
           </div>
           <div className="text-sm font-semibold text-slate-700">No induction assigned</div>
           <p className="text-xs text-muted-foreground mt-1 max-w-md mx-auto">
@@ -68,12 +68,13 @@ export default async function InductionPage() {
   return (
     <div className="max-w-3xl mx-auto space-y-5">
       <div className="rounded-2xl border border-border bg-gradient-to-br from-brand-cyan-light/50 via-card to-card p-5 sm:p-6">
-        <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+        <h1 className="page-title">
           <span className="grid place-items-center size-9 rounded-xl bg-brand-cyan text-white shadow-sm">
             <GraduationCap className="size-5" />
           </span>
           {track.name}
         </h1>
+        <p className="page-subtitle mt-1">Your training modules, and the exam that unlocks full access.</p>
         {track.description && (
           <p className="text-muted-foreground text-sm mt-2">{track.description}</p>
         )}

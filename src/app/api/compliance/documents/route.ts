@@ -18,8 +18,9 @@ import { desc, sql, eq, and, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { require as requireCap, requireAny } from "@/lib/auth/rbac";
+import { require as requireCap } from "@/lib/auth/rbac";
 import { complianceDocuments } from "@/db/schema";
+import { canOpenVault, ownClientDocsOnly } from "@/lib/compliance/document-access";
 import { deleteObject } from "@/lib/storage/s3";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 
@@ -55,15 +56,17 @@ const CreateBody = z.object({
 export async function GET() {
   try {
     const session = await requireSession();
-    // The compliance vault holds DDQ, audit reports, complaints, empanelment
-    // and RIA docs — restrict reads to the compliance + back-office team
-    // (owner wins via can()). Previously any authenticated session could list it.
-    requireAny(session.roles, ["compliance.view", "kyc.manage"], session.permissions);
+    // The vault holds DDQ, audit reports, complaints, empanelment and RIA docs
+    // alongside client KYC. Compliance / back-office / owner read all of it; an
+    // RM or branch head reads only what is filed against their own clients.
+    // Previously any authenticated session could list the lot.
+    if (!canOpenVault(session)) throw Object.assign(new Error("forbidden: missing document.view"), { status: 403 });
+    const scope = ownClientDocsOnly(session);
     const rows = await withTenant(session.tenantId, async (tx) => {
       return tx
         .select()
         .from(complianceDocuments)
-        .where(isNull(complianceDocuments.supersededById))
+        .where(and(isNull(complianceDocuments.supersededById), scope))
         .orderBy(desc(complianceDocuments.createdAt));
     });
     return NextResponse.json({ documents: rows });

@@ -198,7 +198,7 @@ export function AuthScreen({
         </Link>
 
         <div key={`panel-${mode}`} className="auth-swap relative z-10 max-w-md">
-          <span className="inline-block text-[11px] font-bold uppercase tracking-[0.22em] text-white/80">
+          <span className="inline-block text-2xs font-bold uppercase tracking-[0.22em] text-white/80">
             {panel.eyebrow}
           </span>
           <h2 className="mt-4 text-[2.6rem] leading-[1.08] font-extrabold tracking-tight">
@@ -300,7 +300,7 @@ export function AuthScreen({
                     required
                   />
                 </FieldShell>
-                <p className="text-[11px] text-muted-foreground -mt-1">Lost your device? Enter one of your backup codes instead.</p>
+                <p className="text-2xs text-muted-foreground -mt-1">Lost your device? Enter one of your backup codes instead.</p>
                 <button disabled={busy} className="btn-primary w-full mt-2">
                   {busy ? <><Loader2 className="size-4 animate-spin" /> Verifying…</> : <><ShieldCheck className="size-4" /> Verify & sign in</>}
                 </button>
@@ -354,7 +354,7 @@ export function AuthScreen({
             </div>
 
             {mode === "signup" && (
-              <p className="mt-4 text-[11px] text-muted-foreground text-center leading-relaxed">
+              <p className="mt-4 text-2xs text-muted-foreground text-center leading-relaxed">
                 By creating a workspace you agree that mutual fund investments are subject to market risks; read all
                 scheme related documents carefully.
               </p>

@@ -90,14 +90,14 @@ export function NewDiscoveryDialog() {
 function Group({ label, icon: Icon, hits, type, create, creating }: { label: string; icon: any; hits: Hit[]; type: "lead" | "investor"; create: (t: "lead" | "investor", id: string) => void; creating: string | null }) {
   return (
     <div>
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1">{label}</div>
+      <div className="text-2xs uppercase tracking-wider text-muted-foreground font-semibold mb-1">{label}</div>
       <div className="space-y-1">
         {hits.map((h) => (
           <button key={h.id} onClick={() => create(type, h.id)} disabled={!!creating} className="w-full text-left rounded-md border border-border hover:border-brand-cyan/40 hover:bg-accent/40 px-3 py-2 flex items-center gap-2">
             <Icon className="size-4 text-muted-foreground flex-shrink-0" />
             <div className="min-w-0 flex-1">
               <div className="text-sm font-medium truncate">{h.name}</div>
-              <div className="text-[11px] text-muted-foreground truncate">{[h.pan, h.phone, h.email].filter(Boolean).join(" · ")}</div>
+              <div className="text-2xs text-muted-foreground truncate">{[h.pan, h.phone, h.email].filter(Boolean).join(" · ")}</div>
             </div>
             {creating === h.id && <Loader2 className="size-4 animate-spin" />}
           </button>

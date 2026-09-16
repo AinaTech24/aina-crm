@@ -210,7 +210,7 @@ export default async function ReferralRadarPage() {
           <h2 className="font-semibold text-sm flex items-center gap-2">
             <Radar className="size-4 text-emerald-600" /> Clients most likely to refer right now
           </h2>
-          <p className="text-[11px] text-muted-foreground mt-0.5">
+          <p className="text-2xs text-muted-foreground mt-0.5">
             Scored on active SIPs (+2), AUM at/above the firm median (+1), tenure ≥ 1 year (+1), referred
             before (+1). Clients asked in the last 90 days are hidden.
           </p>
@@ -246,7 +246,7 @@ export default async function ReferralRadarPage() {
                       <Link href={`/dashboard/investors/${r.id}`} className="font-medium hover:underline">
                         {r.name}
                       </Link>
-                      <div className="text-[10px] text-muted-foreground">
+                      <div className="text-2xs text-muted-foreground">
                         {r.rm_id ? data.rmMap.get(r.rm_id) ?? "—" : "—"}
                       </div>
                     </td>
@@ -257,7 +257,7 @@ export default async function ReferralRadarPage() {
                     <td className="py-2.5 text-right tabular-nums">{yrs.toFixed(1)} yrs</td>
                     <td className="py-2.5 pl-4">
                       {r.referred_before ? (
-                        <span className="chip border bg-emerald-50 text-emerald-700 border-emerald-200 text-[11px]">
+                        <span className="chip border bg-emerald-50 text-emerald-700 border-emerald-200 text-2xs">
                           Proven advocate
                         </span>
                       ) : (
@@ -291,7 +291,7 @@ export default async function ReferralRadarPage() {
           <h2 className="font-semibold text-sm flex items-center gap-2">
             <Trophy className="size-4 text-amber-500" /> Referral leaderboard
           </h2>
-          <p className="text-[11px] text-muted-foreground mt-0.5">
+          <p className="text-2xs text-muted-foreground mt-0.5">
             Clients who already sent business — thank them, and keep the flywheel spinning.
           </p>
         </div>
@@ -354,7 +354,7 @@ export default async function ReferralRadarPage() {
         )}
       </div>
 
-      <p className="text-[11px] text-muted-foreground italic">
+      <p className="text-2xs text-muted-foreground italic">
         The “Ask for referral” button creates a follow-up task for the client's RM with the happy-client
         signals attached — the client then disappears from this list for 90 days so nobody is over-asked.
       </p>
@@ -376,7 +376,7 @@ function Stat({
   return (
     <div className="kpi-card">
       <div className="flex items-center justify-between">
-        <span className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">{label}</span>
+        <span className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">{label}</span>
         <Icon className="size-3.5 text-muted-foreground" />
       </div>
       <div className={`text-2xl font-bold mt-1 tabular-nums ${tone === "emerald" ? "text-emerald-600" : "text-foreground"}`}>

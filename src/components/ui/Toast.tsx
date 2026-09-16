@@ -77,6 +77,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     [push, dismiss]
   );
 
+  // Publish for the imperative `notify` below — see its comment.
+  mountedApi = api;
+
   return (
     <ToastCtx.Provider value={api}>
       {children}
@@ -92,6 +95,35 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 /** Safe in any client component — falls back to a no-op if no provider mounted. */
 export function useToast(): ToastApi {
   return useContext(ToastCtx) ?? NOOP;
+}
+
+/**
+ * The mounted provider's api, published module-side.
+ *
+ * `useToast()` is the right call inside a component body, but most of the
+ * `alert()` sites this replaces live in plain async helpers and event handlers
+ * where a hook can't be called — which is why they stayed on `alert()`. This
+ * lets them report the same message as a toast without being restructured:
+ *
+ *   alert(j.error ?? "Save failed");        // before
+ *   notify.error(j.error ?? "Save failed"); // after
+ *
+ * Falls back to the native alert when no provider is mounted, so a message is
+ * never swallowed.
+ */
+let mountedApi: ToastApi | null = null;
+
+export const notify: ToastApi = {
+  toast: (t) => (mountedApi ? mountedApi.toast(t) : fallback(t.message)),
+  success: (message, title) => (mountedApi ? mountedApi.success(message, title) : fallback(message)),
+  error: (message, title) => (mountedApi ? mountedApi.error(message, title) : fallback(message)),
+  warning: (message, title) => (mountedApi ? mountedApi.warning(message, title) : fallback(message)),
+  info: (message, title) => (mountedApi ? mountedApi.info(message, title) : fallback(message)),
+  dismiss: (id) => mountedApi?.dismiss(id),
+};
+
+function fallback(message: string) {
+  if (typeof window !== "undefined") window.alert(message);
 }
 
 const META: Record<

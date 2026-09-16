@@ -7,7 +7,7 @@ import { sql } from "drizzle-orm";
 import { CronExpressionParser } from "cron-parser";
 import { withSystem, withTenant } from "@/db/client";
 import { workflowTriggers } from "@/db/schema";
-import { startRun } from "@/lib/workflow/runner";
+import { startRunInTransaction } from "@/lib/workflow/runner";
 
 export async function fireDueSchedules(): Promise<number> {
   let fired = 0;
@@ -31,46 +31,26 @@ export async function fireDueSchedules(): Promise<number> {
     if (!cron) continue;
     const tenantId = t.wf_tenant ?? t.tenant_id;
 
-    // 1. Compute the next occurrence and ADVANCE THE WATERMARK FIRST.
-    //    Previously next_run_at was only written after startRun succeeded, so a
-    //    transient startRun error (or an invalid cron) left the trigger due
-    //    (next_run_at <= now()) and it re-fired every 30s tick forever. Claiming
-    //    the occurrence up front means the worst case is a single skipped run,
-    //    not a runaway loop / send flood. (TODO v2: cfg.subjectQuery should
-    //    expand to one run per matching subject; for now schedules fire a single
-    //    subject-less run that a workflow `loop` node fans out.)
-    let next: Date;
     try {
-      next = CronExpressionParser.parse(cron, { tz: cfg.timezone ?? "Asia/Kolkata" }).next().toDate();
-    } catch (err) {
-      console.error(`[scheduler] trigger ${t.id} has invalid cron '${cron}':`, (err as Error).message);
-      continue;
-    }
-    try {
-      await withTenant(tenantId, async (tx) => {
+      const created = await withTenant(tenantId, async (tx) => {
+        const claimed = await tx.execute(sql`SELECT * FROM workflow_triggers WHERE id = ${t.id}::uuid AND tenant_id = ${tenantId}::uuid AND enabled = true AND (next_run_at IS NULL OR next_run_at <= now()) FOR UPDATE SKIP LOCKED`);
+        const current = claimed.rows[0] as { next_run_at: Date | null } | undefined;
+        if (!current) return false;
+        const occurrence = current.next_run_at ? new Date(current.next_run_at) : new Date();
+        const next = CronExpressionParser.parse(cron, { tz: cfg.timezone ?? "Asia/Kolkata", currentDate: occurrence }).next().toDate();
+        await startRunInTransaction(tx, {
+          tenantId, workflowId: t.workflow_id, triggeredBy: "schedule", triggerId: t.id,
+          occurrenceKey: `schedule:${t.id}:${occurrence.toISOString()}`,
+          contextSnapshot: { scheduledAt: occurrence.toISOString() },
+        });
         await tx.execute(
-          sql`UPDATE workflow_triggers SET last_run_at = now(), next_run_at = ${next} WHERE id = ${t.id}`
+          sql`UPDATE workflow_triggers SET last_run_at = ${occurrence}, next_run_at = ${next} WHERE id = ${t.id}::uuid AND tenant_id = ${tenantId}::uuid`
         );
+        return true;
       });
+      if (created) fired++;
     } catch (err) {
-      // Couldn't claim the occurrence — do NOT fire (avoids re-firing a run
-      // whose watermark we failed to advance).
-      console.error(`[scheduler] trigger ${t.id} watermark update failed:`, (err as Error).message);
-      continue;
-    }
-
-    // 2. Fire the run. A failure here is logged but the watermark already moved,
-    //    so the schedule recovers on the next due time instead of looping.
-    try {
-      await startRun({
-        tenantId,
-        workflowId: t.workflow_id,
-        triggeredBy: "schedule",
-        triggerId: t.id,
-      });
-      fired++;
-    } catch (err) {
-      console.error(`[scheduler] trigger ${t.id} startRun failed:`, (err as Error).message);
+      console.error(`[scheduler] trigger ${t.id} occurrence rolled back:`, (err as Error).message);
     }
   }
   return fired;

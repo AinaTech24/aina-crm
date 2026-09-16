@@ -109,7 +109,7 @@ export function AppearanceThemeForm({ tenant }: { tenant: any }) {
               </select>
             </label>
           </div>
-          <p className="text-[11px] text-muted-foreground">Applies across the whole workspace for your firm. Compact tightens text &amp; spacing.</p>
+          <p className="text-2xs text-muted-foreground">Applies across the whole workspace for your firm. Compact tightens text &amp; spacing.</p>
         </div>
 
         {/* Presets */}
@@ -137,7 +137,7 @@ export function AppearanceThemeForm({ tenant }: { tenant: any }) {
                     <span className="size-5 rounded-md border border-black/10" style={{ background: p.accent }} />
                     {active && <Check className="size-3.5 ml-auto text-emerald-600" />}
                   </div>
-                  <div className="text-[11px] font-semibold">{p.label}</div>
+                  <div className="text-2xs font-semibold">{p.label}</div>
                 </button>
               );
             })}
@@ -173,7 +173,7 @@ export function AppearanceThemeForm({ tenant }: { tenant: any }) {
               onChange={setHover}
             />
           </div>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             For legibility, the chrome colour is automatically deepened where white text sits on top — your hue is
             preserved while contrast stays accessible. These colours also brand your downloaded creatives.
           </p>
@@ -199,7 +199,7 @@ export function AppearanceThemeForm({ tenant }: { tenant: any }) {
 
       {/* ── Live preview (scoped theme via inline CSS vars) ── */}
       <div className="lg:sticky lg:top-4">
-        <div className="text-[11px] uppercase tracking-wider font-bold text-muted-foreground mb-2">Live preview</div>
+        <div className="text-2xs uppercase tracking-wider font-bold text-muted-foreground mb-2">Live preview</div>
         <div
           style={previewVars}
           className="rounded-2xl border border-border overflow-hidden shadow-lg bg-background"
@@ -212,18 +212,18 @@ export function AppearanceThemeForm({ tenant }: { tenant: any }) {
                   {(tenant.displayName ?? "M").charAt(0).toUpperCase()}
                 </div>
                 <div className="min-w-0">
-                  <div className="text-[11px] font-semibold truncate leading-tight">{tenant.displayName ?? "Your Firm"}</div>
-                  <div className="text-[9px] text-white/70 font-mono truncate">{tenant.arn ?? "ARN —"}</div>
+                  <div className="text-2xs font-semibold truncate leading-tight">{tenant.displayName ?? "Your Firm"}</div>
+                  <div className="text-2xs text-white/70 font-mono truncate">{tenant.arn ?? "ARN —"}</div>
                 </div>
               </div>
               <div className="space-y-1 mt-1">
-                <div className="nav-link-active flex items-center gap-2 rounded-lg px-2 py-1.5 text-[11px] font-medium">
+                <div className="nav-link-active flex items-center gap-2 rounded-lg px-2 py-1.5 text-2xs font-medium">
                   <span className="size-2 rounded-full bg-brand-cyan" /> Dashboard
                 </div>
-                <div className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-[11px] text-white/70">
+                <div className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-2xs text-white/70">
                   <span className="size-2 rounded-full bg-white/30" /> Clients
                 </div>
-                <div className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-[11px] text-white/70">
+                <div className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-2xs text-white/70">
                   <span className="size-2 rounded-full bg-white/30" /> Reports
                 </div>
               </div>
@@ -232,22 +232,22 @@ export function AppearanceThemeForm({ tenant }: { tenant: any }) {
             {/* Mini content */}
             <div className="flex-1 bg-background p-3 space-y-3 overflow-hidden">
               <div className="kpi-hero p-2.5">
-                <div className="text-[9px] uppercase tracking-wide opacity-80">Total AUM</div>
+                <div className="text-2xs uppercase tracking-wide opacity-80">Total AUM</div>
                 <div className="text-base font-bold">₹128.4 Cr</div>
               </div>
               <div className="flex flex-wrap gap-1.5">
-                <span className="chip bg-brand-cyan-light text-brand-cyan-deep text-[10px]">Active</span>
-                <span className="chip bg-brand-navy-light text-brand-navy text-[10px]">SIP</span>
+                <span className="chip bg-brand-cyan-light text-brand-cyan-deep text-2xs">Active</span>
+                <span className="chip bg-brand-navy-light text-brand-navy text-2xs">SIP</span>
               </div>
               <div className="flex flex-col gap-1.5">
-                <button type="button" className="btn-primary text-[11px] py-1.5">Primary action</button>
-                <button type="button" className="btn-accent text-[11px] py-1.5">Accent action</button>
+                <button type="button" className="btn-primary text-2xs py-1.5">Primary action</button>
+                <button type="button" className="btn-accent text-2xs py-1.5">Accent action</button>
               </div>
               <div className="text-gradient text-sm font-bold">Branded heading</div>
             </div>
           </div>
         </div>
-        <p className="text-[10px] text-muted-foreground mt-2 text-center">
+        <p className="text-2xs text-muted-foreground mt-2 text-center">
           Updates instantly as you choose colours. Save to apply across the whole CRM.
         </p>
       </div>
@@ -289,7 +289,7 @@ function Swatch({
           spellCheck={false}
         />
       </div>
-      <div className="text-[10px] text-muted-foreground mt-1">{hint}</div>
+      <div className="text-2xs text-muted-foreground mt-1">{hint}</div>
     </div>
   );
 }

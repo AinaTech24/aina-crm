@@ -87,7 +87,7 @@ export function EmailSenderForm({
         <span className="text-muted-foreground text-xs">Clients will see: </span>
         <span className="font-medium">{fromName || "Your Firm"}</span>{" "}
         <span className="text-muted-foreground">&lt;{previewAddr}&gt;</span>
-        {replyTo && <div className="text-[11px] text-muted-foreground mt-0.5">Replies go to {replyTo}</div>}
+        {replyTo && <div className="text-2xs text-muted-foreground mt-0.5">Replies go to {replyTo}</div>}
       </div>
 
       <Field label="Sender name" hint="Your firm/advisor name as shown in the inbox.">
@@ -110,7 +110,7 @@ export function EmailSenderForm({
         />
       </Field>
 
-      <div className="flex items-start gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-[11px] text-blue-900">
+      <div className="flex items-start gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-2xs text-blue-900">
         <Info className="size-3.5 mt-0.5 shrink-0" />
         <span>
           By default, emails send from the platform&apos;s verified address but show <strong>your name</strong>, and
@@ -189,7 +189,7 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
     <div className="space-y-1">
       <label className="text-sm font-medium">{label}</label>
       {children}
-      {hint && <p className="text-[11px] text-muted-foreground">{hint}</p>}
+      {hint && <p className="text-2xs text-muted-foreground">{hint}</p>}
     </div>
   );
 }

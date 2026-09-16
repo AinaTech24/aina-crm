@@ -47,7 +47,6 @@ function deviceNameFromUA(ua: string): string {
 
 /** Record a login as a device session. Never throws — login must not depend on it. */
 async function recordSession(sid: string, user: SessionUserInput): Promise<void> {
-  try {
     const h = await headers();
     const ua = h.get("user-agent") ?? "";
     const ip = (h.get("x-forwarded-for")?.split(",")[0] ?? h.get("x-real-ip") ?? "").trim() || null;
@@ -59,11 +58,8 @@ async function recordSession(sid: string, user: SessionUserInput): Promise<void>
         deviceName: deviceNameFromUA(ua),
         userAgent: ua.slice(0, 500),
         ipAddress: ip,
-      } as any);
+      });
     });
-  } catch {
-    /* fail-open */
-  }
 }
 
 /**
@@ -86,6 +82,7 @@ export async function issueSessionToken(user: SessionUserInput): Promise<string>
     name: user.name,
     permissions: user.permissions ?? [],
     sid,
+    authTime: Math.floor(Date.now() / 1000),
   });
   await recordSession(sid, user);
   return token;

@@ -129,7 +129,7 @@ export function ExpectedInflowsCard({ investorId }: { investorId: string }) {
           <Plus className="size-3.5" /> Add
         </button>
       </div>
-      <p className="text-[11px] text-muted-foreground mt-1">
+      <p className="text-2xs text-muted-foreground mt-1">
         &ldquo;My FD matures in March&rdquo; — capture it here and the CRM reminds the owner before the date.
       </p>
 
@@ -137,26 +137,26 @@ export function ExpectedInflowsCard({ investorId }: { investorId: string }) {
         <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50/30 p-3 space-y-2.5">
           <div className="grid grid-cols-2 gap-2">
             <label className="block">
-              <span className="text-[11px] text-muted-foreground">Source</span>
+              <span className="text-2xs text-muted-foreground">Source</span>
               <SelectField value={sourceType} onChange={(e) => setSourceType(e.target.value)} size="sm" className="w-full">
                 {SOURCES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
               </SelectField>
             </label>
             <label className="block">
-              <span className="text-[11px] text-muted-foreground">Amount (₹)</span>
+              <span className="text-2xs text-muted-foreground">Amount (₹)</span>
               <input value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="1200000" inputMode="numeric" className="input-base h-8 text-xs w-full" />
             </label>
             <label className="block">
-              <span className="text-[11px] text-muted-foreground">Expected on</span>
+              <span className="text-2xs text-muted-foreground">Expected on</span>
               <DateField value={expectedOn} onChange={(e) => setExpectedOn(e.target.value)} size="sm" className="w-full" />
             </label>
             <label className="block">
-              <span className="text-[11px] text-muted-foreground">Remind me (days before)</span>
+              <span className="text-2xs text-muted-foreground">Remind me (days before)</span>
               <input value={remindDays} onChange={(e) => setRemindDays(e.target.value)} inputMode="numeric" className="input-base h-8 text-xs w-full" />
             </label>
           </div>
           <label className="block">
-            <span className="text-[11px] text-muted-foreground">Confidence</span>
+            <span className="text-2xs text-muted-foreground">Confidence</span>
             <SelectField value={confidence} onChange={(e) => setConfidence(e.target.value)} size="sm" className="w-full">
               <option value="high">High — he confirmed the date</option>
               <option value="medium">Medium — roughly that month</option>
@@ -191,14 +191,14 @@ export function ExpectedInflowsCard({ investorId }: { investorId: string }) {
                     <div className="text-sm font-medium">
                       {LABEL[r.sourceType] ?? r.sourceType} · <span className="tabular-nums">{inr(r.expectedAmount)}</span>
                     </div>
-                    <div className="text-[11px] text-muted-foreground mt-0.5">
+                    <div className="text-2xs text-muted-foreground mt-0.5">
                       {new Date(`${r.expectedOn}T00:00:00`).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
                       {past && isOpen && <span className="text-rose-600 font-semibold"> · date passed</span>}
                       {" · "}{r.confidence} confidence
                       {r.notes ? ` · ${r.notes}` : ""}
                     </div>
                   </div>
-                  <span className={`text-[10px] px-2 py-0.5 rounded-full shrink-0 ${isOpen ? "bg-secondary text-muted-foreground" : "bg-emerald-50 text-emerald-700"}`}>
+                  <span className={`text-2xs px-2 py-0.5 rounded-full shrink-0 ${isOpen ? "bg-secondary text-muted-foreground" : "bg-emerald-50 text-emerald-700"}`}>
                     {r.status.replace(/_/g, " ")}
                   </span>
                   {isOpen && (

@@ -72,17 +72,17 @@ export function LivePricingCards({ initial }: { initial: LandingPlan[] }) {
             }`}
           >
             {p.featured && (
-              <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-red-600 text-white text-[10px] uppercase font-bold tracking-widest px-3 py-1 rounded-full ring-2 ring-red-300 animate-premium-badge-shine">
+              <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-red-600 text-white text-2xs uppercase font-bold tracking-widest px-3 py-1 rounded-full ring-2 ring-red-300 animate-premium-badge-shine">
                 {p.badgeLabel || "Most Popular"}
               </span>
             )}
             {custom && !p.featured && (
-              <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground text-[10px] uppercase font-bold tracking-widest px-3 py-1 rounded-full ring-2 ring-primary/30">
+              <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground text-2xs uppercase font-bold tracking-widest px-3 py-1 rounded-full ring-2 ring-primary/30">
                 {p.badgeLabel || "Enterprise"}
               </span>
             )}
             {p.discountBadge && (
-              <span className="absolute -top-3 right-3 z-10 bg-emerald-600 text-white text-[10px] uppercase font-bold tracking-wide px-2.5 py-1 rounded-full ring-2 ring-emerald-200 shadow-sm">
+              <span className="absolute -top-3 right-3 z-10 bg-emerald-600 text-white text-2xs uppercase font-bold tracking-wide px-2.5 py-1 rounded-full ring-2 ring-emerald-200 shadow-sm">
                 {p.discountBadge}
               </span>
             )}
@@ -99,7 +99,7 @@ export function LivePricingCards({ initial }: { initial: LandingPlan[] }) {
                   <div className="mt-1.5 text-sm text-muted-foreground font-medium">
                     Custom-quoted for your firm — <span className="font-bold text-foreground">self-hosted</span> on your own server.
                   </div>
-                  <div className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-secondary/70 border border-border/50 px-2 py-1 text-[11px] font-semibold text-muted-foreground">
+                  <div className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-secondary/70 border border-border/50 px-2 py-1 text-2xs font-semibold text-muted-foreground">
                     <Phone className="size-3" /> Talk to us for a tailored plan
                   </div>
                 </>
@@ -118,7 +118,7 @@ export function LivePricingCards({ initial }: { initial: LandingPlan[] }) {
                     </div>
                   )}
                   {p.seatsLabel && (
-                    <div className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-secondary/70 border border-border/50 px-2 py-1 text-[11px] font-semibold text-muted-foreground tabular-nums">
+                    <div className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-secondary/70 border border-border/50 px-2 py-1 text-2xs font-semibold text-muted-foreground tabular-nums">
                       <Users2 className="size-3" /> {p.seatsLabel}
                     </div>
                   )}

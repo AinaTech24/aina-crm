@@ -99,7 +99,7 @@ export default async function ComplianceRegistersPage() {
         <Link href="/dashboard/compliance" className="text-sm text-muted-foreground hover:underline inline-flex items-center gap-1 mb-2">
           <ArrowLeft className="size-3.5" /> Back to DDQ Readiness
         </Link>
-        <h1 className="page-title"><ShieldCheck className="size-6 text-brand-cyan" /> DDQ Compliance Registers</h1>
+        <h1 className="page-title"><ShieldCheck className="size-6 text-muted-foreground" /> DDQ Compliance Registers</h1>
         <p className="text-sm text-muted-foreground mt-1">
           The evidence AMFI's Due Diligence Questionnaire asks for. Each block cites its DDQ question.
         </p>
@@ -109,7 +109,7 @@ export default async function ComplianceRegistersPage() {
       <section className="card-surface p-4">
         <h2 className="font-semibold text-sm flex items-center gap-1.5 mb-3">
           <FileCheck className="size-4 text-brand-cyan" /> Firm declarations
-          <span className="text-[10px] text-muted-foreground font-normal">DDQ 2.1c · 2.4c · 5.8 · 5.9</span>
+          <span className="text-2xs text-muted-foreground font-normal">DDQ 2.1c · 2.4c · 5.8 · 5.9</span>
         </h2>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 text-sm">
           <Declaration
@@ -137,7 +137,7 @@ export default async function ComplianceRegistersPage() {
             hint="DDQ 5.9 — SEBI circular Feb 2026"
           />
         </div>
-        <p className="text-[11px] text-muted-foreground mt-3">
+        <p className="text-2xs text-muted-foreground mt-3">
           Set these in <Link href="/dashboard/settings/firm-profile" className="text-brand-cyan-deep hover:underline">Firm profile</Link>.
         </p>
       </section>
@@ -148,7 +148,7 @@ export default async function ComplianceRegistersPage() {
           <div>
             <h2 className="font-semibold text-sm flex items-center gap-1.5">
               <ScrollText className="size-4 text-brand-cyan" /> Declaration of Self-Certification
-              <span className="text-[10px] text-muted-foreground font-normal">DDQ 4.26</span>
+              <span className="text-2xs text-muted-foreground font-normal">DDQ 4.26</span>
             </h2>
             <p className="text-xs text-muted-foreground mt-1">
               Annual, in AMFI's prescribed format — for your ARN <span className="font-medium">and every sub-distributor</span>.
@@ -176,7 +176,7 @@ export default async function ComplianceRegistersPage() {
           <div>
             <h2 className="font-semibold text-sm flex items-center gap-1.5">
               <AlertTriangle className="size-4 text-amber-600" /> Incident register
-              <span className="text-[10px] text-muted-foreground font-normal">DDQ 4.17 · 4.18 · 4.20b · 6.1 · 6.2 · 6.3</span>
+              <span className="text-2xs text-muted-foreground font-normal">DDQ 4.17 · 4.18 · 4.20b · 6.1 · 6.2 · 6.3</span>
             </h2>
             <p className="text-xs text-muted-foreground mt-1">
               Mis-selling complaints, third-party payments, regulatory action, litigation, ARN/EUIN suspension and warning
@@ -202,7 +202,7 @@ export default async function ComplianceRegistersPage() {
       <section className="card-surface p-4">
         <h2 className="font-semibold text-sm flex items-center gap-1.5 mb-1">
           <AlertTriangle className="size-4 text-amber-600" /> Third-party payment scan
-          <span className="text-[10px] text-muted-foreground font-normal">DDQ 4.20b — automatic</span>
+          <span className="text-2xs text-muted-foreground font-normal">DDQ 4.20b — automatic</span>
         </h2>
         <p className="text-xs text-muted-foreground mb-3">
           Active mandates whose debit account doesn&apos;t match a bank registered against the client. The DDQ requires you
@@ -222,7 +222,7 @@ export default async function ComplianceRegistersPage() {
               s.mandate_ref_no ?? "—",
               s.mandate_bank ?? "— none —",
               s.registered_banks ?? "— none on file —",
-              <span key="r" className="chip bg-amber-50 text-amber-700 text-[11px]">{SUSPECT_REASON_LABEL[s.reason] ?? s.reason}</span>,
+              <span key="r" className="chip bg-amber-50 text-amber-700 text-2xs">{SUSPECT_REASON_LABEL[s.reason] ?? s.reason}</span>,
             ])}
           />
         )}
@@ -234,7 +234,7 @@ export default async function ComplianceRegistersPage() {
           <div>
             <h2 className="font-semibold text-sm flex items-center gap-1.5">
               <FileCheck className="size-4 text-brand-cyan" /> Unsuitability acknowledgements
-              <span className="text-[10px] text-muted-foreground font-normal">DDQ 2.4b</span>
+              <span className="text-2xs text-muted-foreground font-normal">DDQ 2.4b</span>
             </h2>
             <p className="text-xs text-muted-foreground mt-1">
               When a product looks unsuitable: written communication → client acknowledgement → the client's
@@ -263,9 +263,9 @@ export default async function ComplianceRegistersPage() {
 function Declaration({ label, value, ok, hint }: { label: string; value: string; ok: boolean; hint: string }) {
   return (
     <div className="rounded-lg border border-border p-3">
-      <div className="text-[11px] text-muted-foreground">{label}</div>
+      <div className="text-2xs text-muted-foreground">{label}</div>
       <div className={`text-sm font-semibold mt-0.5 ${ok ? "text-emerald-700" : "text-amber-700"}`}>{value}</div>
-      <div className="text-[10px] text-muted-foreground mt-1">{hint}</div>
+      <div className="text-2xs text-muted-foreground mt-1">{hint}</div>
     </div>
   );
 }
@@ -273,7 +273,7 @@ function Declaration({ label, value, ok, hint }: { label: string; value: string;
 function StatusPill({ value, good }: { value: string; good: string[] }) {
   const isGood = good.includes(value);
   return (
-    <span className={`chip text-[11px] ${isGood ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
+    <span className={`chip text-2xs ${isGood ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
       {String(value).replace(/_/g, " ")}
     </span>
   );

@@ -99,7 +99,7 @@ export default async function PublicRiskFormPage({ params }: { params: Promise<{
             <ShieldCheck className="size-5 text-brand-cyan" />
             <span className="font-semibold">{data.tenant?.displayName ?? data.tenant?.legalName ?? "Risk profile"}</span>
           </div>
-          <div className="text-[11px] text-muted-foreground">
+          <div className="text-2xs text-muted-foreground">
             {formatArn(data.tenant?.arn)}
           </div>
         </div>
@@ -115,7 +115,7 @@ export default async function PublicRiskFormPage({ params }: { params: Promise<{
         />
       </main>
 
-      <footer className="max-w-3xl mx-auto px-4 py-6 text-[11px] text-muted-foreground text-center">
+      <footer className="max-w-3xl mx-auto px-4 py-6 text-2xs text-muted-foreground text-center">
         Mutual fund investments are subject to market risks. Read all scheme related documents carefully.
         {data.tenant?.arn ? <> · {data.tenant.displayName ?? data.tenant.legalName} · {formatArn(data.tenant.arn)}</> : null}
       </footer>

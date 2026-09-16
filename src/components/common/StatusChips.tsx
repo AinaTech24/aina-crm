@@ -70,7 +70,7 @@ export function StatusChips({
               active ? ACTIVE_TONE[tone] : "border-border bg-card hover:bg-secondary/50"
             }`}
           >
-            <div className="text-[11px] text-muted-foreground leading-none">{c.label}</div>
+            <div className="text-2xs text-muted-foreground leading-none">{c.label}</div>
             <div className={`text-lg font-bold tabular-nums leading-tight mt-1 ${active ? "" : "text-foreground"}`}>{c.count ?? 0}</div>
           </Link>
         );

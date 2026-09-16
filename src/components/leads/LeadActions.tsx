@@ -320,7 +320,7 @@ function StageDropdown({
                 s.key === currentStage ? "bg-accent font-medium" : ""
               }`}
             >
-              <span className="text-[10px] tabular-nums text-muted-foreground w-5">{i + 1}.</span>
+              <span className="text-2xs tabular-nums text-muted-foreground w-5">{i + 1}.</span>
               {s.label}
             </button>
           ))}
@@ -552,7 +552,7 @@ function TaskDialog({
         <label className="block">
           <div className="text-xs font-medium mb-1">
             Assign to
-            <span className="ml-1 text-[10px] text-muted-foreground font-normal">
+            <span className="ml-1 text-2xs text-muted-foreground font-normal">
               · defaults to you
             </span>
           </div>
@@ -731,7 +731,7 @@ export function ScheduleMeetingDialog({
         <label className="block">
           <div className="text-xs font-medium mb-1">
             Assign RM
-            <span className="ml-1 text-[10px] text-muted-foreground font-normal">
+            <span className="ml-1 text-2xs text-muted-foreground font-normal">
               · defaults to the lead's owner
             </span>
           </div>
@@ -821,7 +821,7 @@ function ConvertDialog({
         <label className="block">
           <div className="text-xs font-medium mb-1">
             PAN
-            <span className="ml-1 text-[10px] text-muted-foreground font-normal">· optional — add it later after KYC docs</span>
+            <span className="ml-1 text-2xs text-muted-foreground font-normal">· optional — add it later after KYC docs</span>
           </div>
           <input
             value={pan}
@@ -829,7 +829,7 @@ function ConvertDialog({
             placeholder="ABCDE1234F (optional)"
             className="w-full border rounded-md px-3 py-2 text-sm bg-background font-mono"
           />
-          <div className="text-[10px] text-muted-foreground mt-1">
+          <div className="text-2xs text-muted-foreground mt-1">
             Leave blank to convert now and capture the PAN from the client's KYC documents later.
           </div>
         </label>

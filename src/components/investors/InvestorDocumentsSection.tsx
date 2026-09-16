@@ -297,7 +297,7 @@ export function InvestorDocumentsSection({ investorId, investorName, investorPho
       <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
         <h3 className="font-semibold flex items-center gap-2">
           <FolderOpen className="size-4 text-brand-cyan" /> Documents &amp; attachments
-          {docs.length > 0 && <span className="chip text-[10px] bg-secondary">{docs.length}</span>}
+          {docs.length > 0 && <span className="chip text-2xs bg-secondary">{docs.length}</span>}
         </h3>
         <div className="flex items-center gap-2">
           <input
@@ -349,12 +349,12 @@ export function InvestorDocumentsSection({ investorId, investorName, investorPho
             <span className="text-xs text-muted-foreground ml-auto">{comp.pct}%</span>
           </button>
           {!showComp && comp.missingRequired.length > 0 && (
-            <p className="text-[11px] text-amber-700 mt-1.5 pl-6">Missing: {comp.missingRequired.join(", ")}</p>
+            <p className="text-2xs text-amber-700 mt-1.5 pl-6">Missing: {comp.missingRequired.join(", ")}</p>
           )}
           {showComp && (
             <div className="mt-3 space-y-2 pl-1">
               <div className="flex items-center gap-2">
-                <span className="text-[11px] text-muted-foreground">Client type:</span>
+                <span className="text-2xs text-muted-foreground">Client type:</span>
                 <SelectField
                   value={compType}
                   onChange={(e) => { setCompType(e.target.value); void loadCompleteness(e.target.value); }}
@@ -368,7 +368,7 @@ export function InvestorDocumentsSection({ investorId, investorName, investorPho
                   <option value="company">Company</option>
                   <option value="trust">Trust</option>
                 </SelectField>
-                {comp.extraCount > 0 && <span className="text-[11px] text-muted-foreground">· {comp.extraCount} other doc(s)</span>}
+                {comp.extraCount > 0 && <span className="text-2xs text-muted-foreground">· {comp.extraCount} other doc(s)</span>}
               </div>
               <ul className="grid sm:grid-cols-2 gap-x-4 gap-y-1">
                 {comp.items.map((it) => (
@@ -390,7 +390,7 @@ export function InvestorDocumentsSection({ investorId, investorName, investorPho
           <div className="text-xs font-semibold uppercase tracking-wider text-brand-cyan-deep flex items-center gap-1.5">
             <LinkIcon className="size-3.5" /> Send a secure document-collection link
           </div>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             Pick the client type — it drives which KYC documents are requested. The client uploads from
             WhatsApp / email and the files appear here automatically.
           </p>
@@ -477,7 +477,7 @@ export function InvestorDocumentsSection({ investorId, investorName, investorPho
               </div>
               {sendMsg && (
                 <div
-                  className={`mt-2 rounded-md border px-2.5 py-1.5 text-[11px] ${
+                  className={`mt-2 rounded-md border px-2.5 py-1.5 text-2xs ${
                     sendMsg.ok
                       ? "border-emerald-200 bg-emerald-50 text-emerald-800"
                       : "border-amber-200 bg-amber-50 text-amber-800"
@@ -600,7 +600,7 @@ function DocGroup({
       >
         <ChevronRight className={`size-3.5 shrink-0 transition-transform duration-300 ${open ? "rotate-90" : ""}`} />
         <Icon className="size-3.5" /> <span>{title}</span>
-        <span className="ml-1 rounded-full bg-secondary px-1.5 text-[9px] font-bold">{docs.length}</span>
+        <span className="ml-1 rounded-full bg-secondary px-1.5 text-2xs font-bold">{docs.length}</span>
       </button>
       <div className={`grid transition-all duration-300 ease-in-out ${open ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"}`}>
         <div className="overflow-hidden pb-0.5">
@@ -613,11 +613,11 @@ function DocGroup({
               <FileText className="size-4 text-muted-foreground shrink-0" />
               <div className="min-w-0 flex-1">
                 <div className="text-sm font-medium truncate">{d.name}</div>
-                <div className="text-[11px] text-muted-foreground flex items-center gap-2 flex-wrap">
+                <div className="text-2xs text-muted-foreground flex items-center gap-2 flex-wrap">
                   <span className="capitalize">{d.category === "kyd" ? "KYC" : d.category.replace(/_/g, " ")}</span>
                   {fmtSize(d.sizeBytes) && <span>· {fmtSize(d.sizeBytes)}</span>}
                   {fmtDate(d.createdAt) && <span>· {fmtDate(d.createdAt)}</span>}
-                  {d.clientUploaded && <span className="chip text-[9px] bg-emerald-50 text-emerald-700">client</span>}
+                  {d.clientUploaded && <span className="chip text-2xs bg-emerald-50 text-emerald-700">client</span>}
                 </div>
               </div>
               <button

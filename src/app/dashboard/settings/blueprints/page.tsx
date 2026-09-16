@@ -42,7 +42,7 @@ export default async function BlueprintsAdminPage() {
           <ChevronLeft className="size-3" /> Back to settings
         </Link>
         <h1 className="page-title mt-2">
-          <Workflow className="size-6 text-brand-cyan" /> Blueprint Editor
+          <Workflow className="size-6 text-muted-foreground" /> Blueprint Editor
         </h1>
         <p className="page-subtitle">
           Customise the stage machines that drive every journey in the CRM — leads, service requests, complaints,
@@ -65,8 +65,8 @@ export default async function BlueprintsAdminPage() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <h3 className="font-semibold text-sm">{def.blueprintName}</h3>
-                  <span className="chip text-[10px] bg-secondary capitalize">{def.moduleName.replace(/_/g, " ")}</span>
-                  <span className="chip text-[10px] bg-brand-cyan-light text-brand-cyan-deep">v{def.versionNumber}</span>
+                  <span className="chip text-2xs bg-secondary capitalize">{def.moduleName.replace(/_/g, " ")}</span>
+                  <span className="chip text-2xs bg-brand-cyan-light text-brand-cyan-deep">v{def.versionNumber}</span>
                 </div>
                 {def.description && (
                   <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{def.description}</p>
@@ -75,7 +75,7 @@ export default async function BlueprintsAdminPage() {
                   {stages.map((s, i) => (
                     <span
                       key={s.stageKey}
-                      className="text-[10px] px-2 py-0.5 rounded-full bg-secondary/60 whitespace-nowrap"
+                      className="text-2xs px-2 py-0.5 rounded-full bg-secondary/60 whitespace-nowrap"
                     >
                       {i + 1}. {s.stageName}
                       {s.slaDays != null && <span className="ml-1 text-muted-foreground">({s.slaDays}d)</span>}

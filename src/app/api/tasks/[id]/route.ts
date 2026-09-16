@@ -11,6 +11,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { withTenant } from "@/db/client";
+import { withIdempotentMutation } from "@/lib/api/idempotent-mutation";
 import { requireSession } from "@/lib/auth/session";
 import { can, requireAny } from "@/lib/auth/rbac";
 import { assertActiveLicense } from "@/lib/auth/license";
@@ -157,7 +158,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     // Editing the reminder re-arms it (clears the fired watermark so it fires again).
     if ("remindAt" in rest) patch.reminderFiredAt = null;
 
-    const result = await withTenant(session.tenantId, async (tx) => {
+    const result = await withIdempotentMutation(session, req, parse.data, async (tx) => {
       const before = (await tx
         .select()
         .from(tasks)

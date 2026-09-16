@@ -85,14 +85,14 @@ function LogActivityDrawer({ subject: fixed, onClose }: { subject?: Subject; onC
           {fixed ? (
             <div className="rounded-lg border bg-secondary/30 px-3 py-2 text-sm">
               <span className="text-muted-foreground text-xs">For </span><span className="font-medium">{fixed.name}</span>
-              <span className="text-[11px] text-muted-foreground ml-1">({fixed.type})</span>
+              <span className="text-2xs text-muted-foreground ml-1">({fixed.type})</span>
             </div>
           ) : (
             <SubjectPicker value={subject} onChange={setSubject} />
           )}
 
           <div>
-            <div className="text-[11px] text-muted-foreground mb-1">Type</div>
+            <div className="text-2xs text-muted-foreground mb-1">Type</div>
             <div className="flex flex-wrap gap-1.5">
               {KINDS.map(([k, l]) => (
                 <button key={k} type="button" onClick={() => setKind(k)}
@@ -157,14 +157,14 @@ function SubjectPicker({ value, onChange }: { value: Subject | null; onChange: (
   if (value) {
     return (
       <div className="rounded-lg border bg-secondary/30 px-3 py-2 text-sm flex items-center justify-between">
-        <span><span className="font-medium">{value.name}</span><span className="text-[11px] text-muted-foreground ml-1">({value.type})</span></span>
+        <span><span className="font-medium">{value.name}</span><span className="text-2xs text-muted-foreground ml-1">({value.type})</span></span>
         <button onClick={() => { onChange(null as any); setQ(""); }} className="text-xs text-muted-foreground hover:underline">change</button>
       </div>
     );
   }
   return (
     <div className="relative">
-      <div className="text-[11px] text-muted-foreground mb-1">Client / Lead</div>
+      <div className="text-2xs text-muted-foreground mb-1">Client / Lead</div>
       <input value={q} onChange={(e) => onType(e.target.value)} placeholder="Search by name or phone…" className="input-base" autoFocus />
       {loading && <Loader2 className="size-4 animate-spin absolute right-3 top-7 text-muted-foreground" />}
       {results.length > 0 && (
@@ -172,7 +172,7 @@ function SubjectPicker({ value, onChange }: { value: Subject | null; onChange: (
           {results.map((r) => (
             <button key={`${r.type}-${r.id}`} onClick={() => onChange(r)} className="w-full text-left px-3 py-2 hover:bg-secondary/50 flex items-center justify-between">
               <span className="text-sm">{r.name}</span>
-              <span className={`chip text-[10px] ${r.type === "investor" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{r.type === "investor" ? "Client" : "Lead"}</span>
+              <span className={`chip text-2xs ${r.type === "investor" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{r.type === "investor" ? "Client" : "Lead"}</span>
             </button>
           ))}
         </div>
@@ -215,5 +215,5 @@ export function CheckInButton({ subject }: { subject: Subject }) {
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return <label className="block"><div className="text-[11px] text-muted-foreground mb-0.5">{label}</div>{children}</label>;
+  return <label className="block"><div className="text-2xs text-muted-foreground mb-0.5">{label}</div>{children}</label>;
 }

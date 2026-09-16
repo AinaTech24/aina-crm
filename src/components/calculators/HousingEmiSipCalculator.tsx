@@ -81,18 +81,18 @@ export function HousingEmiSipCalculator() {
               <div className="flex items-center gap-1.5">
                 <span className="size-2.5 rounded-sm" style={{ background: STRAT_COLORS[s.key] }} />
                 <div className="text-sm font-semibold">{s.label}</div>
-                {isBest && <span className="chip text-[9px] bg-emerald-100 text-emerald-700 ml-auto">Best</span>}
+                {isBest && <span className="chip text-2xs bg-emerald-100 text-emerald-700 ml-auto">Best</span>}
               </div>
               <div className="text-2xl font-extrabold mt-2" style={{ color: STRAT_COLORS[s.key] }}>
                 {inrShort(s.wealth)}
               </div>
-              <div className="text-[11px] text-muted-foreground mt-0.5">
+              <div className="text-2xs text-muted-foreground mt-0.5">
                 {s.key === "payoff" ? "wealth created" : `${(s.incrementalPct * 100).toFixed(0)}% more than paying off early`}
               </div>
               <div className="text-xs mt-2 pt-2 border-t border-border/60">
                 ≈ <strong>{inrShort(s.monthlyIncome)}/mo</strong> income for life
               </div>
-              <div className="text-[10px] text-muted-foreground mt-1.5 leading-snug">{s.note}</div>
+              <div className="text-2xs text-muted-foreground mt-1.5 leading-snug">{s.note}</div>
             </div>
           );
         })}

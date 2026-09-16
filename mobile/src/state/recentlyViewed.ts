@@ -11,8 +11,9 @@
 
 import { create } from "zustand";
 import { storageGet, storageSet, storageDelete } from "../lib/storage";
+import { getAccountScope, onAccountChange } from "../lib/accountScope";
 
-const KEY = "recently_viewed_v1";
+const key = (owner: string) => `recently_viewed_v2.${owner}`;
 
 export interface RecentItem {
   type: "investor" | "lead";
@@ -31,7 +32,8 @@ interface RecentState {
 // Fire-and-forget: the rail is a convenience, never worth blocking a tap or
 // surfacing an error for.
 const persist = (items: RecentItem[]) => {
-  storageSet(KEY, JSON.stringify(items)).catch(() => {});
+  const { owner } = getAccountScope();
+  if (owner) storageSet(key(owner), JSON.stringify(items)).catch(() => {});
 };
 
 export const useRecentlyViewed = create<RecentState>((set) => ({
@@ -44,8 +46,10 @@ export const useRecentlyViewed = create<RecentState>((set) => ({
     return { items };
   }),
   hydrate: async () => {
+    const scope = getAccountScope();
+    if (!scope.owner) return;
     try {
-      const raw = await storageGet(KEY);
+      const raw = await storageGet(key(scope.owner));
       if (!raw) return;
       const parsed = JSON.parse(raw);
       if (!Array.isArray(parsed)) return;
@@ -54,13 +58,16 @@ export const useRecentlyViewed = create<RecentState>((set) => ({
         .filter((r: any) => r && typeof r.id === "string" && typeof r.name === "string" && (r.type === "investor" || r.type === "lead"))
         .map((r: any) => ({ type: r.type, id: r.id, name: r.name, at: Number(r.at) || 0 }))
         .slice(0, 8);
-      set({ items });
+      if (getAccountScope().generation === scope.generation) set({ items });
     } catch {
       /* corrupt payload — start empty rather than crash the shell */
     }
   },
   clear: async () => {
     set({ items: [] });
-    await storageDelete(KEY).catch(() => {});
+    const { owner } = getAccountScope();
+    if (owner) await storageDelete(key(owner)).catch(() => {});
+    await storageDelete("recently_viewed_v1").catch(() => {});
   },
 }));
+onAccountChange(() => useRecentlyViewed.setState({ items: [] }));

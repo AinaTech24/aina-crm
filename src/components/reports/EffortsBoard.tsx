@@ -148,7 +148,7 @@ export function EffortsBoard() {
                   <tr key={r.key} className="border-t border-border">
                     <td className="px-3 py-1.5">
                       {r.label}
-                      {r.auto && <span className="text-[11px] text-muted-foreground ml-1">(auto)</span>}
+                      {r.auto && <span className="text-2xs text-muted-foreground ml-1">(auto)</span>}
                     </td>
                     <td className="px-3 py-1.5 text-right">
                       <input type="number" min="0" value={edits[r.key]?.planned ?? ""} onChange={(e) => setEdits((s) => ({ ...s, [r.key]: { ...s[r.key], planned: e.target.value } }))}

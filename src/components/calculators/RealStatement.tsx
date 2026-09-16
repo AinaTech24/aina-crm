@@ -308,7 +308,7 @@ export function RealStatement() {
 
       {/* ── Net worth ── */}
       <div className="rounded-lg border border-border bg-secondary/20 p-4">
-        <div className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium mb-2">Net worth</div>
+        <div className="text-2xs uppercase tracking-wide text-muted-foreground font-medium mb-2">Net worth</div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <Stat label="Total assets" value={inr(m.totalAssets)} />
           <Stat label="Total liabilities" value={inr(m.totalLiab)} tone={m.totalLiab > 0 ? "rose" : undefined} />
@@ -320,18 +320,18 @@ export function RealStatement() {
       {/* ── Investable asset mix ── */}
       {m.investable > 0 && (
         <div>
-          <div className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium mb-1.5">Investable asset mix</div>
+          <div className="text-2xs uppercase tracking-wide text-muted-foreground font-medium mb-1.5">Investable asset mix</div>
           <div className="flex h-8 w-full overflow-hidden rounded-md border border-border">
             {mix.filter((b) => b.value > 0).map((b, i) => {
               const pct = pctOf(b.value, m.investable);
               return (
-                <div key={i} className="h-full flex items-center justify-center text-[10px] font-semibold text-white" style={{ width: `${Math.max(3, pct)}%`, background: b.color }} title={`${b.label}: ${pct.toFixed(0)}%`}>
+                <div key={i} className="h-full flex items-center justify-center text-2xs font-semibold text-white" style={{ width: `${Math.max(3, pct)}%`, background: b.color }} title={`${b.label}: ${pct.toFixed(0)}%`}>
                   {pct >= 8 ? `${pct.toFixed(0)}%` : ""}
                 </div>
               );
             })}
           </div>
-          <div className="flex flex-wrap gap-3 mt-2 text-[11px]">
+          <div className="flex flex-wrap gap-3 mt-2 text-2xs">
             {mix.map((b, i) => (
               <span key={i} className="inline-flex items-center gap-1.5">
                 <span className="size-2.5 rounded-sm" style={{ background: b.color }} /> {b.label} {inrShort(b.value)} ({pctOf(b.value, m.investable).toFixed(0)}%)
@@ -344,13 +344,13 @@ export function RealStatement() {
       {/* ── Health ratios ── */}
       <div>
         <div className="flex items-center justify-between mb-1.5">
-          <div className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium">Financial-health ratios</div>
+          <div className="text-2xs uppercase tracking-wide text-muted-foreground font-medium">Financial-health ratios</div>
           <div className="text-xs font-semibold">Score: <span className={score >= 3 ? "text-emerald-600" : score >= 2 ? "text-amber-600" : "text-rose-600"}>{score}/4</span></div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-xs border-collapse">
             <thead>
-              <tr className="text-left text-[10px] uppercase tracking-wide text-muted-foreground">
+              <tr className="text-left text-2xs uppercase tracking-wide text-muted-foreground">
                 <th className="py-1.5 px-2 border-b border-border">Ratio</th>
                 <th className="py-1.5 px-2 border-b border-border text-right">Value</th>
                 <th className="py-1.5 px-2 border-b border-border">Verdict</th>
@@ -377,7 +377,7 @@ export function RealStatement() {
         the figure that reflects truly investable wealth. Notional net worth including those assets is {inr(m.notionalNW)}.
       </Insight>
 
-      <p className="text-[10px] text-muted-foreground">
+      <p className="text-2xs text-muted-foreground">
         Modelled on Network FP's REAL Statement. Income/expenses are entered monthly (annualised ×12); assets &amp; liabilities are present values.
       </p>
     </div>

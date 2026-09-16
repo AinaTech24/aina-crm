@@ -100,7 +100,7 @@ export default function ImportEmployeesPage() {
             </button>
           </div>
           {parseErrors.length > 0 && (
-            <div className="text-[11px] text-amber-700 bg-amber-50 rounded-md p-2 space-y-0.5">
+            <div className="text-2xs text-amber-700 bg-amber-50 rounded-md p-2 space-y-0.5">
               {parseErrors.slice(0, 8).map((e, i) => <div key={i}>{e}</div>)}
               {parseErrors.length > 8 && <div>+{parseErrors.length - 8} more…</div>}
             </div>

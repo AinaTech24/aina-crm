@@ -51,7 +51,7 @@ export function TaxRegimeOptimizer() {
       </div>
 
       <div className="rounded-lg border border-border/70 p-4 bg-secondary/20 print:bg-transparent">
-        <div className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Deductions (old regime only)</div>
+        <div className="text-2xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Deductions (old regime only)</div>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
           <NumberField label="80C (max ₹1.5L)" value={section80C} setValue={setSection80C} step={10000} />
           <NumberField label="80D health insurance" value={section80D} setValue={setSection80D} step={5000} />
@@ -95,7 +95,7 @@ export function TaxRegimeOptimizer() {
         <strong>{inr(result.monthlyFromSaving)}/month</strong> SIP at {fmtPct(sipReturnPct)} for {sipYears} years, that
         tax saving alone grows to <strong>{inr(result.sipFutureValue)}</strong> — turning a tax decision into wealth.
       </Insight>
-      <p className="text-[10px] text-muted-foreground">Indicative; surcharge marginal relief and senior-citizen exemptions not modelled. Confirm with a tax advisor.</p>
+      <p className="text-2xs text-muted-foreground">Indicative; surcharge marginal relief and senior-citizen exemptions not modelled. Confirm with a tax advisor.</p>
     </div>
   );
 }

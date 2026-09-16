@@ -10,7 +10,7 @@ import {
   Activity,
   AlertTriangle,
   IndianRupee,
-  FileDown,
+  FileUp,
   CalendarClock,
 } from "lucide-react";
 import { withTenant } from "@/db/client";
@@ -205,11 +205,12 @@ export default async function InsurancePage({
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="page-title">
-            <Shield className="size-6 text-brand-cyan" /> Insurance Policies
+            <Shield className="size-6 text-muted-foreground" /> Insurance Policies
           </h1>
+          <p className="page-subtitle mt-1">Every policy you service — premium, cover, renewal date and claims.</p>
         </div>
         <div className="flex items-center gap-2">
-          <Link href="/dashboard/insurance/import" className="btn-secondary"><FileDown className="size-4" /> Import</Link>
+          <Link href="/dashboard/insurance/import" className="btn-secondary"><FileUp className="size-4" /> Import</Link>
           <Link href="/dashboard/insurance/new" className="btn-primary">
             <Plus className="size-4" /> New policy
           </Link>
@@ -336,7 +337,7 @@ export default async function InsurancePage({
                         >
                           {p.plan_name}
                         </Link>
-                        <div className="text-[11px] text-muted-foreground">
+                        <div className="text-2xs text-muted-foreground">
                           {p.insurer}
                           {p.policy_number && (
                             <>
@@ -352,7 +353,7 @@ export default async function InsurancePage({
                           <span>{TYPE_LABEL[p.policy_type] ?? p.policy_type}</span>
                         </div>
                         {p.lives_covered > 1 && (
-                          <div className="text-[10px] text-muted-foreground">
+                          <div className="text-2xs text-muted-foreground">
                             {p.lives_covered} lives
                           </div>
                         )}
@@ -362,7 +363,7 @@ export default async function InsurancePage({
                           <Avatar src={p.investor_avatar_url ? `/api/investors/${p.investor_id}/avatar` : null} name={p.investor_name} size={26} />
                           <div>
                             <div className="font-medium">{p.investor_name}</div>
-                            <div className="text-[10px] text-muted-foreground font-mono">
+                            <div className="text-2xs text-muted-foreground font-mono">
                               {p.investor_pan}
                             </div>
                           </div>
@@ -400,7 +401,7 @@ export default async function InsurancePage({
                         {p.nominee_name ? (
                           <div>
                             <div>{p.nominee_name}</div>
-                            <div className="text-[10px] text-muted-foreground capitalize">
+                            <div className="text-2xs text-muted-foreground capitalize">
                               {p.nominee_relation ?? "—"}
                             </div>
                           </div>
@@ -471,7 +472,7 @@ function Stat({
   return (
     <div className="kpi-card">
       <div className="flex items-center justify-between">
-        <span className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">
+        <span className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">
           {label}
         </span>
         {Icon && (

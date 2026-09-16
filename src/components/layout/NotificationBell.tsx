@@ -108,7 +108,7 @@ export function NotificationBell() {
       >
         <Bell className="size-4" />
         {unread > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 size-4 grid place-items-center rounded-full bg-rose-600 text-white text-[10px] font-semibold">
+          <span className="absolute -top-0.5 -right-0.5 size-4 grid place-items-center rounded-full bg-rose-600 text-white text-2xs font-semibold">
             {unread > 9 ? "9+" : unread}
           </span>
         )}
@@ -136,12 +136,12 @@ export function NotificationBell() {
                 const Sev = SEVERITY[n.severity] ?? SEVERITY.info;
                 const Icon = isBday ? Cake : Sev.icon;
                 const Inner = (
-                  <div className={`flex items-start gap-2 px-3 py-2 hover:bg-accent ${isBday ? "bg-violet-50/60 dark:bg-violet-950/40" : ""} ${!isBday && n.readAt ? "opacity-60" : ""}`}>
+                  <div className={`flex items-start gap-2 px-3 py-2 hover:bg-accent ${isBday ? "bg-violet-50/60" : ""} ${!isBday && n.readAt ? "opacity-60" : ""}`}>
                     <Icon className={`size-4 mt-0.5 flex-shrink-0 ${isBday ? "text-violet-600" : Sev.color}`} />
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-medium leading-tight">{n.title}</div>
                       {n.body && <div className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{n.body}</div>}
-                      <div className="text-[10px] text-muted-foreground mt-1">
+                      <div className="text-2xs text-muted-foreground mt-1">
                         {isBday
                           ? "Today · tap to wish them"
                           : new Date(n.createdAt).toLocaleString("en-IN", { dateStyle: "short", timeStyle: "short" })}

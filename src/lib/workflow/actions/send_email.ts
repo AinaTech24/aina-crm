@@ -40,7 +40,7 @@ export const sendEmailHandler: ActionHandler<any> = {
       workflowRunStepId: ctx.stepId,
       // Stable across step retries (stepId is regenerated each attempt) so Resend
       // dedupes a re-fired send instead of delivering twice.
-      idempotencyKey: `wf:${ctx.runId}:${node.id}`,
+      idempotencyKey: `wf:${ctx.runId}:${node.id}:${ctx.stepSequence ?? 0}`,
       meta: { cc: cfg.cc, bcc: cfg.bcc },
     });
 

@@ -169,7 +169,7 @@ export default async function RiskProfilesPage({
       <div className="flex items-center justify-between">
         <div>
           <h1 className="page-title">
-            <ShieldCheck className="size-6 text-brand-cyan" /> Risk profiles
+            <ShieldCheck className="size-6 text-muted-foreground" /> Risk profiles
           </h1>
           <p className="page-subtitle mt-1">Each client&apos;s risk category, and when it is due to be re-assessed.</p>
         </div>

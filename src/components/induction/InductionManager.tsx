@@ -205,7 +205,7 @@ export function InductionManager({ moduleOptions }: { moduleOptions: { href: str
                 <div className="mb-1">Auto-enrol roles</div>
                 <div className="flex flex-wrap gap-2">
                   {ROLES.map((r) => (
-                    <label key={r} className="inline-flex items-center gap-1 text-[11px] border rounded px-1.5 py-0.5">
+                    <label key={r} className="inline-flex items-center gap-1 text-2xs border rounded px-1.5 py-0.5">
                       <input
                         type="checkbox"
                         name={`role_${r}`}
@@ -335,7 +335,7 @@ export function InductionManager({ moduleOptions }: { moduleOptions: { href: str
                   <div className="mb-1 font-medium">Modules unlocked by this lesson</div>
                   <div className="max-h-40 overflow-y-auto border rounded p-2 grid sm:grid-cols-2 gap-1 scrollbar-thin">
                     {moduleOptions.map((m) => (
-                      <label key={m.href} className="inline-flex items-center gap-1.5 text-[11px]">
+                      <label key={m.href} className="inline-flex items-center gap-1.5 text-2xs">
                         <input type="checkbox" name={`mod_${m.href}`} className="size-3" />
                         <span className="truncate">
                           {m.label} <span className="text-muted-foreground">· {m.group}</span>
@@ -415,7 +415,7 @@ export function InductionManager({ moduleOptions }: { moduleOptions: { href: str
                     <div key={k} className="flex items-center gap-2">
                       <span className="text-xs w-4">{k}</span>
                       <input name={`opt_${k}`} className="input flex-1" placeholder={`Option ${k}`} />
-                      <label className="text-[11px] inline-flex items-center gap-1">
+                      <label className="text-2xs inline-flex items-center gap-1">
                         <input type="checkbox" name={`ok_${k}`} className="size-3" /> correct
                       </label>
                     </div>

@@ -1,3 +1,4 @@
+import { assertInvestorAccess } from "@/lib/investors/access";
 /**
  * POST /api/investors/[id]/feedback-link
  *
@@ -25,6 +26,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   try {
     const { id } = await params;
     const session = await requireSession();
+    await assertInvestorAccess(session, (await params).id);
     requireAny(session.roles, ["investor.view.all", "investor.view.assigned"], session.permissions);
 
     const inv = await withTenant(session.tenantId, async (tx) => {

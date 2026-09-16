@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useRef } from "react";
+import { notify } from "@/components/ui/Toast";
 import { useRouter } from "next/navigation";
 import {
   FolderArchive,
@@ -56,18 +57,18 @@ type Group = {
 };
 
 const CATEGORY_COLORS: Record<string, string> = {
-  arn: "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/20 dark:text-purple-400 dark:border-purple-900/50",
-  euin: "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/20 dark:text-purple-400 dark:border-purple-900/50",
-  nism: "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/20 dark:text-purple-400 dark:border-purple-900/50",
-  kyd: "bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/20 dark:text-indigo-400 dark:border-indigo-900/50",
-  amc_empanelment: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/20 dark:text-blue-400 dark:border-blue-900/50",
-  ddq: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-400 dark:border-emerald-900/50",
-  sop: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/20 dark:text-amber-400 dark:border-amber-900/50",
-  marketing_approval: "bg-pink-50 text-pink-700 border-pink-200 dark:bg-pink-950/20 dark:text-pink-400 dark:border-pink-900/50",
-  complaint: "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/20 dark:text-rose-400 dark:border-rose-900/50",
-  audit_report: "bg-brand-cyan-light/50 text-brand-cyan-deep border-brand-cyan/30 dark:bg-brand-cyan/10 dark:text-brand-cyan dark:border-brand-cyan/30",
-  ria_compliance: "bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-950/20 dark:text-teal-400 dark:border-teal-900/50",
-  other: "bg-gray-50 text-gray-700 border-gray-200 dark:bg-slate-900 dark:text-slate-400 dark:border-slate-800",
+  arn: "bg-purple-50 text-purple-700 border-purple-200",
+  euin: "bg-purple-50 text-purple-700 border-purple-200",
+  nism: "bg-purple-50 text-purple-700 border-purple-200",
+  kyd: "bg-indigo-50 text-indigo-700 border-indigo-200",
+  amc_empanelment: "bg-blue-50 text-blue-700 border-blue-200",
+  ddq: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  sop: "bg-amber-50 text-amber-700 border-amber-200",
+  marketing_approval: "bg-pink-50 text-pink-700 border-pink-200",
+  complaint: "bg-rose-50 text-rose-700 border-rose-200",
+  audit_report: "bg-brand-cyan-light/50 text-brand-cyan-deep border-brand-cyan/30",
+  ria_compliance: "bg-teal-50 text-teal-700 border-teal-200",
+  other: "bg-gray-50 text-gray-700 border-gray-200",
 };
 
 export function DocumentsFeed({
@@ -109,7 +110,7 @@ export function DocumentsFeed({
       fd.append("docType", doc.category || "compliance");
       const up = await fetch("/api/compliance/upload", { method: "POST", body: fd }).then((r) => r.json()).catch(() => ({}));
       if (!up?.key) {
-        alert(up?.error ?? "Upload failed");
+        notify.error(up?.error ?? "Upload failed");
         return;
       }
       const res = await fetch(`/api/compliance/documents/${doc.id}/supersede`, {
@@ -119,7 +120,7 @@ export function DocumentsFeed({
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) {
-        alert(j.error ?? "Replace failed");
+        notify.error(j.error ?? "Replace failed");
         return;
       }
       // Swap the old (now-superseded) row for the new version in-place so the
@@ -147,11 +148,11 @@ export function DocumentsFeed({
         setRows((prev) => prev.filter((r) => r.id !== id));
         router.refresh();
       } else {
-        alert("Failed to delete document.");
+        notify.error("Failed to delete document.");
       }
     } catch (err) {
       console.error(err);
-      alert("Error deleting document.");
+      notify.error("Error deleting document.");
     } finally {
       setDeletingId(null);
     }
@@ -179,10 +180,10 @@ export function DocumentsFeed({
       });
       setRows((prev) => prev.filter((r) => !okIds.has(r.id)));
       router.refresh();
-      if (okIds.size < ids.length) alert(`Deleted ${okIds.size} of ${ids.length}. Some could not be removed.`);
+      if (okIds.size < ids.length) notify.warning(`Deleted ${okIds.size} of ${ids.length}. Some could not be removed.`);
     } catch (err) {
       console.error(err);
-      alert("Error deleting documents.");
+      notify.error("Error deleting documents.");
     } finally {
       setDeletingGroup(null);
     }
@@ -317,7 +318,7 @@ export function DocumentsFeed({
                   >
                     <ChevronRight className={`size-4 text-muted-foreground shrink-0 transition-transform duration-300 ${isOpen ? "rotate-90" : ""}`} />
                     {isFirm ? (
-                      <div className="size-9 rounded-lg grid place-items-center shrink-0 bg-slate-100 dark:bg-slate-800">
+                      <div className="size-9 rounded-lg grid place-items-center shrink-0 bg-slate-100">
                         <Building2 className="size-4 text-slate-500" />
                       </div>
                     ) : (
@@ -389,16 +390,16 @@ export function DocumentsFeed({
                             <div className="flex-1 min-w-0">
                               <div className="text-sm font-medium truncate">{d.name}</div>
                               <div className="flex items-center gap-2 mt-0.5">
-                                <span className={`text-[10px] font-bold border px-1.5 py-0.5 rounded-full ${CATEGORY_COLORS[d.category] ?? CATEGORY_COLORS.other}`}>
+                                <span className={`text-2xs font-bold border px-1.5 py-0.5 rounded-full ${CATEGORY_COLORS[d.category] ?? CATEGORY_COLORS.other}`}>
                                   {d.category === "kyd" ? "KYC" : d.category.toUpperCase().replace(/_/g, " ")}
                                 </span>
                                 {exp && (
-                                  <span className={`text-[10px] inline-flex items-center gap-0.5 ${expired ? "text-rose-600 font-semibold" : expiringSoon ? "text-amber-600 font-semibold" : "text-muted-foreground"}`}>
+                                  <span className={`text-2xs inline-flex items-center gap-0.5 ${expired ? "text-rose-600 font-semibold" : expiringSoon ? "text-amber-600 font-semibold" : "text-muted-foreground"}`}>
                                     {(expired || expiringSoon) && <AlertTriangle className="size-3" />}
                                     {expired ? "Expired " : "Expires "}{formatDate(exp)}
                                   </span>
                                 )}
-                                <span className="text-[10px] text-muted-foreground">Uploaded {formatRelative(d.createdAt)}</span>
+                                <span className="text-2xs text-muted-foreground">Uploaded {formatRelative(d.createdAt)}</span>
                               </div>
                             </div>
                             <div className="flex items-center gap-1.5 print:hidden">

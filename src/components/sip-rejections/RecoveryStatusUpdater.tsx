@@ -9,6 +9,7 @@
  */
 
 import { useState } from "react";
+import { notify } from "@/components/ui/Toast";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 
@@ -54,7 +55,7 @@ export function RecoveryStatusUpdater({
       });
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
-        alert(j.error ?? "Update failed");
+        notify.error(j.error ?? "Update failed");
         setVal(currentStatus);
         return;
       }

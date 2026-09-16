@@ -97,8 +97,8 @@ export function BillingCycleChooser({
       </div>
 
       {err && <p className="text-xs text-rose-600 mt-3">{err}</p>}
-      {!canManage && <p className="text-[11px] text-muted-foreground mt-3">Only the firm owner can change the billing cycle.</p>}
-      <p className="text-[11px] text-muted-foreground mt-2">
+      {!canManage && <p className="text-2xs text-muted-foreground mt-3">Only the firm owner can change the billing cycle.</p>}
+      <p className="text-2xs text-muted-foreground mt-2">
         Auto-debit (Razorpay) uses your chosen cycle — switch any time before the next renewal.
       </p>
     </div>
@@ -142,7 +142,7 @@ function CycleCard({
       }`}
     >
       {badge && (
-        <span className="absolute -top-2 right-3 text-[10px] font-semibold bg-emerald-600 text-white px-2 py-0.5 rounded-full">
+        <span className="absolute -top-2 right-3 text-2xs font-semibold bg-emerald-600 text-white px-2 py-0.5 rounded-full">
           {badge}
         </span>
       )}
@@ -154,7 +154,7 @@ function CycleCard({
       <div className="mt-2 text-2xl font-bold tabular-nums">
         {price} <span className="text-sm font-normal text-muted-foreground">{unit}</span>
       </div>
-      <div className="text-[11px] text-muted-foreground mt-1">{sub}</div>
+      <div className="text-2xs text-muted-foreground mt-1">{sub}</div>
     </button>
   );
 }

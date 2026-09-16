@@ -105,7 +105,7 @@ export function FamilyTouchpoints({
         <p className="text-sm text-muted-foreground py-6 text-center">
           No birthdays or anniversaries in the next 90 days.
           <br />
-          <span className="text-[11px] italic">
+          <span className="text-2xs italic">
             Add DOB / onboarding date to each member to surface these.
           </span>
         </p>
@@ -135,7 +135,7 @@ export function FamilyTouchpoints({
                   />
                   <div className="min-w-0">
                     <div className="font-medium truncate">{e.name}</div>
-                    <div className="text-[11px] text-muted-foreground">
+                    <div className="text-2xs text-muted-foreground">
                       {e.kind === "birthday"
                         ? `Turning ${e.age}`
                         : `${e.years}-year anniversary`}
@@ -161,7 +161,7 @@ export function FamilyTouchpoints({
                       ? "tomorrow"
                       : `in ${e.daysAway}d`}
                   </div>
-                  <div className="text-[10px] text-muted-foreground">
+                  <div className="text-2xs text-muted-foreground">
                     {e.eventDate.toLocaleDateString("en-IN", {
                       day: "numeric",
                       month: "short",
@@ -172,7 +172,7 @@ export function FamilyTouchpoints({
             );
           })}
           {events.length > 12 && (
-            <li className="py-2 text-[11px] text-muted-foreground italic text-center">
+            <li className="py-2 text-2xs text-muted-foreground italic text-center">
               + {events.length - 12} more in the horizon
             </li>
           )}

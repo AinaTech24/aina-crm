@@ -103,7 +103,7 @@ export function AssetEditForm({ asset }: { asset: AssetInitial }) {
                   <img src={asset.type === "image" ? `/api/content-library/${asset.id}/branded?mode=preview` : asset.thumbnailUrl} alt="" className="object-cover w-full h-full" />
                 ) : <ImageIcon className="size-8 text-muted-foreground/40" />}
               </div>
-              {asset.type === "image" && <p className="text-[10px] text-muted-foreground mt-1 text-center">Co-branded preview (your tenant)</p>}
+              {asset.type === "image" && <p className="text-2xs text-muted-foreground mt-1 text-center">Co-branded preview (your tenant)</p>}
             </div>
             <div className="flex-1 space-y-3">
               <div><Label>Title</Label><input value={f.title} onChange={(e) => set("title", e.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" /></div>
@@ -140,7 +140,7 @@ export function AssetEditForm({ asset }: { asset: AssetInitial }) {
             </Section>
           )}
 
-          {err && <div className="rounded-lg border border-rose-300 bg-rose-50 dark:bg-rose-500/10 text-rose-700 dark:text-rose-300 px-3 py-2 text-sm">{err}</div>}
+          {err && <div className="rounded-lg border border-rose-300 bg-rose-50 text-rose-700 px-3 py-2 text-sm">{err}</div>}
 
           <div className="flex justify-end gap-2 pt-2 border-t">
             <Link href="/super-admin/content-library" className="rounded-lg border px-4 py-2 text-sm hover:bg-accent transition">Cancel</Link>

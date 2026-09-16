@@ -57,7 +57,7 @@ export function RuleLibraryGrid() {
           <div className="flex items-start justify-between gap-2">
             <span className={`chip ${CATEGORY_TONE[p.category] ?? "bg-secondary text-foreground"}`}>{p.category}</span>
             {p.needsTemplate && (
-              <span className="text-[10px] text-muted-foreground inline-flex items-center gap-1" title="You'll pick your message template after adding">
+              <span className="text-2xs text-muted-foreground inline-flex items-center gap-1" title="You'll pick your message template after adding">
                 <Sparkles className="size-3" /> needs a template
               </span>
             )}

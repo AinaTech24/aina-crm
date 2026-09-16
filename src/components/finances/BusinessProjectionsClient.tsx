@@ -61,12 +61,12 @@ export function BusinessProjectionsClient({
           <h2 className="font-semibold text-sm">Assumptions</h2>
           {seeded ? (
             <div className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-1 text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5">
+              <span className="inline-flex items-center gap-1 text-2xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5">
                 <Sparkles className="size-3" /> Seeded from your live book
               </span>
               <button
                 onClick={() => setInp(seed)}
-                className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
+                className="inline-flex items-center gap-1 text-2xs text-muted-foreground hover:text-foreground"
                 title="Reset AUM, SIP book and commission rate to your current figures"
               >
                 <RotateCcw className="size-3" /> Reset to my book
@@ -75,7 +75,7 @@ export function BusinessProjectionsClient({
           ) : (
             <button
               onClick={() => setInp(DEFAULT_PROJECTION_INPUTS)}
-              className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
+              className="inline-flex items-center gap-1 text-2xs text-muted-foreground hover:text-foreground"
             >
               <RotateCcw className="size-3" /> Load example figures
             </button>
@@ -134,7 +134,7 @@ export function BusinessProjectionsClient({
         </div>
       </div>
 
-      <p className="text-[11px] text-muted-foreground border-t pt-3">
+      <p className="text-2xs text-muted-foreground border-t pt-3">
         Adapted from the Network FP &quot;8.4 Business Projections&quot;. Projections are illustrative
         estimates based on the assumptions above and do not guarantee future results.
       </p>
@@ -155,7 +155,7 @@ function Field({
 }) {
   return (
     <label className="block">
-      <div className="text-[11px] font-medium text-muted-foreground mb-1">{label}</div>
+      <div className="text-2xs font-medium text-muted-foreground mb-1">{label}</div>
       <input
         type="number"
         step={step}
@@ -184,7 +184,7 @@ function SummaryCard({
         : "text-brand-cyan-deep";
   return (
     <div className="card-surface glass-card p-4">
-      <div className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">
+      <div className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">
         {label}
       </div>
       <div className={`text-xl font-bold mt-1 tabular-nums ${cls}`}>{value}</div>

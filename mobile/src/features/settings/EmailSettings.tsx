@@ -19,7 +19,7 @@ import { useEmailSender, useSaveEmailSender } from "./api";
 
 export function EmailSettings() {
   const router = useRouter();
-  const { data, isLoading, isError, refetch } = useEmailSender();
+  const { data, isLoading, isError, error, refetch } = useEmailSender();
   const save = useSaveEmailSender();
 
   const initial = useMemo(() => ({ fromName: data?.fromName ?? "", fromEmail: data?.fromEmail ?? "", replyTo: data?.replyTo ?? "" }), [data]);
@@ -29,6 +29,21 @@ export function EmailSettings() {
   const [msg, setMsg] = useState<string | null>(null);
 
   if (isLoading) return <View style={styles.screen}><ScreenHeader title="Email setup" /><LoadingState /></View>;
+  // The server gates this to the firm owner (403) — that's a rule, not a fault,
+  // so say so instead of showing a red "something went wrong" card.
+  if (isError && (error as any)?.status === 403) {
+    return (
+      <View style={styles.screen}>
+        <ScreenHeader title="Email setup" subtitle="Outbound sender" onBack={() => router.back()} />
+        <View style={{ padding: spacing.lg }}>
+          <Card flat style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
+            <Feather name="lock" size={18} color={palette.muted} />
+            <Text variant="body" tone="muted" style={{ flex: 1 }}>Only the firm owner can view or change the email sender. Ask them to set it up on the web CRM or here.</Text>
+          </Card>
+        </View>
+      </View>
+    );
+  }
   if (isError) return <View style={styles.screen}><ScreenHeader title="Email setup" /><ErrorState onRetry={refetch} /></View>;
 
   const dirty = state.fromName !== initial.fromName || state.fromEmail !== initial.fromEmail || state.replyTo !== initial.replyTo;

@@ -75,7 +75,7 @@ export default async function RenewalsPage({ searchParams }: { searchParams: Pro
     <div className="space-y-6 max-w-6xl">
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2"><CalendarClock className="size-6 text-brand-cyan" /> Insurance Renewals</h1>
+          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2"><CalendarClock className="size-6 text-muted-foreground" /> Insurance Renewals</h1>
         </div>
       </div>
 
@@ -105,7 +105,7 @@ export default async function RenewalsPage({ searchParams }: { searchParams: Pro
                 return (
                   <tr key={p.id} className="border-b last:border-0 hover:bg-secondary/40">
                     <td className="px-4 py-2.5 font-medium">{p.client ?? "—"}</td>
-                    <td className="py-2.5 text-xs"><div>{p.plan_name}</div><div className="text-[11px] text-muted-foreground">{p.insurer}{p.policy_number ? ` · ${p.policy_number}` : ""}</div></td>
+                    <td className="py-2.5 text-xs"><div>{p.plan_name}</div><div className="text-2xs text-muted-foreground">{p.insurer}{p.policy_number ? ` · ${p.policy_number}` : ""}</div></td>
                     <td className={`py-2.5 text-xs whitespace-nowrap ${overdue ? "text-rose-700 font-semibold" : ""}`}>{p.next_premium_due_date ? formatDate(p.next_premium_due_date) : "—"}</td>
                     <td className="py-2.5 text-right tabular-nums">{p.annual_premium ? formatINR(Number(p.annual_premium)) : "—"}</td>
                     <td className="py-2.5 text-xs capitalize pl-3">{String(p.premium_frequency).replace(/_/g, " ")}</td>

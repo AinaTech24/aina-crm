@@ -54,7 +54,7 @@ export default async function BusinessEntryDetailPage({ params }: { params: Prom
         <div>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
             {entry.clientName}
-            <span className={`chip text-[10px] capitalize ${STATUS_TONE[entry.status] ?? ""}`}>{entry.status}</span>
+            <span className={`chip text-2xs capitalize ${STATUS_TONE[entry.status] ?? ""}`}>{entry.status}</span>
           </h1>
           <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground mt-1">
             <span className="inline-flex items-center gap-1"><Briefcase className="size-3.5" /> {PRODUCT_LABEL[entry.productType] ?? entry.productType}</span>
@@ -82,12 +82,12 @@ export default async function BusinessEntryDetailPage({ params }: { params: Prom
           <div className="text-xs text-muted-foreground mb-2">Asset class breakup</div>
           <div className="flex flex-wrap gap-1.5">
             {ASSET_CLASS_ORDER.filter((k) => (breakup[k] ?? 0) > 0).map((k) => (
-              <span key={k} className="chip text-[11px] bg-secondary">
+              <span key={k} className="chip text-2xs bg-secondary">
                 {ASSET_CLASS_LABELS[k as AssetClass]}: <span className="font-semibold ml-1 tabular-nums">{formatINR(breakup[k])}</span>
               </span>
             ))}
             {Number(entry.liquidNet) !== 0 && (
-              <span className="chip text-[11px] bg-sky-50 text-sky-700">Liquid net: <span className="font-semibold ml-1 tabular-nums">{formatINR(Number(entry.liquidNet))}</span></span>
+              <span className="chip text-2xs bg-sky-50 text-sky-700">Liquid net: <span className="font-semibold ml-1 tabular-nums">{formatINR(Number(entry.liquidNet))}</span></span>
             )}
           </div>
         </div>
@@ -109,7 +109,7 @@ export default async function BusinessEntryDetailPage({ params }: { params: Prom
               <tr key={l.id} className="border-b last:border-0">
                 <td className="px-4 py-2.5">
                   <div className="font-medium">{l.schemeName}</div>
-                  <div className="text-[11px] text-muted-foreground">
+                  <div className="text-2xs text-muted-foreground">
                     {l.amcName ? `${l.amcName}` : ""}{l.assetCategory ? `${l.amcName ? " · " : ""}${l.assetCategory}` : ""}
                     {l.fromSchemeName ? `  ·  from ${l.fromSchemeName}` : ""}
                   </div>

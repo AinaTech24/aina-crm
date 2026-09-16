@@ -139,21 +139,21 @@ export function ProfileMenu({
                 <Avatar size="size-11" />
                 <div className="min-w-0">
                   <div className="text-sm font-semibold truncate">{name}</div>
-                  {email && <div className="text-[11px] text-white/75 truncate">{email}</div>}
+                  {email && <div className="text-2xs text-white/75 truncate">{email}</div>}
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-1.5 mt-3">
-                <span className="inline-flex items-center rounded-full bg-white/15 border border-white/25 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide">
+                <span className="inline-flex items-center rounded-full bg-white/15 border border-white/25 px-2 py-0.5 text-2xs font-semibold uppercase tracking-wide">
                   {roleLabel}
                 </span>
                 {packageKey && (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-white/15 border border-white/25 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-white/15 border border-white/25 px-2 py-0.5 text-2xs font-semibold uppercase tracking-wide">
                     {packageKey}
                     {licenseStatus && <span className="text-white/70 normal-case font-medium">· {licenseStatus}</span>}
                   </span>
                 )}
                 {trialEndsLabel && (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-400/25 border border-amber-200/40 px-2 py-0.5 text-[10px] font-semibold tracking-wide">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-400/25 border border-amber-200/40 px-2 py-0.5 text-2xs font-semibold tracking-wide">
                     Trial ends {trialEndsLabel}
                   </span>
                 )}

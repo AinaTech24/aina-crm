@@ -54,7 +54,7 @@ export function PdfModal({
           <div className="flex items-center gap-1.5">
             <div className="inline-flex items-center rounded-md border bg-card">
               <button onClick={dec} className="p-1.5 hover:bg-accent rounded-l-md" aria-label="Zoom out" title="Zoom out"><ZoomOut className="size-3.5" /></button>
-              <button onClick={() => setZoom(1)} className="px-2 py-1 text-[11px] tabular-nums hover:bg-accent w-12 text-center" title="Reset zoom">{Math.round(zoom * 100)}%</button>
+              <button onClick={() => setZoom(1)} className="px-2 py-1 text-2xs tabular-nums hover:bg-accent w-12 text-center" title="Reset zoom">{Math.round(zoom * 100)}%</button>
               <button onClick={inc} className="p-1.5 hover:bg-accent rounded-r-md" aria-label="Zoom in" title="Zoom in"><ZoomIn className="size-3.5" /></button>
             </div>
             {downloadUrl ? (

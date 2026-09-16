@@ -60,8 +60,9 @@ export default async function AinaLibraryPage({
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h1 className="page-title">
-            <Sparkles className="size-6 text-brand-cyan" /> AINA Content Library
+            <Sparkles className="size-6 text-muted-foreground" /> AINA Content Library
           </h1>
+          <p className="page-subtitle mt-1">Ready-made posts, creatives and client-education material you can share.</p>
         </div>
         {canUpload && (
           <Link href="/dashboard/aina-library/new" className="btn-primary flex items-center gap-1 text-xs">

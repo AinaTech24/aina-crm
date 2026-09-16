@@ -58,7 +58,7 @@ export default async function NewReviewMeetingPage({
 
       <div className="card-surface p-6 flex items-start gap-4">
         <div className="size-12 rounded-lg bg-brand-cyan-light grid place-items-center">
-          <Calendar className="size-6 text-brand-cyan" />
+          <Calendar className="size-6 text-muted-foreground" />
         </div>
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Schedule review meeting</h1>

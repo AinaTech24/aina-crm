@@ -10,6 +10,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Plus, X, Save, Trash2, Users, Zap, ShieldCheck, Repeat } from "lucide-react";
+import { confirmDialog } from "@/components/ui/ConfirmProvider";
 
 type User = { id: string; name: string };
 type Row = Record<string, any>;
@@ -59,7 +60,7 @@ function RuleRow({ tab, row, users }: { tab: string; row: Row; users: User[] }) 
   const nameOf = (id: string) => users.find((u) => u.id === id)?.name ?? "—";
   async function del() {
     if (tab !== "assignment") return;
-    if (!confirm(`Delete "${row.name}"?`)) return;
+    if (!(await confirmDialog({ title: `Delete "${row.name}"?`, confirmLabel: "Delete", tone: "danger" }))) return;
     setBusy(true);
     try { await fetch(`/api/assignment-rules/${row.id}`, { method: "DELETE" }); router.refresh(); } finally { setBusy(false); }
   }
@@ -71,8 +72,8 @@ function RuleRow({ tab, row, users }: { tab: string; row: Row; users: User[] }) 
   return (
     <div className="flex items-center gap-3 px-4 py-2.5">
       <div className="min-w-0 flex-1">
-        <div className="font-medium text-sm">{row.name} {!row.is_active && <span className="chip text-[10px] bg-slate-100 text-slate-500">inactive</span>}</div>
-        <div className="text-[11px] text-muted-foreground truncate">{detail}{tab === "validation" && row.error_message ? ` · "${row.error_message}"` : ""}</div>
+        <div className="font-medium text-sm">{row.name} {!row.is_active && <span className="chip text-2xs bg-slate-100 text-slate-500">inactive</span>}</div>
+        <div className="text-2xs text-muted-foreground truncate">{detail}{tab === "validation" && row.error_message ? ` · "${row.error_message}"` : ""}</div>
       </div>
       {tab === "assignment" && <button onClick={del} disabled={busy} className="rounded p-1.5 hover:bg-rose-50 text-rose-500" title="Delete">{busy ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}</button>}
     </div>
@@ -90,7 +91,7 @@ function Drawer({ title, onClose, onSave, busy, children }: { title: string; onC
     </div>
   );
 }
-function Field({ label, children }: { label: string; children: React.ReactNode }) { return <label className="block"><div className="text-[11px] text-muted-foreground mb-0.5">{label}</div>{children}</label>; }
+function Field({ label, children }: { label: string; children: React.ReactNode }) { return <label className="block"><div className="text-2xs text-muted-foreground mb-0.5">{label}</div>{children}</label>; }
 
 async function post(url: string, body: any, onDone: () => void, setBusy: (b: boolean) => void, setErr: (s: string | null) => void) {
   setBusy(true); setErr(null);
@@ -117,7 +118,7 @@ function AssignmentDrawer({ users, onClose }: { users: User[]; onClose: () => vo
       <Field label="Name"><input value={name} onChange={(e) => setName(e.target.value)} className="input-base" placeholder="e.g. Website leads → round robin" /></Field>
       <Field label="Strategy"><select value={strategy} onChange={(e) => setStrategy(e.target.value)} className="input-base"><option value="round_robin">Round robin</option><option value="load_balanced">Load balanced (fewest open)</option><option value="specific">Specific RM</option></select></Field>
       <Field label="Only when lead source = (optional)"><input value={source} onChange={(e) => setSource(e.target.value)} className="input-base" placeholder="Website" /></Field>
-      <div><div className="text-[11px] text-muted-foreground mb-1">RMs to assign</div>
+      <div><div className="text-2xs text-muted-foreground mb-1">RMs to assign</div>
         <div className="flex flex-wrap gap-1.5">{users.map((u) => <button key={u.id} type="button" onClick={() => toggle(u.id)} className={`px-2.5 py-1 rounded-md text-xs border ${targets.includes(u.id) ? "bg-brand-cyan text-white border-brand-cyan" : "border-border text-muted-foreground hover:bg-secondary"}`}>{u.name}</button>)}</div>
       </div>
       {err && <div className="text-sm text-rose-600">{err}</div>}
@@ -141,7 +142,7 @@ function MacroDrawer({ onClose }: { onClose: () => void }) {
       <Field label="Name"><input value={name} onChange={(e) => setName(e.target.value)} className="input-base" placeholder="e.g. After first call" /></Field>
       <Field label="For"><select value={subjectType} onChange={(e) => setSubjectType(e.target.value)} className="input-base"><option value="lead">Leads</option><option value="investor">Clients</option></select></Field>
       <div className="space-y-2">
-        <div className="text-[11px] text-muted-foreground">Steps (run in order)</div>
+        <div className="text-2xs text-muted-foreground">Steps (run in order)</div>
         {steps.map((st, i) => (
           <div key={i} className="rounded-lg border p-2 space-y-1.5">
             <div className="flex items-center gap-2">
@@ -207,7 +208,7 @@ function CadenceDrawer({ onClose }: { onClose: () => void }) {
       <Field label="Name"><input value={name} onChange={(e) => setName(e.target.value)} className="input-base" placeholder="e.g. New-lead 5-day nurture" /></Field>
       <Field label="For"><select value={subjectType} onChange={(e) => setSubjectType(e.target.value)} className="input-base"><option value="lead">Leads</option><option value="investor">Clients</option></select></Field>
       <div className="space-y-2">
-        <div className="text-[11px] text-muted-foreground">Steps</div>
+        <div className="text-2xs text-muted-foreground">Steps</div>
         {steps.map((st, i) => (
           <div key={i} className="flex items-center gap-2">
             <input type="number" value={st.dayOffset} onChange={(e) => update(i, { dayOffset: Number(e.target.value) })} className="input-base text-xs w-20" title="day" />

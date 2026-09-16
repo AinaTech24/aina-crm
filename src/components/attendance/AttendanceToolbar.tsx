@@ -89,21 +89,21 @@ export function AttendanceToolbar({ statusOptions }: { statusOptions: { value: s
           <SlidersHorizontal className="size-3.5" />
           <span className="hidden sm:inline">Filters</span>
           {activeCount > 0 && (
-            <span className="grid place-items-center min-w-4 h-4 px-1 rounded-full bg-brand-cyan text-white text-[10px] font-bold leading-none">{activeCount}</span>
+            <span className="grid place-items-center min-w-4 h-4 px-1 rounded-full bg-brand-cyan text-white text-2xs font-bold leading-none">{activeCount}</span>
           )}
         </button>
 
         {open && (
           <div className="absolute right-0 top-full mt-1.5 z-30 w-64 rounded-xl border border-border bg-card shadow-lg p-3 space-y-3">
             <div>
-              <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Status</div>
+              <div className="text-2xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Status</div>
               <div className="flex flex-wrap gap-1.5">
                 {statusOptions.map((o) => (
                   <button
                     key={o.value}
                     type="button"
                     onClick={() => toggleStatus(o.value)}
-                    className={`text-[11px] px-2 py-1 rounded-md border transition ${
+                    className={`text-2xs px-2 py-1 rounded-md border transition ${
                       statusSel.includes(o.value) ? "border-brand-cyan bg-brand-cyan-light/50 text-brand-cyan-deep font-medium" : "border-border text-muted-foreground hover:bg-secondary"
                     }`}
                   >
@@ -114,7 +114,7 @@ export function AttendanceToolbar({ statusOptions }: { statusOptions: { value: s
             </div>
 
             <div>
-              <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Date range</div>
+              <div className="text-2xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Date range</div>
               <div className="flex items-center gap-1.5">
                 <input type="date" value={dateFrom} onChange={(e) => setParam({ date_from: e.target.value || null, today: null })} className="input-base h-8 text-xs flex-1 min-w-0" aria-label="From date" />
                 <span className="text-muted-foreground text-xs">–</span>
@@ -128,8 +128,8 @@ export function AttendanceToolbar({ statusOptions }: { statusOptions: { value: s
             </label>
 
             <div className="flex items-center justify-between pt-2 border-t border-border">
-              <button type="button" onClick={clearAll} className="text-[11px] text-muted-foreground hover:text-foreground">Clear all</button>
-              <button type="button" onClick={() => setOpen(false)} className="text-[11px] font-medium text-brand-cyan-deep">Done</button>
+              <button type="button" onClick={clearAll} className="text-2xs text-muted-foreground hover:text-foreground">Clear all</button>
+              <button type="button" onClick={() => setOpen(false)} className="text-2xs font-medium text-brand-cyan-deep">Done</button>
             </div>
           </div>
         )}

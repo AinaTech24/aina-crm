@@ -4,7 +4,7 @@ import {
   Plus,
   Sparkles,
   UserPlus,
-  FileDown,
+  FileUp,
   Filter,
   LayoutGrid,
   List,
@@ -260,8 +260,9 @@ export default async function LeadsPage({
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="page-title">
-            <UserPlus className="size-6 text-brand-cyan" /> Leads
+            <UserPlus className="size-6 text-muted-foreground" /> Leads
           </h1>
+          <p className="page-subtitle mt-1">Prospects you are working on, from first contact through to conversion.</p>
         </div>
         <div className="flex gap-2 items-center">
           <WorkSwitcher current="/dashboard/leads" options={PIPELINE_VIEWS} label="Module" />
@@ -290,7 +291,7 @@ export default async function LeadsPage({
           {/* Columns + Views moved into the filter toolbar (right side), so every
               list module carries the same compact icon row as Tasks. */}
           <Link href="/dashboard/leads/import" className="btn-secondary text-xs">
-            <FileDown className="size-3.5" /> Import Excel
+            <FileUp className="size-3.5" /> Import Excel
           </Link>
           <Link href="/dashboard/leads/new" className="btn-primary">
             <Plus className="size-4" /> New lead
@@ -382,7 +383,7 @@ export default async function LeadsPage({
                 {data.total} total leads{data.total > data.rows.length ? ` · showing top ${data.rows.length}` : ""}
               </span>
             </div>
-            <span className="text-[11px] text-muted-foreground">
+            <span className="text-2xs text-muted-foreground">
               Drag a card to move it between stages
             </span>
           </div>

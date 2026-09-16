@@ -227,7 +227,7 @@ export default function NewLeadPage() {
 
       <div>
         <h1 className="page-title">
-          <UserPlus className="size-6 text-brand-cyan" /> New lead
+          <UserPlus className="size-6 text-muted-foreground" /> New lead
         </h1>
       </div>
 
@@ -277,7 +277,7 @@ export default function NewLeadPage() {
               </span>
               {dupChecking && <Loader2 className="size-3 animate-spin text-amber-700" />}
             </div>
-            <p className="text-[11px] text-amber-900/80">
+            <p className="text-2xs text-amber-900/80">
               These existing leads share a phone or email with what you typed.
               Open the matching record instead of re-creating to avoid duplicate
               follow-ups.
@@ -290,7 +290,7 @@ export default function NewLeadPage() {
                 >
                   <div className="min-w-0 flex-1">
                     <div className="font-medium truncate">{m.name}</div>
-                    <div className="text-[10px] text-muted-foreground truncate">
+                    <div className="text-2xs text-muted-foreground truncate">
                       stage: {m.stage} · source: {m.source} · matched on{" "}
                       {m.matchedOn.join(", ")}
                     </div>
@@ -346,7 +346,7 @@ export default function NewLeadPage() {
               <div className="text-xs font-semibold text-brand-cyan-deep uppercase tracking-wider">
                 Referred by (Client) <span className="text-rose-600">*</span>
               </div>
-              <span className="text-[10px] text-muted-foreground">
+              <span className="text-2xs text-muted-foreground">
                 Lookup from Clients module
               </span>
             </div>
@@ -366,7 +366,7 @@ export default function NewLeadPage() {
               placeholder="Type the existing client's name, PAN, or mobile…"
               required={showReferrerLookup}
             />
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-2xs text-muted-foreground">
               The referring client will be linked so referral credit is tracked end-to-end.
             </p>
           </div>
@@ -375,7 +375,7 @@ export default function NewLeadPage() {
         <div className={showAll ? "sm:col-span-2" : "hidden"}>
           <div className="text-xs font-medium mb-1">
             Sub-distributor
-            <span className="ml-1 text-[10px] text-muted-foreground font-normal">
+            <span className="ml-1 text-2xs text-muted-foreground font-normal">
               · optional · channel partner credit
             </span>
           </div>
@@ -393,7 +393,7 @@ export default function NewLeadPage() {
               setForm((s) => ({ ...s, subDistributorId: "", subDistributorName: "" }))
             }
           />
-          <p className="text-[10px] text-muted-foreground mt-1">
+          <p className="text-2xs text-muted-foreground mt-1">
             Attribute this lead to a channel partner. On conversion, their
             commission split applies in the brokerage reconciler.
           </p>
@@ -402,7 +402,7 @@ export default function NewLeadPage() {
         <div className="sm:col-span-2">
           <div className="text-xs font-medium mb-1">
             Assign RM
-            <span className="ml-1 text-[10px] text-muted-foreground font-normal">
+            <span className="ml-1 text-2xs text-muted-foreground font-normal">
               · leave blank for auto round-robin
             </span>
           </div>
@@ -422,7 +422,7 @@ export default function NewLeadPage() {
             value={form.followUpDate}
             onChange={(v) => set("followUpDate", v)}
           />
-          <p className="text-[10px] text-muted-foreground mt-1">
+          <p className="text-2xs text-muted-foreground mt-1">
             Sets the next follow-up + creates an RM task so nobody forgets.
           </p>
         </div>
@@ -488,7 +488,7 @@ export default function NewLeadPage() {
         <div className="sm:col-span-2">
           <div className="text-xs font-medium mb-1">
             Current investments
-            <span className="ml-1 text-[10px] text-muted-foreground font-normal">· what they already hold elsewhere</span>
+            <span className="ml-1 text-2xs text-muted-foreground font-normal">· what they already hold elsewhere</span>
           </div>
           <Chips
             options={PRODUCT_OPTIONS}

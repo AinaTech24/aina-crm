@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { notify } from "@/components/ui/Toast";
 import { useRouter } from "next/navigation";
 import { Loader2, Check, X, Ban } from "lucide-react";
 import { formatDate } from "@/lib/utils";
@@ -53,7 +54,7 @@ export function LeaveTable({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ action, decisionNotes }),
       });
-      if (!res.ok) { const j = await res.json().catch(() => ({})); alert(j.error ?? "Action failed"); return; }
+      if (!res.ok) { const j = await res.json().catch(() => ({})); notify.error(j.error ?? "Action failed"); return; }
       router.refresh();
     } finally {
       setBusy(null);
@@ -95,7 +96,7 @@ export function LeaveTable({
                 <td className="py-3 text-xs whitespace-nowrap tabular-nums">
                   {formatDate(r.from_date)}
                   {r.to_date !== r.from_date ? ` → ${formatDate(r.to_date)}` : ""}
-                  {r.duration === "half_day" && <span className="text-[10px] text-muted-foreground ml-1">({LEAVE_DURATION_LABELS.half_day})</span>}
+                  {r.duration === "half_day" && <span className="text-2xs text-muted-foreground ml-1">({LEAVE_DURATION_LABELS.half_day})</span>}
                 </td>
                 <td className="py-3 text-right tabular-nums">{r.no_of_days}</td>
                 <td className="py-3 text-xs text-muted-foreground max-w-[220px] truncate">{r.reason ?? "—"}</td>

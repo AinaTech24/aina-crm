@@ -52,7 +52,7 @@ export default async function ServiceRequestDetailPage({ params }: { params: Pro
 
       <div className="card-surface p-6 flex items-start gap-4">
         <div className="size-12 rounded-lg bg-brand-cyan-light grid place-items-center">
-          <LifeBuoy className="size-6 text-brand-cyan" />
+          <LifeBuoy className="size-6 text-muted-foreground" />
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">

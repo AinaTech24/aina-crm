@@ -83,21 +83,21 @@ export default async function AinaLibraryDetailPage({
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <span className={`chip text-[10px] capitalize ${TYPE_TONE[asset.type] ?? ""}`}>
+            <span className={`chip text-2xs capitalize ${TYPE_TONE[asset.type] ?? ""}`}>
               {asset.type}
             </span>
-            <span className="chip text-[10px] bg-secondary text-foreground capitalize">
+            <span className="chip text-2xs bg-secondary text-foreground capitalize">
               {asset.category.replace(/_/g, " ")}
             </span>
           </div>
           <h1 className="page-title">
-            <Icon className="size-6 text-brand-cyan" /> {asset.title}
+            <Icon className="size-6 text-muted-foreground" /> {asset.title}
           </h1>
           {asset.description && (
             <p className="page-subtitle mt-1 max-w-3xl">{asset.description}</p>
           )}
         </div>
-        <div className="text-[11px] text-muted-foreground tabular-nums text-right">
+        <div className="text-2xs text-muted-foreground tabular-nums text-right">
           Added {formatDate(asset.createdAt)}
           {asset.fileName && (
             <div className="font-mono truncate max-w-[18rem]">{asset.fileName}</div>
@@ -208,7 +208,7 @@ export default async function AinaLibraryDetailPage({
           <h2 className="section-title mb-2">Tags</h2>
           <div className="flex flex-wrap gap-1.5">
             {(asset.tags as string[]).map((t) => (
-              <span key={t} className="chip text-[10px] bg-secondary text-foreground">
+              <span key={t} className="chip text-2xs bg-secondary text-foreground">
                 {t}
               </span>
             ))}

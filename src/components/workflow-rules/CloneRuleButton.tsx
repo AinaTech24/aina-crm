@@ -1,15 +1,17 @@
 "use client";
 
 import { useState } from "react";
+import { notify } from "@/components/ui/Toast";
 import { useRouter } from "next/navigation";
 import { Copy } from "lucide-react";
+import { confirmDialog } from "@/components/ui/ConfirmProvider";
 
 export function CloneRuleButton({ id, name }: { id: string; name: string }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
 
   async function clone() {
-    if (!confirm(`Clone the rule "${name}"? The cloned rule will be disabled until you review it.`)) return;
+    if (!(await confirmDialog({ title: `Clone the rule "${name}"?`, message: `The cloned rule will be disabled until you review it.` }))) return;
     setBusy(true);
     try {
       const r = await fetch(`/api/workflow-rules/${id}/clone`, { method: "POST" });
@@ -18,7 +20,7 @@ export function CloneRuleButton({ id, name }: { id: string; name: string }) {
       router.push(`/dashboard/workflows/rules/${data.rule.id}`);
       router.refresh();
     } catch (e: any) {
-      alert(e?.message ?? "Failed to clone rule");
+      notify.error(e?.message ?? "Failed to clone rule");
       setBusy(false);
     }
   }

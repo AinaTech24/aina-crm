@@ -92,7 +92,7 @@ export function FamilyHeadPicker({
             <UserCheck className="size-3.5" /> Head of family
           </span>
           <span className="block text-sm font-medium truncate">{value.name}</span>
-          <span className="block text-[11px] text-muted-foreground tabular-nums truncate">
+          <span className="block text-2xs text-muted-foreground tabular-nums truncate">
             {[value.pan, value.phone, value.city].filter(Boolean).join(" · ") || "no identifiers"} · {inr(value.aum)} ·{" "}
             {value.folios} folio{value.folios === 1 ? "" : "s"}
           </span>
@@ -122,10 +122,10 @@ export function FamilyHeadPicker({
         {loading && <Loader2 className="size-4 absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-muted-foreground" />}
       </div>
 
-      {err && <p className="mt-1 text-[11px] text-rose-600">{err}</p>}
+      {err && <p className="mt-1 text-2xs text-rose-600">{err}</p>}
 
       {!err && q.trim().length >= 2 && !loading && results.length === 0 && (
-        <p className="mt-1 text-[11px] text-muted-foreground">
+        <p className="mt-1 text-2xs text-muted-foreground">
           No client matches. You can still name the household below and link members later.
         </p>
       )}
@@ -141,13 +141,13 @@ export function FamilyHeadPicker({
             >
               <span className="min-w-0">
                 <span className="block text-sm font-medium truncate">{c.name}</span>
-                <span className="block text-[11px] text-muted-foreground truncate tabular-nums">
+                <span className="block text-2xs text-muted-foreground truncate tabular-nums">
                   {[c.pan, c.phone, c.city].filter(Boolean).join(" · ") || "no identifiers"}
                 </span>
               </span>
               <span className="text-right shrink-0">
                 <span className="block text-xs font-medium tabular-nums">{inr(c.aum)}</span>
-                <span className="block text-[11px] text-muted-foreground">{c.folios} folio{c.folios === 1 ? "" : "s"}</span>
+                <span className="block text-2xs text-muted-foreground">{c.folios} folio{c.folios === 1 ? "" : "s"}</span>
               </span>
             </button>
           ))}

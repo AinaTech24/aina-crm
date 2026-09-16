@@ -50,7 +50,7 @@ export function PdfBrandingPicker({
       <div>
         <div className="flex items-center gap-2 mb-2">
           <LayoutTemplate className="size-3.5 text-brand-cyan" />
-          <span className="text-[11px] uppercase tracking-wider font-bold text-muted-foreground">
+          <span className="text-2xs uppercase tracking-wider font-bold text-muted-foreground">
             Branding template
           </span>
         </div>
@@ -69,7 +69,7 @@ export function PdfBrandingPicker({
                 }`}
               >
                 <div className="font-semibold text-[12px]">{o.label}</div>
-                <div className="text-[10px] text-muted-foreground mt-0.5 leading-tight">
+                <div className="text-2xs text-muted-foreground mt-0.5 leading-tight">
                   {o.description}
                 </div>
               </button>
@@ -90,7 +90,7 @@ export function PdfBrandingPicker({
       </div>
 
       <div className="flex items-center justify-between flex-wrap gap-2 pt-2 border-t border-border">
-        <p className="text-[11px] text-muted-foreground italic">
+        <p className="text-2xs text-muted-foreground italic">
           Branded cover page + per-page footer · composited server-side, the raw file stays private.
         </p>
         <div className="flex gap-2">
@@ -114,7 +114,7 @@ export function PdfBrandingPicker({
         </div>
       </div>
 
-      <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+      <p className="text-2xs text-muted-foreground flex items-center gap-1.5">
         <FileText className="size-3.5 shrink-0" />
         Using the <strong className="font-semibold text-foreground">{template.label}</strong> template.
         Your logo and theme colour come from your branding settings.

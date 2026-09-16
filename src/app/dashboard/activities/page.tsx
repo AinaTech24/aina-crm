@@ -77,7 +77,8 @@ export default async function ActivitiesPage({ searchParams }: { searchParams: P
     <div className="space-y-6 max-w-7xl">
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2"><ActivityIcon className="size-6 text-brand-cyan" /> Activity Log</h1>
+          <h1 className="page-title"><ActivityIcon className="size-6 text-muted-foreground" /> Activity Log</h1>
+          <p className="page-subtitle mt-1">Every call, meeting, email and WhatsApp your team logged against a client or lead.</p>
         </div>
         <LogActivityButton />
       </div>
@@ -127,16 +128,16 @@ export default async function ActivitiesPage({ searchParams }: { searchParams: P
                 return (
                   <tr key={a.id} className="border-b last:border-0 hover:bg-secondary/40 align-top">
                     <td className="px-4 py-3">
-                      <span className={`chip text-[10px] inline-flex items-center gap-1 ${km.tone}`}><Icon className="size-3" /> {km.label}</span>
-                      {a.direction && <div className="text-[10px] text-muted-foreground mt-1 capitalize">{a.direction}</div>}
+                      <span className={`chip text-2xs inline-flex items-center gap-1 ${km.tone}`}><Icon className="size-3" /> {km.label}</span>
+                      {a.direction && <div className="text-2xs text-muted-foreground mt-1 capitalize">{a.direction}</div>}
                     </td>
                     <td className="py-3">
                       <div className="font-medium">{a.subject || <span className="text-muted-foreground italic">—</span>}</div>
-                      <Link href={hrefFor(a.subject_type, a.subject_id)} className="text-[11px] text-brand-cyan hover:underline">{a.subject_name ?? "(unknown)"}</Link>
+                      <Link href={hrefFor(a.subject_type, a.subject_id)} className="text-2xs text-brand-cyan hover:underline">{a.subject_name ?? "(unknown)"}</Link>
                     </td>
                     <td className="py-3 text-xs max-w-[280px]">
                       <div className="truncate text-muted-foreground">{a.notes ?? "—"}</div>
-                      <div className="text-[10px] text-muted-foreground mt-0.5">
+                      <div className="text-2xs text-muted-foreground mt-0.5">
                         {a.status ? <span className="capitalize">{a.status.replace(/_/g, " ")}</span> : null}
                         {a.duration_sec ? ` · ${Math.round(a.duration_sec / 60)}m` : ""}
                         {a.location_label ? ` · 📍 ${a.location_label}` : ""}

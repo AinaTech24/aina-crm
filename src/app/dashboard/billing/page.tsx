@@ -59,7 +59,7 @@ export default async function BillingPage() {
     <div className="space-y-6 max-w-4xl">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Billing & Subscription</h1>
-        <p className="text-muted-foreground text-sm">Your license, package, and payment history.</p>
+        <p className="page-subtitle mt-1">Your license, package, and payment history.</p>
       </div>
 
       {sub && pkg ? (
@@ -231,7 +231,7 @@ function UsageRow({ icon: Icon, label, m, unit }: { icon: any; label: string; m:
         <div className={`h-full rounded-full ${tone}`} style={{ width: `${pct ?? 4}%` }} />
       </div>
       {pct != null && pct >= 90 && (
-        <div className="text-[11px] text-rose-600 mt-0.5">{pct}% used — approaching your plan limit</div>
+        <div className="text-2xs text-rose-600 mt-0.5">{pct}% used — approaching your plan limit</div>
       )}
     </div>
   );

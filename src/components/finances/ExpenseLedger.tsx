@@ -139,7 +139,7 @@ export function ExpenseLedger({
         <h2 className="font-semibold text-sm mb-3">Add expense</h2>
         <div className="grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
           <label className="block">
-            <div className="text-[11px] font-medium text-muted-foreground mb-1">Date</div>
+            <div className="text-2xs font-medium text-muted-foreground mb-1">Date</div>
             <DateField
               value={form.expenseDate}
               onChange={(e) => setForm((s) => ({ ...s, expenseDate: e.target.value }))}
@@ -147,7 +147,7 @@ export function ExpenseLedger({
             />
           </label>
           <label className="block md:col-span-2">
-            <div className="text-[11px] font-medium text-muted-foreground mb-1">Description</div>
+            <div className="text-2xs font-medium text-muted-foreground mb-1">Description</div>
             <input
               value={form.description}
               onChange={(e) => setForm((s) => ({ ...s, description: e.target.value }))}
@@ -156,7 +156,7 @@ export function ExpenseLedger({
             />
           </label>
           <label className="block">
-            <div className="text-[11px] font-medium text-muted-foreground mb-1">Category</div>
+            <div className="text-2xs font-medium text-muted-foreground mb-1">Category</div>
             <SelectField
               value={form.category}
               onChange={(e) => setForm((s) => ({ ...s, category: e.target.value }))}
@@ -168,7 +168,7 @@ export function ExpenseLedger({
             </SelectField>
           </label>
           <label className="block">
-            <div className="text-[11px] font-medium text-muted-foreground mb-1">Paid from</div>
+            <div className="text-2xs font-medium text-muted-foreground mb-1">Paid from</div>
             <SelectField
               value={form.paidFrom}
               onChange={(e) => setForm((s) => ({ ...s, paidFrom: e.target.value }))}
@@ -180,7 +180,7 @@ export function ExpenseLedger({
             </SelectField>
           </label>
           <label className="block">
-            <div className="text-[11px] font-medium text-muted-foreground mb-1">Amount (₹)</div>
+            <div className="text-2xs font-medium text-muted-foreground mb-1">Amount (₹)</div>
             <input
               inputMode="decimal"
               value={form.amount}
@@ -248,7 +248,7 @@ export function ExpenseLedger({
                         </td>
                         <td className="py-2 font-medium">{r.description}</td>
                         <td className="py-2 text-xs">
-                          <span className="chip bg-secondary text-[10px]">{CAT_LABEL[r.category] ?? r.category}</span>
+                          <span className="chip bg-secondary text-2xs">{CAT_LABEL[r.category] ?? r.category}</span>
                         </td>
                         <td className="py-2 text-xs text-muted-foreground">{PAID_LABEL[r.paidFrom] ?? r.paidFrom}</td>
                         <td className="py-2 text-right tabular-nums font-semibold pr-2">{formatINR(Number(r.amount))}</td>

@@ -100,7 +100,7 @@ export default async function ExpectedInflowsPage() {
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
             <IndianRupee className="size-6 text-emerald-600" /> Expected Inflows
           </h1>
-          <p className="text-muted-foreground text-sm">
+          <p className="page-subtitle mt-1">
             Money your clients have told you is coming — FD maturities, bonuses, property sales — with a reminder already set.
           </p>
         </div>
@@ -144,14 +144,14 @@ export default async function ExpectedInflowsPage() {
                 <div className={`px-5 py-3 flex items-center justify-between border-b ${isPast ? "bg-rose-50/50" : "bg-secondary/30"}`}>
                   <div className="font-semibold flex items-center gap-2">
                     {monthLabel(month)}
-                    {isPast && <span className="text-[10px] uppercase font-bold text-rose-700 bg-rose-100 px-1.5 py-0.5 rounded">date passed</span>}
+                    {isPast && <span className="text-2xs uppercase font-bold text-rose-700 bg-rose-100 px-1.5 py-0.5 rounded">date passed</span>}
                   </div>
                   <div className="text-sm font-bold tabular-nums text-emerald-700">{inrShort(monthTotal)}</div>
                 </div>
                 <div className="overflow-x-auto scrollbar-none">
                   <table className="w-full text-sm border-collapse min-w-[720px]">
                     <thead>
-                      <tr className="text-[11px] uppercase tracking-wide text-muted-foreground border-b">
+                      <tr className="text-2xs uppercase tracking-wide text-muted-foreground border-b">
                         <th className="text-left font-medium py-2.5 px-4">Client</th>
                         <th className="text-left font-medium py-2.5 px-3">Source</th>
                         <th className="text-right font-medium py-2.5 px-3">Amount</th>
@@ -177,7 +177,7 @@ export default async function ExpectedInflowsPage() {
                           <td className="py-2.5 px-3 capitalize text-muted-foreground">{r.confidence}</td>
                           <td className="py-2.5 px-3 text-muted-foreground">{r.ownerName ?? "—"}</td>
                           <td className="py-2.5 px-3">
-                            <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${STATUS_STYLE[r.status] ?? ""}`}>
+                            <span className={`text-2xs px-2 py-0.5 rounded-full font-medium ${STATUS_STYLE[r.status] ?? ""}`}>
                               {String(r.status).replace(/_/g, " ")}
                             </span>
                           </td>
@@ -192,7 +192,7 @@ export default async function ExpectedInflowsPage() {
         </div>
       )}
 
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-2xs text-muted-foreground">
         Adding an inflow automatically creates a reminder task for the owner, due{" "}
         <strong>before</strong> the money date. Mark it <em>invested</em> once the money is deployed — that is what the capture % measures.
       </p>
@@ -205,11 +205,11 @@ function Kpi({ label, value, sub, icon: Icon, tone }: { label: string; value: st
   return (
     <div className="card-surface glass-card p-4">
       <div className="flex items-center justify-between">
-        <span className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">{label}</span>
+        <span className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">{label}</span>
         <Icon className="size-4 text-muted-foreground" />
       </div>
       <div className={`text-xl font-bold mt-2 tabular-nums tracking-tight ${color}`}>{value}</div>
-      {sub && <div className="text-[11px] text-muted-foreground mt-1">{sub}</div>}
+      {sub && <div className="text-2xs text-muted-foreground mt-1">{sub}</div>}
     </div>
   );
 }

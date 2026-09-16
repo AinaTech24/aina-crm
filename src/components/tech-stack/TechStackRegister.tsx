@@ -158,23 +158,23 @@ export function TechStackRegister({ initial }: { initial: Tool[] }) {
         <h2 className="font-semibold text-sm mb-3">Add tool</h2>
         <div className="grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
           <label className="block md:col-span-2">
-            <div className="text-[11px] font-medium text-muted-foreground mb-1">Tool name</div>
+            <div className="text-2xs font-medium text-muted-foreground mb-1">Tool name</div>
             <input value={form.toolName} onChange={(e) => setForm((s) => ({ ...s, toolName: e.target.value }))}
               placeholder="e.g. BSE StAR MF, Google Workspace" className="input-base text-sm w-full" />
           </label>
           <label className="block">
-            <div className="text-[11px] font-medium text-muted-foreground mb-1">Category</div>
+            <div className="text-2xs font-medium text-muted-foreground mb-1">Category</div>
             <select value={form.category} onChange={(e) => setForm((s) => ({ ...s, category: e.target.value }))} className="input-base text-sm w-full">
               {CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
             </select>
           </label>
           <label className="block md:col-span-2">
-            <div className="text-[11px] font-medium text-muted-foreground mb-1">Purpose</div>
+            <div className="text-2xs font-medium text-muted-foreground mb-1">Purpose</div>
             <input value={form.purpose} onChange={(e) => setForm((s) => ({ ...s, purpose: e.target.value }))}
               placeholder="e.g. Executing MF transactions" className="input-base text-sm w-full" />
           </label>
           <label className="block">
-            <div className="text-[11px] font-medium text-muted-foreground mb-1">Status</div>
+            <div className="text-2xs font-medium text-muted-foreground mb-1">Status</div>
             <select value={form.status} onChange={(e) => setForm((s) => ({ ...s, status: e.target.value }))} className="input-base text-sm w-full">
               <option value="active">Active</option>
               <option value="evaluating">Evaluating</option>
@@ -182,22 +182,22 @@ export function TechStackRegister({ initial }: { initial: Tool[] }) {
             </select>
           </label>
           <label className="block md:col-span-2">
-            <div className="text-[11px] font-medium text-muted-foreground mb-1">Vendor URL</div>
+            <div className="text-2xs font-medium text-muted-foreground mb-1">Vendor URL</div>
             <input value={form.vendorUrl} onChange={(e) => setForm((s) => ({ ...s, vendorUrl: e.target.value }))}
               placeholder="https://" className="input-base text-sm w-full" />
           </label>
           <label className="block md:col-span-2">
-            <div className="text-[11px] font-medium text-muted-foreground mb-1">Who has access</div>
+            <div className="text-2xs font-medium text-muted-foreground mb-1">Who has access</div>
             <input value={form.accessNote} onChange={(e) => setForm((s) => ({ ...s, accessNote: e.target.value }))}
               placeholder="e.g. Owner + Ops" className="input-base text-sm w-full" />
           </label>
           <label className="block">
-            <div className="text-[11px] font-medium text-muted-foreground mb-1">Annual cost (₹)</div>
+            <div className="text-2xs font-medium text-muted-foreground mb-1">Annual cost (₹)</div>
             <input inputMode="decimal" value={form.annualCost} onChange={(e) => setForm((s) => ({ ...s, annualCost: e.target.value }))}
               placeholder="0" className="input-base text-sm w-full tabular-nums" />
           </label>
           <label className="block">
-            <div className="text-[11px] font-medium text-muted-foreground mb-1">Renewal date</div>
+            <div className="text-2xs font-medium text-muted-foreground mb-1">Renewal date</div>
             <input type="date" value={form.renewalDate} onChange={(e) => setForm((s) => ({ ...s, renewalDate: e.target.value }))} className="input-base text-sm w-full" />
           </label>
         </div>
@@ -233,11 +233,11 @@ export function TechStackRegister({ initial }: { initial: Tool[] }) {
                           </a>
                         )}
                       </div>
-                      {r.purpose && <div className="text-[11px] text-muted-foreground mt-0.5">{r.purpose}</div>}
-                      {r.accessNote && <div className="text-[10px] text-muted-foreground mt-0.5">Access: {r.accessNote}</div>}
+                      {r.purpose && <div className="text-2xs text-muted-foreground mt-0.5">{r.purpose}</div>}
+                      {r.accessNote && <div className="text-2xs text-muted-foreground mt-0.5">Access: {r.accessNote}</div>}
                     </td>
                     <td className="py-2.5 text-xs">
-                      <span className={`chip text-[10px] ${STATUS_TONE[r.status] ?? ""}`}>{r.status}</span>
+                      <span className={`chip text-2xs ${STATUS_TONE[r.status] ?? ""}`}>{r.status}</span>
                     </td>
                     <td className="py-2.5 text-xs text-muted-foreground text-right tabular-nums whitespace-nowrap">
                       {r.renewalDate ? `renews ${formatDate(r.renewalDate)}` : "—"}
@@ -264,7 +264,7 @@ export function TechStackRegister({ initial }: { initial: Tool[] }) {
 function Card({ label, value, tone }: { label: string; value: string; tone?: "emerald" }) {
   return (
     <div className="card-surface glass-card p-4">
-      <div className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground">{label}</div>
+      <div className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">{label}</div>
       <div className={`text-xl font-bold mt-1 tabular-nums ${tone === "emerald" ? "text-emerald-700" : ""}`}>{value}</div>
     </div>
   );

@@ -42,7 +42,7 @@ export function MonthlyTrendChart({ data }: { data: Point[] }) {
               <g key={i} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)}>
                 <rect x={cx - bw - 1} y={H - padB - ih} width={bw} height={ih} rx={2} fill="#10b981" opacity={hover == null || hover === i ? 0.9 : 0.4} />
                 <rect x={cx + 1} y={H - padB - eh} width={bw} height={eh} rx={2} fill="#fb7185" opacity={hover == null || hover === i ? 0.9 : 0.4} />
-                <text x={cx} y={H - 6} textAnchor="middle" className="fill-muted-foreground text-[9px]">{d.label}</text>
+                <text x={cx} y={H - 6} textAnchor="middle" className="fill-muted-foreground text-2xs">{d.label}</text>
               </g>
             );
           })}

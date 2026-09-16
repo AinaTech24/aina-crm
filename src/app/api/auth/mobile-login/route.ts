@@ -21,7 +21,7 @@ import bcrypt from "bcryptjs";
 import { withSystem } from "@/db/client";
 import { sign2faChallenge } from "@/lib/auth/jwt";
 import { issueSessionToken } from "@/lib/auth/issue-session";
-import { enforce } from "@/lib/rate-limit";
+import { reserveLoginAttempt } from "@/lib/auth/login-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -36,12 +36,13 @@ export async function POST(req: NextRequest) {
 
   // Rate-limit only FAILED attempts — successful sign-ins never consume budget,
   // so a whole office on one IP is never blocked; only password-guessing is.
-  const recordFailure = () => enforce(req, "auth.login", { limit: 15, windowSec: 15 * 60 }, email);
+  const attempt = await reserveLoginAttempt(email);
+  if (!attempt.allowed) return attempt.response;
 
   const userRow = await withSystem(async (tx) => {
     const r = await tx.execute(sql`
       SELECT u.id, u.tenant_id, u.branch_id, u.email, u.name, u.password_hash, u.roles, u.status, u.permissions, u.two_fa_enabled,
-             t.deleted_at AS tenant_deleted_at
+             u.deleted_at AS user_deleted_at, t.deleted_at AS tenant_deleted_at
       FROM users u
       LEFT JOIN tenants t ON t.id = u.tenant_id
       WHERE lower(u.email) = ${email}
@@ -52,19 +53,21 @@ export async function POST(req: NextRequest) {
   });
 
   if (!userRow || !userRow.password_hash) {
-    return recordFailure() ?? NextResponse.json({ error: "invalid credentials" }, { status: 401 });
+    return NextResponse.json({ error: "invalid credentials" }, { status: 401 });
   }
-  if (userRow.status === "suspended" || userRow.status === "offboarded") {
+  if (userRow.status !== "active") {
     return NextResponse.json({ error: "account inactive" }, { status: 403 });
   }
-  if (userRow.tenant_deleted_at) {
+  if (userRow.user_deleted_at || userRow.tenant_deleted_at) {
     return NextResponse.json({ error: "account inactive" }, { status: 403 });
   }
 
   const ok = await bcrypt.compare(password, userRow.password_hash);
   if (!ok) {
-    return recordFailure() ?? NextResponse.json({ error: "invalid credentials" }, { status: 401 });
+    return NextResponse.json({ error: "invalid credentials" }, { status: 401 });
   }
+
+  await attempt.succeeded();
 
   // Second factor gate. Password verified, but with 2FA on we hand back a
   // short-lived challenge the app exchanges (+ TOTP/backup code) at

@@ -60,7 +60,7 @@ export function MoneyLastCalculator() {
           ok ? "border-emerald-200 bg-emerald-50/60" : "border-rose-200 bg-rose-50/60"
         }`}
       >
-        <div className={`text-[11px] uppercase tracking-wider font-semibold ${ok ? "text-emerald-700" : "text-rose-700"}`}>
+        <div className={`text-2xs uppercase tracking-wider font-semibold ${ok ? "text-emerald-700" : "text-rose-700"}`}>
           {ok ? "The money outlives the plan" : "The money runs out early"}
         </div>
         <div className={`text-3xl font-extrabold mt-1 ${ok ? "text-emerald-700" : "text-rose-700"}`}>
@@ -96,7 +96,7 @@ export function MoneyLastCalculator() {
       />
 
       <div>
-        <div className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold mb-1">
+        <div className="text-2xs uppercase tracking-wide text-muted-foreground font-semibold mb-1">
           Year-by-year — withdrawals &amp; balance left
         </div>
         <div className="max-h-80 overflow-y-auto scrollbar-thin print:max-h-none print:overflow-visible">

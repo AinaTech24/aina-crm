@@ -79,7 +79,7 @@ function Wizard({ investor, investorId, onClose }: { investor: Inv; investorId: 
         <div className="px-4 py-3 border-b flex items-center gap-1">
           {STEPS.map((s, i) => (
             <button key={s.key} onClick={() => setStep(i)} className="flex items-center gap-1 flex-1 min-w-0">
-              <span className={`size-6 shrink-0 rounded-full grid place-items-center text-[11px] font-bold ${i === step ? "bg-brand-cyan text-white" : isDone(s) ? "bg-emerald-100 text-emerald-700" : "bg-secondary text-muted-foreground"}`}>
+              <span className={`size-6 shrink-0 rounded-full grid place-items-center text-2xs font-bold ${i === step ? "bg-brand-cyan text-white" : isDone(s) ? "bg-emerald-100 text-emerald-700" : "bg-secondary text-muted-foreground"}`}>
                 {isDone(s) ? <Check className="size-3" /> : i + 1}
               </span>
               {i < STEPS.length - 1 && <span className={`h-0.5 flex-1 ${isDone(s) ? "bg-emerald-300" : "bg-border"}`} />}
@@ -100,7 +100,7 @@ function Wizard({ investor, investorId, onClose }: { investor: Inv; investorId: 
               <div className="text-sm font-semibold">{cur.label} <span className="text-xs text-muted-foreground font-normal">· step {step + 1} of {STEPS.length}</span></div>
               {cur.fields.map((k) => (
                 <label key={k} className="block">
-                  <div className="text-[11px] text-muted-foreground mb-0.5">{LABELS[k] ?? k}{(cur.required as readonly string[]).includes(k) ? " *" : ""}</div>
+                  <div className="text-2xs text-muted-foreground mb-0.5">{LABELS[k] ?? k}{(cur.required as readonly string[]).includes(k) ? " *" : ""}</div>
                   {OPTS[k] ? (
                     <select value={f[k] ?? ""} onChange={(e) => set(k, e.target.value)} className="input-base"><option value="">Select…</option>{OPTS[k].map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
                   ) : (

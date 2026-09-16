@@ -33,13 +33,13 @@ export function VerifyContact({
     if (!has) return null;
     return verified ? (
       <button onClick={() => toggle(channel, false)} disabled={busy === channel}
-        className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+        className="inline-flex items-center gap-1 text-2xs px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
         title={`${label} verified — click to clear`}>
         {busy === channel ? <Loader2 className="size-3 animate-spin" /> : <BadgeCheck className="size-3" />} {label} verified
       </button>
     ) : (
       <button onClick={() => toggle(channel, true)} disabled={busy === channel}
-        className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 hover:bg-amber-100"
+        className="inline-flex items-center gap-1 text-2xs px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 hover:bg-amber-100"
         title={`Mark ${label.toLowerCase()} as verified`}>
         {busy === channel ? <Loader2 className="size-3 animate-spin" /> : <ShieldQuestion className="size-3" />} Verify {label.toLowerCase()}
       </button>

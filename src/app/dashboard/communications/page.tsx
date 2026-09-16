@@ -154,7 +154,7 @@ export default async function CommunicationsPage({
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h1 className="page-title">
-            <Mail className="size-6 text-brand-cyan" /> Communications
+            <Mail className="size-6 text-muted-foreground" /> Communications
           </h1>
           <p className="page-subtitle mt-1">Every message sent and received, across WhatsApp, email and SMS.</p>
         </div>

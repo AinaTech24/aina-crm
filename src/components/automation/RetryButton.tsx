@@ -42,7 +42,7 @@ export function RetryButton({ endpoint, title, label = "Retry", doneLabel = "Re-
         {busy ? <Loader2 className="size-3 animate-spin" /> : done ? <Check className="size-3 text-emerald-600" /> : <RotateCcw className="size-3" />}
         {done ? doneLabel : label}
       </button>
-      {err && <span className="text-[10px] text-rose-600" title={err}>{err}</span>}
+      {err && <span className="text-2xs text-rose-600" title={err}>{err}</span>}
     </span>
   );
 }

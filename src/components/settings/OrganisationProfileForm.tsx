@@ -223,7 +223,7 @@ export function OrganisationProfileForm({
             <button
               type="button"
               onClick={() => setUploadErr(null)}
-              className="text-[10px] text-rose-700 font-semibold hover:underline shrink-0"
+              className="text-2xs text-rose-700 font-semibold hover:underline shrink-0"
             >
               Dismiss
             </button>
@@ -242,20 +242,20 @@ export function OrganisationProfileForm({
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={url} alt={slot.label} className="max-h-full max-w-full object-contain" />
                   ) : (
-                    <span className="text-[9px] text-muted-foreground text-center px-1 leading-tight">No image</span>
+                    <span className="text-2xs text-muted-foreground text-center px-1 leading-tight">No image</span>
                   )}
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="text-sm font-medium flex items-center gap-1.5">
                     {slot.label}
                     {slot.field === "logoUrl" && (
-                      <span className="text-[9px] uppercase tracking-wide bg-brand-cyan-light/60 text-brand-cyan-deep rounded px-1 py-0.5 font-semibold">
+                      <span className="text-2xs uppercase tracking-wide bg-brand-cyan-light/60 text-brand-cyan-deep rounded px-1 py-0.5 font-semibold">
                         Recommended
                       </span>
                     )}
                   </div>
-                  <div className="text-[11px] text-muted-foreground">{slot.hint}</div>
-                  <div className="text-[10px] text-muted-foreground/80 mt-0.5">Used in: {slot.used}</div>
+                  <div className="text-2xs text-muted-foreground">{slot.hint}</div>
+                  <div className="text-2xs text-muted-foreground/80 mt-0.5">Used in: {slot.used}</div>
                   <div className="flex items-center gap-2 mt-1.5">
                     <button
                       type="button"
@@ -277,7 +277,7 @@ export function OrganisationProfileForm({
                       <button
                         type="button"
                         onClick={() => set(slot.field, "")}
-                        className="text-[11px] text-muted-foreground hover:text-rose-700 hover:underline"
+                        className="text-2xs text-muted-foreground hover:text-rose-700 hover:underline"
                       >
                         Remove
                       </button>
@@ -466,7 +466,7 @@ function Field({
           {label}
           {helpTerm && <HelpHint term={helpTerm} />}
         </span>
-        {note && <span className="text-[10px] text-muted-foreground font-normal">{note}</span>}
+        {note && <span className="text-2xs text-muted-foreground font-normal">{note}</span>}
       </div>
       {children}
     </label>

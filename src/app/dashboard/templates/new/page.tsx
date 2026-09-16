@@ -547,7 +547,7 @@ export default function NewTemplatePage() {
                     <option key={c.value} value={c.value}>{c.label}</option>
                   ))}
                 </SelectField>
-                {categoryMeta && <p className="text-[11px] text-muted-foreground mt-1">{categoryMeta.help}</p>}
+                {categoryMeta && <p className="text-2xs text-muted-foreground mt-1">{categoryMeta.help}</p>}
               </Field>
               <Field label="Language">
                 <SelectField value={locale} onChange={(e) => setLocale(e.target.value)} className="w-full">
@@ -577,7 +577,7 @@ export default function NewTemplatePage() {
                   if (!items.length) return null;
                   return (
                     <div key={group.key}>
-                      <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70 mb-1.5">{group.label}</div>
+                      <div className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground/70 mb-1.5">{group.label}</div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                         {items.map((s) => (
                           <button
@@ -596,7 +596,7 @@ export default function NewTemplatePage() {
                             className="text-left rounded-lg border border-border bg-card px-3 py-2.5 hover:border-brand-cyan/60 hover:shadow-sm transition-all"
                           >
                             <div className="text-sm font-semibold truncate">{s.name}</div>
-                            <div className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2">{s.description}</div>
+                            <div className="text-2xs text-muted-foreground mt-0.5 line-clamp-2">{s.description}</div>
                           </button>
                         ))}
                       </div>
@@ -637,7 +637,7 @@ export default function NewTemplatePage() {
             <div className="px-4 pb-4 space-y-2">
               <MergeFieldInserter onInsert={insertMergeField} />
               {channel === "email" && (
-                <p className="text-[11px] text-muted-foreground">
+                <p className="text-2xs text-muted-foreground">
                   Picking a field adds it to the <strong>subject line</strong>. To use it in the body, just type{" "}
                   <code className="bg-muted px-1 rounded">{`{{investor.name}}`}</code> directly into any text block.
                 </p>
@@ -772,7 +772,7 @@ export default function NewTemplatePage() {
                 <ChevronDown className="size-4 -rotate-90 group-open:rotate-0 transition-transform" />
                 Advanced settings
               </span>
-              <span className="text-[11px] text-muted-foreground">Most people can skip this</span>
+              <span className="text-2xs text-muted-foreground">Most people can skip this</span>
             </summary>
             <div className="px-4 pb-4 space-y-4">
               <Field label="Template key (used internally — auto-generated)">
@@ -794,7 +794,7 @@ export default function NewTemplatePage() {
                       <div key={v.key} className="p-3 grid grid-cols-1 md:grid-cols-4 gap-3 items-center text-xs">
                         <div className="font-mono font-semibold text-slate-700 truncate">{v.key}</div>
                         <div>
-                          <label className="text-[9px] text-muted-foreground block font-medium uppercase tracking-wider mb-0.5">Format</label>
+                          <label className="text-2xs text-muted-foreground block font-medium uppercase tracking-wider mb-0.5">Format</label>
                           <SelectField
                             value={v.type}
                             onChange={(e) => {
@@ -814,7 +814,7 @@ export default function NewTemplatePage() {
                           </SelectField>
                         </div>
                         <div>
-                          <label className="text-[9px] text-muted-foreground block font-medium uppercase tracking-wider mb-0.5">Source path</label>
+                          <label className="text-2xs text-muted-foreground block font-medium uppercase tracking-wider mb-0.5">Source path</label>
                           <input
                             value={v.source ?? ""}
                             onChange={(e) => {
@@ -897,7 +897,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 function SummaryItem({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</dt>
+      <dt className="text-2xs uppercase tracking-wide text-muted-foreground">{label}</dt>
       <dd className="font-medium truncate" title={value}>{value || "—"}</dd>
     </div>
   );

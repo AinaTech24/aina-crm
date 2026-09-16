@@ -1,3 +1,4 @@
+import { assertInvestorAccess } from "@/lib/investors/access";
 import { handleApiError } from "@/lib/api/error-handler";
 /**
  * Wealth Story & Client Review Pack — comprehensive client-facing recap of the
@@ -295,6 +296,7 @@ async function buildStoryPdf(req: NextRequest, session: SessionUser, story: Weal
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await requireSession();
+    await assertInvestorAccess(session, (await params).id);
     requireAny(session.roles, ["investor.view.all", "investor.view.assigned"], session.permissions);
     const { id } = await params;
     const wantPdf = req.nextUrl.searchParams.get("pdf") === "1";
@@ -340,6 +342,7 @@ const PostBody = z.object({
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await requireSession();
+    await assertInvestorAccess(session, (await params).id);
     requireAny(session.roles, ["investor.view.all", "investor.view.assigned"], session.permissions);
     const { id } = await params;
     const parsed = PostBody.safeParse(await req.json().catch(() => ({})));

@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
     if (process.env.NODE_ENV === "production") {
       captureError("webhook.secret_unconfigured", null, { source: "vartify" });
     }
-    // accept through — do not drop inbound WhatsApp while unconfigured
+    return NextResponse.json({ error: "webhook verification is not configured" }, { status: 503 });
   } else {
     const sig = req.headers.get("x-webhook-signature");
     if (!vartifyWhatsappAdapter.verifyWebhookSignature(rawBody, sig, secret)) {

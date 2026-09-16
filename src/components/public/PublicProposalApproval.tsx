@@ -135,7 +135,7 @@ export function PublicProposalApproval({
             placeholder="e.g. Rajesh Sharma"
             className="w-full border rounded-lg px-3 py-2 text-sm"
           />
-          <div className="text-[10px] text-muted-foreground mt-1">
+          <div className="text-2xs text-muted-foreground mt-1">
             Your typed name + the time, IP, and browser will be recorded as your electronic signature — SEBI
             requires us to keep this record for audit.
           </div>
@@ -159,7 +159,7 @@ export function PublicProposalApproval({
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className="border rounded-lg p-3 bg-slate-50">
-      <div className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">{label}</div>
+      <div className="text-2xs uppercase tracking-wider font-semibold text-muted-foreground">{label}</div>
       <div className="text-sm font-semibold mt-1 capitalize tabular-nums">{value}</div>
     </div>
   );

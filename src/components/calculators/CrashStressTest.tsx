@@ -84,7 +84,7 @@ export function CrashStressTest() {
           />
         </div>
       </Section>
-      <p className="text-[10px] text-muted-foreground">Illustration of behaviour, not a market forecast. Crashes and recoveries vary.</p>
+      <p className="text-2xs text-muted-foreground">Illustration of behaviour, not a market forecast. Crashes and recoveries vary.</p>
     </div>
   );
 }

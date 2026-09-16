@@ -110,7 +110,7 @@ export function LeadFormsAdmin({
                 className="input-base flex-1"
               />
             </div>
-            <p className="text-[11px] text-muted-foreground mt-1">
+            <p className="text-2xs text-muted-foreground mt-1">
               Lowercase letters, digits and hyphens. Must be globally unique.
             </p>
           </label>
@@ -158,7 +158,7 @@ export function LeadFormsAdmin({
               </div>
               <div className="flex items-center gap-2">
                 <span
-                  className={`chip text-[10px] ${
+                  className={`chip text-2xs ${
                     f.enabled
                       ? "bg-emerald-50 text-emerald-700"
                       : "bg-gray-100 text-gray-600"

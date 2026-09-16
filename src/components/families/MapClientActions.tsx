@@ -69,13 +69,13 @@ export function MapClientActions({
 
   return (
     <div className="flex items-center justify-end gap-1.5">
-      {err && <span className="text-[10px] text-rose-600 max-w-[16rem] text-right">{err}</span>}
+      {err && <span className="text-2xs text-rose-600 max-w-[16rem] text-right">{err}</span>}
       <button
         type="button"
         onClick={createHousehold}
         disabled={busy !== null}
         title="Start a household with this client as the head"
-        className="btn-secondary text-[11px] disabled:opacity-50"
+        className="btn-secondary text-2xs disabled:opacity-50"
       >
         {busy === "create" ? <Loader2 className="size-3 animate-spin" /> : <Plus className="size-3" />}
         New household
@@ -84,7 +84,7 @@ export function MapClientActions({
         type="button"
         onClick={() => { setErr(null); setOpen(true); }}
         title="Add this client to an existing household"
-        className="btn-ghost text-[11px]"
+        className="btn-ghost text-2xs"
       >
         <Users className="size-3" /> Add to existing
       </button>
@@ -233,7 +233,7 @@ function LinkToFamilyDialog({
                   className={`px-3 py-2 cursor-pointer text-sm ${picked?.id === f.id ? "bg-accent" : "hover:bg-accent/40"}`}
                 >
                   <div className="font-medium truncate">{f.family_name ?? f.head_name ?? "Household"}</div>
-                  {f.head_name && <div className="text-[11px] text-muted-foreground truncate">Head: {f.head_name}</div>}
+                  {f.head_name && <div className="text-2xs text-muted-foreground truncate">Head: {f.head_name}</div>}
                 </li>
               ))}
             </ul>

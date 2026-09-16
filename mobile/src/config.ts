@@ -32,7 +32,14 @@ const USE_LOCAL_DEV_SERVER = false;
 // is reachable and correct; on a physical phone we must use the LAN IP.
 const DEV_HOST = Platform.OS === "web" ? "localhost" : LAN_IP;
 
-export const API_BASE_URL = USE_LOCAL_DEV_SERVER
+// The BROWSER preview can only ever talk to the local dev server: production
+// sends no CORS headers (its CORS is dev-only by design), so a cross-origin
+// fetch from localhost:8081 to crm.ainatech.in is blocked before it leaves the
+// browser and surfaces as "Network error". Native fetch has no such rule, so
+// the phone follows the flag above.
+const useLocal = Platform.OS === "web" || USE_LOCAL_DEV_SERVER;
+
+export const API_BASE_URL = useLocal
   ? `http://${DEV_HOST}:3000`
   : "https://crm.ainatech.in";
 

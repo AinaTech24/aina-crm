@@ -101,7 +101,7 @@ export function MfdTemplateLibrary() {
               ) : (
                 groups.map((g) => (
                   <div key={g}>
-                    <div className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground mb-2">{g}</div>
+                    <div className="text-2xs font-bold uppercase tracking-wide text-muted-foreground mb-2">{g}</div>
                     <div className="space-y-2">
                       {items.filter((i) => i.group === g).map((it) => {
                         const isOpen = expanded === it.key;
@@ -112,22 +112,22 @@ export function MfdTemplateLibrary() {
                                 <button type="button" onClick={() => setExpanded(isOpen ? null : it.key)} className="flex items-center gap-1.5 text-left">
                                   <ChevronDown className={`size-3.5 text-muted-foreground shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`} />
                                   <span className="font-medium text-sm">{it.name}</span>
-                                  <span className="text-[10px] text-muted-foreground shrink-0">· {it.subtasks.length} steps</span>
+                                  <span className="text-2xs text-muted-foreground shrink-0">· {it.subtasks.length} steps</span>
                                 </button>
                                 <p className="text-xs text-muted-foreground mt-1 ml-5">{it.description}</p>
                                 <div className="flex flex-wrap gap-1.5 mt-1.5 ml-5">
-                                  <span className="chip text-[10px] bg-secondary capitalize">{it.department.replace(/_/g, " ")}</span>
-                                  <span className="chip text-[10px] bg-secondary capitalize">{it.priority}</span>
-                                  <span className="chip text-[10px] bg-secondary">due +{it.dueOffsetDays}d</span>
+                                  <span className="chip text-2xs bg-secondary capitalize">{it.department.replace(/_/g, " ")}</span>
+                                  <span className="chip text-2xs bg-secondary capitalize">{it.priority}</span>
+                                  <span className="chip text-2xs bg-secondary">due +{it.dueOffsetDays}d</span>
                                 </div>
                                 {isOpen && (
-                                  <ol className="mt-2 ml-5 space-y-1 list-decimal list-inside text-[11px] text-muted-foreground marker:text-brand-cyan">
+                                  <ol className="mt-2 ml-5 space-y-1 list-decimal list-inside text-2xs text-muted-foreground marker:text-brand-cyan">
                                     {it.subtasks.map((s, i) => <li key={i} className="leading-relaxed">{s}</li>)}
                                   </ol>
                                 )}
                               </div>
                               {it.installed ? (
-                                <span className="shrink-0 inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700"><Check className="size-3.5" /> Added</span>
+                                <span className="shrink-0 inline-flex items-center gap-1 text-2xs font-medium text-emerald-700"><Check className="size-3.5" /> Added</span>
                               ) : (
                                 <button
                                   type="button"

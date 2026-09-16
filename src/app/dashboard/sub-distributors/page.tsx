@@ -76,7 +76,8 @@ export default async function SubDistributorsListPage({
     <div className="space-y-5">
       <div className="flex items-end justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Sub-distributors</h1>
+          <h1 className="page-title">Sub-distributors</h1>
+          <p className="page-subtitle mt-1">Partners who bring business under your ARN, and what they are owed.</p>
         </div>
         <Link href="/dashboard/sub-distributors/new" className="btn-primary text-sm">
           <Plus className="size-4" /> Add sub-distributor
@@ -144,7 +145,7 @@ export default async function SubDistributorsListPage({
                       {r.name}
                     </Link>
                     {r.remarks && (
-                      <div className="text-[10px] text-muted-foreground truncate max-w-[200px]">
+                      <div className="text-2xs text-muted-foreground truncate max-w-[200px]">
                         {r.remarks}
                       </div>
                     )}
@@ -160,8 +161,8 @@ export default async function SubDistributorsListPage({
                   </td>
                   <td className="px-3 py-2">{r.city ?? "—"}</td>
                   <td className="px-3 py-2">
-                    <div className="text-[11px]">{r.email ?? "—"}</div>
-                    <div className="text-[10px] text-muted-foreground">
+                    <div className="text-2xs">{r.email ?? "—"}</div>
+                    <div className="text-2xs text-muted-foreground">
                       {r.mobile ?? ""}
                     </div>
                   </td>
@@ -172,7 +173,7 @@ export default async function SubDistributorsListPage({
                   </td>
                   <td className="px-3 py-2">
                     <span
-                      className={`chip text-[10px] ${STATUS_TONE[r.status] ?? "bg-slate-100"
+                      className={`chip text-2xs ${STATUS_TONE[r.status] ?? "bg-slate-100"
                         }`}
                     >
                       {r.status}
@@ -203,7 +204,7 @@ function ExpiryBadge({ date }: { date: string | null }) {
           ? "bg-amber-50 text-amber-700"
           : "bg-emerald-50 text-emerald-700";
   return (
-    <span className={`chip text-[10px] ${tone}`}>
+    <span className={`chip text-2xs ${tone}`}>
       {new Date(date).toLocaleDateString("en-GB", {
         day: "2-digit",
         month: "short",

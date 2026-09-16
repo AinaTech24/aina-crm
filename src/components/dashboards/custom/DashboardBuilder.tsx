@@ -130,13 +130,13 @@ export function DashboardBuilder({ boardId, initialName, initialLayout, initialR
         {/* Palette */}
         {paletteOpen && (
           <aside className="w-56 shrink-0 border rounded-lg bg-card p-2 space-y-3 max-h-[75vh] overflow-auto scrollbar-thin">
-            <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground px-1">Add a widget</div>
+            <div className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground px-1">Add a widget</div>
             {WIDGET_CATEGORIES.map((cat) => {
               const items = WIDGET_META.filter((m) => m.category === cat);
               if (!items.length) return null;
               return (
                 <div key={cat}>
-                  <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70 px-1 mb-1">{cat}</div>
+                  <div className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground/70 px-1 mb-1">{cat}</div>
                   <div className="space-y-1">
                     {items.map((m) => (
                       <button
@@ -212,7 +212,7 @@ function BuilderCard({ w, rm, members, onRemove, onSize, onRm }: { w: PlacedWidg
                     <select
                       value={(w.config?.rm as string) ?? ""}
                       onChange={(e) => onRm(e.target.value)}
-                      className="w-full border rounded px-1.5 py-1 text-[11px] bg-background"
+                      className="w-full border rounded px-1.5 py-1 text-2xs bg-background"
                     >
                       <option value="">Use board filter</option>
                       {members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
@@ -240,7 +240,7 @@ function SizeRow({ label, value, max, onPick }: { label: string; value: number; 
       <span className="text-muted-foreground">{label}</span>
       <div className="flex gap-0.5">
         {Array.from({ length: max }, (_, i) => i + 1).map((v) => (
-          <button key={v} onClick={() => onPick(v)} className={`size-6 rounded text-[11px] font-medium ${value === v ? "bg-brand-cyan text-white" : "border hover:bg-accent"}`}>{v}</button>
+          <button key={v} onClick={() => onPick(v)} className={`size-6 rounded text-2xs font-medium ${value === v ? "bg-brand-cyan text-white" : "border hover:bg-accent"}`}>{v}</button>
         ))}
       </div>
     </div>

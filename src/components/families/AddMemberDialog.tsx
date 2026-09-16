@@ -200,7 +200,7 @@ export function AddMemberDialog({ familyId, familyName }: { familyId: string; fa
                       className="w-full pl-8 pr-3 py-2 text-sm border rounded-md bg-background"
                     />
                   </div>
-                  <p className="mt-1 text-[10px] text-muted-foreground">
+                  <p className="mt-1 text-2xs text-muted-foreground">
                     Searches every client in your firm. Showing the closest 50 matches.
                   </p>
                 </label>

@@ -68,6 +68,8 @@ export type SessionUser = {
    *  Node-side revocation check can compare it against users.sessions_invalid_after.
    *  Carried through the middleware `x-mfd-session` header. */
   iat?: number;
+  /** Time of the last password + required-factor authentication; refresh preserves it. */
+  authTime?: number;
 };
 
 function secretKey(): Uint8Array {
@@ -115,7 +117,10 @@ export async function verify2faChallenge(token: string): Promise<{ userId: strin
 export async function verifySession(token: string): Promise<SessionUser | null> {
   try {
     const { payload } = await jwtVerify(token, secretKey(), { algorithms: ["HS256"] });
-    if (!payload.userId || !payload.tenantId) return null;
+    if (typeof payload.userId !== "string" || typeof payload.tenantId !== "string" ||
+        typeof payload.iat !== "number" || typeof payload.exp !== "number" ||
+        typeof payload.sid !== "string" || !payload.sid ||
+        !Number.isFinite(payload.iat) || payload.iat > Date.now() / 1000 + 30) return null;
     const roles = Array.isArray(payload.roles) ? payload.roles.map(String) : [];
     const permissions = Array.isArray(payload.permissions) ? payload.permissions.map(String) : [];
     return {
@@ -129,6 +134,7 @@ export async function verifySession(token: string): Promise<SessionUser | null> 
       permissions,
       sid: payload.sid ? String(payload.sid) : undefined,
       iat: typeof payload.iat === "number" ? payload.iat : undefined,
+      authTime: typeof payload.authTime === "number" ? payload.authTime : payload.iat,
     };
   } catch {
     return null;

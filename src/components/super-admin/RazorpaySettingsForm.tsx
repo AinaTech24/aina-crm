@@ -120,7 +120,7 @@ export function RazorpaySettingsForm({ initial }: { initial: Status }) {
           placeholder="rzp_live_… or rzp_test_…"
           className="w-full rounded-md border px-3 py-2 text-sm font-mono"
         />
-        <p className="text-[11px] text-muted-foreground">Public key — also handed to Checkout in the browser. Safe to display.</p>
+        <p className="text-2xs text-muted-foreground">Public key — also handed to Checkout in the browser. Safe to display.</p>
       </div>
 
       {/* Key Secret */}
@@ -134,7 +134,7 @@ export function RazorpaySettingsForm({ initial }: { initial: Status }) {
           placeholder={status.secretConfigured ? `•••• saved (leave blank to keep ••••${status.secretLast4 ?? ""})` : "Your Razorpay key secret"}
           className="w-full rounded-md border px-3 py-2 text-sm font-mono"
         />
-        <p className="text-[11px] text-muted-foreground">Stored encrypted (AES-256-GCM) — never shown again after saving.</p>
+        <p className="text-2xs text-muted-foreground">Stored encrypted (AES-256-GCM) — never shown again after saving.</p>
       </div>
 
       {/* Webhook Secret */}
@@ -148,7 +148,7 @@ export function RazorpaySettingsForm({ initial }: { initial: Status }) {
           placeholder={status.webhookConfigured ? "•••• saved (leave blank to keep)" : "Secret you set on the Razorpay webhook"}
           className="w-full rounded-md border px-3 py-2 text-sm font-mono"
         />
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-2xs text-muted-foreground">
           Must match the secret on your Razorpay webhook for <code className="bg-background px-1 rounded">/api/webhooks/razorpay</code>.
         </p>
       </div>

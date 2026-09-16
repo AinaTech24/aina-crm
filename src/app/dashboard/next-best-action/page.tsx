@@ -106,13 +106,14 @@ export default async function NextBestActionPage({ searchParams }: { searchParam
     <div className="space-y-6 max-w-5xl">
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <Sparkles className="size-6 text-brand-cyan" /> Next Best Action
+          <h1 className="page-title">
+            <Sparkles className="size-6 text-muted-foreground" /> Next Best Action
             <HelpTip title="Next Best Action">
               A prioritised, one-at-a-time worklist of the highest-value action for each client
               right now — so nothing slips and your team always knows what to do next.
             </HelpTip>
           </h1>
+          <p className="page-subtitle mt-1">The highest-value next action for each client, ranked for you.</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <div className="inline-flex rounded-lg border border-border bg-card p-0.5 gap-0.5">
@@ -135,14 +136,14 @@ export default async function NextBestActionPage({ searchParams }: { searchParam
         <Kpi icon={IndianRupee} label="₹ value at stake" value={inr(totalImpact)} tone="emerald" />
         <Kpi icon={ListChecks} label="Handled this week" value={String(handledThisWeek)} tone="sky" />
       </div>
-      <p className="text-[11px] text-muted-foreground -mt-3">{signalsTotal} signals across {actions.length} clients (one headline each; the rest shown as “+N more”).</p>
+      <p className="text-2xs text-muted-foreground -mt-3">{signalsTotal} signals across {actions.length} clients (one headline each; the rest shown as “+N more”).</p>
 
       {/* Date-range filter — over each action's relevant date */}
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold mr-1">When</span>
+        <span className="text-2xs uppercase tracking-wide text-muted-foreground font-semibold mr-1">When</span>
         <NbaDateFilter from={dateFrom} to={dateTo} />
         {(dateFrom || dateTo) && (
-          <span className="text-[11px] text-muted-foreground">
+          <span className="text-2xs text-muted-foreground">
             Showing {shown.length} of {actions.length} — undated actions hidden while a range is set.
           </span>
         )}
@@ -150,7 +151,7 @@ export default async function NextBestActionPage({ searchParams }: { searchParam
 
       {/* Urgency + type filter chips — one wrapping row, all labels together. */}
       <div className="flex flex-wrap items-center gap-1.5">
-        <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold mr-1">Urgency</span>
+        <span className="text-2xs uppercase tracking-wide text-muted-foreground font-semibold mr-1">Urgency</span>
         <Link href={hrefWith({ sev: undefined })} className={`chip ${!sevFilter ? "bg-primary text-primary-foreground" : "bg-secondary"}`}>All</Link>
         {(["now", "today", "soon"] as const).map((k) => {
           const label = k === "now" ? "Act now" : k === "today" ? "Today" : "This week";
@@ -163,7 +164,7 @@ export default async function NextBestActionPage({ searchParams }: { searchParam
         })}
 
         <span className="mx-1 h-4 w-px bg-border shrink-0" aria-hidden />
-        <span className="text-[11px] uppercase tracking-wide text-muted-foreground font-semibold mr-1">Type</span>
+        <span className="text-2xs uppercase tracking-wide text-muted-foreground font-semibold mr-1">Type</span>
         <Link href={hrefWith({ type: undefined })} className={`chip ${!typeFilter ? "bg-primary text-primary-foreground" : "bg-secondary"}`}>All <strong className="ml-1">{actions.length}</strong></Link>
         {(Object.keys(byType) as NbaType[]).sort((a, b) => NBA_META[b].weight - NBA_META[a].weight).map((t) => (
           <Link key={t} href={hrefWith({ type: t })} className={`chip ${typeFilter === t ? "bg-primary text-primary-foreground" : CHIP_TONE[NBA_META[t].tone]}`}>
@@ -211,11 +212,11 @@ function Row({ a, rank }: { a: NbaAction; rank: number }) {
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 flex-wrap">
           <Link href={a.href} className="font-semibold text-sm hover:underline truncate">{a.subjectName}</Link>
-          <span className={`chip text-[10px] ${CHIP_TONE[meta.tone]}`}>{meta.label}</span>
-          {a.subjectType === "lead" && <span className="chip text-[10px] bg-amber-50 text-amber-700">Lead</span>}
+          <span className={`chip text-2xs ${CHIP_TONE[meta.tone]}`}>{meta.label}</span>
+          {a.subjectType === "lead" && <span className="chip text-2xs bg-amber-50 text-amber-700">Lead</span>}
           {a.others && a.others.length > 0 && (
             <span
-              className="chip text-[10px] bg-secondary text-muted-foreground"
+              className="chip text-2xs bg-secondary text-muted-foreground"
               title={a.others.map((o) => `${o.label}: ${o.reason}`).join("\n")}
             >
               +{a.others.length} more
@@ -226,7 +227,7 @@ function Row({ a, rank }: { a: NbaAction; rank: number }) {
       </div>
       {a.impactInr > 0 && (
         <div className="text-right shrink-0 hidden sm:block">
-          <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Impact</div>
+          <div className="text-2xs text-muted-foreground uppercase tracking-wide">Impact</div>
           <div className="text-sm font-bold tabular-nums text-emerald-700">{inr(a.impactInr)}</div>
         </div>
       )}

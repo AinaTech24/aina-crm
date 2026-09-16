@@ -1,3 +1,4 @@
+import { assertInvestorAccess } from "@/lib/investors/access";
 import { handleApiError } from "@/lib/api/error-handler";
 /**
  * Investor blueprint endpoint.
@@ -113,6 +114,7 @@ async function syntheticClientStageView(tx: Tx) {
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await requireSession();
+    await assertInvestorAccess(session, (await params).id);
     // Investor-data capability gate (marketing is excluded from investor.view.*).
     requireAny(session.roles, ["investor.view.all", "investor.view.assigned"], session.permissions);
     const viewAll = can(session.roles, "investor.view.all", session.permissions);

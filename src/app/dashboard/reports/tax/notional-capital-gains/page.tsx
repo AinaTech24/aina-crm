@@ -102,7 +102,7 @@ export default async function NotionalCapitalGainsPage({ searchParams }: { searc
                     </td>
                     <td className="py-2.5 px-3 font-mono text-xs text-muted-foreground">{r.pan ?? "—"}</td>
                     <td className="py-2.5 px-3 text-right tabular-nums">
-                      {r.lots}{r.unpriced > 0 && <span className="text-[10px] text-amber-700 ml-1" title="lots without a NAV">({r.unpriced} unpriced)</span>}
+                      {r.lots}{r.unpriced > 0 && <span className="text-2xs text-amber-700 ml-1" title="lots without a NAV">({r.unpriced} unpriced)</span>}
                     </td>
                     <td className="py-2.5 px-3 text-right tabular-nums text-muted-foreground">{formatINR(r.invested)}</td>
                     <td className="py-2.5 px-3 text-right tabular-nums">{formatINR(r.current)}</td>

@@ -1,3 +1,4 @@
+import { assertInvestorAccess } from "@/lib/investors/access";
 import { handleApiError } from "@/lib/api/error-handler";
 /**
  * Client (investor) documents.
@@ -48,6 +49,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
   try {
     const session = await requireSession();
+    await assertInvestorAccess(session, (await params).id);
     requireCap(session.roles, "document.view", session.permissions);
     const rows = await withTenant(session.tenantId, async (tx) =>
       tx
@@ -85,6 +87,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
   try {
     const session = await requireSession();
+    await assertInvestorAccess(session, (await params).id);
     requireCap(session.roles, "document.upload", session.permissions);
     const parse = CreateBody.safeParse(await req.json().catch(() => ({})));
     if (!parse.success) return NextResponse.json({ error: "invalid body", issues: parse.error.issues }, { status: 400 });
@@ -139,6 +142,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const { id } = await params;
   try {
     const session = await requireSession();
+    await assertInvestorAccess(session, (await params).id);
     requireCap(session.roles, "document.upload", session.permissions);
     const docId = new URL(req.url).searchParams.get("docId");
     if (!docId) return NextResponse.json({ error: "docId required" }, { status: 400 });

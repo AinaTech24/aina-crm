@@ -163,7 +163,7 @@ export type ProcessOutcome = {
 /**
  * Top-level entry point. Dispatches by file kind.
  */
-export async function processRtaFile(
+async function processRtaFileUnsafe(
   tx: Tx,
   args: { tenantId: string; source: RtaSource; kind: RtaFileKind; text: string }
 ): Promise<ProcessOutcome> {
@@ -244,7 +244,7 @@ async function processTransactionFeed(
       // empty errors array, which is unactionable — the same silence that hid
       // the SIP-register PAN gap.
       skipped++;
-      if (errors.length < 25) {
+      {
         errors.push({ row: i + 1, reason: "row carries no folio number — a transaction cannot be attached without one" });
       }
       continue;
@@ -330,6 +330,7 @@ async function processTransactionFeed(
 
     const rtaEnumVal = (args.source === "cams" || args.source === "kfintech") ? args.source : "other";
 
+    await tx.execute(sql`SAVEPOINT rta_item`);
     try {
       // Resolve or create folio record
       const folioRes = await tx.execute(sql`
@@ -366,9 +367,12 @@ async function processTransactionFeed(
         const prev = lastTxByInvestor.get(investorId);
         if (!prev || r.orderDate > prev) lastTxByInvestor.set(investorId, r.orderDate);
       }
+      await tx.execute(sql`RELEASE SAVEPOINT rta_item`);
     } catch (e: any) {
+      await tx.execute(sql`ROLLBACK TO SAVEPOINT rta_item`);
+      await tx.execute(sql`RELEASE SAVEPOINT rta_item`);
       failed++;
-      if (errors.length < 25) errors.push({ row: i + 1, reason: e.message ?? "insert failed" });
+      errors.push({ row: i + 1, reason: e.message ?? "insert failed" });
     }
   }
 
@@ -431,6 +435,7 @@ async function processSipRejectionReport(
       .toISOString()
       .slice(0, 10);
     const dedupKey = naturalKeyHash([investorId, r.rejectionDate, r.amount, r.schemeName, r.folioNumber]);
+    await tx.execute(sql`SAVEPOINT rta_item`);
     try {
       const ins = await tx.execute(sql`
         INSERT INTO sip_rejections (
@@ -467,9 +472,12 @@ async function processSipRejectionReport(
       } else {
         skipped++; // already imported — idempotent
       }
+      await tx.execute(sql`RELEASE SAVEPOINT rta_item`);
     } catch (e: any) {
+      await tx.execute(sql`ROLLBACK TO SAVEPOINT rta_item`);
+      await tx.execute(sql`RELEASE SAVEPOINT rta_item`);
       failed++;
-      if (errors.length < 25) errors.push({ row: i + 1, reason: e.message ?? "insert failed" });
+      errors.push({ row: i + 1, reason: e.message ?? "insert failed" });
     }
   }
 
@@ -505,6 +513,7 @@ async function processBrokerageStatement(
     if (r.periodStart < minDate) minDate = r.periodStart;
     if (r.periodEnd > maxDate) maxDate = r.periodEnd;
 
+    await tx.execute(sql`SAVEPOINT rta_item`);
     try {
       await tx.execute(sql`
         INSERT INTO commission_rows (
@@ -519,13 +528,16 @@ async function processBrokerageStatement(
         ON CONFLICT DO NOTHING
       `);
       imported++;
+      await tx.execute(sql`RELEASE SAVEPOINT rta_item`);
     } catch (e: any) {
+      await tx.execute(sql`ROLLBACK TO SAVEPOINT rta_item`);
+      await tx.execute(sql`RELEASE SAVEPOINT rta_item`);
       // Table may not exist yet on some envs — soft-skip.
       if (e.message?.includes("does not exist")) {
         skipped++;
       } else {
         failed++;
-        if (errors.length < 25) errors.push({ row: i + 1, reason: e.message ?? "insert failed" });
+        errors.push({ row: i + 1, reason: e.message ?? "insert failed" });
       }
     }
   }
@@ -618,6 +630,7 @@ async function processFolioMasterDump(
       continue;
     }
 
+    await tx.execute(sql`SAVEPOINT rta_item`);
     try {
       // Find or create folio
       const folioRes = await tx.execute(sql`
@@ -666,12 +679,16 @@ async function processFolioMasterDump(
       `);
 
       imported += fRows.length;
+      await tx.execute(sql`RELEASE SAVEPOINT rta_item`);
     } catch (e: any) {
+      await tx.execute(sql`ROLLBACK TO SAVEPOINT rta_item`);
+      await tx.execute(sql`RELEASE SAVEPOINT rta_item`);
       failed += fRows.length;
       errors.push({ row: rows.indexOf(firstRow) + 1, reason: e.message ?? "folio master import failed" });
     }
   }
 
+  await tx.execute(sql`SAVEPOINT rta_refresh`);
   try {
     const { revalueAllFolios, recomputeCombinedAum } = await import("@/lib/finance/aum-persist");
     await revalueAllFolios(tx);
@@ -680,7 +697,10 @@ async function processFolioMasterDump(
     // for any scheme the folios don't cover. Without this, a holdings-only book
     // (RTA folio-master / AUM import, no transaction feed) shows ₹0 AUM.
     await recomputeCombinedAum(tx);
+    await tx.execute(sql`RELEASE SAVEPOINT rta_refresh`);
   } catch (err: any) {
+    await tx.execute(sql`ROLLBACK TO SAVEPOINT rta_refresh`);
+    await tx.execute(sql`RELEASE SAVEPOINT rta_refresh`);
     // Surface (don't swallow) — investor-level AUM is now stale; record it so
     // the import shows partial rather than a misleading clean "completed".
     console.error("[processFolioMasterDump] revalueAllFolios failed:", err);
@@ -781,6 +801,7 @@ async function processSipBook(
       mandateId = (mandate.rows[0] as any)?.id ?? null;
     }
 
+    await tx.execute(sql`SAVEPOINT rta_item`);
     try {
       // Match on the STABLE key (tenant, investor, folio, scheme) — NOT amount.
       // Including amount meant a step-up SIP (amount changes between monthly
@@ -831,7 +852,10 @@ async function processSipBook(
       }
 
       imported++;
+      await tx.execute(sql`RELEASE SAVEPOINT rta_item`);
     } catch (e: any) {
+      await tx.execute(sql`ROLLBACK TO SAVEPOINT rta_item`);
+      await tx.execute(sql`RELEASE SAVEPOINT rta_item`);
       failed++;
       errors.push({ row: i + 1, reason: e.message ?? "SIP import failed" });
     }
@@ -875,6 +899,7 @@ async function processMandateStatus(
       continue;
     }
 
+    await tx.execute(sql`SAVEPOINT rta_item`);
     try {
       await tx.execute(sql`
         INSERT INTO mandates (
@@ -893,7 +918,10 @@ async function processMandateStatus(
       `);
 
       imported++;
+      await tx.execute(sql`RELEASE SAVEPOINT rta_item`);
     } catch (e: any) {
+      await tx.execute(sql`ROLLBACK TO SAVEPOINT rta_item`);
+      await tx.execute(sql`RELEASE SAVEPOINT rta_item`);
       failed++;
       errors.push({ row: i + 1, reason: e.message ?? "mandate import failed" });
     }
@@ -1008,6 +1036,7 @@ async function processAumStatement(
       continue;
     }
 
+    await tx.execute(sql`SAVEPOINT rta_item`);
     try {
       const existingSchemes = ((folio.rows[0] as any)?.schemes ?? []) as Array<{
         schemeCode: string;
@@ -1116,7 +1145,10 @@ async function processAumStatement(
       `);
 
       imported += fRows.length;
+      await tx.execute(sql`RELEASE SAVEPOINT rta_item`);
     } catch (e: any) {
+      await tx.execute(sql`ROLLBACK TO SAVEPOINT rta_item`);
+      await tx.execute(sql`RELEASE SAVEPOINT rta_item`);
       failed += fRows.length;
       errors.push({ row: rows.indexOf(firstRow) + 1, reason: e.message ?? "AUM import failed" });
     }
@@ -1128,6 +1160,7 @@ async function processAumStatement(
     errors.push({ row: 0, reason: `${createdFolios} folio(s) were first seen in this report and created from it` });
   }
 
+  await tx.execute(sql`SAVEPOINT rta_refresh`);
   try {
     const { revalueAllFolios, recomputeCombinedAum } = await import("@/lib/finance/aum-persist");
     await revalueAllFolios(tx);
@@ -1136,7 +1169,10 @@ async function processAumStatement(
     // for any scheme the folios don't cover. Without this, a holdings-only book
     // (RTA folio-master / AUM import, no transaction feed) shows ₹0 AUM.
     await recomputeCombinedAum(tx);
+    await tx.execute(sql`RELEASE SAVEPOINT rta_refresh`);
   } catch (err: any) {
+    await tx.execute(sql`ROLLBACK TO SAVEPOINT rta_refresh`);
+    await tx.execute(sql`RELEASE SAVEPOINT rta_refresh`);
     console.error("[processAumStatement] revalueAllFolios failed:", err);
     errors.push({ row: 0, reason: `AUM values imported but investor AUM revaluation failed: ${err?.message ?? err}` });
     failed++;
@@ -1152,3 +1188,21 @@ async function processAumStatement(
     periodEnd: today(),
   };
 }
+
+/** Preserve the caller's import-attempt row even if parsing/setup fails in SQL. */
+export async function processRtaFile(
+  tx: Tx,
+  args: { tenantId: string; source: RtaSource; kind: RtaFileKind; text: string }
+): Promise<ProcessOutcome> {
+  await tx.execute(sql`SAVEPOINT rta_import`);
+  try {
+    const result = await processRtaFileUnsafe(tx, args);
+    await tx.execute(sql`RELEASE SAVEPOINT rta_import`);
+    return result;
+  } catch (error) {
+    await tx.execute(sql`ROLLBACK TO SAVEPOINT rta_import`);
+    await tx.execute(sql`RELEASE SAVEPOINT rta_import`);
+    throw error;
+  }
+}
+

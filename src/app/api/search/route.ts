@@ -11,6 +11,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { sql } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
+import { can } from "@/lib/auth/rbac";
+import { investorScopeSql } from "@/lib/investors/access";
+import { leadScopeSql } from "@/lib/leads/access";
 
 export const dynamic = "force-dynamic";
 
@@ -25,43 +28,61 @@ export async function GET(req: NextRequest) {
     const likeUpper = `%${q.toUpperCase()}%`;
 
     const results = await withTenant(session.tenantId, async (tx) => {
+      const cap = (name: Parameters<typeof can>[1]) => can(session.roles, name, session.permissions);
+      const investorAllowed = cap("investor.view.all") || cap("investor.view.assigned");
+      const leadAllowed = cap("lead.view.all") || cap("lead.view.assigned");
+      const invScope = investorAllowed ? await investorScopeSql(tx, session, "i") : sql`FALSE`;
+      const listScope = investorAllowed ? await investorScopeSql(tx, session, "investors") : sql`FALSE`;
+      const leadScope = leadAllowed ? leadScopeSql(session) : sql`FALSE`;
+      const requestScope = cap("service_request.view.all") ? sql`TRUE`
+        : cap("service_request.view.assigned") ? sql`sr.assigned_to_user_id = ${session.userId}` : sql`FALSE`;
+      const docScope = cap("document.view") ? sql`(
+        (d.related_entity_type = 'investor' AND EXISTS (SELECT 1 FROM investors i
+          WHERE i.id = d.related_entity_id AND i.deleted_at IS NULL AND ${invScope})) OR
+        (d.related_entity_type = 'lead' AND EXISTS (SELECT 1 FROM leads
+          WHERE leads.id = d.related_entity_id AND leads.deleted_at IS NULL AND ${leadScope})) OR
+        (d.related_entity_type IS DISTINCT FROM 'investor' AND d.related_entity_type IS DISTINCT FROM 'lead'
+          AND ${cap("compliance.view")})
+      )` : sql`FALSE`;
       const [investors, leads, folios, sips, serviceRequests, documents] = await Promise.all([
         tx.execute(sql`
           SELECT id, name, pan, phone, email, segment_tag
           FROM investors
-          WHERE tenant_id = ${session.tenantId}::uuid AND deleted_at IS NULL AND (name ILIKE ${like} OR pan ILIKE ${likeUpper}
+          WHERE tenant_id = ${session.tenantId}::uuid AND ${listScope} AND deleted_at IS NULL AND (name ILIKE ${like} OR pan ILIKE ${likeUpper}
              OR phone ILIKE ${like} OR email ILIKE ${like})
           LIMIT 5
         `),
         tx.execute(sql`
           SELECT id, name, phone, email, stage, source
           FROM leads
-          WHERE tenant_id = ${session.tenantId}::uuid AND (name ILIKE ${like} OR phone ILIKE ${like} OR email ILIKE ${like})
+          WHERE tenant_id = ${session.tenantId}::uuid AND ${leadScope} AND deleted_at IS NULL AND (name ILIKE ${like} OR phone ILIKE ${like} OR email ILIKE ${like})
             AND converted_investor_id IS NULL
           LIMIT 5
         `),
         tx.execute(sql`
           SELECT f.id, f.folio_number, f.amc_name, f.aum, i.name AS investor_name, i.id AS investor_id
           FROM folios f LEFT JOIN investors i ON i.id = f.investor_id
-          WHERE f.tenant_id = ${session.tenantId}::uuid AND f.folio_number ILIKE ${like}
+          WHERE f.tenant_id = ${session.tenantId}::uuid AND ${invScope} AND i.deleted_at IS NULL AND f.folio_number ILIKE ${like}
           LIMIT 5
         `),
         tx.execute(sql`
           SELECT s.id, s.scheme_name, s.amount, s.status, i.name AS investor_name, i.id AS investor_id
           FROM sips s LEFT JOIN investors i ON i.id = s.investor_id
-          WHERE s.tenant_id = ${session.tenantId}::uuid AND (s.scheme_name ILIKE ${like} OR s.scheme_code ILIKE ${like})
+          WHERE s.tenant_id = ${session.tenantId}::uuid AND ${invScope} AND i.deleted_at IS NULL AND (s.scheme_name ILIKE ${like} OR s.scheme_code ILIKE ${like})
           LIMIT 5
         `),
         tx.execute(sql`
           SELECT sr.id, sr.ticket_no, sr.subject, sr.type, sr.status, i.name AS investor_name
           FROM service_requests sr LEFT JOIN investors i ON i.id = sr.investor_id
-          WHERE sr.tenant_id = ${session.tenantId}::uuid AND (sr.ticket_no ILIKE ${like} OR sr.subject ILIKE ${like})
+          WHERE sr.tenant_id = ${session.tenantId}::uuid AND ${requestScope}
+            AND (sr.investor_id IS NULL OR (${invScope} AND i.deleted_at IS NULL))
+            AND (sr.ticket_no ILIKE ${like} OR sr.subject ILIKE ${like})
           LIMIT 5
         `),
         tx.execute(sql`
-          SELECT id, name, category, created_at
-          FROM compliance_documents
-          WHERE tenant_id = ${session.tenantId}::uuid AND name ILIKE ${like}
+          SELECT d.id, d.name, d.category, d.created_at
+          FROM compliance_documents d
+          WHERE d.tenant_id = ${session.tenantId}::uuid AND ${docScope} AND d.name ILIKE ${like}
           LIMIT 5
         `),
       ]);

@@ -195,8 +195,9 @@ export default async function ReviewMeetingsPage({
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
           <h1 className="page-title">
-            <Calendar className="size-6 text-brand-cyan" /> Meetings
+            <Calendar className="size-6 text-muted-foreground" /> Meetings
           </h1>
+          <p className="page-subtitle mt-1">Portfolio reviews — schedule them, prepare, and record what you agreed.</p>
         </div>
         <div className="flex items-center gap-2">
           <div className="inline-flex rounded-lg border border-border overflow-hidden text-xs">
@@ -220,15 +221,15 @@ export default async function ReviewMeetingsPage({
       {todays.length > 0 && (
         <div className="card-surface p-4">
           <div className="flex items-center gap-2 mb-3 font-semibold text-sm">
-            <Calendar className="size-4 text-brand-cyan" /> Today&apos;s agenda
-            <span className="chip bg-brand-cyan-light text-brand-cyan-deep text-[10px]">{todays.length}</span>
+            <Calendar className="size-4 text-muted-foreground" /> Today&apos;s agenda
+            <span className="chip bg-secondary text-muted-foreground text-2xs">{todays.length}</span>
           </div>
           <div className="flex gap-3 overflow-x-auto pb-1">
             {todays.map((m) => (
               <Link
                 key={m.id}
                 href={`/dashboard/review-meetings/${m.id}`}
-                className="min-w-[210px] rounded-lg border border-border p-3 hover:bg-secondary/40 transition-colors"
+                className="min-w-[210px] rounded-lg border border-border p-3 hover:border-foreground/20 hover:bg-secondary/50 transition-colors"
               >
                 <div className="text-lg font-bold tabular-nums">
                   {new Date(m.meeting_date).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" })}

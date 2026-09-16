@@ -5,7 +5,7 @@
  */
 
 import React, { useMemo, useState } from "react";
-import { View, ScrollView, Pressable, StyleSheet } from "react-native";
+import { View, ScrollView, Pressable, Platform, StyleSheet } from "react-native";
 import { useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { ScreenHeader } from "../../components/ui/ScreenHeader";
@@ -114,13 +114,22 @@ export function AppearanceSettings() {
           <HexRow label="Hover colour" value={state.hover} onChange={(t) => set("hover", normHex(t))} disabled={!canEdit} last />
         </Card>
 
-        {/* Typography & density */}
+        {/* Typography & density — these drive the web CRM's CSS theme; the native
+            app uses the system font and a fixed density, so don't offer controls
+            that would visibly do nothing here. */}
         <Text style={styles.section}>TYPOGRAPHY & DENSITY</Text>
-        <Card>
-          <SelectField label="Font" value={state.font} options={THEME_FONTS} onChange={(val) => set("font", val)} />
-          <SelectField label="Density" value={state.density} options={UI_DENSITIES} onChange={(val) => set("density", val)} />
-          <Text variant="caption" tone="muted">Applies across the whole workspace for your firm. Compact tightens text & spacing.</Text>
-        </Card>
+        {Platform.OS === "web" ? (
+          <Card>
+            <SelectField label="Font" value={state.font} options={THEME_FONTS} onChange={(val) => set("font", val)} />
+            <SelectField label="Density" value={state.density} options={UI_DENSITIES} onChange={(val) => set("density", val)} />
+            <Text variant="caption" tone="muted">Applies across the whole workspace for your firm. Compact tightens text & spacing.</Text>
+          </Card>
+        ) : (
+          <Card flat style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+            <Feather name="monitor" size={15} color={palette.muted} />
+            <Text variant="caption" tone="muted" style={{ flex: 1 }}>Font and density are web-CRM settings. The mobile app uses your phone's system font and a fixed layout; change them from the web dashboard.</Text>
+          </Card>
+        )}
 
         {msg ? <Text variant="caption" style={{ color: msg.startsWith("Saved") ? palette.success : palette.danger, marginTop: spacing.md }}>{msg}</Text> : null}
 

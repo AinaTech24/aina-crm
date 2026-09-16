@@ -91,14 +91,14 @@ export function InsuranceReturnAnalyzer() {
       {/* Payout details */}
       {usePayouts && (
         <div>
-          <div className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium mb-1.5">
+          <div className="text-2xs uppercase tracking-wide text-muted-foreground font-medium mb-1.5">
             Payout details (year &amp; amount)
           </div>
           <div className="space-y-2">
             {payouts.map((p, i) => (
               <div key={i} className="flex items-end gap-2">
                 <label className="block">
-                  <span className="text-[10px] text-muted-foreground block mb-0.5">Payout {i + 1} — year</span>
+                  <span className="text-2xs text-muted-foreground block mb-0.5">Payout {i + 1} — year</span>
                   <input
                     type="number" value={p.year} step={1} min={1}
                     onChange={(e) => setPayout(i, { year: clampNum(e.target.value) })}
@@ -106,7 +106,7 @@ export function InsuranceReturnAnalyzer() {
                   />
                 </label>
                 <label className="block">
-                  <span className="text-[10px] text-muted-foreground block mb-0.5">Amount (₹)</span>
+                  <span className="text-2xs text-muted-foreground block mb-0.5">Amount (₹)</span>
                   <input
                     type="number" value={p.amount} step={5000} min={0}
                     onChange={(e) => setPayout(i, { amount: clampNum(e.target.value) })}
@@ -126,7 +126,7 @@ export function InsuranceReturnAnalyzer() {
             <button type="button" onClick={addPayout} className="btn-ghost text-xs print:hidden">+ Add payout</button>
           </div>
           {payoutMode === "annuity" && (
-            <p className="text-[10px] text-muted-foreground mt-1">
+            <p className="text-2xs text-muted-foreground mt-1">
               For an annuity, add one row per annuity year (year + amount received).
             </p>
           )}

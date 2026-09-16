@@ -129,7 +129,7 @@ export default async function CommissionReconciliationPage({
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
             <Coins className="size-6" /> Brokerage reconciliation
           </h1>
-          <p className="text-muted-foreground text-sm max-w-2xl">
+          <p className="page-subtitle mt-1 max-w-2xl">
             Compare what AMCs paid vs what your folios should have earned, scheme by scheme. Trail leakage from
             wrong-ARN-mapping and missed installments routinely costs 1–2% of regular AUM — easy money to recover.
           </p>
@@ -224,14 +224,14 @@ export default async function CommissionReconciliationPage({
                     <tr className="bg-secondary/40 border-b">
                       <td className="px-4 py-2 font-mono text-xs font-semibold" colSpan={2}>
                         {g.amc}
-                        <span className="ml-2 text-[10px] text-muted-foreground font-sans">{g.rows.length} scheme{g.rows.length !== 1 ? "s" : ""}{g.anomalies > 0 ? ` · ${g.anomalies} anomaly` : ""}</span>
+                        <span className="ml-2 text-2xs text-muted-foreground font-sans">{g.rows.length} scheme{g.rows.length !== 1 ? "s" : ""}{g.anomalies > 0 ? ` · ${g.anomalies} anomaly` : ""}</span>
                       </td>
                       <td className="py-2 text-right tabular-nums text-xs font-semibold">{formatINR(g.expected)}</td>
                       <td className="py-2 text-right tabular-nums text-xs font-semibold">{formatINR(g.received)}</td>
                       <td className={`py-2 text-right tabular-nums text-xs font-semibold ${gv < 0 ? "text-rose-600" : gv > 0 ? "text-amber-600" : ""}`}>
                         {gv >= 0 ? "+" : ""}{formatINR(gv)}
                       </td>
-                      <td colSpan={2} className="py-2 pl-3 text-[10px] text-muted-foreground">
+                      <td colSpan={2} className="py-2 pl-3 text-2xs text-muted-foreground">
                         {g.shortfall > 0 ? `${formatINR(g.shortfall)} recoverable` : ""}
                       </td>
                     </tr>
@@ -286,7 +286,7 @@ export default async function CommissionReconciliationPage({
               </p>
             </div>
             <div className="text-right">
-              <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+              <div className="text-2xs uppercase tracking-wide text-muted-foreground">
                 Total payable
               </div>
               <div className="text-lg font-semibold text-violet-700">
@@ -323,7 +323,7 @@ export default async function CommissionReconciliationPage({
                         {p.name}
                       </Link>
                       {p.code && (
-                        <div className="text-[10px] text-muted-foreground font-mono">
+                        <div className="text-2xs text-muted-foreground font-mono">
                           {p.code}
                         </div>
                       )}
@@ -385,7 +385,7 @@ function Kpi({
         {Icon && <Icon className="size-3.5" />}
       </div>
       <div className={`text-2xl font-bold mt-1 ${color}`}>{value}</div>
-      {sub && <div className="text-[10px] text-muted-foreground mt-0.5">{sub}</div>}
+      {sub && <div className="text-2xs text-muted-foreground mt-0.5">{sub}</div>}
     </div>
   );
 }

@@ -92,7 +92,7 @@ export default async function FyWisePage({ searchParams }: { searchParams: Promi
                   <tr key={r.investorId} className="border-b last:border-0 hover:bg-secondary/30">
                     <td className="py-2.5 px-4">
                       <Link href={`/dashboard/investors/${r.investorId}`} className="font-medium hover:underline">{r.name}</Link>
-                      {r.pan && <div className="text-[11px] font-mono text-muted-foreground">{r.pan}</div>}
+                      {r.pan && <div className="text-2xs font-mono text-muted-foreground">{r.pan}</div>}
                     </td>
                     {cols.map((y) => {
                       const c = r.byFy[y];

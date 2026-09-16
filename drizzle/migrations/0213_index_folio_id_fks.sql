@@ -14,11 +14,43 @@
 -- This is not only a maintenance problem: the client merge engine re-points and
 -- deletes folios, so every merge paid the same cost.
 --
--- CONCURRENTLY so the build takes no write lock on a live table. That means
--- these statements cannot run inside a transaction block -- the migration
--- runner executes each file's statements directly, which is fine here because
--- CREATE INDEX CONCURRENTLY is itself restartable: a failed build leaves an
--- INVALID index that a re-run replaces.
+-- CONCURRENTLY so the build takes no write lock on a live table: `transactions`
+-- is 459 MB on production and a plain CREATE INDEX would block every write to
+-- it for the length of the build, while the old colour is still serving.
+--
+-- CONCURRENTLY cannot run inside a transaction block, and the runner wraps each
+-- file in one, so this file opts out with the header below. It is applied
+-- statement by statement with no BEGIN, which means it is NOT all-or-nothing --
+-- hence every statement below is re-runnable.
+--
+-- migrate:no-transaction
+
+-- A CONCURRENTLY build that fails (lock timeout, deadlock, a killed session)
+-- leaves an INVALID index behind, and `IF NOT EXISTS` would then skip it
+-- forever -- an index that is never used and never finished. Clear those first
+-- so a re-run genuinely rebuilds. DROP INDEX is transactional, so it is safe
+-- inside this DO block.
+DO $$
+DECLARE r record;
+BEGIN
+  FOR r IN
+    SELECT c.relname AS name
+    FROM pg_class c
+    JOIN pg_index i ON i.indexrelid = c.oid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public'
+      AND NOT i.indisvalid
+      AND c.relname IN (
+        'transactions_folio_id_idx',
+        'sips_folio_id_idx',
+        'portfolio_review_items_folio_id_idx'
+      )
+  LOOP
+    RAISE NOTICE 'dropping invalid index %', r.name;
+    EXECUTE format('DROP INDEX IF EXISTS public.%I', r.name);
+  END LOOP;
+END $$;
+
 CREATE INDEX CONCURRENTLY IF NOT EXISTS transactions_folio_id_idx
   ON transactions (folio_id);
 
