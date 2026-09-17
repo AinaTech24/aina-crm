@@ -17,6 +17,25 @@ export function formatINR(amount: number | string | null | undefined): string {
 }
 
 /**
+ * Indian-notation SHORT money: ₹1238.64 Cr · ₹71.35 Lakh · ₹3,000.
+ *
+ * `formatINR` above prints every digit, which is right in a table you read a
+ * row at a time and wrong on a dashboard tile you glance at — ₹2,49,00,000
+ * has to be counted, ₹2.49 Cr does not. This was already hand-copied into
+ * FirmPulseStrip and FirmCharts; they now share this one.
+ */
+export function formatINRShort(amount: number | string | null | undefined): string {
+  if (amount == null) return "—";
+  const n = typeof amount === "string" ? Number(amount) : amount;
+  if (!Number.isFinite(n)) return "—";
+  const abs = Math.abs(n);
+  const sign = n < 0 ? "-" : "";
+  if (abs >= 1e7) return `${sign}₹${(abs / 1e7).toFixed(2)} Cr`;
+  if (abs >= 1e5) return `${sign}₹${(abs / 1e5).toFixed(2)} Lakh`;
+  return `${sign}₹${Math.round(abs).toLocaleString("en-IN")}`;
+}
+
+/**
  * Reduce a raw phone string to its national 10-digit Indian mobile, or null if
  * it doesn't look like one. Tolerates +91 / 91 / leading-0 prefixes and any
  * spacing/punctuation. Used for display formatting + validity flagging.

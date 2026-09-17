@@ -21,15 +21,9 @@ import { ArrowDownRight, ArrowUpRight, ExternalLink, Minus } from "lucide-react"
 import { Sparkline } from "./Sparkline";
 import type { ActivityRange, ActivityTile, Delta, PulseMetric } from "@/lib/dashboard/firm-pulse";
 import { ACTIVITY_RANGES } from "@/lib/dashboard/firm-pulse";
+import { formatINRShort } from "@/lib/utils";
 
-/** Indian-notation short money: ₹1238.64 Cr · ₹71.35 Lakh · ₹3,000. */
-function money(n: number): string {
-  const abs = Math.abs(n);
-  const sign = n < 0 ? "-" : "";
-  if (abs >= 1e7) return `${sign}₹${(abs / 1e7).toFixed(2)} Cr`;
-  if (abs >= 1e5) return `${sign}₹${(abs / 1e5).toFixed(2)} Lakh`;
-  return `${sign}₹${Math.round(abs).toLocaleString("en-IN")}`;
-}
+const money = formatINRShort;
 
 const HREF: Record<PulseMetric["key"], string> = {
   aum: "/dashboard/portfolio-intelligence",
