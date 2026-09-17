@@ -34,6 +34,8 @@ type Stage = {
   order: number;
   status: "done" | "current" | "upcoming";
   phase?: "lead" | "client";
+  /** Loops and dead ends are branches, not linear steps. */
+  flavour?: "default" | "loop" | "terminal_success" | "terminal_failure";
 };
 type Current = {
   key: string;
@@ -196,6 +198,22 @@ export function BlueprintStageBar({
     : data.allStages;
 
   /**
+   * The header used to read "Stage 12 of 20", counting EVERY stage in the
+   * phase. Most of them are not steps: the three KYC entries are mutually
+   * exclusive branches, the call-back entries are loops back to the same place,
+   * and "Not Qualified" is a dead end. Counting them told a firm it was 60%
+   * through an onboarding when it had simply reached stage 12 of a branching
+   * SOP. The denominator is now the main path only — loops and dead ends are
+   * still drawn on the rail, just not counted as progress toward the end.
+   */
+  const mainPath = allStages.filter((s) => (s.flavour ?? "default") === "default");
+  const mainPathTotal = mainPath.length;
+  const mainPathPosition = Math.max(
+    1,
+    mainPath.filter((s) => s.order <= current.order).length
+  );
+
+  /**
    * Two boundary conditions:
    *   1. Lead module + stage `docs_received` and NOT yet converted → big
    *      "Convert to Client" CTA replaces the normal advance picker.
@@ -228,7 +246,7 @@ export function BlueprintStageBar({
           <span className="text-xs text-muted-foreground">
             {leadStillInProgress
               ? "Onboarding will start once the lead is converted"
-              : `Stage ${current.order} of ${allStages.length} · ${current.name}`}
+              : `${current.name} · step ${mainPathPosition} of ${mainPathTotal}`}
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -286,18 +304,46 @@ export function BlueprintStageBar({
           {allStages.map((s, i) => (
             <li key={s.key} className="flex items-center">
               <div className="flex flex-col items-center min-w-[64px]">
-                <div
-                  className={`size-7 rounded-full grid place-items-center text-2xs font-bold ${
+                {/* A branch is not a step. `flavour` marks the three kinds
+                    that are not part of a straight line: a LOOP (call back
+                    later — returns to the same place), a DEAD END (not
+                    qualified, mandate rejected) and a FINISH (won, active
+                    client). Drawing all of them as identical numbered circles
+                    is what made this rail read as a broken sequence. */}
+                {(() => {
+                  const fl = s.flavour ?? "default";
+                  const shape = fl === "default" ? "rounded-full" : "rounded-md rotate-45";
+                  const tone =
                     s.status === "done"
-                      ? "bg-emerald-500 text-white"
+                      ? "bg-success text-white"
                       : s.status === "current"
-                        ? "bg-brand-cyan text-white ring-2 ring-brand-cyan/30"
-                        : "bg-secondary text-muted-foreground"
-                  }`}
-                  title={s.name}
-                >
-                  {s.status === "done" ? "✓" : s.order}
-                </div>
+                        ? "bg-primary text-white ring-2 ring-primary/30"
+                        : fl === "terminal_failure"
+                          ? "bg-destructive/10 text-destructive border border-destructive/30"
+                          : fl === "terminal_success"
+                            ? "bg-success/10 text-success border border-success/30"
+                            : fl === "loop"
+                              ? "bg-secondary text-muted-foreground border border-dashed border-muted-foreground/40"
+                              : "bg-secondary text-muted-foreground";
+                  const note =
+                    fl === "loop"
+                      ? " — a loop, not a step forward"
+                      : fl === "terminal_failure"
+                        ? " — a dead end for this journey"
+                        : fl === "terminal_success"
+                          ? " — the finish line"
+                          : "";
+                  return (
+                    <div
+                      className={`size-7 grid place-items-center text-2xs font-bold ${shape} ${tone}`}
+                      title={`${s.name}${note}`}
+                    >
+                      <span className={fl === "default" ? "" : "-rotate-45"}>
+                        {s.status === "done" ? "✓" : fl === "loop" ? "↺" : s.order}
+                      </span>
+                    </div>
+                  );
+                })()}
                 <span
                   className={`mt-1 text-2xs text-center leading-tight max-w-[80px] ${
                     s.status === "current" ? "font-semibold" : "text-muted-foreground"

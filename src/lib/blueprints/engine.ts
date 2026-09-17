@@ -41,6 +41,7 @@ import {
   LEAD_TO_CLIENT_TRANSITIONS,
   stageDisposition,
   onboardingBranchOf,
+  stageFlavour,
 } from "./lead_to_client";
 import { checkPrerequisites } from "./prerequisites";
 
@@ -464,6 +465,8 @@ export interface StageView {
      * show in the Clients module instead. Boundary = LEAD_PHASE_LAST_ORDER (10).
      */
     phase: "lead" | "client";
+    /** Stepper marker: a loop or dead end is NOT a linear step. */
+    flavour: "default" | "loop" | "terminal_success" | "terminal_failure";
   }>;
   history: Array<{
     stageKey: string;
@@ -535,6 +538,7 @@ export async function getStage(tx: Tx, tenantId: string, leadId: string): Promis
       name: s.stageName,
       order: s.stageOrder,
       status: i < currentIdx ? "done" : i === currentIdx ? "current" : "upcoming",
+      flavour: stageFlavour(s.stageKey),
       // Cut-over at stage 10 (Not Qualified is the last lead-phase
       // stage in the new SOP graph; Won Lead at stage 9 is the success
       // boundary that converts to Client). See LEAD_PHASE_LAST_ORDER.
