@@ -11,7 +11,24 @@
  *   Q1: Apr–Jun · Q2: Jul–Sep · Q3: Oct–Dec · Q4: Jan–Mar
  */
 
-export type Period = "mtd" | "qtd" | "fytd" | "lm" | "custom";
+/**
+ * `tw`/`lw`/`lq`/`ly` were added so the dashboard can offer the same one-click
+ * ranges a firm expects (this week … last year) instead of a dropdown. They are
+ * all CLOSED ranges — a fixed start and end — unlike mtd/qtd/fytd which run to
+ * now. Week starts Monday, which is the working week in an Indian MFD office;
+ * "last year" is the previous FINANCIAL year (Apr–Mar), not the calendar year,
+ * because every other year figure in this product is FY.
+ */
+export type Period =
+  | "tw"
+  | "lw"
+  | "mtd"
+  | "lm"
+  | "qtd"
+  | "lq"
+  | "fytd"
+  | "ly"
+  | "custom";
 
 /**
  * Unified period RANGE resolver — returns both a start AND an end so every
@@ -35,6 +52,40 @@ export function resolvePeriodRange(
     const fromDate = new Date(opts.from + "T00:00:00");
     const toDate = opts.to && iso.test(opts.to) ? new Date(opts.to + "T23:59:59") : now;
     return pack(fromDate, toDate, rangeLabel(fromDate, toDate), "custom");
+  }
+  // Monday-start week.
+  const startOfWeek = (d: Date) => {
+    const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const dow = (x.getDay() + 6) % 7; // Mon = 0
+    x.setDate(x.getDate() - dow);
+    return x;
+  };
+  if (period === "tw") {
+    const fromDate = startOfWeek(now);
+    return pack(fromDate, now, "This week", "tw");
+  }
+  if (period === "lw") {
+    const thisMon = startOfWeek(now);
+    const fromDate = new Date(thisMon.getFullYear(), thisMon.getMonth(), thisMon.getDate() - 7);
+    const toDate = new Date(thisMon.getFullYear(), thisMon.getMonth(), thisMon.getDate() - 1, 23, 59, 59);
+    return pack(fromDate, toDate, rangeLabel(fromDate, toDate), "lw");
+  }
+  if (period === "lq") {
+    // Indian FY quarters: Apr-Jun, Jul-Sep, Oct-Dec, Jan-Mar.
+    const m = now.getMonth();
+    const qStartMonth = Math.floor(((m - 3 + 12) % 12) / 3) * 3 + 3; // 3,6,9,12(->0)
+    const thisQStart = new Date(now.getFullYear(), qStartMonth % 12, 1);
+    if (qStartMonth >= 12) thisQStart.setFullYear(now.getFullYear());
+    const fromDate = new Date(thisQStart.getFullYear(), thisQStart.getMonth() - 3, 1);
+    const toDate = new Date(thisQStart.getFullYear(), thisQStart.getMonth(), 0, 23, 59, 59);
+    return pack(fromDate, toDate, rangeLabel(fromDate, toDate), "lq");
+  }
+  if (period === "ly") {
+    // Previous FINANCIAL year (1 Apr - 31 Mar), matching every other FY figure.
+    const fyStartYear = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+    const fromDate = new Date(fyStartYear - 1, 3, 1);
+    const toDate = new Date(fyStartYear, 2, 31, 23, 59, 59);
+    return pack(fromDate, toDate, `FY ${fyStartYear - 1}-${String(fyStartYear).slice(2)}`, "ly");
   }
   if (period === "lm") {
     const y = now.getFullYear();
