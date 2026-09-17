@@ -52,85 +52,161 @@ export async function GET() {
         FROM investors
         WHERE status IN ('active', 'dormant') AND deleted_at IS NULL
       `);
-      return r.rows[0] as any;
+      // Per-branch split for the same gaps. Grouped once rather than ten
+      // times; branches are few, so this stays a cheap second round-trip.
+      const b = await tx.execute(sql`
+        SELECT
+          COALESCE(br.name, 'Unassigned branch')                       AS branch,
+          COUNT(*) FILTER (WHERE i.pan IS NULL OR i.pan = '')          AS pan_missing,
+          COUNT(*) FILTER (WHERE i.phone IS NULL OR i.phone = '')      AS phone_missing,
+          COUNT(*) FILTER (WHERE i.email IS NULL OR i.email = '')      AS email_missing,
+          COUNT(*) FILTER (WHERE i.dob IS NULL)                        AS dob_missing,
+          COUNT(*) FILTER (WHERE i.nominee_name IS NULL
+                              OR i.nominee_name = '')                  AS nominee_missing,
+          COUNT(*) FILTER (WHERE i.bank_account_masked IS NULL
+                              OR i.bank_account_masked = '')           AS bank_missing,
+          COUNT(*) FILTER (WHERE i.risk_profile IS NULL
+                              OR i.risk_profile_signed_at IS NULL)     AS risk_missing,
+          COUNT(*) FILTER (WHERE i.kyc_status != 'verified')           AS kyc_unverified,
+          COUNT(*) FILTER (WHERE i.rm_id IS NULL)                      AS rm_missing,
+          COUNT(*) FILTER (WHERE i.pan_aadhaar_link_status = 'not_linked'
+                              OR i.pan_aadhaar_link_status IS NULL)    AS pan_aadhaar_unlinked,
+          COUNT(*)                                                     AS total
+        FROM investors i
+        LEFT JOIN branches br ON br.id = i.branch_id
+        WHERE i.status IN ('active', 'dormant') AND i.deleted_at IS NULL
+        GROUP BY 1
+        ORDER BY 1
+      `);
+      return { totals: r.rows[0] as any, byBranch: b.rows as any[] };
     });
 
-    const total = Number(rows?.total ?? 0);
+    const { totals, byBranch } = rows;
+    const total = Number(totals?.total ?? 0);
     const cap = (n: any) => Number(n ?? 0);
+
+    /**
+     * "Mumbai 122 · Madurai 252" for one gap column. Branches with nothing
+     * missing are dropped — naming a branch that is already clean is noise,
+     * and on a single-branch firm this collapses to nothing at all.
+     */
+    const splitFor = (col: string) =>
+      byBranch
+        .map((b) => ({ branch: String(b.branch), count: Number(b[col] ?? 0) }))
+        .filter((x) => x.count > 0)
+        .sort((a, b2) => b2.count - a.count);
+    /**
+     * Per-branch completeness, weighted across the five fields a firm is
+     * actually judged on: KYC, nominee, risk profile, DOB and PAN. Each branch
+     * scores (filled / possible) across those five, so one branch with 1,155
+     * clients and one with 216 are directly comparable.
+     */
+    const COMPLETENESS_COLS = [
+      "kyc_unverified",
+      "nominee_missing",
+      "risk_missing",
+      "dob_missing",
+      "pan_missing",
+    ] as const;
+    const completeness = byBranch
+      .map((b) => {
+        const clients = Number(b.total ?? 0);
+        if (clients === 0) return null;
+        const possible = clients * COMPLETENESS_COLS.length;
+        const missing = COMPLETENESS_COLS.reduce((sum, c) => sum + Number(b[c] ?? 0), 0);
+        return {
+          branch: String(b.branch),
+          clients,
+          pct: Math.round(((possible - missing) / possible) * 100),
+        };
+      })
+      .filter((x): x is { branch: string; clients: number; pct: number } => x !== null)
+      .sort((a, b2) => b2.clients - a.clients);
+
     const gaps = [
       {
         key: "pan",
         label: "Missing PAN",
-        count: cap(rows.pan_missing),
+        count: cap(totals.pan_missing),
         href: "/dashboard/investors?gaps=pan",
         severity: "high",
+        branches: splitFor("pan_missing"),
       },
       {
         key: "pan_aadhaar",
         label: "PAN-Aadhaar unlinked",
-        count: cap(rows.pan_aadhaar_unlinked),
+        count: cap(totals.pan_aadhaar_unlinked),
         href: "/dashboard/investors?gaps=pan_aadhaar",
         severity: "high",
+        branches: splitFor("pan_aadhaar_unlinked"),
       },
       {
         key: "phone",
         label: "Missing phone",
-        count: cap(rows.phone_missing),
+        count: cap(totals.phone_missing),
         href: "/dashboard/investors?gaps=phone",
         severity: "medium",
+        branches: splitFor("phone_missing"),
       },
       {
         key: "email",
         label: "Missing email",
-        count: cap(rows.email_missing),
+        count: cap(totals.email_missing),
         href: "/dashboard/investors?gaps=email",
         severity: "medium",
+        branches: splitFor("email_missing"),
       },
       {
         key: "dob",
         label: "Missing DOB",
-        count: cap(rows.dob_missing),
+        count: cap(totals.dob_missing),
         href: "/dashboard/investors?gaps=dob",
         severity: "high",
+        branches: splitFor("dob_missing"),
       },
       {
         key: "nominee",
         label: "No nominee",
-        count: cap(rows.nominee_missing),
+        count: cap(totals.nominee_missing),
         href: "/dashboard/investors?gaps=nominee",
         severity: "high",
+        branches: splitFor("nominee_missing"),
       },
       {
         key: "bank",
         label: "No bank on file",
-        count: cap(rows.bank_missing),
+        count: cap(totals.bank_missing),
         href: "/dashboard/investors?gaps=bank",
         severity: "medium",
+        branches: splitFor("bank_missing"),
       },
       {
         key: "risk_profile",
         label: "No risk profile",
-        count: cap(rows.risk_missing),
+        count: cap(totals.risk_missing),
         href: "/dashboard/investors?gaps=risk_profile",
         severity: "high",
+        branches: splitFor("risk_missing"),
       },
       {
         key: "kyc",
         label: "KYC not verified",
-        count: cap(rows.kyc_unverified),
+        count: cap(totals.kyc_unverified),
         href: "/dashboard/investors?kyc=pending,expired,not_started",
         severity: "high",
+        branches: splitFor("kyc_unverified"),
       },
       {
         key: "rm",
         label: "Unassigned (no RM)",
-        count: cap(rows.rm_missing),
+        count: cap(totals.rm_missing),
         href: "/dashboard/investors?gaps=rm",
         severity: "medium",
+        branches: splitFor("rm_missing"),
       },
     ].filter((g) => g.count > 0);
 
-    return NextResponse.json({ total, gaps });
+    return NextResponse.json({ total, gaps , completeness});
   } catch (err: any) {
     return handleApiError(err);
   }

@@ -102,7 +102,7 @@ export async function FirmChartsSection({ session }: { session: SessionUser }) {
         </Panel>
 
         {/* The "Compliance gaps" panel that stood here listed the same eleven
-            client-master gaps the "Client master — data gaps" tile below already
+            client-master gaps the "Action centre — data hygiene" tile below already
             shows (identical numbers, sourced from the same columns) — but as a
             read-only table, while that tile groups them by compliance vs
             engagement impact and lets you click a chip to inspect or bulk-remind.

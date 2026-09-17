@@ -35,17 +35,32 @@ type Gap = {
   label: string;
   count: number;
   href: string;
-  severity: "high" | "medium";
+  severity: "high" | "medium" | "low";
+  /** Where the gap actually sits, so a lead can act without re-filtering. */
+  branches?: Array<{ branch: string; count: number }>;
+};
+
+const SEV_RANK: Record<Gap["severity"], number> = { high: 0, medium: 1, low: 2 };
+const SEV_CHIP: Record<Gap["severity"], string> = {
+  high: "bg-destructive/10 text-destructive",
+  medium: "bg-warning/10 text-warning-foreground",
+  low: "bg-secondary text-muted-foreground",
+};
+const SEV_LABEL: Record<Gap["severity"], string> = {
+  high: "HIGH",
+  medium: "MED",
+  low: "LOW",
 };
 
 export function DataGapsTile() {
-  const [data, setData] = useState<{ total: number; gaps: Gap[] } | null>(null);
+  const [data, setData] = useState<{
+    total: number;
+    gaps: Gap[];
+    completeness?: Array<{ branch: string; clients: number; pct: number }>;
+  } | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   // Quick Action Modal states
-  const [activeGap, setActiveGap] = useState<Gap | null>(null);
-  const [sending, setSending] = useState(false);
-  const [success, setSuccess] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -65,26 +80,7 @@ export function DataGapsTile() {
     };
   }, []);
 
-  const handleNotify = (gap: Gap) => {
-    setActiveGap(gap);
-    setSuccess(false);
-    setSending(false);
-  };
 
-  const executeBulkNotify = () => {
-    if (!activeGap) return;
-    setSending(true);
-    // Simulate campaign initiation using the standard workflow recipes
-    setTimeout(() => {
-      setSending(false);
-      setSuccess(true);
-      // Automatically close modal after 2.5 seconds
-      setTimeout(() => {
-        setActiveGap(null);
-        setSuccess(false);
-      }, 2500);
-    }, 1500);
-  };
 
   if (err) {
     return (
@@ -122,8 +118,11 @@ export function DataGapsTile() {
   }
 
   const totalGaps = data.gaps.reduce((s, g) => s + g.count, 0);
-  const highSev = data.gaps.filter((g) => g.severity === "high");
-  const medSev = data.gaps.filter((g) => g.severity === "medium");
+  // One ranked worklist instead of two chip groups: worst first, then biggest.
+  // A row with nothing missing is not work, so it is dropped.
+  const ranked = [...data.gaps]
+    .filter((g) => g.count > 0)
+    .sort((a, b) => SEV_RANK[a.severity] - SEV_RANK[b.severity] || b.count - a.count);
 
   return (
     <div className="card-surface p-4 space-y-3 relative overflow-hidden">
@@ -133,10 +132,10 @@ export function DataGapsTile() {
             <ShieldAlert className="size-4 text-amber-700" />
           </div>
           <div>
-            <div className="text-sm font-semibold">Client master — data gaps</div>
+            <div className="text-sm font-semibold">Action centre — data hygiene</div>
             <div className="text-2xs text-muted-foreground mt-0.5">
-              {totalGaps.toLocaleString("en-IN")} fixes across {data.total.toLocaleString("en-IN")} clients.
-              Click a chip to inspect, or click the <Send className="inline size-2.5 mx-0.5" /> icon to bulk-remind.
+              {totalGaps.toLocaleString("en-IN")} fixes across {data.total.toLocaleString("en-IN")} clients —
+              worst first. Fix opens the client list filtered to exactly those records.
             </div>
           </div>
         </div>
@@ -148,123 +147,95 @@ export function DataGapsTile() {
         </Link>
       </div>
 
-      {highSev.length > 0 && (
-        <div>
-          <div className="text-2xs font-bold uppercase tracking-wider text-rose-700 mb-1.5">
-            Compliance-impacting
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {highSev.map((g) => (
-              <GapChip key={g.key} gap={g} tone="rose" onNotify={handleNotify} />
-            ))}
-          </div>
+      {ranked.length === 0 ? (
+        <div className="text-sm text-success">Every client record is complete.</div>
+      ) : (
+        <div className="divide-y divide-border -mx-1">
+          {ranked.map((g) => (
+            <div key={g.key} className="flex items-center gap-3 px-1 py-2">
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-medium truncate">{g.label}</div>
+                {g.branches && g.branches.length > 0 && (
+                  <div className="text-2xs text-muted-foreground truncate">
+                    {g.branches
+                      .slice(0, 3)
+                      .map((b) => `${b.branch} ${b.count}`)
+                      .join(" · ")}
+                    {g.branches.length > 3 ? ` · +${g.branches.length - 3}` : ""}
+                  </div>
+                )}
+              </div>
+              <span className="tabular-nums text-sm font-semibold shrink-0">
+                {g.count.toLocaleString("en-IN")}
+              </span>
+              <span
+                className={`chip text-2xs font-bold shrink-0 ${SEV_CHIP[g.severity]}`}
+                title={
+                  g.severity === "high"
+                    ? "Compliance-impacting — fix these first"
+                    : g.severity === "medium"
+                      ? "Affects how you can reach or serve the client"
+                      : "Nice to have"
+                }
+              >
+                {SEV_LABEL[g.severity]}
+              </span>
+              {/* The API has always returned an href filtered to exactly these
+                  records; it was only ever used to make the chip clickable.
+                  As a button it is the difference between reporting a problem
+                  and handing someone the fix. Secondary style on purpose —
+                  red is the firm's one accent and is already spent on the
+                  severity chip beside it. */}
+              <Link href={g.href} className="btn-secondary !px-2.5 !py-1 !text-xs shrink-0">
+                Fix <ArrowUpRight className="size-3" />
+              </Link>
+            </div>
+          ))}
         </div>
       )}
 
-      {medSev.length > 0 && (
-        <div>
-          <div className="text-2xs font-bold uppercase tracking-wider text-amber-700 mb-1.5">
-            Engagement-impacting
+      {/* Data completeness — one bar per branch, so "where is the book weakest"
+          is answerable at a glance. Weighted across the five fields a firm is
+          judged on rather than every column, and the weighting is stated so the
+          number is not a black box. */}
+      {data.completeness && data.completeness.length > 0 && (
+        <div className="pt-3 border-t border-border space-y-2">
+          <div className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Data completeness
           </div>
-          <div className="flex flex-wrap gap-2">
-            {medSev.map((g) => (
-              <GapChip key={g.key} gap={g} tone="amber" onNotify={handleNotify} />
-            ))}
-          </div>
+          {data.completeness.map((c) => (
+            <div key={c.branch} className="space-y-1">
+              <div className="flex items-baseline justify-between gap-2 text-2xs">
+                <span className="font-medium truncate">{c.branch}</span>
+                <span className="text-muted-foreground tabular-nums whitespace-nowrap">
+                  {c.clients.toLocaleString("en-IN")} clients · {c.pct}%
+                </span>
+              </div>
+              <div className="h-1.5 rounded-full bg-secondary overflow-hidden">
+                <div
+                  className={`h-full rounded-full ${
+                    c.pct >= 90 ? "bg-success" : c.pct >= 70 ? "bg-warning" : "bg-destructive"
+                  }`}
+                  style={{ width: `${Math.max(2, c.pct)}%` }}
+                />
+              </div>
+            </div>
+          ))}
+          <p className="text-2xs text-muted-foreground">
+            Weighted across KYC · nominee · risk profile · DOB · PAN.
+          </p>
         </div>
       )}
 
       {/* Bulk Notification Confirm Modal */}
-      {activeGap && (
-        <div className="absolute inset-0 bg-white/95 flex flex-col justify-center p-5 z-20 transition-all duration-300 animate-in fade-in">
-          <button
-            onClick={() => setActiveGap(null)}
-            className="absolute top-3 right-3 text-muted-foreground hover:text-foreground"
-          >
-            <X className="size-4" />
-          </button>
-          
-          <div className="max-w-md mx-auto space-y-3 text-center">
-            {success ? (
-              <div className="space-y-2 animate-in zoom-in-50">
-                <div className="size-12 rounded-full bg-emerald-50 text-emerald-600 grid place-items-center mx-auto border border-emerald-100">
-                  <Check className="size-6" />
-                </div>
-                <h3 className="font-semibold text-sm">Reminders Queued Successfully!</h3>
-                <p className="text-xs text-muted-foreground">
-                  Automated notifications requesting missing <span className="font-semibold">{activeGap.label}</span> have been sent to the outbox for {activeGap.count} clients.
-                </p>
-              </div>
-            ) : (
-              <>
-                <h3 className="font-semibold text-sm">Send Bulk Reminders?</h3>
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  This will trigger the campaign recipe for missing <span className="font-semibold">{activeGap.label}</span>, fanning out WhatsApp and Email templates to <span className="font-bold text-foreground">{activeGap.count} clients</span>.
-                </p>
-                <div className="flex gap-2 justify-center pt-2">
-                  <button
-                    disabled={sending}
-                    onClick={() => setActiveGap(null)}
-                    className="px-3 py-1.5 text-xs border rounded-md hover:bg-secondary font-medium disabled:opacity-50"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    disabled={sending}
-                    onClick={executeBulkNotify}
-                    className="btn-accent text-xs font-semibold px-3 py-1.5 inline-flex items-center gap-1.5"
-                  >
-                    {sending ? (
-                      <>
-                        <Loader2 className="size-3.5 animate-spin" /> Queuing...
-                      </>
-                    ) : (
-                      <>
-                        <Send className="size-3" /> Trigger Reminders
-                      </>
-                    )}
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      )}
+      {/* A "Send bulk reminders" modal stood here. It called nothing — a
+          setTimeout, then "Reminders Queued Successfully! … have been sent to
+          the outbox for N clients." No fetch, no workflow, no outbox row. A
+          firm would believe it had chased 22 clients for their PAN and stop
+          following up. Removed rather than left to mislead; wire it to the
+          real campaign recipe before offering the button again.
+          Each row's Fix link goes to those exact clients in the meantime. */}
     </div>
   );
 }
 
-function GapChip({
-  gap,
-  tone,
-  onNotify
-}: {
-  gap: Gap;
-  tone: "rose" | "amber";
-  onNotify: (gap: Gap) => void;
-}) {
-  const cls =
-    tone === "rose"
-      ? "border-rose-200 bg-rose-50/60 text-rose-900 hover:bg-rose-100"
-      : "border-amber-200 bg-amber-50/60 text-amber-900 hover:bg-amber-100";
-
-  return (
-    <div className="inline-flex items-stretch rounded-md shadow-sm">
-      <Link
-        href={gap.href}
-        className={`flex items-center gap-1.5 rounded-l-md border border-r-0 px-2.5 py-1 text-xs ${cls} transition-colors`}
-      >
-        <span className="font-semibold">{gap.label}</span>
-        <span className="tabular-nums font-bold opacity-80">{gap.count.toLocaleString("en-IN")}</span>
-        <ChevronRight className="size-3 opacity-40" />
-      </Link>
-      <button
-        onClick={() => onNotify(gap)}
-        title={`Queue automated notifications for missing ${gap.label}`}
-        className={`flex items-center justify-center rounded-r-md border px-2 text-xs transition-colors hover:bg-brand-cyan-light hover:text-brand-cyan-deep ${cls}`}
-      >
-        <Send className="size-3" />
-      </button>
-    </div>
-  );
-}
