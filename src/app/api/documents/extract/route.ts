@@ -29,7 +29,8 @@ const MAX_BYTES = 25 * 1024 * 1024;
 function toIso(raw: string): string | null {
   const m1 = raw.match(/(\d{1,2})[\/\-.\s]+(\d{1,2})[\/\-.\s]+(\d{2,4})/);
   if (m1) {
-    let [, d, mo, y] = m1;
+    const [, d, mo] = m1;
+    let y = m1[3];
     if (y.length === 2) y = `20${y}`;
     const dd = d.padStart(2, "0");
     const mm = mo.padStart(2, "0");

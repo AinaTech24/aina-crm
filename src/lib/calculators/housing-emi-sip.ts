@@ -71,7 +71,7 @@ export function housingEmiSip(input: {
   const g = input.sipGrowthPct / 100;
 
   // ── Strategy 1: pay off early, then wealth-build ──
-  let s1 = (() => {
+  const s1 = (() => {
     let bal = input.loan, sipFV = 0, sip = emi, wb = 0, taxFV = 0, leftoverGrown = 0;
     let over = false, overYear = 0;
     for (let y = 1; y <= tenure; y++) {

@@ -238,7 +238,7 @@ async function handleInbound(msg: {
       WHERE tenant_id = ${tenantId} AND (phone = ${from} OR whatsapp_phone = ${from})
       LIMIT 1
     `);
-    let investorId: string | null = (invRows.rows[0] as any)?.id ?? null;
+    const investorId: string | null = (invRows.rows[0] as any)?.id ?? null;
     let leadId: string | null = null;
 
     if (!investorId) {

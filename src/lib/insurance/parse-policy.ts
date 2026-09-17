@@ -68,13 +68,15 @@ function toIso(s: string | null): string | null {
   if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
   let m = t.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})$/);
   if (m) {
-    let [, d, mo, y] = m;
+    const [, d, mo] = m;
+    let y = m[3];
     if (y.length === 2) y = (Number(y) > 50 ? "19" : "20") + y;
     return `${y}-${mo.padStart(2, "0")}-${d.padStart(2, "0")}`;
   }
   m = t.match(/^(\d{1,2})[\s./-]([A-Za-z]{3,9})[\s./-](\d{2,4})$/);
   if (m) {
-    let [, d, mon, y] = m;
+    const [, d, mon] = m;
+    let y = m[3];
     const mm = MONTHS[mon.slice(0, 3).toLowerCase()];
     if (!mm) return null;
     if (y.length === 2) y = (Number(y) > 50 ? "19" : "20") + y;

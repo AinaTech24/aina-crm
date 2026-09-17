@@ -217,7 +217,7 @@ export default async function TemplateDetailPage({
               ) : (
                 <div className="space-y-3">
                   {/* SMS body */}
-                  {/* @ts-ignore */}
+                  {/* @ts-expect-error — `ver.body` / `ver.complianceChecks` come back as jsonb and are typed `{}` / `unknown`; these reads are guarded at runtime. */}
                   {ver.body?.dltTemplateId && (
                     <div className="text-xs bg-slate-50 border px-3 py-1.5 rounded-lg font-mono">
                       <strong>DLT Template ID:</strong> {(ver.body as any).dltTemplateId}
@@ -288,10 +288,10 @@ export default async function TemplateDetailPage({
                 <h2 className="font-semibold mb-3 text-slate-900 flex items-center gap-1.5">
                   <ShieldAlert className="size-4 text-slate-500" /> Compliance Scan Findings
                 </h2>
-                {/* @ts-ignore */}
+                {/* @ts-expect-error — `ver.body` / `ver.complianceChecks` come back as jsonb and are typed `{}` / `unknown`; these reads are guarded at runtime. */}
                 {ver.complianceChecks.findings && (ver.complianceChecks.findings as any[]).length > 0 ? (
                   <div className="space-y-3">
-                    {/* @ts-ignore */}
+                    {/* @ts-expect-error — `ver.body` / `ver.complianceChecks` come back as jsonb and are typed `{}` / `unknown`; these reads are guarded at runtime. */}
                     {(ver.complianceChecks.findings as any[]).map((f: any, idx: number) => {
                       const badgeColor = f.severity === "block" ? "bg-rose-50 text-rose-700 border-rose-250" : f.severity === "warn" ? "bg-amber-50 text-amber-700 border-amber-250" : "bg-blue-50 text-blue-700 border-blue-250";
                       return (
