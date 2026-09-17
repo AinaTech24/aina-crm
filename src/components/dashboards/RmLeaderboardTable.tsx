@@ -3,7 +3,7 @@ import { Trophy, Users } from "lucide-react";
 
 import { hasLeaderboardSignal, type RmRow } from "@/lib/dashboard/rm-leaderboard";
 import { formatINRShort } from "@/lib/utils";
-import { DashboardEmptyState } from "./DashboardEmptyState";
+import { EmptySection } from "./EmptySection";
 
 /**
  * RM leaderboard for the selected period.
@@ -37,6 +37,29 @@ export function RmLeaderboardTable({
   periodLabel: string;
   periodQuery?: string;
 }) {
+  if (rows.length === 0) {
+    return (
+      <EmptySection
+        icon={Users}
+        title="RM leaderboard"
+        note="No relationship managers configured yet."
+        href="/dashboard/settings/team"
+        linkLabel="Manage team"
+      />
+    );
+  }
+  if (!hasLeaderboardSignal(rows)) {
+    return (
+      <EmptySection
+        icon={Trophy}
+        title="RM leaderboard"
+        note={`No RM activity in ${periodLabel} — try a wider period.`}
+        href={`/dashboard/reports/rm_business${periodQuery}`}
+        linkLabel="Full report"
+      />
+    );
+  }
+
   return (
     <div className="card-surface p-4">
       <div className="flex items-start justify-between gap-3 mb-3">
@@ -58,25 +81,7 @@ export function RmLeaderboardTable({
         </Link>
       </div>
 
-      {rows.length === 0 ? (
-        <DashboardEmptyState
-          icon={Users}
-          title="No RMs configured yet"
-          hint="Invite relationship managers and assign clients to them to rank business by RM."
-          cta={{ href: "/dashboard/settings/team", label: "Manage team" }}
-          compact
-        />
-      ) : !hasLeaderboardSignal(rows) ? (
-        // A table of dashes is not a leaderboard. Say the window was quiet.
-        <DashboardEmptyState
-          icon={Trophy}
-          title={`No RM activity in ${periodLabel}`}
-          hint="Flows, new clients, leads and reviews all read zero for this window. Pick a wider period, or check that clients and leads are assigned to an RM."
-          cta={{ href: `/dashboard/reports/rm_business${periodQuery}`, label: "Full report" }}
-          compact
-        />
-      ) : (
-        <div className="table-scroll">
+      <div className="table-scroll">
           <table className="w-full text-xs table-modern">
             <thead>
               <tr>
@@ -127,8 +132,7 @@ export function RmLeaderboardTable({
               ))}
             </tbody>
           </table>
-        </div>
-      )}
+      </div>
     </div>
   );
 }

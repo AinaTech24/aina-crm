@@ -4,6 +4,7 @@ import { sql } from "drizzle-orm";
 import { Users } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { AumSegmentChart } from "./AumSegmentChart";
+import { EmptySection } from "./EmptySection";
 import type { SessionUser } from "@/lib/auth/session";
 
 export async function AumSegmentSection({ session }: { session: SessionUser }) {
@@ -33,6 +34,18 @@ export async function AumSegmentSection({ session }: { session: SessionUser }) {
     value: Number(r.total_aum),
     count: Number(r.client_count),
   }));
+
+  if (!aumSegments.some((s) => s.value > 0)) {
+    return (
+      <EmptySection
+        icon={Users}
+        title="AUM by client segment"
+        note="No valued holdings against an active client yet."
+        href="/dashboard/investors"
+        linkLabel="Clients"
+      />
+    );
+  }
 
   return (
     <div className="card-surface p-5">

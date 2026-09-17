@@ -682,7 +682,7 @@ async function OwnerCockpitBody({
 
       {/* ---------- 5. Conversion + RM-wise + chart (streamed via Suspense) ---------- */}
       {anyAnalytics && (
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
         {show("section.lead_funnel") && (
         <Suspense fallback={<ChartSkeleton />}>
           <LeadFunnelSection session={session} period={period} />

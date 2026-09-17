@@ -45,7 +45,7 @@ function DeltaRow({ label, d }: { label: string; d: Delta }) {
     );
   }
   const up = d.abs >= 0;
-  const tone = up ? "text-emerald-600" : "text-rose-600";
+  const tone = up ? "text-success" : "text-destructive";
   const Icon = up ? ArrowUpRight : ArrowDownRight;
   return (
     <div className="flex items-center justify-between gap-2">
@@ -109,16 +109,28 @@ export function FirmPulseStrip({
 
             <div className="mt-3 space-y-1.5 border-t border-border/60 pt-2.5 text-xs">
               {m.footnote ? (
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-muted-foreground">{m.footnote.label}</span>
-                  <span className="tabular-nums font-medium" title={m.footnote.hint}>
-                    {m.footnote.value == null ? "—" : money(m.footnote.value)}
-                  </span>
+                <>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-muted-foreground">{m.footnote.label}</span>
+                    <span className="tabular-nums font-medium" title={m.footnote.hint}>
+                      {m.footnote.value == null ? "—" : money(m.footnote.value)}
+                    </span>
+                  </div>
+                  {m.mom && <DeltaRow label="MoM" d={m.mom} />}
+                </>
+              ) : !m.day && !m.mom ? (
+                <div
+                  className="text-2xs text-muted-foreground"
+                  title="Day and month-on-month movement fill in once the daily snapshot has run."
+                >
+                  Awaiting first daily snapshot
                 </div>
               ) : (
-                <DeltaRow label="Day" d={m.day} />
+                <>
+                  {m.day && <DeltaRow label="Day" d={m.day} />}
+                  {m.mom && <DeltaRow label="MoM" d={m.mom} />}
+                </>
               )}
-              <DeltaRow label="MoM" d={m.mom} />
             </div>
           </div>
         ))}
@@ -150,12 +162,8 @@ export function FirmPulseStrip({
             large block of noise that says one thing. Say that one thing instead,
             and keep the link through. */}
         {tiles.every((t) => t.count === 0) ? (
-          <div className="rounded-lg border border-border/60 bg-secondary/20 px-4 py-5 text-center">
-            <div className="text-sm font-medium">No transactions in the last {range} days</div>
-            <p className="text-2xs text-muted-foreground mt-1">
-              Purchases, redemptions, SIP instalments, switches, STP, SWP and rejections all
-              appear here as soon as a feed is imported.
-            </p>
+          <div className="rounded-lg border border-border/60 bg-secondary/20 px-3 py-2 text-2xs text-muted-foreground">
+            No transactions in the last {range} days.
           </div>
         ) : (
         <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
@@ -168,7 +176,7 @@ export function FirmPulseStrip({
                 className={`rounded-lg border p-3 transition hover:shadow-sm ${
                   empty
                     ? "border-border/60 bg-secondary/20 opacity-60 hover:opacity-100"
-                    : "border-border bg-secondary/20 hover:border-brand-cyan/40"
+                    : "border-border bg-secondary/20 hover:border-foreground/25"
                 }`}
               >
                 <div className="flex items-center justify-between gap-2">

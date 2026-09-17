@@ -4,6 +4,7 @@ import { sql } from "drizzle-orm";
 import { Sparkles } from "lucide-react";
 import { withTenant } from "@/db/client";
 import { LeadFunnelChart } from "./LeadFunnelChart";
+import { EmptySection } from "./EmptySection";
 import { resolvePeriodDates, type Period } from "@/lib/dashboard/period";
 import type { SessionUser } from "@/lib/auth/session";
 
@@ -57,6 +58,20 @@ export async function LeadFunnelSection({
       percentage: total > 0 ? (converted / total) * 100 : 0,
     },
   ];
+
+  // A funnel scoped to the period is empty for most of any given month, so
+  // this branch is the COMMON case, not the edge case. It gets one line.
+  if (total === 0) {
+    return (
+      <EmptySection
+        icon={Sparkles}
+        title={`Lead funnel (${period.toUpperCase()})`}
+        note="No leads created in this period."
+        href="/dashboard/leads"
+        linkLabel="Pipeline"
+      />
+    );
+  }
 
   return (
     <div className="card-surface p-5">
