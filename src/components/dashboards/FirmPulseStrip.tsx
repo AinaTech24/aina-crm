@@ -117,7 +117,9 @@ export function FirmPulseStrip({
               {m.footnote ? (
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-muted-foreground">{m.footnote.label}</span>
-                  <span className="tabular-nums font-medium">{money(m.footnote.value)}</span>
+                  <span className="tabular-nums font-medium" title={m.footnote.hint}>
+                    {m.footnote.value == null ? "—" : money(m.footnote.value)}
+                  </span>
                 </div>
               ) : (
                 <DeltaRow label="Day" d={m.day} />
@@ -150,6 +152,18 @@ export function FirmPulseStrip({
           </Link>
         </div>
 
+        {/* When NOTHING moved in the window, eight tiles all reading Rs 0 is a
+            large block of noise that says one thing. Say that one thing instead,
+            and keep the link through. */}
+        {tiles.every((t) => t.count === 0) ? (
+          <div className="rounded-lg border border-border/60 bg-secondary/20 px-4 py-5 text-center">
+            <div className="text-sm font-medium">No transactions in the last {range} days</div>
+            <p className="text-2xs text-muted-foreground mt-1">
+              Purchases, redemptions, SIP instalments, switches, STP, SWP and rejections all
+              appear here as soon as a feed is imported.
+            </p>
+          </div>
+        ) : (
         <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
           {tiles.map((t) => {
             const empty = t.count === 0;
@@ -187,6 +201,7 @@ export function FirmPulseStrip({
             );
           })}
         </div>
+        )}
       </div>
     </section>
   );
