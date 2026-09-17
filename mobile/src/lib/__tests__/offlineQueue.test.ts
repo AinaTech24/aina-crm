@@ -1,5 +1,20 @@
 jest.mock("../../api/client", () => {
-  class ApiError extends Error { constructor(public status: number, message: string, public body?: unknown, public kind = "http") { super(message); } }
+  // Plain field assignments, NOT TypeScript parameter properties. Babel's TS
+  // transform rewrites `constructor(public status: number, ...)` into helper
+  // calls, and babel-plugin-jest-hoist then rejects the factory for referencing
+  // identifiers it cannot resolve ("not allowed to reference any out-of-scope
+  // variables"). Same runtime shape, no transform.
+  class ApiError extends Error {
+    status: number;
+    body?: unknown;
+    kind: string;
+    constructor(status: number, message: string, body?: unknown, kind = "http") {
+      super(message);
+      this.status = status;
+      this.body = body;
+      this.kind = kind;
+    }
+  }
   return { api: { post: jest.fn(), patch: jest.fn() }, ApiError };
 });
 jest.mock("../storage", () => ({ storageGet: jest.fn(), storageSet: jest.fn() }));
