@@ -26,6 +26,9 @@ import { ComplianceCockpit } from "@/components/dashboards/ComplianceCockpit";
 import { AnnouncementsStrip } from "@/components/announcements/AnnouncementsStrip";
 import { DashboardMemberFilter } from "@/components/dashboards/DashboardMemberFilter";
 import { DashboardBranchFilter } from "@/components/dashboards/DashboardBranchFilter";
+import { PeriodChips } from "@/components/dashboards/PeriodChips";
+import { DashboardTabs } from "@/components/dashboards/DashboardTabs";
+import { parseDashboardTab } from "@/lib/dashboard/tabs";
 import { getDefaultBoard } from "@/lib/dashboards/service";
 import { DashboardView } from "@/components/dashboards/custom/DashboardView";
 import { DashboardPageSkeleton } from "@/components/dashboards/DashboardSkeletons";
@@ -101,6 +104,8 @@ export default async function DashboardPage({
   // View / Create / Period controls — shown on the right of the "Viewing" row,
   // only for the firm-wide Owner cockpit (not when drilled into one member).
   let headerControls: React.ReactNode = null;
+  let tabsBar: React.ReactNode = null;
+  const dashTab = parseDashboardTab(sp.tab);
   if (can(roles, "dashboard.view.owner", perms)) {
     // Active-user roster drives the member dropdown. Tenant-scoped by RLS.
     const members = await withTenant(session.tenantId, async (tx) => {
@@ -132,6 +137,11 @@ export default async function DashboardPage({
     const selectedBranch = branchParam && branches.some((b) => b.id === branchParam) ? branchParam : null;
 
     const selected = rmParam ? members.find((m) => m.id === rmParam) : undefined;
+    // Tabs belong to the firm-wide cockpit only — an RM drill-down has its own
+    // layout and is short enough not to need splitting.
+    if (!selected) {
+      tabsBar = <DashboardTabs current={dashTab} />;
+    }
     memberBar = (
       <div className="flex items-center gap-2 flex-wrap">
         <DashboardMemberFilter
@@ -141,12 +151,15 @@ export default async function DashboardPage({
           dateTo={dateTo}
         />
         <DashboardBranchFilter branches={branches} selected={selectedBranch} />
+        {/* Eight one-click ranges in front of the Period dropdown, which keeps
+            the richer pickers (specific month / quarter / since / custom). */}
+        <PeriodChips current={period} />
       </div>
     );
     dash = selected ? (
       <RmDashboard session={session} targetUserId={selected.id} targetName={selected.name} from={dateFrom} to={dateTo} />
     ) : (
-      <OwnerCockpit session={session} period={period} customStart={pstart} customFrom={pfrom} customTo={pto} activityDays={activityDays} branchId={selectedBranch} />
+      <OwnerCockpit session={session} period={period} customStart={pstart} customFrom={pfrom} customTo={pto} activityDays={activityDays} branchId={selectedBranch} tab={dashTab} />
     );
     if (!selected) {
       headerControls = <DashboardHeaderBar period={period} currentLabel={periodLabel} variant="light" />;
@@ -170,8 +183,11 @@ export default async function DashboardPage({
           Conservative interval — pauses when the tab is hidden. */}
       <AutoRefresh intervalMs={30000} />
       <AnnouncementsStrip session={session} />
+      {/* Tabs first, then filters: a tab chooses WHAT you are looking at, the
+          filters refine it. Reading order should follow that. */}
+      {tabsBar && <div className="mt-1 mb-3">{tabsBar}</div>}
       {memberBar && (
-        <div className="mb-5 mt-1 flex items-center justify-between gap-3 flex-wrap">
+        <div className="mb-5 flex items-center justify-between gap-3 flex-wrap">
           {memberBar}
           {headerControls}
         </div>

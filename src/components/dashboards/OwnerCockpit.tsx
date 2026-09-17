@@ -14,6 +14,7 @@ import { Sparkline } from "./Sparkline";
 import { FirmPulseStrip } from "./FirmPulseStrip";
 import { FirmChartsSection, FirmChartsSkeleton } from "./FirmChartsSection";
 import { FirmTrackerSections } from "./FirmTrackerSections";
+import type { DashboardTab } from "@/lib/dashboard/tabs";
 import { loadFirmTracker } from "@/lib/dashboard/firm-tracker";
 import { ClientMomentsStrip } from "./ClientMomentsStrip";
 import { loadFirmPulse, loadActivityTiles, type ActivityRange } from "@/lib/dashboard/firm-pulse";
@@ -74,6 +75,7 @@ export async function OwnerCockpit({
   customTo,
   activityDays = 7,
   branchId = null,
+  tab = "overview",
 }: {
   session: SessionUser;
   period?: Period;
@@ -84,6 +86,9 @@ export async function OwnerCockpit({
   activityDays?: ActivityRange;
   /** Branch filter from `?branch=`; null means the whole firm. */
   branchId?: string | null;
+  /** Active tab from `?tab=`. Only this tab's sections are rendered — and
+   *  therefore only its queries run. */
+  tab?: DashboardTab;
 }) {
   const now = new Date();
   const today = now.toLocaleDateString("en-IN", {
@@ -127,27 +132,35 @@ export async function OwnerCockpit({
           birthdays, anniversaries and reviews, firm-wide. Placed directly under
           the pulse so the first two things an owner sees are "how is the firm"
           and "who should we reach out to". */}
-      <Suspense fallback={null}>
-        <ClientMomentsStrip session={session} />
-      </Suspense>
+      {tab === "overview" && (
+        <Suspense fallback={null}>
+          <ClientMomentsStrip session={session} />
+        </Suspense>
+      )}
+
+      {tab === "overview" && (
+        <Suspense fallback={<CockpitBodySkeleton />}>
+          <OwnerCockpitBody session={session} period={period} customStart={customStart} customFrom={customFrom} customTo={customTo} />
+        </Suspense>
+      )}
 
       {/* Analytics band — AUM breakup / client mix, then SIP business and
           monthly flows. Separate boundary again: five aggregate
           queries shouldn't hold up the pulse strip above them. */}
-      <Suspense fallback={<FirmChartsSkeleton />}>
-        <FirmChartsSection session={session} />
-      </Suspense>
-
-      <Suspense fallback={<CockpitBodySkeleton />}>
-        <OwnerCockpitBody session={session} period={period} customStart={customStart} customFrom={customFrom} customTo={customTo} />
-      </Suspense>
+      {tab === "insights" && (
+        <Suspense fallback={<FirmChartsSkeleton />}>
+          <FirmChartsSection session={session} />
+        </Suspense>
+      )}
 
       {/* Firm tracker — every figure the firm asked to be able to track, under
           the Date / Branch / Team-member filters. Its own boundary so ~25
           aggregate queries never hold up anything above it. */}
-      <Suspense fallback={<CardSkeleton />}>
-        <FirmTracker session={session} period={period} customStart={customStart} customFrom={customFrom} customTo={customTo} branchId={branchId} />
-      </Suspense>
+      {tab === "tracker" && (
+        <Suspense fallback={<CardSkeleton />}>
+          <FirmTracker session={session} period={period} customStart={customStart} customFrom={customFrom} customTo={customTo} branchId={branchId} />
+        </Suspense>
+      )}
     </div>
   );
 }
