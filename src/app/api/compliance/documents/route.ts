@@ -20,7 +20,7 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { require as requireCap } from "@/lib/auth/rbac";
 import { complianceDocuments } from "@/db/schema";
-import { canOpenVault, ownClientDocsOnly } from "@/lib/compliance/document-access";
+import { canOpenVault, vaultScopeCondition } from "@/lib/compliance/document-access";
 import { deleteObject } from "@/lib/storage/s3";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
 
@@ -61,8 +61,8 @@ export async function GET() {
     // RM or branch head reads only what is filed against their own clients.
     // Previously any authenticated session could list the lot.
     if (!canOpenVault(session)) throw Object.assign(new Error("forbidden: missing document.view"), { status: 403 });
-    const scope = ownClientDocsOnly(session);
     const rows = await withTenant(session.tenantId, async (tx) => {
+      const scope = await vaultScopeCondition(tx, session);
       return tx
         .select()
         .from(complianceDocuments)

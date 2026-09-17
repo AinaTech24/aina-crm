@@ -5,45 +5,45 @@
  * compliance and back-office team only. That was too narrow in a way users hit
  * constantly: an RM can already open a client's documents from the client
  * record (`/api/investors/[id]/documents` gates on `document.view`, which RMs
- * and branch heads hold), and the in-app guide tells them to request documents
- * from this very page — but the hub itself answered "available to the
- * compliance and back-office team". The sidebar showed them the link anyway.
+ * and branch heads hold), and the in-app guide points them at this very page to
+ * request documents — but the hub itself answered "available to the compliance
+ * and back-office team", while the sidebar showed them the link anyway.
  *
- * So the rule is now: anyone who may view documents AND may view clients can
- * open the hub, and WHAT IT SHOWS is scoped instead of the door being shut.
+ * The rule is now: anyone who may view documents AND may view clients can open
+ * the hub, and WHAT IT SHOWS is scoped rather than the door being shut.
  *
  *   compliance / back-office / ops / owner  → the whole vault, firm documents
  *                                             (ARN certificate, audit reports,
  *                                             complaints) included
- *   RM / branch head                        → documents filed against THEIR
- *                                             OWN clients, and nothing else
+ *   RM / branch head                        → documents filed against clients
+ *                                             they can see, and nothing else
  *   everyone else                           → no access, and no sidebar link
  *
  * Firm-level documents deliberately stay with the first group: they are the
  * firm's regulatory file, not client paperwork.
+ *
+ * Which clients an RM "can see" is NOT decided here — it delegates to
+ * `investorScopeSql`, the same per-tenant data wall the client list, the export
+ * and the mobile API already use. A firm that has not switched the wall on
+ * gives its RMs the whole book, and this page then agrees with every other page
+ * instead of inventing a stricter rule of its own.
  */
 
 import { and, eq, sql, type SQL } from "drizzle-orm";
 import { can } from "@/lib/auth/rbac";
 import { complianceDocuments } from "@/db/schema";
-
-/** The parts of a session this module needs — keeps it usable from pages and routes alike. */
-export type VaultViewer = {
-  roles?: string[];
-  permissions?: string[] | null;
-  userId: string;
-  tenantId: string;
-};
+import { investorScopeSql } from "@/lib/investors/access";
+import type { SessionUser } from "@/lib/auth/session";
 
 /**
  * Sees every document in the firm, including documents not tied to a client.
  * `can()` grants the owner everything, so owners land here.
  */
-export function seesWholeVault(v: VaultViewer): boolean {
+export function seesWholeVault(s: SessionUser): boolean {
   return (
-    can(v.roles, "compliance.view", v.permissions) ||
-    can(v.roles, "kyc.manage", v.permissions) ||
-    can(v.roles, "investor.view.all", v.permissions)
+    can(s.roles, "compliance.view", s.permissions) ||
+    can(s.roles, "kyc.manage", s.permissions) ||
+    can(s.roles, "investor.view.all", s.permissions)
   );
 }
 
@@ -52,50 +52,48 @@ export function seesWholeVault(v: VaultViewer): boolean {
  *
  * Both halves are required. `document.view` alone is held by marketing, who
  * have no client-view capability whatsoever — letting them in would show an
- * empty vault, which is a worse dead end than being told it isn't theirs.
+ * empty vault, which is a worse dead end than being told it isn't theirs. It
+ * also keeps `investorScopeSql` below from throwing, since it requires a
+ * client-view capability.
  */
-export function canOpenVault(v: VaultViewer): boolean {
-  if (seesWholeVault(v)) return true;
+export function canOpenVault(s: SessionUser): boolean {
+  if (seesWholeVault(s)) return true;
   return (
-    can(v.roles, "document.view", v.permissions) &&
-    can(v.roles, "investor.view.assigned", v.permissions)
+    can(s.roles, "document.view", s.permissions) &&
+    can(s.roles, "investor.view.assigned", s.permissions)
   );
 }
 
 /**
- * Restrict `compliance_documents` to this viewer's own clients.
- *
- * Returns undefined for a whole-vault viewer so callers can drop it into an
- * `and(...)` unchanged. Written against the real column names because it is
- * also spliced into the hand-written stats query.
+ * Drizzle condition restricting `compliance_documents` to what this session may
+ * see. `undefined` means "no restriction", so callers can drop it into an
+ * `and(...)` without an extra branch.
  */
-export function ownClientDocsOnly(v: VaultViewer): SQL | undefined {
-  if (seesWholeVault(v)) return undefined;
+export async function vaultScopeCondition(tx: any, s: SessionUser): Promise<SQL | undefined> {
+  if (seesWholeVault(s)) return undefined;
+  const clients = await investorScopeSql(tx, s);
   return and(
     eq(complianceDocuments.relatedEntityType, "investor"),
     sql`${complianceDocuments.relatedEntityId} IN (
       SELECT id FROM investors
-      WHERE tenant_id = ${v.tenantId}::uuid
-        AND rm_id = ${v.userId}::uuid
-        AND deleted_at IS NULL
+      WHERE tenant_id = ${s.tenantId}::uuid AND deleted_at IS NULL AND ${clients}
     )`
   );
 }
 
 /**
- * The same restriction as a bare fragment, for raw `tx.execute(sql\`…\`)`
- * queries where there is no Drizzle table object to reference. `TRUE` for a
- * whole-vault viewer so it can always be AND-ed in.
+ * The same restriction as a bare fragment, for hand-written `sql` queries where
+ * there is no Drizzle table object to reference. `TRUE` for a whole-vault
+ * viewer so it can always be AND-ed in.
  */
-export function vaultScopeFragment(v: VaultViewer): SQL {
-  if (seesWholeVault(v)) return sql`TRUE`;
+export async function vaultScopeFragment(tx: any, s: SessionUser): Promise<SQL> {
+  if (seesWholeVault(s)) return sql`TRUE`;
+  const clients = await investorScopeSql(tx, s);
   return sql`(
     related_entity_type = 'investor'
     AND related_entity_id IN (
       SELECT id FROM investors
-      WHERE tenant_id = ${v.tenantId}::uuid
-        AND rm_id = ${v.userId}::uuid
-        AND deleted_at IS NULL
+      WHERE tenant_id = ${s.tenantId}::uuid AND deleted_at IS NULL AND ${clients}
     )
   )`;
 }

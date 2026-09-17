@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { eq, and } from "drizzle-orm";
 import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
-import { canOpenVault, ownClientDocsOnly } from "@/lib/compliance/document-access";
+import { canOpenVault, vaultScopeCondition } from "@/lib/compliance/document-access";
 import { complianceDocuments } from "@/db/schema";
 import { presignedGetUrl } from "@/lib/storage/s3";
 import { recordAudit, clientMetaFromHeaders } from "@/lib/audit";
@@ -33,7 +33,6 @@ export async function GET(req: NextRequest) {
     // is part of the lookup, so a guessed id reads as "not found" rather than
     // handing over another RM's client's KYC.
     if (!canOpenVault(session)) throw Object.assign(new Error("forbidden: missing document.view"), { status: 403 });
-    const scope = ownClientDocsOnly(session);
 
     const id = new URL(req.url).searchParams.get("id");
     // inline=1 → view in a browser tab (PDF/image); otherwise download as a file.
@@ -44,6 +43,7 @@ export async function GET(req: NextRequest) {
 
     const clientMeta = clientMetaFromHeaders(req.headers);
     const downloadUrl = await withTenant(session.tenantId, async (tx) => {
+      const scope = await vaultScopeCondition(tx, session);
       const [doc] = await tx
         .select({
           name: complianceDocuments.name,
