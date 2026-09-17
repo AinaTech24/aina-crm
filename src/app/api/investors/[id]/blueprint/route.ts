@@ -1,4 +1,5 @@
 import { assertInvestorAccess } from "@/lib/investors/access";
+import { stageFlavour } from "@/lib/blueprints/lead_to_client";
 import { handleApiError } from "@/lib/api/error-handler";
 /**
  * Investor blueprint endpoint.
@@ -103,6 +104,10 @@ async function syntheticClientStageView(tx: Tx) {
         order: s.order,
         status: status as "done" | "current" | "upcoming" | "skipped",
         phase,
+        // Same stepper marker the engine path returns, so a directly-imported
+        // client's rail draws loops and dead ends the same way a converted
+        // lead's does.
+        flavour: stageFlavour(s.key),
       };
     }),
     history: [] as any[],

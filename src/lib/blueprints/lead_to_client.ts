@@ -627,3 +627,30 @@ export const LEAD_TO_CLIENT_TRANSITIONS: Array<{
   { from: "insurance_underwriting", to: "insurance_lost", name: "Declined" },
   { from: "insurance_lost", to: "insurance_needs_analysis", name: "Reopen" },
 ];
+
+/**
+ * Stage-key → stepper flavour.
+ *
+ * `flavour` has been declared on SeedStage since the blueprint shipped and is
+ * documented there as the "visual marker for the stepper" — 12 of the 30 stages
+ * set it (4 loops, 5 terminal failures, 2 terminal successes). It never reached
+ * a screen: `blueprint_stages` has no `flavour` column, the seeder never wrote
+ * one, so the API could not return it and the stepper drew branches, call-back
+ * loops and dead ends exactly like linear steps. That is why the rail reads as a
+ * nonsensical sequence — "KYC Validated" before "KYC Registered" before "KYC
+ * Pending" are not three steps, they are three BRANCHES, and "Not Qualified"
+ * sitting between "Won Lead" and "Request Documents" is a dead end, not step 10.
+ *
+ * Resolved from the seeded catalogue by key rather than added as a column: every
+ * tenant is seeded from this same list, the keys are stable, and a stage a firm
+ * invented in the Blueprint Designer simply falls back to "default" instead of
+ * requiring a migration and a backfill across every tenant.
+ */
+export function stageFlavour(stageKey: string): NonNullable<SeedStage["flavour"]> {
+  return LEAD_TO_CLIENT_STAGES.find((s) => s.key === stageKey)?.flavour ?? "default";
+}
+
+/** True when a stage sits on the main path — not a loop and not a dead end. */
+export function isMainPathStage(stageKey: string): boolean {
+  return stageFlavour(stageKey) === "default";
+}
