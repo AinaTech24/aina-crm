@@ -14,6 +14,8 @@ import { Sparkline } from "./Sparkline";
 import { FirmPulseStrip } from "./FirmPulseStrip";
 import { FirmChartsSection, FirmChartsSkeleton } from "./FirmChartsSection";
 import { FirmTrackerSections } from "./FirmTrackerSections";
+import { ExpiryPipeline } from "./ExpiryPipeline";
+import { loadExpiryPipeline } from "@/lib/dashboard/expiry-pipeline";
 import type { DashboardTab } from "@/lib/dashboard/tabs";
 import { loadFirmTracker } from "@/lib/dashboard/firm-tracker";
 import { ClientMomentsStrip } from "./ClientMomentsStrip";
@@ -135,6 +137,15 @@ export async function OwnerCockpit({
       {tab === "overview" && (
         <Suspense fallback={null}>
           <ClientMomentsStrip session={session} />
+        </Suspense>
+      )}
+
+      {/* Expiry pipeline — the forward-looking counterpart to the Action
+          Centre. That lists what is already wrong; this is what is about to be,
+          while there is still time to act. */}
+      {tab === "overview" && (
+        <Suspense fallback={<CardSkeleton />}>
+          <ExpiryPipelineSection session={session} branchId={branchId} />
         </Suspense>
       )}
 
@@ -931,4 +942,20 @@ async function FirmTracker({
     { userId: session.userId, branchId: session.branchId, roles: session.roles }
   );
   return <FirmTrackerSections data={data} periodLabel={range.label} />;
+}
+
+/** Loader for the expiry pipeline; honours the branch filter like the tracker. */
+async function ExpiryPipelineSection({
+  session,
+  branchId,
+}: {
+  session: SessionUser;
+  branchId?: string | null;
+}) {
+  const rows = await withTenant(
+    session.tenantId,
+    (tx) => loadExpiryPipeline(tx, branchId ?? null),
+    { userId: session.userId, branchId: session.branchId, roles: session.roles }
+  );
+  return <ExpiryPipeline rows={rows} />;
 }
