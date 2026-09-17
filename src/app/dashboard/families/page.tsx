@@ -5,6 +5,11 @@ import { withTenant } from "@/db/client";
 import { requireSession } from "@/lib/auth/session";
 import { requireAny, can } from "@/lib/auth/rbac";
 import { formatINR, formatRelative } from "@/lib/utils";
+import {
+  familyHealth,
+  type MemberForHealth,
+  type FamilyHealthBreakdown,
+} from "@/lib/families/health";
 import { RowActions } from "@/components/common/RowActions";
 import { familyQuickFilterOptions } from "@/components/families/FamilyQuickFilters";
 import { CompactFilterBar } from "@/components/common/CompactFilterBar";
@@ -127,7 +132,7 @@ export default async function FamiliesPage({
       SELECT
         f.id, f.head_name, f.family_name, f.notes, f.primary_investor_id,
         f.rm_id, f.last_review_at, f.next_review_at,
-        f.health_score, f.health_band,
+        f.health_score, f.health_band, f.health_scored_at,
         f.created_at, f.updated_at,
         COUNT(i.id) FILTER (WHERE i.status = 'active')::int AS member_count,
         COUNT(i.id) FILTER (
@@ -173,8 +178,69 @@ export default async function FamiliesPage({
       ) b GROUP BY band
     `);
 
+    // Score the families on this page with the SAME function the household
+    // page uses. `f.health_score` is migration 0042's optimistic 100/green
+    // default and `health_scored_at` is NULL on every row never scored, so
+    // reading the column made this list claim "Healthy - 100" for households the
+    // detail page rates "At risk" (53, itemised: primary not set -15, no family
+    // RM -10, never reviewed -12, no next-gen -10). Bounded: PAGE_SIZE is 50.
+    // One cast for the family rows (hoisted), and a real row type for members —
+    // so adding live scoring here introduces no new escape-hatch casts.
+    type MemberRow = {
+      id: string; family_id: string; name: string | null; status: string | null;
+      dob: string | null; kyc_status: string | null; nominee_name: string | null;
+      risk_profile: string | null; risk_profile_signed_at: string | null;
+      aum: string | null; active_sip_amount: string | null;
+    };
+    const famRows = r.rows as Array<Record<string, unknown>>;
+    const pageIds = famRows.map((x) => String(x.id));
+    const membersByFamily = new Map<string, MemberForHealth[]>();
+    if (pageIds.length) {
+      const mem = await tx.execute(sql`
+        SELECT id, family_id, name, status, dob, kyc_status, nominee_name,
+               risk_profile, risk_profile_signed_at, aum, active_sip_amount
+          FROM investors
+         WHERE deleted_at IS NULL AND family_id IN (
+           ${sql.join(pageIds.map((id) => sql`${id}::uuid`), sql`, `)}
+         )
+      `);
+      for (const m of mem.rows as unknown as MemberRow[]) {
+        const key = String(m.family_id);
+        const list = membersByFamily.get(key) ?? [];
+        list.push({
+          id: String(m.id),
+          name: m.name,
+          status: m.status,
+          dob: m.dob,
+          kycStatus: m.kyc_status,
+          nomineeName: m.nominee_name,
+          riskProfile: m.risk_profile,
+          riskProfileSignedAt: m.risk_profile_signed_at,
+          aum: m.aum,
+          activeSipAmount: m.active_sip_amount,
+        });
+        membersByFamily.set(key, list);
+      }
+    }
+    // Declared shape rather than an escape-hatch cast: the SELECT above builds
+    // ~15 aggregate columns that have no Drizzle row type, and the row is read
+    // by key throughout the table below.
+    const scored: Array<Record<string, any> & { _health: FamilyHealthBreakdown }> =
+      famRows.map((f) => ({
+      ...f,
+      _health: familyHealth(
+        {
+          primaryInvestorId: f.primary_investor_id as string | null,
+          rmId: f.rm_id as string | null,
+          lastReviewAt: f.last_review_at as string | null,
+          nextReviewAt: f.next_review_at as string | null,
+        },
+        membersByFamily.get(String(f.id)) ?? []
+      ),
+    }));
+
     return {
-      rows: r.rows as any[],
+      rows: scored,
       total: Number((c.rows[0] as any)?.c ?? 0),
       bandCounts: bandCounts.rows as Array<{ band: string; c: number }>,
     };
@@ -327,33 +393,46 @@ export default async function FamiliesPage({
                         </td>
                         <td className="py-3 pl-4">
                           <div className="flex flex-col gap-1">
+                            {/* migration 0042 seeded health_score/band with an
+                                OPTIMISTIC 100/green and health_scored_at NULL.
+                                Rendering that as "Healthy · 100" states a
+                                measurement that was never taken — and it sat
+                                directly beside four real red flags, which is how
+                                a firm learns to distrust the column. Only show a
+                                score once one has actually been computed. */}
                             <span
-                              className={`w-fit text-2xs px-1.5 py-0.5 rounded-full border ${healthBandClasses((f.health_band as HealthBand) ?? "green").chip}`}
-                              title="Persisted family-health score (0–100)"
+                              className={`w-fit text-2xs px-1.5 py-0.5 rounded-full border ${healthBandClasses(f._health.band).chip}`}
+                              title={
+                                f._health.factors.length
+                                  ? `Scored live, same as the household page - ${f._health.factors
+                                      .map((x: { label: string; deduction: number }) => `${x.label} (-${x.deduction})`)
+                                      .join(", ")}`
+                                  : "Scored live, same as the household page - nothing deducted"
+                              }
                             >
-                              {healthBandClasses((f.health_band as HealthBand) ?? "green").label} · {f.health_score ?? 100}
+                              {healthBandClasses(f._health.band).label} · {f._health.score}
                             </span>
-                            {flags.length === 0 ? (
-                              <span className="text-2xs text-emerald-700">✓ no data gaps</span>
+                            {/* ONE chip, not four. Every row was rendering up to
+                                three rose/amber gap chips beside the score chip,
+                                and because "no primary" and "no RM" are unset on
+                                most books they fired on EVERY row — colour that
+                                marks everything marks nothing. The worst gap is
+                                named, the rest are counted, and the full list is
+                                on the tooltip and the detail page. */}
+                            {f._health.factors.length === 0 ? (
+                              <span className="text-2xs text-success">No data gaps</span>
                             ) : (
-                              <div className="flex flex-wrap gap-1">
-                                {flags.slice(0, 3).map((fl, i) => (
-                                  <span
-                                    key={i}
-                                    className={`text-2xs px-1.5 py-0.5 rounded-full ${fl.tone === "rose"
-                                        ? "bg-rose-50 text-rose-700"
-                                        : "bg-amber-50 text-amber-700"
-                                      }`}
-                                  >
-                                    {fl.label}
-                                  </span>
-                                ))}
-                                {flags.length > 3 && (
-                                  <span className="text-2xs text-muted-foreground">
-                                    +{flags.length - 3}
-                                  </span>
-                                )}
-                              </div>
+                              <span
+                                className="w-fit text-2xs px-1.5 py-0.5 rounded-full bg-destructive/10 text-destructive"
+                                title={f._health.factors
+                                  .map((x: { label: string }) => x.label)
+                                  .join(" · ")}
+                              >
+                                {f._health.factors[0].label}
+                                {f._health.factors.length > 1
+                                  ? ` +${f._health.factors.length - 1}`
+                                  : ""}
+                              </span>
                             )}
                           </div>
                         </td>

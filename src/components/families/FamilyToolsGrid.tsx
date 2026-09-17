@@ -1,14 +1,6 @@
 import Link from "next/link";
 import { sql } from "drizzle-orm";
-import {
-  ArrowRight,
-  GitMerge,
-  HeartHandshake,
-  UserPlus,
-  Users2,
-  ShieldAlert,
-  Settings2,
-} from "lucide-react";
+import { ArrowRight, GitMerge, Users2, Settings2 } from "lucide-react";
 import { withTenant } from "@/db/client";
 import type { SessionUser } from "@/lib/auth/session";
 
@@ -51,6 +43,11 @@ export async function FamilyToolsGrid({ session }: { session: SessionUser }) {
   const total = counts.mapped + counts.unmapped;
   const coverage = total > 0 ? Math.round((counts.mapped / total) * 100) : 0;
 
+  // Three tiles were removed here because each was a second door to somewhere
+  // already on screen: "Create household" and "Next-gen pulse" duplicated the
+  // two buttons in the page header (same hrefs), and "Household list" linked to
+  // this very page with a sort param. What is left is the three destinations
+  // that exist nowhere else on the screen.
   const tiles = [
     {
       href: "/dashboard/families/unmapped",
@@ -59,30 +56,6 @@ export async function FamilyToolsGrid({ session }: { session: SessionUser }) {
       desc: "Clients not in any household yet — start here",
       badge: counts.unmapped > 0 ? counts.unmapped.toLocaleString("en-IN") : null,
       tone: "amber" as const,
-    },
-    {
-      href: "/dashboard/families/new",
-      icon: UserPlus,
-      title: "Create household",
-      desc: "Group clients under one head",
-      badge: null,
-      tone: "plain" as const,
-    },
-    {
-      href: "/dashboard/families?sort=aum",
-      icon: HeartHandshake,
-      title: "Household list",
-      desc: "Combined AUM, SIP and health per family",
-      badge: counts.families.toLocaleString("en-IN"),
-      tone: "plain" as const,
-    },
-    {
-      href: "/dashboard/families/at-risk",
-      icon: ShieldAlert,
-      title: "Next-gen pulse",
-      desc: "Households at risk of losing the next generation",
-      badge: null,
-      tone: "plain" as const,
     },
     {
       href: "/dashboard/duplicates",
