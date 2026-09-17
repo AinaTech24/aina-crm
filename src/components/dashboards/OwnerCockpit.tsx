@@ -15,6 +15,9 @@ import { FirmPulseStrip } from "./FirmPulseStrip";
 import { FirmChartsSection, FirmChartsSkeleton } from "./FirmChartsSection";
 import { FirmTrackerSections } from "./FirmTrackerSections";
 import { ExpiryPipeline } from "./ExpiryPipeline";
+import { TargetAchievement } from "./TargetAchievement";
+import { fyElapsedFraction, loadTargetProgress } from "@/lib/dashboard/target-progress";
+import { currentFyLabel, fyStartYear } from "@/lib/finance/fiscal-year";
 import { loadExpiryPipeline } from "@/lib/dashboard/expiry-pipeline";
 import type { DashboardTab } from "@/lib/dashboard/tabs";
 import { loadFirmTracker } from "@/lib/dashboard/firm-tracker";
@@ -137,6 +140,15 @@ export async function OwnerCockpit({
       {tab === "overview" && (
         <Suspense fallback={null}>
           <ClientMomentsStrip session={session} />
+        </Suspense>
+      )}
+
+      {/* Target achievement — the firm against its own annual targets. The
+          numbers already existed on /dashboard/finances/progress; they were
+          just buried where nobody looked. */}
+      {tab === "overview" && (
+        <Suspense fallback={<CardSkeleton />}>
+          <TargetAchievementSection session={session} />
         </Suspense>
       )}
 
@@ -958,4 +970,17 @@ async function ExpiryPipelineSection({
     { userId: session.userId, branchId: session.branchId, roles: session.roles }
   );
   return <ExpiryPipeline rows={rows} />;
+}
+
+/** Loader for target achievement — current financial year. */
+async function TargetAchievementSection({ session }: { session: SessionUser }) {
+  const fy = currentFyLabel();
+  const rows = await withTenant(
+    session.tenantId,
+    (tx) => loadTargetProgress(tx, session.tenantId, fy, fyStartYear(fy)),
+    { userId: session.userId, branchId: session.branchId, roles: session.roles }
+  );
+  return (
+    <TargetAchievement rows={rows} fy={fy} elapsed={fyElapsedFraction(fyStartYear(fy))} />
+  );
 }
