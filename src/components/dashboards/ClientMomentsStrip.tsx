@@ -150,7 +150,7 @@ export async function ClientMomentsStrip({ session }: { session: SessionUser }) 
         <p className="text-sm text-muted-foreground mt-2 max-w-xl leading-relaxed">
           Nothing in the next seven days. Birthdays, anniversaries and review dates appear here
           as soon as those dates are on the client record &mdash; a quick win is filling the
-          missing dates flagged in <span className="text-foreground font-medium">Client master &mdash; data gaps</span> below.
+          missing dates flagged in <span className="text-foreground font-medium">Action centre &mdash; data hygiene</span> below.
         </p>
       </div>
     );
