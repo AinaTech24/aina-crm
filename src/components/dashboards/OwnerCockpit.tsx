@@ -31,7 +31,8 @@ import { isDashboardWidgetVisible } from "@/config/dashboard-widgets";
 // Async parts streamed via Suspense
 import { GrowthRetentionSection } from "./GrowthRetentionSection";
 import { AttentionQueuesSection } from "./AttentionQueuesSection";
-import { RmLeaderboard } from "./RmLeaderboard";
+import { RmLeaderboardTable } from "./RmLeaderboardTable";
+import { loadRmLeaderboard } from "@/lib/dashboard/rm-leaderboard";
 import { LeadFunnelSection } from "./LeadFunnelSection";
 import { AumSegmentSection } from "./AumSegmentSection";
 import { CardSkeleton, ChartSkeleton, LeaderboardSkeleton } from "./DashboardSkeletons";
@@ -695,12 +696,21 @@ async function OwnerCockpitBody({
         </Suspense>
         )}
 
-        {show("section.rm_leaderboard") && (
-        <Suspense fallback={<LeaderboardSkeleton />}>
-          <RmLeaderboard session={session} period={period} periodQuery={periodQuery} />
-        </Suspense>
-        )}
       </div>
+      )}
+
+      {/* RM leaderboard — now period-scoped and eight columns wide, so it gets
+          its own row rather than a third of one. */}
+      {show("section.rm_leaderboard") && (
+      <Suspense fallback={<LeaderboardSkeleton />}>
+        <RmLeaderboardSection
+          session={session}
+          from={range.fromDate}
+          to={range.toDate}
+          periodLabel={periodLabel}
+          periodQuery={periodQuery}
+        />
+      </Suspense>
       )}
 
       {/* ---------- SIP Persistency — franchise health metric ---------- */}
@@ -1012,4 +1022,28 @@ async function LeadPipelineSection({
     { userId: session.userId, branchId: session.branchId, roles: session.roles }
   );
   return <LeadPipeline data={data} />;
+}
+
+/** Loader for the period-scoped RM leaderboard. */
+async function RmLeaderboardSection({
+  session,
+  from,
+  to,
+  periodLabel,
+  periodQuery,
+}: {
+  session: SessionUser;
+  from: Date;
+  to: Date;
+  periodLabel: string;
+  periodQuery?: string;
+}) {
+  const rows = await withTenant(
+    session.tenantId,
+    (tx) => loadRmLeaderboard(tx, { from, to }),
+    { userId: session.userId, branchId: session.branchId, roles: session.roles }
+  );
+  return (
+    <RmLeaderboardTable rows={rows} periodLabel={periodLabel} periodQuery={periodQuery} />
+  );
 }
