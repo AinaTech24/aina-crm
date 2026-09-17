@@ -25,6 +25,7 @@ import { MarketingDashboard } from "@/components/dashboards/MarketingDashboard";
 import { ComplianceCockpit } from "@/components/dashboards/ComplianceCockpit";
 import { AnnouncementsStrip } from "@/components/announcements/AnnouncementsStrip";
 import { DashboardMemberFilter } from "@/components/dashboards/DashboardMemberFilter";
+import { DashboardBranchFilter } from "@/components/dashboards/DashboardBranchFilter";
 import { getDefaultBoard } from "@/lib/dashboards/service";
 import { DashboardView } from "@/components/dashboards/custom/DashboardView";
 import { DashboardPageSkeleton } from "@/components/dashboards/DashboardSkeletons";
@@ -113,19 +114,39 @@ export default async function DashboardPage({
         name: m.name ?? "—",
       }));
     });
+    // Branch roster for the third filter. Date and member already existed;
+    // branch did not, even though leads / investors / activities /
+    // insurance_policies / insurance_claims all carry `branch_id`.
+    const branches = await withTenant(session.tenantId, async (tx) => {
+      const r = await tx.execute(sql`
+        SELECT id, name FROM branches
+        WHERE tenant_id = ${session.tenantId}::uuid
+        ORDER BY name ASC
+      `);
+      return (r.rows as { id: string; name: string }[]).map((b) => ({
+        id: String(b.id),
+        name: b.name ?? "—",
+      }));
+    });
+    const branchParam = typeof sp.branch === "string" ? sp.branch : undefined;
+    const selectedBranch = branchParam && branches.some((b) => b.id === branchParam) ? branchParam : null;
+
     const selected = rmParam ? members.find((m) => m.id === rmParam) : undefined;
     memberBar = (
-      <DashboardMemberFilter
-        members={members}
-        selected={selected ? rmParam : ""}
-        dateFrom={dateFrom}
-        dateTo={dateTo}
-      />
+      <div className="flex items-center gap-2 flex-wrap">
+        <DashboardMemberFilter
+          members={members}
+          selected={selected ? rmParam : ""}
+          dateFrom={dateFrom}
+          dateTo={dateTo}
+        />
+        <DashboardBranchFilter branches={branches} selected={selectedBranch} />
+      </div>
     );
     dash = selected ? (
       <RmDashboard session={session} targetUserId={selected.id} targetName={selected.name} from={dateFrom} to={dateTo} />
     ) : (
-      <OwnerCockpit session={session} period={period} customStart={pstart} customFrom={pfrom} customTo={pto} activityDays={activityDays} />
+      <OwnerCockpit session={session} period={period} customStart={pstart} customFrom={pfrom} customTo={pto} activityDays={activityDays} branchId={selectedBranch} />
     );
     if (!selected) {
       headerControls = <DashboardHeaderBar period={period} currentLabel={periodLabel} variant="light" />;

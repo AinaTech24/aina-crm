@@ -13,6 +13,8 @@ import { getDashboardThresholds } from "@/lib/dashboard/thresholds";
 import { Sparkline } from "./Sparkline";
 import { FirmPulseStrip } from "./FirmPulseStrip";
 import { FirmChartsSection, FirmChartsSkeleton } from "./FirmChartsSection";
+import { FirmTrackerSections } from "./FirmTrackerSections";
+import { loadFirmTracker } from "@/lib/dashboard/firm-tracker";
 import { ClientMomentsStrip } from "./ClientMomentsStrip";
 import { loadFirmPulse, loadActivityTiles, type ActivityRange } from "@/lib/dashboard/firm-pulse";
 import { loadTenantLicense } from "@/lib/auth/license";
@@ -70,6 +72,7 @@ export async function OwnerCockpit({
   customFrom,
   customTo,
   activityDays = 7,
+  branchId = null,
 }: {
   session: SessionUser;
   period?: Period;
@@ -78,6 +81,8 @@ export async function OwnerCockpit({
   customTo?: string;
   /** Window for the activity tiles (the ?act= chips). */
   activityDays?: ActivityRange;
+  /** Branch filter from `?branch=`; null means the whole firm. */
+  branchId?: string | null;
 }) {
   const now = new Date();
   const today = now.toLocaleDateString("en-IN", {
@@ -134,6 +139,13 @@ export async function OwnerCockpit({
 
       <Suspense fallback={<CockpitBodySkeleton />}>
         <OwnerCockpitBody session={session} period={period} customStart={customStart} customFrom={customFrom} customTo={customTo} />
+      </Suspense>
+
+      {/* Firm tracker — every figure the firm asked to be able to track, under
+          the Date / Branch / Team-member filters. Its own boundary so ~25
+          aggregate queries never hold up anything above it. */}
+      <Suspense fallback={<CardSkeleton />}>
+        <FirmTracker session={session} period={period} customStart={customStart} customFrom={customFrom} customTo={customTo} branchId={branchId} />
       </Suspense>
     </div>
   );
@@ -876,4 +888,41 @@ function Stat({
     </div>
   );
   return href ? <Link href={href}>{inner}</Link> : inner;
+}
+
+/**
+ * Firm tracker loader. Resolves the same period the rest of the cockpit uses so
+ * the window label on the tiles matches the header's period chip exactly.
+ */
+async function FirmTracker({
+  session,
+  period,
+  customStart,
+  customFrom,
+  customTo,
+  branchId,
+}: {
+  session: SessionUser;
+  period: Period;
+  customStart?: string;
+  customFrom?: string;
+  customTo?: string;
+  branchId?: string | null;
+}) {
+  const range = resolvePeriodRange(period, new Date(), {
+    customStart,
+    from: customFrom,
+    to: customTo,
+  });
+  const data = await withTenant(
+    session.tenantId,
+    (tx) =>
+      loadFirmTracker(tx, {
+        from: new Date(range.fromISO),
+        to: new Date(range.toISO),
+        branchId: branchId ?? null,
+      }),
+    { userId: session.userId, branchId: session.branchId, roles: session.roles }
+  );
+  return <FirmTrackerSections data={data} periodLabel={range.label} />;
 }
